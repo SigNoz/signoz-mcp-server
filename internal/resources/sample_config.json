@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/path/to/your/signoz-mcp-server",
+      "args": [],
+      "env": {
+        "SIGNOZ_API_KEY": "<your-api-key>",
+        "SIGNOZ_URL": "<signoz-url>"
+      }
+    }
+  }
+}
