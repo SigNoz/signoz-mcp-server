@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 type Handler struct {
@@ -254,20 +255,70 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
-	queryTool := mcp.NewTool("query_v5",
-		mcp.WithDescription("Run a QueryBuilder v5 query (traces/logs/metrics). Returns raw query results."),
-		mcp.WithString("body", mcp.Required(), mcp.Description("Raw JSON body of the query (per Query Builder v5 API).")),
+	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
+	executeQuery := mcp.NewTool("signoz_execute_builder_query",
+		mcp.WithDescription("Execute a SigNoz Query Builder v5 query. The LLM should build the complete structured query JSON matching SigNoz's Query Builder v5 format. Example structure: {\"schemaVersion\":\"v1\",\"start\":1756386047000,\"end\":1756387847000,\"requestType\":\"raw\",\"compositeQuery\":{\"queries\":[{\"type\":\"builder_query\",\"spec\":{\"name\":\"A\",\"signal\":\"traces\",\"disabled\":false,\"limit\":10,\"offset\":0,\"order\":[{\"key\":{\"name\":\"timestamp\"},\"direction\":\"desc\"}],\"having\":{\"expression\":\"\"},\"selectFields\":[{\"name\":\"service.name\",\"fieldDataType\":\"string\",\"signal\":\"traces\",\"fieldContext\":\"resource\"},{\"name\":\"duration_nano\",\"fieldDataType\":\"\",\"signal\":\"traces\",\"fieldContext\":\"span\"}]}}]},\"formatOptions\":{\"formatTableResultForUI\":false,\"fillGaps\":false},\"variables\":{}}. See docs: https://signoz.io/docs/userguide/query-builder-v5/"),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables")),
 	)
 
-	s.AddTool(queryTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.Params.Arguments.(map[string]any)
-		bodyStr := args["body"].(string)
+	s.AddTool(executeQuery, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments payload"), nil
+		}
 
-		data, err := h.client.QueryRangeV5(ctx, []byte(bodyStr))
+		queryObj, ok := args["query"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		}
+
+		queryJSON, err := json.Marshal(queryObj)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal query object: " + err.Error()), nil
+		}
+
+		var queryPayload querybuilder.QueryPayload
+		if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
+			return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
+		}
+
+		if err := queryPayload.Validate(); err != nil {
+			return mcp.NewToolResultError("query validation error: " + err.Error()), nil
+		}
+
+		finalQueryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
+		}
+
+		data, err := h.client.QueryBuilderV5(ctx, finalQueryJSON)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Helper tool for LLM to discover available fields and build better queries (this can be iterative )
+	queryHelper := mcp.NewTool("signoz_query_helper",
+		mcp.WithDescription("Helper tool for building SigNoz queries. Provides guidance on available fields, signal types, and query structure. Use this to understand what fields are available for traces, logs, and metrics before building queries."),
+		mcp.WithString("signal", mcp.Description("Signal type to get help for: traces, logs, or metrics")),
+		mcp.WithString("query_type", mcp.Description("Type of help needed: fields, structure, examples, or all")),
+	)
+
+	s.AddTool(queryHelper, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+		signal, _ := args["signal"].(string)
+		queryType, _ := args["query_type"].(string)
+
+		if signal == "" {
+			signal = "traces"
+		}
+		if queryType == "" {
+			queryType = "all"
+		}
+
+		helpText := querybuilder.BuildQueryHelpText(signal, queryType)
+		return mcp.NewToolResultText(helpText), nil
 	})
 }

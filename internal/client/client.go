@@ -409,7 +409,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	return body, nil
 }
 
-func (s *SigNoz) QueryRangeV5(ctx context.Context, body []byte) (json.RawMessage, error) {
+func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	url := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
