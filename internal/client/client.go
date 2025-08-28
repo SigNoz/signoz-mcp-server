@@ -408,3 +408,35 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	s.logger.Debug("Successfully retrieved service top operations", zap.String("start", start), zap.String("end", end), zap.String("service", service), zap.Int("status", resp.StatusCode))
 	return body, nil
 }
+
+func (s *SigNoz) QueryRangeV5(ctx context.Context, body []byte) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", body))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+	}
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return b, nil
+}

@@ -252,3 +252,22 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 }
+
+func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
+	queryTool := mcp.NewTool("query_v5",
+		mcp.WithDescription("Run a QueryBuilder v5 query (traces/logs/metrics). Returns raw query results."),
+		mcp.WithString("body", mcp.Required(), mcp.Description("Raw JSON body of the query (per Query Builder v5 API).")),
+	)
+
+	s.AddTool(queryTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+		bodyStr := args["body"].(string)
+
+		data, err := h.client.QueryRangeV5(ctx, []byte(bodyStr))
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(data)), nil
+	})
+}
