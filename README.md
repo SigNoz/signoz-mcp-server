@@ -90,7 +90,7 @@ go build -o bin/signoz-mcp-server ./cmd/server/
 Set the following environment variables:
 
 ```bash
-export SIGNOZ_URL="https://your-signoz-instance.com"
+export SIGNOZ_URL="https://your-signoz-instance.com" //For SigNoz Cloud, this is typically - https://ingest.<region>.signoz.cloud
 export SIGNOZ_API_KEY="your-api-key-here"
 ```
 
