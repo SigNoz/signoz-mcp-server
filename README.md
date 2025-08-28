@@ -91,7 +91,7 @@ Set the following environment variables:
 
 ```bash
 export SIGNOZ_URL="https://your-signoz-instance.com"
-export SIGNOZ_API_KEY="your-api-key-here"
+export SIGNOZ_API_KEY="your-api-key-here" // In SigNoz Cloud - Settings -> Workspace Settings -> API Key
 ```
 
 ### Running the Server
