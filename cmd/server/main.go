@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"go.uber.org/zap"
+
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -12,21 +14,24 @@ import (
 )
 
 func main() {
-	logger, err := logger.New()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Sprintf("Failed to load config: %v", err))
+		os.Exit(1)
+	}
+
+	log, err := logger.NewLogger(logger.LogLevel(cfg.LogLevel))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Sprintf("Failed to initialize logger: %v", err))
 		os.Exit(1)
 	}
 
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to load config: %v", err))
-	}
+	log.Info("Starting SigNoz MCP Server", zap.String("log_level", cfg.LogLevel))
 
-	sigNozClient := client.NewClient(logger, cfg.URL, cfg.APIKey)
-	handler := tools.NewHandler(logger, sigNozClient)
+	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
+	handler := tools.NewHandler(log, sigNozClient)
 
-	if err := mcpserver.NewMCPServer(logger, handler).Start(); err != nil {
-		logger.Fatal(fmt.Sprintf("Failed to start server: %v", err))
+	if err := mcpserver.NewMCPServer(log, handler).Start(); err != nil {
+		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 	}
 }
