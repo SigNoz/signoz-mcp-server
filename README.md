@@ -47,6 +47,66 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **Configuration**: Environment-based configuration management
 - **Logging**: Structured logging with Zap
 
+## 🧰 Usage
+
+Use this mcp-server with MCP-compatible clients like Claude Desktop and Cursor.
+
+### Claude Desktop
+
+1. Build or locate the binary path for `signoz-mcp-server` (for example: `.../signoz-mcp-server/bin/signoz-mcp-server`).
+2. Goto Claude -> Settings -> Developer -> Local MCP Server click on `edit config`
+3. Edit `claude_desktop_config.json` Add shown config with your signoz url, api key and path to signoz-mcp-server binary.
+
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+      "args": [],
+      "env": {
+        "SIGNOZ_URL": "https://your-signoz-instance.com",
+        "SIGNOZ_API_KEY": "your-api-key-here",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
+
+Notes:
+- Replace the `command` path with your actual binary location.
+
+### Cursor
+
+Option A — GUI:
+- Open Cursor → Settings → Cursor Settings → Tool & Integrations → `+` New MCP Server
+
+Option B — Project config file:
+Create `.cursor/mcp.json` in your project root:
+
+For Both options use same json struct
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+      "args": [],
+      "env": {
+        "SIGNOZ_URL": "https://your-signoz-instance.com",
+        "SIGNOZ_API_KEY": "your-api-key-here",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+Once added, restart Cursor to use the SigNoz tools.
+
+**Note:** By default, the server logs at `info` level. If you need detailed debugging information, set `LOG_LEVEL=debug` in your environment. For production use, consider using `LOG_LEVEL=warn` to reduce log verbosity.
+
 ## 🛠️ Development Guide
 
 ### Prerequisites
@@ -89,10 +149,16 @@ go build -o bin/signoz-mcp-server ./cmd/server/
 
 Set the following environment variables:
 
+
 ```bash
-export SIGNOZ_URL="https://your-signoz-instance.com" //For SigNoz Cloud, this is typically - https://ingest.<region>.signoz.cloud
-export SIGNOZ_API_KEY="your-api-key-here"
+
+export SIGNOZ_URL="https://your-signoz-instance.com"
+export SIGNOZ_API_KEY="your-api-key-here" 
+export LOG_LEVEL="info"  # Optional: debug, info, error (default: info)
 ```
+In SigNoz Cloud, SIGNOZ_URL is typically - https://ingest.<region>.signoz.cloud
+
+You can access API Key by going to Settings -> Workspace Settings -> API Key in SigNoz UI
 
 ### Running the Server
 
