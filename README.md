@@ -1,7 +1,7 @@
 # SigNoz MCP Server
 
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![MCP Version](https://img.shields.io/badge/MCP-0.37.0-orange.svg)](https://modelcontextprotocol.io)
 
 A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. This server enables natural language queries for metrics, alerts, dashboards, and service performance data.
