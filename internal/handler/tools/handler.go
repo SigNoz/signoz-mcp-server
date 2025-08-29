@@ -255,6 +255,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
+	h.logger.Debug("Registering query builder v5 handlers")
+
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
 		mcp.WithDescription("Execute a SigNoz Query Builder v5 query. The LLM should build the complete structured query JSON matching SigNoz's Query Builder v5 format. Example structure: {\"schemaVersion\":\"v1\",\"start\":1756386047000,\"end\":1756387847000,\"requestType\":\"raw\",\"compositeQuery\":{\"queries\":[{\"type\":\"builder_query\",\"spec\":{\"name\":\"A\",\"signal\":\"traces\",\"disabled\":false,\"limit\":10,\"offset\":0,\"order\":[{\"key\":{\"name\":\"timestamp\"},\"direction\":\"desc\"}],\"having\":{\"expression\":\"\"},\"selectFields\":[{\"name\":\"service.name\",\"fieldDataType\":\"string\",\"signal\":\"traces\",\"fieldContext\":\"resource\"},{\"name\":\"duration_nano\",\"fieldDataType\":\"\",\"signal\":\"traces\",\"fieldContext\":\"span\"}]}}]},\"formatOptions\":{\"formatTableResultForUI\":false,\"fillGaps\":false},\"variables\":{}}. See docs: https://signoz.io/docs/userguide/query-builder-v5/"),
@@ -262,40 +264,50 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(executeQuery, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_execute_builder_query")
+
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
+			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
 			return mcp.NewToolResultError("invalid arguments payload"), nil
 		}
 
 		queryObj, ok := args["query"].(map[string]any)
 		if !ok {
+			h.logger.Warn("Invalid query parameter type", zap.Any("type", args["query"]))
 			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
 		}
 
 		queryJSON, err := json.Marshal(queryObj)
 		if err != nil {
+			h.logger.Error("Failed to marshal query object", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query object: " + err.Error()), nil
 		}
 
 		var queryPayload querybuilder.QueryPayload
 		if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
+			h.logger.Error("Failed to unmarshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
 		}
 
 		if err := queryPayload.Validate(); err != nil {
+			h.logger.Error("Query validation failed", zap.Error(err))
 			return mcp.NewToolResultError("query validation error: " + err.Error()), nil
 		}
 
 		finalQueryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
+			h.logger.Error("Failed to marshal validated query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
 		}
 
 		data, err := h.client.QueryBuilderV5(ctx, finalQueryJSON)
 		if err != nil {
+			h.logger.Error("Failed to execute query builder v5", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		h.logger.Debug("Successfully executed query builder v5")
 		return mcp.NewToolResultText(string(data)), nil
 	})
 
@@ -317,6 +329,10 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		if queryType == "" {
 			queryType = "all"
 		}
+
+		h.logger.Debug("Tool called: signoz_query_helper",
+			zap.String("signal", signal),
+			zap.String("query_type", queryType))
 
 		helpText := querybuilder.BuildQueryHelpText(signal, queryType)
 		return mcp.NewToolResultText(helpText), nil
