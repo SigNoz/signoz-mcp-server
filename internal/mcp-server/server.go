@@ -26,6 +26,7 @@ func (m *MCPServer) Start() error {
 	m.handler.RegisterAlertsHandlers(s)
 	m.handler.RegisterDashboardHandlers(s)
 	m.handler.RegisterServiceHandlers(s)
+	m.handler.RegisterQueryBuilderV5Handlers(s)
 
 	m.logger.Info("All handlers registered successfully")
 	m.logger.Info("MCP Server ready, serving on stdio")
