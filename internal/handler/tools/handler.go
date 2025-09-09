@@ -3,13 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 type Handler struct {
@@ -105,6 +106,101 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(respJSON)), nil
 	})
 
+	alertHistoryTool := mcp.NewTool("get_alert_history",
+		mcp.WithDescription("Get alert history timeline for a specific rule"),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start timestamp in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End timestamp in milliseconds")),
+		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
+		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
+		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
+	)
+	s.AddTool(alertHistoryTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		ruleID, ok := args["ruleId"].(string)
+		if !ok || ruleID == "" {
+			h.logger.Warn("Invalid or empty ruleId parameter", zap.Any("ruleId", args["ruleId"]))
+			return mcp.NewToolResultText("ruleId parameter must be a non-empty string"), nil
+		}
+
+		startStr, ok := args["start"].(string)
+		if !ok || startStr == "" {
+			h.logger.Warn("Invalid or empty start parameter", zap.Any("start", args["start"]))
+			return mcp.NewToolResultText("start parameter must be a non-empty string (timestamp in milliseconds)"), nil
+		}
+
+		endStr, ok := args["end"].(string)
+		if !ok || endStr == "" {
+			h.logger.Warn("Invalid or empty end parameter", zap.Any("end", args["end"]))
+			return mcp.NewToolResultText("end parameter must be a non-empty string (timestamp in milliseconds)"), nil
+		}
+
+		var start, end int64
+		if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
+			h.logger.Warn("Invalid start timestamp format", zap.String("start", startStr), zap.Error(err))
+			return mcp.NewToolResultText("start must be a valid timestamp in milliseconds"), nil
+		}
+		if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
+			h.logger.Warn("Invalid end timestamp format", zap.String("end", endStr), zap.Error(err))
+			return mcp.NewToolResultText("end must be a valid timestamp in milliseconds"), nil
+		}
+
+		offset := 0
+		if offsetStr, ok := args["offset"].(string); ok && offsetStr != "" {
+			if _, err := fmt.Sscanf(offsetStr, "%d", &offset); err != nil {
+				h.logger.Warn("Invalid offset format", zap.String("offset", offsetStr), zap.Error(err))
+				return mcp.NewToolResultText("offset must be a valid integer"), nil
+			}
+		}
+
+		limit := 20
+		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
+			if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+				h.logger.Warn("Invalid limit format", zap.String("limit", limitStr), zap.Error(err))
+				return mcp.NewToolResultText("limit must be a valid integer"), nil
+			}
+		}
+
+		order := "asc"
+		if orderStr, ok := args["order"].(string); ok && orderStr != "" {
+			if orderStr == "asc" || orderStr == "desc" {
+				order = orderStr
+			} else {
+				h.logger.Warn("Invalid order value", zap.String("order", orderStr))
+				return mcp.NewToolResultText("order must be 'asc' or 'desc'"), nil
+			}
+		}
+
+		historyReq := types.AlertHistoryRequest{
+			Start:  start,
+			End:    end,
+			Offset: offset,
+			Limit:  limit,
+			Order:  order,
+			Filters: types.AlertHistoryFilters{
+				Items: []interface{}{},
+				Op:    "AND",
+			},
+		}
+
+		h.logger.Debug("Tool called: get_alert_history",
+			zap.String("ruleId", ruleID),
+			zap.Int64("start", start),
+			zap.Int64("end", end),
+			zap.Int("offset", offset),
+			zap.Int("limit", limit),
+			zap.String("order", order))
+
+		respJSON, err := h.client.GetAlertHistory(ctx, ruleID, historyReq)
+		if err != nil {
+			h.logger.Error("Failed to get alert history",
+				zap.String("ruleId", ruleID),
+				zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(respJSON)), nil
+	})
 }
 
 func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
@@ -284,7 +380,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal query object: " + err.Error()), nil
 		}
 
-		var queryPayload querybuilder.QueryPayload
+		var queryPayload types.QueryPayload
 		if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
 			h.logger.Error("Failed to unmarshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
@@ -334,7 +430,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			zap.String("signal", signal),
 			zap.String("query_type", queryType))
 
-		helpText := querybuilder.BuildQueryHelpText(signal, queryType)
+		helpText := types.BuildQueryHelpText(signal, queryType)
 		return mcp.NewToolResultText(helpText), nil
 	})
 }

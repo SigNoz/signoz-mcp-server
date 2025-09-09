@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 const (
@@ -439,4 +441,53 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	}
 
 	return b, nil
+}
+
+func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/rules/%s/history/timeline", s.baseURL, ruleID)
+	// includes ruleid to get history
+	// eg: /api/v1/rules/<ruleID>/history/timeline
+
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set(ContentType, "application/json")
+	httpReq.Header.Set(SignozApiKey, s.apiKey)
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	httpReq = httpReq.WithContext(ctx)
+
+	s.logger.Debug("Making request to SigNoz API",
+		zap.String("method", "POST"),
+		zap.String("endpoint", fmt.Sprintf("/api/v1/rules/%s/history/timeline", ruleID)))
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.Error(err))
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		s.logger.Error("Unexpected status code",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("response_body", string(body)))
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return body, nil
 }

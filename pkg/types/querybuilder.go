@@ -1,4 +1,4 @@
-package querybuilder
+package types
 
 import "fmt"
 
