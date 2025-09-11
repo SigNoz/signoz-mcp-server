@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -433,4 +435,266 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		helpText := types.BuildQueryHelpText(signal, queryType)
 		return mcp.NewToolResultText(helpText), nil
 	})
+}
+
+func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering logs handlers")
+
+	listLogViewsTool := mcp.NewTool("list_log_views",
+		mcp.WithDescription("List all saved log views from SigNoz (returns summary with name, ID, description, and query details)"),
+	)
+
+	s.AddTool(listLogViewsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: list_log_views")
+		result, err := h.client.ListLogViews(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list log views", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getLogViewTool := mcp.NewTool("get_log_view",
+		mcp.WithDescription("Get full details of a specific log view by ID (returns complete log view configuration with query structure)"),
+		mcp.WithString("viewId", mcp.Required(), mcp.Description("Log view ID")),
+	)
+
+	s.AddTool(getLogViewTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		viewID, ok := req.Params.Arguments.(map[string]any)["viewId"].(string)
+		if !ok {
+			h.logger.Warn("Invalid viewId parameter type", zap.Any("type", req.Params.Arguments))
+			return mcp.NewToolResultError(`"viewId" parameter must be a string`), nil
+		}
+		if viewID == "" {
+			h.logger.Warn("Empty viewId parameter")
+			return mcp.NewToolResultError(`"viewId" parameter cannot be empty`), nil
+		}
+
+		h.logger.Debug("Tool called: get_log_view", zap.String("viewId", viewID))
+		data, err := h.client.GetLogView(ctx, viewID)
+		if err != nil {
+			h.logger.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	getLogsForAlertTool := mcp.NewTool("get_logs_for_alert",
+		mcp.WithDescription("Get logs related to a specific alert (automatically determines time range and service from alert details)"),
+		mcp.WithString("alertId", mcp.Required(), mcp.Description("Alert rule ID")),
+		mcp.WithString("timeRange", mcp.Description("Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'")),
+		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+	)
+
+	s.AddTool(getLogsForAlertTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		alertID, ok := args["alertId"].(string)
+		if !ok || alertID == "" {
+			return mcp.NewToolResultError("alertId parameter is required and must be a string"), nil
+		}
+
+		timeRange := "1h"
+		if tr, ok := args["timeRange"].(string); ok && tr != "" {
+			timeRange = tr
+		}
+
+		limit := 100
+		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil {
+				limit = parsed
+			}
+		}
+
+		h.logger.Debug("Tool called: get_logs_for_alert", zap.String("alertId", alertID))
+		alertData, err := h.client.GetAlertByRuleID(ctx, alertID)
+		if err != nil {
+			h.logger.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
+			return mcp.NewToolResultError("failed to get alert details: " + err.Error()), nil
+		}
+
+		var alertResponse map[string]interface{}
+		if err := json.Unmarshal(alertData, &alertResponse); err != nil {
+			h.logger.Error("Failed to parse alert data", zap.Error(err))
+			return mcp.NewToolResultError("failed to parse alert data: " + err.Error()), nil
+		}
+
+		serviceName := ""
+		if data, ok := alertResponse["data"].(map[string]interface{}); ok {
+			if labels, ok := data["labels"].(map[string]interface{}); ok {
+				if service, ok := labels["service_name"].(string); ok {
+					serviceName = service
+				} else if service, ok := labels["service"].(string); ok {
+					serviceName = service
+				}
+			}
+		}
+
+		now := time.Now()
+		startTime := now.Add(-1 * time.Hour).UnixMilli()
+		endTime := now.UnixMilli()
+
+		if duration, err := time.ParseDuration(timeRange); err == nil {
+			startTime = now.Add(-duration).UnixMilli()
+		}
+
+		filterExpression := "severity_text IN ('ERROR', 'WARN', 'FATAL')"
+		if serviceName != "" {
+			filterExpression += fmt.Sprintf(" AND service.name = '%s'", serviceName)
+		}
+
+		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
+
+		queryPayload.CompositeQuery.Queries[0].Spec.Having.Expression = filterExpression
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to get logs for alert", zap.String("alertId", alertID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getErrorLogsTool := mcp.NewTool("get_error_logs",
+		mcp.WithDescription("Get logs with ERROR or FATAL severity within a time range"),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithString("service", mcp.Description("Optional service name to filter by")),
+		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+	)
+
+	s.AddTool(getErrorLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		start, ok := args["start"].(string)
+		if !ok || start == "" {
+			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
+		}
+
+		end, ok := args["end"].(string)
+		if !ok || end == "" {
+			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
+		}
+
+		limit := 100
+		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil {
+				limit = parsed
+			}
+		}
+
+		filterExpression := "severity_text IN ('ERROR', 'FATAL')"
+
+		if service, ok := args["service"].(string); ok && service != "" {
+			filterExpression += fmt.Sprintf(" AND service.name = '%s'", service)
+		}
+
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError("invalid start timestamp format"), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError("invalid end timestamp format"), nil
+		}
+
+		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
+
+		queryPayload.CompositeQuery.Queries[0].Spec.Having.Expression = filterExpression
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		h.logger.Debug("Tool called: get_error_logs", zap.String("start", start), zap.String("end", end))
+		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to get error logs", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	searchLogsByServiceTool := mcp.NewTool("search_logs_by_service",
+		mcp.WithDescription("Search logs for a specific service within a time range"),
+		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search logs for")),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithString("severity", mcp.Description("Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)")),
+		mcp.WithString("searchText", mcp.Description("Text to search for in log body")),
+		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+	)
+
+	s.AddTool(searchLogsByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		service, ok := args["service"].(string)
+		if !ok || service == "" {
+			return mcp.NewToolResultError("service parameter is required and must be a string"), nil
+		}
+
+		start, ok := args["start"].(string)
+		if !ok || start == "" {
+			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
+		}
+
+		end, ok := args["end"].(string)
+		if !ok || end == "" {
+			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
+		}
+
+		limit := 100
+		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil {
+				limit = parsed
+			}
+		}
+
+		filterExpression := fmt.Sprintf("service.name = '%s'", service)
+
+		if severity, ok := args["severity"].(string); ok && severity != "" {
+			filterExpression += fmt.Sprintf(" AND severity_text = '%s'", severity)
+		}
+
+		if searchText, ok := args["searchText"].(string); ok && searchText != "" {
+			filterExpression += fmt.Sprintf(" AND body CONTAINS '%s'", searchText)
+		}
+
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError("invalid start timestamp format"), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError("invalid end timestamp format"), nil
+		}
+
+		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
+
+		queryPayload.CompositeQuery.Queries[0].Spec.Having.Expression = filterExpression
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		h.logger.Debug("Tool called: search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
+		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
 }
