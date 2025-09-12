@@ -491,3 +491,83 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 
 	return body, nil
 }
+
+func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	s.logger.Debug("Fetching log views from SigNoz")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	s.logger.Debug("Successfully retrieved log views", zap.Int("status", resp.StatusCode))
+	return body, nil
+}
+
+func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, viewID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	s.logger.Debug("Fetching log view details", zap.String("viewID", viewID))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("viewID", viewID), zap.Error(err))
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	s.logger.Debug("Successfully retrieved log view", zap.String("viewID", viewID), zap.Int("status", resp.StatusCode))
+	return body, nil
+}

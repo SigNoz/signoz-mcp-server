@@ -69,7 +69,7 @@ func (q *QueryPayload) Validate() error {
 	if q.RequestType == "" {
 		return fmt.Errorf("missing required field: requestType")
 	}
-	if q.CompositeQuery.Queries == nil || len(q.CompositeQuery.Queries) == 0 {
+	if len(q.CompositeQuery.Queries) == 0 {
 		return fmt.Errorf("missing or empty compositeQuery.queries")
 	}
 	if q.Start == 0 {
@@ -211,7 +211,7 @@ func buildLogsHelpText(queryType string) string {
 	case "fields":
 		return `Available log fields:
 - timestamp (log timestamp)
-- severity (log level: DEBUG, INFO, WARN, ERROR, FATAL)
+- severity_text (log level: DEBUG, INFO, WARN, ERROR, FATAL)
 - body (log message)
 - service.name (resource attribute)
 - trace_id (trace identifier if linked)
@@ -238,7 +238,7 @@ func buildLogsHelpText(queryType string) string {
         "having": {"expression": ""},
         "selectFields": [
           {"name": "timestamp", "fieldDataType": "string", "signal": "logs"},
-          {"name": "severity", "fieldDataType": "string", "signal": "logs"},
+          {"name": "severity_text", "fieldDataType": "string", "signal": "logs"},
           {"name": "body", "fieldDataType": "string", "signal": "logs"},
           {"name": "service.name", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
         ]
@@ -267,10 +267,10 @@ func buildLogsHelpText(queryType string) string {
         "limit": 10,
         "offset": 0,
         "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
-        "having": {"expression": "severity = 'ERROR'"},
+        "having": {"expression": "severity_text = 'ERROR'"},
         "selectFields": [
           {"name": "timestamp", "fieldDataType": "string", "signal": "logs"},
-          {"name": "severity", "fieldDataType": "string", "signal": "logs"},
+          {"name": "severity_text", "fieldDataType": "string", "signal": "logs"},
           {"name": "body", "fieldDataType": "string", "signal": "logs"},
           {"name": "service.name", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
         ]
@@ -376,4 +376,43 @@ Common query parameters:
 - compositeQuery.queries[].spec.having: Filter expression for aggregated results
 
 Use signoz_query_helper with specific signal type for detailed field information.`
+}
+
+// BuildLogsQueryPayload creates a QueryPayload for logs queries
+func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, limit int) *QueryPayload {
+	return &QueryPayload{
+		SchemaVersion: "v1",
+		Start:         startTime,
+		End:           endTime,
+		RequestType:   "raw",
+		CompositeQuery: CompositeQuery{
+			Queries: []Query{
+				{
+					Type: "builder_query",
+					Spec: QuerySpec{
+						Name:     "A",
+						Signal:   "logs",
+						Disabled: false,
+						Limit:    limit,
+						Offset:   0,
+						Order: []Order{
+							{Key: Key{Name: "timestamp"}, Direction: "desc"},
+						},
+						Having: Having{Expression: ""},
+						SelectFields: []SelectField{
+							{Name: "timestamp", FieldDataType: "string", Signal: "logs"},
+							{Name: "severity_text", FieldDataType: "string", Signal: "logs"},
+							{Name: "body", FieldDataType: "string", Signal: "logs"},
+							{Name: "service.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+						},
+					},
+				},
+			},
+		},
+		FormatOptions: FormatOptions{
+			FormatTableResultForUI: false,
+			FillGaps:               false,
+		},
+		Variables: map[string]any{},
+	}
 }
