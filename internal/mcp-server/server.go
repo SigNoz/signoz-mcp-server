@@ -26,7 +26,7 @@ func (m *MCPServer) Start() error {
 
 	m.logger.Info("Starting SigNoz MCP Server",
 		zap.String("server_name", "SigNozMCPServer"),
-		zap.String("deployment_mode", m.config.DeploymentMode))
+		zap.String("transport_mode", m.config.TransportMode))
 
 	// Register all handlers
 	m.handler.RegisterMetricsHandlers(s)
@@ -38,19 +38,19 @@ func (m *MCPServer) Start() error {
 
 	m.logger.Info("All handlers registered successfully")
 
-	if m.config.DeploymentMode == "cloud" {
-		return m.startCloud(s)
+	if m.config.TransportMode == "http" {
+		return m.startHTTP(s)
 	}
-	return m.startLocal(s)
+	return m.startStdio(s)
 }
 
-func (m *MCPServer) startLocal(s *server.MCPServer) error {
-	m.logger.Info("MCP Server running in LOCAL mode (stdio)")
+func (m *MCPServer) startStdio(s *server.MCPServer) error {
+	m.logger.Info("MCP Server running in stdio mode")
 	return server.ServeStdio(s)
 }
 
-func (m *MCPServer) startCloud(s *server.MCPServer) error {
-	m.logger.Info("MCP Server running in cloud hosted mode")
+func (m *MCPServer) startHTTP(s *server.MCPServer) error {
+	m.logger.Info("MCP Server running in HTTP mode")
 
 	addr := fmt.Sprintf(":%s", m.config.Port)
 

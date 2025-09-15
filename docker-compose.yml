@@ -9,7 +9,7 @@ services:
     environment:
       - SIGNOZ_URL=${SIGNOZ_URL}
       - SIGNOZ_API_KEY=${SIGNOZ_API_KEY}
-      - DEPLOYMENT_MODE=cloud
+      - TRANSPORT_MODE=http
       - MCP_SERVER_PORT=8000
       - LOG_LEVEL=${LOG_LEVEL:-info}
     restart: unless-stopped

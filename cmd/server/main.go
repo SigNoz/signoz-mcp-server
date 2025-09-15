@@ -33,7 +33,7 @@ func main() {
 
 	log.Info("Starting SigNoz MCP Server",
 		zap.String("log_level", cfg.LogLevel),
-		zap.String("deployment_mode", cfg.DeploymentMode))
+		zap.String("transport_mode", cfg.TransportMode))
 
 	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
 	handler := tools.NewHandler(log, sigNozClient)
