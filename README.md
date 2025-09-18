@@ -8,22 +8,17 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 
 ## 🚀 Features
 
-### 📊 **Metrics Management**
 - **List Metric Keys**: Retrieve all available metric keys from SigNoz
 - **Search Metric Keys**: Find specific metrics
-
-### 🚨 **Alert Management**
 - **List Alerts**: Get all active alerts with detailed status
 - **Get Alert Details**: Retrieve comprehensive information about specific alert rules
-
-### 📈 **Dashboard Operations**
+- **Logs**: Gets log related to services, alerts, etc.  
+- **Get Alert Details**: Retrieve comprehensive information about specific alert rules
 - **List Dashboards**: Get dashboard summaries (name, UUID, description, tags)
 - **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries
-
-### 🔍 **Service Monitoring**
 - **List Services**: Discover all services within specified time ranges
 - **Service Top Operations**: Analyze performance metrics for specific services
-
+- **Query Builder**: Generates query to get complex response
 ## 🏗️ Architecture
 
 ```
@@ -104,6 +99,52 @@ For Both options use same json struct
 ```
 
 Once added, restart Cursor to use the SigNoz tools.
+
+### HTTP based self hosted mcp server
+
+### Claude Desktop
+
+1. Build and run signoz-mcp-server with envs
+   - SIGNOZ_URL=signoz_url SIGNOZ_API_KEY=signoz_apikey TRANSPORT_MODE=http MCP_SERVER_PORT=8000 LOG_LEVEL=log_level ./signoz-mcp-server
+   - or use docker-compose 
+2. Goto Claude -> Settings -> Developer -> Local MCP Server click on `edit config`
+3. Edit `claude_desktop_config.json` Add shown config with your signoz url, api key and path to signoz-mcp-server binary.
+
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "url": <hosted-mcp-server-url/mcp> "http://localhost:8000/mcp",
+    }
+  }
+}
+```
+
+4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
+
+### Cursor
+
+Build and run signoz-mcp-server with envs
+    - SIGNOZ_URL=signoz_url SIGNOZ_API_KEY=signoz_apikey TRANSPORT_MODE=http MCP_SERVER_PORT=8000 LOG_LEVEL=log_level ./signoz-mcp-server
+    - or use docker-compose
+
+Option A — GUI:
+- Open Cursor → Settings → Cursor Settings → Tool & Integrations → `+` New MCP Server
+
+Option B — Project config file:
+Create `.cursor/mcp.json` in your project root:
+
+For Both options use same json struct
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "url": <hosted-mcp-server-url/mcp> "http://localhost:8000/mcp",
+      }
+    }
+  }
+```
+
 
 **Note:** By default, the server logs at `info` level. If you need detailed debugging information, set `LOG_LEVEL=debug` in your environment. For production use, consider using `LOG_LEVEL=warn` to reduce log verbosity.
 
