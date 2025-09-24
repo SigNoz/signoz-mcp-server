@@ -10,3 +10,7 @@ goimports:
 build: fmt goimports
 	@echo "🚀 Building ..."
 	@go build $(GO_FLAGS) -o bin/signoz-mcp-server ./cmd/server/...
+
+test:
+	@echo "🧪 Running all tests..."
+	@go test -v ./...
