@@ -20,18 +20,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := cfg.ValidateConfig(); err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Sprintf("Configuration validation failed: %v", err))
+		os.Exit(1)
+	}
+
 	log, err := logger.NewLogger(logger.LogLevel(cfg.LogLevel))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Sprintf("Failed to initialize logger: %v", err))
 		os.Exit(1)
 	}
 
-	log.Info("Starting SigNoz MCP Server", zap.String("log_level", cfg.LogLevel))
+	log.Info("Starting SigNoz MCP Server",
+		zap.String("log_level", cfg.LogLevel),
+		zap.String("transport_mode", cfg.TransportMode))
 
 	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
 	handler := tools.NewHandler(log, sigNozClient)
 
-	if err := mcpserver.NewMCPServer(log, handler).Start(); err != nil {
+	if err := mcpserver.NewMCPServer(log, handler, cfg).Start(); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 	}
 }

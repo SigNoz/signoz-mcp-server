@@ -461,6 +461,8 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 	httpReq.Header.Set(ContentType, "application/json")
 	httpReq.Header.Set(SignozApiKey, s.apiKey)
 
+	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", reqBody))
+
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	httpReq = httpReq.WithContext(ctx)
@@ -482,11 +484,12 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		s.logger.Error("Unexpected status code",
-			zap.Int("status_code", resp.StatusCode),
-			zap.String("response_body", string(body)))
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.logger.Error("API request failed",
+			zap.String("url", url),
+			zap.Int("status", resp.StatusCode),
+			zap.String("response", string(body)))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return body, nil

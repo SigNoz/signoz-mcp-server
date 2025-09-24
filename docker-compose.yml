@@ -1,0 +1,24 @@
+services:
+  signoz-mcp-server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: signoz-mcp-server
+    ports:
+      - "${MCP_SERVER_PORT:-8000}:8000"
+    environment:
+      - SIGNOZ_URL=${SIGNOZ_URL}
+      - SIGNOZ_API_KEY=${SIGNOZ_API_KEY}
+      - TRANSPORT_MODE=http
+      - MCP_SERVER_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    restart: unless-stopped
+    networks:
+      - signoz-mcp-network
+    labels:
+      - "com.signoz.service=signoz-mcp-server"
+      - "com.signoz.description=SigNoz MCP Server for AI assistants"
+
+networks:
+  signoz-mcp-network:
+    driver: bridge
