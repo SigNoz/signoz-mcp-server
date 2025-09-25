@@ -27,6 +27,7 @@ type QuerySpec struct {
 	Signal       string        `json:"signal"`
 	StepInterval *string       `json:"stepInterval,omitempty"`
 	Disabled     bool          `json:"disabled"`
+	Filter       *Filter       `json:"filter,omitempty"`
 	Limit        int           `json:"limit"`
 	Offset       int           `json:"offset"`
 	Order        []Order       `json:"order"`
@@ -44,6 +45,10 @@ type Key struct {
 }
 
 type Having struct {
+	Expression string `json:"expression"`
+}
+
+type Filter struct {
 	Expression string `json:"expression"`
 }
 
@@ -116,8 +121,8 @@ func buildTracesHelpText(queryType string) string {
 		return `Trace query structure:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "raw",
   "compositeQuery": {
     "queries": [{
@@ -133,7 +138,7 @@ func buildTracesHelpText(queryType string) string {
         "selectFields": [
           {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
           {"name": "operation", "fieldDataType": "string", "signal": "traces"},
-          {"name": "duration_nano", "fieldDataType": "", "signal": "traces", "fieldContext": "span"}
+          {"name": "duration_nano", "fieldDataType": "int64", "signal": "traces", "fieldContext": "span"}
         ]
       }
     }]
@@ -147,8 +152,8 @@ func buildTracesHelpText(queryType string) string {
 1. Recent slow traces:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "raw",
   "compositeQuery": {
     "queries": [{
@@ -164,7 +169,7 @@ func buildTracesHelpText(queryType string) string {
         "selectFields": [
           {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
           {"name": "operation", "fieldDataType": "string", "signal": "traces"},
-          {"name": "duration_nano", "fieldDataType": "", "signal": "traces", "fieldContext": "span"}
+          {"name": "duration_nano", "fieldDataType": "int64", "signal": "traces", "fieldContext": "span"}
         ]
       }
     }]
@@ -176,8 +181,8 @@ func buildTracesHelpText(queryType string) string {
 2. Error traces:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "raw",
   "compositeQuery": {
     "queries": [{
@@ -193,7 +198,7 @@ func buildTracesHelpText(queryType string) string {
         "selectFields": [
           {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
           {"name": "operation", "fieldDataType": "string", "signal": "traces"},
-          {"name": "http_status_code", "fieldDataType": "", "signal": "traces", "fieldContext": "span"}
+          {"name": "http_status_code", "fieldDataType": "int32", "signal": "traces", "fieldContext": "span"}
         ]
       }
     }]
@@ -222,8 +227,8 @@ func buildLogsHelpText(queryType string) string {
 		return `Log query structure:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "raw",
   "compositeQuery": {
     "queries": [{
@@ -254,8 +259,8 @@ func buildLogsHelpText(queryType string) string {
 1. Error logs:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "raw",
   "compositeQuery": {
     "queries": [{
@@ -299,8 +304,8 @@ func buildMetricsHelpText(queryType string) string {
 		return `Metric query structure:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "time_series",
   "compositeQuery": {
     "queries": [{
@@ -314,7 +319,7 @@ func buildMetricsHelpText(queryType string) string {
         "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
         "having": {"expression": ""},
         "selectFields": [
-          {"name": "value", "fieldDataType": "", "signal": "metrics"},
+          {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
           {"name": "metric_name", "fieldDataType": "string", "signal": "metrics"}
         ],
         "stepInterval": "60s"
@@ -330,8 +335,8 @@ func buildMetricsHelpText(queryType string) string {
 1. CPU usage over time:
 {
   "schemaVersion": "v1",
-  "start": 1756386047000,
-  "end": 1756387847000,
+  "start": 1704067200000,
+  "end": 1758758400000,
   "requestType": "time_series",
   "compositeQuery": {
     "queries": [{
@@ -345,7 +350,7 @@ func buildMetricsHelpText(queryType string) string {
         "order": [{"key": {"name": "timestamp"}, "direction": "asc"}],
         "having": {"expression": "metric_name = 'cpu_usage'"},
         "selectFields": [
-          {"name": "value", "fieldDataType": "", "signal": "metrics"},
+          {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
           {"name": "timestamp", "fieldDataType": "string", "signal": "metrics"}
         ],
         "stepInterval": "60s"
@@ -393,6 +398,7 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 						Name:     "A",
 						Signal:   "logs",
 						Disabled: false,
+						Filter:   &Filter{Expression: filterExpression},
 						Limit:    limit,
 						Offset:   0,
 						Order: []Order{
