@@ -540,12 +540,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		filterExpression := "severity_text IN ('ERROR', 'WARN', 'FATAL')"
 		if serviceName != "" {
-			filterExpression += fmt.Sprintf(" AND service.name = '%s'", serviceName)
+			filterExpression += fmt.Sprintf(" AND service.name in ['%s']", serviceName)
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
-
-		queryPayload.CompositeQuery.Queries[0].Spec.Having.Expression = filterExpression
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
@@ -593,7 +591,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		filterExpression := "severity_text IN ('ERROR', 'FATAL')"
 
 		if service, ok := args["service"].(string); ok && service != "" {
-			filterExpression += fmt.Sprintf(" AND service.name = '%s'", service)
+			filterExpression += fmt.Sprintf(" AND service.name in ['%s']", service)
 		}
 
 		var startTime, endTime int64
@@ -605,8 +603,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
-
-		queryPayload.CompositeQuery.Queries[0].Spec.Having.Expression = filterExpression
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
@@ -659,7 +655,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			}
 		}
 
-		filterExpression := fmt.Sprintf("service.name = '%s'", service)
+		filterExpression := fmt.Sprintf("service.name in ['%s']", service)
 
 		if severity, ok := args["severity"].(string); ok && severity != "" {
 			filterExpression += fmt.Sprintf(" AND severity_text = '%s'", severity)
@@ -678,8 +674,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
-
-		queryPayload.CompositeQuery.Queries[0].Spec.Having.Expression = filterExpression
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
