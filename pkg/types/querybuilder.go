@@ -269,10 +269,42 @@ func buildLogsHelpText(queryType string) string {
         "name": "A",
         "signal": "logs",
         "disabled": false,
+        "filter": {"expression": "severity_text = 'ERROR'"},
         "limit": 10,
         "offset": 0,
         "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
-        "having": {"expression": "severity_text = 'ERROR'"},
+        "having": {"expression": ""},
+        "selectFields": [
+          {"name": "timestamp", "fieldDataType": "string", "signal": "logs"},
+          {"name": "severity_text", "fieldDataType": "string", "signal": "logs"},
+          {"name": "body", "fieldDataType": "string", "signal": "logs"},
+          {"name": "service.name", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
+        ]
+      }
+    }]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+2. Service-specific logs with text search:
+{
+  "schemaVersion": "v1",
+  "start": 1704067200000,
+  "end": 1758758400000,
+  "requestType": "raw",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "name": "A",
+        "signal": "logs",
+        "disabled": false,
+        "filter": {"expression": "service.name in ['my-service'] AND body CONTAINS 'error'"},
+        "limit": 10,
+        "offset": 0,
+        "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+        "having": {"expression": ""},
         "selectFields": [
           {"name": "timestamp", "fieldDataType": "string", "signal": "logs"},
           {"name": "severity_text", "fieldDataType": "string", "signal": "logs"},
