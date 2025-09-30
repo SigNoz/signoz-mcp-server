@@ -25,7 +25,7 @@ type Query struct {
 type QuerySpec struct {
 	Name         string        `json:"name"`
 	Signal       string        `json:"signal"`
-	StepInterval *string       `json:"stepInterval,omitempty"`
+	StepInterval *int64        `json:"stepInterval,omitempty"`
 	Disabled     bool          `json:"disabled"`
 	Filter       *Filter       `json:"filter,omitempty"`
 	Limit        int           `json:"limit"`
@@ -354,7 +354,7 @@ func buildMetricsHelpText(queryType string) string {
           {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
           {"name": "metric_name", "fieldDataType": "string", "signal": "metrics"}
         ],
-        "stepInterval": "60s"
+        "stepInterval": 60
       }
     }]
   },
@@ -385,7 +385,7 @@ func buildMetricsHelpText(queryType string) string {
           {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
           {"name": "timestamp", "fieldDataType": "string", "signal": "metrics"}
         ],
-        "stepInterval": "60s"
+        "stepInterval": 60
       }
     }]
   },
