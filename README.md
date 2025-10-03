@@ -8,23 +8,24 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 
 ## 🚀 Features
 
-- **List Metric Keys**: Retrieve all available metric keys from SigNoz
-- **Search Metric Keys**: Find specific metrics
-- **List Alerts**: Get all active alerts with detailed status
-- **Get Alert Details**: Retrieve comprehensive information about specific alert rules
+- **List Metric Keys**: Retrieve all available metric keys from SigNoz.
+- **Search Metric Keys**: Find specific metrics.
+- **List Alerts**: Get all active alerts with detailed status.
+- **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
+- **Get Alert History**: Gives you timeline of an alert.
 - **Logs**: Gets log related to services, alerts, etc.  
-- **Get Alert Details**: Retrieve comprehensive information about specific alert rules
-- **List Dashboards**: Get dashboard summaries (name, UUID, description, tags)
-- **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries
-- **List Services**: Discover all services within specified time ranges
-- **Service Top Operations**: Analyze performance metrics for specific services
-- **Query Builder**: Generates query to get complex response
+- **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
+- **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
+- **List Services**: Discover all services within specified time ranges.
+- **Service Top Operations**: Analyze performance metrics for specific services.
+- **Query Builder**: Generates query to get complex response.
+
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   MCP Client   │───▶│  MCP Server      │───▶│   SigNoz API    │
-│  (AI Assistant)│    │  (Go)            │    │  (Observability)│
+│   MCP Client    │───▶│  MCP Server      │───▶│   SigNoz API    │
+│  (AI Assistant) │    │  (Go)            │    │  (Observability)│
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                               │
                               ▼
@@ -231,6 +232,8 @@ The MCP server provides the following tools that can be used through natural lan
 ```
 "List all active alerts"
 "Get details for alert rule ID abc123"
+"Show me the history for alert rule abc123 from the last 24 hours"
+"Get logs related to alert abc456"
 ```
 
 #### Dashboard Management
@@ -244,6 +247,15 @@ The MCP server provides the following tools that can be used through natural lan
 "List all services from the last 24 hours"
 "What are the top operations for the paymentservice?"
 ```
+
+#### Log Analysis
+```
+"List all saved log views"
+"Show me error logs for the paymentservice from the last hour"
+"Search paymentservice logs for 'connection timeout' errors"
+"Get error logs with FATAL severity"
+```
+
 
 ### Tool Reference
 
@@ -283,6 +295,61 @@ Gets top operations for a specific service.
     - `service` (required) - Service name
     - `tags` (optional) - JSON array of tags
 
+#### `get_alert_history`
+Gets alert history timeline for a specific rule.
+- **Parameters**:
+    - `ruleId` (required) - Alert rule ID
+    - `start` (required) - Start timestamp in milliseconds
+    - `end` (required) - End timestamp in milliseconds
+    - `offset` (optional) - Offset for pagination (default: 0)
+    - `limit` (optional) - Limit number of results (default: 20)
+    - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
+
+#### `list_log_views`
+Lists all saved log views from SigNoz.
+- **Returns**: Summary with name, ID, description, and query details
+
+#### `get_log_view`
+Gets full details of a specific log view by ID.
+- **Parameters**: `viewId` (required) - Log view ID
+
+#### `get_logs_for_alert`
+Gets logs related to a specific alert automatically.
+- **Parameters**:
+    - `alertId` (required) - Alert rule ID
+    - `timeRange` (optional) - Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'
+    - `limit` (optional) - Maximum number of logs to return (default: 100)
+
+#### `get_error_logs`
+Gets logs with ERROR or FATAL severity within a time range.
+- **Parameters**:
+    - `start` (required) - Start time in milliseconds
+    - `end` (required) - End time in milliseconds
+    - `service` (optional) - Service name to filter by
+    - `limit` (optional) - Maximum number of logs to return (default: 100)
+
+#### `search_logs_by_service`
+Searches logs for a specific service within a time range.
+- **Parameters**:
+    - `service` (required) - Service name to search logs for
+    - `start` (required) - Start time in milliseconds
+    - `end` (required) - End time in milliseconds
+    - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
+    - `searchText` (optional) - Text to search for in log body
+    - `limit` (optional) - Maximum number of logs to return (default: 100)
+
+#### `signoz_execute_builder_query`
+Executes a SigNoz Query Builder v5 query.
+- **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
+- **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
+
+#### `signoz_query_helper`
+Helper tool for building SigNoz queries.
+- **Parameters**:
+    - `signal` (optional) - Signal type: traces, logs, or metrics
+    - `query_type` (optional) - Type of help: fields, structure, examples, or all
+- **Returns**: Guidance on available fields, signal types, and query structure
+
 ### Time Format
 
 All time parameters use **nanoseconds since Unix epoch**. For example:
@@ -300,10 +367,14 @@ All tools return JSON responses that are optimized for LLM consumption:
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `SIGNOZ_URL` | SigNoz instance URL | Yes |
-| `SIGNOZ_API_KEY` | SigNoz API key | Yes |
+| Variable | Description                                                                   | Required |
+|----------|-------------------------------------------------------------------------------|----------|
+| `SIGNOZ_URL` | SigNoz instance URL  | Yes      |
+| `SIGNOZ_API_KEY` | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes      |
+| `LOG_LEVEL` | Logging level: `info`(default), `debug`, `warn`, `error`                      | No       |
+| `TRANSPORT_MODE` | MCP transport mode: `stdio`(default) or `http`                                | No       |
+| `MCP_SERVER_PORT` | Port for HTTP transport mode              | Yes only when `TRANSPORT_MODE=http     |
+
 
 ## 🤝 Contributing
 
