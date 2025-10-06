@@ -578,3 +578,92 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 	s.logger.Debug("Successfully retrieved log view", zap.String("viewID", viewID), zap.Int("status", resp.StatusCode))
 	return body, nil
 }
+
+func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, searchText string) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/fields/values?signal=traces&name=%s&searchText=%s&metricName=&source=meter", s.baseURL, fieldName, searchText)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	s.logger.Debug("Fetching trace field values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("fieldName", fieldName), zap.Error(err))
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	s.logger.Debug("Successfully retrieved trace field values", zap.String("fieldName", fieldName), zap.Int("status", resp.StatusCode))
+	return body, nil
+}
+
+func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+	if startTime == 0 || endTime == 0 {
+		return nil, fmt.Errorf("start and end time parameters are required")
+	}
+
+	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
+	limit := 1000
+
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+	queryJSON, err := json.Marshal(queryPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
+	}
+
+	return s.QueryBuilderV5(ctx, queryJSON)
+}
+
+func (s *SigNoz) GetTraceErrorAnalysis(ctx context.Context, startTime, endTime int64, serviceName string) (json.RawMessage, error) {
+	filterExpression := "hasError = true"
+	if serviceName != "" {
+		filterExpression += fmt.Sprintf(" AND service.name in ['%s']", serviceName)
+	}
+
+	limit := 1000
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+	queryJSON, err := json.Marshal(queryPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
+	}
+
+	return s.QueryBuilderV5(ctx, queryJSON)
+}
+
+func (s *SigNoz) GetTraceSpanHierarchy(ctx context.Context, traceID string, startTime, endTime int64) (json.RawMessage, error) {
+	if startTime == 0 || endTime == 0 {
+		return nil, fmt.Errorf("start and end time parameters are required")
+	}
+
+	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
+	limit := 1000
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+	queryJSON, err := json.Marshal(queryPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
+	}
+
+	return s.QueryBuilderV5(ctx, queryJSON)
+}

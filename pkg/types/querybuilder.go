@@ -104,21 +104,25 @@ func buildTracesHelpText(queryType string) string {
 	switch queryType {
 	case "fields":
 		return `Available trace fields:
+- traceID (trace identifier)
+- spanID (span identifier)
+- parentSpanID (parent span identifier)
 - service.name (resource context)
-- operation (span name)
-- duration_nano (span duration in nanoseconds)
-- http_method (span attribute)
-- http_status_code (span attribute)
-- http_url (span attribute)
-- error (boolean, true if span has error)
-- trace_id (trace identifier)
-- span_id (span identifier)
-- parent_span_id (parent span identifier)
+- name (operation/span name)
+- durationNano (span duration in nanoseconds)
 - timestamp (span timestamp)
+- hasError (boolean, true if span has error)
+- statusCode (HTTP status code)
+- statusCodeString (status code as string)
+- httpMethod (HTTP method)
+- httpUrl (HTTP URL)
+- spanKind (span kind: client, server, producer, consumer)
+- rpcMethod (RPC method name)
+- kind (span kind as integer)
 - resource attributes: service.version, deployment.environment, etc.
 - span attributes: http.method, http.status_code, db.system, etc.`
 	case "structure":
-		return `Trace query structure:
+		return `Trace query structure (returns comprehensive trace data):
 {
   "schemaVersion": "v1",
   "start": 1704067200000,
@@ -131,14 +135,22 @@ func buildTracesHelpText(queryType string) string {
         "name": "A",
         "signal": "traces",
         "disabled": false,
-        "limit": 10,
+        "limit": 100,
         "offset": 0,
         "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
         "having": {"expression": ""},
         "selectFields": [
+          {"name": "traceID", "fieldDataType": "string", "signal": "traces"},
+          {"name": "spanID", "fieldDataType": "string", "signal": "traces"},
+          {"name": "parentSpanID", "fieldDataType": "string", "signal": "traces"},
           {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
-          {"name": "operation", "fieldDataType": "string", "signal": "traces"},
-          {"name": "duration_nano", "fieldDataType": "int64", "signal": "traces", "fieldContext": "span"}
+          {"name": "name", "fieldDataType": "string", "signal": "traces"},
+          {"name": "durationNano", "fieldDataType": "int64", "signal": "traces"},
+          {"name": "timestamp", "fieldDataType": "string", "signal": "traces"},
+          {"name": "hasError", "fieldDataType": "bool", "signal": "traces"},
+          {"name": "statusCode", "fieldDataType": "string", "signal": "traces"},
+          {"name": "httpMethod", "fieldDataType": "string", "signal": "traces"},
+          {"name": "spanKind", "fieldDataType": "string", "signal": "traces"}
         ]
       }
     }]
@@ -147,7 +159,7 @@ func buildTracesHelpText(queryType string) string {
   "variables": {}
 }`
 	case "examples":
-		return `Example trace queries:
+		return `Example trace queries (all return comprehensive trace data):
 
 1. Recent slow traces:
 {
@@ -162,15 +174,11 @@ func buildTracesHelpText(queryType string) string {
         "name": "A",
         "signal": "traces",
         "disabled": false,
-        "limit": 10,
+        "filter": {"expression": "durationNano > 1000000000"},
+        "limit": 100,
         "offset": 0,
-        "order": [{"key": {"name": "duration_nano"}, "direction": "desc"}],
-        "having": {"expression": "duration_nano > 1000000000"},
-        "selectFields": [
-          {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
-          {"name": "operation", "fieldDataType": "string", "signal": "traces"},
-          {"name": "duration_nano", "fieldDataType": "int64", "signal": "traces", "fieldContext": "span"}
-        ]
+        "order": [{"key": {"name": "durationNano"}, "direction": "desc"}],
+        "having": {"expression": ""}
       }
     }]
   },
@@ -191,15 +199,36 @@ func buildTracesHelpText(queryType string) string {
         "name": "A",
         "signal": "traces",
         "disabled": false,
-        "limit": 10,
+        "filter": {"expression": "hasError = true"},
+        "limit": 100,
         "offset": 0,
         "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
-        "having": {"expression": "error = true"},
-        "selectFields": [
-          {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
-          {"name": "operation", "fieldDataType": "string", "signal": "traces"},
-          {"name": "http_status_code", "fieldDataType": "int32", "signal": "traces", "fieldContext": "span"}
-        ]
+        "having": {"expression": ""}
+      }
+    }]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+3. Specific trace by ID:
+{
+  "schemaVersion": "v1",
+  "start": 1704067200000,
+  "end": 1758758400000,
+  "requestType": "raw",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "name": "A",
+        "signal": "traces",
+        "disabled": false,
+        "filter": {"expression": "traceID = '7a2740c79ab31eea9534951a6fd5b2b6'"},
+        "limit": 1000,
+        "offset": 0,
+        "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+        "having": {"expression": ""}
       }
     }]
   },
@@ -442,6 +471,56 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 							{Name: "severity_text", FieldDataType: "string", Signal: "logs"},
 							{Name: "body", FieldDataType: "string", Signal: "logs"},
 							{Name: "service.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+						},
+					},
+				},
+			},
+		},
+		FormatOptions: FormatOptions{
+			FormatTableResultForUI: false,
+			FillGaps:               false,
+		},
+		Variables: map[string]any{},
+	}
+}
+
+func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, limit int) *QueryPayload {
+	return &QueryPayload{
+		SchemaVersion: "v1",
+		Start:         startTime,
+		End:           endTime,
+		RequestType:   "raw",
+		CompositeQuery: CompositeQuery{
+			Queries: []Query{
+				{
+					Type: "builder_query",
+					Spec: QuerySpec{
+						Name:     "A",
+						Signal:   "traces",
+						Disabled: false,
+						Filter:   &Filter{Expression: filterExpression},
+						Limit:    limit,
+						Offset:   0,
+						Order: []Order{
+							{Key: Key{Name: "timestamp"}, Direction: "desc"},
+						},
+						Having: Having{Expression: ""},
+						SelectFields: []SelectField{
+							{Name: "traceID", FieldDataType: "string", Signal: "traces"},
+							{Name: "spanID", FieldDataType: "string", Signal: "traces"},
+							{Name: "parentSpanID", FieldDataType: "string", Signal: "traces"},
+							{Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+							{Name: "name", FieldDataType: "string", Signal: "traces"},
+							{Name: "durationNano", FieldDataType: "int64", Signal: "traces"},
+							{Name: "timestamp", FieldDataType: "string", Signal: "traces"},
+							{Name: "hasError", FieldDataType: "bool", Signal: "traces"},
+							{Name: "statusCode", FieldDataType: "string", Signal: "traces"},
+							{Name: "statusCodeString", FieldDataType: "string", Signal: "traces"},
+							{Name: "httpMethod", FieldDataType: "string", Signal: "traces"},
+							{Name: "httpUrl", FieldDataType: "string", Signal: "traces"},
+							{Name: "spanKind", FieldDataType: "string", Signal: "traces"},
+							{Name: "rpcMethod", FieldDataType: "string", Signal: "traces"},
+							{Name: "kind", FieldDataType: "int32", Signal: "traces"},
 						},
 					},
 				},

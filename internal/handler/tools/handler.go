@@ -692,3 +692,253 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 }
+
+func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering traces handlers")
+
+	getTraceFieldValuesTool := mcp.NewTool("get_trace_field_values",
+		mcp.WithDescription("Get available field values for trace queries"),
+		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name')")),
+		mcp.WithString("searchText", mcp.Description("Search text to filter values (optional)")),
+	)
+
+	s.AddTool(getTraceFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		fieldName, ok := args["fieldName"].(string)
+		if !ok || fieldName == "" {
+			return mcp.NewToolResultError("fieldName parameter is required and must be a string"), nil
+		}
+
+		searchText := ""
+		if search, ok := args["searchText"].(string); ok && search != "" {
+			searchText = search
+		}
+
+		h.logger.Debug("Tool called: get_trace_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		result, err := h.client.GetTraceFieldValues(ctx, fieldName, searchText)
+		if err != nil {
+			h.logger.Error("Failed to get trace field values", zap.String("fieldName", fieldName), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	searchTracesByServiceTool := mcp.NewTool("search_traces_by_service",
+		mcp.WithDescription("Search traces for a specific service within a time range"),
+		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search traces for")),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithString("operation", mcp.Description("Operation name to filter by")),
+		mcp.WithString("error", mcp.Description("Filter by error status (true/false)")),
+		mcp.WithString("minDuration", mcp.Description("Minimum duration in nanoseconds")),
+		mcp.WithString("maxDuration", mcp.Description("Maximum duration in nanoseconds")),
+		mcp.WithString("limit", mcp.Description("Maximum number of traces to return (default: 100)")),
+	)
+
+	s.AddTool(searchTracesByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		service, ok := args["service"].(string)
+		if !ok || service == "" {
+			return mcp.NewToolResultError("service parameter is required and must be a string"), nil
+		}
+
+		start, ok := args["start"].(string)
+		if !ok || start == "" {
+			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
+		}
+
+		end, ok := args["end"].(string)
+		if !ok || end == "" {
+			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
+		}
+
+		limit := 100
+		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil {
+				limit = parsed
+			}
+		}
+
+		filterExpression := fmt.Sprintf("service.name in ['%s']", service)
+
+		if operation, ok := args["operation"].(string); ok && operation != "" {
+			filterExpression += fmt.Sprintf(" AND name = '%s'", operation)
+		}
+
+		if errorFilter, ok := args["error"].(string); ok && errorFilter != "" {
+			if errorFilter == "true" {
+				filterExpression += " AND hasError = true"
+			} else if errorFilter == "false" {
+				filterExpression += " AND hasError = false"
+			}
+		}
+
+		if minDuration, ok := args["minDuration"].(string); ok && minDuration != "" {
+			filterExpression += fmt.Sprintf(" AND durationNano >= %s", minDuration)
+		}
+
+		if maxDuration, ok := args["maxDuration"].(string); ok && maxDuration != "" {
+			filterExpression += fmt.Sprintf(" AND durationNano <= %s", maxDuration)
+		}
+
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError("invalid start timestamp format"), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError("invalid end timestamp format"), nil
+		}
+
+		queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		h.logger.Debug("Tool called: search_traces_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
+		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to search traces by service", zap.String("service", service), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getTraceDetailsTool := mcp.NewTool("get_trace_details",
+		mcp.WithDescription("Get comprehensive trace information including all spans and metadata"),
+		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
+	)
+
+	s.AddTool(getTraceDetailsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		traceID, ok := args["traceId"].(string)
+		if !ok || traceID == "" {
+			return mcp.NewToolResultError("traceId parameter is required and must be a string"), nil
+		}
+
+		start, ok := args["start"].(string)
+		if !ok || start == "" {
+			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
+		}
+
+		end, ok := args["end"].(string)
+		if !ok || end == "" {
+			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
+		}
+
+		includeSpans := true
+		if includeStr, ok := args["includeSpans"].(string); ok && includeStr != "" {
+			includeSpans = includeStr == "true"
+		}
+
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError("invalid start timestamp format"), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError("invalid end timestamp format"), nil
+		}
+
+		h.logger.Debug("Tool called: get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
+		result, err := h.client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
+		if err != nil {
+			h.logger.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getTraceErrorAnalysisTool := mcp.NewTool("get_trace_error_analysis",
+		mcp.WithDescription("Analyze error patterns in traces within a time range"),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithString("service", mcp.Description("Service name to filter by (optional)")),
+	)
+
+	s.AddTool(getTraceErrorAnalysisTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		start, ok := args["start"].(string)
+		if !ok || start == "" {
+			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
+		}
+
+		end, ok := args["end"].(string)
+		if !ok || end == "" {
+			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
+		}
+
+		service := ""
+		if s, ok := args["service"].(string); ok && s != "" {
+			service = s
+		}
+
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError("invalid start timestamp format"), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError("invalid end timestamp format"), nil
+		}
+
+		h.logger.Debug("Tool called: get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
+		result, err := h.client.GetTraceErrorAnalysis(ctx, startTime, endTime, service)
+		if err != nil {
+			h.logger.Error("Failed to get trace error analysis", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getTraceSpanHierarchyTool := mcp.NewTool("get_trace_span_hierarchy",
+		mcp.WithDescription("Get trace span relationships and hierarchy"),
+		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get span hierarchy for")),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+	)
+
+	s.AddTool(getTraceSpanHierarchyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		traceID, ok := args["traceId"].(string)
+		if !ok || traceID == "" {
+			return mcp.NewToolResultError("traceId parameter is required and must be a string"), nil
+		}
+
+		start, ok := args["start"].(string)
+		if !ok || start == "" {
+			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
+		}
+
+		end, ok := args["end"].(string)
+		if !ok || end == "" {
+			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
+		}
+
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError("invalid start timestamp format"), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError("invalid end timestamp format"), nil
+		}
+
+		h.logger.Debug("Tool called: get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))
+		result, err := h.client.GetTraceSpanHierarchy(ctx, traceID, startTime, endTime)
+		if err != nil {
+			h.logger.Error("Failed to get trace span hierarchy", zap.String("traceId", traceID), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+}
