@@ -42,8 +42,11 @@ func (c *Config) ValidateConfig() error {
 	if c.URL == "" {
 		return fmt.Errorf("SIGNOZ_URL is required")
 	}
-	if c.APIKey == "" {
-		return fmt.Errorf("SIGNOZ_API_KEY is required")
+
+	// In HTTP mode, API key can come from Authorization header, so it's optional
+	// In stdio mode, API key must be provided via environment variable
+	if c.TransportMode != "http" && c.APIKey == "" {
+		return fmt.Errorf("SIGNOZ_API_KEY is required for stdio mode")
 	}
 
 	if c.TransportMode == "http" {

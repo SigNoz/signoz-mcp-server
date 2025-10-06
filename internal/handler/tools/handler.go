@@ -12,16 +12,34 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/internal/contextutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 type Handler struct {
-	client *client.SigNoz
-	logger *zap.Logger
+	client    *client.SigNoz
+	logger    *zap.Logger
+	signozURL string
 }
 
 func NewHandler(log *zap.Logger, client *client.SigNoz) *Handler {
-	return &Handler{client: client, logger: log}
+	return &Handler{client: client, logger: log, signozURL: ""}
+}
+
+// NewHandlerWithURL creates a new handler with the SigNoz URL for dynamic client creation
+func NewHandlerWithURL(log *zap.Logger, client *client.SigNoz, signozURL string) *Handler {
+	return &Handler{client: client, logger: log, signozURL: signozURL}
+}
+
+// getClient returns the appropriate client based on the context
+// If an API key is found in the context, it creates a new client with that key
+// Otherwise, it returns the default client
+func (h *Handler) getClient(ctx context.Context) *client.SigNoz {
+	if apiKey, ok := contextutil.GetAPIKey(ctx); ok && apiKey != "" && h.signozURL != "" {
+		h.logger.Debug("Creating client with API key from context")
+		return client.NewClient(h.logger, h.signozURL, apiKey)
+	}
+	return h.client
 }
 
 func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
@@ -33,7 +51,8 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 
 	s.AddTool(listKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_metric_keys")
-		resp, err := h.client.ListMetricKeys(ctx)
+		client := h.getClient(ctx)
+		resp, err := client.ListMetricKeys(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list metric keys", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -58,7 +77,8 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: search_metric_keys", zap.String("searchText", searchText))
-		resp, err := h.client.SearchMetricKeys(ctx, searchText)
+		client := h.getClient(ctx)
+		resp, err := client.SearchMetricKeys(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to search metric keys", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -75,7 +95,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	)
 	s.AddTool(alertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_alerts")
-		alerts, err := h.client.ListAlerts(ctx)
+		client := h.getClient(ctx)
+		alerts, err := client.ListAlerts(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list alerts", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -99,7 +120,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_alert", zap.String("ruleId", ruleID))
-		respJSON, err := h.client.GetAlertByRuleID(ctx, ruleID)
+		client := h.getClient(ctx)
+		respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 		if err != nil {
 			h.logger.Error("Failed to get alert", zap.String("ruleId", ruleID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -194,7 +216,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			zap.Int("limit", limit),
 			zap.String("order", order))
 
-		respJSON, err := h.client.GetAlertHistory(ctx, ruleID, historyReq)
+		client := h.getClient(ctx)
+		respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 		if err != nil {
 			h.logger.Error("Failed to get alert history",
 				zap.String("ruleId", ruleID),
@@ -214,7 +237,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_dashboards")
-		result, err := h.client.ListDashboards(ctx)
+		client := h.getClient(ctx)
+		result, err := client.ListDashboards(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list dashboards", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -239,7 +263,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_dashboard", zap.String("uuid", uuid))
-		data, err := h.client.GetDashboard(ctx, uuid)
+		client := h.getClient(ctx)
+		data, err := client.GetDashboard(ctx, uuid)
 		if err != nil {
 			h.logger.Error("Failed to get dashboard", zap.String("uuid", uuid), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -280,7 +305,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: list_services", zap.String("start", start), zap.String("end", end))
-		result, err := h.client.ListServices(ctx, start, end)
+		client := h.getClient(ctx)
+		result, err := client.ListServices(ctx, start, end)
 		if err != nil {
 			h.logger.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -339,7 +365,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 			zap.String("end", end),
 			zap.String("service", service))
 
-		result, err := h.client.GetServiceTopOperations(ctx, start, end, service, tags)
+		client := h.getClient(ctx)
+		result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 		if err != nil {
 			h.logger.Error("Failed to get service top operations",
 				zap.String("start", start),
@@ -399,7 +426,8 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
 		}
 
-		data, err := h.client.QueryBuilderV5(ctx, finalQueryJSON)
+		client := h.getClient(ctx)
+		data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 		if err != nil {
 			h.logger.Error("Failed to execute query builder v5", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -446,7 +474,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 	s.AddTool(listLogViewsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_log_views")
-		result, err := h.client.ListLogViews(ctx)
+		client := h.getClient(ctx)
+		result, err := client.ListLogViews(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list log views", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -471,7 +500,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_log_view", zap.String("viewId", viewID))
-		data, err := h.client.GetLogView(ctx, viewID)
+		client := h.getClient(ctx)
+		data, err := client.GetLogView(ctx, viewID)
 		if err != nil {
 			h.logger.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -507,7 +537,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_logs_for_alert", zap.String("alertId", alertID))
-		alertData, err := h.client.GetAlertByRuleID(ctx, alertID)
+		client := h.getClient(ctx)
+		alertData, err := client.GetAlertByRuleID(ctx, alertID)
 		if err != nil {
 			h.logger.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
 			return mcp.NewToolResultError("failed to get alert details: " + err.Error()), nil
@@ -551,7 +582,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to get logs for alert", zap.String("alertId", alertID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -611,7 +642,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_error_logs", zap.String("start", start), zap.String("end", end))
-		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		client := h.getClient(ctx)
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to get error logs", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -682,7 +714,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
-		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		client := h.getClient(ctx)
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil

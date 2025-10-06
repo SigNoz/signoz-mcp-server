@@ -36,7 +36,7 @@ func main() {
 		zap.String("transport_mode", cfg.TransportMode))
 
 	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
-	handler := tools.NewHandler(log, sigNozClient)
+	handler := tools.NewHandlerWithURL(log, sigNozClient, cfg.URL)
 
 	if err := mcpserver.NewMCPServer(log, handler, cfg).Start(); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
