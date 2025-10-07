@@ -422,6 +422,10 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
 	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", body))
 
 	resp, err := http.DefaultClient.Do(req)
