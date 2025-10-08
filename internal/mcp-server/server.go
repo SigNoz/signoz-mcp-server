@@ -8,8 +8,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
-	"github.com/SigNoz/signoz-mcp-server/internal/contextutil"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 )
 
@@ -66,13 +66,13 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			}
 
 			// Store API key in request context
-			ctx := contextutil.SetAPIKey(r.Context(), apiKey)
+			ctx := util.SetAPIKey(r.Context(), apiKey)
 			r = r.WithContext(ctx)
 
 			m.logger.Debug("API key extracted from Authorization header")
 		} else if m.config.APIKey != "" {
 			// Fallback to config API key if no Authorization header
-			ctx := contextutil.SetAPIKey(r.Context(), m.config.APIKey)
+			ctx := util.SetAPIKey(r.Context(), m.config.APIKey)
 			r = r.WithContext(ctx)
 
 			m.logger.Debug("Using API key from environment config")

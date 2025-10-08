@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/SigNoz/signoz-mcp-server/internal/contextutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 type Handler struct {
@@ -22,12 +22,7 @@ type Handler struct {
 	signozURL string
 }
 
-func NewHandler(log *zap.Logger, client *client.SigNoz) *Handler {
-	return &Handler{client: client, logger: log, signozURL: ""}
-}
-
-// NewHandlerWithURL creates a new handler with the SigNoz URL for dynamic client creation
-func NewHandlerWithURL(log *zap.Logger, client *client.SigNoz, signozURL string) *Handler {
+func NewHandler(log *zap.Logger, client *client.SigNoz, signozURL string) *Handler {
 	return &Handler{client: client, logger: log, signozURL: signozURL}
 }
 
@@ -35,7 +30,7 @@ func NewHandlerWithURL(log *zap.Logger, client *client.SigNoz, signozURL string)
 // If an API key is found in the context, it creates a new client with that key
 // Otherwise, it returns the default client
 func (h *Handler) getClient(ctx context.Context) *client.SigNoz {
-	if apiKey, ok := contextutil.GetAPIKey(ctx); ok && apiKey != "" && h.signozURL != "" {
+	if apiKey, ok := util.GetAPIKey(ctx); ok && apiKey != "" && h.signozURL != "" {
 		h.logger.Debug("Creating client with API key from context")
 		return client.NewClient(h.logger, h.signozURL, apiKey)
 	}
