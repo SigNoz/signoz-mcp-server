@@ -116,11 +116,18 @@ Once added, restart Cursor to use the SigNoz tools.
 {
   "mcpServers": {
     "signoz": {
-      "url": <hosted-mcp-server-url/mcp> "http://localhost:8000/mcp",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-key-here"
+      }
     }
   }
 }
 ```
+
+**Note:** You can pass the SigNoz API key either as:
+- An environment variable (`SIGNOZ_API_KEY`) when starting the server, or
+- Via the `Authorization` header in the client configuration as shown above
 
 4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
 
@@ -141,11 +148,18 @@ For Both options use same json struct
 {
   "mcpServers": {
     "signoz": {
-      "url": <hosted-mcp-server-url/mcp> "http://localhost:8000/mcp",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer signoz-api-key-here"
       }
     }
   }
+}
 ```
+
+**Note:** You can pass the SigNoz API key either as:
+- An environment variable (`SIGNOZ_API_KEY`) when starting the server, or
+- Via the `Authorization` header in the client configuration as shown above
 
 
 **Note:** By default, the server logs at `info` level. If you need detailed debugging information, set `LOG_LEVEL=debug` in your environment. For production use, consider using `LOG_LEVEL=warn` to reduce log verbosity.
