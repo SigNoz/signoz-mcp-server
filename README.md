@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![MCP Version](https://img.shields.io/badge/MCP-0.37.0-orange.svg)](https://modelcontextprotocol.io)
 
-A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. This server enables natural language queries for metrics, alerts, dashboards, and service performance data.
+A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. This server enables natural language queries for metrics, traces, logs, alerts, dashboards, and service performance data.
 
 ## 🚀 Features
 
@@ -14,6 +14,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
 - **Get Alert History**: Gives you timeline of an alert.
 - **Logs**: Gets log related to services, alerts, etc.  
+- **Traces**: Search, analyze, get hierarchy and relationship of traces.
 - **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
 - **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
 - **List Services**: Discover all services within specified time ranges.
@@ -256,6 +257,17 @@ The MCP server provides the following tools that can be used through natural lan
 "Get error logs with FATAL severity"
 ```
 
+#### Trace Analysis
+```
+"Show me all available trace fields"
+"Search traces for the apple service from the last hour"
+"Get details for trace ID ball123"
+"Check for  error patterns in traces from the randomservice"
+"Show me the span hierarchy for trace xyz789"
+"Find traces with errors in the last 2 hours"
+"Give me flow of this trace"
+```
+
 
 ### Tool Reference
 
@@ -337,6 +349,47 @@ Searches logs for a specific service within a time range.
     - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
     - `searchText` (optional) - Text to search for in log body
     - `limit` (optional) - Maximum number of logs to return (default: 100)
+
+#### `get_trace_field_values`
+Gets available field values for trace.
+- **Parameters**:
+    - `fieldName` (required) - Field name to get values for (e.g., 'service.name', 'http.method')
+    - `searchText` (optional) - Search text to filter values
+
+#### `search_traces_by_service`
+Searches traces for a specific service.
+- **Parameters**:
+    - `service` (required) - Service name to search traces.
+    - `start` (required) - Start time in milliseconds
+    - `end` (required) - End time in milliseconds
+    - `operation` (optional) - Operation name to filter by
+    - `error` (optional) - Filter by error status (true/false)
+    - `minDuration` (optional) - Minimum duration in nanoseconds
+    - `maxDuration` (optional) - Maximum duration in nanoseconds
+    - `limit` (optional) - Maximum number of traces to return (default: 100)
+
+#### `get_trace_details`
+Gets trace information including all spans and metadata.
+- **Parameters**:
+    - `traceId` (required) - Trace ID to get details for
+    - `start` (required) - Start time in milliseconds
+    - `end` (required) - End time in milliseconds
+    - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
+
+#### `get_trace_error_analysis`
+Analyzes error patterns in trace.
+- **Parameters**:
+    - `start` (required) - Start time in milliseconds
+    - `end` (required) - End time in milliseconds
+    - `service` (optional) - Service name to filter by
+- **Returns**: Traces with errors, useful for identifying patterns and affected services
+
+#### `get_trace_span_hierarchy`
+Gets trace span relationships and hierarchy.
+- **Parameters**:
+    - `traceId` (required) - Trace ID to get span hierarchy for
+    - `start` (required) - Start time in milliseconds
+    - `end` (required) - End time in milliseconds
 
 #### `signoz_execute_builder_query`
 Executes a SigNoz Query Builder v5 query.

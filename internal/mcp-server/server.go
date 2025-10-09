@@ -35,6 +35,7 @@ func (m *MCPServer) Start() error {
 	m.handler.RegisterServiceHandlers(s)
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
+	m.handler.RegisterTracesHandlers(s)
 
 	m.logger.Info("All handlers registered successfully")
 
