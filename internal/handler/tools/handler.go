@@ -65,11 +65,11 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		searchText, ok := req.Params.Arguments.(map[string]any)["searchText"].(string)
 		if !ok {
 			h.logger.Warn("Invalid searchText parameter type", zap.Any("type", req.Params.Arguments))
-			return mcp.NewToolResultText("searchText parameter must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "searchText" must be a string. Example: {"searchText": "cpu_usage"}`), nil
 		}
 		if searchText == "" {
 			h.logger.Warn("Empty searchText parameter")
-			return mcp.NewToolResultText("searchText parameter can not be empty"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "searchText" cannot be empty. Provide a search term like "cpu", "memory", or "request"`), nil
 		}
 
 		h.logger.Debug("Tool called: search_metric_keys", zap.String("searchText", searchText))
@@ -108,11 +108,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		ruleID, ok := req.Params.Arguments.(map[string]any)["ruleId"].(string)
 		if !ok {
 			h.logger.Warn("Invalid ruleId parameter type", zap.Any("type", req.Params.Arguments))
-			return mcp.NewToolResultText("ruleId parameter must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 		}
 		if ruleID == "" {
 			h.logger.Warn("Empty ruleId parameter")
-			return mcp.NewToolResultText("ruleId must not be empty"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID (UUID format)`), nil
 		}
 
 		h.logger.Debug("Tool called: get_alert", zap.String("ruleId", ruleID))
@@ -129,7 +129,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	alertHistoryTool := mcp.NewTool("get_alert_history",
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
@@ -142,7 +142,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		ruleID, ok := args["ruleId"].(string)
 		if !ok || ruleID == "" {
 			h.logger.Warn("Invalid or empty ruleId parameter", zap.Any("ruleId", args["ruleId"]))
-			return mcp.NewToolResultText("ruleId parameter must be a non-empty string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a non-empty string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 		}
 
 		startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -150,18 +150,18 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		var start, end int64
 		if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
 			h.logger.Warn("Invalid start timestamp format", zap.String("start", startStr), zap.Error(err))
-			return mcp.NewToolResultText("start must be a valid timestamp in milliseconds"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
 		}
 		if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
 			h.logger.Warn("Invalid end timestamp format", zap.String("end", endStr), zap.Error(err))
-			return mcp.NewToolResultText("end must be a valid timestamp in milliseconds"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 		}
 
 		offset := 0
 		if offsetStr, ok := args["offset"].(string); ok && offsetStr != "" {
 			if _, err := fmt.Sscanf(offsetStr, "%d", &offset); err != nil {
 				h.logger.Warn("Invalid offset format", zap.String("offset", offsetStr), zap.Error(err))
-				return mcp.NewToolResultText("offset must be a valid integer"), nil
+				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "offset" value: "%s". Expected integer (e.g., "0", "20", "40")`, offsetStr)), nil
 			}
 		}
 
@@ -169,7 +169,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
 			if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
 				h.logger.Warn("Invalid limit format", zap.String("limit", limitStr), zap.Error(err))
-				return mcp.NewToolResultText("limit must be a valid integer"), nil
+				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "limit" value: "%s". Expected integer between 1-1000 (e.g., "20", "50", "100")`, limitStr)), nil
 			}
 		}
 
@@ -179,7 +179,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				order = orderStr
 			} else {
 				h.logger.Warn("Invalid order value", zap.String("order", orderStr))
-				return mcp.NewToolResultText("order must be 'asc' or 'desc'"), nil
+				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderStr)), nil
 			}
 		}
 
@@ -242,11 +242,11 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
 		if !ok {
 			h.logger.Warn("Invalid uuid parameter type", zap.Any("type", req.Params.Arguments))
-			return mcp.NewToolResultError(`"uuid" parameter must be a string`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 		}
 		if uuid == "" {
 			h.logger.Warn("Empty uuid parameter")
-			return mcp.NewToolResultError(`"uuid" parameter cannot be empty`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use list_dashboards tool to see available dashboards.`), nil
 		}
 
 		h.logger.Debug("Tool called: get_dashboard", zap.String("uuid", uuid))
@@ -265,7 +265,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 
 	listTool := mcp.NewTool("list_services",
 		mcp.WithDescription("List all services in SigNoz. Defaults to last 24 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 	)
@@ -288,7 +288,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	getOpsTool := mcp.NewTool("get_service_top_operations",
 		mcp.WithDescription("Get top operations for a specific service. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
@@ -300,11 +300,11 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		service, ok := args["service"].(string)
 		if !ok {
 			h.logger.Warn("Invalid service parameter type", zap.Any("type", args["service"]))
-			return mcp.NewToolResultError("service parameter must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "service" must be a string. Example: {"service": "frontend-api", "timeRange": "1h"}`), nil
 		}
 		if service == "" {
 			h.logger.Warn("Empty service parameter")
-			return mcp.NewToolResultError("service parameter cannot be empty"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use list_services tool to see available services.`), nil
 		}
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
@@ -448,11 +448,11 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		viewID, ok := req.Params.Arguments.(map[string]any)["viewId"].(string)
 		if !ok {
 			h.logger.Warn("Invalid viewId parameter type", zap.Any("type", req.Params.Arguments))
-			return mcp.NewToolResultError(`"viewId" parameter must be a string`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "viewId" must be a string. Example: {"viewId": "error-logs-view-123"}`), nil
 		}
 		if viewID == "" {
 			h.logger.Warn("Empty viewId parameter")
-			return mcp.NewToolResultError(`"viewId" parameter cannot be empty`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use list_log_views tool to see available log views.`), nil
 		}
 
 		h.logger.Debug("Tool called: get_log_view", zap.String("viewId", viewID))
@@ -468,7 +468,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	getLogsForAlertTool := mcp.NewTool("get_logs_for_alert",
 		mcp.WithDescription("Get logs related to a specific alert (automatically determines time range and service from alert details)"),
 		mcp.WithString("alertId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'")),
+		mcp.WithString("timeRange", mcp.Description("Time range around alert (optional). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '15m', '30m', '1h', '2h', '6h'. Defaults to '1h' if not provided.")),
 		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
 	)
 
@@ -477,7 +477,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		alertID, ok := args["alertId"].(string)
 		if !ok || alertID == "" {
-			return mcp.NewToolResultError("alertId parameter is required and must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "alertId" must be a non-empty string. Example: {"alertId": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "1h", "limit": "50"}`), nil
 		}
 
 		timeRange := "1h"
@@ -549,7 +549,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 	getErrorLogsTool := mcp.NewTool("get_error_logs",
 		mcp.WithDescription("Get logs with ERROR or FATAL severity. Defaults to last 24 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by")),
@@ -576,10 +576,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError("invalid start timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError("invalid end timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
@@ -604,7 +604,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	searchLogsByServiceTool := mcp.NewTool("search_logs_by_service",
 		mcp.WithDescription("Search logs for a specific service. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search logs for")),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("severity", mcp.Description("Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)")),
@@ -617,7 +617,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		service, ok := args["service"].(string)
 		if !ok || service == "" {
-			return mcp.NewToolResultError("service parameter is required and must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "service" must be a non-empty string. Example: {"service": "consumer-svc-1", "searchText": "error", "timeRange": "1h", "limit": "50"}`), nil
 		}
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -641,10 +641,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError("invalid start timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError("invalid end timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
@@ -682,7 +682,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
-			return mcp.NewToolResultError("fieldName parameter is required and must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "http.status_code"}, {"fieldName": "operation"}`), nil
 		}
 
 		searchText := ""
@@ -702,7 +702,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	searchTracesByServiceTool := mcp.NewTool("search_traces_by_service",
 		mcp.WithDescription("Search traces for a specific service. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search traces for")),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("operation", mcp.Description("Operation name to filter by")),
@@ -717,7 +717,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		service, ok := args["service"].(string)
 		if !ok || service == "" {
-			return mcp.NewToolResultError("service parameter is required and must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "service" must be a non-empty string. Example: {"service": "frontend-api", "timeRange": "2h", "error": "true", "limit": "100"}`), nil
 		}
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -753,10 +753,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError("invalid start timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError("invalid end timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
 		queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
@@ -780,7 +780,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	getTraceDetailsTool := mcp.NewTool("get_trace_details",
 		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
@@ -791,7 +791,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		traceID, ok := args["traceId"].(string)
 		if !ok || traceID == "" {
-			return mcp.NewToolResultError("traceId parameter is required and must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "traceId" must be a non-empty string. Example: {"traceId": "abc123def456", "includeSpans": "true", "timeRange": "1h"}`), nil
 		}
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -803,10 +803,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError("invalid start timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError("invalid end timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
 		h.logger.Debug("Tool called: get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
@@ -820,7 +820,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 	getTraceErrorAnalysisTool := mcp.NewTool("get_trace_error_analysis",
 		mcp.WithDescription("Analyze error patterns in traces. Defaults to last 24 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Service name to filter by (optional)")),
@@ -838,10 +838,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError("invalid start timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError("invalid end timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
 		h.logger.Debug("Tool called: get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
@@ -856,7 +856,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	getTraceSpanHierarchyTool := mcp.NewTool("get_trace_span_hierarchy",
 		mcp.WithDescription("Get trace span relationships and hierarchy. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get span hierarchy for")),
-		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 24 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 	)
@@ -866,17 +866,17 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		traceID, ok := args["traceId"].(string)
 		if !ok || traceID == "" {
-			return mcp.NewToolResultError("traceId parameter is required and must be a string"), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "traceId" must be a non-empty string. Example: {"traceId": "abc123def456", "timeRange": "1h"}`), nil
 		}
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError("invalid start timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError("invalid end timestamp format"), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
 		h.logger.Debug("Tool called: get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))
