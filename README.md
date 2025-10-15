@@ -310,23 +310,26 @@ Gets complete dashboard configuration.
 #### `list_services`
 Lists all services within a time range.
 - **Parameters**:
-    - `start` (required) - Start time in nanoseconds
-    - `end` (required) - End time in nanoseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in nanoseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in nanoseconds (defaults to now)
 
 #### `get_service_top_operations`
 Gets top operations for a specific service.
 - **Parameters**:
-    - `start` (required) - Start time in nanoseconds
-    - `end` (required) - End time in nanoseconds
     - `service` (required) - Service name
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in nanoseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in nanoseconds (defaults to now)
     - `tags` (optional) - JSON array of tags
 
 #### `get_alert_history`
 Gets alert history timeline for a specific rule.
 - **Parameters**:
     - `ruleId` (required) - Alert rule ID
-    - `start` (required) - Start timestamp in milliseconds
-    - `end` (required) - End timestamp in milliseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start timestamp in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End timestamp in milliseconds (defaults to now)
     - `offset` (optional) - Offset for pagination (default: 0)
     - `limit` (optional) - Limit number of results (default: 20)
     - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
@@ -349,8 +352,9 @@ Gets logs related to a specific alert automatically.
 #### `get_error_logs`
 Gets logs with ERROR or FATAL severity within a time range.
 - **Parameters**:
-    - `start` (required) - Start time in milliseconds
-    - `end` (required) - End time in milliseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in milliseconds (defaults to now)
     - `service` (optional) - Service name to filter by
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
@@ -358,8 +362,9 @@ Gets logs with ERROR or FATAL severity within a time range.
 Searches logs for a specific service within a time range.
 - **Parameters**:
     - `service` (required) - Service name to search logs for
-    - `start` (required) - Start time in milliseconds
-    - `end` (required) - End time in milliseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in milliseconds (defaults to now)
     - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
     - `searchText` (optional) - Text to search for in log body
     - `limit` (optional) - Maximum number of logs to return (default: 100)
@@ -373,9 +378,10 @@ Gets available field values for trace.
 #### `search_traces_by_service`
 Searches traces for a specific service.
 - **Parameters**:
-    - `service` (required) - Service name to search traces.
-    - `start` (required) - Start time in milliseconds
-    - `end` (required) - End time in milliseconds
+    - `service` (required) - Service name to search traces for
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in milliseconds (defaults to now)
     - `operation` (optional) - Operation name to filter by
     - `error` (optional) - Filter by error status (true/false)
     - `minDuration` (optional) - Minimum duration in nanoseconds
@@ -386,15 +392,17 @@ Searches traces for a specific service.
 Gets trace information including all spans and metadata.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get details for
-    - `start` (required) - Start time in milliseconds
-    - `end` (required) - End time in milliseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in milliseconds (defaults to now)
     - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
 
 #### `get_trace_error_analysis`
-Analyzes error patterns in trace.
+Analyzes error patterns in traces.
 - **Parameters**:
-    - `start` (required) - Start time in milliseconds
-    - `end` (required) - End time in milliseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in milliseconds (defaults to now)
     - `service` (optional) - Service name to filter by
 - **Returns**: Traces with errors, useful for identifying patterns and affected services
 
@@ -402,8 +410,9 @@ Analyzes error patterns in trace.
 Gets trace span relationships and hierarchy.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get span hierarchy for
-    - `start` (required) - Start time in milliseconds
-    - `end` (required) - End time in milliseconds
+    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `end` (optional) - End time in milliseconds (defaults to now)
 
 #### `signoz_execute_builder_query`
 Executes a SigNoz Query Builder v5 query.
@@ -419,10 +428,17 @@ Helper tool for building SigNoz queries.
 
 ### Time Format
 
-All time parameters use **nanoseconds since Unix epoch**. For example:
-- Current time: `1751328000000000000` (August 2025)
-- 24 hours ago: `1751241600000000000`
+Most tools support flexible time parameters:
 
+#### Recommended:  Time Ranges
+Use the `timeRange` parameter with formats:
+- `'30m'` - Last 30 minutes
+- `'2h'` - Last 2 hours
+- `'6h'` - Last 6 hours
+- `'2d'` - Last 2 days
+- `'7d'` - Last 7 days
+
+The `timeRange` parameter automatically calculates the time window from now backwards. If not specified, most tools default to the last 24 hours. You can also specify time in milliseconds and nanoseconds
 ### Response Format
 
 All tools return JSON responses that are optimized for LLM consumption:

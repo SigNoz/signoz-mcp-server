@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -35,46 +36,6 @@ func (h *Handler) getClient(ctx context.Context) *client.SigNoz {
 		return client.NewClient(h.logger, h.signozURL, apiKey)
 	}
 	return h.client
-}
-
-// getTimestampsWithDefaults returns start and end timestamps as strings in milliseconds.
-// if it is not provided in args, defaults to last 24 hours.
-func getTimestampsWithDefaults(args map[string]any) (start, end string) {
-	now := time.Now()
-	defaultEnd := now.UnixMilli()
-	defaultStart := now.Add(-24 * time.Hour).UnixMilli()
-
-	start, ok := args["start"].(string)
-	if !ok || start == "" {
-		start = fmt.Sprintf("%d", defaultStart)
-	}
-
-	end, ok = args["end"].(string)
-	if !ok || end == "" {
-		end = fmt.Sprintf("%d", defaultEnd)
-	}
-
-	return start, end
-}
-
-// getTimestampsWithDefaultsNano returns start and end timestamps as strings in nanoseconds.
-// if it is not provided in args, defaults to last 24 hours.
-func getTimestampsWithDefaultsNano(args map[string]any) (start, end string) {
-	now := time.Now()
-	defaultEnd := now.UnixNano()
-	defaultStart := now.Add(-24 * time.Hour).UnixNano()
-
-	start, ok := args["start"].(string)
-	if !ok || start == "" {
-		start = fmt.Sprintf("%d", defaultStart)
-	}
-
-	end, ok = args["end"].(string)
-	if !ok || end == "" {
-		end = fmt.Sprintf("%d", defaultEnd)
-	}
-
-	return start, end
 }
 
 func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
@@ -166,10 +127,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	})
 
 	alertHistoryTool := mcp.NewTool("get_alert_history",
-		mcp.WithDescription("Get alert history timeline for a specific rule"),
+		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("start", mcp.Required(), mcp.Description("Start timestamp in milliseconds")),
-		mcp.WithString("end", mcp.Required(), mcp.Description("End timestamp in milliseconds")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 24 hours ago)")),
+		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
 		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
@@ -183,17 +145,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultText("ruleId parameter must be a non-empty string"), nil
 		}
 
-		startStr, ok := args["start"].(string)
-		if !ok || startStr == "" {
-			h.logger.Warn("Invalid or empty start parameter", zap.Any("start", args["start"]))
-			return mcp.NewToolResultText("start parameter must be a non-empty string (timestamp in milliseconds)"), nil
-		}
-
-		endStr, ok := args["end"].(string)
-		if !ok || endStr == "" {
-			h.logger.Warn("Invalid or empty end parameter", zap.Any("end", args["end"]))
-			return mcp.NewToolResultText("end parameter must be a non-empty string (timestamp in milliseconds)"), nil
-		}
+		startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		var start, end int64
 		if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
@@ -312,7 +264,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering service handlers")
 
 	listTool := mcp.NewTool("list_services",
-		mcp.WithDescription("List all services in SigNoz within a given time range. If start/end times are not provided, defaults to last 24 hours."),
+		mcp.WithDescription("List all services in SigNoz. Defaults to last 24 hours if no time specified."),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 	)
@@ -320,7 +273,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	s.AddTool(listTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.Params.Arguments.(map[string]any)
 
-		start, end := getTimestampsWithDefaultsNano(args)
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 
 		h.logger.Debug("Tool called: list_services", zap.String("start", start), zap.String("end", end))
 		client := h.getClient(ctx)
@@ -333,8 +286,9 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	})
 
 	getOpsTool := mcp.NewTool("get_service_top_operations",
-		mcp.WithDescription("Get top operations for a specific service in SigNoz within a given time range. If start/end times are not provided, defaults to last 24 hours."),
+		mcp.WithDescription("Get top operations for a specific service. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
@@ -353,7 +307,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("service parameter cannot be empty"), nil
 		}
 
-		start, end := getTimestampsWithDefaultsNano(args)
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 
 		var tags json.RawMessage
 		if t, ok := args["tags"].(string); ok && t != "" {
@@ -567,7 +521,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		startTime := now.Add(-1 * time.Hour).UnixMilli()
 		endTime := now.UnixMilli()
 
-		if duration, err := time.ParseDuration(timeRange); err == nil {
+		if duration, err := timeutil.ParseTimeRange(timeRange); err == nil {
 			startTime = now.Add(-duration).UnixMilli()
 		}
 
@@ -594,9 +548,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 	getErrorLogsTool := mcp.NewTool("get_error_logs",
-		mcp.WithDescription("Get logs with ERROR or FATAL severity within a time range"),
-		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
-		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithDescription("Get logs with ERROR or FATAL severity. Defaults to last 24 hours if no time specified."),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by")),
 		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
 	)
@@ -604,15 +559,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	s.AddTool(getErrorLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.Params.Arguments.(map[string]any)
 
-		start, ok := args["start"].(string)
-		if !ok || start == "" {
-			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
-		}
-
-		end, ok := args["end"].(string)
-		if !ok || end == "" {
-			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
-		}
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		limit := 100
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
@@ -655,10 +602,11 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 	searchLogsByServiceTool := mcp.NewTool("search_logs_by_service",
-		mcp.WithDescription("Search logs for a specific service within a time range"),
+		mcp.WithDescription("Search logs for a specific service. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search logs for")),
-		mcp.WithString("start", mcp.Required(), mcp.Description("Start time in milliseconds")),
-		mcp.WithString("end", mcp.Required(), mcp.Description("End time in milliseconds")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("severity", mcp.Description("Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)")),
 		mcp.WithString("searchText", mcp.Description("Text to search for in log body")),
 		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
@@ -672,15 +620,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("service parameter is required and must be a string"), nil
 		}
 
-		start, ok := args["start"].(string)
-		if !ok || start == "" {
-			return mcp.NewToolResultError("start parameter is required and must be a string"), nil
-		}
-
-		end, ok := args["end"].(string)
-		if !ok || end == "" {
-			return mcp.NewToolResultError("end parameter is required and must be a string"), nil
-		}
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		limit := 100
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
@@ -760,8 +700,9 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	searchTracesByServiceTool := mcp.NewTool("search_traces_by_service",
-		mcp.WithDescription("Search traces for a specific service within a time range. If start/end times are not provided, defaults to last 24 hours."),
+		mcp.WithDescription("Search traces for a specific service. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search traces for")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("operation", mcp.Description("Operation name to filter by")),
@@ -779,7 +720,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("service parameter is required and must be a string"), nil
 		}
 
-		start, end := getTimestampsWithDefaults(args)
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		limit := 100
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
@@ -837,8 +778,9 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceDetailsTool := mcp.NewTool("get_trace_details",
-		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. If start/end times are not provided, defaults to last 24 hours."),
+		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
@@ -852,7 +794,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("traceId parameter is required and must be a string"), nil
 		}
 
-		start, end := getTimestampsWithDefaults(args)
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		includeSpans := true
 		if includeStr, ok := args["includeSpans"].(string); ok && includeStr != "" {
@@ -877,7 +819,8 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceErrorAnalysisTool := mcp.NewTool("get_trace_error_analysis",
-		mcp.WithDescription("Analyze error patterns in traces within a time range. If start/end times are not provided, defaults to last 24 hours."),
+		mcp.WithDescription("Analyze error patterns in traces. Defaults to last 24 hours if no time specified."),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Service name to filter by (optional)")),
@@ -886,7 +829,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	s.AddTool(getTraceErrorAnalysisTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.Params.Arguments.(map[string]any)
 
-		start, end := getTimestampsWithDefaults(args)
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		service := ""
 		if s, ok := args["service"].(string); ok && s != "" {
@@ -911,8 +854,9 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceSpanHierarchyTool := mcp.NewTool("get_trace_span_hierarchy",
-		mcp.WithDescription("Get trace span relationships and hierarchy. If start/end times are not provided, defaults to last 24 hours."),
+		mcp.WithDescription("Get trace span relationships and hierarchy. Defaults to last 24 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get span hierarchy for")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '2h', '6h', '2d', '7d' (optional, overrides start/end)")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 24 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 	)
@@ -925,7 +869,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("traceId parameter is required and must be a string"), nil
 		}
 
-		start, end := getTimestampsWithDefaults(args)
+		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
