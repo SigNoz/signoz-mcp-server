@@ -5,35 +5,61 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 type Handler struct {
-	client    *client.SigNoz
-	logger    *zap.Logger
-	signozURL string
+	client      *signozclient.SigNoz
+	logger      *zap.Logger
+	signozURL   string
+	clientCache map[string]*signozclient.SigNoz
+	cacheMutex  sync.RWMutex
 }
 
-func NewHandler(log *zap.Logger, client *client.SigNoz, signozURL string) *Handler {
-	return &Handler{client: client, logger: log, signozURL: signozURL}
+func NewHandler(log *zap.Logger, client *signozclient.SigNoz, signozURL string) *Handler {
+	return &Handler{
+		client:      client,
+		logger:      log,
+		signozURL:   signozURL,
+		clientCache: make(map[string]*signozclient.SigNoz),
+	}
 }
 
 // getClient returns the appropriate client based on the context
-// If an API key is found in the context, it creates a new client with that key
+// If an API key is found in the context, it returns a cached client with that key
 // Otherwise, it returns the default client
-func (h *Handler) getClient(ctx context.Context) *client.SigNoz {
+func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
 	if apiKey, ok := util.GetAPIKey(ctx); ok && apiKey != "" && h.signozURL != "" {
+		// Check cache first
+		h.cacheMutex.RLock()
+		if cachedClient, exists := h.clientCache[apiKey]; exists {
+			h.cacheMutex.RUnlock()
+			return cachedClient
+		}
+		h.cacheMutex.RUnlock()
+
+		h.cacheMutex.Lock()
+		defer h.cacheMutex.Unlock()
+
+		// just to check if other goroutine created client
+		if cachedClient, exists := h.clientCache[apiKey]; exists {
+			return cachedClient
+		}
+
 		h.logger.Debug("Creating client with API key from context")
-		return client.NewClient(h.logger, h.signozURL, apiKey)
+		newClient := signozclient.NewClient(h.logger, h.signozURL, apiKey)
+		h.clientCache[apiKey] = newClient
+		return newClient
 	}
 	return h.client
 }
@@ -47,7 +73,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 
 	s.AddTool(listKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_metric_keys")
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		resp, err := client.ListMetricKeys(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list metric keys", zap.Error(err))
@@ -73,7 +99,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: search_metric_keys", zap.String("searchText", searchText))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		resp, err := client.SearchMetricKeys(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to search metric keys", zap.String("searchText", searchText), zap.Error(err))
@@ -91,7 +117,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	)
 	s.AddTool(alertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_alerts")
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		alerts, err := client.ListAlerts(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list alerts", zap.Error(err))
@@ -116,7 +142,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_alert", zap.String("ruleId", ruleID))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 		if err != nil {
 			h.logger.Error("Failed to get alert", zap.String("ruleId", ruleID), zap.Error(err))
@@ -203,7 +229,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			zap.Int("limit", limit),
 			zap.String("order", order))
 
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 		if err != nil {
 			h.logger.Error("Failed to get alert history",
@@ -224,7 +250,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_dashboards")
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		result, err := client.ListDashboards(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list dashboards", zap.Error(err))
@@ -250,7 +276,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_dashboard", zap.String("uuid", uuid))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		data, err := client.GetDashboard(ctx, uuid)
 		if err != nil {
 			h.logger.Error("Failed to get dashboard", zap.String("uuid", uuid), zap.Error(err))
@@ -276,7 +302,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 
 		h.logger.Debug("Tool called: list_services", zap.String("start", start), zap.String("end", end))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		result, err := client.ListServices(ctx, start, end)
 		if err != nil {
 			h.logger.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
@@ -321,7 +347,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 			zap.String("end", end),
 			zap.String("service", service))
 
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 		if err != nil {
 			h.logger.Error("Failed to get service top operations",
@@ -382,7 +408,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
 		}
 
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 		if err != nil {
 			h.logger.Error("Failed to execute query builder v5", zap.Error(err))
@@ -430,7 +456,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 	s.AddTool(listLogViewsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_log_views")
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		result, err := client.ListLogViews(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list log views", zap.Error(err))
@@ -456,7 +482,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_log_view", zap.String("viewId", viewID))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		data, err := client.GetLogView(ctx, viewID)
 		if err != nil {
 			h.logger.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
@@ -493,7 +519,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_logs_for_alert", zap.String("alertId", alertID))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		alertData, err := client.GetAlertByRuleID(ctx, alertID)
 		if err != nil {
 			h.logger.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
@@ -591,7 +617,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: get_error_logs", zap.String("start", start), zap.String("end", end))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to get error logs", zap.Error(err))
@@ -656,7 +682,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
-		client := h.getClient(ctx)
+		client := h.GetClient(ctx)
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
