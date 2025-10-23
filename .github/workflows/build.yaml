@@ -8,6 +8,18 @@ permissions:
   contents: write
 
 jobs:
+  build:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      GO_BUILD_CONTEXT: ./cmd/server
+      GO_VERSION: 1.25
+      GO_BUILD_FLAGS: ""
+      DOCKER_BASE_IMAGES: '{"distroless":"gcr.io/distroless/base:latest"}'
+      DOCKER_DOCKERFILE_PATH: Dockerfile.multi-arch
+      DOCKER_MANIFEST: true
+      DOCKER_PROVIDERS: dockerhub
   binary:
     runs-on: ubuntu-latest
     steps:
