@@ -46,3 +46,17 @@ jobs:
     with:
       PRIMUS_REF: main
       GO_VERSION: 1.25
+  build:
+    if: |
+      (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      GO_BUILD_CONTEXT: ./cmd/server
+      GO_VERSION: 1.25
+      GO_BUILD_FLAGS: ""
+      DOCKER_BASE_IMAGES: '{"distroless":"gcr.io/distroless/base:latest"}'
+      DOCKER_DOCKERFILE_PATH: Dockerfile.multi-arch
+      DOCKER_MANIFEST: false
