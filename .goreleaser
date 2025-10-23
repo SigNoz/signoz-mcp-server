@@ -2,7 +2,7 @@
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 version: 2
 
-project_name: signoz
+project_name: signoz-mcp-server
 
 before:
   hooks:
@@ -11,7 +11,7 @@ before:
 builds:
   - id: signoz
     binary: bin/signoz-mcp-server
-    main: ./cmd/server
+    main: ./cmd/server/
     goos:
       - linux
       - darwin
