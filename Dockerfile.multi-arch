@@ -1,0 +1,12 @@
+ARG DISTROLESS_SHA="pass-a-valid-docker-sha-otherwise-this-will-fail"
+
+FROM gcr.io/distroless/base@sha256:${DISTROLESS_SHA}
+LABEL maintainer="signoz"
+WORKDIR /usr/local/signoz-mcp-server
+
+ARG OS="linux"
+ARG ARCH
+
+COPY ./target/${OS}-${ARCH}/signoz-mcp-server /usr/local/bin/signoz-mcp-server
+
+ENTRYPOINT ["/usr/local/bin/signoz-mcp-server"]
