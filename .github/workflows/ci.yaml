@@ -17,6 +17,7 @@ jobs:
     secrets: inherit
     with:
       PRIMUS_REF: main
+      GO_VERSION: 1.25
   test:
     if: |
       (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
@@ -26,3 +27,4 @@ jobs:
     with:
       PRIMUS_REF: main
       GO_TEST_CONTEXT: ./...
+      GO_VERSION: 1.25
