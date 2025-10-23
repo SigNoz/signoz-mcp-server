@@ -11,12 +11,14 @@ jobs:
   binary:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
+      - name: self-checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: setup-go
+      - name: go-install
         uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.GO_VERSION }}
       - name: run-goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
