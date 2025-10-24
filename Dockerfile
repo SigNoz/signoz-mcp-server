@@ -22,6 +22,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o signoz-mcp-server \
     ./cmd/server/
 
+# Add MCP registry label
+LABEL io.modelcontextprotocol.server.name="io.github.SigNoz/signoz-mcp-server"
+
 # Final stage
 FROM alpine:latest
 
