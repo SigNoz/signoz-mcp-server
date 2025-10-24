@@ -2,6 +2,7 @@ ARG DISTROLESS_SHA="pass-a-valid-docker-sha-otherwise-this-will-fail"
 
 FROM gcr.io/distroless/base@sha256:${DISTROLESS_SHA}
 LABEL maintainer="signoz"
+LABEL io.modelcontextprotocol.server.name="io.github.SigNoz/signoz-mcp-server"
 WORKDIR /usr/local/signoz-mcp-server
 
 ARG OS="linux"
