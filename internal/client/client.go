@@ -40,7 +40,7 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -79,7 +79,7 @@ func (s *SigNoz) SearchMetricKeys(ctx context.Context, searchText string) (json.
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -118,7 +118,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -156,7 +156,7 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -197,7 +197,7 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -290,7 +290,7 @@ func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -338,7 +338,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 
 	s.logger.Debug("Fetching services from SigNoz", zap.String("start", start), zap.String("end", end))
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
@@ -385,7 +385,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 
 	s.logger.Debug("Fetching service top operations", zap.String("start", start), zap.String("end", end), zap.String("service", service))
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
@@ -422,7 +422,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -467,7 +467,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 
 	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", reqBody))
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	httpReq = httpReq.WithContext(ctx)
 
@@ -510,7 +510,7 @@ func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -550,7 +550,7 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -590,7 +590,7 @@ func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, sear
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 

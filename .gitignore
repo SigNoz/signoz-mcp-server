@@ -27,6 +27,10 @@ go.work.sum
 # env file
 .env
 
+# MCP Registry tokens
+.mcpregistry_github_token
+.mcpregistry_registry_token
+
 # Editor/IDE
 .idea/
 .vscode/

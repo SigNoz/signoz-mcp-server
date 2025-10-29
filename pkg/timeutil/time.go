@@ -38,7 +38,7 @@ func GetTimestampsWithDefaults(args map[string]any, unit string) (start, end str
 	}
 
 	defaultEnd := toUnix(now)
-	defaultStart := toUnix(now.Add(-24 * time.Hour))
+	defaultStart := toUnix(now.Add(-5 * time.Hour))
 
 	if timeRange, ok := args["timeRange"].(string); ok && timeRange != "" {
 		if duration, err := ParseTimeRange(timeRange); err == nil {
