@@ -9,7 +9,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 ## 🚀 Features
 
 - **List Metric Keys**: Retrieve all available metric keys from SigNoz.
-- **Search Metric Keys**: Find specific metrics.
+- **Search Metric by text**: Find specific metric containing given text.
 - **List Alerts**: Get all active alerts with detailed status.
 - **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
 - **Get Alert History**: Gives you timeline of an alert.
@@ -240,7 +240,7 @@ The MCP server provides the following tools that can be used through natural lan
 #### Metrics Exploration
 ```
 "Show me all available metrics"
-"Search for CPU-related metrics"
+"Search for CPU related metrics"
 ```
 
 #### Alert Monitoring
@@ -288,8 +288,8 @@ The MCP server provides the following tools that can be used through natural lan
 #### `list_metric_keys`
 Lists all available metric keys from SigNoz.
 
-#### `search_metric_keys`
-Searches for metrics by text query.
+#### `search_metric_by_text`
+Searches metrics by text (uses SigNoz aggregate_attributes autocomplete).
 - **Parameters**: `searchText` (required) - Text to search for
 
 #### `list_alerts`

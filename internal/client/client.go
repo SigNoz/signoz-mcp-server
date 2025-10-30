@@ -68,8 +68,8 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 	return body, nil
 }
 
-func (s *SigNoz) SearchMetricKeys(ctx context.Context, searchText string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/metrics/filters/keys?searchText=%s", s.baseURL, searchText)
+func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v3/autocomplete/aggregate_attributes?dataSource=metrics&searchText=%s", s.baseURL, searchText)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *SigNoz) SearchMetricKeys(ctx context.Context, searchText string) (json.
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	s.logger.Debug("Searching metric keys", zap.String("searchText", searchText))
+	s.logger.Debug("Searching metric names (aggregate_attributes)", zap.String("searchText", searchText))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *SigNoz) SearchMetricKeys(ctx context.Context, searchText string) (json.
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	s.logger.Debug("Successfully searched metric keys", zap.String("searchText", searchText), zap.Int("status", resp.StatusCode))
+	s.logger.Debug("Successfully searched metric names", zap.String("searchText", searchText), zap.Int("status", resp.StatusCode))
 	return body, nil
 }
 
