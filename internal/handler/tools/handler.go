@@ -179,10 +179,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	})
 
 	alertHistoryTool := mcp.NewTool("get_alert_history",
-		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 5 hours if no time specified."),
+		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
@@ -316,9 +316,9 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering service handlers")
 
 	listTool := mcp.NewTool("list_services",
-		mcp.WithDescription("List all services in SigNoz. Defaults to last 5 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified."),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 	)
 
@@ -338,10 +338,10 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	})
 
 	getOpsTool := mcp.NewTool("get_service_top_operations",
-		mcp.WithDescription("Get top operations for a specific service. Defaults to last 5 hours if no time specified."),
+		mcp.WithDescription("Get top operations for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
 	)
@@ -600,9 +600,9 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 	getErrorLogsTool := mcp.NewTool("get_error_logs",
-		mcp.WithDescription("Get logs with ERROR or FATAL severity. Defaults to last 5 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithDescription("Get logs with ERROR or FATAL severity. Defaults to last 6 hours if no time specified."),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by")),
 		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
@@ -654,10 +654,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 	searchLogsByServiceTool := mcp.NewTool("search_logs_by_service",
-		mcp.WithDescription("Search logs for a specific service. Defaults to last 5 hours if no time specified."),
+		mcp.WithDescription("Search logs for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search logs for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("severity", mcp.Description("Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)")),
 		mcp.WithString("searchText", mcp.Description("Text to search for in log body")),
@@ -752,10 +752,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	searchTracesByServiceTool := mcp.NewTool("search_traces_by_service",
-		mcp.WithDescription("Search traces for a specific service. Defaults to last 5 hours if no time specified."),
+		mcp.WithDescription("Search traces for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search traces for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("operation", mcp.Description("Operation name to filter by")),
 		mcp.WithString("error", mcp.Description("Filter by error status (true/false)")),
@@ -830,10 +830,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceDetailsTool := mcp.NewTool("get_trace_details",
-		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 5 hours if no time specified."),
+		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
 	)
@@ -871,9 +871,9 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceErrorAnalysisTool := mcp.NewTool("get_trace_error_analysis",
-		mcp.WithDescription("Analyze error patterns in traces. Defaults to last 5 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithDescription("Analyze error patterns in traces. Defaults to last 6 hours if no time specified."),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Service name to filter by (optional)")),
 	)
@@ -906,10 +906,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceSpanHierarchyTool := mcp.NewTool("get_trace_span_hierarchy",
-		mcp.WithDescription("Get trace span relationships and hierarchy. Defaults to last 5 hours if no time specified."),
+		mcp.WithDescription("Get trace span relationships and hierarchy. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get span hierarchy for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '5h', '6h', '24h', '7d'. Defaults to last 5 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 5 hours ago)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 	)
 
