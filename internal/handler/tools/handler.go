@@ -82,8 +82,8 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(resp)), nil
 	})
 
-	searchKeysTool := mcp.NewTool("search_metric_keys",
-		mcp.WithDescription("Search available metric keys from SigNoz by text"),
+	searchKeysTool := mcp.NewTool("search_metric_by_text",
+		mcp.WithDescription("Search metrics by text (substring autocomplete)"),
 		mcp.WithString("searchText", mcp.Required(), mcp.Description("Search text for metric keys")),
 	)
 
@@ -98,11 +98,11 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(`Parameter validation failed: "searchText" cannot be empty. Provide a search term like "cpu", "memory", or "request"`), nil
 		}
 
-		h.logger.Debug("Tool called: search_metric_keys", zap.String("searchText", searchText))
+		h.logger.Debug("Tool called: search_metric_by_text", zap.String("searchText", searchText))
 		client := h.GetClient(ctx)
-		resp, err := client.SearchMetricKeys(ctx, searchText)
+		resp, err := client.SearchMetricByText(ctx, searchText)
 		if err != nil {
-			h.logger.Error("Failed to search metric keys", zap.String("searchText", searchText), zap.Error(err))
+			h.logger.Error("Failed to search metric by text", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(resp)), nil
