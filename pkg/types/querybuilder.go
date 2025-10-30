@@ -445,7 +445,7 @@ Use signoz_query_helper with specific signal type for detailed field information
 }
 
 // BuildLogsQueryPayload creates a QueryPayload for logs queries
-func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, limit int) *QueryPayload {
+func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, limit int, offset int) *QueryPayload {
 	return &QueryPayload{
 		SchemaVersion: "v1",
 		Start:         startTime,
@@ -461,7 +461,7 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 						Disabled: false,
 						Filter:   &Filter{Expression: filterExpression},
 						Limit:    limit,
-						Offset:   0,
+						Offset:   offset,
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},
