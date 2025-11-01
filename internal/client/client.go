@@ -719,3 +719,43 @@ func (s *SigNoz) GetTraceSpanHierarchy(ctx context.Context, traceID string, star
 
 	return s.QueryBuilderV5(ctx, queryJSON)
 }
+
+func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+
+	dashboardJSON, err := json.Marshal(dashboard)
+	if err != nil {
+		return nil, fmt.Errorf("marshal dashboard: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(dashboardJSON))
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
+
+	req.Header.Set(SignozApiKey, s.apiKey)
+	req.Header.Set(ContentType, "application/json")
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	resp, err := client.Do(req.WithContext(timeoutCtx))
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	return body, nil
+}
