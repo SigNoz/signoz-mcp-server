@@ -33,6 +33,7 @@ type QuerySpec struct {
 	Order        []Order       `json:"order"`
 	Having       Having        `json:"having"`
 	SelectFields []SelectField `json:"selectFields"`
+	Aggregations []any         `json:"aggregations,omitempty"`
 }
 
 type Order struct {
@@ -69,20 +70,61 @@ type FormatOptions struct {
 // if there is an error LLM checks the error and fix.
 func (q *QueryPayload) Validate() error {
 	if q.SchemaVersion == "" {
-		return fmt.Errorf("missing required field: schemaVersion")
+		q.SchemaVersion = "v1"
 	}
-	if q.RequestType == "" {
-		return fmt.Errorf("missing required field: requestType")
+
+	if q.Start == 0 || q.End == 0 {
+		return fmt.Errorf("missing start or end timestamp")
 	}
 	if len(q.CompositeQuery.Queries) == 0 {
 		return fmt.Errorf("missing or empty compositeQuery.queries")
 	}
-	if q.Start == 0 {
-		return fmt.Errorf("missing or zero start timestamp")
+
+	for i, query := range q.CompositeQuery.Queries {
+		if query.Type != "builder_query" {
+			continue
+		}
+
+		spec := query.Spec
+		signal := spec.Signal
+		queryName := spec.Name
+		if queryName == "" {
+			queryName = fmt.Sprintf("query at position %d", i+1)
+		}
+
+		switch signal {
+		case "metrics":
+			if q.RequestType != "time_series" {
+				q.RequestType = "time_series"
+			}
+			if spec.StepInterval == nil || *spec.StepInterval <= 0 {
+				def := int64(60)
+				spec.StepInterval = &def
+			}
+
+		case "traces":
+			if q.RequestType != "raw" && q.RequestType != "trace" {
+				q.RequestType = "raw"
+			}
+			spec.StepInterval = nil
+
+		case "logs":
+			if q.RequestType != "raw" {
+				q.RequestType = "raw"
+			}
+			spec.StepInterval = nil
+
+		default:
+			return fmt.Errorf("%s: unknown signal type '%s'", queryName, signal)
+		}
+
+		q.CompositeQuery.Queries[i].Spec = spec
 	}
-	if q.End == 0 {
-		return fmt.Errorf("missing or zero end timestamp")
+
+	if q.RequestType == "" {
+		q.RequestType = "raw"
 	}
+
 	return nil
 }
 
@@ -362,7 +404,8 @@ func buildMetricsHelpText(queryType string) string {
 - resource attributes: service.version, deployment.environment, etc.
 - metric attributes: custom labels and tags`
 	case "structure":
-		return `Metric query structure:
+		return `Metric query structure (aggregations field is REQUIRED for metrics queries):
+
 {
   "schemaVersion": "v1",
   "start": 1704067200000,
@@ -377,23 +420,31 @@ func buildMetricsHelpText(queryType string) string {
         "disabled": false,
         "limit": 10,
         "offset": 0,
-        "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+        "order": [{"key": {"name": "0"}, "direction": "desc"}],
         "having": {"expression": ""},
         "selectFields": [
           {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
-          {"name": "metric_name", "fieldDataType": "string", "signal": "metrics"}
+          {"name": "timestamp", "fieldDataType": "string", "signal": "metrics"}
         ],
-        "stepInterval": 60
+        "stepInterval": 60,
+        "aggregations": [{
+          "metricName": "cpu_usage",
+          "timeAggregation": "avg",
+          "spaceAggregation": "avg",
+          "temporality": "Unspecified"
+        }]
       }
     }]
   },
   "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
   "variables": {}
-}`
+}
+
+Note: The aggregations field is REQUIRED for metrics queries. Always include it explicitly with the metricName.`
 	case "examples":
 		return `Example metric queries:
 
-1. CPU usage over time:
+1. CPU usage over time (with explicit aggregations):
 {
   "schemaVersion": "v1",
   "start": 1704067200000,
@@ -408,19 +459,62 @@ func buildMetricsHelpText(queryType string) string {
         "disabled": false,
         "limit": 100,
         "offset": 0,
-        "order": [{"key": {"name": "timestamp"}, "direction": "asc"}],
-        "having": {"expression": "metric_name = 'cpu_usage'"},
+        "order": [{"key": {"name": "0"}, "direction": "asc"}],
+        "having": {"expression": ""},
         "selectFields": [
           {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
           {"name": "timestamp", "fieldDataType": "string", "signal": "metrics"}
         ],
-        "stepInterval": 60
+        "stepInterval": 60,
+        "aggregations": [{
+          "metricName": "cpu_usage",
+          "timeAggregation": "avg",
+          "spaceAggregation": "avg",
+          "temporality": "Unspecified"
+        }]
       }
     }]
   },
   "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
   "variables": {}
-}`
+}
+
+2. Memory usage with rate aggregation:
+{
+  "schemaVersion": "v1",
+  "start": 1704067200000,
+  "end": 1758758400000,
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "name": "A",
+        "signal": "metrics",
+        "disabled": false,
+        "limit": 100,
+        "offset": 0,
+        "order": [{"key": {"name": "0"}, "direction": "desc"}],
+        "having": {"expression": ""},
+        "selectFields": [
+          {"name": "value", "fieldDataType": "float64", "signal": "metrics"},
+          {"name": "timestamp", "fieldDataType": "string", "signal": "metrics"}
+        ],
+        "stepInterval": 60,
+        "aggregations": [{
+          "metricName": "memory_usage",
+          "timeAggregation": "rate",
+          "spaceAggregation": "sum",
+          "temporality": "Cumulative"
+        }]
+      }
+    }]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+IMPORTANT: The "aggregations" field is REQUIRED for metrics queries. Always include it explicitly with the metricName.`
 	default:
 		return buildMetricsHelpText("fields") + "\n\n" + buildMetricsHelpText("structure") + "\n\n" + buildMetricsHelpText("examples")
 	}
