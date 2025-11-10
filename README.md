@@ -247,7 +247,7 @@ The MCP server provides the following tools that can be used through natural lan
 ```
 "List all active alerts"
 "Get details for alert rule ID abc123"
-"Show me the history for alert rule abc123 from the last 24 hours"
+"Show me the history for alert rule abc123 from the last 6 hours"
 "Get logs related to alert abc456"
 ```
 
@@ -259,7 +259,7 @@ The MCP server provides the following tools that can be used through natural lan
 
 #### Service Analysis
 ```
-"List all services from the last 24 hours"
+"List all services from the last 6 hours"
 "What are the top operations for the paymentservice?"
 ```
 
@@ -311,7 +311,7 @@ Gets complete dashboard configuration.
 Lists all services within a time range.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in nanoseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in nanoseconds (defaults to now)
 
 #### `get_service_top_operations`
@@ -319,7 +319,7 @@ Gets top operations for a specific service.
 - **Parameters**:
     - `service` (required) - Service name
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in nanoseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in nanoseconds (defaults to now)
     - `tags` (optional) - JSON array of tags
 
@@ -328,7 +328,7 @@ Gets alert history timeline for a specific rule.
 - **Parameters**:
     - `ruleId` (required) - Alert rule ID
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start timestamp in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End timestamp in milliseconds (defaults to now)
     - `offset` (optional) - Offset for pagination (default: 0)
     - `limit` (optional) - Limit number of results (default: 20)
@@ -353,7 +353,7 @@ Gets logs related to a specific alert automatically.
 Gets logs with ERROR or FATAL severity within a time range.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `service` (optional) - Service name to filter by
     - `limit` (optional) - Maximum number of logs to return (default: 100)
@@ -363,7 +363,7 @@ Searches logs for a specific service within a time range.
 - **Parameters**:
     - `service` (required) - Service name to search logs for
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
     - `searchText` (optional) - Text to search for in log body
@@ -380,7 +380,7 @@ Searches traces for a specific service.
 - **Parameters**:
     - `service` (required) - Service name to search traces for
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `operation` (optional) - Operation name to filter by
     - `error` (optional) - Filter by error status (true/false)
@@ -393,7 +393,7 @@ Gets trace information including all spans and metadata.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get details for
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
 
@@ -401,7 +401,7 @@ Gets trace information including all spans and metadata.
 Analyzes error patterns in traces.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `service` (optional) - Service name to filter by
 - **Returns**: Traces with errors, useful for identifying patterns and affected services
@@ -411,7 +411,7 @@ Gets trace span relationships and hierarchy.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get span hierarchy for
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 24 hours ago)
+    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
 
 #### `signoz_execute_builder_query`
@@ -438,7 +438,7 @@ Use the `timeRange` parameter with formats:
 - `'2d'` - Last 2 days
 - `'7d'` - Last 7 days
 
-The `timeRange` parameter automatically calculates the time window from now backwards. If not specified, most tools default to the last 24 hours. You can also specify time in milliseconds and nanoseconds
+The `timeRange` parameter automatically calculates the time window from now backwards. If not specified, most tools default to the last 6 hours. You can also specify time in milliseconds and nanoseconds
 ### Response Format
 
 All tools return JSON responses that are optimized for LLM consumption:
