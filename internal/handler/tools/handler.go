@@ -378,6 +378,47 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	})
+
+	createDashboardTool := mcp.NewTool(
+		"create_dashboard",
+		mcp.WithDescription("Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. Use this tool when the user asks to build or create a new dashboard."),
+		mcp.WithInputSchema[types.Dashboard](),
+	)
+
+	s.AddTool(createDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+		if !ok || len(rawConfig) == 0 {
+			h.logger.Warn("Received empty or invalid arguments map from Claude.")
+			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
+		}
+
+		configJSON, err := json.Marshal(rawConfig)
+		if err != nil {
+			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
+			), nil
+		}
+
+		var dashboardConfig types.Dashboard
+		if err := json.Unmarshal(configJSON, &dashboardConfig); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Parameter decoding error: The provided JSON structure for the dashboard configuration is invalid. Error details: %s", err.Error()),
+			), nil
+		}
+
+		h.logger.Debug("Tool called: create_dashboard", zap.String("title", dashboardConfig.Title))
+		client := h.GetClient(ctx)
+		data, err := client.CreateDashboard(ctx, dashboardConfig)
+
+		if err != nil {
+			h.logger.Error("Failed to create dashboard in SigNoz", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		}
+
+		return mcp.NewToolResultText(string(data)), nil
+	})
 }
 
 func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {

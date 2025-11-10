@@ -812,3 +812,45 @@ func TestQueryBuilderV5(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateDashboard(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/v1/dashboards", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		var body types.Dashboard
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, body.Title)
+		assert.NotNil(t, body.Layout)
+		assert.NotNil(t, body.Widgets)
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success","id":"dashboard-123"}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, server.URL, "test-api-key")
+
+	d := types.Dashboard{
+		Title:   "whatever",
+		Layout:  []types.LayoutItem{},
+		Widgets: []types.Widget{},
+	}
+
+	ctx := context.Background()
+	resp, err := client.CreateDashboard(ctx, d)
+	require.NoError(t, err)
+
+	var out map[string]interface{}
+	err = json.Unmarshal(resp, &out)
+	require.NoError(t, err)
+
+	assert.Equal(t, "success", out["status"])
+	assert.Equal(t, "dashboard-123", out["id"])
+}
+
