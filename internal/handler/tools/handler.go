@@ -915,9 +915,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		if errorFilter, ok := args["error"].(string); ok && errorFilter != "" {
-			if errorFilter == "true" {
+			switch errorFilter {
+			case "true":
 				filterExpression += " AND hasError = true"
-			} else if errorFilter == "false" {
+			case "false":
 				filterExpression += " AND hasError = false"
 			}
 		}

@@ -83,7 +83,7 @@ func TestGetAlertByRuleID(t *testing.T) {
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
-				w.Write(responseBody)
+				_, _ = w.Write(responseBody)
 			}))
 			defer server.Close()
 
@@ -173,7 +173,7 @@ func TestListMetricKeys(t *testing.T) {
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
-				w.Write(responseBody)
+				_, _ = w.Write(responseBody)
 			}))
 			defer server.Close()
 
@@ -293,7 +293,7 @@ func TestListDashboards(t *testing.T) {
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
-				w.Write(responseBody)
+				_, _ = w.Write(responseBody)
 			}))
 			defer server.Close()
 
@@ -422,7 +422,7 @@ func TestListServices(t *testing.T) {
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
-				w.Write(responseBody)
+				_, _ = w.Write(responseBody)
 			}))
 			defer server.Close()
 
@@ -608,7 +608,7 @@ func TestGetAlertHistory(t *testing.T) {
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
-				w.Write(responseBody)
+				_, _ = w.Write(responseBody)
 			}))
 			defer server.Close()
 
@@ -773,7 +773,7 @@ func TestQueryBuilderV5(t *testing.T) {
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
-				w.Write(responseBody)
+				_, _ = w.Write(responseBody)
 			}))
 			defer server.Close()
 
