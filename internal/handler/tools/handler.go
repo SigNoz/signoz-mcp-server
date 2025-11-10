@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
@@ -68,18 +69,52 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering metrics handlers")
 
 	listKeysTool := mcp.NewTool("list_metric_keys",
-		mcp.WithDescription("List available metric keys from SigNoz"),
+		mcp.WithDescription("List available metric keys from SigNoz. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. Use limit to control the number of results returned (default: 50). Use offset to skip results for pagination (default: 0). For large result sets, paginate by incrementing offset: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc."),
+		mcp.WithString("limit", mcp.Description("Maximum number of keys to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Default: 0. Must be >= 0.")),
 	)
 
 	s.AddTool(listKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_metric_keys")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
 		client := h.GetClient(ctx)
 		resp, err := client.ListMetricKeys(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list metric keys", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(string(resp)), nil
+
+		// received api data - {"data": {"attributeKeys": [...]}}
+		var response map[string]any
+		if err := json.Unmarshal(resp, &response); err != nil {
+			h.logger.Error("Failed to parse metric keys response", zap.Error(err))
+			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		}
+
+		dataObj, ok := response["data"].(map[string]any)
+		if !ok {
+			h.logger.Error("Invalid metric keys response format", zap.Any("data", response["data"]))
+			return mcp.NewToolResultError("invalid response format: expected data object"), nil
+		}
+
+		attributeKeys, ok := dataObj["attributeKeys"].([]any)
+		if !ok {
+			h.logger.Error("Invalid attributeKeys format", zap.Any("attributeKeys", dataObj["attributeKeys"]))
+			return mcp.NewToolResultError("invalid response format: expected attributeKeys array"), nil
+		}
+
+		total := len(attributeKeys)
+		pagedKeys := paginate.Array(attributeKeys, offset, limit)
+
+		// response wrapped in paged structured format
+		resultJSON, err := paginate.Wrap(pagedKeys, total, offset, limit)
+		if err != nil {
+			h.logger.Error("Failed to wrap metric keys with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(resultJSON)), nil
 	})
 
 	searchKeysTool := mcp.NewTool("search_metric_by_text",
@@ -113,10 +148,14 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("list_alerts",
-		mcp.WithDescription("List active alerts from SigNoz. Returns list of alert with: alert name, rule ID, severity, start time, end time, and state."),
+		mcp.WithDescription("List active alerts from SigNoz. Returns list of alert with: alert name, rule ID, severity, start time, end time, and state. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 	s.AddTool(alertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_alerts")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
 		client := h.GetClient(ctx)
 		alerts, err := client.ListAlerts(ctx)
 		if err != nil {
@@ -143,13 +182,20 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			})
 		}
 
-		alertsJSON, err := json.Marshal(alertsList)
+		total := len(alertsList)
+		alertsArray := make([]any, len(alertsList))
+		for i, v := range alertsList {
+			alertsArray[i] = v
+		}
+		pagedAlerts := paginate.Array(alertsArray, offset, limit)
+
+		resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 		if err != nil {
-			h.logger.Error("Failed to marshal alerts", zap.Error(err))
-			return mcp.NewToolResultError("failed to marshal alerts: " + err.Error()), nil
+			h.logger.Error("Failed to wrap alerts with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 		}
 
-		return mcp.NewToolResultText(string(alertsJSON)), nil
+		return mcp.NewToolResultText(string(resultJSON)), nil
 	})
 
 	getAlertTool := mcp.NewTool("get_alert",
@@ -209,19 +255,15 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 		}
 
-		offset := 0
-		if offsetStr, ok := args["offset"].(string); ok && offsetStr != "" {
-			if _, err := fmt.Sscanf(offsetStr, "%d", &offset); err != nil {
-				h.logger.Warn("Invalid offset format", zap.String("offset", offsetStr), zap.Error(err))
-				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "offset" value: "%s". Expected integer (e.g., "0", "20", "40")`, offsetStr)), nil
-			}
-		}
+		_, offset := paginate.ParseParams(args)
 
 		limit := 20
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+			if limitInt, err := strconv.Atoi(limitStr); err != nil {
 				h.logger.Warn("Invalid limit format", zap.String("limit", limitStr), zap.Error(err))
 				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "limit" value: "%s". Expected integer between 1-1000 (e.g., "20", "50", "100")`, limitStr)), nil
+			} else if limitInt > 0 {
+				limit = limitInt
 			}
 		}
 
@@ -271,18 +313,44 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering dashboard handlers")
 
 	tool := mcp.NewTool("list_dashboards",
-		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps)"),
+		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific dashboard, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_dashboards")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
 		client := h.GetClient(ctx)
 		result, err := client.ListDashboards(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list dashboards", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(string(result)), nil
+
+		var dashboards map[string]any
+		if err := json.Unmarshal(result, &dashboards); err != nil {
+			h.logger.Error("Failed to parse dashboards response", zap.Error(err))
+			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		}
+
+		data, ok := dashboards["data"].([]any)
+		if !ok {
+			h.logger.Error("Invalid dashboards response format", zap.Any("data", dashboards["data"]))
+			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+		}
+
+		total := len(data)
+		pagedData := paginate.Array(data, offset, limit)
+
+		resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
+		if err != nil {
+			h.logger.Error("Failed to wrap dashboards with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(resultJSON)), nil
 	})
 
 	getDashboardTool := mcp.NewTool("get_dashboard",
@@ -316,25 +384,44 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering service handlers")
 
 	listTool := mcp.NewTool("list_services",
-		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified."),
+		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific service, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
 	s.AddTool(listTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.Params.Arguments.(map[string]any)
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-		h.logger.Debug("Tool called: list_services", zap.String("start", start), zap.String("end", end))
+		h.logger.Debug("Tool called: list_services", zap.String("start", start), zap.String("end", end), zap.Int("limit", limit), zap.Int("offset", offset))
 		client := h.GetClient(ctx)
 		result, err := client.ListServices(ctx, start, end)
 		if err != nil {
 			h.logger.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(string(result)), nil
+
+		var services []any
+		if err := json.Unmarshal(result, &services); err != nil {
+			h.logger.Error("Failed to parse services response", zap.Error(err))
+			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		}
+
+		total := len(services)
+		pagedServices := paginate.Array(services, offset, limit)
+
+		resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
+		if err != nil {
+			h.logger.Error("Failed to wrap services with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(resultJSON)), nil
 	})
 
 	getOpsTool := mcp.NewTool("get_service_top_operations",
@@ -477,18 +564,44 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering logs handlers")
 
 	listLogViewsTool := mcp.NewTool("list_log_views",
-		mcp.WithDescription("List all saved log views from SigNoz (returns summary with name, ID, description, and query details)"),
+		mcp.WithDescription("List all saved log views from SigNoz (returns summary with name, ID, description, and query details). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific log view, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
 	s.AddTool(listLogViewsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: list_log_views")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
 		client := h.GetClient(ctx)
 		result, err := client.ListLogViews(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list log views", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(string(result)), nil
+
+		var logViews map[string]any
+		if err := json.Unmarshal(result, &logViews); err != nil {
+			h.logger.Error("Failed to parse log views response", zap.Error(err))
+			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		}
+
+		data, ok := logViews["data"].([]any)
+		if !ok {
+			h.logger.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
+			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+		}
+
+		total := len(data)
+		pagedData := paginate.Array(data, offset, limit)
+
+		resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
+		if err != nil {
+			h.logger.Error("Failed to wrap log views with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(resultJSON)), nil
 	})
 
 	getLogViewTool := mcp.NewTool("get_log_view",
@@ -522,6 +635,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("alertId", mcp.Required(), mcp.Description("Alert rule ID")),
 		mcp.WithString("timeRange", mcp.Description("Time range around alert (optional). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '15m', '30m', '1h', '2h', '6h'. Defaults to '1h' if not provided.")),
 		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
 	s.AddTool(getLogsForAlertTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -539,10 +653,12 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		limit := 100
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil {
-				limit = parsed
+			if limitInt, err := strconv.Atoi(limitStr); err == nil {
+				limit = limitInt
 			}
 		}
+
+		_, offset := paginate.ParseParams(req.Params.Arguments)
 
 		h.logger.Debug("Tool called: get_logs_for_alert", zap.String("alertId", alertID))
 		client := h.GetClient(ctx)
@@ -582,7 +698,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			filterExpression += fmt.Sprintf(" AND service.name in ['%s']", serviceName)
 		}
 
-		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
+		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
@@ -605,7 +721,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by")),
-		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 25, max: 200)")),
+		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
 	s.AddTool(getErrorLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -613,12 +730,20 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
-		limit := 100
+		limit := 25
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil {
-				limit = parsed
+			if limitInt, err := strconv.Atoi(limitStr); err == nil {
+				if limitInt > 200 {
+					limit = 200
+				} else if limitInt < 1 {
+					limit = 1
+				} else {
+					limit = limitInt
+				}
 			}
 		}
+
+		_, offset := paginate.ParseParams(req.Params.Arguments)
 
 		filterExpression := "severity_text IN ('ERROR', 'FATAL')"
 
@@ -634,7 +759,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
-		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
+		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
@@ -649,7 +774,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			h.logger.Error("Failed to get error logs", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
@@ -662,6 +786,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("severity", mcp.Description("Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)")),
 		mcp.WithString("searchText", mcp.Description("Text to search for in log body")),
 		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
 	s.AddTool(searchLogsByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -676,10 +801,12 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		limit := 100
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil {
-				limit = parsed
+			if limitInt, err := strconv.Atoi(limitStr); err == nil {
+				limit = limitInt
 			}
 		}
+
+		_, offset := paginate.ParseParams(req.Params.Arguments)
 
 		filterExpression := fmt.Sprintf("service.name in ['%s']", service)
 
@@ -699,7 +826,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
-		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit)
+		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
@@ -776,8 +903,8 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		limit := 100
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil {
-				limit = parsed
+			if limitInt, err := strconv.Atoi(limitStr); err == nil {
+				limit = limitInt
 			}
 		}
 
