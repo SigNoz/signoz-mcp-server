@@ -16,18 +16,18 @@ import (
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Sprintf("Failed to load config: %v", err))
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
 	if err := cfg.ValidateConfig(); err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Sprintf("Configuration validation failed: %v", err))
+		fmt.Fprintf(os.Stderr, "Configuration validation failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	log, err := logger.NewLogger(logger.LogLevel(cfg.LogLevel))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Sprintf("Failed to initialize logger: %v", err))
+		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
 

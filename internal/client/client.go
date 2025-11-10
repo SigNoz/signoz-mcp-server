@@ -51,7 +51,11 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -90,7 +94,11 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("searchText", searchText), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -129,7 +137,11 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -167,7 +179,11 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("ruleID", ruleID), zap.Error(err))
 		return nil, fmt.Errorf("request error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -208,7 +224,11 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -301,7 +321,11 @@ func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("uuid", uuid), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -346,7 +370,11 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("start", start), zap.String("end", end), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -393,7 +421,11 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("start", start), zap.String("end", end), zap.String("service", service), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -432,7 +464,11 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	if err != nil {
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
@@ -480,7 +516,11 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -521,7 +561,11 @@ func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -561,7 +605,11 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("viewID", viewID), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -601,7 +649,11 @@ func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, sear
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("fieldName", fieldName), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
