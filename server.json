@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.SigNoz/signoz-mcp-server",
+  "description": "SigNoz MCP server: access metrics, traces, logs, alerts, and dashboards via AI assistants",
+  "title": "SigNoz MCP Server",
+  "version": "0.0.4",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "signoz/signoz-mcp-server:latest",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
+
