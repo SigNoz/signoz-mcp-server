@@ -25,16 +25,16 @@ type Handler struct {
 	signozURL   string
 	clientCache map[string]*signozclient.SigNoz
 	cacheMutex  sync.RWMutex
-	signozPrefix bool
+	toolPrefix  string
 }
 
-func NewHandler(log *zap.Logger, client *signozclient.SigNoz, signozURL string, signozPrefix bool) *Handler {
+func NewHandler(log *zap.Logger, client *signozclient.SigNoz, signozURL string, toolPrefix string) *Handler {
 	return &Handler{
 		client:      client,
 		logger:      log,
 		signozURL:   signozURL,
 		clientCache: make(map[string]*signozclient.SigNoz),
-		signozPrefix: signozPrefix,
+		toolPrefix:  toolPrefix,
 	}
 }
 
@@ -67,16 +67,17 @@ func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
 	return h.client
 }
 
-// applyToolPrefix adds the signoz_ prefix to tool names if enabled and not already present
+// applyToolPrefix adds the configured prefix to tool names if set and not already present
 func (h *Handler) applyToolPrefix(name string) string {
-	if !h.signozPrefix {
+	if h.toolPrefix == "" {
 		return name
 	}
-	// Check if the tool name already starts with signoz_
-	if len(name) >= 7 && name[:7] == "signoz_" {
+	// Check if the tool name already starts with the prefix
+	prefixWithUnderscore := h.toolPrefix + "_"
+	if len(name) >= len(prefixWithUnderscore) && name[:len(prefixWithUnderscore)] == prefixWithUnderscore {
 		return name
 	}
-	return "signoz_" + name
+	return prefixWithUnderscore + name
 }
 
 func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {

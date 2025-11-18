@@ -12,25 +12,32 @@ type Config struct {
 	LogLevel      string
 	TransportMode string
 	Port          string
-	SignozPrefix  bool
+	ToolPrefix    string
 }
 
 const (
-	SignozURL     = "SIGNOZ_URL"
-	SignozApiKey  = "SIGNOZ_API_KEY"
-	LogLevel      = "LOG_LEVEL"
-	TransportMode = "TRANSPORT_MODE"
-	MCPPort       = "MCP_SERVER_PORT"
+	SignozURL        = "SIGNOZ_URL"
+	SignozApiKey     = "SIGNOZ_API_KEY"
+	LogLevel         = "LOG_LEVEL"
+	TransportMode    = "TRANSPORT_MODE"
+	MCPPort          = "MCP_SERVER_PORT"
+	SignozToolPrefix = "SIGNOZ_TOOL_PREFIX"
 )
 
 func LoadConfig() (*Config, error) {
-	signozPrefix := flag.Bool("signoz-prefix", false, "Add signoz_ prefix to all tool names")
-	
+	toolPrefix := flag.String("tool-prefix", "", "Prefix to add to all tool names (e.g., 'signoz' makes 'list_services' become 'signoz_list_services')")
+
 	// Suppress default flag error handling to prevent automatic exit
 	flag.CommandLine.Usage = func() {}
-	
+
 	// Parse flags, but don't exit on error - just ignore unknown flags
 	flag.Parse()
+
+	// Get prefix from flag or environment variable, default to empty string
+	prefix := *toolPrefix
+	if prefix == "" {
+		prefix = getEnv(SignozToolPrefix, "")
+	}
 
 	return &Config{
 		URL:           getEnv(SignozURL, ""),
@@ -38,7 +45,7 @@ func LoadConfig() (*Config, error) {
 		LogLevel:      getEnv(LogLevel, "info"),
 		TransportMode: getEnv(TransportMode, "stdio"),
 		Port:          getEnv(MCPPort, "8000"),
-		SignozPrefix:  *signozPrefix,
+		ToolPrefix:    prefix,
 	}, nil
 }
 
