@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"fmt"
 	"os"
 )
@@ -11,23 +12,34 @@ type Config struct {
 	LogLevel      string
 	TransportMode string
 	Port          string
+	ToolPrefix    string
 }
 
 const (
-	SignozURL     = "SIGNOZ_URL"
-	SignozApiKey  = "SIGNOZ_API_KEY"
-	LogLevel      = "LOG_LEVEL"
-	TransportMode = "TRANSPORT_MODE"
-	MCPPort       = "MCP_SERVER_PORT"
+	SignozURL        = "SIGNOZ_URL"
+	SignozApiKey     = "SIGNOZ_API_KEY"
+	LogLevel         = "LOG_LEVEL"
+	TransportMode    = "TRANSPORT_MODE"
+	MCPPort          = "MCP_SERVER_PORT"
+	SignozToolPrefix = "SIGNOZ_TOOL_PREFIX"
 )
 
 func LoadConfig() (*Config, error) {
+	toolPrefix := flag.String("tool-prefix", "", "Prefix to add to all tool names (e.g., 'signoz' makes 'list_services' become 'signoz_list_services')")
+
+	// Suppress default flag error handling to prevent automatic exit
+	flag.CommandLine.Usage = func() {}
+
+	// Parse flags, but don't exit on error - just ignore unknown flags
+	flag.Parse()
+
 	return &Config{
 		URL:           getEnv(SignozURL, ""),
 		APIKey:        getEnv(SignozApiKey, ""),
 		LogLevel:      getEnv(LogLevel, "info"),
 		TransportMode: getEnv(TransportMode, "stdio"),
 		Port:          getEnv(MCPPort, "8000"),
+		ToolPrefix:    getEnvOrFlag(*toolPrefix, SignozToolPrefix, ""),
 	}, nil
 }
 
@@ -36,6 +48,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvOrFlag returns the flag value if non-empty, otherwise returns the environment variable value, or defaultValue if neither is set
+func getEnvOrFlag(flagValue, envKey, defaultValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return getEnv(envKey, defaultValue)
 }
 
 func (c *Config) ValidateConfig() error {

@@ -70,10 +70,46 @@ Use this mcp-server with MCP-compatible clients like Claude Desktop and Cursor.
 }
 ```
 
+**Optional:** To prefix all tool names, add `--tool-prefix <prefix>` to the `args` array or set `SIGNOZ_TOOL_PREFIX` environment variable:
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+      "args": ["--tool-prefix", "signoz"],
+      "env": {
+        "SIGNOZ_URL": "https://your-signoz-instance.com",
+        "SIGNOZ_API_KEY": "your-api-key-here",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+Or use environment variable:
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+      "args": [],
+      "env": {
+        "SIGNOZ_URL": "https://your-signoz-instance.com",
+        "SIGNOZ_API_KEY": "your-api-key-here",
+        "LOG_LEVEL": "info",
+        "SIGNOZ_TOOL_PREFIX": "signoz"
+      }
+    }
+  }
+}
+```
+
 4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
 
 Notes:
 - Replace the `command` path with your actual binary location.
+- When a prefix is specified, tool names will be prefixed with `<prefix>_` (e.g., with prefix `signoz`, `list_services` becomes `signoz_list_services`). Tools that already start with the prefix will not be double-prefixed.
 
 ### Cursor
 
@@ -94,6 +130,41 @@ For Both options use same json struct
         "SIGNOZ_URL": "https://your-signoz-instance.com",
         "SIGNOZ_API_KEY": "your-api-key-here",
         "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+**Optional:** To prefix all tool names, add `--tool-prefix <prefix>` to the `args` array or set `SIGNOZ_TOOL_PREFIX` environment variable:
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+      "args": ["--tool-prefix", "signoz"],
+      "env": {
+        "SIGNOZ_URL": "https://your-signoz-instance.com",
+        "SIGNOZ_API_KEY": "your-api-key-here",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+Or use environment variable:
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+      "args": [],
+      "env": {
+        "SIGNOZ_URL": "https://your-signoz-instance.com",
+        "SIGNOZ_API_KEY": "your-api-key-here",
+        "LOG_LEVEL": "info",
+        "SIGNOZ_TOOL_PREFIX": "signoz"
       }
     }
   }
@@ -222,6 +293,12 @@ You can access API Key by going to Settings -> Workspace Settings -> API Key in 
 ```bash
 # Run the built binary
 ./bin/signoz-mcp-server
+
+# Run with custom prefix for all tool names (e.g., 'signoz' makes 'list_services' become 'signoz_list_services')
+./bin/signoz-mcp-server --tool-prefix signoz
+
+# Or use environment variable
+SIGNOZ_TOOL_PREFIX=signoz ./bin/signoz-mcp-server
 ```
 
 ### Development Workflow
@@ -448,6 +525,18 @@ All tools return JSON responses that are optimized for LLM consumption:
 
 ## 🔧 Configuration & Deployment
 
+### Command-Line Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--tool-prefix <prefix>` | Prefix to add to all tool names. The prefix will be added with an underscore (e.g., `--tool-prefix signoz` makes `list_services` become `signoz_list_services`). Tools that already start with the prefix will not be double-prefixed. | `""` (empty) |
+
+### Environment Variables for Tool Prefix
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SIGNOZ_TOOL_PREFIX` | Prefix to add to all tool names (alternative to `--tool-prefix` flag). If both are provided, the flag takes precedence. | `""` (empty) |
+
 ### Environment Variables
 
 | Variable | Description                                                                   | Required |
@@ -456,7 +545,7 @@ All tools return JSON responses that are optimized for LLM consumption:
 | `SIGNOZ_API_KEY` | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes      |
 | `LOG_LEVEL` | Logging level: `info`(default), `debug`, `warn`, `error`                      | No       |
 | `TRANSPORT_MODE` | MCP transport mode: `stdio`(default) or `http`                                | No       |
-| `MCP_SERVER_PORT` | Port for HTTP transport mode              | Yes only when `TRANSPORT_MODE=http     |
+| `MCP_SERVER_PORT` | Port for HTTP transport mode              | Yes only when `TRANSPORT_MODE=http` |
 
 
 ## 🤝 Contributing
