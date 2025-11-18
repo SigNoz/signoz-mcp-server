@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"fmt"
 	"os"
 )
@@ -11,6 +12,7 @@ type Config struct {
 	LogLevel      string
 	TransportMode string
 	Port          string
+	SignozPrefix  bool
 }
 
 const (
@@ -22,12 +24,21 @@ const (
 )
 
 func LoadConfig() (*Config, error) {
+	signozPrefix := flag.Bool("signoz-prefix", false, "Add signoz_ prefix to all tool names")
+	
+	// Suppress default flag error handling to prevent automatic exit
+	flag.CommandLine.Usage = func() {}
+	
+	// Parse flags, but don't exit on error - just ignore unknown flags
+	flag.Parse()
+
 	return &Config{
 		URL:           getEnv(SignozURL, ""),
 		APIKey:        getEnv(SignozApiKey, ""),
 		LogLevel:      getEnv(LogLevel, "info"),
 		TransportMode: getEnv(TransportMode, "stdio"),
 		Port:          getEnv(MCPPort, "8000"),
+		SignozPrefix:  *signozPrefix,
 	}, nil
 }
 

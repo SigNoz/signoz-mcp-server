@@ -33,10 +33,11 @@ func main() {
 
 	log.Info("Starting SigNoz MCP Server",
 		zap.String("log_level", cfg.LogLevel),
-		zap.String("transport_mode", cfg.TransportMode))
+		zap.String("transport_mode", cfg.TransportMode),
+		zap.Bool("signoz_prefix", cfg.SignozPrefix))
 
 	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
-	handler := tools.NewHandler(log, sigNozClient, cfg.URL)
+	handler := tools.NewHandler(log, sigNozClient, cfg.URL, cfg.SignozPrefix)
 
 	if err := mcpserver.NewMCPServer(log, handler, cfg).Start(); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
