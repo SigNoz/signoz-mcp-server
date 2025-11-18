@@ -33,19 +33,13 @@ func LoadConfig() (*Config, error) {
 	// Parse flags, but don't exit on error - just ignore unknown flags
 	flag.Parse()
 
-	// Get prefix from flag or environment variable, default to empty string
-	prefix := *toolPrefix
-	if prefix == "" {
-		prefix = getEnv(SignozToolPrefix, "")
-	}
-
 	return &Config{
 		URL:           getEnv(SignozURL, ""),
 		APIKey:        getEnv(SignozApiKey, ""),
 		LogLevel:      getEnv(LogLevel, "info"),
 		TransportMode: getEnv(TransportMode, "stdio"),
 		Port:          getEnv(MCPPort, "8000"),
-		ToolPrefix:    prefix,
+		ToolPrefix:    getEnvOrFlag(*toolPrefix, SignozToolPrefix, ""),
 	}, nil
 }
 
@@ -54,6 +48,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvOrFlag returns the flag value if non-empty, otherwise returns the environment variable value, or defaultValue if neither is set
+func getEnvOrFlag(flagValue, envKey, defaultValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return getEnv(envKey, defaultValue)
 }
 
 func (c *Config) ValidateConfig() error {
