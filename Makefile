@@ -21,9 +21,8 @@ bundle:
 	@GOOS=darwin GOARCH=arm64 go build -o bundle/server/signoz-mcp-server ./cmd/server/
 	@GOOS=windows GOARCH=amd64 go build -o bundle/server/signoz-mcp-server.exe ./cmd/server/
 	@cp ./manifest.json bundle/
-	@cp ./assets/signoz_icon.svg bundle/
+	@cp ./assets/signoz_icon.png bundle/
 	@echo "📦 Installing MCPB CLI..."
 	@npm install -g @anthropic-ai/mcpb > /dev/null 2>&1
 	@echo "🧩 Packing MCP bundle..."
 	cd bundle && mcpb pack
-

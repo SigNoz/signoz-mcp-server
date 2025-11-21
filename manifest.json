@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.1.0",
+  "version": "0.0.4",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
@@ -10,7 +10,7 @@
   "homepage": "https://github.com/SigNoz/signoz-mcp-server",
   "documentation": "https://signoz.io/docs/signoz-mcp-server",
   "support": "https://github.com/SigNoz/signoz-mcp-server/issues",
-  "icon": "signoz_icon.svg",
+  "icon": "signoz_icon.png",
   "server": {
     "type": "binary",
     "entry_point": "server/signoz-mcp-server",
@@ -18,95 +18,95 @@
       "command": "${__dirname}/server/signoz-mcp-server",
       "args": [],
       "env": {
-      "SIGNOZ_URL": "${user_config.signoz_url}",
-      "SIGNOZ_API_KEY": "${user_config.signoz_api_key}",
-      "LOG_LEVEL": "${user_config.log_level}"
-    }
+        "SIGNOZ_URL": "${user_config.signoz_url}",
+        "SIGNOZ_API_KEY": "${user_config.signoz_api_key}",
+        "LOG_LEVEL": "${user_config.log_level}"
+      }
     }
   },
   "tools": [
-    { 
-      "name": "list_metric_keys", 
+    {
+      "name": "list_metric_keys",
       "description": "List all available metric keys"
     },
-    { 
-      "name": "search_metric_keys", 
+    {
+      "name": "search_metric_keys",
       "description": "Search metrics by text query"
     },
-    { 
-      "name": "list_alerts", 
+    {
+      "name": "list_alerts",
       "description": "List all active alerts"
     },
-    { 
-      "name": "get_alert", 
+    {
+      "name": "get_alert",
       "description": "Get details of a specific alert"
     },
-    { 
-      "name": "get_alert_history", 
+    {
+      "name": "get_alert_history",
       "description": "Retrieve alert history for a rule"
     },
-    { 
-      "name": "list_dashboards", 
+    {
+      "name": "list_dashboards",
       "description": "List all dashboards with summaries"
     },
-    { 
-      "name": "get_dashboard", 
+    {
+      "name": "get_dashboard",
       "description": "Retrieve full dashboard configuration"
     },
-    { 
-      "name": "list_services", 
+    {
+      "name": "list_services",
       "description": "List services within a given time range"
     },
-    { 
-      "name": "get_service_top_operations", 
+    {
+      "name": "get_service_top_operations",
       "description": "Get top operations for a service"
     },
-    { 
-      "name": "list_log_views", 
+    {
+      "name": "list_log_views",
       "description": "List all saved log views"
     },
-    { 
-      "name": "get_log_view", 
+    {
+      "name": "get_log_view",
       "description": "Get full details of a log view"
     },
-    { 
-      "name": "get_logs_for_alert", 
+    {
+      "name": "get_logs_for_alert",
       "description": "Fetch logs related to a specific alert"
     },
-    { 
-      "name": "get_error_logs", 
+    {
+      "name": "get_error_logs",
       "description": "Retrieve error and fatal logs"
     },
-    { 
-      "name": "search_logs_by_service", 
+    {
+      "name": "search_logs_by_service",
       "description": "Search logs for a specific service"
     },
-    { 
-      "name": "get_trace_field_values", 
+    {
+      "name": "get_trace_field_values",
       "description": "List available trace field values"
     },
-    { 
-      "name": "search_traces_by_service", 
+    {
+      "name": "search_traces_by_service",
       "description": "Search traces for a specific service"
     },
-    { 
-      "name": "get_trace_details", 
+    {
+      "name": "get_trace_details",
       "description": "Retrieve full trace details"
     },
-    { 
-      "name": "get_trace_error_analysis", 
+    {
+      "name": "get_trace_error_analysis",
       "description": "Analyze error patterns in traces"
     },
-    { 
-      "name": "get_trace_span_hierarchy", 
+    {
+      "name": "get_trace_span_hierarchy",
       "description": "Retrieve span hierarchy for a trace"
     },
-    { 
-      "name": "signoz_execute_builder_query", 
+    {
+      "name": "signoz_execute_builder_query",
       "description": "Execute SigNoz Query Builder v5 query"
     },
-    { 
-      "name": "signoz_query_helper", 
+    {
+      "name": "signoz_query_helper",
       "description": "Helper for building SigNoz queries"
     }
   ],
@@ -116,7 +116,7 @@
       "win32"
     ]
   },
- "user_config": {
+  "user_config": {
     "signoz_url": {
       "type": "string",
       "title": "SigNoz URL",
