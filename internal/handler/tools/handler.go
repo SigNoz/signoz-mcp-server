@@ -366,7 +366,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 		if uuid == "" {
 			h.logger.Warn("Empty uuid parameter")
-			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use list_dashboards tool to see available dashboards.`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 		}
 
 		h.logger.Debug("Tool called: signoz_get_dashboard", zap.String("uuid", uuid))
@@ -443,7 +443,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		}
 		if service == "" {
 			h.logger.Warn("Empty service parameter")
-			return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use list_services tool to see available services.`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
 		}
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
@@ -617,7 +617,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 		if viewID == "" {
 			h.logger.Warn("Empty viewId parameter")
-			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use list_log_views tool to see available log views.`), nil
+			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use signoz_list_log_views tool to see available log views.`), nil
 		}
 
 		h.logger.Debug("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
