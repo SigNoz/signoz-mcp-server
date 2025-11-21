@@ -475,7 +475,7 @@ This command builds platform binaries (macOS and Windows), copies manifest and a
 
 ### 💻 Installing in Claude Desktop
 
-1. Open **Claude Desktop → Settings → Developer → Add Server**
+1. Open **Claude Desktop → Settings → Developer → Edit Config -> Add bundle.mcpb**
 2. Select the generated bundle:
 
    ```
