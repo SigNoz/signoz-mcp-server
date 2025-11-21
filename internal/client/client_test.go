@@ -829,7 +829,7 @@ func TestCreateDashboard(t *testing.T) {
 		assert.NotNil(t, body.Widgets)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"success","id":"dashboard-123"}`))
+		_, _ = w.Write([]byte(`{"status":"success","id":"dashboard-123"}`))
 	}))
 	defer server.Close()
 
@@ -853,4 +853,3 @@ func TestCreateDashboard(t *testing.T) {
 	assert.Equal(t, "success", out["status"])
 	assert.Equal(t, "dashboard-123", out["id"])
 }
-
