@@ -70,46 +70,10 @@ Use this mcp-server with MCP-compatible clients like Claude Desktop and Cursor.
 }
 ```
 
-**Optional:** To prefix all tool names, add `--tool-prefix <prefix>` to the `args` array or set `SIGNOZ_TOOL_PREFIX` environment variable:
-```json
-{
-  "mcpServers": {
-    "signoz": {
-      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
-      "args": ["--tool-prefix", "signoz"],
-      "env": {
-        "SIGNOZ_URL": "https://your-signoz-instance.com",
-        "SIGNOZ_API_KEY": "your-api-key-here",
-        "LOG_LEVEL": "info"
-      }
-    }
-  }
-}
-```
-
-Or use environment variable:
-```json
-{
-  "mcpServers": {
-    "signoz": {
-      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
-      "args": [],
-      "env": {
-        "SIGNOZ_URL": "https://your-signoz-instance.com",
-        "SIGNOZ_API_KEY": "your-api-key-here",
-        "LOG_LEVEL": "info",
-        "SIGNOZ_TOOL_PREFIX": "signoz"
-      }
-    }
-  }
-}
-```
-
 4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
 
 Notes:
 - Replace the `command` path with your actual binary location.
-- When a prefix is specified, tool names will be prefixed with `<prefix>_` (e.g., with prefix `signoz`, `list_services` becomes `signoz_list_services`). Tools that already start with the prefix will not be double-prefixed.
 
 ### Cursor
 
@@ -130,41 +94,6 @@ For Both options use same json struct
         "SIGNOZ_URL": "https://your-signoz-instance.com",
         "SIGNOZ_API_KEY": "your-api-key-here",
         "LOG_LEVEL": "info"
-      }
-    }
-  }
-}
-```
-
-**Optional:** To prefix all tool names, add `--tool-prefix <prefix>` to the `args` array or set `SIGNOZ_TOOL_PREFIX` environment variable:
-```json
-{
-  "mcpServers": {
-    "signoz": {
-      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
-      "args": ["--tool-prefix", "signoz"],
-      "env": {
-        "SIGNOZ_URL": "https://your-signoz-instance.com",
-        "SIGNOZ_API_KEY": "your-api-key-here",
-        "LOG_LEVEL": "info"
-      }
-    }
-  }
-}
-```
-
-Or use environment variable:
-```json
-{
-  "mcpServers": {
-    "signoz": {
-      "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
-      "args": [],
-      "env": {
-        "SIGNOZ_URL": "https://your-signoz-instance.com",
-        "SIGNOZ_API_KEY": "your-api-key-here",
-        "LOG_LEVEL": "info",
-        "SIGNOZ_TOOL_PREFIX": "signoz"
       }
     }
   }
@@ -293,12 +222,6 @@ You can access API Key by going to Settings -> Workspace Settings -> API Key in 
 ```bash
 # Run the built binary
 ./bin/signoz-mcp-server
-
-# Run with custom prefix for all tool names (e.g., 'signoz' makes 'list_services' become 'signoz_list_services')
-./bin/signoz-mcp-server --tool-prefix signoz
-
-# Or use environment variable
-SIGNOZ_TOOL_PREFIX=signoz ./bin/signoz-mcp-server
 ```
 
 ### Development Workflow
@@ -362,36 +285,36 @@ The MCP server provides the following tools that can be used through natural lan
 
 ### Tool Reference
 
-#### `list_metric_keys`
+#### `signoz_list_metric_keys`
 Lists all available metric keys from SigNoz.
 
-#### `search_metric_by_text`
+#### `signoz_search_metric_by_text`
 Searches metrics by text (uses SigNoz aggregate_attributes autocomplete).
 - **Parameters**: `searchText` (required) - Text to search for
 
-#### `list_alerts`
+#### `signoz_list_alerts`
 Lists all active alerts from SigNoz.
 
-#### `get_alert`
+#### `signoz_get_alert`
 Gets details of a specific alert rule.
 - **Parameters**: `ruleId` (required) - Alert rule ID
 
-#### `list_dashboards`
+#### `signoz_list_dashboards`
 Lists all dashboards with summaries (name, UUID, description, tags).
 - **Returns**: Simplified dashboard information for better LLM processing
 
-#### `get_dashboard`
+#### `signoz_get_dashboard`
 Gets complete dashboard configuration.
 - **Parameters**: `uuid` (required) - Dashboard UUID
 
-#### `list_services`
+#### `signoz_list_services`
 Lists all services within a time range.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
     - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in nanoseconds (defaults to now)
 
-#### `get_service_top_operations`
+#### `signoz_get_service_top_operations`
 Gets top operations for a specific service.
 - **Parameters**:
     - `service` (required) - Service name
@@ -400,7 +323,7 @@ Gets top operations for a specific service.
     - `end` (optional) - End time in nanoseconds (defaults to now)
     - `tags` (optional) - JSON array of tags
 
-#### `get_alert_history`
+#### `signoz_get_alert_history`
 Gets alert history timeline for a specific rule.
 - **Parameters**:
     - `ruleId` (required) - Alert rule ID
@@ -411,22 +334,22 @@ Gets alert history timeline for a specific rule.
     - `limit` (optional) - Limit number of results (default: 20)
     - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
 
-#### `list_log_views`
+#### `signoz_list_log_views`
 Lists all saved log views from SigNoz.
 - **Returns**: Summary with name, ID, description, and query details
 
-#### `get_log_view`
+#### `signoz_get_log_view`
 Gets full details of a specific log view by ID.
 - **Parameters**: `viewId` (required) - Log view ID
 
-#### `get_logs_for_alert`
+#### `signoz_get_logs_for_alert`
 Gets logs related to a specific alert automatically.
 - **Parameters**:
     - `alertId` (required) - Alert rule ID
     - `timeRange` (optional) - Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
-#### `get_error_logs`
+#### `signoz_get_error_logs`
 Gets logs with ERROR or FATAL severity within a time range.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
@@ -435,7 +358,7 @@ Gets logs with ERROR or FATAL severity within a time range.
     - `service` (optional) - Service name to filter by
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
-#### `search_logs_by_service`
+#### `signoz_search_logs_by_service`
 Searches logs for a specific service within a time range.
 - **Parameters**:
     - `service` (required) - Service name to search logs for
@@ -446,13 +369,13 @@ Searches logs for a specific service within a time range.
     - `searchText` (optional) - Text to search for in log body
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
-#### `get_trace_field_values`
+#### `signoz_get_trace_field_values`
 Gets available field values for trace.
 - **Parameters**:
     - `fieldName` (required) - Field name to get values for (e.g., 'service.name', 'http.method')
     - `searchText` (optional) - Search text to filter values
 
-#### `search_traces_by_service`
+#### `signoz_search_traces_by_service`
 Searches traces for a specific service.
 - **Parameters**:
     - `service` (required) - Service name to search traces for
@@ -465,7 +388,7 @@ Searches traces for a specific service.
     - `maxDuration` (optional) - Maximum duration in nanoseconds
     - `limit` (optional) - Maximum number of traces to return (default: 100)
 
-#### `get_trace_details`
+#### `signoz_get_trace_details`
 Gets trace information including all spans and metadata.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get details for
@@ -474,7 +397,7 @@ Gets trace information including all spans and metadata.
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
 
-#### `get_trace_error_analysis`
+#### `signoz_get_trace_error_analysis`
 Analyzes error patterns in traces.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
@@ -483,7 +406,7 @@ Analyzes error patterns in traces.
     - `service` (optional) - Service name to filter by
 - **Returns**: Traces with errors, useful for identifying patterns and affected services
 
-#### `get_trace_span_hierarchy`
+#### `signoz_get_trace_span_hierarchy`
 Gets trace span relationships and hierarchy.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get span hierarchy for
@@ -525,17 +448,7 @@ All tools return JSON responses that are optimized for LLM consumption:
 
 ## 🔧 Configuration & Deployment
 
-### Command-Line Flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--tool-prefix <prefix>` | Prefix to add to all tool names. The prefix will be added with an underscore (e.g., `--tool-prefix signoz` makes `list_services` become `signoz_list_services`). Tools that already start with the prefix will not be double-prefixed. | `""` (empty) |
-
-### Environment Variables for Tool Prefix
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SIGNOZ_TOOL_PREFIX` | Prefix to add to all tool names (alternative to `--tool-prefix` flag). If both are provided, the flag takes precedence. | `""` (empty) |
+### Tool Naming
 
 ### Environment Variables
 
