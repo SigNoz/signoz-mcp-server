@@ -448,8 +448,6 @@ All tools return JSON responses that are optimized for LLM consumption:
 
 ## 🔧 Configuration & Deployment
 
-### Tool Naming
-
 ### Environment Variables
 
 | Variable | Description                                                                   | Required |
