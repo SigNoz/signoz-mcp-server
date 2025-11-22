@@ -55,3 +55,8 @@ type QueryBody struct {
 	ClickhouseSQL []string               `json:"clickhouse_sql,omitempty" jsonschema_extras:"description=List of ClickHouse SQL queries."`
 	Builder       map[string]interface{} `json:"builder,omitempty" jsonschema_extras:"description=Configuration for visual query builder mode."`
 }
+
+type UpdateDashboardInput struct {
+	UUID      string    `json:"uuid" jsonschema:"required" jsonschema_extras:"description=Dashboard UUID to update."`
+	Dashboard Dashboard `json:"dashboard" jsonschema:"required" jsonschema_extras:"description=Full dashboard configuration representing the complete post-update state."`
+}

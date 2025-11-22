@@ -759,3 +759,38 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 
 	return body, nil
 }
+
+func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error {
+	url := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, id)
+
+	dashboardJSON, err := json.Marshal(dashboard)
+	if err != nil {
+		return fmt.Errorf("marshal dashboard: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(dashboardJSON))
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+
+	req.Header.Set(SignozApiKey, s.apiKey)
+	req.Header.Set(ContentType, "application/json")
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	resp, err := client.Do(req.WithContext(timeoutCtx))
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}

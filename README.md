@@ -309,7 +309,7 @@ Lists all dashboards with summaries (name, UUID, description, tags).
 Gets complete dashboard configuration.
 - **Parameters**: `uuid` (required) - Dashboard UUID
 
-#### `create_dashboard`
+#### `signoz_create_dashboard`
 Creates a dashboard.
 
 - **Parameters:**
@@ -321,6 +321,21 @@ Creates a dashboard.
   - widgets (required) – List of widgets added to the dashboard
 - **Returns**
 Dashboard metadata, layout array, widgets array, and stored dashboard config.
+
+### `signoz_update_dashboard`
+Updates an existing dashboard.
+
+- **Parameters**
+  - uuid (required) – Unique identifier of the dashboard to update
+  - title (required) – Dashboard name
+  - description (optional) – Short summary of what the dashboard shows
+  - tags (optional) – List of tags applied to the dashboard
+  - layout (required) – Full widget positioning grid
+  - variables (optional) – Map of variables available for use in queries
+  - widgets (required) – Complete set of widgets defining the updated dashboard
+  
+**Returns**
+A success confirmation only. No response body is provided.
 
 #### `list_services`
 Lists all services within a time range.

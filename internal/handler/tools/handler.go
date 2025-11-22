@@ -380,7 +380,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	})
 
 	createDashboardTool := mcp.NewTool(
-		"create_dashboard",
+		"signoz_create_dashboard",
 		mcp.WithDescription("Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. Use this tool when the user asks to build or create a new dashboard."),
 		mcp.WithInputSchema[types.Dashboard](),
 	)
@@ -408,7 +408,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 			), nil
 		}
 
-		h.logger.Debug("Tool called: create_dashboard", zap.String("title", dashboardConfig.Title))
+		h.logger.Debug("Tool called: signoz_create_dashboard", zap.String("title", dashboardConfig.Title))
 		client := h.GetClient(ctx)
 		data, err := client.CreateDashboard(ctx, dashboardConfig)
 
@@ -418,6 +418,56 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	updateDashboardTool := mcp.NewTool(
+		"signoz_update_dashboard",
+		mcp.WithDescription(
+			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object."+
+				"The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications."+
+				"Use this tool when the user asks to update an existing dashboard.",
+		),
+		mcp.WithInputSchema[types.UpdateDashboardInput](),
+	)
+
+	s.AddTool(updateDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+		if !ok || len(rawConfig) == 0 {
+			h.logger.Warn("Received empty or invalid arguments map from Claude.")
+			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
+		}
+
+		configJSON, err := json.Marshal(rawConfig)
+		if err != nil {
+			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
+			), nil
+		}
+
+		var updateDashboardConfig types.UpdateDashboardInput
+		if err := json.Unmarshal(configJSON, &updateDashboardConfig); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Parameter decoding error: The provided JSON structure for the dashboard configuration is invalid. Error details: %s", err.Error()),
+			), nil
+		}
+
+		if updateDashboardConfig.UUID == "" {
+			h.logger.Warn("Empty uuid parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use list_dashboards tool to see available dashboards.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_update_dashboard", zap.String("title", updateDashboardConfig.Dashboard.Title))
+		client := h.GetClient(ctx)
+		err = client.UpdateDashboard(ctx, updateDashboardConfig.UUID, updateDashboardConfig.Dashboard)
+
+		if err != nil {
+			h.logger.Error("Failed to update dashboard in SigNoz", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		}
+
+		return mcp.NewToolResultText("dashboard updated"), nil
 	})
 }
 

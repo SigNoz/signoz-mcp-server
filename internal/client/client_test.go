@@ -853,3 +853,33 @@ func TestCreateDashboard(t *testing.T) {
 	assert.Equal(t, "success", out["status"])
 	assert.Equal(t, "dashboard-123", out["id"])
 }
+
+func TestUpdateDashboard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/api/v1/dashboards/id-123", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		var body types.Dashboard
+		err := json.NewDecoder(r.Body).Decode(&body)
+		require.NoError(t, err)
+
+		assert.Equal(t, "updated-title", body.Title)
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, srv.URL, "test-api-key")
+
+	d := types.Dashboard{
+		Title:   "updated-title",
+		Layout:  []types.LayoutItem{},
+		Widgets: []types.Widget{},
+	}
+
+	err := client.UpdateDashboard(context.Background(), "id-123", d)
+	require.NoError(t, err)
+}
