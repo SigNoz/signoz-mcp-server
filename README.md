@@ -473,6 +473,38 @@ All tools return JSON responses that are optimized for LLM consumption:
 | `TRANSPORT_MODE` | MCP transport mode: `stdio`(default) or `http`                                | No       |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode              | Yes only when `TRANSPORT_MODE=http     |
 
+## Claude Desktop Extension Setup
+
+### 🧱 Building the Claude Extension Bundle
+
+Ensure **Node.js** is installed on your system.
+For details about the MCPB CLI, see [Anthropic MCPB GitHub repository](https://github.com/anthropics/mcpb).
+
+From the repository root, run:
+
+```bash
+make bundle
+```
+
+This command builds platform binaries (macOS and Windows), copies manifest and assets, installs the MCPB CLI (`@anthropic-ai/mcpb`), and packages everything into a Claude-compatible `.mcpb` bundle.
+
+### 💻 Installing in Claude Desktop
+
+1. Open **Claude Desktop → Settings → Developer → Edit Config -> Add bundle.mcpb**
+2. Select the generated bundle:
+
+   ```
+   ./bundle/bundle.mcpb
+   ```
+3. Provide your SigNoz configuration:
+
+   * `SIGNOZ_URL`: URL of your SigNoz instance
+   * `SIGNOZ_API_KEY`: API key from **SigNoz UI → Settings → Workspace Settings → API Key**
+   * `LOG_LEVEL`: Optional (`info`, `debug`, or `warn`)
+
+Restart Claude Desktop and it will then automatically start the SigNoz MCP Server and register its tools.
+
+---
 
 ## 🤝 Contributing
 
