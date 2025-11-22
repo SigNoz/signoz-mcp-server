@@ -108,6 +108,14 @@
     {
       "name": "signoz_query_helper",
       "description": "Helper for building SigNoz queries"
+    },
+    {
+      "name": "signoz_create_dashboard",
+      "description": "Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. Use this tool when the user asks to build or create a new dashboard."
+    },
+    {
+      "name": "signoz_update_dashboard",
+      "description": "Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object. The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications. Use this tool when the user asks to update an existing dashboard."
     }
   ],
   "compatibility": {
