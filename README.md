@@ -18,6 +18,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
 - **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
 - **Create Dashboard**: Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. **Warning**: Requires full dashboard JSON which can consume large amounts of context window space.
+- **Update Dashboard**: Updates an existing dashboard using its UUID and a complete dashboard JSON object. Requires the entire post-update configuration and cannot accept partial patches.
 - **List Services**: Discover all services within specified time ranges.
 - **Service Top Operations**: Analyze performance metrics for specific services.
 - **Query Builder**: Generates query to get complex response.
