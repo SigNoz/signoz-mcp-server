@@ -26,79 +26,79 @@
   },
   "tools": [
     {
-      "name": "list_metric_keys",
+      "name": "signoz_list_metric_keys",
       "description": "List all available metric keys"
     },
     {
-      "name": "search_metric_keys",
+      "name": "signoz_search_metric_by_text",
       "description": "Search metrics by text query"
     },
     {
-      "name": "list_alerts",
+      "name": "signoz_list_alerts",
       "description": "List all active alerts"
     },
     {
-      "name": "get_alert",
+      "name": "signoz_get_alert",
       "description": "Get details of a specific alert"
     },
     {
-      "name": "get_alert_history",
+      "name": "signoz_get_alert_history",
       "description": "Retrieve alert history for a rule"
     },
     {
-      "name": "list_dashboards",
+      "name": "signoz_list_dashboards",
       "description": "List all dashboards with summaries"
     },
     {
-      "name": "get_dashboard",
+      "name": "signoz_get_dashboard",
       "description": "Retrieve full dashboard configuration"
     },
     {
-      "name": "list_services",
+      "name": "signoz_list_services",
       "description": "List services within a given time range"
     },
     {
-      "name": "get_service_top_operations",
+      "name": "signoz_get_service_top_operations",
       "description": "Get top operations for a service"
     },
     {
-      "name": "list_log_views",
+      "name": "signoz_list_log_views",
       "description": "List all saved log views"
     },
     {
-      "name": "get_log_view",
+      "name": "signoz_get_log_view",
       "description": "Get full details of a log view"
     },
     {
-      "name": "get_logs_for_alert",
+      "name": "signoz_get_logs_for_alert",
       "description": "Fetch logs related to a specific alert"
     },
     {
-      "name": "get_error_logs",
+      "name": "signoz_get_error_logs",
       "description": "Retrieve error and fatal logs"
     },
     {
-      "name": "search_logs_by_service",
+      "name": "signoz_search_logs_by_service",
       "description": "Search logs for a specific service"
     },
     {
-      "name": "get_trace_field_values",
+      "name": "signoz_get_trace_field_values",
       "description": "List available trace field values"
     },
     {
-      "name": "search_traces_by_service",
+      "name": "signoz_search_traces_by_service",
       "description": "Search traces for a specific service"
     },
     {
-      "name": "get_trace_details",
+      "name": "signoz_get_trace_details",
       "description": "Retrieve full trace details"
     },
     {
-      "name": "get_trace_error_analysis",
+      "name": "signoz_get_trace_error_analysis",
       "description": "Analyze error patterns in traces"
     },
     {
-      "name": "get_trace_span_hierarchy",
+      "name": "signoz_get_trace_span_hierarchy",
       "description": "Retrieve span hierarchy for a trace"
     },
     {
