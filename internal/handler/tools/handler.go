@@ -173,10 +173,15 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getMetricsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.Params.Arguments.(map[string]any)
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
+		}
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
+			h.logger.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "aws_ApplicationELB_ConsumedLCUs_max"}, {"fieldName": "cpu_usage"}`), nil
 		}
 
@@ -900,10 +905,15 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getLogsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.Params.Arguments.(map[string]any)
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
+		}
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
+			h.logger.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "severity_text"}, {"fieldName": "body"}`), nil
 		}
 
@@ -934,10 +944,15 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getTraceFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.Params.Arguments.(map[string]any)
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			h.logger.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
+			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
+		}
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
+			h.logger.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "http.status_code"}, {"fieldName": "operation"}`), nil
 		}
 
