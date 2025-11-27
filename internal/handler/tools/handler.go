@@ -142,6 +142,35 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 		return mcp.NewToolResultText(string(resp)), nil
 	})
+
+	getMetricsAvailableFieldsTool := mcp.NewTool("signoz_get_metrics_available_fields",
+		mcp.WithDescription("Get available field names for metric queries"),
+		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get available fields for (e.g., 'service.name')")),
+		mcp.WithString("searchText", mcp.Description("Search text to filter available fields (optional)")),
+	)
+
+	s.AddTool(getMetricsAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		fieldName, ok := args["fieldName"].(string)
+		if !ok || fieldName == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "metric_name"}, {"fieldName": "value"}`), nil
+		}
+
+		searchText := ""
+		if search, ok := args["searchText"].(string); ok && search != "" {
+			searchText = search
+		}
+
+		h.logger.Debug("Tool called: signoz_get_metrics_available_fields", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		client := h.GetClient(ctx)
+		result, err := client.GetMetricsAvailableFields(ctx, searchText)
+		if err != nil {
+			h.logger.Error("Failed to get metrics available fields", zap.String("searchText", searchText), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
 }
 
 func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
@@ -531,33 +560,6 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		h.logger.Debug("Successfully executed query builder v5")
 		return mcp.NewToolResultText(string(data)), nil
 	})
-
-	// Helper tool for LLM to discover available fields and build better queries (this can be iterative )
-	queryHelper := mcp.NewTool("signoz_query_helper",
-		mcp.WithDescription("Helper tool for building SigNoz queries. Provides guidance on available fields, signal types, and query structure. Use this to understand what fields are available for traces, logs, and metrics before building queries."),
-		mcp.WithString("signal", mcp.Description("Signal type to get help for: traces, logs, or metrics")),
-		mcp.WithString("query_type", mcp.Description("Type of help needed: fields, structure, examples, or all")),
-	)
-
-	s.AddTool(queryHelper, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.Params.Arguments.(map[string]any)
-		signal, _ := args["signal"].(string)
-		queryType, _ := args["query_type"].(string)
-
-		if signal == "" {
-			signal = "traces"
-		}
-		if queryType == "" {
-			queryType = "all"
-		}
-
-		h.logger.Debug("Tool called: signoz_query_helper",
-			zap.String("signal", signal),
-			zap.String("query_type", queryType))
-
-		helpText := types.BuildQueryHelpText(signal, queryType)
-		return mcp.NewToolResultText(helpText), nil
-	})
 }
 
 func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
@@ -845,6 +847,35 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
+	getLogsAvailableFieldsTool := mcp.NewTool("signoz_get_logs_available_fields",
+		mcp.WithDescription("Get available field names for log queries"),
+		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get available fields for (e.g., 'service.name')")),
+		mcp.WithString("searchText", mcp.Description("Search text to filter available fields (optional)")),
+	)
+
+	s.AddTool(getLogsAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		fieldName, ok := args["fieldName"].(string)
+		if !ok || fieldName == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "severity_text"}, {"fieldName": "body"}`), nil
+		}
+
+		searchText := ""
+		if search, ok := args["searchText"].(string); ok && search != "" {
+			searchText = search
+		}
+
+		h.logger.Debug("Tool called: signoz_get_logs_available_fields", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		client := h.GetClient(ctx)
+		result, err := client.GetLogsAvailableFields(ctx, searchText)
+		if err != nil {
+			h.logger.Error("Failed to get logs available fields", zap.String("searchText", searchText), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
 }
 
 func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
@@ -873,6 +904,35 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		result, err := h.client.GetTraceFieldValues(ctx, fieldName, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get trace field values", zap.String("fieldName", fieldName), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getTraceAvailableFieldsTool := mcp.NewTool("signoz_get_trace_available_fields",
+		mcp.WithDescription("Get available field names for trace queries"),
+		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get available fields for (e.g., 'service.name')")),
+		mcp.WithString("searchText", mcp.Description("Search text to filter available fields (optional)")),
+	)
+
+	s.AddTool(getTraceAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		fieldName, ok := args["fieldName"].(string)
+		if !ok || fieldName == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "http.status_code"}, {"fieldName": "operation"}`), nil
+		}
+
+		searchText := ""
+		if search, ok := args["searchText"].(string); ok && search != "" {
+			searchText = search
+		}
+
+		h.logger.Debug("Tool called: signoz_get_trace_available_fields", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		client := h.GetClient(ctx)
+		result, err := client.GetTraceAvailableFields(ctx, searchText)
+		if err != nil {
+			h.logger.Error("Failed to get trace available fields", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
