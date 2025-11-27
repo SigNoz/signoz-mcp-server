@@ -412,12 +412,27 @@ Gets available field values for trace.
     - `fieldName` (required) - Field name to get values for (e.g., 'service.name', 'http.method')
     - `searchText` (optional) - Search text to filter values
 
+#### `signoz_get_logs_field_values`
+
+Gets available field values for log queries.
+
+- **Parameters**:
+    - `fieldName` (required) - Field name to get values for (e.g., 'service.name')
+    - `searchText` (optional) - Search text to filter values
+
+#### `signoz_get_metrics_field_values`
+
+Gets available field values for metric queries.
+
+- **Parameters**:
+    - `fieldName` (required) - Field name to get values for
+    - `searchText` (optional) - Search text to filter values
+
 #### `signoz_get_trace_available_fields`
 
 Gets available field names for trace queries.
 
 - **Parameters**:
-    - `fieldName` (required) - Field name to get available fields for (e.g., 'service.name')
     - `searchText` (optional) - Search text to filter available fields
 
 #### `signoz_get_logs_available_fields`
@@ -425,7 +440,6 @@ Gets available field names for trace queries.
 Gets available field names for log queries.
 
 - **Parameters**:
-    - `fieldName` (required) - Field name to get available fields for (e.g., 'service.name')
     - `searchText` (optional) - Search text to filter available fields
 
 #### `signoz_get_metrics_available_fields`
@@ -433,7 +447,6 @@ Gets available field names for log queries.
 Gets available field names for metric queries.
 
 - **Parameters**:
-    - `fieldName` (required) - Field name to get available fields for (e.g., 'service.name')
     - `searchText` (optional) - Search text to filter available fields
 
 #### `signoz_search_traces_by_service`

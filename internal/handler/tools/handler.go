@@ -165,6 +165,35 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 		return mcp.NewToolResultText(string(result)), nil
 	})
+
+	getMetricsFieldValuesTool := mcp.NewTool("signoz_get_metrics_field_values",
+		mcp.WithDescription("Get available field values for metric queries"),
+		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get values for (e.g., metric name)")),
+		mcp.WithString("searchText", mcp.Description("Search text to filter values (optional)")),
+	)
+
+	s.AddTool(getMetricsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		fieldName, ok := args["fieldName"].(string)
+		if !ok || fieldName == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "aws_ApplicationELB_ConsumedLCUs_max"}, {"fieldName": "cpu_usage"}`), nil
+		}
+
+		searchText := ""
+		if search, ok := args["searchText"].(string); ok && search != "" {
+			searchText = search
+		}
+
+		h.logger.Debug("Tool called: signoz_get_metrics_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		client := h.GetClient(ctx)
+		result, err := client.GetMetricsFieldValues(ctx, fieldName, searchText)
+		if err != nil {
+			h.logger.Error("Failed to get metrics field values", zap.String("fieldName", fieldName), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
 }
 
 func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
@@ -859,6 +888,35 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		result, err := client.GetLogsAvailableFields(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get logs available fields", zap.String("searchText", searchText), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	getLogsFieldValuesTool := mcp.NewTool("signoz_get_logs_field_values",
+		mcp.WithDescription("Get available field values for log queries"),
+		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name')")),
+		mcp.WithString("searchText", mcp.Description("Search text to filter values (optional)")),
+	)
+
+	s.AddTool(getLogsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		fieldName, ok := args["fieldName"].(string)
+		if !ok || fieldName == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "severity_text"}, {"fieldName": "body"}`), nil
+		}
+
+		searchText := ""
+		if search, ok := args["searchText"].(string); ok && search != "" {
+			searchText = search
+		}
+
+		h.logger.Debug("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		client := h.GetClient(ctx)
+		result, err := client.GetLogsFieldValues(ctx, fieldName, searchText)
+		if err != nil {
+			h.logger.Error("Failed to get logs field values", zap.String("fieldName", fieldName), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
