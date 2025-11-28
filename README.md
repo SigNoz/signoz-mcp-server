@@ -288,25 +288,25 @@ The MCP server provides the following tools that can be used through natural lan
 
 ### Tool Reference
 
-#### `list_metric_keys`
+#### `signoz_list_metric_keys`
 Lists all available metric keys from SigNoz.
 
-#### `search_metric_by_text`
+#### `signoz_search_metric_by_text`
 Searches metrics by text (uses SigNoz aggregate_attributes autocomplete).
 - **Parameters**: `searchText` (required) - Text to search for
 
-#### `list_alerts`
+#### `signoz_list_alerts`
 Lists all active alerts from SigNoz.
 
-#### `get_alert`
+#### `signoz_get_alert`
 Gets details of a specific alert rule.
 - **Parameters**: `ruleId` (required) - Alert rule ID
 
-#### `list_dashboards`
+#### `signoz_list_dashboards`
 Lists all dashboards with summaries (name, UUID, description, tags).
 - **Returns**: Simplified dashboard information for better LLM processing
 
-#### `get_dashboard`
+#### `signoz_get_dashboard`
 Gets complete dashboard configuration.
 - **Parameters**: `uuid` (required) - Dashboard UUID
 
@@ -337,15 +337,15 @@ Updates an existing dashboard.
   
 **Returns**
 A success confirmation only. No response body is provided.
-
-#### `list_services`
+  
+#### `signoz_list_services`
 Lists all services within a time range.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
     - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in nanoseconds (defaults to now)
 
-#### `get_service_top_operations`
+#### `signoz_get_service_top_operations`
 Gets top operations for a specific service.
 - **Parameters**:
     - `service` (required) - Service name
@@ -354,7 +354,7 @@ Gets top operations for a specific service.
     - `end` (optional) - End time in nanoseconds (defaults to now)
     - `tags` (optional) - JSON array of tags
 
-#### `get_alert_history`
+#### `signoz_get_alert_history`
 Gets alert history timeline for a specific rule.
 - **Parameters**:
     - `ruleId` (required) - Alert rule ID
@@ -365,22 +365,22 @@ Gets alert history timeline for a specific rule.
     - `limit` (optional) - Limit number of results (default: 20)
     - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
 
-#### `list_log_views`
+#### `signoz_list_log_views`
 Lists all saved log views from SigNoz.
 - **Returns**: Summary with name, ID, description, and query details
 
-#### `get_log_view`
+#### `signoz_get_log_view`
 Gets full details of a specific log view by ID.
 - **Parameters**: `viewId` (required) - Log view ID
 
-#### `get_logs_for_alert`
+#### `signoz_get_logs_for_alert`
 Gets logs related to a specific alert automatically.
 - **Parameters**:
     - `alertId` (required) - Alert rule ID
     - `timeRange` (optional) - Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
-#### `get_error_logs`
+#### `signoz_get_error_logs`
 Gets logs with ERROR or FATAL severity within a time range.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
@@ -389,7 +389,7 @@ Gets logs with ERROR or FATAL severity within a time range.
     - `service` (optional) - Service name to filter by
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
-#### `search_logs_by_service`
+#### `signoz_search_logs_by_service`
 Searches logs for a specific service within a time range.
 - **Parameters**:
     - `service` (required) - Service name to search logs for
@@ -400,13 +400,13 @@ Searches logs for a specific service within a time range.
     - `searchText` (optional) - Text to search for in log body
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
-#### `get_trace_field_values`
+#### `signoz_get_trace_field_values`
 Gets available field values for trace.
 - **Parameters**:
     - `fieldName` (required) - Field name to get values for (e.g., 'service.name', 'http.method')
     - `searchText` (optional) - Search text to filter values
 
-#### `search_traces_by_service`
+#### `signoz_search_traces_by_service`
 Searches traces for a specific service.
 - **Parameters**:
     - `service` (required) - Service name to search traces for
@@ -419,7 +419,7 @@ Searches traces for a specific service.
     - `maxDuration` (optional) - Maximum duration in nanoseconds
     - `limit` (optional) - Maximum number of traces to return (default: 100)
 
-#### `get_trace_details`
+#### `signoz_get_trace_details`
 Gets trace information including all spans and metadata.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get details for
@@ -428,7 +428,7 @@ Gets trace information including all spans and metadata.
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
 
-#### `get_trace_error_analysis`
+#### `signoz_get_trace_error_analysis`
 Analyzes error patterns in traces.
 - **Parameters**:
     - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
@@ -437,7 +437,7 @@ Analyzes error patterns in traces.
     - `service` (optional) - Service name to filter by
 - **Returns**: Traces with errors, useful for identifying patterns and affected services
 
-#### `get_trace_span_hierarchy`
+#### `signoz_get_trace_span_hierarchy`
 Gets trace span relationships and hierarchy.
 - **Parameters**:
     - `traceId` (required) - Trace ID to get span hierarchy for
@@ -487,7 +487,7 @@ All tools return JSON responses that are optimized for LLM consumption:
 | `SIGNOZ_API_KEY` | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes      |
 | `LOG_LEVEL` | Logging level: `info`(default), `debug`, `warn`, `error`                      | No       |
 | `TRANSPORT_MODE` | MCP transport mode: `stdio`(default) or `http`                                | No       |
-| `MCP_SERVER_PORT` | Port for HTTP transport mode              | Yes only when `TRANSPORT_MODE=http     |
+| `MCP_SERVER_PORT` | Port for HTTP transport mode              | Yes only when `TRANSPORT_MODE=http` |
 
 ## Claude Desktop Extension Setup
 
