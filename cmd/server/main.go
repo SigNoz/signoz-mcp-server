@@ -11,6 +11,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/logger"
 	mcpserver "github.com/SigNoz/signoz-mcp-server/internal/mcp-server"
+	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 )
 
 func main() {
@@ -37,6 +38,8 @@ func main() {
 
 	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
 	handler := tools.NewHandler(log, sigNozClient, cfg.URL)
+
+	dashboard.InitClickhouseSchema()
 
 	if err := mcpserver.NewMCPServer(log, handler, cfg).Start(); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))

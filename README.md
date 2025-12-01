@@ -17,6 +17,8 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **Traces**: Search, analyze, get hierarchy and relationship of traces.
 - **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
 - **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
+- **Create Dashboard**: Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. **Warning**: Requires full dashboard JSON which can consume large amounts of context window space.
+- **Update Dashboard**: Updates an existing dashboard using its UUID and a complete dashboard JSON object. Requires the entire post-update configuration and cannot accept partial patches.
 - **List Services**: Discover all services within specified time ranges.
 - **Service Top Operations**: Analyze performance metrics for specific services.
 - **Query Builder**: Generates query to get complex response.
@@ -255,6 +257,7 @@ The MCP server provides the following tools that can be used through natural lan
 ```
 "List all dashboards"
 "Show me the Host Metrics dashboard details"
+"Create a dashboard with a specified name, optional tags, and a widget visualizing a chosen metric."
 ```
 
 #### Service Analysis
@@ -307,6 +310,34 @@ Lists all dashboards with summaries (name, UUID, description, tags).
 Gets complete dashboard configuration.
 - **Parameters**: `uuid` (required) - Dashboard UUID
 
+#### `signoz_create_dashboard`
+Creates a dashboard.
+
+- **Parameters:**
+  - title (required) – Dashboard name
+  - description (optional) – Short summary of what the dashboard shows
+  - tags (optional) – List of tags
+  - layout (required) – Widget positioning grid
+  - variables (optional) – Map of variables available for use in queries
+  - widgets (required) – List of widgets added to the dashboard
+- **Returns**
+Dashboard metadata, layout array, widgets array, and stored dashboard config.
+
+### `signoz_update_dashboard`
+Updates an existing dashboard.
+
+- **Parameters**
+  - uuid (required) – Unique identifier of the dashboard to update
+  - title (required) – Dashboard name
+  - description (optional) – Short summary of what the dashboard shows
+  - tags (optional) – List of tags applied to the dashboard
+  - layout (required) – Full widget positioning grid
+  - variables (optional) – Map of variables available for use in queries
+  - widgets (required) – Complete set of widgets defining the updated dashboard
+  
+**Returns**
+A success confirmation only. No response body is provided.
+  
 #### `signoz_list_services`
 Lists all services within a time range.
 - **Parameters**:
