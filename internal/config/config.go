@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -22,8 +23,10 @@ const (
 )
 
 func LoadConfig() (*Config, error) {
+	// Trim trailing slash from URL to prevent double-slash issues in API paths
+	url := strings.TrimSuffix(getEnv(SignozURL, ""), "/")
 	return &Config{
-		URL:           getEnv(SignozURL, ""),
+		URL:           url,
 		APIKey:        getEnv(SignozApiKey, ""),
 		LogLevel:      getEnv(LogLevel, "info"),
 		TransportMode: getEnv(TransportMode, "stdio"),
