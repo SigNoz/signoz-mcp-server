@@ -404,7 +404,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		rawConfig, ok := req.Params.Arguments.(map[string]any)
 
 		if !ok || len(rawConfig) == 0 {
-			h.logger.Warn("Received empty or invalid arguments map from Claude.")
+			h.logger.Warn("Received empty or invalid arguments map.")
 			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
 		}
 
