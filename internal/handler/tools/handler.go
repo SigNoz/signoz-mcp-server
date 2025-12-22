@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -378,6 +379,312 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	})
+
+	createDashboardTool := mcp.NewTool(
+		"signoz_create_dashboard",
+		mcp.WithDescription(
+			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
+				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
+				"1. signoz://dashboard/instructions - REQUIRED: Dashboard structure and basics\n"+
+				"2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules\n"+
+				"3. signoz://dashboard/widgets-examples - REQUIRED: Complete widget examples with all required fields\n\n"+
+				"QUERY-SPECIFIC RESOURCES (read based on query type used):\n"+
+				"- For PromQL queries: signoz://dashboard/promql-example\n"+
+				"- For Query Builder queries: signoz://dashboard/query-builder-example\n"+
+				"- For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
+				"- For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
+				"- For ClickHouse SQL on traces: signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
+				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
+				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
+		),
+		mcp.WithInputSchema[types.Dashboard](),
+	)
+
+	s.AddTool(createDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+		if !ok || len(rawConfig) == 0 {
+			h.logger.Warn("Received empty or invalid arguments map.")
+			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
+		}
+
+		configJSON, err := json.Marshal(rawConfig)
+		if err != nil {
+			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
+			), nil
+		}
+
+		var dashboardConfig types.Dashboard
+		if err := json.Unmarshal(configJSON, &dashboardConfig); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Parameter decoding error: The provided JSON structure for the dashboard configuration is invalid. Error details: %s", err.Error()),
+			), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_create_dashboard", zap.String("title", dashboardConfig.Title))
+		client := h.GetClient(ctx)
+		data, err := client.CreateDashboard(ctx, dashboardConfig)
+
+		if err != nil {
+			h.logger.Error("Failed to create dashboard in SigNoz", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		}
+
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	updateDashboardTool := mcp.NewTool(
+		"signoz_update_dashboard",
+		mcp.WithDescription(
+			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
+				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
+				"The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications.\n\n"+
+				"REQUIRED RESOURCES (read ALL before generating output):\n"+
+				"1. signoz://dashboard/instructions\n"+
+				"2. signoz://dashboard/widgets-instructions\n"+
+				"3. signoz://dashboard/widgets-examples ← CRITICAL: Shows complete widget field structure\n\n"+
+				"CONDITIONAL RESOURCES (based on query type):\n"+
+				"• PromQL → signoz://dashboard/promql-example\n"+
+				"• Query Builder → signoz://dashboard/query-builder-example\n"+
+				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + clickhouse-logs-example\n"+
+				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + clickhouse-metrics-example\n"+
+				"• ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + clickhouse-traces-example\n\n"+
+				"WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields "+
+				"(id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks).",
+		),
+		mcp.WithInputSchema[types.UpdateDashboardInput](),
+	)
+
+	s.AddTool(updateDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+		if !ok || len(rawConfig) == 0 {
+			h.logger.Warn("Received empty or invalid arguments map from Claude.")
+			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
+		}
+
+		configJSON, err := json.Marshal(rawConfig)
+		if err != nil {
+			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
+			), nil
+		}
+
+		var updateDashboardConfig types.UpdateDashboardInput
+		if err := json.Unmarshal(configJSON, &updateDashboardConfig); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("Parameter decoding error: The provided JSON structure for the dashboard configuration is invalid. Error details: %s", err.Error()),
+			), nil
+		}
+
+		if updateDashboardConfig.UUID == "" {
+			h.logger.Warn("Empty uuid parameter")
+			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use list_dashboards tool to see available dashboards.`), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_update_dashboard", zap.String("title", updateDashboardConfig.Dashboard.Title))
+		client := h.GetClient(ctx)
+		err = client.UpdateDashboard(ctx, updateDashboardConfig.UUID, updateDashboardConfig.Dashboard)
+
+		if err != nil {
+			h.logger.Error("Failed to update dashboard in SigNoz", zap.Error(err))
+			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		}
+
+		return mcp.NewToolResultText("dashboard updated"), nil
+	})
+
+	// resources for create and update dashboard
+	clickhouseLogsSchemaResource := mcp.NewResource(
+		"signoz://dashboard/clickhouse-schema-for-logs",
+		"ClickHouse Logs Schema",
+		mcp.WithResourceDescription("ClickHouse schema for logs_v2, logs_v2_resource, tag_attributes_v2 and their distributed counterparts. requires dashboard instructions at signoz://dashboard/instructions"),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(clickhouseLogsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.LogsSchema,
+			},
+		}, nil
+	})
+
+	clickhouseLogsExample := mcp.NewResource(
+		"signoz://dashboard/clickhouse-logs-example",
+		"Clickhouse Examples for logs",
+		mcp.WithResourceDescription("ClickHouse SQL query examples for SigNoz logs. Includes resource filter patterns (CTE), timeseries queries, value queries, common use cases (Kubernetes clusters, error logs by service), and key patterns for timestamp filtering, attribute access (resource vs standard, indexed vs non-indexed), severity filters, variables, and performance optimization tips."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(clickhouseLogsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.ClickhouseSqlQueryForLogs,
+			},
+		}, nil
+	})
+
+	clickhouseMetricsSchemaResource := mcp.NewResource(
+		"signoz://dashboard/clickhouse-schema-for-metrics",
+		"ClickHouse Metrics Schema",
+		mcp.WithResourceDescription("ClickHouse schema for samples_v4, exp_hist, time_series_v4 (and 6hrs/1day variants) and their distributed counterparts. requires dashboard instructions at signoz://dashboard/instructions"),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(clickhouseMetricsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.MetricsSchema,
+			},
+		}, nil
+	})
+
+	clickhouseMetricsExample := mcp.NewResource(
+		"signoz://dashboard/clickhouse-metrics-example",
+		"Clickhouse Examples for Metrics",
+		mcp.WithResourceDescription("ClickHouse SQL query examples for SigNoz metrics. Includes basic queries , rate calculation patterns for counter metrics (using lagInFrame and runningDifference), error rate calculations (ratio of two metrics), histogram quantile queries for latency percentiles (P95, P99), and key patterns for time series table selection by granularity, timestamp filtering, label filtering, time interval aggregation, variables, and performance optimization"),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(clickhouseMetricsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.ClickhouseSqlQueryForMetrics,
+			},
+		}, nil
+	})
+
+	clickhouseTracesSchemaResource := mcp.NewResource(
+		"signoz://dashboard/clickhouse-schema-for-traces",
+		"ClickHouse Traces Schema",
+		mcp.WithResourceDescription("ClickHouse schema for signoz_index_v3, signoz_spans, signoz_error_index_v2, traces_v3_resource, dependency_graph_minutes_v2, trace_summary, top_level_operations and their distributed counterparts. requires dashboard instructions at signoz://dashboard/instructions"),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(clickhouseTracesSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.TracesSchema,
+			},
+		}, nil
+	})
+
+	clickhouseTracesExample := mcp.NewResource(
+		"signoz://dashboard/clickhouse-traces-example",
+		"Clickhouse Examples for Traces",
+		mcp.WithResourceDescription("ClickHouse SQL examples for SigNoz traces: resource filters, timeseries/value/table queries, span event extraction, latency analysis, and performance tips."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(clickhouseTracesExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.ClickhouseSqlQueryForTraces,
+			},
+		}, nil
+	})
+
+	promqlExample := mcp.NewResource(
+		"signoz://dashboard/promql-example",
+		"Promql Examples",
+		mcp.WithResourceDescription("PromQL guide for SigNoz: critical syntax rules for OpenTelemetry metrics with dots, formatting patterns, examples by metric type, and error prevention."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(promqlExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.PromqlQuery,
+			},
+		}, nil
+	})
+
+	queryBuilderExample := mcp.NewResource(
+		"signoz://dashboard/query-builder-example",
+		"Query Builder Examples",
+		mcp.WithResourceDescription("SigNoz Query Builder reference: CRITICAL OpenTelemetry metric naming conventions (dot vs underscore suffixes), filtering, aggregation, search syntax, operators, field existence behavior, full-text search, functions, advanced examples, and best practices."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(queryBuilderExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.Querybuilder,
+			},
+		}, nil
+	})
+
+	dashboardInstructions := mcp.NewResource(
+		"signoz://dashboard/instructions",
+		"Dashboard Basic Instructions",
+		mcp.WithResourceDescription("SigNoz dashboard basics: title, tags, description, and comprehensive variable configuration rules (types, properties, referencing, chaining)."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(dashboardInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.Basics,
+			},
+		}, nil
+	})
+
+	widgetsInstructions := mcp.NewResource(
+		"signoz://dashboard/widgets-instructions",
+		"Dashboard Basic Instructions",
+		mcp.WithResourceDescription("SigNoz dashboard widgets: 7 panel types (Bar, Histogram, List, Pie, Table, Timeseries, Value) with use cases, configuration options, and critical layout rules (grid coordinates, dimensions, legends)."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(widgetsInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.WidgetsInstructions,
+			},
+		}, nil
+	})
+
+	widgetsExamplesResource := mcp.NewResource(
+		"signoz://dashboard/widgets-examples",
+		"Dashboard Widgets Examples",
+		mcp.WithResourceDescription("Basic Example widgets"),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(widgetsExamplesResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     dashboard.WidgetExamples,
+			},
+		}, nil
+	})
+
 }
 
 func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
