@@ -116,6 +116,17 @@
     {
       "name": "signoz_get_metrics_available_fields",
       "description": "Get available field names for metric queries"
+    },
+      "name": "signoz_query_helper",
+      "description": "Helper for building SigNoz queries"
+    },
+    {
+      "name": "signoz_create_dashboard",
+      "description": "Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. CRITICAL: You MUST read these resources BEFORE generating any dashboard output: 1. signoz://dashboard/instructions - REQUIRED: Dashboard structure and basics 2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules 3. signoz://dashboard/widgets-examples - REQUIRED: Complete widget examples with all required fields QUERY-SPECIFIC RESOURCES (read based on query type used): - For PromQL queries: signoz://dashboard/promql-example - For Query Builder queries: signoz://dashboard/query-builder-example - For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example - For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example - For ClickHouse SQL on traces: signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example IMPORTANT: The widgets-examples resource contains complete, working widget configurations. You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated."
+    },
+    {
+      "name": "signoz_update_dashboard",
+      "description": "Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object. MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE. The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications. REQUIRED RESOURCES (read ALL before generating output): 1. signoz://dashboard/instructions 2. signoz://dashboard/widgets-instructions 3. signoz://dashboard/widgets-examples ← CRITICAL: Shows complete widget field structure CONDITIONAL RESOURCES (based on query type): • PromQL → signoz://dashboard/promql-example • Query Builder → signoz://dashboard/query-builder-example • ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + clickhouse-logs-example • ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + clickhouse-metrics-example • ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + clickhouse-traces-example WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks)."
     }
   ],
   "compatibility": {
