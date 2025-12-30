@@ -24,16 +24,20 @@ type Query struct {
 
 type QuerySpec struct {
 	Name         string        `json:"name"`
-	Signal       string        `json:"signal"`
+	Signal       string        `json:"signal,omitempty"` // For builder_query
 	StepInterval *int64        `json:"stepInterval,omitempty"`
 	Disabled     bool          `json:"disabled"`
-	Filter       *Filter       `json:"filter,omitempty"`
-	Limit        int           `json:"limit"`
-	Offset       int           `json:"offset"`
-	Order        []Order       `json:"order"`
-	Having       Having        `json:"having"`
-	SelectFields []SelectField `json:"selectFields"`
-	Aggregations []any         `json:"aggregations,omitempty"`
+	Filter       *Filter       `json:"filter,omitempty"`       // For builder_query
+	Limit        int           `json:"limit,omitempty"`        // For builder_query
+	Offset       int           `json:"offset,omitempty"`       // For builder_query
+	Order        []Order       `json:"order,omitempty"`        // For builder_query
+	Having       *Having       `json:"having,omitempty"`       // For builder_query
+	SelectFields []SelectField `json:"selectFields,omitempty"` // For builder_query
+	Aggregations []any         `json:"aggregations,omitempty"` // For builder_query
+	// PromQL-specific fields
+	Query  string `json:"query,omitempty"`  // For promql - the PromQL query string
+	Legend string `json:"legend,omitempty"` // For promql - legend format (e.g., "{{host}}")
+	Stats  bool   `json:"stats,omitempty"`  // For promql
 }
 
 type Order struct {
@@ -81,41 +85,69 @@ func (q *QueryPayload) Validate() error {
 	}
 
 	for i, query := range q.CompositeQuery.Queries {
-		if query.Type != "builder_query" {
-			continue
-		}
-
-		spec := query.Spec
-		signal := spec.Signal
-		queryName := spec.Name
+		queryName := query.Spec.Name
 		if queryName == "" {
 			queryName = fmt.Sprintf("query at position %d", i+1)
 		}
 
-		switch signal {
-		case "metrics":
+		spec := query.Spec
+
+		switch query.Type {
+		case "builder_query":
+			signal := spec.Signal
+			if signal == "" {
+				return fmt.Errorf("%s: builder_query requires signal field", queryName)
+			}
+
+			switch signal {
+			case "metrics":
+				if q.RequestType != "time_series" {
+					q.RequestType = "time_series"
+				}
+				if spec.StepInterval == nil || *spec.StepInterval <= 0 {
+					def := int64(60)
+					spec.StepInterval = &def
+				}
+
+			case "traces":
+				if q.RequestType != "raw" && q.RequestType != "trace" {
+					q.RequestType = "raw"
+				}
+				spec.StepInterval = nil
+
+			case "logs":
+				if q.RequestType != "raw" {
+					q.RequestType = "raw"
+				}
+				spec.StepInterval = nil
+
+			default:
+				return fmt.Errorf("%s: unknown signal type '%s'", queryName, signal)
+			}
+
+		case "promql":
+			// PromQL queries require a query string
+			if spec.Query == "" {
+				return fmt.Errorf("%s: promql query requires 'query' field with PromQL query string", queryName)
+			}
+			// PromQL queries should use time_series request type
 			if q.RequestType != "time_series" {
 				q.RequestType = "time_series"
 			}
-			if spec.StepInterval == nil || *spec.StepInterval <= 0 {
-				def := int64(60)
-				spec.StepInterval = &def
-			}
-
-		case "traces":
-			if q.RequestType != "raw" && q.RequestType != "trace" {
-				q.RequestType = "raw"
-			}
-			spec.StepInterval = nil
-
-		case "logs":
-			if q.RequestType != "raw" {
-				q.RequestType = "raw"
-			}
+			// Clear builder_query-only fields to avoid sending them to SigNoz
+			spec.Signal = ""
+			spec.Filter = nil
+			spec.Limit = 0
+			spec.Offset = 0
+			spec.Order = nil
+			spec.Having = nil
+			spec.SelectFields = nil
+			spec.Aggregations = nil
 			spec.StepInterval = nil
 
 		default:
-			return fmt.Errorf("%s: unknown signal type '%s'", queryName, signal)
+			// Unknown query type - allow it to pass through (might be supported by SigNoz)
+			continue
 		}
 
 		q.CompositeQuery.Queries[i].Spec = spec
@@ -149,7 +181,7 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},
-						Having: Having{Expression: ""},
+						Having: &Having{Expression: ""},
 						SelectFields: []SelectField{
 							{Name: "timestamp", FieldDataType: "string", Signal: "logs"},
 							{Name: "severity_text", FieldDataType: "string", Signal: "logs"},
@@ -188,7 +220,7 @@ func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, 
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},
-						Having: Having{Expression: ""},
+						Having: &Having{Expression: ""},
 						SelectFields: []SelectField{
 							{Name: "traceID", FieldDataType: "string", Signal: "traces"},
 							{Name: "spanID", FieldDataType: "string", Signal: "traces"},

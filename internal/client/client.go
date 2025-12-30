@@ -116,8 +116,17 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 	return body, nil
 }
 
-func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
+func (s *SigNoz) ListAlerts(ctx context.Context, activeOnly bool) (json.RawMessage, error) {
+	// For active alerts: use /api/v1/alerts (returns currently firing alerts)
+	// For resolved/inactive alerts: use /api/v1/rules (returns all rules with state field)
+	var url string
+	if activeOnly {
+		// Use /api/v1/alerts for active/firing alerts
+		url = fmt.Sprintf("%s/api/v1/alerts?active=true&inhibited=true&silenced=false", s.baseURL)
+	} else {
+		// Use /api/v1/rules for all rules (we'll filter for inactive state in handler)
+		url = fmt.Sprintf("%s/api/v1/rules", s.baseURL)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -131,7 +140,11 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	s.logger.Debug("Fetching alerts from SigNoz")
+	alertType := "active"
+	if !activeOnly {
+		alertType = "resolved"
+	}
+	s.logger.Debug("Fetching alerts from SigNoz", zap.String("type", alertType), zap.String("url", url))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -155,7 +168,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	s.logger.Debug("Successfully retrieved alerts", zap.Int("status", resp.StatusCode))
+	s.logger.Debug("Successfully retrieved alerts from SigNoz", zap.String("type", alertType), zap.Int("status", resp.StatusCode))
 	return body, nil
 }
 
@@ -899,16 +912,63 @@ func (s *SigNoz) GetMetricsFieldValues(ctx context.Context, fieldName string, se
 	return body, nil
 }
 
-func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, includeLogs bool, startTime, endTime int64) (json.RawMessage, error) {
 	if startTime == 0 || endTime == 0 {
 		return nil, fmt.Errorf("start and end time parameters are required")
 	}
 
-	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
-	limit := 1000
+	// Build trace query (always included)
+	// Use trace_id (with underscore) for filter expressions - traceID (camelCase) is only valid for select fields
+	traceFilterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
+	traceLimit := 1000
+	traceQueryPayload := types.BuildTracesQueryPayload(startTime, endTime, traceFilterExpression, traceLimit)
 
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
-	queryJSON, err := json.Marshal(queryPayload)
+	// Update trace query name to "traces" for clarity
+	if len(traceQueryPayload.CompositeQuery.Queries) > 0 {
+		traceQueryPayload.CompositeQuery.Queries[0].Spec.Name = "traces"
+	}
+
+	// If includeLogs is false, return just traces (backward compatible)
+	if !includeLogs {
+		queryJSON, err := json.Marshal(traceQueryPayload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal query payload: %w", err)
+		}
+		return s.QueryBuilderV5(ctx, queryJSON)
+	}
+
+	// Build composite query with both traces and logs
+	// Use trace_id (with underscore) for log filter expressions - traceID (camelCase) is only valid for select fields
+	logFilterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
+	logLimit := 100
+	logOffset := 0
+	logQueryPayload := types.BuildLogsQueryPayload(startTime, endTime, logFilterExpression, logLimit, logOffset)
+
+	// Update log query name to "logs" for clarity
+	if len(logQueryPayload.CompositeQuery.Queries) > 0 {
+		logQueryPayload.CompositeQuery.Queries[0].Spec.Name = "logs"
+	}
+
+	// Combine both queries into a single composite query
+	compositeQuery := &types.QueryPayload{
+		SchemaVersion: "v1",
+		Start:         startTime,
+		End:           endTime,
+		RequestType:   "raw",
+		CompositeQuery: types.CompositeQuery{
+			Queries: []types.Query{
+				traceQueryPayload.CompositeQuery.Queries[0], // Trace query
+				logQueryPayload.CompositeQuery.Queries[0],   // Log query
+			},
+		},
+		FormatOptions: types.FormatOptions{
+			FormatTableResultForUI: false,
+			FillGaps:               false,
+		},
+		Variables: map[string]any{},
+	}
+
+	queryJSON, err := json.Marshal(compositeQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
 	}
@@ -937,7 +997,8 @@ func (s *SigNoz) GetTraceSpanHierarchy(ctx context.Context, traceID string, star
 		return nil, fmt.Errorf("start and end time parameters are required")
 	}
 
-	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
+	// Use trace_id (with underscore) for filter expressions - traceID (camelCase) is only valid for select fields
+	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
 	limit := 1000
 	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
 	queryJSON, err := json.Marshal(queryPayload)

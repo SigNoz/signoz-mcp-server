@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -17,6 +18,14 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+)
+
+const (
+	// Timestamp parameter descriptions
+	startTimestampDesc   = "Start time (optional, defaults to 6 hours ago). Supports: numeric timestamps (milliseconds since epoch), ISO 8601/RFC3339 (e.g., '2006-01-02T15:04:05Z'), common formats (e.g., '2006-01-02 15:04:05'), relative times ('now', 'today', 'yesterday'), or natural language (e.g., 'Dec 3rd 5 PM', '5 PM')."
+	endTimestampDesc     = "End time (optional, defaults to now). Supports: numeric timestamps (milliseconds since epoch), ISO 8601/RFC3339 (e.g., '2006-01-02T15:04:05Z'), common formats (e.g., '2006-01-02 15:04:05'), relative times ('now', 'today', 'yesterday'), or natural language (e.g., 'Dec 3rd 5 PM', '5 PM')."
+	startTimestampNsDesc = "Start time in nanoseconds (optional, defaults to 6 hours ago). Supports: numeric timestamps (nanoseconds since epoch), ISO 8601/RFC3339 (e.g., '2006-01-02T15:04:05Z'), common formats (e.g., '2006-01-02 15:04:05'), relative times ('now', 'today', 'yesterday'), or natural language (e.g., 'Dec 3rd 5 PM', '5 PM')."
+	endTimestampNsDesc   = "End time in nanoseconds (optional, defaults to now). Supports: numeric timestamps (nanoseconds since epoch), ISO 8601/RFC3339 (e.g., '2006-01-02T15:04:05Z'), common formats (e.g., '2006-01-02 15:04:05'), relative times ('now', 'today', 'yesterday'), or natural language (e.g., 'Dec 3rd 5 PM', '5 PM')."
 )
 
 type Handler struct {
@@ -205,43 +214,243 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
-		mcp.WithDescription("List active alerts from SigNoz. Returns list of alert with: alert name, rule ID, severity, start time, end time, and state. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithDescription("List alerts from SigNoz. Returns list of alerts with: alert name, rule ID, severity, start time, end time, and state. Use 'activeOnly=true' (default) to get only currently firing alerts, or 'activeOnly=false' to get resolved alerts. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0, activeOnly=true."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
+		mcp.WithString("activeOnly", mcp.Description("If 'true' (default), returns only active/firing alerts. If 'false', returns resolved alerts. Use 'false' to investigate alerts that have already resolved.")),
 	)
 	s.AddTool(alertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_list_alerts")
+		h.logger.Info("Tool called: signoz_list_alerts")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
+		// Extract activeOnly parameter, default to true
+		activeOnly := true
+		if args, ok := req.Params.Arguments.(map[string]any); ok {
+			if ao, ok := args["activeOnly"].(bool); ok {
+				activeOnly = ao
+			} else if aoStr, ok := args["activeOnly"].(string); ok && aoStr != "" {
+				// Handle string "true"/"false" for compatibility
+				activeOnly = aoStr == "true"
+			}
+		}
+
 		client := h.GetClient(ctx)
-		alerts, err := client.ListAlerts(ctx)
+		alerts, err := client.ListAlerts(ctx, activeOnly)
 		if err != nil {
 			h.logger.Error("Failed to list alerts", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		// Debug: Log raw response preview
+		responsePreview := string(alerts)
+		if len(responsePreview) > 1000 {
+			responsePreview = responsePreview[:1000] + "..."
+		}
+		h.logger.Info("Raw alerts response", zap.String("response_preview", responsePreview), zap.Int("response_length", len(alerts)))
+
+		// Debug: Parse as generic map to inspect structure
+		var rawResponse map[string]interface{}
+		if err := json.Unmarshal(alerts, &rawResponse); err == nil {
+			// Extract top-level keys
+			topLevelKeys := make([]string, 0, len(rawResponse))
+			for k := range rawResponse {
+				topLevelKeys = append(topLevelKeys, k)
+			}
+
+			// Determine data type
+			dataType := "nil"
+			if rawResponse["data"] != nil {
+				dataType = fmt.Sprintf("%T", rawResponse["data"])
+			}
+
+			h.logger.Info("Response structure inspection",
+				zap.Strings("top_level_keys", topLevelKeys),
+				zap.Bool("has_data", rawResponse["data"] != nil),
+				zap.Bool("has_status", rawResponse["status"] != nil),
+				zap.String("data_type", dataType))
+
+			// Log first item structure if data is an array
+			if dataArray, ok := rawResponse["data"].([]interface{}); ok && len(dataArray) > 0 {
+				if firstItem, ok := dataArray[0].(map[string]interface{}); ok {
+					firstItemKeys := make([]string, 0, len(firstItem))
+					for k := range firstItem {
+						firstItemKeys = append(firstItemKeys, k)
+					}
+					h.logger.Info("First item structure",
+						zap.Strings("first_item_keys", firstItemKeys),
+						zap.Any("first_item_id", firstItem["id"]),
+						zap.Any("first_item_ruleId", firstItem["ruleId"]),
+						zap.Any("first_item_labels", firstItem["labels"]))
+				}
+			}
+		}
+
+		// Parse response - handle multiple possible formats
+		var alertsList []types.Alert
+
+		// Try to parse as the expected APIAlertsResponse format first
 		var apiResponse types.APIAlertsResponse
-		if err := json.Unmarshal(alerts, &apiResponse); err != nil {
-			h.logger.Error("Failed to parse alerts response", zap.Error(err), zap.String("response", string(alerts)))
-			return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
+		if err := json.Unmarshal(alerts, &apiResponse); err == nil && len(apiResponse.Data) > 0 {
+			// Standard format: {status: "success", data: [{labels: {...}, status: {...}, ...}]}
+			h.logger.Info("Parsed as APIAlertsResponse format",
+				zap.String("status", apiResponse.Status),
+				zap.Int("data_count", len(apiResponse.Data)))
+
+			alertsList = make([]types.Alert, 0, len(apiResponse.Data))
+			for _, apiAlert := range apiResponse.Data {
+				alertsList = append(alertsList, types.Alert{
+					Alertname: apiAlert.Labels.Alertname,
+					RuleID:    apiAlert.Labels.RuleID,
+					Severity:  apiAlert.Labels.Severity,
+					StartsAt:  apiAlert.StartsAt,
+					EndsAt:    apiAlert.EndsAt,
+					State:     apiAlert.Status.State,
+				})
+			}
+		} else {
+			// Try alternative formats
+			var rawResponse map[string]interface{}
+			if err := json.Unmarshal(alerts, &rawResponse); err != nil {
+				h.logger.Error("Failed to parse alerts response", zap.Error(err), zap.String("response", string(alerts)))
+				return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
+			}
+
+			// Extract data array from various possible locations
+			var dataArray []interface{}
+			if data, ok := rawResponse["data"].([]interface{}); ok {
+				// Direct array: {data: [...]}
+				dataArray = data
+			} else if dataMap, ok := rawResponse["data"].(map[string]interface{}); ok {
+				// Nested object with rules array: {data: {rules: [...]}}
+				if rules, ok := dataMap["rules"].([]interface{}); ok {
+					dataArray = rules
+				} else if items, ok := dataMap["items"].([]interface{}); ok {
+					dataArray = items
+				} else if alerts, ok := dataMap["alerts"].([]interface{}); ok {
+					dataArray = alerts
+				}
+			} else if rawResponse["data"] == nil {
+				// Try direct array format
+				var directArray []interface{}
+				if err := json.Unmarshal(alerts, &directArray); err == nil {
+					dataArray = directArray
+				}
+			}
+
+			if len(dataArray) == 0 {
+				statusStr := "unknown"
+				if status, ok := rawResponse["status"].(string); ok {
+					statusStr = status
+				}
+				h.logger.Info("Parsed alerts structure - empty data",
+					zap.String("status", statusStr),
+					zap.Int("data_count", 0))
+			} else {
+				h.logger.Info("Parsed as alternative format",
+					zap.Int("data_count", len(dataArray)))
+
+				alertsList = make([]types.Alert, 0, len(dataArray))
+				for _, item := range dataArray {
+					itemMap, ok := item.(map[string]interface{})
+					if !ok {
+						continue
+					}
+
+					// Extract ruleId from various possible locations
+					var ruleID string
+					if id, ok := itemMap["id"].(string); ok {
+						ruleID = id
+					} else if rid, ok := itemMap["ruleId"].(string); ok {
+						ruleID = rid
+					} else if labels, ok := itemMap["labels"].(map[string]interface{}); ok {
+						if rid, ok := labels["ruleId"].(string); ok {
+							ruleID = rid
+						} else if id, ok := labels["id"].(string); ok {
+							ruleID = id
+						}
+					}
+
+					// Extract alertname
+					var alertname string
+					if name, ok := itemMap["alert"].(string); ok {
+						// /api/v1/rules uses "alert" field
+						alertname = name
+					} else if name, ok := itemMap["alertname"].(string); ok {
+						alertname = name
+					} else if labels, ok := itemMap["labels"].(map[string]interface{}); ok {
+						if name, ok := labels["alertname"].(string); ok {
+							alertname = name
+						}
+					} else if name, ok := itemMap["name"].(string); ok {
+						alertname = name
+					}
+
+					// Extract severity
+					var severity string
+					if sev, ok := itemMap["severity"].(string); ok {
+						severity = sev
+					} else if labels, ok := itemMap["labels"].(map[string]interface{}); ok {
+						if sev, ok := labels["severity"].(string); ok {
+							severity = sev
+						}
+					}
+
+					// Extract state
+					var state string
+					if st, ok := itemMap["state"].(string); ok {
+						state = st
+					} else if status, ok := itemMap["status"].(map[string]interface{}); ok {
+						if st, ok := status["state"].(string); ok {
+							state = st
+						}
+					}
+
+					// Extract timestamps
+					var startsAt, endsAt string
+					if st, ok := itemMap["startsAt"].(string); ok {
+						startsAt = st
+					}
+					if et, ok := itemMap["endsAt"].(string); ok {
+						endsAt = et
+					}
+
+					// Only add if we have at least a ruleID
+					if ruleID != "" {
+						alertsList = append(alertsList, types.Alert{
+							Alertname: alertname,
+							RuleID:    ruleID,
+							Severity:  severity,
+							StartsAt:  startsAt,
+							EndsAt:    endsAt,
+							State:     state,
+						})
+					}
+				}
+			}
 		}
 
-		// takes only meaningful data
-		alertsList := make([]types.Alert, 0, len(apiResponse.Data))
-		for _, apiAlert := range apiResponse.Data {
-			alertsList = append(alertsList, types.Alert{
-				Alertname: apiAlert.Labels.Alertname,
-				RuleID:    apiAlert.Labels.RuleID,
-				Severity:  apiAlert.Labels.Severity,
-				StartsAt:  apiAlert.StartsAt,
-				EndsAt:    apiAlert.EndsAt,
-				State:     apiAlert.Status.State,
-			})
+		// Filter alerts based on activeOnly parameter
+		// When activeOnly=false (using /api/v1/rules), filter to only show inactive/resolved alerts
+		filteredAlerts := alertsList
+		if !activeOnly {
+			// Filter for resolved/inactive alerts from /api/v1/rules
+			// Rules have state: "inactive" for resolved alerts, "active" or "firing" for active ones
+			filteredAlerts = make([]types.Alert, 0, len(alertsList))
+			for _, alert := range alertsList {
+				// Include only inactive alerts (from /api/v1/rules endpoint)
+				state := alert.State
+				if state == "inactive" {
+					filteredAlerts = append(filteredAlerts, alert)
+				}
+			}
+			h.logger.Info("Filtered alerts for resolved/inactive only",
+				zap.Int("total_rules", len(alertsList)),
+				zap.Int("inactive_rules", len(filteredAlerts)))
 		}
 
-		total := len(alertsList)
-		alertsArray := make([]any, len(alertsList))
-		for i, v := range alertsList {
+		total := len(filteredAlerts)
+		alertsArray := make([]any, len(filteredAlerts))
+		for i, v := range filteredAlerts {
 			alertsArray[i] = v
 		}
 		pagedAlerts := paginate.Array(alertsArray, offset, limit)
@@ -270,7 +479,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID (UUID format)`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_alert", zap.String("ruleId", ruleID))
+		h.logger.Info("Tool called: signoz_get_alert", zap.String("ruleId", ruleID))
 		client := h.GetClient(ctx)
 		respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 		if err != nil {
@@ -285,8 +494,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
+		mcp.WithString("start", mcp.Description(startTimestampDesc)),
+		mcp.WithString("end", mcp.Description(endTimestampDesc)),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
 		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
@@ -305,11 +514,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		var start, end int64
 		if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
 			h.logger.Warn("Invalid start timestamp format", zap.String("start", startStr), zap.Error(err))
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected numeric timestamp (milliseconds since epoch), ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "24h")`, startStr)), nil
 		}
 		if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
 			h.logger.Warn("Invalid end timestamp format", zap.String("end", endStr), zap.Error(err))
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected numeric timestamp (milliseconds since epoch), ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "24h")`, endStr)), nil
 		}
 
 		_, offset := paginate.ParseParams(args)
@@ -346,7 +555,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			},
 		}
 
-		h.logger.Debug("Tool called: signoz_get_alert_history",
+		h.logger.Info("Tool called: signoz_get_alert_history",
 			zap.String("ruleId", ruleID),
 			zap.Int64("start", start),
 			zap.Int64("end", end),
@@ -370,7 +579,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering dashboard handlers")
 
 	tool := mcp.NewTool("signoz_list_dashboards",
-		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific dashboard, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific dashboard, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0. Supports optional regex filtering via 'namePattern' parameter to filter by name or description."),
+		mcp.WithString("namePattern", mcp.Description("Optional regex pattern to filter dashboards by name or description. Matches if pattern is found in either field. Example: 'production.*api.*server' to find production API server dashboards. Case-sensitive.")),
 		mcp.WithString("limit", mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
@@ -378,6 +588,14 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Debug("Tool called: signoz_list_dashboards")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
+		// Extract namePattern if provided
+		namePattern := ""
+		if args, ok := req.Params.Arguments.(map[string]any); ok {
+			if pattern, ok := args["namePattern"].(string); ok && pattern != "" {
+				namePattern = pattern
+			}
+		}
 
 		client := h.GetClient(ctx)
 		result, err := client.ListDashboards(ctx)
@@ -396,6 +614,40 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		if !ok {
 			h.logger.Error("Invalid dashboards response format", zap.Any("data", dashboards["data"]))
 			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+		}
+
+		// Apply regex filtering if namePattern is provided
+		if namePattern != "" {
+			re, err := regexp.Compile(namePattern)
+			if err != nil {
+				h.logger.Warn("Invalid regex pattern", zap.String("pattern", namePattern), zap.Error(err))
+				return mcp.NewToolResultError(fmt.Sprintf("Invalid regex pattern: %s", err.Error())), nil
+			}
+
+			filteredData := make([]any, 0)
+			for _, dashboard := range data {
+				if dash, ok := dashboard.(map[string]any); ok {
+					name := ""
+					desc := ""
+					// The client already simplifies the data, so name and description are at top level
+					if n, ok := dash["name"].(string); ok {
+						name = n
+					} else if n, ok := dash["name"].(interface{}); ok && n != nil {
+						name = fmt.Sprintf("%v", n)
+					}
+					if d, ok := dash["description"].(string); ok {
+						desc = d
+					} else if d, ok := dash["description"].(interface{}); ok && d != nil {
+						desc = fmt.Sprintf("%v", d)
+					}
+
+					// Match if regex matches name OR description
+					if re.MatchString(name) || re.MatchString(desc) {
+						filteredData = append(filteredData, dashboard)
+					}
+				}
+			}
+			data = filteredData
 		}
 
 		total := len(data)
@@ -443,8 +695,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	listTool := mcp.NewTool("signoz_list_services",
 		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific service, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
+		mcp.WithString("start", mcp.Description(startTimestampNsDesc)),
+		mcp.WithString("end", mcp.Description(endTimestampNsDesc)),
 		mcp.WithString("limit", mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
@@ -485,8 +737,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Get top operations for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
+		mcp.WithString("start", mcp.Description(startTimestampNsDesc)),
+		mcp.WithString("end", mcp.Description(endTimestampNsDesc)),
 		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
 	)
 
@@ -555,6 +807,46 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
 		}
 
+		// Preprocess start/end timestamps if they're strings (human-readable formats)
+		now := time.Now()
+		if startVal, ok := queryObj["start"]; ok {
+			if startStr, ok := startVal.(string); ok {
+				// Try parsing as human-readable date/time string
+				if parsedTime, err := timeutil.ParseDateTimeString(startStr, now); err == nil {
+					parsedMs := parsedTime.UnixMilli()
+					queryObj["start"] = parsedMs
+					h.logger.Debug("Parsed start timestamp from string", zap.String("input", startStr), zap.Int64("parsed", parsedMs))
+				} else {
+					// Try parsing as numeric string
+					if numVal, err := strconv.ParseInt(startStr, 10, 64); err == nil {
+						queryObj["start"] = numVal
+					} else {
+						h.logger.Warn("Failed to parse start timestamp", zap.String("value", startStr), zap.Error(err))
+						return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected numeric timestamp (milliseconds since epoch), ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), time range (e.g., "24h", "7d"), or natural language (e.g., "Dec 3rd 5 PM")`, startStr)), nil
+					}
+				}
+			}
+		}
+
+		if endVal, ok := queryObj["end"]; ok {
+			if endStr, ok := endVal.(string); ok {
+				// Try parsing as human-readable date/time string
+				if parsedTime, err := timeutil.ParseDateTimeString(endStr, now); err == nil {
+					parsedMs := parsedTime.UnixMilli()
+					queryObj["end"] = parsedMs
+					h.logger.Debug("Parsed end timestamp from string", zap.String("input", endStr), zap.Int64("parsed", parsedMs))
+				} else {
+					// Try parsing as numeric string
+					if numVal, err := strconv.ParseInt(endStr, 10, 64); err == nil {
+						queryObj["end"] = numVal
+					} else {
+						h.logger.Warn("Failed to parse end timestamp", zap.String("value", endStr), zap.Error(err))
+						return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected numeric timestamp (milliseconds since epoch), ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), time range (e.g., "24h", "7d"), or natural language (e.g., "Dec 3rd 5 PM")`, endStr)), nil
+					}
+				}
+			}
+		}
+
 		queryJSON, err := json.Marshal(queryObj)
 		if err != nil {
 			h.logger.Error("Failed to marshal query object", zap.Error(err))
@@ -600,7 +892,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(listLogViewsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_list_log_views")
+		h.logger.Info("Tool called: signoz_list_log_views")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		client := h.GetClient(ctx)
@@ -610,20 +902,72 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		// Debug: Log raw response preview (use Error level for visibility during debugging)
+		responsePreview := string(result)
+		if len(responsePreview) > 1000 {
+			responsePreview = responsePreview[:1000] + "..."
+		}
+		h.logger.Error("Raw log views response", zap.String("response_preview", responsePreview), zap.Int("response_length", len(result)))
+
 		var logViews map[string]any
 		if err := json.Unmarshal(result, &logViews); err != nil {
 			h.logger.Error("Failed to parse log views response", zap.Error(err))
 			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 		}
 
-		data, ok := logViews["data"].([]any)
-		if !ok {
-			h.logger.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
-			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+		// Debug: Log parsed structure and data type (use Error level for visibility during debugging)
+		h.logger.Error("Parsed log views structure",
+			zap.Any("logViews", logViews),
+			zap.String("dataType", fmt.Sprintf("%T", logViews["data"])),
+			zap.Any("dataValue", logViews["data"]))
+
+		// Debug: Check data before type assertion
+		if logViews["data"] == nil {
+			h.logger.Error("logViews['data'] is nil")
+		} else {
+			h.logger.Error("logViews['data'] details",
+				zap.Any("data", logViews["data"]),
+				zap.String("type", fmt.Sprintf("%T", logViews["data"])))
 		}
 
-		total := len(data)
-		pagedData := paginate.Array(data, offset, limit)
+		// Handle different response structures
+		var dataArray []any
+
+		if data, ok := logViews["data"].([]any); ok {
+			// Direct array (expected case)
+			dataArray = data
+		} else if dataObj, ok := logViews["data"].(map[string]any); ok {
+			// Data is an object - check common nested array keys
+			if items, ok := dataObj["items"].([]any); ok {
+				dataArray = items
+			} else if views, ok := dataObj["views"].([]any); ok {
+				dataArray = views
+			} else if results, ok := dataObj["results"].([]any); ok {
+				dataArray = results
+			} else {
+				// Log all keys for debugging
+				keys := make([]string, 0, len(dataObj))
+				for k := range dataObj {
+					keys = append(keys, k)
+				}
+				h.logger.Error("Could not find array in data object",
+					zap.Any("dataObject", dataObj),
+					zap.Strings("availableKeys", keys))
+				return mcp.NewToolResultError("invalid response format: data object does not contain array"), nil
+			}
+		} else if logViews["data"] == nil {
+			// Empty response
+			dataArray = []any{}
+		} else {
+			// Unknown structure
+			h.logger.Error("Unknown data structure",
+				zap.Any("data", logViews["data"]),
+				zap.String("dataType", fmt.Sprintf("%T", logViews["data"])))
+			return mcp.NewToolResultError(fmt.Sprintf("invalid response format: unexpected data type %T", logViews["data"])), nil
+		}
+
+		total := len(dataArray)
+		pagedData := paginate.Array(dataArray, offset, limit)
 
 		resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 		if err != nil {
@@ -650,7 +994,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use signoz_list_log_views tool to see available log views.`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
+		h.logger.Info("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
 		client := h.GetClient(ctx)
 		data, err := client.GetLogView(ctx, viewID)
 		if err != nil {
@@ -783,10 +1127,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, end)), nil
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
@@ -797,7 +1141,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_error_logs", zap.String("start", start), zap.String("end", end))
+		h.logger.Info("Tool called: signoz_get_error_logs", zap.String("start", start), zap.String("end", end))
 		client := h.GetClient(ctx)
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
@@ -850,10 +1194,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, end)), nil
 		}
 
 		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
@@ -864,7 +1208,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
+		h.logger.Info("Tool called: signoz_search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
 		client := h.GetClient(ctx)
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
@@ -888,7 +1232,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_logs_available_fields", zap.String("searchText", searchText))
+		h.logger.Info("Tool called: signoz_get_logs_available_fields", zap.String("searchText", searchText))
 		client := h.GetClient(ctx)
 		result, err := client.GetLogsAvailableFields(ctx, searchText)
 		if err != nil {
@@ -922,7 +1266,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		h.logger.Info("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 		client := h.GetClient(ctx)
 		result, err := client.GetLogsFieldValues(ctx, fieldName, searchText)
 		if err != nil {
@@ -1048,10 +1392,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, end)), nil
 		}
 
 		queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
@@ -1073,12 +1417,13 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
-		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 6 hours if no time specified."),
+		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 6 hours if no time specified. Set includeLogs=true to also retrieve associated logs for this trace in the same call."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
+		mcp.WithString("includeLogs", mcp.Description("Include associated logs for this trace (true/false, default: false). When true, returns both trace spans and logs in a single response.")),
 	)
 
 	s.AddTool(getTraceDetailsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1096,16 +1441,21 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			includeSpans = includeStr == "true"
 		}
 
-		var startTime, endTime int64
-		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
-		}
-		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+		includeLogs := false
+		if includeStr, ok := args["includeLogs"].(string); ok && includeStr != "" {
+			includeLogs = includeStr == "true"
 		}
 
-		h.logger.Debug("Tool called: signoz_get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
-		result, err := h.client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
+		var startTime, endTime int64
+		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, start)), nil
+		}
+		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, end)), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.Bool("includeLogs", includeLogs), zap.String("start", start), zap.String("end", end))
+		result, err := h.client.GetTraceDetails(ctx, traceID, includeSpans, includeLogs, startTime, endTime)
 		if err != nil {
 			h.logger.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1133,10 +1483,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, end)), nil
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
@@ -1168,10 +1518,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, start)), nil
 		}
 		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: "%s". Expected numeric timestamp, ISO 8601 format (e.g., "2006-01-02T15:04:05Z"), relative time ("now", "today", "yesterday"), natural language (e.g., "Dec 3rd 5 PM"), or use "timeRange" parameter (e.g., "1h", "24h")`, end)), nil
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))

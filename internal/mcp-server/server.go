@@ -54,6 +54,12 @@ func (m *MCPServer) startStdio(s *server.MCPServer) error {
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Log incoming request
+		m.logger.Info("Incoming MCP request",
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+			zap.String("remote_addr", r.RemoteAddr))
+
 		// Extract Authorization header
 		authHeader := r.Header.Get("Authorization")
 
