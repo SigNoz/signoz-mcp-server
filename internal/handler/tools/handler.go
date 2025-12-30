@@ -214,10 +214,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
-		mcp.WithDescription("List alerts from SigNoz. Returns list of alerts with: alert name, rule ID, severity, start time, end time, and state. Use 'activeOnly=true' (default) to get only currently firing alerts, or 'activeOnly=false' to get resolved alerts. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0, activeOnly=true."),
+		mcp.WithDescription("List alerts from SigNoz. Returns list of alerts with: alert name, rule ID, severity, start time, end time, and state. Use 'activeOnly=true' (default) to get only currently firing alerts, or 'activeOnly=false' to get resolved alerts. ⚠️ CRITICAL: When activeOnly=false, there may be HUNDREDS of resolved alerts. ALWAYS use 'namePattern' regex parameter to filter by alert name to avoid returning too many results and consuming excessive tokens/context. Example: namePattern='5xx|error' to find alerts containing '5xx' or 'error'. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0, activeOnly=true."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
-		mcp.WithString("activeOnly", mcp.Description("If 'true' (default), returns only active/firing alerts. If 'false', returns resolved alerts. Use 'false' to investigate alerts that have already resolved.")),
+		mcp.WithString("activeOnly", mcp.Description("If 'true' (default), returns only active/firing alerts. If 'false', returns resolved alerts. Use 'false' to investigate alerts that have already resolved. ⚠️ When activeOnly=false, STRONGLY RECOMMEND using 'namePattern' to filter alerts by name.")),
+		mcp.WithString("namePattern", mcp.Description("⚠️ STRONGLY RECOMMENDED when activeOnly=false: Optional regex pattern to filter alerts by alert name. When activeOnly=false, there may be hundreds of resolved alerts - ALWAYS use namePattern to filter by alert name to avoid returning too many results and consuming excessive tokens. Example: '5xx|error|timeout' to find alerts containing those terms, or 'production.*api.*server' for production API server alerts. Case-sensitive. If you're looking for a specific alert, use a pattern that matches its name.")),
 	)
 	s.AddTool(alertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		h.logger.Info("Tool called: signoz_list_alerts")
@@ -225,12 +226,17 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 		// Extract activeOnly parameter, default to true
 		activeOnly := true
+		namePattern := ""
 		if args, ok := req.Params.Arguments.(map[string]any); ok {
 			if ao, ok := args["activeOnly"].(bool); ok {
 				activeOnly = ao
 			} else if aoStr, ok := args["activeOnly"].(string); ok && aoStr != "" {
 				// Handle string "true"/"false" for compatibility
 				activeOnly = aoStr == "true"
+			}
+			// Extract namePattern if provided
+			if pattern, ok := args["namePattern"].(string); ok && pattern != "" {
+				namePattern = pattern
 			}
 		}
 
@@ -448,12 +454,43 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				zap.Int("inactive_rules", len(filteredAlerts)))
 		}
 
+		// Apply regex filtering if namePattern is provided
+		if namePattern != "" {
+			re, err := regexp.Compile(namePattern)
+			if err != nil {
+				h.logger.Warn("Invalid regex pattern", zap.String("pattern", namePattern), zap.Error(err))
+				return mcp.NewToolResultError(fmt.Sprintf("Invalid regex pattern: %s", err.Error())), nil
+			}
+
+			beforeCount := len(filteredAlerts)
+			filteredByName := make([]types.Alert, 0, len(filteredAlerts))
+			for _, alert := range filteredAlerts {
+				// Match if regex matches alertname
+				if re.MatchString(alert.Alertname) {
+					filteredByName = append(filteredByName, alert)
+				}
+			}
+			filteredAlerts = filteredByName
+			h.logger.Info("Applied namePattern filter",
+				zap.String("pattern", namePattern),
+				zap.Int("before_count", beforeCount),
+				zap.Int("after_count", len(filteredAlerts)))
+		}
+
 		total := len(filteredAlerts)
+		h.logger.Info("Pagination calculation",
+			zap.Int("total_filtered_alerts", total),
+			zap.Int("offset", offset),
+			zap.Int("limit", limit),
+			zap.Bool("activeOnly", activeOnly))
 		alertsArray := make([]any, len(filteredAlerts))
 		for i, v := range filteredAlerts {
 			alertsArray[i] = v
 		}
 		pagedAlerts := paginate.Array(alertsArray, offset, limit)
+		h.logger.Info("Pagination result",
+			zap.Int("paged_count", len(pagedAlerts)),
+			zap.Int("total", total))
 
 		resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 		if err != nil {
