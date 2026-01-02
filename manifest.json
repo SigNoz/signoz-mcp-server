@@ -106,8 +106,16 @@
       "description": "Execute SigNoz Query Builder v5 query"
     },
     {
-      "name": "signoz_query_helper",
-      "description": "Helper for building SigNoz queries"
+      "name": "signoz_get_trace_available_fields",
+      "description": "Get available field names for trace queries"
+    },
+    {
+      "name": "signoz_get_logs_available_fields",
+      "description": "Get available field names for log queries"
+    },
+    {
+      "name": "signoz_get_metrics_available_fields",
+      "description": "Get available field names for metric queries"
     },
     {
       "name": "signoz_create_dashboard",
