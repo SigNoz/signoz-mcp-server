@@ -282,6 +282,191 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(respJSON)), nil
 	})
 
+	createAlertTool := mcp.NewTool("signoz_create_alert",
+		mcp.WithDescription("Create a new alert rule in SigNoz. Supports threshold-based alerts on metrics, logs, or traces."),
+		mcp.WithString("alert", mcp.Required(), mcp.Description("Name of the alert rule")),
+		mcp.WithString("alertType", mcp.Required(), mcp.Description("Type of alert: METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, or EXCEPTIONS_BASED_ALERT")),
+		mcp.WithString("ruleType", mcp.Description("Type of rule: threshold_rule (default) or prom_rule")),
+		mcp.WithString("severity", mcp.Description("Severity level: info, warning, or critical (default: warning)")),
+		mcp.WithString("description", mcp.Description("Description of what this alert monitors")),
+		mcp.WithString("dataSource", mcp.Required(), mcp.Description("Data source to query: metrics, logs, or traces")),
+		mcp.WithString("aggregateOperator", mcp.Required(), mcp.Description("Aggregation operator: avg, sum, min, max, count, p50, p75, p90, p95, p99, rate, etc.")),
+		mcp.WithString("aggregateAttribute", mcp.Required(), mcp.Description("Attribute to aggregate on (e.g., 'durationNano' for traces, metric name for metrics)")),
+		mcp.WithString("filterKey", mcp.Description("Optional filter key (e.g., 'name' for operation name, 'service.name' for service)")),
+		mcp.WithString("filterOp", mcp.Description("Filter operator: =, !=, in, nin, contains, ncontains, regex, nregex")),
+		mcp.WithString("filterValue", mcp.Description("Filter value to match")),
+		mcp.WithString("conditionOp", mcp.Required(), mcp.Description("Condition operator: >, <, >=, <=, ==, !=")),
+		mcp.WithNumber("threshold", mcp.Required(), mcp.Description("Threshold value to trigger alert")),
+		mcp.WithString("thresholdUnit", mcp.Description("Unit for threshold (e.g., 'ms' for milliseconds, 's' for seconds)")),
+		mcp.WithString("evalWindow", mcp.Description("Evaluation window: 5m0s, 10m0s, 15m0s, 30m0s, 1h0m0s (default: 5m0s)")),
+		mcp.WithBoolean("disabled", mcp.Description("Whether the alert is disabled (default: false)")),
+		mcp.WithBoolean("broadcastToAll", mcp.Description("Send to all notification channels (default: false)")),
+	)
+
+	s.AddTool(createAlertTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.Params.Arguments.(map[string]any)
+
+		alertName, ok := args["alert"].(string)
+		if !ok || alertName == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "alert" must be a non-empty string`), nil
+		}
+
+		alertType, ok := args["alertType"].(string)
+		if !ok || alertType == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "alertType" must be one of: METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT`), nil
+		}
+
+		dataSource, ok := args["dataSource"].(string)
+		if !ok || dataSource == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "dataSource" must be one of: metrics, logs, traces`), nil
+		}
+
+		aggregateOperator, ok := args["aggregateOperator"].(string)
+		if !ok || aggregateOperator == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "aggregateOperator" is required`), nil
+		}
+
+		aggregateAttribute, ok := args["aggregateAttribute"].(string)
+		if !ok || aggregateAttribute == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "aggregateAttribute" is required`), nil
+		}
+
+		conditionOp, ok := args["conditionOp"].(string)
+		if !ok || conditionOp == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "conditionOp" must be one of: >, <, >=, <=, ==, !=`), nil
+		}
+
+		threshold, ok := args["threshold"].(float64)
+		if !ok {
+			return mcp.NewToolResultError(`Parameter validation failed: "threshold" must be a number`), nil
+		}
+
+		// Optional parameters with defaults
+		ruleType := "threshold_rule"
+		if rt, ok := args["ruleType"].(string); ok && rt != "" {
+			ruleType = rt
+		}
+
+		severity := "warning"
+		if sev, ok := args["severity"].(string); ok && sev != "" {
+			severity = sev
+		}
+
+		evalWindow := "5m0s"
+		if ew, ok := args["evalWindow"].(string); ok && ew != "" {
+			evalWindow = ew
+		}
+
+		description := ""
+		if desc, ok := args["description"].(string); ok {
+			description = desc
+		}
+
+		thresholdUnit := ""
+		if tu, ok := args["thresholdUnit"].(string); ok {
+			thresholdUnit = tu
+		}
+
+		disabled := false
+		if d, ok := args["disabled"].(bool); ok {
+			disabled = d
+		}
+
+		broadcastToAll := false
+		if b, ok := args["broadcastToAll"].(bool); ok {
+			broadcastToAll = b
+		}
+
+		// Build filters
+		filters := types.AlertFilters{
+			Items: []types.AlertFilterItem{},
+			Op:    "AND",
+		}
+
+		if filterKey, ok := args["filterKey"].(string); ok && filterKey != "" {
+			filterOp := "="
+			if fo, ok := args["filterOp"].(string); ok && fo != "" {
+				filterOp = fo
+			}
+
+			filterValue := ""
+			if fv, ok := args["filterValue"].(string); ok {
+				filterValue = fv
+			}
+
+			filters.Items = append(filters.Items, types.AlertFilterItem{
+				Key: types.FilterKey{
+					Key:      filterKey,
+					DataType: "string",
+					Type:     "tag",
+					IsColumn: false,
+					IsJSON:   false,
+				},
+				Op:    filterOp,
+				Value: filterValue,
+			})
+		}
+
+		// Build the alert request
+		alertRequest := types.CreateAlertRuleRequest{
+			Alert:     alertName,
+			AlertType: alertType,
+			RuleType:  ruleType,
+			Labels: map[string]string{
+				"severity": severity,
+			},
+			Annotations: map[string]string{
+				"description": description,
+			},
+			EvalWindow:     evalWindow,
+			Source:         "mcp",
+			Disabled:       disabled,
+			BroadcastToAll: broadcastToAll,
+			Condition: types.AlertCondition{
+				CompositeQuery: types.CompositeAlertQuery{
+					BuilderQueries: map[string]types.AlertBuilderQuery{
+						"A": {
+							QueryName:         "A",
+							StepInterval:      60,
+							DataSource:        dataSource,
+							AggregateOperator: aggregateOperator,
+							AggregateAttribute: types.AggregateAttribute{
+								Key:      aggregateAttribute,
+								DataType: "float64",
+								Type:     "tag",
+								IsColumn: true,
+								IsJSON:   false,
+							},
+							Filters:    filters,
+							Expression: "A",
+							Disabled:   false,
+							Having:     []interface{}{},
+							Legend:     "",
+							ReduceTo:   "avg",
+						},
+					},
+					QueryType: "builder",
+					PanelType: "graph",
+				},
+				Op:                conditionOp,
+				Target:            threshold,
+				MatchType:         "1",
+				TargetUnit:        thresholdUnit,
+				SelectedQueryName: "A",
+			},
+		}
+
+		h.logger.Debug("Tool called: signoz_create_alert", zap.String("alert", alertName), zap.String("alertType", alertType))
+		client := h.GetClient(ctx)
+		result, err := client.CreateAlert(ctx, alertRequest)
+		if err != nil {
+			h.logger.Error("Failed to create alert", zap.String("alert", alertName), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
