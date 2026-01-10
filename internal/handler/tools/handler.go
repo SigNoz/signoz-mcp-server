@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -282,6 +283,36 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(respJSON)), nil
 	})
 
+	listAlertRulesTool := mcp.NewTool("signoz_list_alert_rules",
+		mcp.WithDescription("List all configured alert rules in SigNoz (not just firing alerts). Returns rule ID, name, severity, channels, and status."),
+	)
+
+	s.AddTool(listAlertRulesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_alert_rules")
+		client := h.GetClient(ctx)
+		result, err := client.ListAlertRules(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list alert rules", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	listChannelsTool := mcp.NewTool("signoz_list_channels",
+		mcp.WithDescription("List available notification channels in SigNoz. Use channel names when creating alerts with preferredChannels parameter."),
+	)
+
+	s.AddTool(listChannelsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_channels")
+		client := h.GetClient(ctx)
+		result, err := client.ListChannels(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list channels", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
 	createAlertTool := mcp.NewTool("signoz_create_alert",
 		mcp.WithDescription("Create a new alert rule in SigNoz. Supports threshold-based alerts on metrics, logs, or traces."),
 		mcp.WithString("alert", mcp.Required(), mcp.Description("Name of the alert rule")),
@@ -301,6 +332,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("evalWindow", mcp.Description("Evaluation window: 5m0s, 10m0s, 15m0s, 30m0s, 1h0m0s (default: 5m0s)")),
 		mcp.WithBoolean("disabled", mcp.Description("Whether the alert is disabled (default: false)")),
 		mcp.WithBoolean("broadcastToAll", mcp.Description("Send to all notification channels (default: false)")),
+		mcp.WithString("preferredChannels", mcp.Description("Comma-separated list of notification channel names (e.g., 'slack-alerts,pagerduty'). Required if broadcastToAll is false.")),
 	)
 
 	s.AddTool(createAlertTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -377,6 +409,17 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			broadcastToAll = b
 		}
 
+		var preferredChannels []string
+		if pc, ok := args["preferredChannels"].(string); ok && pc != "" {
+			// Split comma-separated channels
+			for _, ch := range strings.Split(pc, ",") {
+				ch = strings.TrimSpace(ch)
+				if ch != "" {
+					preferredChannels = append(preferredChannels, ch)
+				}
+			}
+		}
+
 		// Build filters
 		filters := types.AlertFilters{
 			Items: []types.AlertFilterItem{},
@@ -418,10 +461,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			Annotations: map[string]string{
 				"description": description,
 			},
-			EvalWindow:     evalWindow,
-			Source:         "mcp",
-			Disabled:       disabled,
-			BroadcastToAll: broadcastToAll,
+			EvalWindow:        evalWindow,
+			Source:            "mcp",
+			Disabled:          disabled,
+			BroadcastToAll:    broadcastToAll,
+			PreferredChannels: preferredChannels,
 			Condition: types.AlertCondition{
 				CompositeQuery: types.CompositeAlertQuery{
 					BuilderQueries: map[string]types.AlertBuilderQuery{
