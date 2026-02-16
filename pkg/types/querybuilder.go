@@ -34,6 +34,7 @@ type QuerySpec struct {
 	Having       Having        `json:"having"`
 	SelectFields []SelectField `json:"selectFields"`
 	Aggregations []any         `json:"aggregations,omitempty"`
+	GroupBy      []SelectField `json:"groupBy,omitempty"`
 }
 
 type Order struct {
@@ -63,6 +64,12 @@ type SelectField struct {
 type FormatOptions struct {
 	FormatTableResultForUI bool `json:"formatTableResultForUI"`
 	FillGaps               bool `json:"fillGaps"`
+}
+
+// LogsAggregation represents an aggregation expression for logs/traces queries in QB v5.
+// Example expressions: "count()", "avg(duration)", "p99(response_time)", "count_distinct(user_id)"
+type LogsAggregation struct {
+	Expression string `json:"expression"`
 }
 
 // Validate performs necessary validation for required fields
@@ -186,6 +193,45 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 							{Name: "body", FieldDataType: "string", Signal: "logs"},
 							{Name: "service.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
 						},
+					},
+				},
+			},
+		},
+		FormatOptions: FormatOptions{
+			FormatTableResultForUI: false,
+			FillGaps:               false,
+		},
+		Variables: map[string]any{},
+	}
+}
+
+// BuildLogsAggregateQueryPayload creates a QueryPayload for logs aggregation queries.
+// aggregationExpr is a QB v5 expression like "count()", "avg(duration)", "p99(response_time)".
+// groupBy is a list of fields to group by.
+// orderByExpr is the expression to order by (e.g. "count()"), orderDir is "asc" or "desc".
+func BuildLogsAggregateQueryPayload(startTime, endTime int64, aggregationExpr string, filterExpression string, groupBy []SelectField, orderByExpr string, orderDir string, limit int) *QueryPayload {
+	return &QueryPayload{
+		SchemaVersion: "v1",
+		Start:         startTime,
+		End:           endTime,
+		RequestType:   "scalar",
+		CompositeQuery: CompositeQuery{
+			Queries: []Query{
+				{
+					Type: "builder_query",
+					Spec: QuerySpec{
+						Name:     "A",
+						Signal:   "logs",
+						Disabled: false,
+						Filter:   &Filter{Expression: filterExpression},
+						Limit:    limit,
+						Offset:   0,
+						Order: []Order{
+							{Key: Key{Name: orderByExpr}, Direction: orderDir},
+						},
+						Having:       Having{Expression: ""},
+						GroupBy:      groupBy,
+						Aggregations: []any{LogsAggregation{Expression: aggregationExpr}},
 					},
 				},
 			},
