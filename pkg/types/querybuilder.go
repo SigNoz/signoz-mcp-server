@@ -66,9 +66,9 @@ type FormatOptions struct {
 	FillGaps               bool `json:"fillGaps"`
 }
 
-// LogsAggregation represents an aggregation expression for logs/traces queries in QB v5.
-// Example expressions: "count()", "avg(duration)", "p99(response_time)", "count_distinct(user_id)"
-type LogsAggregation struct {
+// QueryAggregation represents an aggregation expression for QB v5 queries (logs, traces).
+// Example expressions: "count()", "avg(duration)", "p99(durationNano)", "count_distinct(user_id)"
+type QueryAggregation struct {
 	Expression string `json:"expression"`
 }
 
@@ -118,6 +118,11 @@ func (q *QueryPayload) Validate() error {
 			switch q.RequestType {
 			case "raw", "trace":
 				spec.StepInterval = nil
+			case "scalar":
+				spec.StepInterval = nil
+				if len(spec.Aggregations) == 0 {
+					return fmt.Errorf("%s: missing aggregations for scalar traces query", queryName)
+				}
 			case "time_series":
 				if len(spec.Aggregations) == 0 {
 					return fmt.Errorf("%s: missing aggregations for time_series traces query", queryName)
@@ -139,6 +144,11 @@ func (q *QueryPayload) Validate() error {
 			switch q.RequestType {
 			case "raw":
 				spec.StepInterval = nil
+			case "scalar":
+				spec.StepInterval = nil
+				if len(spec.Aggregations) == 0 {
+					return fmt.Errorf("%s: missing aggregations for scalar logs query", queryName)
+				}
 			case "time_series":
 				if len(spec.Aggregations) == 0 {
 					return fmt.Errorf("%s: missing aggregations for time_series logs query", queryName)
@@ -205,11 +215,11 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 	}
 }
 
-// BuildLogsAggregateQueryPayload creates a QueryPayload for logs aggregation queries.
-// aggregationExpr is a QB v5 expression like "count()", "avg(duration)", "p99(response_time)".
+// BuildAggregateQueryPayload creates a QueryPayload for aggregation queries, signal is "logs" or "traces".
+// aggregationExpr is a QB v5 expression like "count()", "avg(duration)", "p99(durationNano)".
 // groupBy is a list of fields to group by.
 // orderByExpr is the expression to order by (e.g. "count()"), orderDir is "asc" or "desc".
-func BuildLogsAggregateQueryPayload(startTime, endTime int64, aggregationExpr string, filterExpression string, groupBy []SelectField, orderByExpr string, orderDir string, limit int) *QueryPayload {
+func BuildAggregateQueryPayload(signal string, startTime, endTime int64, aggregationExpr string, filterExpression string, groupBy []SelectField, orderByExpr string, orderDir string, limit int) *QueryPayload {
 	return &QueryPayload{
 		SchemaVersion: "v1",
 		Start:         startTime,
@@ -221,7 +231,7 @@ func BuildLogsAggregateQueryPayload(startTime, endTime int64, aggregationExpr st
 					Type: "builder_query",
 					Spec: QuerySpec{
 						Name:     "A",
-						Signal:   "logs",
+						Signal:   signal,
 						Disabled: false,
 						Filter:   &Filter{Expression: filterExpression},
 						Limit:    limit,
@@ -231,7 +241,7 @@ func BuildLogsAggregateQueryPayload(startTime, endTime int64, aggregationExpr st
 						},
 						Having:       Having{Expression: ""},
 						GroupBy:      groupBy,
-						Aggregations: []any{LogsAggregation{Expression: aggregationExpr}},
+						Aggregations: []any{QueryAggregation{Expression: aggregationExpr}},
 					},
 				},
 			},

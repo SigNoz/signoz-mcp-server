@@ -14,7 +14,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
 - **Get Alert History**: Gives you timeline of an alert.
 - **Logs**: Search, aggregate, and analyze logs  with flexible filtering.
-- **Traces**: Search, analyze, get hierarchy and relationship of traces.
+- **Traces**: Search, aggregate, analyze, get hierarchy and relationship of traces.
 - **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
 - **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
 - **Create Dashboard**: Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. **Warning**: Requires full dashboard JSON which can consume large amounts of context window space.
@@ -297,6 +297,11 @@ The MCP server provides the following tools that can be used through natural lan
 "Show me the span hierarchy for trace xyz789"
 "Find traces with errors in the last 2 hours"
 "Give me flow of this trace"
+"What is the p99 latency for the checkout service?"
+"How many errors per service in the last hour?"
+"Average response time by operation for the payment-svc"
+"Request rate per service in the last 30 minutes"
+"Which operations have the highest p95 latency?"
 ```
 
 ### Tool Reference
@@ -528,6 +533,23 @@ Searches traces for a specific service.
     - `minDuration` (optional) - Minimum duration in nanoseconds
     - `maxDuration` (optional) - Maximum duration in nanoseconds
     - `limit` (optional) - Maximum number of traces to return (default: 100)
+
+#### `signoz_aggregate_traces`
+
+Aggregate traces to gets statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields.
+
+- **Parameters**:
+    - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
+    - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
+    - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
+    - `filter` (optional) - Filter expression using SigNoz search syntax
+    - `service` (optional) - Shortcut filter for service name
+    - `operation` (optional) - Shortcut filter for span/operation name
+    - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
+    - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
+    - `limit` (optional) - Maximum number of groups to return (default: 10)
+    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+    - `start` / `end` (optional) - Start/end time in milliseconds
 
 #### `signoz_get_trace_details`
 
