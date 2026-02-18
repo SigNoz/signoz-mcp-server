@@ -103,16 +103,46 @@ func (q *QueryPayload) Validate() error {
 			}
 
 		case "traces":
-			if q.RequestType != "raw" && q.RequestType != "trace" {
+			// Traces support both raw queries and time series aggregations.
+			// Don't force requestType=raw, since that breaks aggregation queries.
+			if q.RequestType == "" {
 				q.RequestType = "raw"
 			}
-			spec.StepInterval = nil
+			switch q.RequestType {
+			case "raw", "trace":
+				spec.StepInterval = nil
+			case "time_series":
+				if len(spec.Aggregations) == 0 {
+					return fmt.Errorf("%s: missing aggregations for time_series traces query", queryName)
+				}
+				if spec.StepInterval == nil || *spec.StepInterval <= 0 {
+					def := int64(60)
+					spec.StepInterval = &def
+				}
+			default:
+				return fmt.Errorf("%s: unsupported requestType '%s' for traces", queryName, q.RequestType)
+			}
 
 		case "logs":
-			if q.RequestType != "raw" {
+			// Logs support both raw queries and time series aggregations.
+			// Don't force requestType=raw, since that breaks count()/groupBy queries.
+			if q.RequestType == "" {
 				q.RequestType = "raw"
 			}
-			spec.StepInterval = nil
+			switch q.RequestType {
+			case "raw":
+				spec.StepInterval = nil
+			case "time_series":
+				if len(spec.Aggregations) == 0 {
+					return fmt.Errorf("%s: missing aggregations for time_series logs query", queryName)
+				}
+				if spec.StepInterval == nil || *spec.StepInterval <= 0 {
+					def := int64(60)
+					spec.StepInterval = &def
+				}
+			default:
+				return fmt.Errorf("%s: unsupported requestType '%s' for logs", queryName, q.RequestType)
+			}
 
 		default:
 			return fmt.Errorf("%s: unknown signal type '%s'", queryName, signal)
