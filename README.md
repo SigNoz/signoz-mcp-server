@@ -13,8 +13,8 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **List Alerts**: Get all active alerts with detailed status.
 - **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
 - **Get Alert History**: Gives you timeline of an alert.
-- **Logs**: Gets log related to services, alerts, etc.
-- **Traces**: Search, analyze, get hierarchy and relationship of traces.
+- **Logs**: Search, aggregate, and analyze logs  with flexible filtering.
+- **Traces**: Search, aggregate, analyze, get hierarchy and relationship of traces.
 - **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
 - **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
 - **Create Dashboard**: Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. **Warning**: Requires full dashboard JSON which can consume large amounts of context window space.
@@ -281,6 +281,10 @@ The MCP server provides the following tools that can be used through natural lan
 "Show me error logs for the paymentservice from the last hour"
 "Search paymentservice logs for 'connection timeout' errors"
 "Get error logs with FATAL severity"
+"How many errors per service in the last hour?"
+"What are the top error messages for the consumer service?"
+"Search all logs where workflow_run_id = 'wr_123'"
+"Show me logs containing 'timeout' across all services"
 ```
 
 #### Trace Analysis
@@ -293,6 +297,11 @@ The MCP server provides the following tools that can be used through natural lan
 "Show me the span hierarchy for trace xyz789"
 "Find traces with errors in the last 2 hours"
 "Give me flow of this trace"
+"What is the p99 latency for the checkout service?"
+"How many errors per service in the last hour?"
+"Average response time by operation for the payment-svc"
+"Request rate per service in the last 30 minutes"
+"Which operations have the highest p95 latency?"
 ```
 
 ### Tool Reference
@@ -435,6 +444,36 @@ Searches logs for a specific service within a time range.
     - `searchText` (optional) - Text to search for in log body
     - `limit` (optional) - Maximum number of logs to return (default: 100)
 
+#### `signoz_aggregate_logs`
+
+Aggregate logs to provide count, average, sum, min, max, or percentiles, optionally grouped by fields. Use this for questions like "how many errors per service?", "average response time by endpoint", or "top error messages by count".
+
+- **Parameters**:
+    - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
+    - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
+    - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
+    - `filter` (optional) - Filter expression using SigNoz search syntax
+    - `service` (optional) - Shortcut filter for service name
+    - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
+    - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
+    - `limit` (optional) - Maximum number of groups to return (default: 10)
+    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+    - `start` / `end` (optional) - Start/end time in milliseconds
+
+#### `signoz_search_logs`
+
+Search logs with flexible filtering across all services. Supports query expressions, optional service/severity filters, and body text search.
+
+- **Parameters**:
+    - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND http.status_code >= 400")
+    - `service` (optional) - Service name to filter by
+    - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
+    - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
+    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+    - `start` / `end` (optional) - Start/end time in milliseconds
+    - `limit` (optional) - Maximum number of logs to return (default: 100)
+    - `offset` (optional) - Offset for pagination (default: 0)
+
 #### `signoz_get_trace_field_values`
 
 Gets available field values for trace.
@@ -494,6 +533,23 @@ Searches traces for a specific service.
     - `minDuration` (optional) - Minimum duration in nanoseconds
     - `maxDuration` (optional) - Maximum duration in nanoseconds
     - `limit` (optional) - Maximum number of traces to return (default: 100)
+
+#### `signoz_aggregate_traces`
+
+Aggregate traces to gets statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields.
+
+- **Parameters**:
+    - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
+    - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
+    - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
+    - `filter` (optional) - Filter expression using SigNoz search syntax
+    - `service` (optional) - Shortcut filter for service name
+    - `operation` (optional) - Shortcut filter for span/operation name
+    - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
+    - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
+    - `limit` (optional) - Maximum number of groups to return (default: 10)
+    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+    - `start` / `end` (optional) - Start/end time in milliseconds
 
 #### `signoz_get_trace_details`
 

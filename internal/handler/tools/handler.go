@@ -1239,10 +1239,173 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
+	// aggregate_logs: compute statistics over logs with GROUP BY
+	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
+		mcp.WithDescription("Aggregate logs to compute statistics like count, average, sum, min, max, or percentiles, optionally grouped by fields. "+
+			"Use this for questions like 'how many errors per service?', 'average response time by endpoint', 'top error messages by count'. "+
+			"Defaults to last 1 hour if no time specified."),
+		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
+		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'response_time', 'duration'). Required for all aggregations except count and rate.")),
+		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, severity_text'). Leave empty for a single aggregate value.")),
+		mcp.WithString("filter", mcp.Description("Filter expression using SigNoz search syntax (e.g., \"status_code >= 400 AND http.method = 'POST'\"). Combined with service/severity params using AND.")),
+		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
+		mcp.WithString("severity", mcp.Description("Shortcut filter for log severity (DEBUG, INFO, WARN, ERROR, FATAL). Equivalent to adding severity_text = '<value>' to filter.")),
+		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the aggregation expression descending.")),
+		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, overridden by timeRange)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, overridden by timeRange)")),
+	)
+
+	s.AddTool(aggregateLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		}
+
+		reqData, err := parseAggregateLogsArgs(args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		queryPayload := types.BuildAggregateQueryPayload("logs",
+			reqData.StartTime, reqData.EndTime, reqData.AggregationExpr,
+			reqData.FilterExpression, reqData.GroupBy,
+			reqData.OrderExpr, reqData.OrderDir, reqData.Limit,
+		)
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal aggregate query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_aggregate_logs",
+			zap.String("aggregation", reqData.AggregationExpr),
+			zap.String("filter", reqData.FilterExpression))
+
+		client := h.GetClient(ctx)
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to aggregate logs", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
+	// search_logs: log search with optional filters
+	// ToDo: use this function for error logs or logs by service
+	searchLogsTool := mcp.NewTool("signoz_search_logs",
+		mcp.WithDescription("Search logs with flexible filtering. Supports free-form query expressions, optional service/severity filters, and body text search. "+
+			"Unlike search_logs_by_service, the service parameter is optional — search across all services or filter by any attribute. "+
+			"Defaults to last 1 hour if no time specified."),
+		mcp.WithString("query", mcp.Description("Free-form filter expression using SigNoz search syntax. Examples: \"service.name = 'payment-svc' AND http.status_code >= 400\", \"workflow_run_id = 'wr_123'\", \"body CONTAINS 'timeout'\". Supports any log field/attribute.")),
+		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
+		mcp.WithString("severity", mcp.Description("Optional severity filter (DEBUG, INFO, WARN, ERROR, FATAL).")),
+		mcp.WithString("searchText", mcp.Description("Text to search for in log body (uses CONTAINS matching).")),
+		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, overridden by timeRange)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, overridden by timeRange)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
+	)
+
+	s.AddTool(searchLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		}
+
+		reqData, err := parseSearchLogsArgs(args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		queryPayload := types.BuildLogsQueryPayload(
+			reqData.StartTime, reqData.EndTime, reqData.FilterExpression,
+			reqData.Limit, reqData.Offset,
+		)
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal search query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_search_logs",
+			zap.String("filter", reqData.FilterExpression))
+
+		client := h.GetClient(ctx)
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to search logs", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
+
 }
 
 func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering traces handlers")
+
+	// aggregate_traces: compute statistics over traces with GROUP BY
+	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
+		mcp.WithDescription("Aggregate traces to compute statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields. "+
+			"Use this for questions like 'p99 latency by service', 'error count per operation', 'request rate by endpoint', 'average duration by span kind'. "+
+			"Defaults to last 1 hour if no time specified."),
+		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
+		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'durationNano'). Required for all aggregations except count and rate.")),
+		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.")),
+		mcp.WithString("filter", mcp.Description("Filter expression using SigNoz search syntax (e.g., \"hasError = true AND httpMethod = 'GET'\"). Combined with service/operation/error params using AND.")),
+		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
+		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
+		mcp.WithString("error", mcp.Description("Shortcut filter for error spans ('true' or 'false'). Equivalent to adding hasError = true/false to filter.")),
+		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
+		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10)")),
+		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, overridden by timeRange)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, overridden by timeRange)")),
+	)
+
+	s.AddTool(aggregateTracesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		}
+
+		reqData, err := parseAggregateTracesArgs(args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		queryPayload := types.BuildAggregateQueryPayload("traces",
+			reqData.StartTime, reqData.EndTime, reqData.AggregationExpr,
+			reqData.FilterExpression, reqData.GroupBy,
+			reqData.OrderExpr, reqData.OrderDir, reqData.Limit,
+		)
+
+		queryJSON, err := json.Marshal(queryPayload)
+		if err != nil {
+			h.logger.Error("Failed to marshal aggregate traces query payload", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		}
+
+		h.logger.Debug("Tool called: signoz_aggregate_traces",
+			zap.String("aggregation", reqData.AggregationExpr),
+			zap.String("filter", reqData.FilterExpression))
+
+		client := h.GetClient(ctx)
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
+		if err != nil {
+			h.logger.Error("Failed to aggregate traces", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(result)), nil
+	})
 
 	getTraceFieldValuesTool := mcp.NewTool("signoz_get_trace_field_values",
 		mcp.WithDescription("Get available field values for trace queries"),
