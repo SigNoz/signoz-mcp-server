@@ -219,7 +219,7 @@ export SIGNOZ_API_KEY="your-api-key-here"
 export LOG_LEVEL="info"  # Optional: debug, info, error (default: info)
 ```
 
-In SigNoz Cloud, SIGNOZ_URL is typically - https://ingest.<region>.signoz.cloud
+In SigNoz Cloud, SIGNOZ_URL is typically - https://tenant-slug.<region>.signoz.cloud for example main-dinosaur.us.signoz.cloud
 
 You can access API Key by going to Settings -> Workspace Settings -> API Key in SigNoz UI
 
