@@ -84,4 +84,3 @@ func TestQueryPayloadValidate_LogsTimeSeriesRequiresAggregations(t *testing.T) {
 
 	require.Error(t, q.Validate())
 }
-

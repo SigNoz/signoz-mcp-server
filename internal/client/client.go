@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -986,6 +987,101 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 	}
 
 	return body, nil
+}
+
+type clickHouseSQLQuery struct {
+	Query    string `json:"query"`
+	Disabled bool   `json:"disabled"`
+	Legend   string `json:"legend"`
+}
+
+type clickHouseSQLCompositeQuery struct {
+	QueryType string                       `json:"queryType"`
+	PanelType string                       `json:"panelType"`
+	ChQueries map[string]clickHouseSQLQuery `json:"chQueries"`
+}
+
+type clickHouseSQLPayload struct {
+	Start          int64                       `json:"start"`
+	End            int64                       `json:"end"`
+	Step           int64                       `json:"step"`
+	Variables      map[string]any              `json:"variables"`
+	CompositeQuery clickHouseSQLCompositeQuery `json:"compositeQuery"`
+}
+
+// ExecuteClickHouseSQL runs a raw ClickHouse SQL query via /api/v3/query_range.
+// Template variables in the query are substituted before sending:
+//   - {{.start_timestamp}} → Unix seconds
+//   - {{.end_timestamp}}   → Unix seconds
+//   - {{.start_datetime}}  → UTC datetime string (e.g. "2026-02-24 05:53:46")
+//   - {{.end_datetime}}    → UTC datetime string
+func (s *SigNoz) ExecuteClickHouseSQL(ctx context.Context, query string, startMs, endMs int64) (json.RawMessage, error) {
+	startSec := startMs / 1000
+	endSec := endMs / 1000
+	startDateTime := time.Unix(startSec, 0).UTC().Format("2006-01-02 15:04:05")
+	endDateTime := time.Unix(endSec, 0).UTC().Format("2006-01-02 15:04:05")
+
+	query = strings.ReplaceAll(query, "{{.start_timestamp}}", fmt.Sprintf("%d", startSec))
+	query = strings.ReplaceAll(query, "{{.end_timestamp}}", fmt.Sprintf("%d", endSec))
+	query = strings.ReplaceAll(query, "{{.start_datetime}}", startDateTime)
+	query = strings.ReplaceAll(query, "{{.end_datetime}}", endDateTime)
+
+	payload := clickHouseSQLPayload{
+		Start:     startMs * 1_000_000, // ms → ns for v3 API
+		End:       endMs * 1_000_000,
+		Step:      60,
+		Variables: map[string]any{},
+		CompositeQuery: clickHouseSQLCompositeQuery{
+			QueryType: "clickhouse_sql",
+			PanelType: "table",
+			ChQueries: map[string]clickHouseSQLQuery{
+				"A": {Query: query, Disabled: false, Legend: ""},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v3/query_range", s.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	s.logger.Debug("Executing ClickHouse SQL query", zap.String("url", apiURL))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.logger.Error("ClickHouse SQL query failed", zap.String("url", apiURL), zap.Int("status", resp.StatusCode), zap.String("response", string(respBody)))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	s.logger.Debug("Successfully executed ClickHouse SQL query", zap.Int("status", resp.StatusCode))
+	return respBody, nil
 }
 
 func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error {
