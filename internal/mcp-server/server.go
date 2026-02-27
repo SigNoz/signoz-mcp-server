@@ -1,6 +1,7 @@
 package mcp_server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,6 +12,11 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+)
+
+const (
+	serverName    = "SigNozMCP"
+	serverVersion = "0.0.1"
 )
 
 type MCPServer struct {
@@ -24,7 +30,7 @@ func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *
 }
 
 func (m *MCPServer) Start() error {
-	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false))
+	s := server.NewMCPServer(serverName, serverVersion, server.WithLogging(), server.WithToolCapabilities(false))
 
 	m.logger.Info("Starting SigNoz MCP Server",
 		zap.String("server_name", "SigNozMCPServer"),
@@ -93,6 +99,40 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	addr := fmt.Sprintf(":%s", m.config.Port)
 
 	mux := http.NewServeMux()
+
+	// Health check endpoint for connectivity verification
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		m.logger.Debug("Health check requested")
+		response := map[string]string{
+			"status":       "ok",
+			"server":       serverName,
+			"version":      serverVersion,
+			"mcp_endpoint": "/mcp",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			m.logger.Error("Failed to encode health response", zap.Error(err))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	})
+
+	// Root endpoint for discoverability
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		m.logger.Debug("Root endpoint requested")
+		response := map[string]string{
+			"name":         serverName,
+			"version":      serverVersion,
+			"mcp_endpoint": "/mcp",
+			"health":       "/health",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			m.logger.Error("Failed to encode root response", zap.Error(err))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	})
 
 	httpServer := server.NewStreamableHTTPServer(s)
 	mux.Handle("/mcp", m.authMiddleware(httpServer))
