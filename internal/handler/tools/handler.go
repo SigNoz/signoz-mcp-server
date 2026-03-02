@@ -454,7 +454,18 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
 				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
 		),
-		mcp.WithInputSchema[types.Dashboard](),
+		mcp.WithRawInputSchema(json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"title": {"type": "string", "description": "The display name of the dashboard."},
+				"description": {"type": "string", "description": "A brief explanation of what the dashboard shows."},
+				"tags": {"type": "array", "items": {"type": "string"}, "description": "Keywords for categorization e.g performance latency."},
+				"layout": {"type": "array", "items": {"type": "object"}, "description": "Defines the grid positioning and size for each widget."},
+				"variables": {"type": "object", "description": "Key-value map of template variables available for queries."},
+				"widgets": {"type": "array", "items": {"type": "object"}, "description": "The list of all graphical components displayed on the dashboard."}
+			},
+			"required": ["title", "tags", "layout", "widgets"]
+		}`)),
 	)
 
 	s.AddTool(createDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -511,7 +522,21 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields "+
 				"(id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks).",
 		),
-		mcp.WithInputSchema[types.UpdateDashboardInput](),
+		mcp.WithRawInputSchema(json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"uuid": {"type": "string", "description": "Dashboard UUID to update."},
+				"dashboard": {"type": "object", "description": "Full dashboard configuration representing the complete post-update state.", "properties": {
+					"title": {"type": "string", "description": "The display name of the dashboard."},
+					"description": {"type": "string", "description": "A brief explanation of what the dashboard shows."},
+					"tags": {"type": "array", "items": {"type": "string"}, "description": "Keywords for categorization e.g performance latency."},
+					"layout": {"type": "array", "items": {"type": "object"}, "description": "Defines the grid positioning and size for each widget."},
+					"variables": {"type": "object", "description": "Key-value map of template variables available for queries."},
+					"widgets": {"type": "array", "items": {"type": "object"}, "description": "The list of all graphical components displayed on the dashboard."}
+				}, "required": ["title", "tags", "layout", "widgets"]}
+			},
+			"required": ["uuid", "dashboard"]
+		}`)),
 	)
 
 	s.AddTool(updateDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
