@@ -83,7 +83,7 @@ type Widget struct {
 }
 
 type ContextLinks struct {
-	LinksData []interface{} `json:"linksData"`
+	LinksData []string `json:"linksData"`
 }
 
 type Threshold struct {
@@ -137,7 +137,7 @@ type ClickHouseSQL struct {
 type BuilderQueryDashboard struct {
 	QueryData          []BuilderQuery `json:"queryData" jsonschema_extras:"description=Query data for the widget. Populate with non-formula queries."`
 	QueryFormulas      []BuilderQuery `json:"queryFormulas" jsonschema_extras:"description=Query formulas for the widget. Populate with formula queries."`
-	QueryTraceOperator []interface{}  `json:"queryTraceOperator,omitempty"`
+	QueryTraceOperator []string       `json:"queryTraceOperator,omitempty"`
 }
 
 type BuilderQuery struct {
@@ -220,7 +220,7 @@ type OrderBy struct {
 
 type Function struct {
 	Name      string                 `json:"name" jsonschema:"required" jsonschema_extras:"description=Function name"`
-	Args      []interface{}          `json:"args" jsonschema_extras:"description=Function arguments"`
+	Args      []string               `json:"args" jsonschema_extras:"description=Function arguments"`
 	NamedArgs map[string]interface{} `json:"namedArgs,omitempty" jsonschema_extras:"description=Named arguments for the function"`
 }
 
