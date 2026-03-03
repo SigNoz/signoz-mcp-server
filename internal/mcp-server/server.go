@@ -36,6 +36,7 @@ func (m *MCPServer) Start() error {
 	m.handler.RegisterDashboardHandlers(s)
 	m.handler.RegisterServiceHandlers(s)
 	m.handler.RegisterQueryBuilderV5Handlers(s)
+	m.handler.RegisterClickHouseSQLHandlers(s)
 	m.handler.RegisterLogsHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
 

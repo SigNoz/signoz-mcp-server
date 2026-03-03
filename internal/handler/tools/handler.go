@@ -897,6 +897,51 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	})
 }
 
+func (h *Handler) RegisterClickHouseSQLHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering ClickHouse SQL handlers")
+
+	executeClickHouseTool := mcp.NewTool("signoz_execute_clickhouse_query",
+		mcp.WithDescription("Execute a custom ClickHouse SQL query against SigNoz traces/logs/metrics data. "+
+			"Supports template variables that are auto-substituted from the time range: "+
+			"{{.start_timestamp}} (Unix seconds), {{.end_timestamp}} (Unix seconds), "+
+			"{{.start_datetime}} (UTC datetime e.g. '2026-02-24 05:53:46'), {{.end_datetime}} (UTC datetime). "+
+			"Defaults to last 1 day if no time specified."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("ClickHouse SQL query to execute. Use {{.start_timestamp}}, {{.end_timestamp}}, {{.start_datetime}}, {{.end_datetime}} for time range filtering.")),
+		mcp.WithString("timeRange", mcp.Description("Time range like '1h', '6h', '1d', '7d'. Defaults to '1d'.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, overridden by timeRange)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, overridden by timeRange)")),
+	)
+
+	s.AddTool(executeClickHouseTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_execute_clickhouse_query")
+
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+
+		query, _ := args["query"].(string)
+		if query == "" {
+			return mcp.NewToolResultError("query parameter is required"), nil
+		}
+
+		startTime, endTime, err := resolveTimestamps(args, "1d")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		client := h.GetClient(ctx)
+		data, err := client.ExecuteClickHouseSQL(ctx, query, startTime, endTime)
+		if err != nil {
+			h.logger.Error("Failed to execute ClickHouse SQL", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		h.logger.Debug("Successfully executed ClickHouse SQL query")
+		return mcp.NewToolResultText(string(data)), nil
+	})
+}
+
 func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering logs handlers")
 

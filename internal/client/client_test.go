@@ -883,3 +883,113 @@ func TestUpdateDashboard(t *testing.T) {
 	err := client.UpdateDashboard(context.Background(), "id-123", d)
 	require.NoError(t, err)
 }
+
+func TestExecuteClickHouseSQL(t *testing.T) {
+	tests := []struct {
+		name          string
+		query         string
+		startMs       int64
+		endMs         int64
+		resp          map[string]interface{}
+		statusCode    int
+		expectedError bool
+		checkPayload  func(t *testing.T, payload map[string]interface{})
+	}{
+		{
+			name:       "successful query execution",
+			query:      "SELECT count() FROM signoz_logs.distributed_logs",
+			startMs:    1640995200000,
+			endMs:      1641081600000,
+			resp:       map[string]interface{}{"status": "success", "data": map[string]interface{}{}},
+			statusCode: http.StatusOK,
+			checkPayload: func(t *testing.T, payload map[string]interface{}) {
+				assert.Equal(t, float64(1640995200000*1_000_000), payload["start"])
+				assert.Equal(t, float64(1641081600000*1_000_000), payload["end"])
+				assert.Equal(t, float64(60), payload["step"])
+				cq, ok := payload["compositeQuery"].(map[string]interface{})
+				require.True(t, ok)
+				assert.Equal(t, "clickhouse_sql", cq["queryType"])
+				assert.Equal(t, "table", cq["panelType"])
+				chQueries, ok := cq["chQueries"].(map[string]interface{})
+				require.True(t, ok)
+				queryA, ok := chQueries["A"].(map[string]interface{})
+				require.True(t, ok)
+				assert.Equal(t, "SELECT count() FROM signoz_logs.distributed_logs", queryA["query"])
+				assert.Equal(t, false, queryA["disabled"])
+			},
+		},
+		{
+			name:       "template variables are substituted",
+			query:      "SELECT * FROM t WHERE ts >= {{.start_timestamp}} AND ts <= {{.end_timestamp}} AND dt >= '{{.start_datetime}}' AND dt <= '{{.end_datetime}}'",
+			startMs:    1640995200000,
+			endMs:      1641081600000,
+			resp:       map[string]interface{}{"status": "success"},
+			statusCode: http.StatusOK,
+			checkPayload: func(t *testing.T, payload map[string]interface{}) {
+				cq := payload["compositeQuery"].(map[string]interface{})
+				chQueries := cq["chQueries"].(map[string]interface{})
+				queryA := chQueries["A"].(map[string]interface{})
+				q := queryA["query"].(string)
+				assert.Contains(t, q, "1640995200")
+				assert.Contains(t, q, "1641081600")
+				assert.Contains(t, q, "2022-01-01 00:00:00")
+				assert.Contains(t, q, "2022-01-02 00:00:00")
+				assert.NotContains(t, q, "{{.")
+			},
+		},
+		{
+			name:          "server error",
+			query:         "SELECT 1",
+			startMs:       1640995200000,
+			endMs:         1641081600000,
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			statusCode:    http.StatusInternalServerError,
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			query:         "SELECT 1",
+			startMs:       1640995200000,
+			endMs:         1641081600000,
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/api/v3/query_range", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				if tt.checkPayload != nil {
+					var payload map[string]interface{}
+					err := json.NewDecoder(r.Body).Decode(&payload)
+					require.NoError(t, err)
+					tt.checkPayload(t, payload)
+				}
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			client := NewClient(logger, server.URL, "test-api-key")
+
+			result, err := client.ExecuteClickHouseSQL(context.Background(), tt.query, tt.startMs, tt.endMs)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, result)
+			}
+		})
+	}
+}
