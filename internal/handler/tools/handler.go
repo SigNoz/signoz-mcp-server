@@ -20,6 +20,17 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
+// withFlatInputSchema replaces the auto-generated InputSchema with a
+// hand-written JSON schema. mcp.NewTool sets InputSchema.Type = "object"
+// by default; we must clear it so MarshalJSON doesn't see both InputSchema
+// and RawInputSchema as populated (mcp-go v0.38 treats that as an error).
+func withFlatInputSchema(schema json.RawMessage) mcp.ToolOption {
+	return func(t *mcp.Tool) {
+		t.InputSchema.Type = ""
+		t.RawInputSchema = schema
+	}
+}
+
 type Handler struct {
 	client      *signozclient.SigNoz
 	logger      *zap.Logger
@@ -454,7 +465,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
 				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
 		),
-		mcp.WithRawInputSchema(json.RawMessage(`{
+		withFlatInputSchema(json.RawMessage(`{
 			"type": "object",
 			"properties": {
 				"title": {"type": "string", "description": "The display name of the dashboard."},
@@ -522,7 +533,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields "+
 				"(id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks).",
 		),
-		mcp.WithRawInputSchema(json.RawMessage(`{
+		withFlatInputSchema(json.RawMessage(`{
 			"type": "object",
 			"properties": {
 				"uuid": {"type": "string", "description": "Dashboard UUID to update."},
