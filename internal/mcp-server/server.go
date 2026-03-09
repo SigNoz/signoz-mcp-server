@@ -96,7 +96,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			m.logger.Debug("Using URL from environment config", zap.String("url", signozURL))
 		} else {
 			m.logger.Warn("No SigNoz URL found in X-SigNoz-URL header or environment")
-			http.Error(w, "SigNoz instance URL is required", http.StatusUnauthorized)
+			http.Error(w, "SigNoz instance URL is required", http.StatusBadRequest)
 			return
 		}
 
