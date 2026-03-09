@@ -1,6 +1,10 @@
 package util
 
-import "context"
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+)
 
 type contextKey string
 
@@ -29,4 +33,11 @@ func SetSigNozURL(ctx context.Context, url string) context.Context {
 func GetSigNozURL(ctx context.Context) (string, bool) {
 	url, ok := ctx.Value(signozURLContextKey).(string)
 	return url, ok
+}
+
+// HashTenantKey returns a SHA-256 hash of apiKey:signozURL, suitable for use
+// as a cache/map key without exposing the raw API key in memory.
+func HashTenantKey(apiKey, signozURL string) string {
+	h := sha256.Sum256([]byte(apiKey + ":" + signozURL))
+	return hex.EncodeToString(h[:])
 }

@@ -52,7 +52,7 @@ func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
 
 	// If we have both API key and URL from context, create/return a cached client
 	if hasAPIKey && apiKey != "" && signozURL != "" {
-		cacheKey := apiKey + ":" + signozURL
+		cacheKey := util.HashTenantKey(apiKey, signozURL)
 
 		// expirable.LRU is internally thread-safe, no external mutex needed.
 		if cachedClient, ok := h.clientCache.Get(cacheKey); ok {

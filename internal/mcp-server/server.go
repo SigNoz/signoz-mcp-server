@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -14,13 +16,19 @@ import (
 )
 
 type MCPServer struct {
-	logger  *zap.Logger
-	handler *tools.Handler
-	config  *config.Config
+	logger       *zap.Logger
+	handler      *tools.Handler
+	config       *config.Config
+	rateLimiters *expirable.LRU[string, *rate.Limiter]
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *MCPServer {
-	return &MCPServer{logger: log, handler: handler, config: cfg}
+	// Reuse the same cache size/TTL config for rate limiter entries so they
+	// are bounded and auto-expire, matching the client cache lifecycle.
+	limiters := expirable.NewLRU[string, *rate.Limiter](
+		cfg.ClientCacheSize, nil, cfg.ClientCacheTTL,
+	)
+	return &MCPServer{logger: log, handler: handler, config: cfg, rateLimiters: limiters}
 }
 
 func (m *MCPServer) Start() error {
@@ -103,6 +111,23 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Store URL in context if available
 		if signozURL != "" {
 			ctx = util.SetSigNozURL(ctx, signozURL)
+		}
+
+		// Per-tenant rate limiting keyed by hashed apiKey:signozURL
+		tenantKey := util.HashTenantKey(apiKey, signozURL)
+		limiter, ok := m.rateLimiters.Get(tenantKey)
+		if !ok {
+			limiter = rate.NewLimiter(
+				rate.Limit(m.config.RateLimitPerTenant),
+				m.config.RateLimitBurst,
+			)
+			m.rateLimiters.Add(tenantKey, limiter)
+		}
+		if !limiter.Allow() {
+			m.logger.Warn("Rate limit exceeded for tenant",
+				zap.String("url", signozURL))
+			http.Error(w, "Rate limit exceeded. Try again later.", http.StatusTooManyRequests)
+			return
 		}
 
 		r = r.WithContext(ctx)
