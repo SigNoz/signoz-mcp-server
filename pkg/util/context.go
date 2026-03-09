@@ -4,7 +4,10 @@ import "context"
 
 type contextKey string
 
-const apiKeyContextKey contextKey = "api_key"
+const (
+	apiKeyContextKey    contextKey = "api_key"
+	signozURLContextKey contextKey = "signoz_url"
+)
 
 // SetAPIKey stores the API key in the context
 func SetAPIKey(ctx context.Context, apiKey string) context.Context {
@@ -15,4 +18,15 @@ func SetAPIKey(ctx context.Context, apiKey string) context.Context {
 func GetAPIKey(ctx context.Context) (string, bool) {
 	apiKey, ok := ctx.Value(apiKeyContextKey).(string)
 	return apiKey, ok
+}
+
+// SetSigNozURL stores the SigNoz URL in the context
+func SetSigNozURL(ctx context.Context, url string) context.Context {
+	return context.WithValue(ctx, signozURLContextKey, url)
+}
+
+// GetSigNozURL retrieves the SigNoz URL from the context
+func GetSigNozURL(ctx context.Context) (string, bool) {
+	url, ok := ctx.Value(signozURLContextKey).(string)
+	return url, ok
 }

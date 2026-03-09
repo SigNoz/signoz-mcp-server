@@ -39,12 +39,25 @@ func NewHandler(log *zap.Logger, client *signozclient.SigNoz, signozURL string) 
 
 // getClient returns the appropriate client based on the context
 // If an API key is found in the context, it returns a cached client with that key
+// If a URL is found in the context, it uses that URL for the client
 // Otherwise, it returns the default client
 func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
-	if apiKey, ok := util.GetAPIKey(ctx); ok && apiKey != "" && h.signozURL != "" {
+	apiKey, hasAPIKey := util.GetAPIKey(ctx)
+	signozURL, hasURL := util.GetSigNozURL(ctx)
+
+	// Use context URL if available, otherwise fall back to handler's default URL
+	if !hasURL || signozURL == "" {
+		signozURL = h.signozURL
+	}
+
+	// If we have both API key and URL from context, create/return a cached client
+	if hasAPIKey && apiKey != "" && signozURL != "" {
+		// Create composite cache key from both API key and URL
+		cacheKey := apiKey + ":" + signozURL
+
 		// Check cache first
 		h.cacheMutex.RLock()
-		if cachedClient, exists := h.clientCache[apiKey]; exists {
+		if cachedClient, exists := h.clientCache[cacheKey]; exists {
 			h.cacheMutex.RUnlock()
 			return cachedClient
 		}
@@ -53,16 +66,18 @@ func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
 		h.cacheMutex.Lock()
 		defer h.cacheMutex.Unlock()
 
-		// just to check if other goroutine created client
-		if cachedClient, exists := h.clientCache[apiKey]; exists {
+		// Double-check if another goroutine created the client
+		if cachedClient, exists := h.clientCache[cacheKey]; exists {
 			return cachedClient
 		}
 
-		h.logger.Debug("Creating client with API key from context")
-		newClient := signozclient.NewClient(h.logger, h.signozURL, apiKey)
-		h.clientCache[apiKey] = newClient
+		h.logger.Debug("Creating client with API key and URL from context",
+			zap.String("url", signozURL))
+		newClient := signozclient.NewClient(h.logger, signozURL, apiKey)
+		h.clientCache[cacheKey] = newClient
 		return newClient
 	}
+
 	return h.client
 }
 

@@ -54,10 +54,17 @@ func (m *MCPServer) startStdio(s *server.MCPServer) error {
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
+		customURL := r.Header.Get("X-SigNoz-URL")
+
 		// Extract Authorization header
 		authHeader := r.Header.Get("Authorization")
 
 		var apiKey string
+		var signozURL string
+
 		if authHeader != "" {
 			// Support both "Bearer <token>" and raw token formats
 			if strings.HasPrefix(authHeader, "Bearer ") {
@@ -67,15 +74,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			}
 
 			// Store API key in request context
-			ctx := util.SetAPIKey(r.Context(), apiKey)
-			r = r.WithContext(ctx)
-
+			ctx = util.SetAPIKey(ctx, apiKey)
 			m.logger.Debug("API key extracted from Authorization header")
+
 		} else if m.config.APIKey != "" {
 			// Fallback to config API key if no Authorization header
-			ctx := util.SetAPIKey(r.Context(), m.config.APIKey)
-			r = r.WithContext(ctx)
-
+			ctx = util.SetAPIKey(ctx, m.config.APIKey)
 			m.logger.Debug("Using API key from environment config")
 		} else {
 			m.logger.Warn("No API key found in Authorization header or environment")
@@ -83,6 +87,24 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Determine final URL with precedence: X-SigNoz-URL header > config URL
+		if customURL != "" {
+			signozURL = strings.TrimSuffix(customURL, "/")
+			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
+		} else if signozURL == "" && m.config.URL != "" {
+			signozURL = m.config.URL
+			m.logger.Debug("Using URL from environment config", zap.String("url", signozURL))
+		} else {
+			m.logger.Warn("No SigNoz URL found in X-SigNoz-URL header or environment")
+			return
+		}
+
+		// Store URL in context if available
+		if signozURL != "" {
+			ctx = util.SetSigNozURL(ctx, signozURL)
+		}
+
+		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
 }
