@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
+	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
@@ -24,23 +25,22 @@ type Handler struct {
 	client      *signozclient.SigNoz
 	logger      *zap.Logger
 	signozURL   string
-	clientCache map[string]*signozclient.SigNoz
-	cacheMutex  sync.RWMutex
+	clientCache *expirable.LRU[string, *signozclient.SigNoz]
 }
 
-func NewHandler(log *zap.Logger, client *signozclient.SigNoz, signozURL string) *Handler {
+func NewHandler(log *zap.Logger, client *signozclient.SigNoz, cfg *config.Config) *Handler {
 	return &Handler{
 		client:      client,
 		logger:      log,
-		signozURL:   signozURL,
-		clientCache: make(map[string]*signozclient.SigNoz),
+		signozURL:   cfg.URL,
+		clientCache: expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
 	}
 }
 
-// getClient returns the appropriate client based on the context
-// If an API key is found in the context, it returns a cached client with that key
-// If a URL is found in the context, it uses that URL for the client
-// Otherwise, it returns the default client
+// GetClient returns the appropriate SigNoz client based on the request context.
+// It looks up (or creates) a cached client keyed by "apiKey:signozURL".
+// The cache is bounded (LRU) and entries expire after defaultClientCacheTTL,
+// preventing unbounded memory growth from rotating credentials.
 func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
 	apiKey, hasAPIKey := util.GetAPIKey(ctx)
 	signozURL, hasURL := util.GetSigNozURL(ctx)
@@ -52,29 +52,17 @@ func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
 
 	// If we have both API key and URL from context, create/return a cached client
 	if hasAPIKey && apiKey != "" && signozURL != "" {
-		// Create composite cache key from both API key and URL
 		cacheKey := apiKey + ":" + signozURL
 
-		// Check cache first
-		h.cacheMutex.RLock()
-		if cachedClient, exists := h.clientCache[cacheKey]; exists {
-			h.cacheMutex.RUnlock()
-			return cachedClient
-		}
-		h.cacheMutex.RUnlock()
-
-		h.cacheMutex.Lock()
-		defer h.cacheMutex.Unlock()
-
-		// Double-check if another goroutine created the client
-		if cachedClient, exists := h.clientCache[cacheKey]; exists {
+		// expirable.LRU is internally thread-safe, no external mutex needed.
+		if cachedClient, ok := h.clientCache.Get(cacheKey); ok {
 			return cachedClient
 		}
 
 		h.logger.Debug("Creating client with API key and URL from context",
 			zap.String("url", signozURL))
 		newClient := signozclient.NewClient(h.logger, signozURL, apiKey)
-		h.clientCache[cacheKey] = newClient
+		h.clientCache.Add(cacheKey, newClient)
 		return newClient
 	}
 

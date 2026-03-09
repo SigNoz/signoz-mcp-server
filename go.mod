@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/SigNoz/signoz-otel-collector v0.129.12
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/mark3labs/mcp-go v0.38.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0

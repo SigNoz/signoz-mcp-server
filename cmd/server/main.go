@@ -37,7 +37,7 @@ func main() {
 		zap.String("transport_mode", cfg.TransportMode))
 
 	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
-	handler := tools.NewHandler(log, sigNozClient, cfg.URL)
+	handler := tools.NewHandler(log, sigNozClient, cfg)
 
 	dashboard.InitClickhouseSchema()
 
