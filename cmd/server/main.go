@@ -6,7 +6,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/logger"
@@ -36,8 +35,7 @@ func main() {
 		zap.String("log_level", cfg.LogLevel),
 		zap.String("transport_mode", cfg.TransportMode))
 
-	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
-	handler := tools.NewHandler(log, sigNozClient, cfg)
+	handler := tools.NewHandler(log, cfg)
 
 	dashboard.InitClickhouseSchema()
 

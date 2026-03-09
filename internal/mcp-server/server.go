@@ -1,6 +1,7 @@
 package mcp_server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -57,7 +58,16 @@ func (m *MCPServer) Start() error {
 
 func (m *MCPServer) startStdio(s *server.MCPServer) error {
 	m.logger.Info("MCP Server running in stdio mode")
-	return server.ServeStdio(s)
+
+	// Inject env-configured credentials into every request context
+	// so that GetClient works uniformly across both transports.
+	ctxFunc := server.WithStdioContextFunc(func(ctx context.Context) context.Context {
+		ctx = util.SetAPIKey(ctx, m.config.APIKey)
+		ctx = util.SetSigNozURL(ctx, m.config.URL)
+		return ctx
+	})
+
+	return server.ServeStdio(s, ctxFunc)
 }
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {

@@ -35,7 +35,7 @@ const (
 	ClientCacheTTL  = "CLIENT_CACHE_TTL_MINUTES"
 
 	RateLimitPerTenant = "RATE_LIMIT_PER_TENANT" // requests per second
-	RateLimitBurst     = "RATE_LIMIT_BURST"       // max burst
+	RateLimitBurst     = "RATE_LIMIT_BURST"      // max burst
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
@@ -51,11 +51,11 @@ func LoadConfig() (*Config, error) {
 	cacheTTLMinutes := getEnvInt(ClientCacheTTL, defaultClientCacheTTLMinutes)
 
 	return &Config{
-		URL:             url,
-		APIKey:          getEnv(SignozApiKey, ""),
-		LogLevel:        getEnv(LogLevel, "info"),
-		TransportMode:   getEnv(TransportMode, "stdio"),
-		Port:            getEnv(MCPPort, "8000"),
+		URL:                url,
+		APIKey:             getEnv(SignozApiKey, ""),
+		LogLevel:           getEnv(LogLevel, "info"),
+		TransportMode:      getEnv(TransportMode, "stdio"),
+		Port:               getEnv(MCPPort, "8000"),
 		ClientCacheSize:    cacheSize,
 		ClientCacheTTL:     time.Duration(cacheTTLMinutes) * time.Minute,
 		RateLimitPerTenant: float64(getEnvInt(RateLimitPerTenant, defaultRateLimitPerTenant)),
@@ -86,8 +86,12 @@ func (c *Config) ValidateConfig() error {
 
 	// In HTTP mode, API key can come from Authorization header, so it's optional
 	// In stdio mode, API key must be provided via environment variable
-	if c.TransportMode != "http" && c.APIKey == "" {
+	if c.TransportMode == "stdio" && c.APIKey == "" {
 		return fmt.Errorf("SIGNOZ_API_KEY is required for stdio mode")
+	}
+
+	if c.TransportMode == "stdio" && c.URL == "" {
+		return fmt.Errorf("SIGNOZ_URL is required for stdio mode")
 	}
 
 	if c.TransportMode == "http" {

@@ -22,51 +22,40 @@ import (
 )
 
 type Handler struct {
-	client      *signozclient.SigNoz
 	logger      *zap.Logger
-	signozURL   string
 	clientCache *expirable.LRU[string, *signozclient.SigNoz]
 }
 
-func NewHandler(log *zap.Logger, client *signozclient.SigNoz, cfg *config.Config) *Handler {
+func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
 	return &Handler{
-		client:      client,
 		logger:      log,
-		signozURL:   cfg.URL,
 		clientCache: expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
 	}
 }
 
-// GetClient returns the appropriate SigNoz client based on the request context.
-// It looks up (or creates) a cached client keyed by "apiKey:signozURL".
-// The cache is bounded (LRU) and entries expire after defaultClientCacheTTL,
-// preventing unbounded memory growth from rotating credentials.
-func (h *Handler) GetClient(ctx context.Context) *signozclient.SigNoz {
-	apiKey, hasAPIKey := util.GetAPIKey(ctx)
-	signozURL, hasURL := util.GetSigNozURL(ctx)
+// GetClient returns a cached SigNoz client for the tenant identified by
+// the apiKey and signozURL stored in the request context.
+// Both stdio and HTTP transports guarantee these values are present
+// in the context before any tool handler is called.
+func (h *Handler) GetClient(ctx context.Context) (*signozclient.SigNoz, error) {
+	apiKey, _ := util.GetAPIKey(ctx)
+	signozURL, _ := util.GetSigNozURL(ctx)
 
-	// Use context URL if available, otherwise fall back to handler's default URL
-	if !hasURL || signozURL == "" {
-		signozURL = h.signozURL
+	if apiKey == "" || signozURL == "" {
+		return nil, fmt.Errorf("missing tenant credentials in context (apiKey or signozURL)")
 	}
 
-	// If we have both API key and URL from context, create/return a cached client
-	if hasAPIKey && apiKey != "" && signozURL != "" {
-		cacheKey := util.HashTenantKey(apiKey, signozURL)
+	cacheKey := util.HashTenantKey(apiKey, signozURL)
 
-		// expirable.LRU is internally thread-safe, no external mutex needed.
-		if cachedClient, ok := h.clientCache.Get(cacheKey); ok {
-			return cachedClient
-		}
-
-		h.logger.Debug("Creating client with API key and URL from context",
-			zap.String("url", signozURL))
-		newClient := signozclient.NewClient(h.logger, signozURL, apiKey)
-		h.clientCache.Add(cacheKey, newClient)
-		return newClient
+	if cachedClient, ok := h.clientCache.Get(cacheKey); ok {
+		return cachedClient, nil
 	}
 
-	return h.client
+	h.logger.Debug("Creating new SigNoz client for tenant",
+		zap.String("url", signozURL))
+	newClient := signozclient.NewClient(h.logger, signozURL, apiKey)
+	h.clientCache.Add(cacheKey, newClient)
+	return newClient, nil
 }
 
 func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
@@ -82,7 +71,10 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		h.logger.Debug("Tool called: signoz_list_metric_keys")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		resp, err := client.ListMetricKeys(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list metric keys", zap.Error(err))
@@ -138,7 +130,10 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_search_metric_by_text", zap.String("searchText", searchText))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		resp, err := client.SearchMetricByText(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to search metric by text", zap.String("searchText", searchText), zap.Error(err))
@@ -161,7 +156,10 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_metrics_available_fields", zap.String("searchText", searchText))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.GetMetricsAvailableFields(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get metrics available fields", zap.String("searchText", searchText), zap.Error(err))
@@ -195,7 +193,10 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_metrics_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.GetMetricsFieldValues(ctx, fieldName, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get metrics field values", zap.String("fieldName", fieldName), zap.Error(err))
@@ -217,7 +218,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		h.logger.Debug("Tool called: signoz_list_alerts")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		alerts, err := client.ListAlerts(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list alerts", zap.Error(err))
@@ -275,7 +279,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_alert", zap.String("ruleId", ruleID))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 		if err != nil {
 			h.logger.Error("Failed to get alert", zap.String("ruleId", ruleID), zap.Error(err))
@@ -358,7 +365,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			zap.Int("limit", limit),
 			zap.String("order", order))
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 		if err != nil {
 			h.logger.Error("Failed to get alert history",
@@ -383,7 +393,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		h.logger.Debug("Tool called: signoz_list_dashboards")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.ListDashboards(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list dashboards", zap.Error(err))
@@ -431,7 +444,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_dashboard", zap.String("uuid", uuid))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		data, err := client.GetDashboard(ctx, uuid)
 		if err != nil {
 			h.logger.Error("Failed to get dashboard", zap.String("uuid", uuid), zap.Error(err))
@@ -484,7 +500,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_create_dashboard", zap.String("title", dashboardConfig.Title))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		data, err := client.CreateDashboard(ctx, dashboardConfig)
 
 		if err != nil {
@@ -546,7 +565,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_update_dashboard", zap.String("title", updateDashboardConfig.Dashboard.Title))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		err = client.UpdateDashboard(ctx, updateDashboardConfig.UUID, updateDashboardConfig.Dashboard)
 
 		if err != nil {
@@ -766,7 +788,10 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		h.logger.Debug("Tool called: signoz_list_services", zap.String("start", start), zap.String("end", end), zap.Int("limit", limit), zap.Int("offset", offset))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.ListServices(ctx, start, end)
 		if err != nil {
 			h.logger.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
@@ -827,7 +852,10 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 			zap.String("end", end),
 			zap.String("service", service))
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 		if err != nil {
 			h.logger.Error("Failed to get service top operations",
@@ -888,7 +916,10 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
 		}
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 		if err != nil {
 			h.logger.Error("Failed to execute query builder v5", zap.Error(err))
@@ -913,7 +944,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		h.logger.Debug("Tool called: signoz_list_log_views")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.ListLogViews(ctx)
 		if err != nil {
 			h.logger.Error("Failed to list log views", zap.Error(err))
@@ -961,7 +995,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		data, err := client.GetLogView(ctx, viewID)
 		if err != nil {
 			h.logger.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
@@ -1001,7 +1038,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		_, offset := paginate.ParseParams(req.Params.Arguments)
 
 		h.logger.Debug("Tool called: signoz_get_logs_for_alert", zap.String("alertId", alertID))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		alertData, err := client.GetAlertByRuleID(ctx, alertID)
 		if err != nil {
 			h.logger.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
@@ -1108,7 +1148,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_error_logs", zap.String("start", start), zap.String("end", end))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to get error logs", zap.Error(err))
@@ -1175,7 +1218,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
@@ -1199,7 +1245,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_logs_available_fields", zap.String("searchText", searchText))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.GetLogsAvailableFields(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get logs available fields", zap.String("searchText", searchText), zap.Error(err))
@@ -1233,7 +1282,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.GetLogsFieldValues(ctx, fieldName, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get logs field values", zap.String("fieldName", fieldName), zap.Error(err))
@@ -1287,7 +1339,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			zap.String("aggregation", reqData.AggregationExpr),
 			zap.String("filter", reqData.FilterExpression))
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to aggregate logs", zap.Error(err))
@@ -1339,7 +1394,10 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		h.logger.Debug("Tool called: signoz_search_logs",
 			zap.String("filter", reqData.FilterExpression))
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to search logs", zap.Error(err))
@@ -1400,7 +1458,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			zap.String("aggregation", reqData.AggregationExpr),
 			zap.String("filter", reqData.FilterExpression))
 
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to aggregate traces", zap.Error(err))
@@ -1435,7 +1496,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
-		result, err := h.client.GetTraceFieldValues(ctx, fieldName, searchText)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := client.GetTraceFieldValues(ctx, fieldName, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get trace field values", zap.String("fieldName", fieldName), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1457,7 +1522,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_available_fields", zap.String("searchText", searchText))
-		client := h.GetClient(ctx)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := client.GetTraceAvailableFields(ctx, searchText)
 		if err != nil {
 			h.logger.Error("Failed to get trace available fields", zap.String("searchText", searchText), zap.Error(err))
@@ -1536,7 +1604,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_search_traces_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
-		result, err := h.client.QueryBuilderV5(ctx, queryJSON)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
 			h.logger.Error("Failed to search traces by service", zap.String("service", service), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1578,7 +1650,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
-		result, err := h.client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 		if err != nil {
 			h.logger.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1613,7 +1689,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
-		result, err := h.client.GetTraceErrorAnalysis(ctx, startTime, endTime, service)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := client.GetTraceErrorAnalysis(ctx, startTime, endTime, service)
 		if err != nil {
 			h.logger.Error("Failed to get trace error analysis", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1648,7 +1728,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 
 		h.logger.Debug("Tool called: signoz_get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))
-		result, err := h.client.GetTraceSpanHierarchy(ctx, traceID, startTime, endTime)
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := client.GetTraceSpanHierarchy(ctx, traceID, startTime, endTime)
 		if err != nil {
 			h.logger.Error("Failed to get trace span hierarchy", zap.String("traceId", traceID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
