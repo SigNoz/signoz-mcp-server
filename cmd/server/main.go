@@ -51,6 +51,35 @@ func main() {
 		log.Info("OpenTelemetry tracer initialized successfully")
 	}
 
+	// Initialize OpenTelemetry meter provider for exporting HTTP metrics
+	// (request duration, size, etc.) recorded by otelhttp middleware.
+	shutdownMeter, err := telemetry.InitMeterProvider(context.Background())
+	if err != nil {
+		log.Warn("Failed to initialize OpenTelemetry meter provider, continuing without metrics export", zap.Error(err))
+	} else {
+		defer func() {
+			if err := shutdownMeter(context.Background()); err != nil {
+				log.Error("Failed to shutdown meter provider", zap.Error(err))
+			}
+		}()
+		log.Info("OpenTelemetry meter provider initialized successfully")
+	}
+
+	// Initialize OpenTelemetry log provider and bridge zap logs to OTel.
+	shutdownLogProvider, err := telemetry.InitLogProvider(context.Background())
+	if err != nil {
+		log.Warn("Failed to initialize OpenTelemetry log provider, continuing without log export", zap.Error(err))
+	} else {
+		defer func() {
+			if err := shutdownLogProvider(context.Background()); err != nil {
+				log.Error("Failed to shutdown log provider", zap.Error(err))
+			}
+		}()
+		// Bridge zap to OTel so all subsequent log calls are also exported.
+		log = logger.WithOTelBridge(log)
+		log.Info("OpenTelemetry log provider initialized successfully")
+	}
+
 	handler := tools.NewHandler(log, cfg)
 
 	dashboard.InitClickhouseSchema()

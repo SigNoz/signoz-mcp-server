@@ -3,7 +3,9 @@ package logger
 import (
 	"strings"
 
+	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type LogLevel string
@@ -23,4 +25,13 @@ func NewLogger(level LogLevel) (*zap.Logger, error) {
 		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
 	return config.Build()
+}
+
+// WithOTelBridge wraps an existing zap logger with an additional otelzap core
+// so that all log records are also forwarded to the global OTel LoggerProvider.
+// The original console/file output is preserved.
+func WithOTelBridge(base *zap.Logger) *zap.Logger {
+	otelCore := otelzap.NewCore("signoz-mcp-server")
+	combined := zapcore.NewTee(base.Core(), otelCore)
+	return zap.New(combined, zap.WithCaller(true))
 }
