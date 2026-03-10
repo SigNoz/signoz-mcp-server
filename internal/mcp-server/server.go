@@ -158,7 +158,7 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	// probes and load balancers can reach it.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
+		_, _ = fmt.Fprint(w, "ok")
 	})
 
 	httpServer := server.NewStreamableHTTPServer(s)
