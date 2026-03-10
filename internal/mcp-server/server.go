@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/server"
@@ -153,6 +154,13 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 
 	mux := http.NewServeMux()
 
+	// Health check endpoint — no auth required so that Kubernetes
+	// probes and load balancers can reach it.
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	})
+
 	httpServer := server.NewStreamableHTTPServer(s)
 	mux.Handle("/mcp", m.authMiddleware(httpServer))
 
@@ -164,5 +172,16 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	// automatically create spans for every inbound request.
 	handler := otelhttp.NewHandler(mux, "signoz-mcp-server")
 
-	return http.ListenAndServe(addr, handler)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// WriteTimeout and IdleTimeout are intentionally left at 0 (no timeout)
+		// because MCP uses long-lived SSE connections for streaming responses.
+		// Setting these would prematurely kill active MCP sessions.
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	return srv.ListenAndServe()
 }
