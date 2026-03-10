@@ -3,7 +3,9 @@ package mcp_server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -110,6 +112,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Determine final URL with precedence: X-SigNoz-URL header > config URL
 		if customURL != "" {
 			signozURL = strings.TrimSuffix(customURL, "/")
+			if err := validateSigNozURL(signozURL); err != nil {
+				m.logger.Warn("Invalid X-SigNoz-URL header",
+					zap.String("url", signozURL), zap.Error(err))
+				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
+				return
+			}
 			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
 		} else if signozURL == "" && m.config.URL != "" {
 			signozURL = m.config.URL
@@ -184,4 +192,65 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	}
 
 	return srv.ListenAndServe()
+}
+
+// privateIPNets defines CIDR ranges that are not allowed as SigNoz URL targets.
+var privateIPNets = func() []*net.IPNet {
+	cidrs := []string{
+		"127.0.0.0/8",    // loopback
+		"10.0.0.0/8",     // RFC 1918
+		"172.16.0.0/12",  // RFC 1918
+		"192.168.0.0/16", // RFC 1918
+		"169.254.0.0/16", // link-local
+		"::1/128",        // IPv6 loopback
+		"fc00::/7",       // IPv6 unique local
+		"fe80::/10",      // IPv6 link-local
+	}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, n, _ := net.ParseCIDR(cidr)
+		nets = append(nets, n)
+	}
+	return nets
+}()
+
+// validateSigNozURL checks that a URL is safe to use as a SigNoz backend target.
+// It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent SSRF.
+func validateSigNozURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+
+	// Only allow http and https schemes
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
+	}
+
+	host := parsed.Hostname()
+
+	// Block localhost variants
+	if host == "localhost" || host == "0.0.0.0" || host == "[::]" {
+		return fmt.Errorf("host %q is not allowed", host)
+	}
+
+	// Resolve the hostname and check every IP against private ranges
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("cannot resolve host %q: %w", host, err)
+	}
+
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		for _, n := range privateIPNets {
+			if n.Contains(ip) {
+				return fmt.Errorf("host %q resolves to private address %s", host, ipStr)
+			}
+		}
+	}
+
+	return nil
 }
