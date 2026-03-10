@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/logger"
 	mcpserver "github.com/SigNoz/signoz-mcp-server/internal/mcp-server"
+	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 )
 
@@ -34,6 +36,20 @@ func main() {
 	log.Info("Starting SigNoz MCP Server",
 		zap.String("log_level", cfg.LogLevel),
 		zap.String("transport_mode", cfg.TransportMode))
+
+	// Initialize OpenTelemetry tracer. Configuration is driven by OTEL_*
+	// environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, etc.).
+	shutdownTracer, err := telemetry.InitTracer(context.Background())
+	if err != nil {
+		log.Warn("Failed to initialize OpenTelemetry tracer, continuing without tracing", zap.Error(err))
+	} else {
+		defer func() {
+			if err := shutdownTracer(context.Background()); err != nil {
+				log.Error("Failed to shutdown tracer provider", zap.Error(err))
+			}
+		}()
+		log.Info("OpenTelemetry tracer initialized successfully")
+	}
 
 	handler := tools.NewHandler(log, cfg)
 

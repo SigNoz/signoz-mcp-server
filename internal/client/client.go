@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -21,13 +22,21 @@ const (
 )
 
 type SigNoz struct {
-	baseURL string
-	apiKey  string
-	logger  *zap.Logger
+	baseURL    string
+	apiKey     string
+	logger     *zap.Logger
+	httpClient *http.Client
 }
 
 func NewClient(log *zap.Logger, url, apiKey string) *SigNoz {
-	return &SigNoz{logger: log, baseURL: url, apiKey: apiKey}
+	return &SigNoz{
+		logger:  log,
+		baseURL: url,
+		apiKey:  apiKey,
+		httpClient: &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+	}
 }
 
 func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
@@ -47,7 +56,7 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 
 	s.logger.Debug("Making request to SigNoz API", zap.String("method", "GET"), zap.String("endpoint", "/api/v1/metrics/filters/keys"))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -90,7 +99,7 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 
 	s.logger.Debug("Searching metric names (aggregate_attributes)", zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("searchText", searchText), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -133,7 +142,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 
 	s.logger.Debug("Fetching alerts from SigNoz")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -175,7 +184,7 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 
 	s.logger.Debug("Fetching alert rule details", zap.String("ruleID", ruleID))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("ruleID", ruleID), zap.Error(err))
 		return nil, fmt.Errorf("request error: %w", err)
@@ -220,7 +229,7 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 
 	s.logger.Debug("Fetching dashboards from SigNoz")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -317,7 +326,7 @@ func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage
 
 	s.logger.Debug("Fetching dashboard details", zap.String("uuid", uuid))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("uuid", uuid), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -366,7 +375,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("start", start), zap.String("end", end), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -417,7 +426,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("start", start), zap.String("end", end), zap.String("service", service), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -461,7 +470,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 
 	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", body))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
@@ -512,7 +521,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 		zap.String("method", "POST"),
 		zap.String("endpoint", fmt.Sprintf("/api/v1/rules/%s/history/timeline", ruleID)))
 
-	resp, err := http.DefaultClient.Do(httpReq)
+	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -557,7 +566,7 @@ func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 
 	s.logger.Debug("Fetching log views from SigNoz")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -601,7 +610,7 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 
 	s.logger.Debug("Fetching log view details", zap.String("viewID", viewID))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("viewID", viewID), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -645,7 +654,7 @@ func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, sear
 
 	s.logger.Debug("Fetching trace field values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("fieldName", fieldName), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -690,7 +699,7 @@ func (s *SigNoz) GetTraceAvailableFields(ctx context.Context, searchText string)
 
 	s.logger.Debug("Fetching trace available fields", zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", urlStr), zap.String("searchText", searchText), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -735,7 +744,7 @@ func (s *SigNoz) GetLogsAvailableFields(ctx context.Context, searchText string) 
 
 	s.logger.Debug("Fetching logs available fields", zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", urlStr), zap.String("searchText", searchText), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -780,7 +789,7 @@ func (s *SigNoz) GetMetricsAvailableFields(ctx context.Context, searchText strin
 
 	s.logger.Debug("Fetching metrics available fields", zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", urlStr), zap.String("searchText", searchText), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -826,7 +835,7 @@ func (s *SigNoz) GetLogsFieldValues(ctx context.Context, fieldName string, searc
 
 	s.logger.Debug("Fetching logs field values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", urlStr), zap.String("fieldName", fieldName), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -872,7 +881,7 @@ func (s *SigNoz) GetMetricsFieldValues(ctx context.Context, fieldName string, se
 
 	s.logger.Debug("Fetching metrics field values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		s.logger.Error("HTTP request failed", zap.String("url", urlStr), zap.String("fieldName", fieldName), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
@@ -967,9 +976,7 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	resp, err := client.Do(req.WithContext(timeoutCtx))
+	resp, err := s.httpClient.Do(req.WithContext(timeoutCtx))
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
@@ -1007,9 +1014,7 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	resp, err := client.Do(req.WithContext(timeoutCtx))
+	resp, err := s.httpClient.Do(req.WithContext(timeoutCtx))
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}

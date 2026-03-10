@@ -8,6 +8,7 @@ import (
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/server"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 
@@ -159,5 +160,9 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 		zap.String("addr", addr),
 		zap.String("mcp_endpoint", "/mcp"))
 
-	return http.ListenAndServe(addr, mux)
+	// Wrap the entire mux with OpenTelemetry HTTP instrumentation to
+	// automatically create spans for every inbound request.
+	handler := otelhttp.NewHandler(mux, "signoz-mcp-server")
+
+	return http.ListenAndServe(addr, handler)
 }
