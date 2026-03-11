@@ -101,7 +101,8 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		} else if m.config.APIKey != "" {
 			// Fallback to config API key if no Authorization header
-			ctx = util.SetAPIKey(ctx, m.config.APIKey)
+			apiKey = m.config.APIKey
+			ctx = util.SetAPIKey(ctx, apiKey)
 			m.logger.Debug("Using API key from environment config")
 		} else {
 			m.logger.Warn("No API key found in Authorization header or environment")
@@ -119,7 +120,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
-		} else if signozURL == "" && m.config.URL != "" {
+		} else if m.config.URL != "" {
 			signozURL = m.config.URL
 			m.logger.Debug("Using URL from environment config", zap.String("url", signozURL))
 		} else {
@@ -128,10 +129,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Store URL in context if available
-		if signozURL != "" {
-			ctx = util.SetSigNozURL(ctx, signozURL)
-		}
+		ctx = util.SetSigNozURL(ctx, signozURL)
 
 		// Per-tenant rate limiting keyed by hashed apiKey:signozURL
 		tenantKey := util.HashTenantKey(apiKey, signozURL)
@@ -228,6 +226,10 @@ func validateSigNozURL(rawURL string) error {
 	}
 
 	host := parsed.Hostname()
+
+	if host == "" {
+		return fmt.Errorf("URL must include a host")
+	}
 
 	// Block localhost variants
 	if host == "localhost" || host == "0.0.0.0" || host == "[::]" {

@@ -35,9 +35,11 @@ func GetSigNozURL(ctx context.Context) (string, bool) {
 	return url, ok
 }
 
-// HashTenantKey returns a SHA-256 hash of apiKey:signozURL, suitable for use
-// as a cache/map key without exposing the raw API key in memory.
+// HashTenantKey returns a SHA-256 hash of apiKey and signozURL, suitable for
+// use as a cache/map key without exposing the raw API key in memory.
+// A null-byte separator is used to prevent collisions between different
+// (apiKey, signozURL) pairs that contain colons.
 func HashTenantKey(apiKey, signozURL string) string {
-	h := sha256.Sum256([]byte(apiKey + ":" + signozURL))
+	h := sha256.Sum256([]byte(apiKey + "\x00" + signozURL))
 	return hex.EncodeToString(h[:])
 }
