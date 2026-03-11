@@ -503,6 +503,48 @@ Executes a SigNoz Query Builder v5 query.
 | `OAUTH_ACCESS_TOKEN_TTL_MINUTES` | Access token lifetime in minutes (default: 60)                  | No                                  |
 | `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 1440 / 24h)       | No                                  |
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
+| `SIGNOZ_CUSTOM_HEADERS` | Custom HTTP headers sent with every request (format: `Key1:Value1,Key2:Value2`) | No                             |
+
+### Custom Headers (Reverse Proxy Authentication)
+
+If your SigNoz instance is behind a reverse proxy that requires additional authentication headers (e.g. Cloudflare Access, AWS ALB with OIDC, or a custom auth gateway), use the `SIGNOZ_CUSTOM_HEADERS` environment variable.
+
+**Format:** `Key1:Value1,Key2:Value2`
+
+Headers are injected into every outbound HTTP request alongside the standard `Content-Type` and `SIGNOZ-API-KEY` headers. When `SIGNOZ_CUSTOM_HEADERS` is not set or empty, no additional headers are sent.
+
+#### Example: Cloudflare Access
+
+Create a [Service Token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) in Cloudflare Zero Trust, then add a Service Token policy to your Access application.
+
+```json
+{
+    "mcpServers": {
+        "signoz": {
+            "command": "/path/to/signoz-mcp-server",
+            "args": [],
+            "env": {
+                "SIGNOZ_URL": "https://signoz.example.com",
+                "SIGNOZ_API_KEY": "your-api-key",
+                "SIGNOZ_CUSTOM_HEADERS": "CF-Access-Client-Id:your-client-id.access,CF-Access-Client-Secret:your-client-secret",
+                "LOG_LEVEL": "info"
+            }
+        }
+    }
+}
+```
+
+#### Example: Custom Bearer Token
+
+```json
+{
+    "env": {
+        "SIGNOZ_URL": "https://signoz.example.com",
+        "SIGNOZ_API_KEY": "your-api-key",
+        "SIGNOZ_CUSTOM_HEADERS": "X-Proxy-Auth:Bearer my-proxy-token"
+    }
+}
+```
 
 ## Claude Desktop Extension
 
