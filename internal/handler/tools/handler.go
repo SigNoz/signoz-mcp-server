@@ -14,8 +14,9 @@ import (
 )
 
 type Handler struct {
-	logger      *zap.Logger
-	clientCache *expirable.LRU[string, *signozclient.SigNoz]
+	logger        *zap.Logger
+	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
+	customHeaders map[string]string
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
@@ -25,8 +26,9 @@ type Handler struct {
 
 func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
 	return &Handler{
-		logger:      log,
-		clientCache: expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
+		logger:        log,
+		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
+		customHeaders: cfg.CustomHeaders,
 	}
 }
 
@@ -75,7 +77,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 	}
 
 	h.tenantLogger(ctx).Debug("Creating new SigNoz client for tenant")
-	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader)
+	newClient := signozclient.NewClientWithHeaders(h.logger, signozURL, apiKey, authHeader, h.customHeaders)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil
 }

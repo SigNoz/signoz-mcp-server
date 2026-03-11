@@ -25,6 +25,8 @@ type Config struct {
 	// Client cache settings for multi-tenant mode
 	ClientCacheSize int
 	ClientCacheTTL  time.Duration
+
+	CustomHeaders map[string]string
 }
 
 const (
@@ -61,6 +63,17 @@ func LoadConfig() (*Config, error) {
 	refreshTTLMinutes := getEnvInt(OAuthRefreshTTLMinutes, defaultRefreshTTLMinutes)
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
 
+	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
+	customHeaders := make(map[string]string)
+	if headersStr := getEnv("SIGNOZ_CUSTOM_HEADERS", ""); headersStr != "" {
+		for _, pair := range strings.Split(headersStr, ",") {
+			parts := strings.SplitN(pair, ":", 2)
+			if len(parts) == 2 {
+				customHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
 	return &Config{
 		URL:              url,
 		APIKey:           getEnv(SignozApiKey, ""),
@@ -75,6 +88,7 @@ func LoadConfig() (*Config, error) {
 		AuthCodeTTL:      time.Duration(authCodeTTLSeconds) * time.Second,
 		ClientCacheSize:  cacheSize,
 		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
+		CustomHeaders:    customHeaders,
 	}, nil
 }
 
