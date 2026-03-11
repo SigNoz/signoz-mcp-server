@@ -48,8 +48,8 @@ const (
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
-	defaultAccessTTLMinutes      = 60       // 1 hour
-	defaultRefreshTTLMinutes     = 43200    // 30 days
+	defaultAccessTTLMinutes      = 60    // 1 hour
+	defaultRefreshTTLMinutes     = 43200 // 30 days
 	defaultAuthCodeTTLSeconds    = 600
 )
 
