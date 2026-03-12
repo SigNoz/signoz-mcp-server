@@ -116,8 +116,8 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 	return body, nil
 }
 
-func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
+func (s *SigNoz) ListAlertRules(ctx context.Context) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/rules", s.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	s.logger.Debug("Fetching alerts from SigNoz")
+	s.logger.Debug("Fetching alert rules from SigNoz")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -155,7 +155,50 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	s.logger.Debug("Successfully retrieved alerts", zap.Int("status", resp.StatusCode))
+	s.logger.Debug("Successfully retrieved alert rules", zap.Int("status", resp.StatusCode))
+	return body, nil
+}
+
+func (s *SigNoz) ListTriggeredAlerts(ctx context.Context) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	s.logger.Debug("Fetching triggered alerts from SigNoz")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	s.logger.Debug("Successfully retrieved triggered alerts", zap.Int("status", resp.StatusCode))
 	return body, nil
 }
 
