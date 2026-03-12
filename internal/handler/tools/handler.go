@@ -256,6 +256,56 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(resultJSON)), nil
 	})
 
+	triggeredAlertsTool := mcp.NewTool("signoz_list_triggered_alerts",
+		mcp.WithDescription("List currently firing/triggered alerts from SigNoz Alertmanager. Returns only alerts that are actively firing right now. For configured alert rules (regardless of firing state), use signoz_list_alerts instead. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of triggered alerts to return per page. Default: 50.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Default: 0.")),
+	)
+	s.AddTool(triggeredAlertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h.logger.Debug("Tool called: signoz_list_triggered_alerts")
+		limit, offset := paginate.ParseParams(req.Params.Arguments)
+
+		client := h.GetClient(ctx)
+		alerts, err := client.ListTriggeredAlerts(ctx)
+		if err != nil {
+			h.logger.Error("Failed to list triggered alerts", zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		var apiResponse types.APIAlertsResponse
+		if err := json.Unmarshal(alerts, &apiResponse); err != nil {
+			h.logger.Error("Failed to parse triggered alerts response", zap.Error(err), zap.String("response", string(alerts)))
+			return mcp.NewToolResultError("failed to parse triggered alerts response: " + err.Error()), nil
+		}
+
+		alertsList := make([]types.TriggeredAlert, 0, len(apiResponse.Data))
+		for _, apiAlert := range apiResponse.Data {
+			alertsList = append(alertsList, types.TriggeredAlert{
+				Alertname: apiAlert.Labels.Alertname,
+				RuleID:    apiAlert.Labels.RuleID,
+				Severity:  apiAlert.Labels.Severity,
+				StartsAt:  apiAlert.StartsAt,
+				EndsAt:    apiAlert.EndsAt,
+				State:     apiAlert.Status.State,
+			})
+		}
+
+		total := len(alertsList)
+		alertsArray := make([]any, len(alertsList))
+		for i, v := range alertsList {
+			alertsArray[i] = v
+		}
+		pagedAlerts := paginate.Array(alertsArray, offset, limit)
+
+		resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
+		if err != nil {
+			h.logger.Error("Failed to wrap triggered alerts with pagination", zap.Error(err))
+			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		}
+
+		return mcp.NewToolResultText(string(resultJSON)), nil
+	})
+
 	getAlertTool := mcp.NewTool("signoz_get_alert",
 		mcp.WithDescription("Get details of a specific alert rule by ruleId"),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert ruleId")),

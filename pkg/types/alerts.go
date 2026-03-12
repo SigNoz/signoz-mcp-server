@@ -26,6 +26,16 @@ type Alert struct {
 	Disabled  bool   `json:"disabled"`
 }
 
+// TriggeredAlert contains information about a currently firing alert
+type TriggeredAlert struct {
+	Alertname string `json:"alertname"`
+	RuleID    string `json:"ruleId"`
+	Severity  string `json:"severity"`
+	StartsAt  string `json:"startsAt"`
+	EndsAt    string `json:"endsAt"`
+	State     string `json:"state"`
+}
+
 // APIAlertLabels represents labels from the Alertmanager /alerts endpoint
 type APIAlertLabels struct {
 	Alertname string `json:"alertname"`
