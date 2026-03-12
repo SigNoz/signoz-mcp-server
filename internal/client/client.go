@@ -116,8 +116,8 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 	return body, nil
 }
 
-func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
+func (s *SigNoz) ListAlertRules(ctx context.Context) (json.RawMessage, error) {
+	url := fmt.Sprintf("%s/api/v1/rules", s.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	s.logger.Debug("Fetching alerts from SigNoz")
+	s.logger.Debug("Fetching alert rules from SigNoz")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -155,7 +155,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	s.logger.Debug("Successfully retrieved alerts", zap.Int("status", resp.StatusCode))
+	s.logger.Debug("Successfully retrieved alert rules", zap.Int("status", resp.StatusCode))
 	return body, nil
 }
 

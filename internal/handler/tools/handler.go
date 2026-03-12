@@ -206,7 +206,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
-		mcp.WithDescription("List active alerts from SigNoz. Returns list of alert with: alert name, rule ID, severity, start time, end time, and state. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
+		mcp.WithDescription("List configured alert rules from SigNoz. Returns list of alert rules with: alert name, rule ID, severity, state, alert type, and disabled status. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
@@ -215,28 +215,28 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		client := h.GetClient(ctx)
-		alerts, err := client.ListAlerts(ctx)
+		rulesJSON, err := client.ListAlertRules(ctx)
 		if err != nil {
-			h.logger.Error("Failed to list alerts", zap.Error(err))
+			h.logger.Error("Failed to list alert rules", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		var apiResponse types.APIAlertsResponse
-		if err := json.Unmarshal(alerts, &apiResponse); err != nil {
-			h.logger.Error("Failed to parse alerts response", zap.Error(err), zap.String("response", string(alerts)))
-			return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
+		var apiResponse types.APIAlertRulesResponse
+		if err := json.Unmarshal(rulesJSON, &apiResponse); err != nil {
+			h.logger.Error("Failed to parse alert rules response", zap.Error(err), zap.String("response", string(rulesJSON)))
+			return mcp.NewToolResultError("failed to parse alert rules response: " + err.Error()), nil
 		}
 
-		// takes only meaningful data
-		alertsList := make([]types.Alert, 0, len(apiResponse.Data))
-		for _, apiAlert := range apiResponse.Data {
+		// Extract only meaningful data from each rule
+		alertsList := make([]types.Alert, 0, len(apiResponse.Data.Rules))
+		for _, rule := range apiResponse.Data.Rules {
 			alertsList = append(alertsList, types.Alert{
-				Alertname: apiAlert.Labels.Alertname,
-				RuleID:    apiAlert.Labels.RuleID,
-				Severity:  apiAlert.Labels.Severity,
-				StartsAt:  apiAlert.StartsAt,
-				EndsAt:    apiAlert.EndsAt,
-				State:     apiAlert.Status.State,
+				Name:      rule.Alert,
+				RuleID:    rule.ID,
+				Severity:  rule.Labels.Severity,
+				State:     rule.State,
+				AlertType: rule.AlertType,
+				Disabled:  rule.Disabled,
 			})
 		}
 
