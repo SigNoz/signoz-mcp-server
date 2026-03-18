@@ -25,6 +25,12 @@ type MCPServer struct {
 	handler      *tools.Handler
 	config       *config.Config
 	rateLimiters *expirable.LRU[string, *rate.Limiter]
+
+	// normalizedURLs caches the result of normalizeSigNozURL so that
+	// repeat requests from the same tenant skip DNS resolution entirely.
+	// Entries expire after ClientCacheTTL so DNS changes eventually
+	// take effect.
+	normalizedURLs *expirable.LRU[string, string]
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *MCPServer {
@@ -33,7 +39,10 @@ func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *
 	limiters := expirable.NewLRU[string, *rate.Limiter](
 		cfg.ClientCacheSize, nil, cfg.ClientCacheTTL,
 	)
-	return &MCPServer{logger: log, handler: handler, config: cfg, rateLimiters: limiters}
+	urlCache := expirable.NewLRU[string, string](
+		cfg.ClientCacheSize, nil, cfg.ClientCacheTTL,
+	)
+	return &MCPServer{logger: log, handler: handler, config: cfg, rateLimiters: limiters, normalizedURLs: urlCache}
 }
 
 func (m *MCPServer) Start() error {
@@ -112,14 +121,20 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		// Determine final URL with precedence: X-SigNoz-URL header > config URL
 		if customURL != "" {
-			normalized, err := normalizeSigNozURL(strings.TrimSuffix(customURL, "/"))
-			if err != nil {
-				m.logger.Warn("Invalid X-SigNoz-URL header",
-					zap.String("url", customURL), zap.Error(err))
-				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
-				return
+			trimmed := strings.TrimSuffix(customURL, "/")
+			if cached, ok := m.normalizedURLs.Get(trimmed); ok {
+				signozURL = cached
+			} else {
+				normalized, err := normalizeSigNozURL(trimmed)
+				if err != nil {
+					m.logger.Warn("Invalid X-SigNoz-URL header",
+						zap.String("url", customURL), zap.Error(err))
+					http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
+					return
+				}
+				m.normalizedURLs.Add(trimmed, normalized)
+				signozURL = normalized
 			}
-			signozURL = normalized
 			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
