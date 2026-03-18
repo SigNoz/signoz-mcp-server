@@ -225,6 +225,19 @@ func validateSigNozURL(rawURL string) error {
 		return fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
 	}
 
+	// Reject URLs that contain path, query, or fragment components.
+	// Users may copy a full UI URL like https://tenant.example.com/dashboard/123?orgId=1
+	// but baseURL must be an origin only (scheme + host + optional port).
+	if parsed.Path != "" && parsed.Path != "/" {
+		return fmt.Errorf("URL must be an origin (scheme://host[:port]) without a path, got path %q", parsed.Path)
+	}
+	if parsed.RawQuery != "" {
+		return fmt.Errorf("URL must be an origin (scheme://host[:port]) without query parameters")
+	}
+	if parsed.Fragment != "" {
+		return fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
+	}
+
 	host := parsed.Hostname()
 
 	if host == "" {
