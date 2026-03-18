@@ -112,13 +112,14 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		// Determine final URL with precedence: X-SigNoz-URL header > config URL
 		if customURL != "" {
-			signozURL = strings.TrimSuffix(customURL, "/")
-			if err := validateSigNozURL(signozURL); err != nil {
+			normalized, err := normalizeSigNozURL(strings.TrimSuffix(customURL, "/"))
+			if err != nil {
 				m.logger.Warn("Invalid X-SigNoz-URL header",
-					zap.String("url", signozURL), zap.Error(err))
+					zap.String("url", customURL), zap.Error(err))
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
+			signozURL = normalized
 			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
@@ -212,47 +213,55 @@ var privateIPNets = func() []*net.IPNet {
 	return nets
 }()
 
-// validateSigNozURL checks that a URL is safe to use as a SigNoz backend target.
-// It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent SSRF.
-func validateSigNozURL(rawURL string) error {
+// normalizeSigNozURL validates that rawURL is safe to use as a SigNoz backend
+// target and returns the canonical origin form (scheme://host[:port]).
+// It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent
+// SSRF. Default ports (80 for http, 443 for https) are stripped so that
+// equivalent URLs like https://example.com and https://example.com:443
+// produce the same origin string for caching and rate-limiting.
+func normalizeSigNozURL(rawURL string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("malformed URL: %w", err)
+		return "", fmt.Errorf("malformed URL: %w", err)
 	}
 
 	// Only allow http and https schemes
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
 	}
 
 	// Reject URLs that contain path, query, or fragment components.
 	// Users may copy a full UI URL like https://tenant.example.com/dashboard/123?orgId=1
 	// but baseURL must be an origin only (scheme + host + optional port).
 	if parsed.Path != "" && parsed.Path != "/" {
-		return fmt.Errorf("URL must be an origin (scheme://host[:port]) without a path, got path %q", parsed.Path)
+		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a path, got path %q", parsed.Path)
 	}
 	if parsed.RawQuery != "" {
-		return fmt.Errorf("URL must be an origin (scheme://host[:port]) without query parameters")
+		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without query parameters")
 	}
 	if parsed.Fragment != "" {
-		return fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
+		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
 	}
 
 	host := parsed.Hostname()
 
 	if host == "" {
-		return fmt.Errorf("URL must include a host")
+		return "", fmt.Errorf("URL must include a host")
 	}
+
+	// Lowercase the host for consistent comparison.
+	host = strings.ToLower(host)
 
 	// Block localhost variants
 	if host == "localhost" || host == "0.0.0.0" || host == "[::]" {
-		return fmt.Errorf("host %q is not allowed", host)
+		return "", fmt.Errorf("host %q is not allowed", host)
 	}
 
 	// Resolve the hostname and check every IP against private ranges
 	ips, err := net.LookupHost(host)
 	if err != nil {
-		return fmt.Errorf("cannot resolve host %q: %w", host, err)
+		return "", fmt.Errorf("cannot resolve host %q: %w", host, err)
 	}
 
 	for _, ipStr := range ips {
@@ -262,10 +271,22 @@ func validateSigNozURL(rawURL string) error {
 		}
 		for _, n := range privateIPNets {
 			if n.Contains(ip) {
-				return fmt.Errorf("host %q resolves to private address %s", host, ipStr)
+				return "", fmt.Errorf("host %q resolves to private address %s", host, ipStr)
 			}
 		}
 	}
 
-	return nil
+	// Build the canonical origin. Strip default ports so that
+	// https://example.com and https://example.com:443 hash identically.
+	port := parsed.Port()
+	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
+		port = ""
+	}
+
+	origin := scheme + "://" + host
+	if port != "" {
+		origin += ":" + port
+	}
+
+	return origin, nil
 }

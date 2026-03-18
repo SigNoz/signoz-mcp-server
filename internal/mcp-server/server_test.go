@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestValidateSigNozURL_RejectsPathQueryFragment(t *testing.T) {
+func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 	tests := []struct {
 		name    string
 		url     string
@@ -43,11 +43,16 @@ func TestValidateSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 			name: "origin with port is allowed",
 			url:  "https://tenant.example.com:8080",
 		},
+		{
+			name:    "ftp scheme rejected",
+			url:     "ftp://tenant.example.com",
+			wantErr: "not allowed",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateSigNozURL(tt.url)
+			_, err := normalizeSigNozURL(tt.url)
 			if tt.wantErr == "" {
 				// These cases may still fail due to DNS resolution of
 				// the fake host, which is fine — we only care that the
@@ -66,6 +71,59 @@ func TestValidateSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("expected error containing %q, got %q", tt.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestNormalizeSigNozURL_CanonicalizesOrigin(t *testing.T) {
+	// These tests use 1.1.1.1 (Cloudflare DNS) which resolves to a public IP,
+	// so the full validation pipeline succeeds without DNS issues.
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{
+			name: "strips default https port",
+			url:  "https://1.1.1.1:443",
+			want: "https://1.1.1.1",
+		},
+		{
+			name: "strips default http port",
+			url:  "http://1.1.1.1:80",
+			want: "http://1.1.1.1",
+		},
+		{
+			name: "keeps non-default port",
+			url:  "https://1.1.1.1:8080",
+			want: "https://1.1.1.1:8080",
+		},
+		{
+			name: "lowercases scheme",
+			url:  "HTTPS://1.1.1.1",
+			want: "https://1.1.1.1",
+		},
+		{
+			name: "strips trailing slash",
+			url:  "https://1.1.1.1/",
+			want: "https://1.1.1.1",
+		},
+		{
+			name: "bare origin unchanged",
+			url:  "https://1.1.1.1",
+			want: "https://1.1.1.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeSigNozURL(tt.url)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("normalizeSigNozURL(%q) = %q, want %q", tt.url, got, tt.want)
 			}
 		})
 	}
