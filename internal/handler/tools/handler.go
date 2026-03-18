@@ -39,7 +39,7 @@ func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
 func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
 	l := h.logger
 	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-		l = l.With(zap.String("tenant_url", signozURL))
+		l = l.With(zap.String("url", signozURL))
 	}
 	return l
 }
