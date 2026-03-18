@@ -46,6 +46,8 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **Configuration**: Environment-based configuration management
 - **Logging**: Structured logging with Zap
 
+For a detailed architecture overview including request flow, component interactions, and design decisions, see [docs/architecture.md](docs/architecture.md).
+
 ## 🧰 Usage
 
 Use this mcp-server with MCP-compatible clients like Claude Desktop and Cursor.
