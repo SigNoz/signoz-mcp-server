@@ -9,7 +9,6 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
-	"github.com/SigNoz/signoz-mcp-server/internal/logger"
 	mcpserver "github.com/SigNoz/signoz-mcp-server/internal/mcp-server"
 	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
@@ -27,7 +26,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log, err := logger.NewLogger(logger.LogLevel(cfg.LogLevel))
+	log, err := telemetry.NewLogger(telemetry.LogLevel(cfg.LogLevel))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)

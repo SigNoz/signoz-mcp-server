@@ -14,6 +14,7 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
@@ -39,7 +40,7 @@ func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
 func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
 	l := h.logger
 	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-		l = l.With(zap.String("url", signozURL))
+		l = telemetry.LoggerWithURL(l, signozURL)
 	}
 	return l
 }

@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -10,6 +11,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.uber.org/zap"
 )
 
 // InitTracer sets up an OTLP gRPC trace exporter and registers a global
@@ -66,6 +68,30 @@ func InitMeterProvider(ctx context.Context) (func(context.Context) error, error)
 	otel.SetMeterProvider(mp)
 
 	return mp.Shutdown, nil
+}
+
+type LogLevel string
+
+// NewLogger creates a new logger with the specified level.
+func NewLogger(level LogLevel) (*zap.Logger, error) {
+	config := zap.NewProductionConfig()
+
+	switch strings.ToLower(string(level)) {
+	case "debug":
+		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	case "info":
+		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	case "error":
+		config.Level = zap.NewAtomicLevelAt(zap.ErrorLevel)
+	default:
+		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	}
+	return config.Build()
+}
+
+// LoggerWithURL returns a child logger enriched with the given URL field.
+func LoggerWithURL(input *zap.Logger, url string) *zap.Logger {
+	return input.With(zap.String("url", url))
 }
 
 func newResource(ctx context.Context) (*resource.Resource, error) {
