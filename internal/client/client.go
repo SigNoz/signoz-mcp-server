@@ -28,10 +28,10 @@ type SigNoz struct {
 	httpClient *http.Client
 }
 
-func NewClient(log *zap.Logger, url, apiKey string) *SigNoz {
+func NewClient(log *zap.Logger, baseURL, apiKey string) *SigNoz {
 	return &SigNoz{
 		logger:  log,
-		baseURL: url,
+		baseURL: baseURL,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
@@ -40,9 +40,9 @@ func NewClient(log *zap.Logger, url, apiKey string) *SigNoz {
 }
 
 func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/metrics/filters/keys", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/metrics/filters/keys", s.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -58,7 +58,7 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -69,23 +69,23 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	s.logger.Debug("Successfully retrieved metric keys", zap.String("url", url), zap.Int("status", resp.StatusCode))
+	s.logger.Debug("Successfully retrieved metric keys", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
 	return body, nil
 }
 
 func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v3/autocomplete/aggregate_attributes?dataSource=metrics&searchText=%s", s.baseURL, url.QueryEscape(searchText))
+	reqURL := fmt.Sprintf("%s/api/v3/autocomplete/aggregate_attributes?dataSource=metrics&searchText=%s", s.baseURL, url.QueryEscape(searchText))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -101,7 +101,7 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("searchText", searchText), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("searchText", searchText), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -112,12 +112,12 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -126,9 +126,9 @@ func (s *SigNoz) SearchMetricByText(ctx context.Context, searchText string) (jso
 }
 
 func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -144,7 +144,7 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -155,12 +155,12 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -169,9 +169,9 @@ func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
 }
 
 func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/rules/%s", s.baseURL, url.PathEscape(ruleID))
+	reqURL := fmt.Sprintf("%s/api/v1/rules/%s", s.baseURL, url.PathEscape(ruleID))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -186,7 +186,7 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("ruleID", ruleID), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("ruleID", ruleID), zap.Error(err))
 		return nil, fmt.Errorf("request error: %w", err)
 	}
 	defer func() {
@@ -197,11 +197,11 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("read error: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -213,9 +213,9 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 // so we filter and only return required information which might help to get
 // detailed info of a dashboard.
 func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -231,7 +231,7 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -242,19 +242,19 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(body, &rawResponse); err != nil {
-		s.logger.Error("Failed to parse response", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to parse response", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
@@ -310,9 +310,9 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 }
 
 func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(uuid))
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(uuid))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -328,7 +328,7 @@ func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("uuid", uuid), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("uuid", uuid), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -339,13 +339,13 @@ func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -354,7 +354,7 @@ func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage
 }
 
 func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/services", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/services", s.baseURL)
 
 	payload := map[string]string{
 		"start": start,
@@ -362,7 +362,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	}
 	bodyBytes, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -377,7 +377,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	req = req.WithContext(ctx)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("start", start), zap.String("end", end), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("start", start), zap.String("end", end), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -388,13 +388,13 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -403,7 +403,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 }
 
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/service/top_operations", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/service/top_operations", s.baseURL)
 
 	payload := map[string]any{
 		"start":   start,
@@ -413,7 +413,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	}
 	bodyBytes, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -428,7 +428,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	req = req.WithContext(ctx)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("start", start), zap.String("end", end), zap.String("service", service), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("start", start), zap.String("end", end), zap.String("service", service), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -439,13 +439,13 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -454,9 +454,9 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -468,7 +468,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", body))
+	s.logger.Debug("sending request", zap.String("url", reqURL), zap.ByteString("body", body))
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -494,7 +494,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 }
 
 func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/rules/%s/history/timeline", s.baseURL, url.PathEscape(ruleID))
+	reqURL := fmt.Sprintf("%s/api/v1/rules/%s/history/timeline", s.baseURL, url.PathEscape(ruleID))
 	// includes ruleid to get history
 	// eg: /api/v1/rules/<ruleID>/history/timeline
 
@@ -503,7 +503,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBody))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -511,7 +511,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 	httpReq.Header.Set(ContentType, "application/json")
 	httpReq.Header.Set(SignozApiKey, s.apiKey)
 
-	s.logger.Debug("sending request", zap.String("url", url), zap.ByteString("body", reqBody))
+	s.logger.Debug("sending request", zap.String("url", reqURL), zap.ByteString("body", reqBody))
 
 	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
@@ -523,7 +523,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -540,7 +540,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		s.logger.Error("API request failed",
-			zap.String("url", url),
+			zap.String("url", reqURL),
 			zap.Int("status", resp.StatusCode),
 			zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
@@ -550,9 +550,9 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 }
 
 func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -568,7 +568,7 @@ func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -579,13 +579,13 @@ func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -594,9 +594,9 @@ func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 }
 
 func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
+	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -612,7 +612,7 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("viewID", viewID), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("viewID", viewID), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -623,13 +623,13 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -638,9 +638,9 @@ func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage
 }
 
 func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, searchText string) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/fields/values?signal=traces&name=%s&searchText=%s&metricName=&source=meter", s.baseURL, url.QueryEscape(fieldName), url.QueryEscape(searchText))
+	reqURL := fmt.Sprintf("%s/api/v1/fields/values?signal=traces&name=%s&searchText=%s&metricName=&source=meter", s.baseURL, url.QueryEscape(fieldName), url.QueryEscape(searchText))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -656,7 +656,7 @@ func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, sear
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("HTTP request failed", zap.String("url", url), zap.String("fieldName", fieldName), zap.Error(err))
+		s.logger.Error("HTTP request failed", zap.String("url", reqURL), zap.String("fieldName", fieldName), zap.Error(err))
 		return nil, fmt.Errorf("failed to do request: %w", err)
 	}
 	defer func() {
@@ -667,13 +667,13 @@ func (s *SigNoz) GetTraceFieldValues(ctx context.Context, fieldName string, sear
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logger.Error("API request failed", zap.String("url", url), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		s.logger.Error("API request failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.logger.Error("Failed to read response body", zap.String("url", url), zap.Error(err))
+		s.logger.Error("Failed to read response body", zap.String("url", reqURL), zap.Error(err))
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
@@ -958,14 +958,14 @@ func (s *SigNoz) GetTraceSpanHierarchy(ctx context.Context, traceID string, star
 }
 
 func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error) {
-	url := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
 
 	dashboardJSON, err := json.Marshal(dashboard)
 	if err != nil {
 		return nil, fmt.Errorf("marshal dashboard: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(dashboardJSON))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON))
 	if err != nil {
 		return nil, fmt.Errorf("new request: %w", err)
 	}
@@ -996,14 +996,14 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 }
 
 func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error {
-	url := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
 
 	dashboardJSON, err := json.Marshal(dashboard)
 	if err != nil {
 		return fmt.Errorf("marshal dashboard: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(dashboardJSON))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON))
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
