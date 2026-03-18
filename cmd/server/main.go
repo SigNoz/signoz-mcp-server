@@ -1,16 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
-	"github.com/SigNoz/signoz-mcp-server/internal/logger"
 	mcpserver "github.com/SigNoz/signoz-mcp-server/internal/mcp-server"
+	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 )
 
@@ -26,7 +26,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log, err := logger.NewLogger(logger.LogLevel(cfg.LogLevel))
+	log, err := telemetry.NewLogger(telemetry.LogLevel(cfg.LogLevel))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
@@ -36,8 +36,35 @@ func main() {
 		zap.String("log_level", cfg.LogLevel),
 		zap.String("transport_mode", cfg.TransportMode))
 
-	sigNozClient := client.NewClient(log, cfg.URL, cfg.APIKey)
-	handler := tools.NewHandler(log, sigNozClient, cfg.URL)
+	// Initialize OpenTelemetry tracer. Configuration is driven by OTEL_*
+	// environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, etc.).
+	shutdownTracer, err := telemetry.InitTracer(context.Background())
+	if err != nil {
+		log.Warn("Failed to initialize OpenTelemetry tracer, continuing without tracing", zap.Error(err))
+	} else {
+		defer func() {
+			if err := shutdownTracer(context.Background()); err != nil {
+				log.Error("Failed to shutdown tracer provider", zap.Error(err))
+			}
+		}()
+		log.Info("OpenTelemetry tracer initialized successfully")
+	}
+
+	// Initialize OpenTelemetry meter provider for exporting HTTP metrics
+	// (request duration, size, etc.) recorded by otelhttp middleware.
+	shutdownMeter, err := telemetry.InitMeterProvider(context.Background())
+	if err != nil {
+		log.Warn("Failed to initialize OpenTelemetry meter provider, continuing without metrics export", zap.Error(err))
+	} else {
+		defer func() {
+			if err := shutdownMeter(context.Background()); err != nil {
+				log.Error("Failed to shutdown meter provider", zap.Error(err))
+			}
+		}()
+		log.Info("OpenTelemetry meter provider initialized successfully")
+	}
+
+	handler := tools.NewHandler(log, cfg)
 
 	dashboard.InitClickhouseSchema()
 
