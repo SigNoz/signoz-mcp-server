@@ -13,7 +13,7 @@ subgraph Startup["Server Initialization"]
     LOG --> OTEL["Init OpenTelemetry<br/>(Tracer, Meter, Log Provider)"]
     OTEL --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
-    CHSCHEMA --> MCPSRV["NewMCPServer with<br/>LRU normalizedURLs"]
+    CHSCHEMA --> MCPSRV["NewMCPServer"]
     MCPSRV --> REGISTER["Register all tool handlers<br/>(Metrics, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Traces)"]
     REGISTER --> MODE{"TransportMode?"}
 end
@@ -40,26 +40,19 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
     APIKEY -->|No + no env| DENY["401 Unauthorized"]
 
     AUTH --> URLCHECK{"X-SigNoz-URL header?"}
-    URLCHECK -->|Yes| URLCACHE{"normalizedURLs cache hit?"}
-    URLCACHE -->|Yes| CACHED_URL["Use cached normalized URL"]
-    URLCACHE -->|No| NORMALIZE["normalizeSigNozURL"]
+    URLCHECK -->|Yes| NORMALIZE["normalizeSigNozURL"]
     URLCHECK -->|No + env set| ENVURL["Use config.URL"]
     URLCHECK -->|No + no env| NOURL["400 Bad Request"]
 
-    subgraph SSRF["SSRF Protection (normalizeSigNozURL)"]
+    subgraph URLValidation["URL Validation (normalizeSigNozURL)"]
         NORMALIZE --> SCHEME["Validate scheme (http/https only)"]
         SCHEME --> PATHCHECK["Reject path/query/fragment"]
         PATHCHECK --> LOCALHOST["Block localhost, 0.0.0.0, [::]"]
-        LOCALHOST --> DNS["DNS LookupHost"]
-        DNS --> IPCHECK["Check all IPs against private ranges"]
-        IPCHECK --> STRIPPORT["Strip default ports (80/443)"]
+        LOCALHOST --> STRIPPORT["Strip default ports (80/443)"]
         STRIPPORT --> ORIGIN["Return canonical origin"]
     end
 
-    ORIGIN --> ADDCACHE["Cache in normalizedURLs LRU"]
-    ADDCACHE --> SETCTX_H["Set apiKey and signozURL into ctx"]
-
-    CACHED_URL --> SETCTX_H
+    ORIGIN --> SETCTX_H["Set apiKey and signozURL into ctx"]
     PARSE --> SETCTX_H
     ENVKEY --> SETCTX_H
     ENVURL --> SETCTX_H
@@ -83,9 +76,8 @@ subgraph GetClient["GetClient — Unified for Both Transports"]
     CREATE --> HIT
 end
 
-subgraph Cache["Bounded Caches (expirable LRU)"]
+subgraph Cache["Bounded Cache (expirable LRU)"]
     LRU_C["clientCache<br/>maxSize: 256, TTL: 30min"]
-    LRU_U["normalizedURLs<br/>maxSize: 256, TTL: 30min"]
 end
 
 subgraph APICall["SigNoz API Call"]
@@ -101,6 +93,4 @@ TOOL_H --> TOOL
 HIT --> CLIENT
 
 LOOKUP -.->|read/write| LRU_C
-URLCACHE -.->|read| LRU_U
-ADDCACHE -.->|write| LRU_U
 ```
