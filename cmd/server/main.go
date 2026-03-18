@@ -65,21 +65,6 @@ func main() {
 		log.Info("OpenTelemetry meter provider initialized successfully")
 	}
 
-	// Initialize OpenTelemetry log provider and bridge zap logs to OTel.
-	shutdownLogProvider, err := telemetry.InitLogProvider(context.Background())
-	if err != nil {
-		log.Warn("Failed to initialize OpenTelemetry log provider, continuing without log export", zap.Error(err))
-	} else {
-		defer func() {
-			if err := shutdownLogProvider(context.Background()); err != nil {
-				log.Error("Failed to shutdown log provider", zap.Error(err))
-			}
-		}()
-		// Bridge zap to OTel so all subsequent log calls are also exported.
-		log = logger.WithOTelBridge(log)
-		log.Info("OpenTelemetry log provider initialized successfully")
-	}
-
 	handler := tools.NewHandler(log, cfg)
 
 	dashboard.InitClickhouseSchema()
