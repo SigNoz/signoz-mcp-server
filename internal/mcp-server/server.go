@@ -37,7 +37,7 @@ func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *
 }
 
 func (m *MCPServer) Start() error {
-	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false))
+	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false), server.WithRecovery())
 
 	m.logger.Info("Starting SigNoz MCP Server",
 		zap.String("server_name", "SigNozMCPServer"),
