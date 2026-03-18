@@ -3,37 +3,27 @@ package mcp_server
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	expirable "github.com/hashicorp/golang-lru/v2/expirable"
-	"github.com/mark3labs/mcp-go/server"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.uber.org/zap"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/mark3labs/mcp-go/server"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.uber.org/zap"
 )
 
 type MCPServer struct {
-	logger       *zap.Logger
-	handler      *tools.Handler
-	config       *config.Config
-	// normalizedURLs caches the result of normalizeSigNozURL so that
-	// repeat requests from the same tenant skip DNS resolution entirely.
-	// Entries expire after ClientCacheTTL so DNS changes eventually
-	// take effect.
-	normalizedURLs *expirable.LRU[string, string]
+	logger  *zap.Logger
+	handler *tools.Handler
+	config  *config.Config
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *MCPServer {
-	urlCache := expirable.NewLRU[string, string](
-		cfg.ClientCacheSize, nil, cfg.ClientCacheTTL,
-	)
-	return &MCPServer{logger: log, handler: handler, config: cfg, normalizedURLs: urlCache}
+	return &MCPServer{logger: log, handler: handler, config: cfg}
 }
 
 func (m *MCPServer) Start() error {
@@ -113,19 +103,14 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Determine final URL with precedence: X-SigNoz-URL header > config URL
 		if customURL != "" {
 			trimmed := strings.TrimSuffix(customURL, "/")
-			if cached, ok := m.normalizedURLs.Get(trimmed); ok {
-				signozURL = cached
-			} else {
-				normalized, err := normalizeSigNozURL(trimmed)
-				if err != nil {
-					m.logger.Warn("Invalid X-SigNoz-URL header",
-						zap.String("url", customURL), zap.Error(err))
-					http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
-					return
-				}
-				m.normalizedURLs.Add(trimmed, normalized)
-				signozURL = normalized
+			normalized, err := normalizeSigNozURL(trimmed)
+			if err != nil {
+				m.logger.Warn("Invalid X-SigNoz-URL header",
+					zap.String("url", customURL), zap.Error(err))
+				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
+				return
 			}
+			signozURL = normalized
 			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
@@ -182,26 +167,6 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	return srv.ListenAndServe()
 }
 
-// privateIPNets defines CIDR ranges that are not allowed as SigNoz URL targets.
-var privateIPNets = func() []*net.IPNet {
-	cidrs := []string{
-		"127.0.0.0/8",    // loopback
-		"10.0.0.0/8",     // RFC 1918
-		"172.16.0.0/12",  // RFC 1918
-		"192.168.0.0/16", // RFC 1918
-		"169.254.0.0/16", // link-local
-		"::1/128",        // IPv6 loopback
-		"fc00::/7",       // IPv6 unique local
-		"fe80::/10",      // IPv6 link-local
-	}
-	nets := make([]*net.IPNet, 0, len(cidrs))
-	for _, cidr := range cidrs {
-		_, n, _ := net.ParseCIDR(cidr)
-		nets = append(nets, n)
-	}
-	return nets
-}()
-
 // normalizeSigNozURL validates that rawURL is safe to use as a SigNoz backend
 // target and returns the canonical origin form (scheme://host[:port]).
 // It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent
@@ -245,31 +210,6 @@ func normalizeSigNozURL(rawURL string) (string, error) {
 	// Block localhost variants
 	if host == "localhost" || host == "0.0.0.0" || host == "[::]" {
 		return "", fmt.Errorf("host %q is not allowed", host)
-	}
-
-	// Resolve the hostname and check every IP against private ranges
-	ips, err := net.LookupHost(host)
-	if err != nil {
-		return "", fmt.Errorf("cannot resolve host %q: %w", host, err)
-	}
-
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
-		}
-		// Normalize IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1) to
-		// their 4-byte IPv4 form. Without this, net.IPNet.Contains silently
-		// returns false when comparing a 16-byte IP against a 4-byte CIDR,
-		// allowing SSRF via addresses like http://[::ffff:10.0.0.1]/.
-		if v4 := ip.To4(); v4 != nil {
-			ip = v4
-		}
-		for _, n := range privateIPNets {
-			if n.Contains(ip) {
-				return "", fmt.Errorf("host %q resolves to private address %s", host, ipStr)
-			}
-		}
 	}
 
 	// Build the canonical origin. Strip default ports so that
