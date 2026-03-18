@@ -33,6 +33,17 @@ func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
 	}
 }
 
+// tenantLogger returns a logger enriched with tenant-identifying fields
+// extracted from the request context. Safe to call even when the context
+// is missing credentials — fields are simply omitted.
+func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
+	l := h.logger
+	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+		l = l.With(zap.String("tenant_url", signozURL))
+	}
+	return l
+}
+
 // GetClient returns a cached SigNoz client for the tenant identified by
 // the apiKey and signozURL stored in the request context.
 // Both stdio and HTTP transports guarantee these values are present
@@ -68,7 +79,8 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(listKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_list_metric_keys")
+		log := h.tenantLogger(ctx)
+		log.Debug("Tool called: signoz_list_metric_keys")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		client, err := h.GetClient(ctx)
@@ -77,26 +89,26 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		}
 		resp, err := client.ListMetricKeys(ctx)
 		if err != nil {
-			h.logger.Error("Failed to list metric keys", zap.Error(err))
+			log.Error("Failed to list metric keys", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		// received api data - {"data": {"attributeKeys": [...]}}
 		var response map[string]any
 		if err := json.Unmarshal(resp, &response); err != nil {
-			h.logger.Error("Failed to parse metric keys response", zap.Error(err))
+			log.Error("Failed to parse metric keys response", zap.Error(err))
 			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 		}
 
 		dataObj, ok := response["data"].(map[string]any)
 		if !ok {
-			h.logger.Error("Invalid metric keys response format", zap.Any("data", response["data"]))
+			log.Error("Invalid metric keys response format", zap.Any("data", response["data"]))
 			return mcp.NewToolResultError("invalid response format: expected data object"), nil
 		}
 
 		attributeKeys, ok := dataObj["attributeKeys"].([]any)
 		if !ok {
-			h.logger.Error("Invalid attributeKeys format", zap.Any("attributeKeys", dataObj["attributeKeys"]))
+			log.Error("Invalid attributeKeys format", zap.Any("attributeKeys", dataObj["attributeKeys"]))
 			return mcp.NewToolResultError("invalid response format: expected attributeKeys array"), nil
 		}
 
@@ -106,7 +118,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		// response wrapped in paged structured format
 		resultJSON, err := paginate.Wrap(pagedKeys, total, offset, limit)
 		if err != nil {
-			h.logger.Error("Failed to wrap metric keys with pagination", zap.Error(err))
+			log.Error("Failed to wrap metric keys with pagination", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 		}
 
@@ -119,24 +131,25 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(searchKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		searchText, ok := req.Params.Arguments.(map[string]any)["searchText"].(string)
 		if !ok {
-			h.logger.Warn("Invalid searchText parameter type", zap.Any("type", req.Params.Arguments))
+			log.Warn("Invalid searchText parameter type", zap.Any("type", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: "searchText" must be a string. Example: {"searchText": "cpu_usage"}`), nil
 		}
 		if searchText == "" {
-			h.logger.Warn("Empty searchText parameter")
+			log.Warn("Empty searchText parameter")
 			return mcp.NewToolResultError(`Parameter validation failed: "searchText" cannot be empty. Provide a search term like "cpu", "memory", or "request"`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_search_metric_by_text", zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_search_metric_by_text", zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		resp, err := client.SearchMetricByText(ctx, searchText)
 		if err != nil {
-			h.logger.Error("Failed to search metric by text", zap.String("searchText", searchText), zap.Error(err))
+			log.Error("Failed to search metric by text", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(resp)), nil
@@ -148,6 +161,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getMetricsAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		searchText := ""
@@ -155,14 +169,14 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_metrics_available_fields", zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_get_metrics_available_fields", zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetMetricsAvailableFields(ctx, searchText)
 		if err != nil {
-			h.logger.Error("Failed to get metrics available fields", zap.String("searchText", searchText), zap.Error(err))
+			log.Error("Failed to get metrics available fields", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -175,15 +189,16 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getMetricsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
-			h.logger.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
+			log.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
 		}
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
-			h.logger.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
+			log.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "aws_ApplicationELB_ConsumedLCUs_max"}, {"fieldName": "cpu_usage"}`), nil
 		}
 
@@ -192,14 +207,14 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_metrics_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_get_metrics_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetMetricsFieldValues(ctx, fieldName, searchText)
 		if err != nil {
-			h.logger.Error("Failed to get metrics field values", zap.String("fieldName", fieldName), zap.Error(err))
+			log.Error("Failed to get metrics field values", zap.String("fieldName", fieldName), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -215,7 +230,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 	s.AddTool(alertsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_list_alerts")
+		log := h.tenantLogger(ctx)
+		log.Debug("Tool called: signoz_list_alerts")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		client, err := h.GetClient(ctx)
@@ -224,13 +240,13 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		}
 		alerts, err := client.ListAlerts(ctx)
 		if err != nil {
-			h.logger.Error("Failed to list alerts", zap.Error(err))
+			log.Error("Failed to list alerts", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		var apiResponse types.APIAlertsResponse
 		if err := json.Unmarshal(alerts, &apiResponse); err != nil {
-			h.logger.Error("Failed to parse alerts response", zap.Error(err), zap.String("response", string(alerts)))
+			log.Error("Failed to parse alerts response", zap.Error(err), zap.String("response", string(alerts)))
 			return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
 		}
 
@@ -256,7 +272,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 		resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 		if err != nil {
-			h.logger.Error("Failed to wrap alerts with pagination", zap.Error(err))
+			log.Error("Failed to wrap alerts with pagination", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 		}
 
@@ -268,24 +284,25 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert ruleId")),
 	)
 	s.AddTool(getAlertTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		ruleID, ok := req.Params.Arguments.(map[string]any)["ruleId"].(string)
 		if !ok {
-			h.logger.Warn("Invalid ruleId parameter type", zap.Any("type", req.Params.Arguments))
+			log.Warn("Invalid ruleId parameter type", zap.Any("type", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 		}
 		if ruleID == "" {
-			h.logger.Warn("Empty ruleId parameter")
+			log.Warn("Empty ruleId parameter")
 			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID (UUID format)`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_alert", zap.String("ruleId", ruleID))
+		log.Debug("Tool called: signoz_get_alert", zap.String("ruleId", ruleID))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 		if err != nil {
-			h.logger.Error("Failed to get alert", zap.String("ruleId", ruleID), zap.Error(err))
+			log.Error("Failed to get alert", zap.String("ruleId", ruleID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -303,11 +320,12 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
 	s.AddTool(alertHistoryTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		ruleID, ok := args["ruleId"].(string)
 		if !ok || ruleID == "" {
-			h.logger.Warn("Invalid or empty ruleId parameter", zap.Any("ruleId", args["ruleId"]))
+			log.Warn("Invalid or empty ruleId parameter", zap.Any("ruleId", args["ruleId"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a non-empty string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 		}
 
@@ -315,11 +333,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 		var start, end int64
 		if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
-			h.logger.Warn("Invalid start timestamp format", zap.String("start", startStr), zap.Error(err))
+			log.Warn("Invalid start timestamp format", zap.String("start", startStr), zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
 		}
 		if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
-			h.logger.Warn("Invalid end timestamp format", zap.String("end", endStr), zap.Error(err))
+			log.Warn("Invalid end timestamp format", zap.String("end", endStr), zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 		}
 
@@ -328,7 +346,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		limit := 20
 		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
 			if limitInt, err := strconv.Atoi(limitStr); err != nil {
-				h.logger.Warn("Invalid limit format", zap.String("limit", limitStr), zap.Error(err))
+				log.Warn("Invalid limit format", zap.String("limit", limitStr), zap.Error(err))
 				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "limit" value: "%s". Expected integer between 1-1000 (e.g., "20", "50", "100")`, limitStr)), nil
 			} else if limitInt > 0 {
 				limit = limitInt
@@ -340,7 +358,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			if orderStr == "asc" || orderStr == "desc" {
 				order = orderStr
 			} else {
-				h.logger.Warn("Invalid order value", zap.String("order", orderStr))
+				log.Warn("Invalid order value", zap.String("order", orderStr))
 				return mcp.NewToolResultError(fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderStr)), nil
 			}
 		}
@@ -357,7 +375,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			},
 		}
 
-		h.logger.Debug("Tool called: signoz_get_alert_history",
+		log.Debug("Tool called: signoz_get_alert_history",
 			zap.String("ruleId", ruleID),
 			zap.Int64("start", start),
 			zap.Int64("end", end),
@@ -371,7 +389,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		}
 		respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 		if err != nil {
-			h.logger.Error("Failed to get alert history",
+			log.Error("Failed to get alert history",
 				zap.String("ruleId", ruleID),
 				zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
@@ -390,7 +408,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_list_dashboards")
+		log := h.tenantLogger(ctx)
+		log.Debug("Tool called: signoz_list_dashboards")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		client, err := h.GetClient(ctx)
@@ -399,19 +418,19 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 		result, err := client.ListDashboards(ctx)
 		if err != nil {
-			h.logger.Error("Failed to list dashboards", zap.Error(err))
+			log.Error("Failed to list dashboards", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		var dashboards map[string]any
 		if err := json.Unmarshal(result, &dashboards); err != nil {
-			h.logger.Error("Failed to parse dashboards response", zap.Error(err))
+			log.Error("Failed to parse dashboards response", zap.Error(err))
 			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 		}
 
 		data, ok := dashboards["data"].([]any)
 		if !ok {
-			h.logger.Error("Invalid dashboards response format", zap.Any("data", dashboards["data"]))
+			log.Error("Invalid dashboards response format", zap.Any("data", dashboards["data"]))
 			return mcp.NewToolResultError("invalid response format: expected data array"), nil
 		}
 
@@ -420,7 +439,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 		resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 		if err != nil {
-			h.logger.Error("Failed to wrap dashboards with pagination", zap.Error(err))
+			log.Error("Failed to wrap dashboards with pagination", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 		}
 
@@ -433,24 +452,25 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
 		if !ok {
-			h.logger.Warn("Invalid uuid parameter type", zap.Any("type", req.Params.Arguments))
+			log.Warn("Invalid uuid parameter type", zap.Any("type", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 		}
 		if uuid == "" {
-			h.logger.Warn("Empty uuid parameter")
+			log.Warn("Empty uuid parameter")
 			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_dashboard", zap.String("uuid", uuid))
+		log.Debug("Tool called: signoz_get_dashboard", zap.String("uuid", uuid))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		data, err := client.GetDashboard(ctx, uuid)
 		if err != nil {
-			h.logger.Error("Failed to get dashboard", zap.String("uuid", uuid), zap.Error(err))
+			log.Error("Failed to get dashboard", zap.String("uuid", uuid), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(data)), nil
@@ -477,16 +497,17 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(createDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		rawConfig, ok := req.Params.Arguments.(map[string]any)
 
 		if !ok || len(rawConfig) == 0 {
-			h.logger.Warn("Received empty or invalid arguments map.")
+			log.Warn("Received empty or invalid arguments map.")
 			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
 		}
 
 		configJSON, err := json.Marshal(rawConfig)
 		if err != nil {
-			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			log.Error("Failed to unmarshal raw configuration", zap.Error(err))
 			return mcp.NewToolResultError(
 				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
 			), nil
@@ -499,7 +520,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 			), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_create_dashboard", zap.String("title", dashboardConfig.Title))
+		log.Debug("Tool called: signoz_create_dashboard", zap.String("title", dashboardConfig.Title))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -507,7 +528,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		data, err := client.CreateDashboard(ctx, dashboardConfig)
 
 		if err != nil {
-			h.logger.Error("Failed to create dashboard in SigNoz", zap.Error(err))
+			log.Error("Failed to create dashboard in SigNoz", zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
 		}
 
@@ -537,16 +558,17 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(updateDashboardTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		rawConfig, ok := req.Params.Arguments.(map[string]any)
 
 		if !ok || len(rawConfig) == 0 {
-			h.logger.Warn("Received empty or invalid arguments map from Claude.")
+			log.Warn("Received empty or invalid arguments map from Claude.")
 			return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
 		}
 
 		configJSON, err := json.Marshal(rawConfig)
 		if err != nil {
-			h.logger.Error("Failed to unmarshal raw configuration", zap.Error(err))
+			log.Error("Failed to unmarshal raw configuration", zap.Error(err))
 			return mcp.NewToolResultError(
 				fmt.Sprintf("Could not decode raw configuration. Error: %s", err.Error()),
 			), nil
@@ -560,11 +582,11 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		}
 
 		if updateDashboardConfig.UUID == "" {
-			h.logger.Warn("Empty uuid parameter")
+			log.Warn("Empty uuid parameter")
 			return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use list_dashboards tool to see available dashboards.`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_update_dashboard", zap.String("title", updateDashboardConfig.Dashboard.Title))
+		log.Debug("Tool called: signoz_update_dashboard", zap.String("title", updateDashboardConfig.Dashboard.Title))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -572,7 +594,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		err = client.UpdateDashboard(ctx, updateDashboardConfig.UUID, updateDashboardConfig.Dashboard)
 
 		if err != nil {
-			h.logger.Error("Failed to update dashboard in SigNoz", zap.Error(err))
+			log.Error("Failed to update dashboard in SigNoz", zap.Error(err))
 			return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
 		}
 
@@ -782,25 +804,26 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(listTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-		h.logger.Debug("Tool called: signoz_list_services", zap.String("start", start), zap.String("end", end), zap.Int("limit", limit), zap.Int("offset", offset))
+		log.Debug("Tool called: signoz_list_services", zap.String("start", start), zap.String("end", end), zap.Int("limit", limit), zap.Int("offset", offset))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.ListServices(ctx, start, end)
 		if err != nil {
-			h.logger.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
+			log.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		var services []any
 		if err := json.Unmarshal(result, &services); err != nil {
-			h.logger.Error("Failed to parse services response", zap.Error(err))
+			log.Error("Failed to parse services response", zap.Error(err))
 			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 		}
 
@@ -809,7 +832,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 
 		resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
 		if err != nil {
-			h.logger.Error("Failed to wrap services with pagination", zap.Error(err))
+			log.Error("Failed to wrap services with pagination", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 		}
 
@@ -826,15 +849,16 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getOpsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		service, ok := args["service"].(string)
 		if !ok {
-			h.logger.Warn("Invalid service parameter type", zap.Any("type", args["service"]))
+			log.Warn("Invalid service parameter type", zap.Any("type", args["service"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "service" must be a string. Example: {"service": "frontend-api", "timeRange": "1h"}`), nil
 		}
 		if service == "" {
-			h.logger.Warn("Empty service parameter")
+			log.Warn("Empty service parameter")
 			return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
 		}
 
@@ -847,7 +871,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 			tags = json.RawMessage("[]")
 		}
 
-		h.logger.Debug("Tool called: signoz_get_service_top_operations",
+		log.Debug("Tool called: signoz_get_service_top_operations",
 			zap.String("start", start),
 			zap.String("end", end),
 			zap.String("service", service))
@@ -858,7 +882,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		}
 		result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 		if err != nil {
-			h.logger.Error("Failed to get service top operations",
+			log.Error("Failed to get service top operations",
 				zap.String("start", start),
 				zap.String("end", end),
 				zap.String("service", service),
@@ -879,40 +903,41 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(executeQuery, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_execute_builder_query")
+		log := h.tenantLogger(ctx)
+		log.Debug("Tool called: signoz_execute_builder_query")
 
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
-			h.logger.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+			log.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
 			return mcp.NewToolResultError("invalid arguments payload"), nil
 		}
 
 		queryObj, ok := args["query"].(map[string]any)
 		if !ok {
-			h.logger.Warn("Invalid query parameter type", zap.Any("type", args["query"]))
+			log.Warn("Invalid query parameter type", zap.Any("type", args["query"]))
 			return mcp.NewToolResultError("query parameter must be a JSON object"), nil
 		}
 
 		queryJSON, err := json.Marshal(queryObj)
 		if err != nil {
-			h.logger.Error("Failed to marshal query object", zap.Error(err))
+			log.Error("Failed to marshal query object", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query object: " + err.Error()), nil
 		}
 
 		var queryPayload types.QueryPayload
 		if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
-			h.logger.Error("Failed to unmarshal query payload", zap.Error(err))
+			log.Error("Failed to unmarshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
 		}
 
 		if err := queryPayload.Validate(); err != nil {
-			h.logger.Error("Query validation failed", zap.Error(err))
+			log.Error("Query validation failed", zap.Error(err))
 			return mcp.NewToolResultError("query validation error: " + err.Error()), nil
 		}
 
 		finalQueryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal validated query payload", zap.Error(err))
+			log.Error("Failed to marshal validated query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
 		}
 
@@ -922,11 +947,11 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		}
 		data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 		if err != nil {
-			h.logger.Error("Failed to execute query builder v5", zap.Error(err))
+			log.Error("Failed to execute query builder v5", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		h.logger.Debug("Successfully executed query builder v5")
+		log.Debug("Successfully executed query builder v5")
 		return mcp.NewToolResultText(string(data)), nil
 	})
 }
@@ -941,7 +966,8 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(listLogViewsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		h.logger.Debug("Tool called: signoz_list_log_views")
+		log := h.tenantLogger(ctx)
+		log.Debug("Tool called: signoz_list_log_views")
 		limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 		client, err := h.GetClient(ctx)
@@ -950,19 +976,19 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 		result, err := client.ListLogViews(ctx)
 		if err != nil {
-			h.logger.Error("Failed to list log views", zap.Error(err))
+			log.Error("Failed to list log views", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		var logViews map[string]any
 		if err := json.Unmarshal(result, &logViews); err != nil {
-			h.logger.Error("Failed to parse log views response", zap.Error(err))
+			log.Error("Failed to parse log views response", zap.Error(err))
 			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 		}
 
 		data, ok := logViews["data"].([]any)
 		if !ok {
-			h.logger.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
+			log.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
 			return mcp.NewToolResultError("invalid response format: expected data array"), nil
 		}
 
@@ -971,7 +997,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 		if err != nil {
-			h.logger.Error("Failed to wrap log views with pagination", zap.Error(err))
+			log.Error("Failed to wrap log views with pagination", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 		}
 
@@ -984,24 +1010,25 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getLogViewTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		viewID, ok := req.Params.Arguments.(map[string]any)["viewId"].(string)
 		if !ok {
-			h.logger.Warn("Invalid viewId parameter type", zap.Any("type", req.Params.Arguments))
+			log.Warn("Invalid viewId parameter type", zap.Any("type", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: "viewId" must be a string. Example: {"viewId": "error-logs-view-123"}`), nil
 		}
 		if viewID == "" {
-			h.logger.Warn("Empty viewId parameter")
+			log.Warn("Empty viewId parameter")
 			return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use signoz_list_log_views tool to see available log views.`), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
+		log.Debug("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		data, err := client.GetLogView(ctx, viewID)
 		if err != nil {
-			h.logger.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
+			log.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(data)), nil
@@ -1016,6 +1043,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getLogsForAlertTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		alertID, ok := args["alertId"].(string)
@@ -1037,20 +1065,20 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		_, offset := paginate.ParseParams(req.Params.Arguments)
 
-		h.logger.Debug("Tool called: signoz_get_logs_for_alert", zap.String("alertId", alertID))
+		log.Debug("Tool called: signoz_get_logs_for_alert", zap.String("alertId", alertID))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		alertData, err := client.GetAlertByRuleID(ctx, alertID)
 		if err != nil {
-			h.logger.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
+			log.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
 			return mcp.NewToolResultError("failed to get alert details: " + err.Error()), nil
 		}
 
 		var alertResponse map[string]interface{}
 		if err := json.Unmarshal(alertData, &alertResponse); err != nil {
-			h.logger.Error("Failed to parse alert data", zap.Error(err))
+			log.Error("Failed to parse alert data", zap.Error(err))
 			return mcp.NewToolResultError("failed to parse alert data: " + err.Error()), nil
 		}
 
@@ -1082,13 +1110,13 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			log.Error("Failed to marshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to get logs for alert", zap.String("alertId", alertID), zap.Error(err))
+			log.Error("Failed to get logs for alert", zap.String("alertId", alertID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1106,6 +1134,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getErrorLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -1143,18 +1172,18 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			log.Error("Failed to marshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_error_logs", zap.String("start", start), zap.String("end", end))
+		log.Debug("Tool called: signoz_get_error_logs", zap.String("start", start), zap.String("end", end))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to get error logs", zap.Error(err))
+			log.Error("Failed to get error logs", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1173,6 +1202,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(searchLogsByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		service, ok := args["service"].(string)
@@ -1213,18 +1243,18 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			log.Error("Failed to marshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
+		log.Debug("Tool called: signoz_search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
+			log.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1237,6 +1267,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getLogsAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		searchText := ""
@@ -1244,14 +1275,14 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_logs_available_fields", zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_get_logs_available_fields", zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetLogsAvailableFields(ctx, searchText)
 		if err != nil {
-			h.logger.Error("Failed to get logs available fields", zap.String("searchText", searchText), zap.Error(err))
+			log.Error("Failed to get logs available fields", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1264,15 +1295,16 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getLogsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
-			h.logger.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
+			log.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
 		}
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
-			h.logger.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
+			log.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "severity_text"}, {"fieldName": "body"}`), nil
 		}
 
@@ -1281,14 +1313,14 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetLogsFieldValues(ctx, fieldName, searchText)
 		if err != nil {
-			h.logger.Error("Failed to get logs field values", zap.String("fieldName", fieldName), zap.Error(err))
+			log.Error("Failed to get logs field values", zap.String("fieldName", fieldName), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1313,6 +1345,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(aggregateLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
 			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -1331,11 +1364,11 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal aggregate query payload", zap.Error(err))
+			log.Error("Failed to marshal aggregate query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_aggregate_logs",
+		log.Debug("Tool called: signoz_aggregate_logs",
 			zap.String("aggregation", reqData.AggregationExpr),
 			zap.String("filter", reqData.FilterExpression))
 
@@ -1345,7 +1378,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to aggregate logs", zap.Error(err))
+			log.Error("Failed to aggregate logs", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1370,6 +1403,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(searchLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
 			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -1387,11 +1421,11 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal search query payload", zap.Error(err))
+			log.Error("Failed to marshal search query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_search_logs",
+		log.Debug("Tool called: signoz_search_logs",
 			zap.String("filter", reqData.FilterExpression))
 
 		client, err := h.GetClient(ctx)
@@ -1400,7 +1434,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to search logs", zap.Error(err))
+			log.Error("Failed to search logs", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1432,6 +1466,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(aggregateTracesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
 			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -1450,11 +1485,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal aggregate traces query payload", zap.Error(err))
+			log.Error("Failed to marshal aggregate traces query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_aggregate_traces",
+		log.Debug("Tool called: signoz_aggregate_traces",
 			zap.String("aggregation", reqData.AggregationExpr),
 			zap.String("filter", reqData.FilterExpression))
 
@@ -1464,7 +1499,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to aggregate traces", zap.Error(err))
+			log.Error("Failed to aggregate traces", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1478,15 +1513,16 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getTraceFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
-			h.logger.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
+			log.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
 			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
 		}
 
 		fieldName, ok := args["fieldName"].(string)
 		if !ok || fieldName == "" {
-			h.logger.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
+			log.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
 			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "http.status_code"}, {"fieldName": "operation"}`), nil
 		}
 
@@ -1495,14 +1531,14 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_trace_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_get_trace_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetTraceFieldValues(ctx, fieldName, searchText)
 		if err != nil {
-			h.logger.Error("Failed to get trace field values", zap.String("fieldName", fieldName), zap.Error(err))
+			log.Error("Failed to get trace field values", zap.String("fieldName", fieldName), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1514,6 +1550,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getTraceAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		searchText := ""
@@ -1521,14 +1558,14 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			searchText = search
 		}
 
-		h.logger.Debug("Tool called: signoz_get_trace_available_fields", zap.String("searchText", searchText))
+		log.Debug("Tool called: signoz_get_trace_available_fields", zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetTraceAvailableFields(ctx, searchText)
 		if err != nil {
-			h.logger.Error("Failed to get trace available fields", zap.String("searchText", searchText), zap.Error(err))
+			log.Error("Failed to get trace available fields", zap.String("searchText", searchText), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1548,6 +1585,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(searchTracesByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		service, ok := args["service"].(string)
@@ -1599,18 +1637,18 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
-			h.logger.Error("Failed to marshal query payload", zap.Error(err))
+			log.Error("Failed to marshal query payload", zap.Error(err))
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_search_traces_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
+		log.Debug("Tool called: signoz_search_traces_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			h.logger.Error("Failed to search traces by service", zap.String("service", service), zap.Error(err))
+			log.Error("Failed to search traces by service", zap.String("service", service), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1627,6 +1665,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getTraceDetailsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		traceID, ok := args["traceId"].(string)
@@ -1649,14 +1688,14 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
+		log.Debug("Tool called: signoz_get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 		if err != nil {
-			h.logger.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
+			log.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1671,6 +1710,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getTraceErrorAnalysisTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -1688,14 +1728,14 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
+		log.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetTraceErrorAnalysis(ctx, startTime, endTime, service)
 		if err != nil {
-			h.logger.Error("Failed to get trace error analysis", zap.Error(err))
+			log.Error("Failed to get trace error analysis", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1710,6 +1750,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getTraceSpanHierarchyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
 		traceID, ok := args["traceId"].(string)
@@ -1727,14 +1768,14 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
-		h.logger.Debug("Tool called: signoz_get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))
+		log.Debug("Tool called: signoz_get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.GetTraceSpanHierarchy(ctx, traceID, startTime, endTime)
 		if err != nil {
-			h.logger.Error("Failed to get trace span hierarchy", zap.String("traceId", traceID), zap.Error(err))
+			log.Error("Failed to get trace span hierarchy", zap.String("traceId", traceID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
