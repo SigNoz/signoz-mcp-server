@@ -76,6 +76,33 @@ func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 	}
 }
 
+func TestNormalizeSigNozURL_BlocksIPv4MappedIPv6(t *testing.T) {
+	// IPv4-mapped IPv6 addresses like ::ffff:127.0.0.1 must be blocked.
+	// Without To4() normalization, the 16-byte IP would slip past 4-byte CIDRs.
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "loopback mapped", url: "http://[::ffff:127.0.0.1]"},
+		{name: "RFC1918 10.x mapped", url: "http://[::ffff:10.0.0.1]"},
+		{name: "RFC1918 172.16.x mapped", url: "http://[::ffff:172.16.0.1]"},
+		{name: "RFC1918 192.168.x mapped", url: "http://[::ffff:192.168.1.1]"},
+		{name: "link-local mapped", url: "http://[::ffff:169.254.1.1]"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := normalizeSigNozURL(tt.url)
+			if err == nil {
+				t.Fatalf("expected private-address error for %s, got nil", tt.url)
+			}
+			if !strings.Contains(err.Error(), "private address") {
+				t.Errorf("expected 'private address' error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestNormalizeSigNozURL_CanonicalizesOrigin(t *testing.T) {
 	// These tests use 1.1.1.1 (Cloudflare DNS) which resolves to a public IP,
 	// so the full validation pipeline succeeds without DNS issues.

@@ -269,6 +269,13 @@ func normalizeSigNozURL(rawURL string) (string, error) {
 		if ip == nil {
 			continue
 		}
+		// Normalize IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1) to
+		// their 4-byte IPv4 form. Without this, net.IPNet.Contains silently
+		// returns false when comparing a 16-byte IP against a 4-byte CIDR,
+		// allowing SSRF via addresses like http://[::ffff:10.0.0.1]/.
+		if v4 := ip.To4(); v4 != nil {
+			ip = v4
+		}
 		for _, n := range privateIPNets {
 			if n.Contains(ip) {
 				return "", fmt.Errorf("host %q resolves to private address %s", host, ipStr)
