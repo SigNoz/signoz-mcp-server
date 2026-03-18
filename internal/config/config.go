@@ -19,9 +19,6 @@ type Config struct {
 	ClientCacheSize int
 	ClientCacheTTL  time.Duration
 
-	// Per-tenant rate limiting (HTTP mode only)
-	RateLimitPerTenant float64 // requests per second per tenant
-	RateLimitBurst     int     // max burst size per tenant
 }
 
 const (
@@ -34,13 +31,8 @@ const (
 	ClientCacheSize = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL  = "CLIENT_CACHE_TTL_MINUTES"
 
-	RateLimitPerTenant = "RATE_LIMIT_PER_TENANT" // requests per second
-	RateLimitBurst     = "RATE_LIMIT_BURST"      // max burst
-
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
-	defaultRateLimitPerTenant    = 10 // 10 requests/sec
-	defaultRateLimitBurst        = 20 // burst of 20
 )
 
 func LoadConfig() (*Config, error) {
@@ -58,8 +50,6 @@ func LoadConfig() (*Config, error) {
 		Port:               getEnv(MCPPort, "8000"),
 		ClientCacheSize:    cacheSize,
 		ClientCacheTTL:     time.Duration(cacheTTLMinutes) * time.Minute,
-		RateLimitPerTenant: float64(getEnvInt(RateLimitPerTenant, defaultRateLimitPerTenant)),
-		RateLimitBurst:     getEnvInt(RateLimitBurst, defaultRateLimitBurst),
 	}, nil
 }
 

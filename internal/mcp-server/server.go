@@ -13,8 +13,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
-	"golang.org/x/time/rate"
-
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
@@ -24,8 +22,6 @@ type MCPServer struct {
 	logger       *zap.Logger
 	handler      *tools.Handler
 	config       *config.Config
-	rateLimiters *expirable.LRU[string, *rate.Limiter]
-
 	// normalizedURLs caches the result of normalizeSigNozURL so that
 	// repeat requests from the same tenant skip DNS resolution entirely.
 	// Entries expire after ClientCacheTTL so DNS changes eventually
@@ -34,15 +30,10 @@ type MCPServer struct {
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *MCPServer {
-	// Reuse the same cache size/TTL config for rate limiter entries so they
-	// are bounded and auto-expire, matching the client cache lifecycle.
-	limiters := expirable.NewLRU[string, *rate.Limiter](
-		cfg.ClientCacheSize, nil, cfg.ClientCacheTTL,
-	)
 	urlCache := expirable.NewLRU[string, string](
 		cfg.ClientCacheSize, nil, cfg.ClientCacheTTL,
 	)
-	return &MCPServer{logger: log, handler: handler, config: cfg, rateLimiters: limiters, normalizedURLs: urlCache}
+	return &MCPServer{logger: log, handler: handler, config: cfg, normalizedURLs: urlCache}
 }
 
 func (m *MCPServer) Start() error {
@@ -147,23 +138,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		ctx = util.SetSigNozURL(ctx, signozURL)
 
-		// Per-tenant rate limiting keyed by hashed apiKey:signozURL
-		tenantKey := util.HashTenantKey(apiKey, signozURL)
-		limiter, ok := m.rateLimiters.Get(tenantKey)
-		if !ok {
-			limiter = rate.NewLimiter(
-				rate.Limit(m.config.RateLimitPerTenant),
-				m.config.RateLimitBurst,
-			)
-			m.rateLimiters.Add(tenantKey, limiter)
-		}
-		if !limiter.Allow() {
-			m.logger.Warn("Rate limit exceeded for tenant",
-				zap.String("url", signozURL))
-			http.Error(w, "Rate limit exceeded. Try again later.", http.StatusTooManyRequests)
-			return
-		}
-
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
@@ -233,7 +207,7 @@ var privateIPNets = func() []*net.IPNet {
 // It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent
 // SSRF. Default ports (80 for http, 443 for https) are stripped so that
 // equivalent URLs like https://example.com and https://example.com:443
-// produce the same origin string for caching and rate-limiting.
+// produce the same origin string for caching.
 func normalizeSigNozURL(rawURL string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {

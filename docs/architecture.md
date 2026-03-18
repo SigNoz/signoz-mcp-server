@@ -6,7 +6,7 @@
 flowchart TB
 
 subgraph Startup["Server Initialization"]
-    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>RATE_LIMIT_PER_TENANT, RATE_LIMIT_BURST"]
+    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES"]
     ENV --> CFG["config.LoadConfig"]
     CFG --> VALIDATE["config.ValidateConfig"]
     VALIDATE --> LOG["logger.NewLogger"]
@@ -14,7 +14,7 @@ subgraph Startup["Server Initialization"]
     OTEL --> OTELBRIDGE["logger.WithOTelBridge<br/>(bridge zap → OTel)"]
     OTELBRIDGE --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
-    CHSCHEMA --> MCPSRV["NewMCPServer with<br/>LRU rateLimiters + LRU normalizedURLs"]
+    CHSCHEMA --> MCPSRV["NewMCPServer with<br/>LRU normalizedURLs"]
     MCPSRV --> REGISTER["Register all tool handlers<br/>(Metrics, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Traces)"]
     REGISTER --> MODE{"TransportMode?"}
 end
@@ -65,16 +65,7 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
     ENVKEY --> SETCTX_H
     ENVURL --> SETCTX_H
 
-    SETCTX_H --> RATE["Per-tenant Rate Limiter"]
-    RATE --> TENANTKEY["tenantKey = SHA256(apiKey + delimiter + signozURL)"]
-
-    TENANTKEY --> RATELOOKUP{"rateLimiters cache hit?"}
-    RATELOOKUP -->|No| NEWLIMITER["Create rate limiter"]
-    NEWLIMITER --> RATECHECK
-    RATELOOKUP -->|Yes| RATECHECK{"limiter.Allow?"}
-
-    RATECHECK -->|No| R429["429 Too Many Requests"]
-    RATECHECK -->|Yes| TOOL_H["Tool Handler Called"]
+    SETCTX_H --> TOOL_H["Tool Handler Called"]
 end
 
 subgraph GetClient["GetClient — Unified for Both Transports"]
@@ -95,7 +86,6 @@ end
 
 subgraph Cache["Bounded Caches (expirable LRU)"]
     LRU_C["clientCache<br/>maxSize: 256, TTL: 30min"]
-    LRU_R["rateLimiters<br/>maxSize: 256, TTL: 30min"]
     LRU_U["normalizedURLs<br/>maxSize: 256, TTL: 30min"]
 end
 
@@ -112,7 +102,6 @@ TOOL_H --> TOOL
 HIT --> CLIENT
 
 LOOKUP -.->|read/write| LRU_C
-RATELOOKUP -.->|read/write| LRU_R
 URLCACHE -.->|read| LRU_U
 ADDCACHE -.->|write| LRU_U
 ```
