@@ -80,12 +80,8 @@ func getEnvInt(key string, defaultValue int) int {
 }
 
 func (c *Config) ValidateConfig() error {
-	// if c.URL == "" {
-	// 	return fmt.Errorf("SIGNOZ_URL is required")
-	// }
-
-	// In HTTP mode, API key can come from Authorization header, so it's optional
-	// In stdio mode, API key must be provided via environment variable
+	// In HTTP mode, API key can come from Authorization header, so it's optional.
+	// In stdio mode, API key must be provided via environment variable.
 	if c.TransportMode == "stdio" && c.APIKey == "" {
 		return fmt.Errorf("SIGNOZ_API_KEY is required for stdio mode")
 	}
