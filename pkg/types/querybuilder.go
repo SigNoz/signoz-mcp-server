@@ -197,12 +197,6 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},
 						Having: Having{Expression: ""},
-						SelectFields: []SelectField{
-							{Name: "timestamp", FieldDataType: "string", Signal: "logs"},
-							{Name: "severity_text", FieldDataType: "string", Signal: "logs"},
-							{Name: "body", FieldDataType: "string", Signal: "logs"},
-							{Name: "service.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
-						},
 					},
 				},
 			},
