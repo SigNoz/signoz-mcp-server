@@ -42,6 +42,8 @@ type AggregateRequest struct {
 	Limit            int
 	StartTime        int64
 	EndTime          int64
+	RequestType      string // "scalar" (default) or "time_series"
+	StepInterval     *int64 // nil = let backend auto-select
 }
 
 // parseAggregateArgs validates and parses  aggregate arguments.
@@ -112,6 +114,18 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		return nil, err
 	}
 
+	requestType, _ := args["requestType"].(string)
+	if requestType == "" {
+		requestType = "scalar"
+	}
+
+	var stepInterval *int64
+	if v, ok := args["stepInterval"].(string); ok && v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			stepInterval = &n
+		}
+	}
+
 	return &AggregateRequest{
 		AggregationExpr:  aggregationExpr,
 		FilterExpression: filterExpr,
@@ -121,6 +135,8 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		Limit:            limit,
 		StartTime:        startTime,
 		EndTime:          endTime,
+		RequestType:      requestType,
+		StepInterval:     stepInterval,
 	}, nil
 }
 

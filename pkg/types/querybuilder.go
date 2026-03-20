@@ -213,23 +213,27 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 // aggregationExpr is a QB v5 expression like "count()", "avg(duration)", "p99(durationNano)".
 // groupBy is a list of fields to group by.
 // orderByExpr is the expression to order by (e.g. "count()"), orderDir is "asc" or "desc".
-func BuildAggregateQueryPayload(signal string, startTime, endTime int64, aggregationExpr string, filterExpression string, groupBy []SelectField, orderByExpr string, orderDir string, limit int) *QueryPayload {
+func BuildAggregateQueryPayload(signal string, startTime, endTime int64, aggregationExpr string, filterExpression string, groupBy []SelectField, orderByExpr string, orderDir string, limit int, requestType string, stepInterval *int64) *QueryPayload {
+	if requestType == "" {
+		requestType = "scalar"
+	}
 	return &QueryPayload{
 		SchemaVersion: "v1",
 		Start:         startTime,
 		End:           endTime,
-		RequestType:   "scalar",
+		RequestType:   requestType,
 		CompositeQuery: CompositeQuery{
 			Queries: []Query{
 				{
 					Type: "builder_query",
 					Spec: QuerySpec{
-						Name:     "A",
-						Signal:   signal,
-						Disabled: false,
-						Filter:   &Filter{Expression: filterExpression},
-						Limit:    limit,
-						Offset:   0,
+						Name:         "A",
+						Signal:       signal,
+						StepInterval: stepInterval,
+						Disabled:     false,
+						Filter:       &Filter{Expression: filterExpression},
+						Limit:        limit,
+						Offset:       0,
 						Order: []Order{
 							{Key: Key{Name: orderByExpr}, Direction: orderDir},
 						},
