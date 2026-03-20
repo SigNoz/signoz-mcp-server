@@ -925,12 +925,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	return s.QueryBuilderV5(ctx, queryJSON)
 }
 
-func (s *SigNoz) GetTraceErrorAnalysis(ctx context.Context, startTime, endTime int64, serviceName string) (json.RawMessage, error) {
-	filterExpression := "hasError = true"
-	if serviceName != "" {
-		filterExpression += fmt.Sprintf(" AND service.name in ['%s']", serviceName)
-	}
-
+func (s *SigNoz) GetTraceErrorAnalysis(ctx context.Context, startTime, endTime int64, filterExpression string) (json.RawMessage, error) {
 	limit := 1000
 	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
 	queryJSON, err := json.Marshal(queryPayload)
