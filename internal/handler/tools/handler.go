@@ -16,6 +16,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -899,7 +900,13 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
-		mcp.WithDescription("Execute a SigNoz Query Builder v5 query. The LLM should build the complete structured query JSON matching SigNoz's Query Builder v5 format. Example structure: {\"schemaVersion\":\"v1\",\"start\":1756386047000,\"end\":1756387847000,\"requestType\":\"raw\",\"compositeQuery\":{\"queries\":[{\"type\":\"builder_query\",\"spec\":{\"name\":\"A\",\"signal\":\"traces\",\"disabled\":false,\"limit\":10,\"offset\":0,\"order\":[{\"key\":{\"name\":\"timestamp\"},\"direction\":\"desc\"}],\"having\":{\"expression\":\"\"},\"selectFields\":[{\"name\":\"service.name\",\"fieldDataType\":\"string\",\"signal\":\"traces\",\"fieldContext\":\"resource\"},{\"name\":\"duration_nano\",\"fieldDataType\":\"\",\"signal\":\"traces\",\"fieldContext\":\"span\"}]}}]},\"formatOptions\":{\"formatTableResultForUI\":false,\"fillGaps\":false},\"variables\":{}}. See docs: https://signoz.io/docs/userguide/query-builder-v5/"),
+		mcp.WithDescription(
+			"Execute a SigNoz Query Builder v5 query.\n\n"+
+				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
+				"It documents filter expression syntax, correct field names (camelCase vs dot notation), "+
+				"and complete working examples.\n\n"+
+				"See docs: https://signoz.io/docs/userguide/query-builder-v5/",
+		),
 		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables")),
 	)
 
@@ -954,6 +961,23 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 
 		log.Debug("Successfully executed query builder v5")
 		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	tracesQueryBuilderGuide := mcp.NewResource(
+		"signoz://traces/query-builder-guide",
+		"Traces Query Builder Guide",
+		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax (string, not structured object), built-in span column names (camelCase, no fieldContext), resource/tag attribute naming (dot notation + fieldContext), and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(tracesQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     querybuilder.TracesQueryBuilderGuide,
+			},
+		}, nil
 	})
 }
 
