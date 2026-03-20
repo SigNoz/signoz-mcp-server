@@ -468,7 +468,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	s.logger.Debug("sending request", zap.String("url", reqURL), zap.ByteString("body", body))
+	s.logger.Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -511,7 +511,7 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 	httpReq.Header.Set(ContentType, "application/json")
 	httpReq.Header.Set(SignozApiKey, s.apiKey)
 
-	s.logger.Debug("sending request", zap.String("url", reqURL), zap.ByteString("body", reqBody))
+	s.logger.Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(reqBody)))
 
 	ctx, cancel := context.WithTimeout(ctx, 600*time.Second)
 	defer cancel()
