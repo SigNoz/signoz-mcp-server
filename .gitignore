@@ -5,6 +5,7 @@
 *.exe
 *.exe~
 *.dll
+*__debug_*
 *.so
 *.dylib
 signoz-mcp-server
