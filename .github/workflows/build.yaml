@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - v*
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -20,7 +22,7 @@ jobs:
       DOCKER_BASE_IMAGES: '{"distroless":"gcr.io/distroless/base:latest"}'
       DOCKER_DOCKERFILE_PATH: Dockerfile.multi-arch
       DOCKER_MANIFEST: true
-      DOCKER_PROVIDERS: dockerhub
+      DOCKER_PROVIDERS: 'dockerhub gcp'
   binary:
     runs-on: ubuntu-latest
     steps:
