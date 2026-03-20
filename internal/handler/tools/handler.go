@@ -1732,6 +1732,10 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
 		mcp.WithString("service", mcp.Description("Service name to filter by (optional)")),
+		mcp.WithString("operation", mcp.Description("Operation/span name to filter by (optional)")),
+		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds (optional). Example: '500000000' for 500ms")),
+		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds (optional). Example: '2000000000' for 2s")),
+		mcp.WithString("filter", mcp.Description("Additional filter expression ANDed with hasError = true (optional). Example: \"k8s.namespace.name = 'prod'\"")),
 	)
 
 	s.AddTool(getTraceErrorAnalysisTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1739,11 +1743,6 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		args := req.Params.Arguments.(map[string]any)
 
 		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
-		service := ""
-		if s, ok := args["service"].(string); ok && s != "" {
-			service = s
-		}
 
 		var startTime, endTime int64
 		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
@@ -1753,12 +1752,29 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 		}
 
-		log.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("service", service))
+		filterExpression := "hasError = true"
+		if service, ok := args["service"].(string); ok && service != "" {
+			filterExpression += fmt.Sprintf(" AND service.name = '%s'", service)
+		}
+		if operation, ok := args["operation"].(string); ok && operation != "" {
+			filterExpression += fmt.Sprintf(" AND name = '%s'", operation)
+		}
+		if minDuration, ok := args["minDuration"].(string); ok && minDuration != "" {
+			filterExpression += fmt.Sprintf(" AND durationNano >= %s", minDuration)
+		}
+		if maxDuration, ok := args["maxDuration"].(string); ok && maxDuration != "" {
+			filterExpression += fmt.Sprintf(" AND durationNano <= %s", maxDuration)
+		}
+		if filter, ok := args["filter"].(string); ok && filter != "" {
+			filterExpression += fmt.Sprintf(" AND (%s)", filter)
+		}
+
+		log.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("filterExpression", filterExpression))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		result, err := client.GetTraceErrorAnalysis(ctx, startTime, endTime, service)
+		result, err := client.GetTraceErrorAnalysis(ctx, startTime, endTime, filterExpression)
 		if err != nil {
 			log.Error("Failed to get trace error analysis", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
