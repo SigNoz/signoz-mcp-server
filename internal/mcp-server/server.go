@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -136,7 +135,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Determine final URL with precedence: X-SigNoz-URL header > config URL
 		if customURL != "" {
 			trimmed := strings.TrimSuffix(customURL, "/")
-			normalized, err := normalizeSigNozURL(trimmed)
+			normalized, err := util.NormalizeSigNozURL(trimmed)
 			if err != nil {
 				m.logger.Warn("Invalid X-SigNoz-URL header",
 					zap.String("url", customURL), zap.Error(err))
@@ -226,64 +225,4 @@ func (m *MCPServer) setOAuthChallenge(w http.ResponseWriter, extra string) {
 
 func (m *MCPServer) oauthResourceMetadataURL() string {
 	return strings.TrimSuffix(m.config.OAuthIssuerURL, "/") + "/.well-known/oauth-protected-resource"
-}
-
-// normalizeSigNozURL validates that rawURL is safe to use as a SigNoz backend
-// target and returns the canonical origin form (scheme://host[:port]).
-// It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent
-// SSRF. Default ports (80 for http, 443 for https) are stripped so that
-// equivalent URLs like https://example.com and https://example.com:443
-// produce the same origin string for caching.
-func normalizeSigNozURL(rawURL string) (string, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("malformed URL: %w", err)
-	}
-
-	// Only allow http and https schemes
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return "", fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
-	}
-
-	// Reject URLs that contain path, query, or fragment components.
-	// Users may copy a full UI URL like https://tenant.example.com/dashboard/123?orgId=1
-	// but baseURL must be an origin only (scheme + host + optional port).
-	if parsed.Path != "" && parsed.Path != "/" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a path, got path %q", parsed.Path)
-	}
-	if parsed.RawQuery != "" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without query parameters")
-	}
-	if parsed.Fragment != "" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
-	}
-
-	host := parsed.Hostname()
-
-	if host == "" {
-		return "", fmt.Errorf("URL must include a host")
-	}
-
-	// Lowercase the host for consistent comparison.
-	host = strings.ToLower(host)
-
-	// Block localhost variants
-	if host == "localhost" || host == "0.0.0.0" || host == "[::]" {
-		return "", fmt.Errorf("host %q is not allowed", host)
-	}
-
-	// Build the canonical origin. Strip default ports so that
-	// https://example.com and https://example.com:443 hash identically.
-	port := parsed.Port()
-	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
-		port = ""
-	}
-
-	origin := scheme + "://" + host
-	if port != "" {
-		origin += ":" + port
-	}
-
-	return origin, nil
 }

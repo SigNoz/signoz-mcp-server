@@ -177,3 +177,22 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 		t.Fatalf("refresh token already expired at %v", refreshExpiresAt)
 	}
 }
+
+func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	handler := NewHandler(zap.NewNop(), cfg)
+	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://[::1]:4567/callback"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.HandleRegisterClient(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("register status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+}

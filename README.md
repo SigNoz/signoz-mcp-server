@@ -43,6 +43,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - **MCP Server**: Handles MCP protocol communication
 - **Tool Handlers**: Register and manage available tools
 - **SigNoz Client**: HTTP client for SigNoz API interactions
+- **OAuth 2.1**: Stateless browser-based authentication for MCP clients (optional, for multi-tenant/cloud)
 - **Configuration**: Environment-based configuration management
 - **Logging**: Structured logging with Zap
 
@@ -58,21 +59,21 @@ Use this mcp-server with MCP-compatible clients like Claude Desktop and Cursor.
 2. Goto Claude -> Settings -> Developer -> Local MCP Server click on `edit config`
 3. Edit `claude_desktop_config.json` Add shown config with your signoz url, api key and path to signoz-mcp-server binary.
 
-```json
-{
-    "mcpServers": {
-        "signoz": {
-            "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
-            "args": [],
-            "env": {
-                "SIGNOZ_URL": "https://your-signoz-instance.com",
-                "SIGNOZ_API_KEY": "your-api-key-here",
-                "LOG_LEVEL": "info"
+    ```json
+    {
+        "mcpServers": {
+            "signoz": {
+                "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+                "args": [],
+                "env": {
+                    "SIGNOZ_URL": "https://your-signoz-instance.com",
+                    "SIGNOZ_API_KEY": "your-api-key-here",
+                    "LOG_LEVEL": "info"
+                }
             }
         }
     }
-}
-```
+    ```
 
 4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
 
@@ -109,15 +110,56 @@ For Both options use same json struct
 
 Once added, restart Cursor to use the SigNoz tools.
 
-### HTTP based self hosted mcp server
+### HTTP Mode (Self-Hosted)
 
-### Claude Desktop
+#### With OAuth (Recommended for Multi-Tenant / Cloud)
 
-1. Build and run signoz-mcp-server with envs
-    - SIGNOZ_URL=signoz_url SIGNOZ_API_KEY=signoz_apikey TRANSPORT_MODE=http MCP_SERVER_PORT=8000 LOG_LEVEL=log_level ./signoz-mcp-server
-    - or use docker-compose
-2. Goto Claude -> Settings -> Developer -> Local MCP Server click on `edit config`
-3. Edit `claude_desktop_config.json` Add shown config with your signoz url, api key and path to signoz-mcp-server binary.
+When OAuth is enabled, users only need the server URL — no manual API key or header configuration. The MCP client handles authentication automatically via a browser-based OAuth flow.
+
+1. Build and start the server with OAuth enabled:
+
+```bash
+TRANSPORT_MODE=http \
+MCP_SERVER_PORT=8000 \
+OAUTH_ENABLED=true \
+OAUTH_TOKEN_SECRET=$(openssl rand -base64 32) \
+OAUTH_ISSUER_URL=https://your-public-mcp-url.com \
+./signoz-mcp-server
+```
+
+2. In your MCP client (Claude Desktop, Cursor, etc.), just provide the URL:
+
+```json
+{
+    "mcpServers": {
+        "signoz": {
+            "url": "https://your-public-mcp-url.com/mcp"
+        }
+    }
+}
+```
+
+The client will automatically discover the OAuth endpoints, open a browser for the user to enter their SigNoz URL and API key, and handle token exchange. No manual header configuration needed.
+
+**How it works:** On first connection the client gets a `401` challenge, discovers OAuth endpoints via `/.well-known/` metadata, registers itself, then opens a browser where the user enters their SigNoz credentials. The credentials are encrypted into a stateless token that the client uses for all subsequent requests.
+
+#### Without OAuth (Simple Setup)
+
+For single-tenant or internal deployments where OAuth is not needed:
+
+1. Build and run the server:
+
+    ```bash
+    SIGNOZ_URL=https://your-signoz-instance.com \
+    SIGNOZ_API_KEY=your-api-key \
+    TRANSPORT_MODE=http \
+    MCP_SERVER_PORT=8000 \
+    ./signoz-mcp-server
+    ```
+
+2. Configure your MCP client:
+
+**Claude Desktop** — Goto Claude → Settings → Developer → Local MCP Server → Edit Config:
 
 ```json
 {
@@ -132,25 +174,7 @@ Once added, restart Cursor to use the SigNoz tools.
 }
 ```
 
-**Note:** You can pass the SigNoz API key either as:
-
-- An environment variable (`SIGNOZ_API_KEY`) when starting the server, or
-- Via the `Authorization` header in the client configuration as shown above
-
-4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
-
-### Cursor
-
-Build and run signoz-mcp-server with envs - SIGNOZ_URL=signoz_url SIGNOZ_API_KEY=signoz_apikey TRANSPORT_MODE=http MCP_SERVER_PORT=8000 LOG_LEVEL=log_level ./signoz-mcp-server - or use docker-compose
-
-Option A — GUI:
-
-- Open Cursor → Settings → Cursor Settings → Tool & Integrations → `+` New MCP Server
-
-Option B — Project config file:
-Create `.cursor/mcp.json` in your project root:
-
-For Both options use same json struct
+**Cursor** — Open Settings → Cursor Settings → Tools & Integrations → New MCP Server, or create `.cursor/mcp.json`:
 
 ```json
 {
@@ -158,7 +182,7 @@ For Both options use same json struct
         "signoz": {
             "url": "http://localhost:8000/mcp",
             "headers": {
-                "Authorization": "Bearer signoz-api-key-here"
+                "Authorization": "Bearer your-api-key-here"
             }
         }
     }
@@ -190,7 +214,8 @@ signoz-mcp-server/
 │   ├── config/          # Configuration management
 │   ├── handler/tools/   # MCP tool implementations
 │   ├── logger/          # Logging utilities
-│   └── mcp-server/      # MCP server core
+│   ├── mcp-server/      # MCP server core
+│   └── oauth/           # Stateless OAuth 2.1 (crypto, handlers, PKCE)
 ├── go.mod               # Go module dependencies
 ├── Makefile             # Build automation
 └── README.md
@@ -622,11 +647,17 @@ All tools return JSON responses that are optimized for LLM consumption:
 
 | Variable          | Description                                                                    | Required                            |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
-| `SIGNOZ_URL`      | SigNoz instance URL                                                            | Yes                                 |
-| `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes                                 |
+| `SIGNOZ_URL`      | SigNoz instance URL                                                            | Yes (stdio); Optional (http with OAuth) |
+| `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
+| `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
+| `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |
+| `OAUTH_ISSUER_URL` | Public URL of this MCP server (used in OAuth metadata discovery)              | Yes when `OAUTH_ENABLED=true`       |
+| `OAUTH_ACCESS_TOKEN_TTL_MINUTES` | Access token lifetime in minutes (default: 60)                  | No                                  |
+| `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 1440 / 24h)       | No                                  |
+| `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 
 ## Claude Desktop Extension Setup
 

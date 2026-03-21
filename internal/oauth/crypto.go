@@ -18,7 +18,8 @@ var (
 )
 
 const (
-	blobTypeClientID byte = iota + 1
+	blobTypeAccessToken byte = iota + 1
+	blobTypeClientID
 	blobTypeAuthorizationCode
 	blobTypeRefreshToken
 )
@@ -54,68 +55,18 @@ type encryptedRefreshTokenPayload struct {
 }
 
 func EncryptToken(apiKey, signozURL, clientID string, expiresAt time.Time, secret []byte) (string, error) {
-	payload := encryptedTokenPayload{
+	return encryptTypedBlob(blobTypeAccessToken, encryptedTokenPayload{
 		APIKey:    apiKey,
 		SignozURL: signozURL,
 		ClientID:  clientID,
 		ExpiresAt: expiresAt.UTC(),
-	}
-
-	plaintext, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal token payload: %w", err)
-	}
-
-	block, err := aes.NewCipher(tokenKey(secret))
-	if err != nil {
-		return "", fmt.Errorf("create cipher: %w", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("create GCM cipher: %w", err)
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("generate nonce: %w", err)
-	}
-
-	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-	encoded := append(nonce, ciphertext...)
-	return base64.RawURLEncoding.EncodeToString(encoded), nil
+	}, secret)
 }
 
 func DecryptToken(token string, secret []byte) (apiKey, signozURL, clientID string, expiresAt time.Time, err error) {
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return "", "", "", time.Time{}, fmt.Errorf("decode token: %w", ErrInvalidToken)
-	}
-
-	block, err := aes.NewCipher(tokenKey(secret))
-	if err != nil {
-		return "", "", "", time.Time{}, fmt.Errorf("create cipher: %w", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", "", "", time.Time{}, fmt.Errorf("create GCM cipher: %w", err)
-	}
-
-	if len(raw) < gcm.NonceSize() {
-		return "", "", "", time.Time{}, fmt.Errorf("token payload too short: %w", ErrInvalidToken)
-	}
-
-	nonce := raw[:gcm.NonceSize()]
-	ciphertext := raw[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return "", "", "", time.Time{}, fmt.Errorf("decrypt token: %w", ErrInvalidToken)
-	}
-
 	var payload encryptedTokenPayload
-	if err := json.Unmarshal(plaintext, &payload); err != nil {
-		return "", "", "", time.Time{}, fmt.Errorf("unmarshal token payload: %w", ErrInvalidToken)
+	if err := decryptTypedBlob(token, blobTypeAccessToken, secret, &payload); err != nil {
+		return "", "", "", time.Time{}, err
 	}
 
 	if time.Now().UTC().After(payload.ExpiresAt) {

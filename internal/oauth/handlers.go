@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 const csrfCookieName = "signoz_mcp_oauth_csrf"
@@ -197,7 +198,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", "api_key is required")
 		return
 	}
-	normalizedURL, err := normalizeSigNozURL(signozURL)
+	normalizedURL, err := util.NormalizeSigNozURL(signozURL)
 	if err != nil {
 		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("invalid SigNoz URL: %v", err))
 		return
@@ -431,7 +432,7 @@ func validateRedirectURI(raw string) error {
 	switch parsed.Scheme {
 	case "http":
 		// HTTP only allowed for loopback addresses (RFC 8252 §7.3)
-		if host != "localhost" && host != "127.0.0.1" && host != "[::1]" {
+		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
 			return fmt.Errorf("HTTP redirect URIs are only allowed for localhost, 127.0.0.1, or [::1]")
 		}
 	case "https":
@@ -468,44 +469,4 @@ func randomURLSafeString(size int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
-func normalizeSigNozURL(rawURL string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil {
-		return "", fmt.Errorf("malformed URL: %w", err)
-	}
-
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return "", fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
-	}
-	if parsed.Path != "" && parsed.Path != "/" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a path")
-	}
-	if parsed.RawQuery != "" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without query parameters")
-	}
-	if parsed.Fragment != "" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
-	}
-
-	host := strings.ToLower(parsed.Hostname())
-	if host == "" {
-		return "", fmt.Errorf("URL must include a host")
-	}
-	if host == "localhost" || host == "0.0.0.0" || host == "::" {
-		return "", fmt.Errorf("host %q is not allowed", host)
-	}
-
-	port := parsed.Port()
-	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
-		port = ""
-	}
-
-	origin := scheme + "://" + host
-	if port != "" {
-		origin += ":" + port
-	}
-	return origin, nil
 }

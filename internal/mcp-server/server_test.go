@@ -61,7 +61,7 @@ func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := normalizeSigNozURL(tt.url)
+			_, err := util.NormalizeSigNozURL(tt.url)
 			if tt.wantErr == "" {
 				// These cases may still fail due to DNS resolution of
 				// the fake host, which is fine — we only care that the
@@ -127,7 +127,7 @@ func TestNormalizeSigNozURL_CanonicalizesOrigin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := normalizeSigNozURL(tt.url)
+			got, err := util.NormalizeSigNozURL(tt.url)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

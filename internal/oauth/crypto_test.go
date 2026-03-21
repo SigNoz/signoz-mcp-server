@@ -126,3 +126,26 @@ func TestDecryptTokenRejectsRefreshTokenBlob(t *testing.T) {
 		t.Fatalf("DecryptToken() error = %v, want %v", err, ErrInvalidToken)
 	}
 }
+
+func TestDecryptTokenRejectsAuthorizationCodeBlob(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+
+	code, err := EncryptAuthorizationCode(
+		"api-key",
+		"https://tenant.example.com",
+		"client-1",
+		"http://127.0.0.1:4567/callback",
+		"challenge",
+		"S256",
+		time.Now().UTC().Add(time.Hour),
+		secret,
+	)
+	if err != nil {
+		t.Fatalf("EncryptAuthorizationCode() error = %v", err)
+	}
+
+	_, _, _, _, err = DecryptToken(code, secret)
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("DecryptToken() error = %v, want %v", err, ErrInvalidToken)
+	}
+}
