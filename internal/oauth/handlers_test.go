@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,5 +195,97 @@ func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("register status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	handler := NewHandler(zap.NewNop(), cfg)
+	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["javascript:alert(1)"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.HandleRegisterClient(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("register status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "not supported") {
+		t.Fatalf("register body = %q, want unsupported scheme error", rr.Body.String())
+	}
+}
+
+func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com/signoz-mcp",
+		AuthCodeTTL:      10 * time.Minute,
+	}
+
+	handler := NewHandler(zap.NewNop(), cfg)
+	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("EncryptClientID() error = %v", err)
+	}
+
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
+			"&redirect_uri="+url.QueryEscape("http://127.0.0.1:4567/callback")+
+			"&code_challenge=challenge&code_challenge_method=S256",
+		nil,
+	)
+	authorizeRR := httptest.NewRecorder()
+	handler.HandleAuthorizePage(authorizeRR, authorizeReq)
+
+	if authorizeRR.Code != http.StatusOK {
+		t.Fatalf("authorize GET status = %d, body = %s", authorizeRR.Code, authorizeRR.Body.String())
+	}
+	if !strings.Contains(authorizeRR.Body.String(), `action="/signoz-mcp/oauth/authorize"`) {
+		t.Fatalf("authorize page action missing issuer path prefix: %s", authorizeRR.Body.String())
+	}
+
+	authorizeResult := authorizeRR.Result()
+	if len(authorizeResult.Cookies()) == 0 {
+		t.Fatalf("expected CSRF cookie to be set")
+	}
+	csrfCookie := authorizeResult.Cookies()[0]
+	if csrfCookie.Path != "/signoz-mcp/oauth/authorize" {
+		t.Fatalf("csrf cookie path = %q, want %q", csrfCookie.Path, "/signoz-mcp/oauth/authorize")
+	}
+
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	matches := re.FindStringSubmatch(authorizeRR.Body.String())
+	if len(matches) != 2 {
+		t.Fatalf("csrf token not found in authorize page: %s", authorizeRR.Body.String())
+	}
+
+	form := url.Values{
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"code_challenge":        {"challenge"},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {matches[1]},
+		"signoz_url":            {"https://tenant.example.com"},
+		"api_key":               {"snz-api-key"},
+	}
+
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(csrfCookie)
+	submitRR := httptest.NewRecorder()
+	handler.HandleAuthorizeSubmit(submitRR, submitReq)
+
+	if submitRR.Code != http.StatusFound {
+		t.Fatalf("authorize POST status = %d, body = %s", submitRR.Code, submitRR.Body.String())
+	}
+	if !strings.Contains(submitRR.Header().Get("Set-Cookie"), "Path=/signoz-mcp/oauth/authorize") {
+		t.Fatalf("clearing CSRF cookie missing issuer path prefix: %s", submitRR.Header().Get("Set-Cookie"))
 	}
 }

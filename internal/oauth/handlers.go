@@ -51,6 +51,7 @@ type authorizeTemplateData struct {
 	ClientID            string
 	ClientName          string
 	RedirectURI         string
+	AuthorizePath       string
 	State               string
 	CodeChallenge       string
 	CodeChallengeMethod string
@@ -153,7 +154,7 @@ func (h *Handler) HandleAuthorizePage(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    csrfToken,
-		Path:     "/oauth/authorize",
+		Path:     h.authorizePath(),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   h.isSecure(),
@@ -165,6 +166,7 @@ func (h *Handler) HandleAuthorizePage(w http.ResponseWriter, r *http.Request) {
 		ClientID:            params.ClientID,
 		ClientName:          params.ClientName,
 		RedirectURI:         params.RedirectURI,
+		AuthorizePath:       h.authorizePath(),
 		State:               params.State,
 		CodeChallenge:       params.CodeChallenge,
 		CodeChallengeMethod: params.CodeChallengeMethod,
@@ -228,7 +230,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    "",
-		Path:     "/oauth/authorize",
+		Path:     h.authorizePath(),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   h.isSecure(),
@@ -401,6 +403,20 @@ func (h *Handler) issuerURL() string {
 	return strings.TrimSuffix(h.config.OAuthIssuerURL, "/")
 }
 
+func (h *Handler) authorizePath() string {
+	parsed, err := url.Parse(h.issuerURL())
+	if err != nil {
+		return "/oauth/authorize"
+	}
+
+	basePath := strings.TrimSuffix(parsed.Path, "/")
+	if basePath == "" {
+		return "/oauth/authorize"
+	}
+
+	return basePath + "/oauth/authorize"
+}
+
 // isSecure derives the Secure cookie flag from the issuer URL scheme rather
 // than r.TLS, which is nil behind a TLS-terminating reverse proxy.
 func (h *Handler) isSecure() bool {
@@ -440,12 +456,22 @@ func validateRedirectURI(raw string) error {
 			return fmt.Errorf("redirect URI host is required")
 		}
 	default:
-		// Allow private-use URI schemes for native desktop apps (RFC 8252 §7.1).
-		// MCP clients like Cursor and Claude Desktop use custom schemes
-		// (e.g., cursor://, claude://) for OAuth callbacks.
+		if !isAllowedCustomRedirectScheme(parsed.Scheme) {
+			return fmt.Errorf("redirect URI scheme %q is not supported", parsed.Scheme)
+		}
 	}
 
 	return nil
+}
+
+func isAllowedCustomRedirectScheme(scheme string) bool {
+	switch strings.ToLower(scheme) {
+	case "claude", "cursor":
+		return true
+	}
+
+	// RFC 8252 private-use schemes should normally use a reverse-domain name.
+	return strings.Contains(scheme, ".")
 }
 
 func addAuthorizeResponse(redirectURI, code, state string) (string, error) {

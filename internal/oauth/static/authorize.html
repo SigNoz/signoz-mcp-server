@@ -364,7 +364,7 @@
         Client: {{.ClientName}}
       </div>
 
-      <form method="post" action="/oauth/authorize">
+      <form method="post" action="{{.AuthorizePath}}">
         <div class="field">
           <label for="signoz_url">SigNoz Instance URL</label>
           <input id="signoz_url" name="signoz_url" type="text" placeholder="https://your-signoz-instance" required>
