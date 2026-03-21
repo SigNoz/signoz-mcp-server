@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,8 @@ const (
 	ContentType  = "Content-Type"
 )
 
+var ErrUnauthorized = errors.New("signoz credentials rejected")
+
 type SigNoz struct {
 	baseURL    string
 	apiKey     string
@@ -36,6 +39,51 @@ func NewClient(log *zap.Logger, baseURL, apiKey string) *SigNoz {
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
+	}
+}
+
+// ValidateCredentials performs a lightweight authenticated request against the
+// SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
+// redirecting back to the MCP client.
+func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create validation request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		s.logger.Error("SigNoz credential validation request failed", zap.String("url", reqURL), zap.Error(err))
+		return fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	if err != nil {
+		return fmt.Errorf("failed to read validation response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		s.logger.Warn("SigNoz credential validation failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
+		return fmt.Errorf("%w: status %d", ErrUnauthorized, resp.StatusCode)
+	default:
+		s.logger.Warn("SigNoz credential validation returned unexpected status", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 }
 

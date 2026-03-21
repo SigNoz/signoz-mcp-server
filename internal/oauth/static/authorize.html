@@ -224,6 +224,24 @@
       text-decoration: underline;
     }
 
+    .error-banner {
+      margin-bottom: 18px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(231, 85, 54, 0.28);
+      background: rgba(231, 85, 54, 0.08);
+      color: #ffd3ca;
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .input-note {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+
     button[type="submit"] {
       width: 100%;
       border: 0;
@@ -364,10 +382,15 @@
         Client: {{.ClientName}}
       </div>
 
+      {{if .ErrorMessage}}
+        <div class="error-banner" role="alert">{{.ErrorMessage}}</div>
+      {{end}}
+
       <form method="post" action="{{.AuthorizePath}}">
         <div class="field">
           <label for="signoz_url">SigNoz Instance URL</label>
-          <input id="signoz_url" name="signoz_url" type="text" placeholder="https://your-signoz-instance" required>
+          <input id="signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}" placeholder="https://your-signoz-instance" required>
+          <div class="input-note">Use the base URL for your SigNoz deployment. Don’t include a path like <code>/home</code>.</div>
         </div>
 
         <div class="field">

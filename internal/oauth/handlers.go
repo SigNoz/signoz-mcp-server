@@ -1,10 +1,12 @@
 package oauth
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -57,6 +60,8 @@ type authorizeTemplateData struct {
 	CodeChallengeMethod string
 	Scope               string
 	CSRFToken           string
+	SignozURL           string
+	ErrorMessage        string
 }
 
 type tokenResponse struct {
@@ -145,36 +150,7 @@ func (h *Handler) HandleAuthorizePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csrfToken, err := randomURLSafeString(32)
-	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to generate CSRF token")
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     csrfCookieName,
-		Value:    csrfToken,
-		Path:     h.authorizePath(),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   h.isSecure(),
-		MaxAge:   int(h.config.AuthCodeTTL.Seconds()),
-	})
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.authorizeTemplate.Execute(w, authorizeTemplateData{
-		ClientID:            params.ClientID,
-		ClientName:          params.ClientName,
-		RedirectURI:         params.RedirectURI,
-		AuthorizePath:       h.authorizePath(),
-		State:               params.State,
-		CodeChallenge:       params.CodeChallenge,
-		CodeChallengeMethod: params.CodeChallengeMethod,
-		Scope:               params.Scope,
-		CSRFToken:           csrfToken,
-	}); err != nil {
-		h.logger.Error("failed to render authorization page", zap.Error(err))
-	}
+	h.renderAuthorizePage(w, http.StatusOK, params)
 }
 
 func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
@@ -197,12 +173,61 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 	apiKey := strings.TrimSpace(r.FormValue("api_key"))
 	signozURL := strings.TrimSpace(r.FormValue("signoz_url"))
 	if apiKey == "" {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", "api_key is required")
+		h.renderAuthorizePage(w, http.StatusBadRequest, authorizeTemplateData{
+			ClientID:            params.ClientID,
+			ClientName:          params.ClientName,
+			RedirectURI:         params.RedirectURI,
+			State:               params.State,
+			CodeChallenge:       params.CodeChallenge,
+			CodeChallengeMethod: params.CodeChallengeMethod,
+			Scope:               params.Scope,
+			SignozURL:           signozURL,
+			ErrorMessage:        "Enter your SigNoz API key to continue.",
+		})
 		return
 	}
 	normalizedURL, err := util.NormalizeSigNozURL(signozURL)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("invalid SigNoz URL: %v", err))
+		h.renderAuthorizePage(w, http.StatusBadRequest, authorizeTemplateData{
+			ClientID:            params.ClientID,
+			ClientName:          params.ClientName,
+			RedirectURI:         params.RedirectURI,
+			State:               params.State,
+			CodeChallenge:       params.CodeChallenge,
+			CodeChallengeMethod: params.CodeChallengeMethod,
+			Scope:               params.Scope,
+			SignozURL:           signozURL,
+			ErrorMessage:        "Enter a valid SigNoz base URL, for example https://your-signoz-instance.",
+		})
+		return
+	}
+	if err := h.validateSigNozCredentials(r.Context(), normalizedURL, apiKey); err != nil {
+		switch {
+		case errors.Is(err, client.ErrUnauthorized):
+			h.renderAuthorizePage(w, http.StatusUnauthorized, authorizeTemplateData{
+				ClientID:            params.ClientID,
+				ClientName:          params.ClientName,
+				RedirectURI:         params.RedirectURI,
+				State:               params.State,
+				CodeChallenge:       params.CodeChallenge,
+				CodeChallengeMethod: params.CodeChallengeMethod,
+				Scope:               params.Scope,
+				SignozURL:           normalizedURL,
+				ErrorMessage:        "We couldn't sign in to that SigNoz instance. Check the URL and API key, then try again.",
+			})
+		default:
+			h.renderAuthorizePage(w, http.StatusBadGateway, authorizeTemplateData{
+				ClientID:            params.ClientID,
+				ClientName:          params.ClientName,
+				RedirectURI:         params.RedirectURI,
+				State:               params.State,
+				CodeChallenge:       params.CodeChallenge,
+				CodeChallengeMethod: params.CodeChallengeMethod,
+				Scope:               params.Scope,
+				SignozURL:           normalizedURL,
+				ErrorMessage:        "We couldn't reach that SigNoz instance. Check the URL and try again.",
+			})
+		}
 		return
 	}
 
@@ -237,6 +262,38 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		MaxAge:   -1,
 	})
 	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiKey string) error {
+	signozClient := client.NewClient(h.logger, signozURL, apiKey)
+	return signozClient.ValidateCredentials(ctx)
+}
+
+func (h *Handler) renderAuthorizePage(w http.ResponseWriter, status int, data authorizeTemplateData) {
+	csrfToken, err := randomURLSafeString(32)
+	if err != nil {
+		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to generate CSRF token")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    csrfToken,
+		Path:     h.authorizePath(),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   h.isSecure(),
+		MaxAge:   int(h.config.AuthCodeTTL.Seconds()),
+	})
+
+	data.AuthorizePath = h.authorizePath()
+	data.CSRFToken = csrfToken
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := h.authorizeTemplate.Execute(w, data); err != nil {
+		h.logger.Error("failed to render authorization page", zap.Error(err))
+	}
 }
 
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {

@@ -117,6 +117,68 @@ func TestGetAlertByRuleID(t *testing.T) {
 	}
 }
 
+func TestValidateCredentials(t *testing.T) {
+	tests := []struct {
+		name          string
+		statusCode    int
+		expectedError bool
+		checkErr      func(t *testing.T, err error)
+	}{
+		{
+			name:          "successful validation",
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "unauthorized credentials",
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrUnauthorized)
+			},
+		},
+		{
+			name:          "unexpected status",
+			statusCode:    http.StatusNotFound,
+			expectedError: true,
+			checkErr: func(t *testing.T, err error) {
+				assert.NotNil(t, err)
+				assert.Contains(t, err.Error(), "unexpected status 404")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/dashboards", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			client := NewClient(logger, server.URL, "test-api-key")
+
+			err := client.ValidateCredentials(context.Background())
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				if tt.checkErr != nil {
+					tt.checkErr(t, err)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestListMetricKeys(t *testing.T) {
 	tests := []struct {
 		name          string

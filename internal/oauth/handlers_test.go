@@ -19,6 +19,22 @@ import (
 )
 
 func TestOAuthAuthorizationFlow(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/dashboards" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"status":"error","message":"Unauthorized"}`))
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer signozServer.Close()
+
 	cfg := &config.Config{
 		OAuthEnabled:     true,
 		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
@@ -103,7 +119,7 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 		"code_challenge_method": {"S256"},
 		"scope":                 {"openid profile"},
 		"csrf_token":            {csrfToken},
-		"signoz_url":            {"https://tenant.example.com"},
+		"signoz_url":            {signozServer.URL},
 		"api_key":               {"snz-api-key"},
 	}
 
@@ -160,7 +176,7 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecryptToken() error = %v", err)
 	}
-	if apiKey != "snz-api-key" || signozURL != "https://tenant.example.com" || clientID != registered.ClientID {
+	if apiKey != "snz-api-key" || signozURL != signozServer.URL || clientID != registered.ClientID {
 		t.Fatalf("decrypted token payload mismatch: apiKey=%q signozURL=%q clientID=%q", apiKey, signozURL, clientID)
 	}
 	if expiresAt.Before(time.Now().UTC()) {
@@ -171,11 +187,96 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecryptRefreshToken() error = %v", err)
 	}
-	if refreshAPIKey != "snz-api-key" || refreshSignozURL != "https://tenant.example.com" || refreshClientID != registered.ClientID {
+	if refreshAPIKey != "snz-api-key" || refreshSignozURL != signozServer.URL || refreshClientID != registered.ClientID {
 		t.Fatalf("decrypted refresh token payload mismatch: apiKey=%q signozURL=%q clientID=%q", refreshAPIKey, refreshSignozURL, refreshClientID)
 	}
 	if refreshExpiresAt.Before(time.Now().UTC()) {
 		t.Fatalf("refresh token already expired at %v", refreshExpiresAt)
+	}
+}
+
+func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/dashboards" {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"status":"error","message":"Unauthorized"}`))
+	}))
+	defer signozServer.Close()
+
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+		AuthCodeTTL:      10 * time.Minute,
+	}
+
+	handler := NewHandler(zap.NewNop(), cfg)
+	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("EncryptClientID() error = %v", err)
+	}
+
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
+			"&redirect_uri="+url.QueryEscape("http://127.0.0.1:4567/callback")+
+			"&state=state-123&code_challenge=challenge&code_challenge_method=S256",
+		nil,
+	)
+	authorizeRR := httptest.NewRecorder()
+	handler.HandleAuthorizePage(authorizeRR, authorizeReq)
+
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	matches := re.FindStringSubmatch(authorizeRR.Body.String())
+	if len(matches) != 2 {
+		t.Fatalf("csrf token not found in authorize page: %s", authorizeRR.Body.String())
+	}
+	csrfToken := matches[1]
+
+	authorizeResult := authorizeRR.Result()
+	if len(authorizeResult.Cookies()) == 0 {
+		t.Fatalf("expected CSRF cookie to be set")
+	}
+
+	form := url.Values{
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"state":                 {"state-123"},
+		"code_challenge":        {"challenge"},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {csrfToken},
+		"signoz_url":            {signozServer.URL},
+		"api_key":               {"bad-api-key"},
+	}
+
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(authorizeResult.Cookies()[0])
+	submitRR := httptest.NewRecorder()
+
+	handler.HandleAuthorizeSubmit(submitRR, submitReq)
+
+	if submitRR.Code != http.StatusUnauthorized {
+		t.Fatalf("authorize POST status = %d, want %d, body = %s", submitRR.Code, http.StatusUnauthorized, submitRR.Body.String())
+	}
+	if !strings.Contains(submitRR.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("content type = %q, want HTML", submitRR.Header().Get("Content-Type"))
+	}
+	if submitRR.Header().Get("Location") != "" {
+		t.Fatalf("unexpected redirect location %q", submitRR.Header().Get("Location"))
+	}
+	if !strings.Contains(submitRR.Body.String(), "We couldn&#39;t sign in to that SigNoz instance. Check the URL and API key, then try again.") {
+		t.Fatalf("authorize POST body = %s", submitRR.Body.String())
+	}
+	if !strings.Contains(submitRR.Body.String(), `value="`+signozServer.URL+`"`) {
+		t.Fatalf("authorize POST should preserve signoz_url, body = %s", submitRR.Body.String())
+	}
+	if strings.Contains(submitRR.Body.String(), `value="bad-api-key"`) {
+		t.Fatalf("authorize POST should not echo the api key, body = %s", submitRR.Body.String())
 	}
 }
 
@@ -221,6 +322,22 @@ func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 }
 
 func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/dashboards" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"status":"error","message":"Unauthorized"}`))
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer signozServer.Close()
+
 	cfg := &config.Config{
 		OAuthEnabled:     true,
 		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
@@ -272,7 +389,7 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 		"code_challenge":        {"challenge"},
 		"code_challenge_method": {"S256"},
 		"csrf_token":            {matches[1]},
-		"signoz_url":            {"https://tenant.example.com"},
+		"signoz_url":            {signozServer.URL},
 		"api_key":               {"snz-api-key"},
 	}
 
