@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorize SigNoz MCP</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4efe7;
+      --panel: #fffaf4;
+      --border: #d8c8b3;
+      --ink: #221b15;
+      --muted: #6d5d4e;
+      --accent: #d95f2f;
+      --accent-dark: #a7421d;
+      --shadow: rgba(34, 27, 21, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "SF Pro Text", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(217, 95, 47, 0.16), transparent 30%),
+        linear-gradient(160deg, #f6f0e8 0%, #efe5d7 100%);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(100%, 460px);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: 0 20px 50px var(--shadow);
+      padding: 32px;
+    }
+    .brand {
+      font-size: 0.85rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent-dark);
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      line-height: 1;
+    }
+    p {
+      margin: 0 0 24px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .client {
+      margin-bottom: 20px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(217, 95, 47, 0.08);
+      color: var(--accent-dark);
+      font-size: 0.95rem;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .field {
+      margin-bottom: 18px;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 14px 15px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      font-size: 1rem;
+    }
+    input:focus {
+      outline: 2px solid rgba(217, 95, 47, 0.28);
+      outline-offset: 1px;
+      border-color: var(--accent);
+    }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, var(--accent) 0%, #f08a3c 100%);
+      color: #fff8f2;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover {
+      filter: brightness(0.98);
+    }
+    .hint {
+      margin-top: 16px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">SigNoz MCP</div>
+    <h1>Authorize access</h1>
+    <p>Enter the SigNoz instance and API key you want this MCP client to use.</p>
+    <div class="client">Client: {{.ClientName}}</div>
+
+    <form method="post" action="/oauth/authorize">
+      <div class="field">
+        <label for="signoz_url">SigNoz Instance URL</label>
+        <input id="signoz_url" name="signoz_url" type="text" placeholder="https://your-signoz-instance" required>
+      </div>
+
+      <div class="field">
+        <label for="api_key">API Key</label>
+        <input id="api_key" name="api_key" type="password" placeholder="Paste a SigNoz API key" required>
+      </div>
+
+      <input type="hidden" name="client_id" value="{{.ClientID}}">
+      <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+      <input type="hidden" name="state" value="{{.State}}">
+      <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+      <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+      <input type="hidden" name="scope" value="{{.Scope}}">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <button type="submit">Authorize</button>
+    </form>
+
+    <div class="hint">Your credentials stay within the SigNoz MCP server and are exchanged for scoped OAuth tokens.</div>
+  </main>
+</body>
+</html>
