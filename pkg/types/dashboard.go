@@ -124,14 +124,14 @@ type PromQL struct {
 	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=PromQL query expression"`
 	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
 	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the PromQL query is disabled or not"`
-	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query"`
+	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query. Example: {{service.name}} or {{llm.model_name}}"`
 }
 
 type ClickHouseSQL struct {
 	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=Clickhouse SQL query for the widget"`
 	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
 	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the Clickhouse SQL is disabled or not"`
-	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query"`
+	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query. Example: {{service.name}} or {{llm.model_name}}"`
 }
 
 type BuilderQueryDashboard struct {
@@ -152,7 +152,7 @@ type BuilderQuery struct {
 	Expression         string            `json:"expression" jsonschema:"required" jsonschema_extras:"description=Expression for the query"`
 	Disabled           bool              `json:"disabled,omitempty" jsonschema_extras:"description=Whether the query is disabled"`
 	Having             interface{}       `json:"having,omitempty" jsonschema_extras:"description=Having clauses for the query"`
-	Legend             string            `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query"`
+	Legend             string            `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query. To add a legend to a query, include the legend formatting field name. Values like {{service.name}} or {{llm.model_name}} are typical."`
 	Limit              uint64            `json:"limit,omitempty" jsonschema_extras:"description=Limit for the query"`
 	Offset             uint64            `json:"offset,omitempty" jsonschema_extras:"description=Offset for the query"`
 	PageSize           uint64            `json:"pageSize,omitempty" jsonschema_extras:"description=Page size for the query"`
