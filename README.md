@@ -141,7 +141,7 @@ OAUTH_ISSUER_URL=https://your-public-mcp-url.com \
 
 The client will automatically discover the OAuth endpoints, open a browser for the user to enter their SigNoz URL and API key, and handle token exchange. No manual header configuration needed.
 
-**How it works:** On first connection the client gets a `401` challenge, discovers OAuth endpoints via `/.well-known/` metadata, registers itself, then opens a browser where the user enters their SigNoz credentials. The credentials are encrypted into a stateless token that the client uses for all subsequent requests.
+**How it works:** On first connection the client gets a `401` challenge, discovers OAuth endpoints via `/.well-known/` metadata, registers itself, then opens a browser where the user enters their SigNoz credentials. The server normalizes the submitted SigNoz URL and validates the credentials before issuing an authorization code. If the URL is invalid, the credentials are rejected, or the SigNoz instance cannot be reached, the authorize page is shown again with an inline error so the user can correct the input. Once validation succeeds, the credentials are encrypted into a stateless token that the client uses for all subsequent requests.
 
 #### Without OAuth (Simple Setup)
 

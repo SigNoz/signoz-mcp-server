@@ -46,12 +46,17 @@ func NewClient(log *zap.Logger, baseURL, apiKey string) *SigNoz {
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
-
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	return s.validateCredentialsWithAuthzCheck(ctx)
+}
+
+func (s *SigNoz) validateCredentialsWithAuthzCheck(ctx context.Context) error {
+	reqURL := fmt.Sprintf("%s/api/v1/authz/check", s.baseURL)
+	reqBody := []byte(`[{"relation":"list","object":{"resource":{"type":"metaresources","name":"dashboards"},"selector":"*"}}]`)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return fmt.Errorf("failed to create validation request: %w", err)
 	}

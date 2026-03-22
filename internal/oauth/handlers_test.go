@@ -20,8 +20,12 @@ import (
 
 func TestOAuthAuthorizationFlow(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/dashboards" {
+		if r.URL.Path != "/api/v1/authz/check" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
@@ -197,8 +201,12 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 
 func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/dashboards" {
+		if r.URL.Path != "/api/v1/authz/check" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 
@@ -323,8 +331,12 @@ func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 
 func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/dashboards" {
+		if r.URL.Path != "/api/v1/authz/check" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
