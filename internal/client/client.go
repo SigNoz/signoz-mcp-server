@@ -745,33 +745,6 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	return s.QueryBuilderV5(ctx, queryJSON)
 }
 
-func (s *SigNoz) GetTraceErrorAnalysis(ctx context.Context, startTime, endTime int64, filterExpression string) (json.RawMessage, error) {
-	limit := 1000
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
-	queryJSON, err := json.Marshal(queryPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
-	}
-
-	return s.QueryBuilderV5(ctx, queryJSON)
-}
-
-func (s *SigNoz) GetTraceSpanHierarchy(ctx context.Context, traceID string, startTime, endTime int64) (json.RawMessage, error) {
-	if startTime == 0 || endTime == 0 {
-		return nil, fmt.Errorf("start and end time parameters are required")
-	}
-
-	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
-	limit := 1000
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
-	queryJSON, err := json.Marshal(queryPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
-	}
-
-	return s.QueryBuilderV5(ctx, queryJSON)
-}
-
 func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
 

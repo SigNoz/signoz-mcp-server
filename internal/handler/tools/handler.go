@@ -1195,144 +1195,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
-	getErrorLogsTool := mcp.NewTool("signoz_get_error_logs",
-		mcp.WithDescription("Get logs with ERROR or FATAL severity. Defaults to last 6 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-		mcp.WithString("service", mcp.Description("Optional service name to filter by")),
-		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 25, max: 200)")),
-		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
-	)
-
-	s.AddTool(getErrorLogsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
-		limit := 25
-		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if limitInt, err := strconv.Atoi(limitStr); err == nil {
-				if limitInt > 200 {
-					limit = 200
-				} else if limitInt < 1 {
-					limit = 1
-				} else {
-					limit = limitInt
-				}
-			}
-		}
-
-		_, offset := paginate.ParseParams(req.Params.Arguments)
-
-		filterExpression := "severity_text IN ('ERROR', 'FATAL')"
-
-		if service, ok := args["service"].(string); ok && service != "" {
-			filterExpression += fmt.Sprintf(" AND service.name in ['%s']", service)
-		}
-
-		var startTime, endTime int64
-		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
-		}
-		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
-		}
-
-		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
-
-		queryJSON, err := json.Marshal(queryPayload)
-		if err != nil {
-			log.Error("Failed to marshal query payload", zap.Error(err))
-			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
-		}
-
-		log.Debug("Tool called: signoz_get_error_logs", zap.String("start", start), zap.String("end", end))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.QueryBuilderV5(ctx, queryJSON)
-		if err != nil {
-			log.Error("Failed to get error logs", zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
-	searchLogsByServiceTool := mcp.NewTool("signoz_search_logs_by_service",
-		mcp.WithDescription("Search logs for a specific service. Defaults to last 6 hours if no time specified."),
-		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search logs for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-		mcp.WithString("severity", mcp.Description("Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)")),
-		mcp.WithString("searchText", mcp.Description("Text to search for in log body")),
-		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
-		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
-	)
-
-	s.AddTool(searchLogsByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		service, ok := args["service"].(string)
-		if !ok || service == "" {
-			return mcp.NewToolResultError(`Parameter validation failed: "service" must be a non-empty string. Example: {"service": "consumer-svc-1", "searchText": "error", "timeRange": "1h", "limit": "50"}`), nil
-		}
-
-		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
-		limit := 100
-		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if limitInt, err := strconv.Atoi(limitStr); err == nil {
-				limit = limitInt
-			}
-		}
-
-		_, offset := paginate.ParseParams(req.Params.Arguments)
-
-		filterExpression := fmt.Sprintf("service.name in ['%s']", service)
-
-		if severity, ok := args["severity"].(string); ok && severity != "" {
-			filterExpression += fmt.Sprintf(" AND severity_text = '%s'", severity)
-		}
-
-		if searchText, ok := args["searchText"].(string); ok && searchText != "" {
-			filterExpression += fmt.Sprintf(" AND body CONTAINS '%s'", searchText)
-		}
-
-		var startTime, endTime int64
-		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
-		}
-		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
-		}
-
-		queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
-
-		queryJSON, err := json.Marshal(queryPayload)
-		if err != nil {
-			log.Error("Failed to marshal query payload", zap.Error(err))
-			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
-		}
-
-		log.Debug("Tool called: signoz_search_logs_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.QueryBuilderV5(ctx, queryJSON)
-		if err != nil {
-			log.Error("Failed to search logs by service", zap.String("service", service), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
 	// aggregate_logs: compute statistics over logs with GROUP BY
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
 		mcp.WithDescription("Aggregate logs to compute statistics like count, average, sum, min, max, or percentiles, optionally grouped by fields. "+
@@ -1399,7 +1261,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	// ToDo: use this function for error logs or logs by service
 	searchLogsTool := mcp.NewTool("signoz_search_logs",
 		mcp.WithDescription("Search logs with flexible filtering. Supports free-form query expressions, optional service/severity filters, and body text search. "+
-			"Unlike search_logs_by_service, the service parameter is optional — search across all services or filter by any attribute. "+
+			"Use service param to scope to a single service, severity param for error-only queries (e.g., severity='ERROR'), or query param for any filter expression. "+
 			"Defaults to last 1 hour if no time specified."),
 		mcp.WithString("query", mcp.Description("Free-form filter expression using SigNoz search syntax. Examples: \"service.name = 'payment-svc' AND http.status_code >= 400\", \"workflow_run_id = 'wr_123'\", \"body CONTAINS 'timeout'\". Supports any log field/attribute.")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
@@ -1460,14 +1322,17 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		mcp.WithDescription("Aggregate traces to compute statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields. "+
 			"Use this for questions like 'p99 latency by service', 'error count per operation', 'request rate by endpoint', 'average duration by span kind'. "+
+			"Also use this for error analysis — set error='true' and groupBy='service.name' to analyze error patterns across services. "+
 			"Defaults to last 1 hour if no time specified."),
 		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
 		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'durationNano'). Required for all aggregations except count and rate.")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.")),
-		mcp.WithString("filter", mcp.Description("Filter expression using SigNoz search syntax (e.g., \"hasError = true AND httpMethod = 'GET'\"). Combined with service/operation/error params using AND.")),
+		mcp.WithString("filter", mcp.Description("Filter expression using SigNoz search syntax (e.g., \"hasError = true AND httpMethod = 'GET'\"). Combined with service/operation/error/duration params using AND.")),
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
 		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
 		mcp.WithString("error", mcp.Description("Shortcut filter for error spans ('true' or 'false'). Equivalent to adding hasError = true/false to filter.")),
+		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
+		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
 		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10)")),
 		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
@@ -1519,69 +1384,36 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
-	searchTracesByServiceTool := mcp.NewTool("signoz_search_traces_by_service",
-		mcp.WithDescription("Search traces for a specific service. Defaults to last 6 hours if no time specified."),
-		mcp.WithString("service", mcp.Required(), mcp.Description("Service name to search traces for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-		mcp.WithString("operation", mcp.Description("Operation name to filter by")),
-		mcp.WithString("error", mcp.Description("Filter by error status (true/false)")),
-		mcp.WithString("minDuration", mcp.Description("Minimum duration in nanoseconds")),
-		mcp.WithString("maxDuration", mcp.Description("Maximum duration in nanoseconds")),
+	searchTracesTool := mcp.NewTool("signoz_search_traces",
+		mcp.WithDescription("Search traces with flexible filtering. Supports free-form query expressions, optional service/operation/error filters, and duration filtering. "+
+			"Use service param to scope to a single service, or query param for any filter expression. "+
+			"Defaults to last 1 hour if no time specified."),
+		mcp.WithString("query", mcp.Description("Free-form filter expression using SigNoz search syntax. Examples: \"service.name = 'payment-svc' AND hasError = true\", \"httpMethod = 'POST' AND responseStatusCode >= 500\". Combined with shortcut params using AND.")),
+		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
+		mcp.WithString("operation", mcp.Description("Operation/span name to filter by.")),
+		mcp.WithString("error", mcp.Description("Filter by error status ('true' or 'false').")),
+		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
+		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
+		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
+		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, overridden by timeRange)")),
+		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, overridden by timeRange)")),
 		mcp.WithString("limit", mcp.Description("Maximum number of traces to return (default: 100)")),
+		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
-	s.AddTool(searchTracesByServiceTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(searchTracesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		service, ok := args["service"].(string)
-		if !ok || service == "" {
-			return mcp.NewToolResultError(`Parameter validation failed: "service" must be a non-empty string. Example: {"service": "frontend-api", "timeRange": "2h", "error": "true", "limit": "100"}`), nil
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
 		}
 
-		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
-		limit := 100
-		if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-			if limitInt, err := strconv.Atoi(limitStr); err == nil {
-				limit = limitInt
-			}
+		reqData, err := parseSearchTracesArgs(args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		filterExpression := fmt.Sprintf("service.name in ['%s']", service)
-
-		if operation, ok := args["operation"].(string); ok && operation != "" {
-			filterExpression += fmt.Sprintf(" AND name = '%s'", operation)
-		}
-
-		if errorFilter, ok := args["error"].(string); ok && errorFilter != "" {
-			switch errorFilter {
-			case "true":
-				filterExpression += " AND hasError = true"
-			case "false":
-				filterExpression += " AND hasError = false"
-			}
-		}
-
-		if minDuration, ok := args["minDuration"].(string); ok && minDuration != "" {
-			filterExpression += fmt.Sprintf(" AND durationNano >= %s", minDuration)
-		}
-
-		if maxDuration, ok := args["maxDuration"].(string); ok && maxDuration != "" {
-			filterExpression += fmt.Sprintf(" AND durationNano <= %s", maxDuration)
-		}
-
-		var startTime, endTime int64
-		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
-		}
-		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
-		}
-
-		queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+		queryPayload := types.BuildTracesQueryPayload(reqData.StartTime, reqData.EndTime, reqData.FilterExpression, reqData.Limit)
 
 		queryJSON, err := json.Marshal(queryPayload)
 		if err != nil {
@@ -1589,14 +1421,16 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 		}
 
-		log.Debug("Tool called: signoz_search_traces_by_service", zap.String("service", service), zap.String("start", start), zap.String("end", end))
+		log.Debug("Tool called: signoz_search_traces",
+			zap.String("filter", reqData.FilterExpression))
+
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		result, err := client.QueryBuilderV5(ctx, queryJSON)
 		if err != nil {
-			log.Error("Failed to search traces by service", zap.String("service", service), zap.Error(err))
+			log.Error("Failed to search traces", zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -1604,7 +1438,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
-		mcp.WithDescription("Get comprehensive trace information including all spans and metadata. Defaults to last 6 hours if no time specified."),
+		mcp.WithDescription("Get comprehensive trace information including all spans, metadata, and span hierarchy/relationships. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
@@ -1644,102 +1478,6 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 		if err != nil {
 			log.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
-	getTraceErrorAnalysisTool := mcp.NewTool("signoz_get_trace_error_analysis",
-		mcp.WithDescription("Analyze error patterns in traces. Defaults to last 6 hours if no time specified."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-		mcp.WithString("service", mcp.Description("Service name to filter by (optional)")),
-		mcp.WithString("operation", mcp.Description("Operation/span name to filter by (optional)")),
-		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds (optional). Example: '500000000' for 500ms")),
-		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds (optional). Example: '2000000000' for 2s")),
-		mcp.WithString("filter", mcp.Description("Additional filter expression ANDed with hasError = true (optional). Example: \"k8s.namespace.name = 'prod'\"")),
-	)
-
-	s.AddTool(getTraceErrorAnalysisTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
-		var startTime, endTime int64
-		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
-		}
-		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
-		}
-
-		filterExpression := "hasError = true"
-		if service, ok := args["service"].(string); ok && service != "" {
-			filterExpression += fmt.Sprintf(" AND service.name = '%s'", service)
-		}
-		if operation, ok := args["operation"].(string); ok && operation != "" {
-			filterExpression += fmt.Sprintf(" AND name = '%s'", operation)
-		}
-		if minDuration, ok := args["minDuration"].(string); ok && minDuration != "" {
-			filterExpression += fmt.Sprintf(" AND durationNano >= %s", minDuration)
-		}
-		if maxDuration, ok := args["maxDuration"].(string); ok && maxDuration != "" {
-			filterExpression += fmt.Sprintf(" AND durationNano <= %s", maxDuration)
-		}
-		if filter, ok := args["filter"].(string); ok && filter != "" {
-			filterExpression += fmt.Sprintf(" AND (%s)", filter)
-		}
-
-		log.Debug("Tool called: signoz_get_trace_error_analysis", zap.String("start", start), zap.String("end", end), zap.String("filterExpression", filterExpression))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.GetTraceErrorAnalysis(ctx, startTime, endTime, filterExpression)
-		if err != nil {
-			log.Error("Failed to get trace error analysis", zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
-	getTraceSpanHierarchyTool := mcp.NewTool("signoz_get_trace_span_hierarchy",
-		mcp.WithDescription("Get trace span relationships and hierarchy. Defaults to last 6 hours if no time specified."),
-		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get span hierarchy for")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-	)
-
-	s.AddTool(getTraceSpanHierarchyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		traceID, ok := args["traceId"].(string)
-		if !ok || traceID == "" {
-			return mcp.NewToolResultError(`Parameter validation failed: "traceId" must be a non-empty string. Example: {"traceId": "abc123def456", "timeRange": "1h"}`), nil
-		}
-
-		start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
-
-		var startTime, endTime int64
-		if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
-		}
-		if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
-		}
-
-		log.Debug("Tool called: signoz_get_trace_span_hierarchy", zap.String("traceId", traceID), zap.String("start", start), zap.String("end", end))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.GetTraceSpanHierarchy(ctx, traceID, startTime, endTime)
-		if err != nil {
-			log.Error("Failed to get trace span hierarchy", zap.String("traceId", traceID), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
