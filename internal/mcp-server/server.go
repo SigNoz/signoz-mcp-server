@@ -10,6 +10,7 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -27,7 +28,7 @@ func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *
 }
 
 func (m *MCPServer) Start() error {
-	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false), server.WithRecovery())
+	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false), server.WithRecovery(), server.WithInstructions(instructions.ServerInstructions))
 
 	m.logger.Info("Starting SigNoz MCP Server",
 		zap.String("server_name", "SigNozMCPServer"),
