@@ -30,10 +30,6 @@
       "description": "Search and list available metrics from SigNoz"
     },
     {
-      "name": "signoz_query_metrics",
-      "description": "Query metrics with smart aggregation defaults and validation. Automatically applies the right timeAggregation and spaceAggregation based on metric type (gauge, counter, histogram). Auto-fetches metric metadata if not provided. Supports formulas (A/B*100) and scalar results."
-    },
-    {
       "name": "signoz_get_field_keys",
       "description": "Get available field keys for metrics, traces, or logs"
     },

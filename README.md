@@ -323,27 +323,6 @@ Search and list available metrics from SigNoz. Supports filtering by name substr
     - `end` (optional) - End time in unix milliseconds
     - `source` (optional) - Filter by source
 
-#### `signoz_query_metrics`
-
-Query metrics with smart aggregation defaults and validation. Automatically applies the right timeAggregation and spaceAggregation based on metric type (gauge, counter, histogram). Auto-fetches metric metadata if not provided.
-
-- **Parameters**:
-    - `metricName` (required) - Metric name to query
-    - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
-    - `isMonotonic` (optional) - true/false (auto-fetched if absent)
-    - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
-    - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
-    - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
-    - `groupBy` (optional) - Comma-separated field names
-    - `filter` (optional) - Filter expression
-    - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h)
-    - `start`/`end` (optional) - Unix ms timestamps (override timeRange)
-    - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
-    - `requestType` (optional) - time_series (default) or scalar
-    - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
-    - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
-    - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
-
 #### `signoz_list_alerts`
 
 Lists all active alerts from SigNoz.
