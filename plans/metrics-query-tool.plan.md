@@ -1,100 +1,227 @@
 # Plan: Add `signoz_query_metrics` tool with guided aggregation
 
+## Status
+Done
+
 ## Context
-The existing `signoz_execute_builder_query` tool can execute metrics queries but requires the LLM to know the exact v5 JSON payload. Metrics have complex aggregation rules that vary by type (gauge, sum/counter, histogram) — choosing wrong aggregations produces meaningless data. This task adds a higher-level `signoz_query_metrics` tool that accepts human-readable inputs, validates aggregation choices against metric type metadata (returned by `signoz_list_metrics`), builds the payload, and executes it. A companion MCP resource documents the full aggregation rules guide.
+`signoz_execute_builder_query` can run any v5 query but requires the LLM to know the exact JSON payload. Metrics have complex aggregation rules that vary by type (gauge, sum/counter, histogram) — choosing wrong aggregations produces meaningless or empty data. This tool accepts human-readable inputs, validates aggregation choices, applies smart defaults, builds the payload, executes it, and **communicates every decision made** back to the caller.
 
-## Aggregation rules (from docs + k8s dashboard analysis)
+## API Field Names (from OpenAPI spec)
+- `timeAggregation` (not `temporalAggregation`)
+- `spaceAggregation` (not `spatialAggregation`)
+- Source: https://raw.githubusercontent.com/SigNoz/signoz/main/docs/api/openapi.yml
 
-| Metric type | Valid temporal agg | Default temporal | Valid spatial agg | Default spatial |
-|---|---|---|---|---|
-| gauge | avg, latest, sum, min, max, count, count_distinct | **avg** | sum, avg, min, max | **sum** |
-| sum (isMonotonic=true, counter) | rate, increase | **rate** | sum, avg, min, max | **sum** |
-| sum (isMonotonic=false) | avg, sum, min, max, count | **avg** | sum, avg, min, max | **sum** |
-| histogram | _(leave empty — auto)_ | — | p50, p75, p90, p95, p99 | **p99** |
-| exponential_histogram | _(leave empty — auto)_ | — | p50, p75, p90, p95, p99 | **p99** |
+## Aggregation Rules
 
-**Key pitfalls to validate:**
-- `rate`/`increase` are invalid for `gauge` → return error with explanation
-- Temporal aggregation is invalid for `histogram`/`exponential_histogram` → warn and ignore
-- `sum`/`avg`/`min`/`max` spatial aggregations are invalid for histograms → return error with explanation
-- `exponential_histogram` requires delta temporality → warn if `temporality=cumulative`
+| metricType | isMonotonic | Valid timeAggregation | Default timeAgg | Valid spaceAggregation | Default spaceAgg |
+|---|---|---|---|---|---|
+| gauge | — | latest, sum, avg, min, max, count, count_distinct | **avg** | sum, avg, min, max, count | **sum** |
+| sum | true (counter) | rate, increase | **rate** | sum, avg, min, max, count | **sum** |
+| sum | false | avg, sum, min, max, count, count_distinct | **avg** | sum, avg, min, max, count | **sum** |
+| histogram | — | _(empty — auto)_ | — | p50, p75, p90, p95, p99 | **p99** |
+| exponential_histogram | — | _(empty — auto)_ | — | p50, p75, p90, p95, p99 | **p99** |
 
----
+**Validation errors:**
+- `rate`/`increase` on gauge → error with explanation + suggested fix
+- `timeAggregation` set on histogram → warn, ignore it
+- `sum`/`avg`/`min`/`max` spaceAggregation on histogram → error explaining valid options
 
-## Files to modify
+**Step interval auto-calc:** `max(60, (end-start)/300/1000)` seconds (~300 data points)
 
-### 1. `pkg/types/querybuilder.go`
-Add `MetricAggregation` struct and `BuildMetricsQueryPayload` helper:
+## Architecture
 
-```go
-type MetricAggregation struct {
-    MetricName          string `json:"metricName"`
-    TemporalAggregation string `json:"temporalAggregation,omitempty"`
-    SpatialAggregation  string `json:"spatialAggregation"`
-}
-
-func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64,
-    metricAggs []MetricAggregation,
-    filterExpression string,
-    groupBy []SelectField) *QueryPayload
+```
+pkg/metricsrules/
+├── rules.go    — pure validation & defaults functions (testable, no HTTP)
+└── guide.go    — MetricsGuide markdown const (served as MCP resource)
 ```
 
-The builder sets `requestType="time_series"`, `signal="metrics"`, populates `aggregations` as `[]any{MetricAggregation{...}}`.
+Validation lives in code (not prompts) → correctness guaranteed regardless of LLM behavior.
+MCP resource `signoz://metrics-aggregation-guide` keeps tool description concise.
 
-### 2. `pkg/metricsguide/guide.go` _(new file)_
-Exports `MetricsAggregationGuide` const string covering:
-- All metric types and their valid temporal/spatial aggregation options
-- Default recommendations per type
-- Common pitfalls (rate on gauge, sum on histogram)
-- Example payloads for gauge (CPU), counter (network I/O), histogram (latency)
-- How to read `signoz_list_metrics` metadata to pick the right aggregations
+## Payload Examples (embedded in guide.go)
 
-### 3. `internal/handler/tools/handler.go`
-Add `signoz_query_metrics` tool inside `RegisterMetricsHandlers`. Register the metrics guide as an MCP resource.
+### Gauge — CPU utilization
+```json
+{
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "signal": "metrics", "name": "A", "stepInterval": 60,
+        "aggregations": [{
+          "metricName": "container.cpu.utilization",
+          "temporality": "unspecified",
+          "timeAggregation": "avg",
+          "spaceAggregation": "sum"
+        }],
+        "groupBy": [{"name": "k8s.namespace.name", "fieldContext": "resource", "signal": "metrics"}],
+        "filter": {"expression": "k8s.cluster.name = 'prod'"}
+      }
+    }]
+  }
+}
+```
 
-**Tool parameters:**
-- `metricName` (required) — metric to query
-- `metricType` (optional) — "gauge", "sum", "histogram", "exponential_histogram" from `signoz_list_metrics`
-- `temporality` (optional) — "cumulative", "delta", "unspecified" from `signoz_list_metrics`
-- `isMonotonic` (optional) — "true"/"false" from `signoz_list_metrics`
-- `temporalAggregation` (optional) — see table above; defaults applied by type
-- `spatialAggregation` (optional) — see table above; defaults applied by type
-- `groupBy` (optional) — comma-separated field names, e.g. "k8s.namespace.name,k8s.pod.name"
-- `filter` (optional) — filter expression, e.g. "k8s.cluster.name = 'prod'"
-- `timeRange` (optional) — "30m", "1h", "6h", "24h", "7d" (default: "1h")
-- `start` / `end` (optional) — unix ms timestamps (override timeRange)
-- `stepInterval` (optional) — step in seconds (default: 60)
+### Counter (cumulative monotonic) — request rate
+```json
+{
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "signal": "metrics", "name": "A", "stepInterval": 60,
+        "aggregations": [{
+          "metricName": "http_requests_total",
+          "temporality": "cumulative",
+          "timeAggregation": "rate",
+          "spaceAggregation": "sum"
+        }],
+        "groupBy": [{"name": "service_name", "fieldContext": "attribute", "signal": "metrics"}]
+      }
+    }]
+  }
+}
+```
 
-**Handler logic:**
-1. Parse and validate parameters
-2. Apply type-based defaults for temporal/spatial aggregation when not provided
-3. Validate aggregation compatibility with metricType — return descriptive errors on invalid combos
-4. Parse `groupBy` string into `[]types.SelectField`
-5. Parse timeRange using `timeutil` if start/end not provided
-6. Call `BuildMetricsQueryPayload` and execute via `client.QueryBuilderV5`
+### Histogram — latency p99
+```json
+{
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "signal": "metrics", "name": "A", "stepInterval": 60,
+        "aggregations": [{
+          "metricName": "http_request_duration_seconds",
+          "temporality": "delta",
+          "timeAggregation": "",
+          "spaceAggregation": "p99"
+        }]
+      }
+    }]
+  }
+}
+```
 
-**Tool description** includes:
-> Always call `signoz_list_metrics` first to get the metric's type, temporality, and isMonotonic — these determine valid aggregations. Read the `signoz://metrics-aggregation-guide` resource for full rules.
+### Formula — error rate percentage (A/B*100)
+```json
+{
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [
+      {"type": "builder_query", "spec": {"signal": "metrics", "name": "A", "stepInterval": 60,
+        "aggregations": [{"metricName": "http_errors_total", "temporality": "cumulative", "timeAggregation": "rate", "spaceAggregation": "sum"}]}},
+      {"type": "builder_query", "spec": {"signal": "metrics", "name": "B", "stepInterval": 60,
+        "aggregations": [{"metricName": "http_requests_total", "temporality": "cumulative", "timeAggregation": "rate", "spaceAggregation": "sum"}]}},
+      {"type": "builder_formula", "spec": {"name": "C", "expression": "A / B * 100", "legend": "error_rate_%"}}
+    ]
+  }
+}
+```
 
-### 4. `internal/mcp-server/server.go`
-Register `signoz://metrics-aggregation-guide` MCP resource using `s.AddResource` (following same pattern as `signoz_execute_builder_query` docs resource from PR #79).
+## Design Decisions
 
-### 5. `manifest.json`
-Add entry for `signoz_query_metrics`.
+1. **Formula sub-queries**: Each sub-query carries full params (name, metricName, metricType, isMonotonic, temporality, timeAggregation, spaceAggregation, groupBy, filter). Handles mixed-type formulas.
+2. **requestType**: Both `time_series` (default) and `scalar`. For scalar, `reduceTo` param (sum/count/avg/min/max/last/median) with type-based defaults.
+3. **Post-aggregation functions** (timeshift, anomaly, ewma): Deferred to v2.
+4. **Unknown metricType**: Auto-call `client.ListMetrics()` internally to fetch type/temporality/isMonotonic. Report in decisions block.
+5. **groupBy fieldContext**: Auto-detect by known resource prefixes (`k8s.`, `container.`, `host.`, `cloud.`, `deployment.`, `process.`) → `resource`. Everything else → `attribute`.
 
-### 6. `README.md`
-Add `signoz_query_metrics` to Features section, User Guide Metrics Exploration examples, and Tool Reference.
+## Files Modified/Created
 
+### `pkg/metricsrules/rules.go` _(new)_
+- `ApplyDefaults(p MetricQueryParams, requestType string) (ResolvedAggregation, error)` — returns resolved aggs + Decisions/Warnings slices
+- `ValidateAggregation(p MetricQueryParams) error` — descriptive errors with suggested fixes
+
+### `pkg/metricsrules/guide.go` _(new)_
+- `MetricsGuide` const — markdown with rules table, 4 payload examples, groupBy guide, formula syntax
+
+### `pkg/metricsrules/rules_test.go` _(new)_
+- 16 test cases covering all type/aggregation combos, overrides, scalar reduceTo, invalid combos
+
+### `pkg/types/querybuilder.go`
+- `MetricAggregation` struct (metricName, temporality, timeAggregation, spaceAggregation, reduceTo)
+- `MetricsQuerySpec` struct (Name, Aggregation, Filter, GroupBy, IsFormula, Expression, Legend)
+- `BuildMetricsQueryPayload()` — creates QueryPayload for metrics
+- `BuildMetricsQueryPayloadJSON()` — handles formula specs with different shape
+- `FormulaSpec` struct
+- Updated `Validate()` to allow `scalar` requestType for metrics
+
+### `internal/handler/tools/metrics_helper.go` _(new)_
+- `parseMetricsQueryArgs()` — validates/normalizes all tool inputs
+- `buildGroupByFields()` — auto-detects fieldContext by prefix
+- `autoStepInterval()` — `max(60, (end-start)/300/1000)`
+- `detectFieldContext()` — resource vs attribute prefix matching
+
+### `internal/handler/tools/metrics_query.go` _(new)_
+- `handleQueryMetrics()` — full handler: auto-fetch metadata, apply defaults, validate, build payload, execute, prepend decisions block
+- `fetchMetricMetadata()` — calls ListMetrics internally, parses response
+- `resolveFormulaSubQuery()` — per-sub-query defaults + auto-fetch
+- `parseMetricMetadataFromResponse()` — handles multiple response formats
+
+### `internal/handler/tools/handler.go`
+- `signoz_query_metrics` tool registration with all 16 parameters
+- `signoz://metrics-aggregation-guide` MCP resource registration
+
+### `manifest.json`
+- Added `signoz_query_metrics` entry
+
+### `README.md`
+- Metrics Exploration examples + Tool Reference section
+
+## Tool Parameters
+
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| metricName | string | yes | |
+| metricType | string | no | auto-fetched if absent |
+| isMonotonic | string | no | auto-fetched if absent |
+| temporality | string | no | auto-fetched if absent |
+| timeAggregation | string | no | auto-defaulted by type |
+| spaceAggregation | string | no | auto-defaulted by type |
+| groupBy | string | no | comma-separated, fieldContext auto-detected |
+| filter | string | no | e.g. "k8s.cluster.name = 'prod'" |
+| timeRange | string | no | default "1h" |
+| start / end | string | no | unix ms, overrides timeRange |
+| stepInterval | string | no | auto-calc if omitted |
+| requestType | string | no | time_series (default) or scalar |
+| reduceTo | string | no | for scalar: sum/count/avg/min/max/last/median |
+| formula | string | no | e.g. "A/B*100" |
+| formulaQueries | string | no | JSON array of sub-query objects |
+
+## Decisions Response Format
+
+Every successful call prepends:
+```
+[Decisions applied]
+  metricName: container.cpu.utilization
+  metricType: gauge (auto-fetched via signoz_list_metrics)
+  temporality: unspecified (auto-fetched)
+  timeAggregation: avg (default for gauge — averages samples within each time bucket)
+  spaceAggregation: sum (default for gauge — sums across series/dimensions)
+  stepInterval: 60s (auto-calculated)
+  requestType: time_series
 ---
+```
+
+On validation error:
+```
+[Validation Error]
+timeAggregation "rate" is not valid for metric type "gauge".
+Valid values: latest, sum, avg, min, max, count, count_distinct
+```
 
 ## Verification
-1. `go build ./...` — compiles cleanly
-2. `go test ./...` — all tests pass
-3. Call `signoz_list_metrics` with searchText="container.cpu" → observe type=gauge, temporality=unspecified
-4. Call `signoz_query_metrics` with metricName="container.cpu.utilization", metricType="gauge", groupBy="k8s.namespace.name" → should return time series
-5. Call with metricType="gauge", temporalAggregation="rate" → should return validation error explaining rate is for counters
-6. Call with metricType="sum", isMonotonic="true" (counter), no aggregations → should default to rate/sum and succeed
-
----
-
-## Status: Planning — not yet implemented
+1. `go build ./...` — compiles
+2. `go vet ./...` — clean
+3. `go test ./pkg/metricsrules/...` — all type/aggregation combos pass
+4. `go test ./...` — full suite passes
+5. MCP: `signoz_query_metrics` with metricName="container.cpu.utilization", metricType="gauge" → decisions block + time series
+6. MCP: with metricType="gauge", timeAggregation="rate" → descriptive validation error
+7. MCP: with metricType="sum", isMonotonic="true" → defaults to rate/sum
+8. MCP: with formula="A/B*100" + formulaQueries → formula result
+9. Read `signoz://metrics-aggregation-guide` → full guide renders

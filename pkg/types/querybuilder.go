@@ -1,6 +1,9 @@
 package types
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
 type QueryPayload struct {
@@ -101,7 +104,7 @@ func (q *QueryPayload) Validate() error {
 
 		switch signal {
 		case "metrics":
-			if q.RequestType != "time_series" {
+			if q.RequestType != "time_series" && q.RequestType != "scalar" {
 				q.RequestType = "time_series"
 			}
 			if spec.StepInterval == nil || *spec.StepInterval <= 0 {
@@ -250,6 +253,166 @@ func BuildAggregateQueryPayload(signal string, startTime, endTime int64, aggrega
 		},
 		Variables: map[string]any{},
 	}
+}
+
+// MetricAggregation represents a metric-specific aggregation in the v5 payload.
+type MetricAggregation struct {
+	MetricName       string `json:"metricName"`
+	Temporality      string `json:"temporality,omitempty"`
+	TimeAggregation  string `json:"timeAggregation,omitempty"`
+	SpaceAggregation string `json:"spaceAggregation"`
+	ReduceTo         string `json:"reduceTo,omitempty"`
+}
+
+// MetricsQuerySpec describes a single metric query or formula within a composite query.
+type MetricsQuerySpec struct {
+	Name        string
+	Aggregation MetricAggregation
+	Filter      string
+	GroupBy     []SelectField
+	IsFormula   bool   // if true, Expression is used instead of Aggregation
+	Expression  string // formula: "A / B * 100"
+	Legend      string
+}
+
+// BuildMetricsQueryPayload creates a QueryPayload for metrics queries.
+// It supports multiple builder queries and formulas in a single composite query.
+func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType string) *QueryPayload {
+	if requestType == "" {
+		requestType = "time_series"
+	}
+
+	var qbQueries []Query
+	for _, q := range queries {
+		if q.IsFormula {
+			qbQueries = append(qbQueries, Query{
+				Type: "builder_formula",
+				Spec: QuerySpec{
+					Name:   q.Name,
+					Signal: "metrics",
+				},
+			})
+			// builder_formula uses a different spec shape; we handle it via
+			// FormulaSpec below.
+			continue
+		}
+
+		step := stepInterval
+		spec := QuerySpec{
+			Name:         q.Name,
+			Signal:       "metrics",
+			StepInterval: &step,
+			Disabled:     false,
+			Aggregations: []any{q.Aggregation},
+			GroupBy:      q.GroupBy,
+			Having:       Having{Expression: ""},
+		}
+		if q.Filter != "" {
+			spec.Filter = &Filter{Expression: q.Filter}
+		}
+
+		qbQueries = append(qbQueries, Query{
+			Type: "builder_query",
+			Spec: spec,
+		})
+	}
+
+	return &QueryPayload{
+		SchemaVersion: "v1",
+		Start:         startTime,
+		End:           endTime,
+		RequestType:   requestType,
+		CompositeQuery: CompositeQuery{
+			Queries: qbQueries,
+		},
+		FormatOptions: FormatOptions{
+			FormatTableResultForUI: false,
+			FillGaps:               false,
+		},
+		Variables: map[string]any{},
+	}
+}
+
+// FormulaSpec is the spec shape for builder_formula queries.
+// We marshal it separately because it differs from QuerySpec.
+type FormulaSpec struct {
+	Name       string `json:"name"`
+	Expression string `json:"expression"`
+	Legend     string `json:"legend,omitempty"`
+	Disabled   bool   `json:"disabled"`
+}
+
+// BuildMetricsQueryPayloadJSON builds the metrics payload and returns the
+// marshalled JSON. It handles formula specs that need a different shape.
+func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType string) ([]byte, error) {
+	if requestType == "" {
+		requestType = "time_series"
+	}
+
+	type rawQuery struct {
+		Type string `json:"type"`
+		Spec any    `json:"spec"`
+	}
+
+	var rawQueries []rawQuery
+	for _, q := range queries {
+		if q.IsFormula {
+			rawQueries = append(rawQueries, rawQuery{
+				Type: "builder_formula",
+				Spec: FormulaSpec{
+					Name:       q.Name,
+					Expression: q.Expression,
+					Legend:     q.Legend,
+					Disabled:   false,
+				},
+			})
+			continue
+		}
+
+		step := stepInterval
+		spec := QuerySpec{
+			Name:         q.Name,
+			Signal:       "metrics",
+			StepInterval: &step,
+			Disabled:     false,
+			Aggregations: []any{q.Aggregation},
+			GroupBy:      q.GroupBy,
+			Having:       Having{Expression: ""},
+		}
+		if q.Filter != "" {
+			spec.Filter = &Filter{Expression: q.Filter}
+		}
+
+		rawQueries = append(rawQueries, rawQuery{
+			Type: "builder_query",
+			Spec: spec,
+		})
+	}
+
+	payload := struct {
+		SchemaVersion  string         `json:"schemaVersion"`
+		Start          int64          `json:"start"`
+		End            int64          `json:"end"`
+		RequestType    string         `json:"requestType"`
+		CompositeQuery struct {
+			Queries []rawQuery `json:"queries"`
+		} `json:"compositeQuery"`
+		FormatOptions FormatOptions  `json:"formatOptions"`
+		Variables     map[string]any `json:"variables"`
+	}{
+		SchemaVersion: "v1",
+		Start:         startTime,
+		End:           endTime,
+		RequestType:   requestType,
+		FormatOptions: FormatOptions{
+			FormatTableResultForUI: false,
+			FillGaps:               false,
+		},
+		Variables: map[string]any{},
+	}
+	payload.CompositeQuery.Queries = rawQueries
+
+	return json.Marshal(payload)
 }
 
 func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, limit int) *QueryPayload {
