@@ -192,7 +192,7 @@ func parseIntLoose(v any) int64 {
 		return i
 	case string:
 		var i int64
-		fmt.Sscanf(n, "%d", &i)
+		_, _ = fmt.Sscanf(n, "%d", &i)
 		return i
 	}
 	return 0

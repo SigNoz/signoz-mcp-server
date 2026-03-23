@@ -94,9 +94,9 @@ func ValidateAggregation(p MetricQueryParams) error {
 		if p.IsMonotonic {
 			if p.TimeAggregation != "" && !counterTimeAggs.has(p.TimeAggregation) {
 				return fmt.Errorf(
-					"timeAggregation %q is not valid for monotonic counter (sum with isMonotonic=true).\n"+
-						"Valid values: %s.\n"+
-						"Suggested fix: use timeAggregation=\"rate\" for per-second rate or \"increase\" for total increase over the period.",
+					"timeAggregation %q is not valid for monotonic counter (sum with isMonotonic=true), "+
+						"valid values: %s, "+
+						"suggested fix: use timeAggregation=\"rate\" for per-second rate or \"increase\" for total increase over the period",
 					p.TimeAggregation, counterTimeAggs.String())
 			}
 			if p.SpaceAggregation != "" && !counterSpaceAggs.has(p.SpaceAggregation) {
@@ -112,14 +112,12 @@ func ValidateAggregation(p MetricQueryParams) error {
 		}
 
 	case "histogram", "exponential_histogram":
-		if p.TimeAggregation != "" {
-			// Not an error, just a warning — we'll clear it.
-		}
+		// timeAggregation on histogram is not an error, just ignored — handled in ApplyDefaults
 		if p.SpaceAggregation != "" && !histogramSpaceAggs.has(p.SpaceAggregation) {
 			return fmt.Errorf(
-				"spaceAggregation %q is not valid for %s.\n"+
-					"Histograms only support percentile aggregations: %s.\n"+
-					"Suggested fix: use spaceAggregation=\"p99\" for tail latency or \"p50\" for median.",
+				"spaceAggregation %q is not valid for %s, "+
+					"histograms only support percentile aggregations: %s, "+
+					"suggested fix: use spaceAggregation=\"p99\" for tail latency or \"p50\" for median",
 				p.SpaceAggregation, metricType, histogramSpaceAggs.String())
 		}
 
