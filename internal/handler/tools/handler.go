@@ -76,6 +76,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering metrics handlers")
 
 	listMetricsTool := mcp.NewTool("signoz_list_metrics",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source. Use searchText to find metrics by name."),
 		mcp.WithString("searchText", mcp.Description("Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.")),
 		mcp.WithString("limit", mcp.Description("Maximum number of metrics to return (optional, default 50).")),
@@ -128,6 +129,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 
 	// signoz_query_metrics — smart metrics query tool with aggregation validation and defaults
 	queryMetricsTool := mcp.NewTool("signoz_query_metrics",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription(
 			"Query metrics from SigNoz with smart aggregation defaults and validation. "+
 				"Automatically applies the right timeAggregation and spaceAggregation based on metric type "+
@@ -180,6 +182,7 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering fields handlers")
 
 	getFieldKeysTool := mcp.NewTool("signoz_get_field_keys",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get available field keys for a given signal (metrics, traces, or logs). Use this to discover filterable fields before building queries."),
 		mcp.WithString("signal", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
@@ -224,6 +227,7 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 	})
 
 	getFieldValuesTool := mcp.NewTool("signoz_get_field_values",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get possible values for a specific field key for a given signal (metrics, traces, or logs). Use this to discover valid filter values."),
 		mcp.WithString("signal", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name', 'http.status_code').")),
@@ -274,6 +278,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("List active alerts from SigNoz. Returns list of alert with: alert name, rule ID, severity, start time, end time, and state. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
@@ -329,6 +334,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	})
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get details of a specific alert rule by ruleId"),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert ruleId")),
 	)
@@ -359,6 +365,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	})
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
@@ -451,6 +458,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering dashboard handlers")
 
 	tool := mcp.NewTool("signoz_list_dashboards",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific dashboard, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
@@ -496,6 +504,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	})
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get full details of a specific dashboard by UUID (returns complete dashboard configuration with all panels and queries)"),
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID")),
 	)
@@ -527,6 +536,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
+		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
 			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
 				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
@@ -586,6 +596,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
+		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
 			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
 				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
@@ -844,6 +855,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering service handlers")
 
 	listTool := mcp.NewTool("signoz_list_services",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific service, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
@@ -889,6 +901,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	})
 
 	getOpsTool := mcp.NewTool("signoz_get_service_top_operations",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get top operations for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
@@ -947,6 +960,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription(
 			"Execute a SigNoz Query Builder v5 query.\n\n"+
 				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
@@ -1032,6 +1046,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering logs handlers")
 
 	listLogViewsTool := mcp.NewTool("signoz_list_log_views",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("List all saved log views from SigNoz (returns summary with name, ID, description, and query details). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific log view, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
@@ -1077,6 +1092,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 	getLogViewTool := mcp.NewTool("signoz_get_log_view",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get full details of a specific log view by ID (returns complete log view configuration with query structure)"),
 		mcp.WithString("viewId", mcp.Required(), mcp.Description("Log view ID")),
 	)
@@ -1107,6 +1123,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	})
 
 	getLogsForAlertTool := mcp.NewTool("signoz_get_logs_for_alert",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get logs related to a specific alert (automatically determines time range and service from alert details)"),
 		mcp.WithString("alertId", mcp.Required(), mcp.Description("Alert rule ID")),
 		mcp.WithString("timeRange", mcp.Description("Time range around alert (optional). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '15m', '30m', '1h', '2h', '6h'. Defaults to '1h' if not provided.")),
@@ -1197,6 +1214,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 	// aggregate_logs: compute statistics over logs with GROUP BY
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Aggregate logs to compute statistics like count, average, sum, min, max, or percentiles, optionally grouped by fields. "+
 			"Use this for questions like 'how many errors per service?', 'average response time by endpoint', 'top error messages by count'. "+
 			"Defaults to last 1 hour if no time specified."),
@@ -1260,6 +1278,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	// search_logs: log search with optional filters
 	// ToDo: use this function for error logs or logs by service
 	searchLogsTool := mcp.NewTool("signoz_search_logs",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Search logs with flexible filtering. Supports free-form query expressions, optional service/severity filters, and body text search. "+
 			"Use service param to scope to a single service, severity param for error-only queries (e.g., severity='ERROR'), or query param for any filter expression. "+
 			"Defaults to last 1 hour if no time specified."),
@@ -1320,6 +1339,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 	// aggregate_traces: compute statistics over traces with GROUP BY
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Aggregate traces to compute statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields. "+
 			"Use this for questions like 'p99 latency by service', 'error count per operation', 'request rate by endpoint', 'average duration by span kind'. "+
 			"Also use this for error analysis — set error='true' and groupBy='service.name' to analyze error patterns across services. "+
@@ -1385,6 +1405,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Search traces with flexible filtering. Supports free-form query expressions, optional service/operation/error filters, and duration filtering. "+
 			"Use service param to scope to a single service, or query param for any filter expression. "+
 			"Defaults to last 1 hour if no time specified."),
@@ -1438,6 +1459,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	})
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
+		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDescription("Get comprehensive trace information including all spans, metadata, and span hierarchy/relationships. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
