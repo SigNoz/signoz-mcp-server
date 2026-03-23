@@ -36,6 +36,7 @@ func (m *MCPServer) Start() error {
 
 	// Register all handlers
 	m.handler.RegisterMetricsHandlers(s)
+	m.handler.RegisterFieldsHandlers(s)
 	m.handler.RegisterAlertsHandlers(s)
 	m.handler.RegisterDashboardHandlers(s)
 	m.handler.RegisterServiceHandlers(s)
