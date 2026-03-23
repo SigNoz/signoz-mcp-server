@@ -44,41 +44,97 @@ func NewClient(log *zap.Logger, baseURL, apiKey string) *SigNoz {
 	}
 }
 
+const (
+	maxRetries    = 3
+	retryBaseWait = 100 * time.Millisecond
+	retryMultiply = 4
+)
+
 // doRequest performs an HTTP request with standard headers, timeout, status
-// checking, and body reading. It is the single place where all SigNoz API
-// calls funnel through.
+// checking, body reading, and retry with exponential backoff for transient
+// failures (429, 502, 503, 504, network errors).
 func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.Reader, timeout time.Duration) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(SignozApiKey, s.apiKey)
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to do request: %w", err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			s.logger.Warn("Failed to close response body", zap.Error(closeErr))
+	// Buffer the body so we can retry POST/PUT requests.
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read request body: %w", err)
 		}
-	}()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	var lastErr error
+	wait := retryBaseWait
+
+	for attempt := range maxRetries {
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		req.Header.Set(ContentType, "application/json")
+		req.Header.Set(SignozApiKey, s.apiKey)
+
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			// Don't retry on context cancellation.
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("request cancelled: %w", err)
+			}
+			lastErr = fmt.Errorf("failed to do request: %w", err)
+			s.logger.Warn("Request failed, will retry",
+				zap.String("url", reqURL), zap.Int("attempt", attempt+1), zap.Error(err))
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("retry aborted: %w", lastErr)
+			case <-time.After(wait):
+			}
+			wait *= retryMultiply
+			continue
+		}
+
+		respBody, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read response body: %w", readErr)
+		}
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return respBody, nil
+		}
+
+		// Retry on transient server errors.
+		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
+			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
+			s.logger.Warn("Retryable status, will retry",
+				zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.Int("attempt", attempt+1))
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("retry aborted: %w", lastErr)
+			case <-time.After(wait):
+			}
+			wait *= retryMultiply
+			continue
+		}
+
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	return respBody, nil
+	return nil, lastErr
+}
+
+func isRetryableStatus(code int) bool {
+	return code == 429 || code == 502 || code == 503 || code == 504
 }
 
 func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
