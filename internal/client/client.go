@@ -49,14 +49,13 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	return s.validateCredentialsWithAuthzCheck(ctx)
+	return s.validateCredentialsWithUserMe(ctx)
 }
 
-func (s *SigNoz) validateCredentialsWithAuthzCheck(ctx context.Context) error {
-	reqURL := fmt.Sprintf("%s/api/v1/authz/check", s.baseURL)
-	reqBody := []byte(`[{"relation":"list","object":{"resource":{"type":"metaresources","name":"dashboards"},"selector":"*"}}]`)
+func (s *SigNoz) validateCredentialsWithUserMe(ctx context.Context) error {
+	reqURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create validation request: %w", err)
 	}

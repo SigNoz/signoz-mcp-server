@@ -120,18 +120,18 @@ func TestGetAlertByRuleID(t *testing.T) {
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
 		name          string
-		authzStatus   int
+		userMeStatus  int
 		expectedError bool
 		checkErr      func(t *testing.T, err error)
 	}{
 		{
 			name:          "successful validation",
-			authzStatus:   http.StatusOK,
+			userMeStatus:  http.StatusOK,
 			expectedError: false,
 		},
 		{
 			name:          "unauthorized credentials",
-			authzStatus:   http.StatusUnauthorized,
+			userMeStatus:  http.StatusUnauthorized,
 			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
@@ -139,7 +139,7 @@ func TestValidateCredentials(t *testing.T) {
 		},
 		{
 			name:          "unexpected status",
-			authzStatus:   http.StatusInternalServerError,
+			userMeStatus:  http.StatusInternalServerError,
 			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.NotNil(t, err)
@@ -150,20 +150,17 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			authzRequests := 0
+			userMeRequests := 0
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
 
 				switch r.URL.Path {
-				case "/api/v1/authz/check":
-					authzRequests++
-					assert.Equal(t, http.MethodPost, r.Method)
-					body, err := io.ReadAll(r.Body)
-					require.NoError(t, err)
-					assert.JSONEq(t, `[{"relation":"list","object":{"resource":{"type":"metaresources","name":"dashboards"},"selector":"*"}}]`, string(body))
-					w.WriteHeader(tt.authzStatus)
+				case "/api/v1/user/me":
+					userMeRequests++
+					assert.Equal(t, http.MethodGet, r.Method)
+					w.WriteHeader(tt.userMeStatus)
 				default:
 					t.Fatalf("unexpected path %s", r.URL.Path)
 				}
@@ -186,7 +183,7 @@ func TestValidateCredentials(t *testing.T) {
 			}
 
 			assert.NoError(t, err)
-			assert.Equal(t, 1, authzRequests)
+			assert.Equal(t, 1, userMeRequests)
 		})
 	}
 }
