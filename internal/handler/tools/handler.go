@@ -74,149 +74,146 @@ func (h *Handler) GetClient(ctx context.Context) (*signozclient.SigNoz, error) {
 func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering metrics handlers")
 
-	listKeysTool := mcp.NewTool("signoz_list_metric_keys",
-		mcp.WithDescription("List available metric keys from SigNoz. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. Use limit to control the number of results returned (default: 50). Use offset to skip results for pagination (default: 0). For large result sets, paginate by incrementing offset: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc."),
-		mcp.WithString("limit", mcp.Description("Maximum number of keys to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Default: 0. Must be >= 0.")),
+	listMetricsTool := mcp.NewTool("signoz_list_metrics",
+		mcp.WithDescription("Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source. Use searchText to find metrics by name."),
+		mcp.WithString("searchText", mcp.Description("Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.")),
+		mcp.WithString("limit", mcp.Description("Maximum number of metrics to return (optional, default 50).")),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional).")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional).")),
+		mcp.WithString("source", mcp.Description("Filter by source (optional).")),
 	)
 
-	s.AddTool(listKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		log.Debug("Tool called: signoz_list_metric_keys")
-		limit, offset := paginate.ParseParams(req.Params.Arguments)
-
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		resp, err := client.ListMetricKeys(ctx)
-		if err != nil {
-			log.Error("Failed to list metric keys", zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// received api data - {"data": {"attributeKeys": [...]}}
-		var response map[string]any
-		if err := json.Unmarshal(resp, &response); err != nil {
-			log.Error("Failed to parse metric keys response", zap.Error(err))
-			return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
-		}
-
-		dataObj, ok := response["data"].(map[string]any)
-		if !ok {
-			log.Error("Invalid metric keys response format", zap.Any("data", response["data"]))
-			return mcp.NewToolResultError("invalid response format: expected data object"), nil
-		}
-
-		attributeKeys, ok := dataObj["attributeKeys"].([]any)
-		if !ok {
-			log.Error("Invalid attributeKeys format", zap.Any("attributeKeys", dataObj["attributeKeys"]))
-			return mcp.NewToolResultError("invalid response format: expected attributeKeys array"), nil
-		}
-
-		total := len(attributeKeys)
-		pagedKeys := paginate.Array(attributeKeys, offset, limit)
-
-		// response wrapped in paged structured format
-		resultJSON, err := paginate.Wrap(pagedKeys, total, offset, limit)
-		if err != nil {
-			log.Error("Failed to wrap metric keys with pagination", zap.Error(err))
-			return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
-		}
-
-		return mcp.NewToolResultText(string(resultJSON)), nil
-	})
-
-	searchKeysTool := mcp.NewTool("signoz_search_metric_by_text",
-		mcp.WithDescription("Search metrics by text (substring autocomplete)"),
-		mcp.WithString("searchText", mcp.Required(), mcp.Description("Search text for metric keys")),
-	)
-
-	s.AddTool(searchKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		searchText, ok := req.Params.Arguments.(map[string]any)["searchText"].(string)
-		if !ok {
-			log.Warn("Invalid searchText parameter type", zap.Any("type", req.Params.Arguments))
-			return mcp.NewToolResultError(`Parameter validation failed: "searchText" must be a string. Example: {"searchText": "cpu_usage"}`), nil
-		}
-		if searchText == "" {
-			log.Warn("Empty searchText parameter")
-			return mcp.NewToolResultError(`Parameter validation failed: "searchText" cannot be empty. Provide a search term like "cpu", "memory", or "request"`), nil
-		}
-
-		log.Debug("Tool called: signoz_search_metric_by_text", zap.String("searchText", searchText))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		resp, err := client.SearchMetricByText(ctx, searchText)
-		if err != nil {
-			log.Error("Failed to search metric by text", zap.String("searchText", searchText), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(resp)), nil
-	})
-
-	getMetricsAvailableFieldsTool := mcp.NewTool("signoz_get_metrics_available_fields",
-		mcp.WithDescription("Get available field names for metric queries"),
-		mcp.WithString("searchText", mcp.Description("Search text to filter available fields (optional)")),
-	)
-
-	s.AddTool(getMetricsAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(listMetricsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		log := h.tenantLogger(ctx)
 		args := req.Params.Arguments.(map[string]any)
 
-		searchText := ""
-		if search, ok := args["searchText"].(string); ok && search != "" {
-			searchText = search
+		searchText, _ := args["searchText"].(string)
+		source, _ := args["source"].(string)
+
+		var limit int
+		if l, ok := args["limit"].(string); ok && l != "" {
+			if v, err := strconv.Atoi(l); err == nil && v > 0 {
+				limit = v
+			}
+		}
+		if limit == 0 {
+			limit = 50
 		}
 
-		log.Debug("Tool called: signoz_get_metrics_available_fields", zap.String("searchText", searchText))
+		var start, end int64
+		if s, ok := args["start"].(string); ok && s != "" {
+			if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+				start = v
+			}
+		}
+		if e, ok := args["end"].(string); ok && e != "" {
+			if v, err := strconv.ParseInt(e, 10, 64); err == nil {
+				end = v
+			}
+		}
+
+		log.Debug("Tool called: signoz_list_metrics", zap.String("searchText", searchText))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		result, err := client.GetMetricsAvailableFields(ctx, searchText)
+		result, err := client.ListMetrics(ctx, start, end, limit, searchText, source)
 		if err != nil {
-			log.Error("Failed to get metrics available fields", zap.String("searchText", searchText), zap.Error(err))
+			log.Error("Failed to list metrics", zap.String("searchText", searchText), zap.Error(err))
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	})
+}
+
+func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering fields handlers")
+
+	getFieldKeysTool := mcp.NewTool("signoz_get_field_keys",
+		mcp.WithDescription("Get available field keys for a given signal (metrics, traces, or logs). Use this to discover filterable fields before building queries."),
+		mcp.WithString("signal", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
+		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
+		mcp.WithString("metricName", mcp.Description("Metric name to scope field keys (optional, only relevant when signal=metrics).")),
+		mcp.WithString("fieldContext", mcp.Description("Field context filter (optional).")),
+		mcp.WithString("fieldDataType", mcp.Description("Field data type filter (optional).")),
+		mcp.WithString("source", mcp.Description("Source filter (optional).")),
+	)
+
+	s.AddTool(getFieldKeysTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log := h.tenantLogger(ctx)
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments format"), nil
+		}
+
+		signal, ok := args["signal"].(string)
+		if !ok || signal == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
+		}
+		if signal != "metrics" && signal != "traces" && signal != "logs" {
+			return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
+		}
+
+		searchText, _ := args["searchText"].(string)
+		metricName, _ := args["metricName"].(string)
+		fieldContext, _ := args["fieldContext"].(string)
+		fieldDataType, _ := args["fieldDataType"].(string)
+		source, _ := args["source"].(string)
+
+		log.Debug("Tool called: signoz_get_field_keys", zap.String("signal", signal), zap.String("searchText", searchText))
+		client, err := h.GetClient(ctx)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
+		if err != nil {
+			log.Error("Failed to get field keys", zap.String("signal", signal), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
-	getMetricsFieldValuesTool := mcp.NewTool("signoz_get_metrics_field_values",
-		mcp.WithDescription("Get available field values for metric queries"),
-		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get values for (e.g., metric name)")),
-		mcp.WithString("searchText", mcp.Description("Search text to filter values (optional)")),
+	getFieldValuesTool := mcp.NewTool("signoz_get_field_values",
+		mcp.WithDescription("Get possible values for a specific field key for a given signal (metrics, traces, or logs). Use this to discover valid filter values."),
+		mcp.WithString("signal", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name', 'http.status_code').")),
+		mcp.WithString("searchText", mcp.Description("Filter the returned values by substring (optional).")),
+		mcp.WithString("metricName", mcp.Description("Metric name to scope field values (optional, only relevant when signal=metrics).")),
+		mcp.WithString("source", mcp.Description("Source filter (optional).")),
 	)
 
-	s.AddTool(getMetricsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(getFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		log := h.tenantLogger(ctx)
 		args, ok := req.Params.Arguments.(map[string]any)
 		if !ok {
-			log.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
-			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
+			return mcp.NewToolResultError("invalid arguments format"), nil
 		}
 
-		fieldName, ok := args["fieldName"].(string)
-		if !ok || fieldName == "" {
-			log.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
-			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "aws_ApplicationELB_ConsumedLCUs_max"}, {"fieldName": "cpu_usage"}`), nil
+		signal, ok := args["signal"].(string)
+		if !ok || signal == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
+		}
+		if signal != "metrics" && signal != "traces" && signal != "logs" {
+			return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
 		}
 
-		searchText := ""
-		if search, ok := args["searchText"].(string); ok && search != "" {
-			searchText = search
+		name, ok := args["name"].(string)
+		if !ok || name == "" {
+			return mcp.NewToolResultError(`Parameter validation failed: "name" must be a non-empty string. Example: "service.name", "http.status_code"`), nil
 		}
 
-		log.Debug("Tool called: signoz_get_metrics_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
+		searchText, _ := args["searchText"].(string)
+		metricName, _ := args["metricName"].(string)
+		source, _ := args["source"].(string)
+
+		log.Debug("Tool called: signoz_get_field_values", zap.String("signal", signal), zap.String("name", name))
 		client, err := h.GetClient(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		result, err := client.GetMetricsFieldValues(ctx, fieldName, searchText)
+		result, err := client.GetFieldValues(ctx, signal, name, metricName, searchText, source)
 		if err != nil {
-			log.Error("Failed to get metrics field values", zap.String("fieldName", fieldName), zap.Error(err))
+			log.Error("Failed to get field values", zap.String("signal", signal), zap.String("name", name), zap.Error(err))
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(result)), nil
@@ -1286,71 +1283,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
-	getLogsAvailableFieldsTool := mcp.NewTool("signoz_get_logs_available_fields",
-		mcp.WithDescription("Get available field names for log queries"),
-		mcp.WithString("searchText", mcp.Description("Search text to filter available fields (optional)")),
-	)
-
-	s.AddTool(getLogsAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		searchText := ""
-		if search, ok := args["searchText"].(string); ok && search != "" {
-			searchText = search
-		}
-
-		log.Debug("Tool called: signoz_get_logs_available_fields", zap.String("searchText", searchText))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.GetLogsAvailableFields(ctx, searchText)
-		if err != nil {
-			log.Error("Failed to get logs available fields", zap.String("searchText", searchText), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
-	getLogsFieldValuesTool := mcp.NewTool("signoz_get_logs_field_values",
-		mcp.WithDescription("Get available field values for log queries"),
-		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name')")),
-		mcp.WithString("searchText", mcp.Description("Search text to filter values (optional)")),
-	)
-
-	s.AddTool(getLogsFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args, ok := req.Params.Arguments.(map[string]any)
-		if !ok {
-			log.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
-			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
-		}
-
-		fieldName, ok := args["fieldName"].(string)
-		if !ok || fieldName == "" {
-			log.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
-			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "severity_text"}, {"fieldName": "body"}`), nil
-		}
-
-		searchText := ""
-		if search, ok := args["searchText"].(string); ok && search != "" {
-			searchText = search
-		}
-
-		log.Debug("Tool called: signoz_get_logs_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.GetLogsFieldValues(ctx, fieldName, searchText)
-		if err != nil {
-			log.Error("Failed to get logs field values", zap.String("fieldName", fieldName), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
 	// aggregate_logs: compute statistics over logs with GROUP BY
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
 		mcp.WithDescription("Aggregate logs to compute statistics like count, average, sum, min, max, or percentiles, optionally grouped by fields. "+
@@ -1534,71 +1466,6 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
-	getTraceFieldValuesTool := mcp.NewTool("signoz_get_trace_field_values",
-		mcp.WithDescription("Get available field values for trace queries"),
-		mcp.WithString("fieldName", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name')")),
-		mcp.WithString("searchText", mcp.Description("Search text to filter values (optional)")),
-	)
-
-	s.AddTool(getTraceFieldValuesTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args, ok := req.Params.Arguments.(map[string]any)
-		if !ok {
-			log.Error("Invalid arguments type", zap.Any("arguments", req.Params.Arguments))
-			return mcp.NewToolResultError(`Parameter validation failed: invalid arguments format. Expected object with "fieldName" string.`), nil
-		}
-
-		fieldName, ok := args["fieldName"].(string)
-		if !ok || fieldName == "" {
-			log.Warn("Missing or invalid fieldName", zap.Any("args", args), zap.Any("fieldName", args["fieldName"]))
-			return mcp.NewToolResultError(`Parameter validation failed: "fieldName" must be a non-empty string. Examples: {"fieldName": "service.name"}, {"fieldName": "http.status_code"}, {"fieldName": "operation"}`), nil
-		}
-
-		searchText := ""
-		if search, ok := args["searchText"].(string); ok && search != "" {
-			searchText = search
-		}
-
-		log.Debug("Tool called: signoz_get_trace_field_values", zap.String("fieldName", fieldName), zap.String("searchText", searchText))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.GetTraceFieldValues(ctx, fieldName, searchText)
-		if err != nil {
-			log.Error("Failed to get trace field values", zap.String("fieldName", fieldName), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(string(result)), nil
-	})
-
-	getTraceAvailableFieldsTool := mcp.NewTool("signoz_get_trace_available_fields",
-		mcp.WithDescription("Get available field names for trace queries"),
-		mcp.WithString("searchText", mcp.Description("Search text to filter available fields (optional)")),
-	)
-
-	s.AddTool(getTraceAvailableFieldsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		log := h.tenantLogger(ctx)
-		args := req.Params.Arguments.(map[string]any)
-
-		searchText := ""
-		if search, ok := args["searchText"].(string); ok && search != "" {
-			searchText = search
-		}
-
-		log.Debug("Tool called: signoz_get_trace_available_fields", zap.String("searchText", searchText))
-		client, err := h.GetClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		result, err := client.GetTraceAvailableFields(ctx, searchText)
-		if err != nil {
-			log.Error("Failed to get trace available fields", zap.String("searchText", searchText), zap.Error(err))
-			return mcp.NewToolResultError(err.Error()), nil
-		}
 		return mcp.NewToolResultText(string(result)), nil
 	})
 
