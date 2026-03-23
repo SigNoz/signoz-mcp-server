@@ -13,4 +13,6 @@ const ServerInstructions = `# SigNoz MCP Server — Instructions
    b. Optionally call signoz_get_field_values to suggest concrete values for those attributes.
    c. Ask the user to pick a resource attribute filter before running the query.
    If the user already provides resource attributes, proceed directly without extra prompting.
+
+3. **Clarify the signal before querying.** If it is not clear which signal to use, ask the user whether to start with metrics, traces, or logs.
 `
