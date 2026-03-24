@@ -107,6 +107,7 @@ func (m *MCPServer) startStdio(s *server.MCPServer) error {
 	// so that GetClient works uniformly across both transports.
 	ctxFunc := server.WithStdioContextFunc(func(ctx context.Context) context.Context {
 		ctx = util.SetAPIKey(ctx, m.config.APIKey)
+		ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 		ctx = util.SetSigNozURL(ctx, m.config.URL)
 		return ctx
 	})
@@ -121,32 +122,42 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
 		customURL := r.Header.Get("X-SigNoz-URL")
 
-		// Extract Authorization header
+		// Check for auth credentials from headers.
+		// Clients can provide either:
+		//   - SIGNOZ-API-KEY: <pat-token>
+		//   - Authorization: Bearer <token>  (JWT or PAT)
+		//   - Authorization: <token>         (legacy)
+		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
 
 		var apiKey string
 		var signozURL string
 
-		if authHeader != "" {
-			// Support both "Bearer <token>" and raw token formats
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				apiKey = strings.TrimPrefix(authHeader, "Bearer ")
-			} else {
-				apiKey = authHeader
-			}
+		if signozAPIKey != "" {
+			// Explicit PAT via SIGNOZ-API-KEY header — forward as-is.
+			apiKey = strings.TrimPrefix(signozAPIKey, "Bearer ")
 
-			// Store API key in request context
 			ctx = util.SetAPIKey(ctx, apiKey)
-			m.logger.Debug("API key extracted from Authorization header")
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+			m.logger.Debug("Using SIGNOZ-API-KEY header for auth")
+		} else if authHeader != "" {
+			// Strip "Bearer " prefix if present to get the raw token.
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+
+			apiKey = "Bearer " + token
+			ctx = util.SetAPIKey(ctx, apiKey)
+			ctx = util.SetAuthHeader(ctx, "Authorization")
+			m.logger.Debug("Using JWT token authentication via Authorization header")
 
 		} else if m.config.APIKey != "" {
-			// Fallback to config API key if no Authorization header
+			// Fallback to config API key
 			apiKey = m.config.APIKey
 			ctx = util.SetAPIKey(ctx, apiKey)
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 			m.logger.Debug("Using API key from environment config")
 		} else {
-			m.logger.Warn("No API key found in Authorization header or environment")
-			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			m.logger.Warn("No API key found in headers or environment")
+			http.Error(w, "Authorization or SIGNOZ-API-KEY header required", http.StatusUnauthorized)
 			return
 		}
 

@@ -88,7 +88,7 @@ func TestGetAlertByRuleID(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.GetAlertByRuleID(ctx, tt.ruleID)
@@ -210,7 +210,7 @@ func TestListDashboards(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.ListDashboards(ctx)
@@ -339,7 +339,7 @@ func TestListServices(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.ListServices(ctx, tt.start, tt.end)
@@ -525,7 +525,7 @@ func TestGetAlertHistory(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.GetAlertHistory(ctx, tt.ruleID, tt.request)
@@ -690,7 +690,7 @@ func TestQueryBuilderV5(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.QueryBuilderV5(ctx, tt.queryBody)
@@ -746,7 +746,7 @@ func TestCreateDashboard(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(logger, server.URL, "test-api-key")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 	d := types.Dashboard{
 		Title:   "whatever",
@@ -784,7 +784,7 @@ func TestUpdateDashboard(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(logger, srv.URL, "test-api-key")
+	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 	d := types.Dashboard{
 		Title:   "updated-title",
@@ -878,7 +878,7 @@ func TestGetFieldKeys(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.GetFieldKeys(ctx, tt.signal, tt.metricName, tt.searchText, tt.fieldContext, tt.fieldDataType, tt.source)
@@ -979,7 +979,7 @@ func TestGetFieldValues(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
 
 			ctx := context.Background()
 			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.source)

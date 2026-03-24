@@ -9,8 +9,9 @@ import (
 type contextKey string
 
 const (
-	apiKeyContextKey    contextKey = "api_key"
-	signozURLContextKey contextKey = "signoz_url"
+	apiKeyContextKey      contextKey = "api_key"
+	authHeaderContextKey  contextKey = "auth_header"
+	signozURLContextKey   contextKey = "signoz_url"
 )
 
 // SetAPIKey stores the API key in the context
@@ -22,6 +23,17 @@ func SetAPIKey(ctx context.Context, apiKey string) context.Context {
 func GetAPIKey(ctx context.Context) (string, bool) {
 	apiKey, ok := ctx.Value(apiKeyContextKey).(string)
 	return apiKey, ok
+}
+
+// SetAuthHeader stores the auth header name in the context (e.g. "Authorization" or "SIGNOZ-API-KEY").
+func SetAuthHeader(ctx context.Context, header string) context.Context {
+	return context.WithValue(ctx, authHeaderContextKey, header)
+}
+
+// GetAuthHeader retrieves the auth header name from the context.
+func GetAuthHeader(ctx context.Context) (string, bool) {
+	header, ok := ctx.Value(authHeaderContextKey).(string)
+	return header, ok
 }
 
 // SetSigNozURL stores the SigNoz URL in the context

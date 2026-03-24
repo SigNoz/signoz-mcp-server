@@ -27,17 +27,19 @@ const (
 )
 
 type SigNoz struct {
-	baseURL    string
-	apiKey     string
-	logger     *zap.Logger
-	httpClient *http.Client
+	baseURL        string
+	apiKey         string
+	authHeaderName string
+	logger         *zap.Logger
+	httpClient     *http.Client
 }
 
-func NewClient(log *zap.Logger, baseURL, apiKey string) *SigNoz {
+func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz {
 	return &SigNoz{
-		logger:  log,
-		baseURL: baseURL,
-		apiKey:  apiKey,
+		logger:         log,
+		baseURL:        baseURL,
+		apiKey:         apiKey,
+		authHeaderName: authHeaderName,
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
