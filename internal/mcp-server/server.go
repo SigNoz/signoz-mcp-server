@@ -115,6 +115,10 @@ func (m *MCPServer) startStdio(s *server.MCPServer) error {
 	return server.ServeStdio(s, ctxFunc)
 }
 
+func isJWTToken(token string) bool {
+	return len(token) > 10 && token[0:3] == "eyJ"
+}
+
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -125,7 +129,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Check for auth credentials from headers.
 		// Clients can provide either:
 		//   - SIGNOZ-API-KEY: <pat-token>
-		//   - Authorization: Bearer <token>  (JWT)
+		//   - Authorization: Bearer <token>  (JWT, PAT)
 		//   - Authorization: <token>         (legacy)
 		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
@@ -144,10 +148,24 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			// Strip "Bearer " prefix if present to get the raw token.
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
-			apiKey = "Bearer " + token
-			ctx = util.SetAPIKey(ctx, apiKey)
-			ctx = util.SetAuthHeader(ctx, "Authorization")
-			m.logger.Debug("Using JWT token authentication via Authorization header")
+			// TODO : depricate below logic after clients have migrated to the new header format. For backward compatibility, we will continue to support both JWT and PAT tokens in the Authorization header, but this adds complexity and confusion. It's better to have a clear separation where JWT tokens must use the Authorization header with Bearer scheme, and PAT tokens must use the SIGNOZ-API-KEY header. This way we can avoid ambiguity and ensure that each token type is handled correctly without needing to guess based on token format.
+			// apiKey = "Bearer " + token
+			// ctx = util.SetAPIKey(ctx, apiKey)
+			// ctx = util.SetAuthHeader(ctx, "Authorization")
+			// m.logger.Debug("Using JWT token authentication via Authorization header")
+			if isJWTToken(token) {
+				// JWT token — forward via Authorization: Bearer <token>
+				apiKey = "Bearer " + token
+				ctx = util.SetAPIKey(ctx, apiKey)
+				ctx = util.SetAuthHeader(ctx, "Authorization")
+				m.logger.Debug("Using JWT token authentication via Authorization header")
+			} else {
+				// PAT token — forward via SIGNOZ-API-KEY
+				apiKey = token
+				ctx = util.SetAPIKey(ctx, apiKey)
+				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+				m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header")
+			}
 
 		} else if m.config.APIKey != "" {
 			// Fallback to config API key
