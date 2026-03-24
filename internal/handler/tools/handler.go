@@ -16,6 +16,11 @@ import (
 type Handler struct {
 	logger      *zap.Logger
 	clientCache *expirable.LRU[string, *signozclient.SigNoz]
+
+	// clientOverride, when non-nil, is returned by GetClient instead of
+	// looking up the cache. This exists solely to support unit testing
+	// with mock clients.
+	clientOverride signozclient.Client
 }
 
 func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
@@ -41,6 +46,10 @@ func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
 // Both stdio and HTTP transports guarantee these values are present
 // in the context before any tool handler is called.
 func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
+	if h.clientOverride != nil {
+		return h.clientOverride, nil
+	}
+
 	apiKey, _ := util.GetAPIKey(ctx)
 	signozURL, _ := util.GetSigNozURL(ctx)
 
