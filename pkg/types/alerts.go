@@ -1,5 +1,10 @@
 package types
 
+import (
+	"net/url"
+	"strconv"
+)
+
 // AlertHistoryRequest is the request payload for alert history
 type AlertHistoryRequest struct {
 	Start   int64               `json:"start"`
@@ -46,4 +51,34 @@ type APIAlert struct {
 type APIAlertsResponse struct {
 	Status string     `json:"status"`
 	Data   []APIAlert `json:"data"`
+}
+
+// ListAlertsParams contains query parameters for the GET /api/v1/alerts endpoint.
+type ListAlertsParams struct {
+	Active    *bool
+	Filter    []string
+	Inhibited *bool
+	Receiver  string
+	Silenced  *bool
+}
+
+// QueryParams converts the params to url.Values for the HTTP request.
+func (p ListAlertsParams) QueryParams() url.Values {
+	v := url.Values{}
+	if p.Active != nil {
+		v.Set("active", strconv.FormatBool(*p.Active))
+	}
+	for _, f := range p.Filter {
+		v.Add("filter", f)
+	}
+	if p.Inhibited != nil {
+		v.Set("inhibited", strconv.FormatBool(*p.Inhibited))
+	}
+	if p.Receiver != "" {
+		v.Set("receiver", p.Receiver)
+	}
+	if p.Silenced != nil {
+		v.Set("silenced", strconv.FormatBool(*p.Silenced))
+	}
+	return v
 }

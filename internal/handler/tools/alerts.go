@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -20,9 +21,14 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
 		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDescription("List active alerts from SigNoz. Returns list of alert with: alert name, rule ID, severity, start time, end time, and state. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific alert, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
+		mcp.WithDescription("List alerts from SigNoz. Returns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Default: 50.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
+		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. Default: true.")),
+		mcp.WithString("silenced", mcp.Description("Include silenced alerts. Values: 'true' or 'false'. Default: true.")),
+		mcp.WithString("inhibited", mcp.Description("Include inhibited alerts. Values: 'true' or 'false'. Default: true.")),
+		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
+		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
 	s.AddTool(alertsTool, h.handleListAlerts)
 
@@ -47,16 +53,43 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	s.AddTool(alertHistoryTool, h.handleGetAlertHistory)
 }
 
+func parseBoolParam(args map[string]any, key string) *bool {
+	if v, ok := args[key].(string); ok && v != "" {
+		b, err := strconv.ParseBool(v)
+		if err == nil {
+			return &b
+		}
+	}
+	return nil
+}
+
 func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	log := h.tenantLogger(ctx)
 	log.Debug("Tool called: signoz_list_alerts")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	args := req.Params.Arguments.(map[string]any)
+	limit, offset := paginate.ParseParams(args)
+
+	params := types.ListAlertsParams{
+		Active:    parseBoolParam(args, "active"),
+		Inhibited: parseBoolParam(args, "inhibited"),
+		Silenced:  parseBoolParam(args, "silenced"),
+	}
+	if receiver, ok := args["receiver"].(string); ok && receiver != "" {
+		params.Receiver = receiver
+	}
+	if filterStr, ok := args["filter"].(string); ok && filterStr != "" {
+		for _, f := range strings.Split(filterStr, ",") {
+			if trimmed := strings.TrimSpace(f); trimmed != "" {
+				params.Filter = append(params.Filter, trimmed)
+			}
+		}
+	}
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	alerts, err := client.ListAlerts(ctx)
+	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
 		log.Error("Failed to list alerts", zap.Error(err))
 		return mcp.NewToolResultError(err.Error()), nil
