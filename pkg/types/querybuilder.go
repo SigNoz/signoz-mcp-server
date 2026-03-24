@@ -166,6 +166,40 @@ func (q *QueryPayload) Validate() error {
 	return nil
 }
 
+// defaultLogSelectFields are the fields returned for every raw log query.
+// Without explicit SelectFields the API only returns body, id, service.name,
+// severity_text and timestamp — important attributes such as
+// exception.stacktrace are omitted.
+var defaultLogSelectFields = []SelectField{
+	// Top-level log fields
+	{Name: "id", FieldDataType: "string", Signal: "logs"},
+	{Name: "timestamp", FieldDataType: "string", Signal: "logs"},
+	{Name: "severity_text", FieldDataType: "string", Signal: "logs"},
+	{Name: "severity_number", FieldDataType: "int32", Signal: "logs"},
+	{Name: "body", FieldDataType: "string", Signal: "logs"},
+	{Name: "trace_id", FieldDataType: "string", Signal: "logs"},
+	{Name: "span_id", FieldDataType: "string", Signal: "logs"},
+	{Name: "trace_flags", FieldDataType: "int32", Signal: "logs"},
+	// Resource attributes
+	{Name: "service.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "deployment.environment", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "host.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "k8s.pod.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "k8s.namespace.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "k8s.cluster.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "k8s.node.name", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "cloud.provider", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	{Name: "cloud.region", FieldDataType: "string", Signal: "logs", FieldContext: "resource"},
+	// Log attributes — exception details (OTel semantic conventions)
+	{Name: "exception.stacktrace", FieldDataType: "string", Signal: "logs", FieldContext: "attribute"},
+	{Name: "exception.message", FieldDataType: "string", Signal: "logs", FieldContext: "attribute"},
+	{Name: "exception.type", FieldDataType: "string", Signal: "logs", FieldContext: "attribute"},
+	// Log attributes — code context
+	{Name: "code.filepath", FieldDataType: "string", Signal: "logs", FieldContext: "attribute"},
+	{Name: "code.function", FieldDataType: "string", Signal: "logs", FieldContext: "attribute"},
+	{Name: "code.lineno", FieldDataType: "int32", Signal: "logs", FieldContext: "attribute"},
+}
+
 // BuildLogsQueryPayload creates a QueryPayload for logs queries
 func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, limit int, offset int) *QueryPayload {
 	return &QueryPayload{
@@ -178,16 +212,17 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 				{
 					Type: "builder_query",
 					Spec: QuerySpec{
-						Name:     "A",
-						Signal:   "logs",
-						Disabled: false,
-						Filter:   &Filter{Expression: filterExpression},
-						Limit:    limit,
-						Offset:   offset,
+						Name:         "A",
+						Signal:       "logs",
+						Disabled:     false,
+						Filter:       &Filter{Expression: filterExpression},
+						Limit:        limit,
+						Offset:       offset,
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},
-						Having: Having{Expression: ""},
+						Having:       Having{Expression: ""},
+						SelectFields: defaultLogSelectFields,
 					},
 				},
 			},
