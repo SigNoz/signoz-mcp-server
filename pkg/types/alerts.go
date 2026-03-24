@@ -9,6 +9,7 @@ import (
 type AlertHistoryRequest struct {
 	Start   int64               `json:"start"`
 	End     int64               `json:"end"`
+	State   string              `json:"state,omitempty"`
 	Offset  int                 `json:"offset"`
 	Limit   int                 `json:"limit"`
 	Order   string              `json:"order"`

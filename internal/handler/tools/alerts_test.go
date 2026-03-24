@@ -236,6 +236,77 @@ func TestHandleGetAlertHistory_InvalidOrder(t *testing.T) {
 	}
 }
 
+func TestHandleGetAlertHistory_WithStateFilter(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-1",
+		"timeRange": "1h",
+		"state":     "firing",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if capturedReq.State != "firing" {
+		t.Errorf("expected state=firing, got %q", capturedReq.State)
+	}
+}
+
+func TestHandleGetAlertHistory_InvalidState(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-1",
+		"timeRange": "1h",
+		"state":     "invalid",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid state value")
+	}
+}
+
+func TestHandleGetAlertHistory_StateOmitted(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-1",
+		"timeRange": "1h",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if capturedReq.State != "" {
+		t.Errorf("expected state to be empty when omitted, got %q", capturedReq.State)
+	}
+}
+
 func TestHandleListAlerts_WithFilterParams(t *testing.T) {
 	var capturedParams types.ListAlertsParams
 	mock := &client.MockClient{
