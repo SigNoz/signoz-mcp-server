@@ -213,6 +213,32 @@ func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer stale-token")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	wantHeader := `Bearer error="invalid_token", error_description="access token is invalid", resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`
+	if rr.Header().Get("WWW-Authenticate") != wantHeader {
+		t.Fatalf("WWW-Authenticate = %q, want %q", rr.Header().Get("WWW-Authenticate"), wantHeader)
+	}
+}
+
 func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:   true,

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -290,6 +291,7 @@
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid rgba(255, 255, 255, 0.04);
+      text-align: left;
     }
 
     .security-note svg {
@@ -337,33 +339,53 @@
 
     /* Responsive */
     @media (max-width: 520px) {
-      .card { padding: 20px; }
-      h1 { font-size: 1.25rem; }
-      .topbar { padding: 12px 16px; }
+      .card {
+        padding: 20px;
+      }
+
+      h1 {
+        font-size: 1.25rem;
+      }
+
+      .topbar {
+        padding: 12px 16px;
+      }
     }
   </style>
 </head>
+
 <body>
 
   <!-- Top bar -->
   <header class="topbar">
     <a href="https://signoz.io" class="logo" target="_blank" rel="noopener">
       <svg viewBox="0 0 21 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect y="0.5" width="21" height="21" rx="4.2" fill="url(#g1)"/>
-        <path fill-rule="evenodd" clip-rule="evenodd" d="M2.31 10.99l.002-.005.002-.003.002-.008a4.5 4.5 0 01.097-.325c.069-.188.182-.448.364-.76.363-.623.998-1.445 2.089-2.3 1.097-.86 2.162-1.322 2.957-1.57a7.5 7.5 0 01.963-.234c.117-.02.21-.032.276-.04l.097-.007.026-.002h.002l.028.466.027.465h-.001l-.011.001-.044.005-.068.005a6 6 0 00-.224.032 6.5 6.5 0 00-.694.16l-.027.01c-.576.196-1.4.582-2.362 1.335-.96.751-1.5 1.46-1.798 1.973-.15.256-.239.465-.29.606a2.3 2.3 0 00-.052.16c-.005.016-.008.028-.01.036.002.008.005.02.01.036a2.3 2.3 0 00.343.802c.298.513.838 1.221 1.798 1.973.962.753 1.786 1.138 2.362 1.336l.027.009a6.5 6.5 0 00.694.16c.1.017.175.027.225.032l.067.005.045.005h.001l-.028.466-.027.465h-.003l-.001-.001-.004-.001a3.4 3.4 0 01-.11-.01 7.5 7.5 0 01-.963-.234c-.795-.248-1.86-.71-2.957-1.57-1.091-.854-1.726-1.676-2.089-2.3a5 5 0 01-.364-.76 4.5 4.5 0 01-.097-.325l-.002-.008-.001-.003-.001-.005V10.99z" fill="#fff"/>
-        <path fill-rule="evenodd" clip-rule="evenodd" d="M18.69 10.99l-.001-.005-.001-.003-.002-.008a4.5 4.5 0 00-.097-.325 5 5 0 00-.364-.76c-.363-.623-.998-1.445-2.089-2.3-1.097-.86-2.162-1.322-2.957-1.57a7.5 7.5 0 00-.963-.234 5 5 0 00-.276-.04l-.097-.007-.026-.002h-.002l-.028.466-.027.465h.001l.011.001.044.005.068.005a6 6 0 01.224.032 6.5 6.5 0 01.694.16l.027.01c.576.196 1.4.582 2.362 1.335.96.751 1.5 1.46 1.798 1.973.15.256.239.465.29.606a2.3 2.3 0 01.052.16c.005.016.008.028.01.036a2.3 2.3 0 01-.052.16 2.3 2.3 0 01-.29.606c-.298.513-.838 1.221-1.798 1.973-.962.753-1.786 1.138-2.362 1.336l-.027.009a6.5 6.5 0 01-.694.16 6 6 0 01-.225.032l-.067.005-.045.005h-.001l.028.466.027.465h.003l.001-.001.004-.001a3.4 3.4 0 00.11-.01 7.5 7.5 0 00.963-.234c.795-.248 1.86-.71 2.957-1.57 1.091-.854 1.726-1.676 2.089-2.3a5 5 0 00.364-.76c.034-.094.057-.17.073-.225a2 2 0 00.024-.1l.002-.008.001-.003.001-.005V10.99z" fill="#fff"/>
-        <path fill-rule="evenodd" clip-rule="evenodd" d="M14.35 11c0 2.067-1.664 3.743-3.717 3.743S6.918 13.067 6.918 11s1.664-3.744 3.716-3.744c2.053 0 3.717 1.676 3.717 3.744zM9.705 8.894s-.446.526-.58.936a3.4 3.4 0 00-.116.702H7.847s0-.351.232-.936c.232-.585.465-.702.465-.702h1.161zm-.58 3.276c.133.409.58.935.58.935H8.544s-.233-.117-.465-.702c-.232-.585-.232-.936-.232-.936h1.161s.03.438.117.703z" fill="#fff"/>
+        <rect y="0.5" width="21" height="21" rx="4.2" fill="url(#g1)" />
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M2.31 10.99l.002-.005.002-.003.002-.008a4.5 4.5 0 01.097-.325c.069-.188.182-.448.364-.76.363-.623.998-1.445 2.089-2.3 1.097-.86 2.162-1.322 2.957-1.57a7.5 7.5 0 01.963-.234c.117-.02.21-.032.276-.04l.097-.007.026-.002h.002l.028.466.027.465h-.001l-.011.001-.044.005-.068.005a6 6 0 00-.224.032 6.5 6.5 0 00-.694.16l-.027.01c-.576.196-1.4.582-2.362 1.335-.96.751-1.5 1.46-1.798 1.973-.15.256-.239.465-.29.606a2.3 2.3 0 00-.052.16c-.005.016-.008.028-.01.036.002.008.005.02.01.036a2.3 2.3 0 00.343.802c.298.513.838 1.221 1.798 1.973.962.753 1.786 1.138 2.362 1.336l.027.009a6.5 6.5 0 00.694.16c.1.017.175.027.225.032l.067.005.045.005h.001l-.028.466-.027.465h-.003l-.001-.001-.004-.001a3.4 3.4 0 01-.11-.01 7.5 7.5 0 01-.963-.234c-.795-.248-1.86-.71-2.957-1.57-1.091-.854-1.726-1.676-2.089-2.3a5 5 0 01-.364-.76 4.5 4.5 0 01-.097-.325l-.002-.008-.001-.003-.001-.005V10.99z"
+          fill="#fff" />
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M18.69 10.99l-.001-.005-.001-.003-.002-.008a4.5 4.5 0 00-.097-.325 5 5 0 00-.364-.76c-.363-.623-.998-1.445-2.089-2.3-1.097-.86-2.162-1.322-2.957-1.57a7.5 7.5 0 00-.963-.234 5 5 0 00-.276-.04l-.097-.007-.026-.002h-.002l-.028.466-.027.465h.001l.011.001.044.005.068.005a6 6 0 01.224.032 6.5 6.5 0 01.694.16l.027.01c.576.196 1.4.582 2.362 1.335.96.751 1.5 1.46 1.798 1.973.15.256.239.465.29.606a2.3 2.3 0 01.052.16c.005.016.008.028.01.036a2.3 2.3 0 01-.052.16 2.3 2.3 0 01-.29.606c-.298.513-.838 1.221-1.798 1.973-.962.753-1.786 1.138-2.362 1.336l-.027.009a6.5 6.5 0 01-.694.16 6 6 0 01-.225.032l-.067.005-.045.005h-.001l.028.466.027.465h.003l.001-.001.004-.001a3.4 3.4 0 00.11-.01 7.5 7.5 0 00.963-.234c.795-.248 1.86-.71 2.957-1.57 1.091-.854 1.726-1.676 2.089-2.3a5 5 0 00.364-.76c.034-.094.057-.17.073-.225a2 2 0 00.024-.1l.002-.008.001-.003.001-.005V10.99z"
+          fill="#fff" />
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M14.35 11c0 2.067-1.664 3.743-3.717 3.743S6.918 13.067 6.918 11s1.664-3.744 3.716-3.744c2.053 0 3.717 1.676 3.717 3.744zM9.705 8.894s-.446.526-.58.936a3.4 3.4 0 00-.116.702H7.847s0-.351.232-.936c.232-.585.465-.702.465-.702h1.161zm-.58 3.276c.133.409.58.935.58.935H8.544s-.233-.117-.465-.702c-.232-.585-.232-.936-.232-.936h1.161s.03.438.117.703z"
+          fill="#fff" />
         <defs>
-          <radialGradient id="g1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(10.5 11) rotate(45.69) scale(12.326)">
-            <stop offset=".33" stop-color="#FF5E19"/>
-            <stop offset="1" stop-color="#FF2929"/>
+          <radialGradient id="g1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+            gradientTransform="translate(10.5 11) rotate(45.69) scale(12.326)">
+            <stop offset=".33" stop-color="#FF5E19" />
+            <stop offset="1" stop-color="#FF2929" />
           </radialGradient>
         </defs>
       </svg>
       <span class="logo-text">SigNoz</span>
     </a>
     <a href="https://signoz.io/support/" target="_blank" rel="noopener" class="help-link-top">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 18h.01"/><circle cx="12" cy="12" r="9.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 18h.01" />
+        <circle cx="12" cy="12" r="9.75" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
       Get Help
     </a>
   </header>
@@ -371,33 +393,39 @@
   <!-- Auth content -->
   <main class="auth-container">
     <div class="auth-icon">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+      </svg>
     </div>
     <h1>Authorize access</h1>
     <p class="subtitle">Enter the SigNoz instance URL and API key you want this MCP client to use.</p>
 
     <div class="card">
       <div class="client-badge">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+          stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+        </svg>
         Client: {{.ClientName}}
       </div>
-
-      {{if .ErrorMessage}}
-        <div class="error-banner" role="alert">{{.ErrorMessage}}</div>
-      {{end}}
 
       <form method="post" action="{{.AuthorizePath}}">
         <div class="field">
           <label for="signoz_url">SigNoz Instance URL</label>
-          <input id="signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}" placeholder="https://your-signoz-instance" required>
-          <div class="input-note">Use the base URL for your SigNoz deployment. Don’t include a path like <code>/home</code>.</div>
+          <input id="signoz_url" name="signoz_url" type="text" value="{{.SignozURL}}"
+            placeholder="https://your-signoz-instance" required>
+          <div class="input-note">Use the base URL for your SigNoz deployment. Don’t include a path like
+            <code>/home</code>.</div>
         </div>
 
         <div class="field">
           <label for="api_key">API Key</label>
           <input id="api_key" name="api_key" type="password" placeholder="Paste your SigNoz API key" required>
           <div class="field-hint">
-            <a href="https://signoz.io/docs/ai/signoz-mcp-server/#get-your-api-key" target="_blank" rel="noopener">How to get your API key? →</a>
+            <a href="https://signoz.io/docs/ai/signoz-mcp-server/#get-your-api-key" target="_blank" rel="noopener">How
+              to get your API key?</a>
           </div>
         </div>
 
@@ -409,16 +437,26 @@
         <input type="hidden" name="scope" value="{{.Scope}}">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
+        {{if .ErrorMessage}}
+        <div class="error-banner" role="alert">{{.ErrorMessage}}</div>
+        {{end}}
+
         <button type="submit">
           Authorize
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+          </svg>
         </button>
       </form>
     </div>
 
     <!-- Security note -->
     <div class="security-note">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+      </svg>
       <p>Your credentials stay within the SigNoz MCP server and are exchanged for scoped OAuth tokens.</p>
     </div>
 
@@ -433,4 +471,5 @@
   </main>
 
 </body>
+
 </html>

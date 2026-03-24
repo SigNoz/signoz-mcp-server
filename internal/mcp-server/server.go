@@ -146,6 +146,15 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 						http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
 						return
 					default:
+						// Only fall back to legacy raw API key mode when the request also
+						// carries an explicit SigNoz URL (header or config). Otherwise a
+						// stale bearer token can mask the OAuth challenge flow.
+						if customURL == "" && m.config.URL == "" {
+							m.logger.Warn("Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
+							m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
+							http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
+							return
+						}
 						apiKey = bearerToken
 						m.logger.Debug("Bearer token did not match OAuth token format, falling back to raw API key")
 					}
