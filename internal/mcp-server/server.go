@@ -11,6 +11,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
+	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -35,6 +36,7 @@ func (m *MCPServer) Start() error {
 		server.WithRecovery(),
 		server.WithInstructions(instructions.ServerInstructions),
 		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
+		server.WithHooks(m.buildHooks()),
 	)
 
 	m.logger.Info("Starting SigNoz MCP Server",
@@ -50,6 +52,10 @@ func (m *MCPServer) Start() error {
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
+	m.handler.RegisterResourceTemplates(s)
+
+	// Register prompts
+	prompts.RegisterPrompts(s.AddPrompt)
 
 	m.logger.Info("All handlers registered successfully")
 
@@ -57,6 +63,24 @@ func (m *MCPServer) Start() error {
 		return m.startHTTP(s)
 	}
 	return m.startStdio(s)
+}
+
+// buildHooks returns lifecycle hooks for observability.
+func (m *MCPServer) buildHooks() *server.Hooks {
+	hooks := &server.Hooks{}
+	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+		m.logger.Debug("mcp request", zap.String("method", string(method)))
+	})
+	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		m.logger.Error("mcp error", zap.String("method", string(method)), zap.Error(err))
+	})
+	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
+		m.logger.Info("mcp session registered")
+	})
+	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
+		m.logger.Info("mcp session unregistered")
+	})
+	return hooks
 }
 
 // loggingMiddleware returns a tool handler middleware that logs tool call
