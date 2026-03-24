@@ -111,19 +111,6 @@ func (h *Handler) handleDashboardSummaryResource(ctx context.Context, req mcp.Re
 		return nil, fmt.Errorf("failed to get dashboard: %w", err)
 	}
 
-	// Extract just metadata + widget names to keep the resource concise
-	var raw map[string]any
-	if err := json.Unmarshal(dashData, &raw); err != nil {
-		// If we can't parse, return the raw data
-		return []mcp.ResourceContents{
-			mcp.TextResourceContents{
-				URI:      req.Params.URI,
-				MIMEType: "application/json",
-				Text:     string(dashData),
-			},
-		}, nil
-	}
-
 	return []mcp.ResourceContents{
 		mcp.TextResourceContents{
 			URI:      req.Params.URI,
@@ -133,10 +120,12 @@ func (h *Handler) handleDashboardSummaryResource(ctx context.Context, req mcp.Re
 	}, nil
 }
 
-// extractURIParam extracts the parameter value from a URI by stripping the prefix and suffix.
+// extractURIParam extracts the parameter value from a URI by stripping the
+// prefix and suffix. Returns empty string if the URI doesn't match.
 // e.g., extractURIParam("signoz://alert/123/summary", "signoz://alert/", "/summary") returns "123"
 func extractURIParam(uri, prefix, suffix string) string {
-	s := strings.TrimPrefix(uri, prefix)
-	s = strings.TrimSuffix(s, suffix)
-	return s
+	if !strings.HasPrefix(uri, prefix) || !strings.HasSuffix(uri, suffix) {
+		return ""
+	}
+	return uri[len(prefix) : len(uri)-len(suffix)]
 }
