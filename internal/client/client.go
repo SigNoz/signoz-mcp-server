@@ -84,7 +84,8 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		req.Header.Set(ContentType, "application/json")
-		req.Header.Set(SignozApiKey, s.apiKey)
+
+		req.Header.Set(s.authHeaderName, s.apiKey)
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
