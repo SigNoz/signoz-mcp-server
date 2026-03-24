@@ -213,9 +213,12 @@ func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
+func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
-	s.logger.Debug("Fetching alerts from SigNoz")
+	if qp := params.QueryParams(); len(qp) > 0 {
+		reqURL += "?" + qp.Encode()
+	}
+	s.logger.Debug("Fetching alerts from SigNoz", zap.String("url", reqURL))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 

@@ -12,7 +12,7 @@ import (
 // otherwise returns a default empty JSON object and nil error.
 type MockClient struct {
 	ListMetricsFn            func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-	ListAlertsFn             func(ctx context.Context) (json.RawMessage, error)
+	ListAlertsFn             func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	GetAlertByRuleIDFn       func(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistoryFn        func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
 	ListDashboardsFn         func(ctx context.Context) (json.RawMessage, error)
@@ -39,9 +39,9 @@ func (m *MockClient) ListMetrics(ctx context.Context, start, end int64, limit in
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) ListAlerts(ctx context.Context) (json.RawMessage, error) {
+func (m *MockClient) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 	if m.ListAlertsFn != nil {
-		return m.ListAlertsFn(ctx)
+		return m.ListAlertsFn(ctx, params)
 	}
 	return json.RawMessage(`{}`), nil
 }
