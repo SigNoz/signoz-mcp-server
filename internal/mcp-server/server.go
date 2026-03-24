@@ -125,7 +125,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Check for auth credentials from headers.
 		// Clients can provide either:
 		//   - SIGNOZ-API-KEY: <pat-token>
-		//   - Authorization: Bearer <token>  (JWT or PAT)
+		//   - Authorization: Bearer <token>  (JWT)
 		//   - Authorization: <token>         (legacy)
 		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
