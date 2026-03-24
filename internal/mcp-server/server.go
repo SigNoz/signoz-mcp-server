@@ -12,6 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
@@ -28,7 +29,13 @@ func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *
 }
 
 func (m *MCPServer) Start() error {
-	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false), server.WithRecovery(), server.WithInstructions(instructions.ServerInstructions))
+	s := server.NewMCPServer("SigNozMCP", "0.0.1",
+		server.WithLogging(),
+		server.WithToolCapabilities(false),
+		server.WithRecovery(),
+		server.WithInstructions(instructions.ServerInstructions),
+		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
+	)
 
 	m.logger.Info("Starting SigNoz MCP Server",
 		zap.String("server_name", "SigNozMCPServer"),
@@ -50,6 +57,23 @@ func (m *MCPServer) Start() error {
 		return m.startHTTP(s)
 	}
 	return m.startStdio(s)
+}
+
+// loggingMiddleware returns a tool handler middleware that logs tool call
+// start/finish with duration and tool name.
+func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
+	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			start := time.Now()
+			m.logger.Debug("tool call started", zap.String("tool", req.Params.Name))
+			result, err := next(ctx, req)
+			m.logger.Debug("tool call finished",
+				zap.String("tool", req.Params.Name),
+				zap.Duration("duration", time.Since(start)),
+				zap.Bool("error", err != nil))
+			return result, err
+		}
+	}
 }
 
 func (m *MCPServer) startStdio(s *server.MCPServer) error {
