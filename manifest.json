@@ -26,12 +26,20 @@
   },
   "tools": [
     {
-      "name": "signoz_list_metric_keys",
-      "description": "List all available metric keys"
+      "name": "signoz_list_metrics",
+      "description": "Search and list available metrics from SigNoz"
     },
     {
-      "name": "signoz_search_metric_by_text",
-      "description": "Search metrics by text query"
+      "name": "signoz_query_metrics",
+      "description": "Query metrics with smart aggregation defaults and validation. Automatically applies the right timeAggregation and spaceAggregation based on metric type (gauge, counter, histogram). Auto-fetches metric metadata if not provided. Supports formulas (A/B*100) and scalar results."
+    },
+    {
+      "name": "signoz_get_field_keys",
+      "description": "Get available field keys for metrics, traces, or logs"
+    },
+    {
+      "name": "signoz_get_field_values",
+      "description": "Get possible values for a field key for metrics, traces, or logs"
     },
     {
       "name": "signoz_list_alerts",
@@ -82,10 +90,6 @@
       "description": "Search logs for a specific service"
     },
     {
-      "name": "signoz_get_trace_field_values",
-      "description": "List available trace field values"
-    },
-    {
       "name": "signoz_search_traces_by_service",
       "description": "Search traces for a specific service"
     },
@@ -104,18 +108,6 @@
     {
       "name": "signoz_execute_builder_query",
       "description": "Execute SigNoz Query Builder v5 query"
-    },
-    {
-      "name": "signoz_get_trace_available_fields",
-      "description": "Get available field names for trace queries"
-    },
-    {
-      "name": "signoz_get_logs_available_fields",
-      "description": "Get available field names for log queries"
-    },
-    {
-      "name": "signoz_get_metrics_available_fields",
-      "description": "Get available field names for metric queries"
     },
     {
       "name": "signoz_create_dashboard",

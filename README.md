@@ -8,8 +8,8 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 
 ## 🚀 Features
 
-- **List Metric Keys**: Retrieve all available metric keys from SigNoz.
-- **Search Metric by text**: Find specific metric containing given text.
+- **List Metrics**: Search and list available metrics by name, time range, and source.
+- **Field Discovery**: Discover available field keys and values for metrics, traces, and logs.
 - **List Alerts**: Get all active alerts with detailed status.
 - **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
 - **Get Alert History**: Gives you timeline of an alert.
@@ -250,6 +250,9 @@ The MCP server provides the following tools that can be used through natural lan
 ```
 "Show me all available metrics"
 "Search for CPU related metrics"
+"Query container CPU utilization grouped by namespace"
+"What's the p99 latency for http_request_duration_seconds?"
+"Show me the error rate: http_errors_total / http_requests_total * 100"
 ```
 
 #### Alert Monitoring
@@ -292,7 +295,8 @@ The MCP server provides the following tools that can be used through natural lan
 #### Trace Analysis
 
 ```
-"Show me all available trace fields"
+"What field keys are available for traces?"
+"What are the possible values for service.name in metrics?"
 "Search traces for the apple service from the last hour"
 "Get details for trace ID ball123"
 "Check for  error patterns in traces from the randomservice"
@@ -308,15 +312,37 @@ The MCP server provides the following tools that can be used through natural lan
 
 ### Tool Reference
 
-#### `signoz_list_metric_keys`
+#### `signoz_list_metrics`
 
-Lists all available metric keys from SigNoz.
+Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source.
 
-#### `signoz_search_metric_by_text`
+- **Parameters**:
+    - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
+    - `limit` (optional) - Maximum number of metrics to return (default: 50)
+    - `start` (optional) - Start time in unix milliseconds
+    - `end` (optional) - End time in unix milliseconds
+    - `source` (optional) - Filter by source
 
-Searches metrics by text (uses SigNoz aggregate_attributes autocomplete).
+#### `signoz_query_metrics`
 
-- **Parameters**: `searchText` (required) - Text to search for
+Query metrics with smart aggregation defaults and validation. Automatically applies the right timeAggregation and spaceAggregation based on metric type (gauge, counter, histogram). Auto-fetches metric metadata if not provided.
+
+- **Parameters**:
+    - `metricName` (required) - Metric name to query
+    - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
+    - `isMonotonic` (optional) - true/false (auto-fetched if absent)
+    - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
+    - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
+    - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
+    - `groupBy` (optional) - Comma-separated field names
+    - `filter` (optional) - Filter expression
+    - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h)
+    - `start`/`end` (optional) - Unix ms timestamps (override timeRange)
+    - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
+    - `requestType` (optional) - time_series (default) or scalar
+    - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
+    - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
+    - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
 
 #### `signoz_list_alerts`
 
@@ -476,50 +502,28 @@ Search logs with flexible filtering across all services. Supports query expressi
     - `limit` (optional) - Maximum number of logs to return (default: 100)
     - `offset` (optional) - Offset for pagination (default: 0)
 
-#### `signoz_get_trace_field_values`
+#### `signoz_get_field_keys`
 
-Gets available field values for trace.
-
-- **Parameters**:
-    - `fieldName` (required) - Field name to get values for (e.g., 'service.name', 'http.method')
-    - `searchText` (optional) - Search text to filter values
-
-#### `signoz_get_logs_field_values`
-
-Gets available field values for log queries.
+Get available field keys for a given signal (metrics, traces, or logs). Use this to discover filterable fields before building queries.
 
 - **Parameters**:
-    - `fieldName` (required) - Field name to get values for (e.g., 'service.name')
-    - `searchText` (optional) - Search text to filter values
+    - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+    - `searchText` (optional) - Filter field keys by name substring
+    - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
+    - `fieldContext` (optional) - Filter by field context (e.g., `resource`, `span`)
+    - `fieldDataType` (optional) - Filter by data type (e.g., `string`, `int64`)
+    - `source` (optional) - Filter by source
 
-#### `signoz_get_metrics_field_values`
+#### `signoz_get_field_values`
 
-Gets available field values for metric queries.
-
-- **Parameters**:
-    - `fieldName` (required) - Field name to get values for
-    - `searchText` (optional) - Search text to filter values
-
-#### `signoz_get_trace_available_fields`
-
-Gets available field names for trace queries.
+Get possible values for a specific field key for a given signal (metrics, traces, or logs). Use this to discover valid filter values.
 
 - **Parameters**:
-    - `searchText` (optional) - Search text to filter available fields
-
-#### `signoz_get_logs_available_fields`
-
-Gets available field names for log queries.
-
-- **Parameters**:
-    - `searchText` (optional) - Search text to filter available fields
-
-#### `signoz_get_metrics_available_fields`
-
-Gets available field names for metric queries.
-
-- **Parameters**:
-    - `searchText` (optional) - Search text to filter available fields
+    - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+    - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
+    - `searchText` (optional) - Filter values by substring
+    - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
+    - `source` (optional) - Filter by source
 
 #### `signoz_search_traces_by_service`
 

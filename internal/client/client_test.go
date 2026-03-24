@@ -117,94 +117,6 @@ func TestGetAlertByRuleID(t *testing.T) {
 	}
 }
 
-func TestListMetricKeys(t *testing.T) {
-	tests := []struct {
-		name          string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedData  []string
-	}{
-		{
-			name: "successful metric keys retrieval",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": []string{
-					"cpu_data",
-					"memory_data",
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: []string{
-				"cpu_data",
-				"memory_data",
-			},
-		},
-		{
-			name:          "server error",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "unauthorized",
-			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
-			statusCode:    http.StatusUnauthorized,
-			expectedError: true,
-		},
-		{
-			name:          "empty response",
-			resp:          map[string]interface{}{"status": "success", "data": []string{}},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData:  []string{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/metrics/filters/keys", r.URL.Path)
-
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
-
-			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key")
-
-			ctx := context.Background()
-			result, err := client.ListMetricKeys(ctx)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].([]interface{}); ok {
-					assert.Equal(t, len(tt.expectedData), len(data))
-					for i, expectedKey := range tt.expectedData {
-						if i < len(data) {
-							assert.Equal(t, expectedKey, data[i])
-						}
-					}
-				}
-			}
-		})
-	}
-}
-
 func TestListDashboards(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -882,4 +794,308 @@ func TestUpdateDashboard(t *testing.T) {
 
 	err := client.UpdateDashboard(context.Background(), "id-123", d)
 	require.NoError(t, err)
+}
+
+func TestGetFieldKeys(t *testing.T) {
+	tests := []struct {
+		name          string
+		signal        string
+		metricName    string
+		searchText    string
+		fieldContext  string
+		fieldDataType string
+		source        string
+		resp          map[string]interface{}
+		statusCode    int
+		expectedError bool
+	}{
+		{
+			name:          "successful retrieval with all params",
+			signal:        "metrics",
+			metricName:    "container.cpu.usage",
+			searchText:    "cpu",
+			fieldContext:  "resource",
+			fieldDataType: "string",
+			source:        "otel",
+			resp: map[string]interface{}{
+				"status": "success",
+				"data":   []string{"host.name", "k8s.pod.name"},
+			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "successful retrieval with only required param",
+			signal:        "traces",
+			metricName:    "",
+			searchText:    "",
+			fieldContext:  "",
+			fieldDataType: "",
+			source:        "",
+			resp: map[string]interface{}{
+				"status": "success",
+				"data":   []string{"service.name", "http.method"},
+			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "server error",
+			signal:        "logs",
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			statusCode:    http.StatusInternalServerError,
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			signal:        "metrics",
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/fields/keys", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				q := r.URL.Query()
+				assert.Equal(t, tt.signal, q.Get("signal"))
+				assert.Equal(t, tt.metricName, q.Get("metricName"))
+				assert.Equal(t, tt.searchText, q.Get("searchText"))
+				assert.Equal(t, tt.fieldContext, q.Get("fieldContext"))
+				assert.Equal(t, tt.fieldDataType, q.Get("fieldDataType"))
+				assert.Equal(t, tt.source, q.Get("source"))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			client := NewClient(logger, server.URL, "test-api-key")
+
+			ctx := context.Background()
+			result, err := client.GetFieldKeys(ctx, tt.signal, tt.metricName, tt.searchText, tt.fieldContext, tt.fieldDataType, tt.source)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, result)
+
+				var response map[string]interface{}
+				err = json.Unmarshal(result, &response)
+				require.NoError(t, err)
+				assert.Equal(t, "success", response["status"])
+			}
+		})
+	}
+}
+
+func TestGetFieldValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		signal        string
+		fieldName     string
+		metricName    string
+		searchText    string
+		source        string
+		resp          map[string]interface{}
+		statusCode    int
+		expectedError bool
+	}{
+		{
+			name:          "successful retrieval with all params",
+			signal:        "metrics",
+			fieldName:     "host.name",
+			metricName:    "container.cpu.usage",
+			searchText:    "prod",
+			source:        "otel",
+			resp: map[string]interface{}{
+				"status": "success",
+				"data":   []string{"prod-host-1", "prod-host-2"},
+			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "successful retrieval with only required params",
+			signal:        "traces",
+			fieldName:     "service.name",
+			metricName:    "",
+			searchText:    "",
+			source:        "",
+			resp: map[string]interface{}{
+				"status": "success",
+				"data":   []string{"frontend", "backend"},
+			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "server error",
+			signal:        "logs",
+			fieldName:     "severity",
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			statusCode:    http.StatusInternalServerError,
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			signal:        "metrics",
+			fieldName:     "host.name",
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/fields/values", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				q := r.URL.Query()
+				assert.Equal(t, tt.signal, q.Get("signal"))
+				assert.Equal(t, tt.fieldName, q.Get("name"))
+				assert.Equal(t, tt.metricName, q.Get("metricName"))
+				assert.Equal(t, tt.searchText, q.Get("searchText"))
+				assert.Equal(t, tt.source, q.Get("source"))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			client := NewClient(logger, server.URL, "test-api-key")
+
+			ctx := context.Background()
+			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.source)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, result)
+
+				var response map[string]interface{}
+				err = json.Unmarshal(result, &response)
+				require.NoError(t, err)
+				assert.Equal(t, "success", response["status"])
+			}
+		})
+	}
+}
+
+func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"temporarily unavailable"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, 3, attempts)
+	assert.Contains(t, string(result), "success")
+}
+
+func TestDoRequest_RetriesExhausted(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"still down"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, 3, attempts)
+	assert.Contains(t, err.Error(), "503")
+}
+
+func TestDoRequest_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"down"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := c.doRequest(ctx, http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	assert.Error(t, err)
+}
+
+func TestDoRequest_NoRetryOn4xx(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"bad request"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	_, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	assert.Error(t, err)
+	assert.Equal(t, 1, attempts)
+	assert.Contains(t, err.Error(), "400")
+}
+
+func TestDoRequest_RetryOn429(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts)
+	assert.Contains(t, string(result), "success")
 }

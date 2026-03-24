@@ -10,7 +10,10 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
+	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
@@ -27,7 +30,14 @@ func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *
 }
 
 func (m *MCPServer) Start() error {
-	s := server.NewMCPServer("SigNozMCP", "0.0.1", server.WithLogging(), server.WithToolCapabilities(false), server.WithRecovery())
+	s := server.NewMCPServer("SigNozMCP", "0.0.1",
+		server.WithLogging(),
+		server.WithToolCapabilities(false),
+		server.WithRecovery(),
+		server.WithInstructions(instructions.ServerInstructions),
+		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
+		server.WithHooks(m.buildHooks()),
+	)
 
 	m.logger.Info("Starting SigNoz MCP Server",
 		zap.String("server_name", "SigNozMCPServer"),
@@ -35,12 +45,17 @@ func (m *MCPServer) Start() error {
 
 	// Register all handlers
 	m.handler.RegisterMetricsHandlers(s)
+	m.handler.RegisterFieldsHandlers(s)
 	m.handler.RegisterAlertsHandlers(s)
 	m.handler.RegisterDashboardHandlers(s)
 	m.handler.RegisterServiceHandlers(s)
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
+	m.handler.RegisterResourceTemplates(s)
+
+	// Register prompts
+	prompts.RegisterPrompts(s.AddPrompt)
 
 	m.logger.Info("All handlers registered successfully")
 
@@ -48,6 +63,41 @@ func (m *MCPServer) Start() error {
 		return m.startHTTP(s)
 	}
 	return m.startStdio(s)
+}
+
+// buildHooks returns lifecycle hooks for observability.
+func (m *MCPServer) buildHooks() *server.Hooks {
+	hooks := &server.Hooks{}
+	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+		m.logger.Debug("mcp request", zap.String("method", string(method)))
+	})
+	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		m.logger.Error("mcp error", zap.String("method", string(method)), zap.Error(err))
+	})
+	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
+		m.logger.Info("mcp session registered")
+	})
+	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
+		m.logger.Info("mcp session unregistered")
+	})
+	return hooks
+}
+
+// loggingMiddleware returns a tool handler middleware that logs tool call
+// start/finish with duration and tool name.
+func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
+	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			start := time.Now()
+			m.logger.Debug("tool call started", zap.String("tool", req.Params.Name))
+			result, err := next(ctx, req)
+			m.logger.Debug("tool call finished",
+				zap.String("tool", req.Params.Name),
+				zap.Duration("duration", time.Since(start)),
+				zap.Bool("error", err != nil))
+			return result, err
+		}
+	}
 }
 
 func (m *MCPServer) startStdio(s *server.MCPServer) error {
