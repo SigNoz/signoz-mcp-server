@@ -15,4 +15,31 @@ const ServerInstructions = `# SigNoz MCP Server — Instructions
    If the user already provides resource attributes, proceed directly without extra prompting.
 
 3. **Clarify the signal before querying.** If it is not clear which signal to use, ask the user whether to start with metrics, traces, or logs.
+
+4. **Choose the right filter operator for the intent and data type.**
+
+   **By query intent:**
+   | Intent | Operator | Example |
+   |---|---|---|
+   | Field exists / is present | EXISTS | trace_id EXISTS |
+   | Field is absent | NOT EXISTS | k8s.pod.name NOT EXISTS |
+   | Exact match | = | service.name = 'frontend' |
+   | Exclude (field must exist) | EXISTS AND != | service.name EXISTS AND service.name != 'redis' |
+   | One of several values | IN | severity_text IN ('ERROR', 'WARN', 'FATAL') |
+   | Substring / pattern | LIKE | name LIKE '%payment%' |
+   | Case-insensitive pattern | ILIKE | body ILIKE '%timeout%' |
+   | Simple text containment | CONTAINS | body CONTAINS 'timeout' |
+   | Regex | REGEXP | name REGEXP '^grpc\.' |
+
+   **By data type:**
+   | Data type | Safe operators |
+   |---|---|
+   | bool | = , != , EXISTS, NOT EXISTS |
+   | int64 | = , != , > , >= , < , <= , IN, EXISTS, NOT EXISTS |
+   | string | = , != , LIKE, ILIKE, CONTAINS, REGEXP, IN, NOT IN, EXISTS, NOT EXISTS |
+
+   **Important:** Negative operators (!=, NOT LIKE, NOT IN, NOT CONTAINS, NOT REGEXP) also match records where the field is **absent**. To exclude a value while requiring the field, combine with EXISTS:
+   ` + "`" + `service.name EXISTS AND service.name != 'redis'` + "`" + `
+
+5. **Never convert Unix timestamps manually.** All SigNoz timestamps (start, end, and time series values) are Unix milliseconds. When presenting timestamps to the user, always use a programmatic method (e.g., a date conversion tool or function) to convert them to human-readable format. Do NOT attempt mental arithmetic or manual offset calculations — this is error-prone and leads to incorrect times being reported.
 `
