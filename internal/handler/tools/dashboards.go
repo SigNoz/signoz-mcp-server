@@ -71,9 +71,9 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"CONDITIONAL RESOURCES (based on query type):\n"+
 				"• PromQL → signoz://dashboard/promql-example\n"+
 				"• Query Builder → signoz://dashboard/query-builder-example\n"+
-				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + clickhouse-logs-example\n"+
-				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + clickhouse-metrics-example\n"+
-				"• ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + clickhouse-traces-example\n\n"+
+				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
+				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
+				"• ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
 				"WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields "+
 				"(id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks).",
 		),
@@ -357,7 +357,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	queryBuilderExample := mcp.NewResource(
 		"signoz://dashboard/query-builder-example",
 		"Query Builder Examples",
-		mcp.WithResourceDescription("SigNoz Query Builder reference: CRITICAL OpenTelemetry metric naming conventions (dot vs underscore suffixes), filtering, aggregation, search syntax, operators, field existence behavior, full-text search, functions, advanced examples, and best practices."),
+		mcp.WithResourceDescription("SigNoz Query Builder reference: CRITICAL OpenTelemetry metric naming conventions (dot vs underscore suffixes), filtering, aggregation, legend formatting for grouped charts, search syntax, operators, field existence behavior, full-text search, functions, advanced examples, and best practices."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -408,7 +408,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	widgetsExamplesResource := mcp.NewResource(
 		"signoz://dashboard/widgets-examples",
 		"Dashboard Widgets Examples",
-		mcp.WithResourceDescription("Basic Example widgets"),
+		mcp.WithResourceDescription("Complete widget configurations with required fields, panel-specific examples, validation checks, troubleshooting, and legend formatting for grouped chart queries."),
 		mcp.WithMIMEType("text/plain"),
 	)
 

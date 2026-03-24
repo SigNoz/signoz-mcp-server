@@ -33,6 +33,18 @@ Selection Guidelines:
 - Use PromQL when you need: Prometheus compatibility, metric-specific functions, range vector operations
 - Avoid mixing query types within a single dashboard unless necessary for specific requirements
 
+Legend Formatting [CRITICAL]:
+- Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
+- ALWAYS set legend when groupBy is used on series-producing charts. Without legend, SigNoz shows raw query identifiers.
+- Single-key example: groupBy service.name -> legend {{service.name}}
+- Multi-key example: groupBy service.name and http.method -> legend {{service.name}} - {{http.method}}
+- Panel rules: timeseries/graph, bar, pie, histogram require legend when the query has groupBy.
+- Table panels with groupBy should usually set legend, but the columns are often self-labeling so it is recommended rather than required.
+- Value, list, and row panels do not need legend formatting.
+- PromQL legend syntax uses labels: {{label_name}}
+- ClickHouse SQL legend syntax uses result columns: {{column_name}}
+- In update flows, preserve existing legends unless you are intentionally improving them.
+
 Panel/widgets types in dashboards [CRITICAL]:
 1. Bar Chart: categorical comparisons.
 2. Histogram: value distribution.

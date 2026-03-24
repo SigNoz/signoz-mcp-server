@@ -124,14 +124,14 @@ type PromQL struct {
 	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=PromQL query expression"`
 	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
 	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the PromQL query is disabled or not"`
-	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query"`
+	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend template for naming PromQL series. Use {{label_name}} placeholders matching labels returned by the query. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{instance}}. Without legend charts show generic series names."`
 }
 
 type ClickHouseSQL struct {
 	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=Clickhouse SQL query for the widget"`
 	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
 	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the Clickhouse SQL is disabled or not"`
-	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query"`
+	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend template for naming ClickHouse query series. Use {{column_name}} placeholders for label columns returned by the query result. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{http_method}}. Only columns present in the result can be used in the legend."`
 }
 
 type BuilderQueryDashboard struct {
@@ -152,7 +152,7 @@ type BuilderQuery struct {
 	Expression         string            `json:"expression" jsonschema:"required" jsonschema_extras:"description=Expression for the query"`
 	Disabled           bool              `json:"disabled,omitempty" jsonschema_extras:"description=Whether the query is disabled"`
 	Having             interface{}       `json:"having,omitempty" jsonschema_extras:"description=Having clauses for the query"`
-	Legend             string            `json:"legend,omitempty" jsonschema_extras:"description=Legend for the query"`
+	Legend             string            `json:"legend,omitempty" jsonschema_extras:"description=Legend template for labeling grouped chart series. Use {{attribute_name}} placeholders that exactly match groupBy keys. REQUIRED when this query uses groupBy and is rendered as a multi-series chart for timeseries/graph or bar or pie or histogram. Example: if groupBy includes service.name then set legend to {{service.name}}. For multiple keys use {{service.name}} - {{http.method}}. Without legend SigNoz shows raw query identifiers such as A."`
 	Limit              uint64            `json:"limit,omitempty" jsonschema_extras:"description=Limit for the query"`
 	Offset             uint64            `json:"offset,omitempty" jsonschema_extras:"description=Offset for the query"`
 	PageSize           uint64            `json:"pageSize,omitempty" jsonschema_extras:"description=Page size for the query"`
