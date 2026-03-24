@@ -1,8 +1,17 @@
 package mcp_server
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
@@ -52,7 +61,7 @@ func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := normalizeSigNozURL(tt.url)
+			_, err := util.NormalizeSigNozURL(tt.url)
 			if tt.wantErr == "" {
 				// These cases may still fail due to DNS resolution of
 				// the fake host, which is fine — we only care that the
@@ -118,7 +127,7 @@ func TestNormalizeSigNozURL_CanonicalizesOrigin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := normalizeSigNozURL(tt.url)
+			got, err := util.NormalizeSigNozURL(tt.url)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -126,5 +135,130 @@ func TestNormalizeSigNozURL_CanonicalizesOrigin(t *testing.T) {
 				t.Errorf("normalizeSigNozURL(%q) = %q, want %q", tt.url, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	token, err := oauth.EncryptToken(
+		"oauth-api-key",
+		"https://oauth.example.com",
+		"client-1",
+		time.Now().UTC().Add(time.Hour),
+		[]byte(cfg.OAuthTokenSecret),
+	)
+	if err != nil {
+		t.Fatalf("EncryptToken() error = %v", err)
+	}
+
+	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey, _ := util.GetAPIKey(r.Context())
+		signozURL, _ := util.GetSigNozURL(r.Context())
+		w.Header().Set("X-API-Key", apiKey)
+		w.Header().Set("X-SigNoz-URL", signozURL)
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if rr.Header().Get("X-API-Key") != "oauth-api-key" {
+		t.Fatalf("api key = %q, want %q", rr.Header().Get("X-API-Key"), "oauth-api-key")
+	}
+	if rr.Header().Get("X-SigNoz-URL") != "https://oauth.example.com" {
+		t.Fatalf("signoz URL = %q, want %q", rr.Header().Get("X-SigNoz-URL"), "https://oauth.example.com")
+	}
+}
+
+func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer raw-api-key")
+	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey, _ := util.GetAPIKey(r.Context())
+		signozURL, _ := util.GetSigNozURL(r.Context())
+		w.Header().Set("X-API-Key", apiKey)
+		w.Header().Set("X-SigNoz-URL", signozURL)
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if rr.Header().Get("X-API-Key") != "raw-api-key" {
+		t.Fatalf("api key = %q, want %q", rr.Header().Get("X-API-Key"), "raw-api-key")
+	}
+	if rr.Header().Get("X-SigNoz-URL") != "https://1.1.1.1" {
+		t.Fatalf("signoz URL = %q, want %q", rr.Header().Get("X-SigNoz-URL"), "https://1.1.1.1")
+	}
+}
+
+func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer stale-token")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	wantHeader := `Bearer error="invalid_token", error_description="access token is invalid", resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`
+	if rr.Header().Get("WWW-Authenticate") != wantHeader {
+		t.Fatalf("WWW-Authenticate = %q, want %q", rr.Header().Get("WWW-Authenticate"), wantHeader)
+	}
+}
+
+func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:   true,
+		OAuthIssuerURL: "https://mcp.example.com",
+	}
+
+	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	rr := httptest.NewRecorder()
+
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	wantHeader := `Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`
+	if rr.Header().Get("WWW-Authenticate") != wantHeader {
+		t.Fatalf("WWW-Authenticate = %q, want %q", rr.Header().Get("WWW-Authenticate"), wantHeader)
 	}
 }

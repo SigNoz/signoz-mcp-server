@@ -117,6 +117,165 @@ func TestGetAlertByRuleID(t *testing.T) {
 	}
 }
 
+func TestValidateCredentials(t *testing.T) {
+	tests := []struct {
+		name          string
+		userMeStatus  int
+		expectedError bool
+		checkErr      func(t *testing.T, err error)
+	}{
+		{
+			name:          "successful validation",
+			userMeStatus:  http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "unauthorized credentials",
+			userMeStatus:  http.StatusUnauthorized,
+			expectedError: true,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrUnauthorized)
+			},
+		},
+		{
+			name:          "unexpected status",
+			userMeStatus:  http.StatusInternalServerError,
+			expectedError: true,
+			checkErr: func(t *testing.T, err error) {
+				assert.NotNil(t, err)
+				assert.Contains(t, err.Error(), "unexpected status 500")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userMeRequests := 0
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				switch r.URL.Path {
+				case "/api/v1/user/me":
+					userMeRequests++
+					assert.Equal(t, http.MethodGet, r.Method)
+					w.WriteHeader(tt.userMeStatus)
+				default:
+					t.Fatalf("unexpected path %s", r.URL.Path)
+				}
+
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			client := NewClient(logger, server.URL, "test-api-key")
+
+			err := client.ValidateCredentials(context.Background())
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				if tt.checkErr != nil {
+					tt.checkErr(t, err)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, userMeRequests)
+		})
+	}
+}
+
+func TestListMetricKeys(t *testing.T) {
+	tests := []struct {
+		name          string
+		resp          map[string]interface{}
+		statusCode    int
+		expectedError bool
+		expectedData  []string
+	}{
+		{
+			name: "successful metric keys retrieval",
+			resp: map[string]interface{}{
+				"status": "success",
+				"data": []string{
+					"cpu_data",
+					"memory_data",
+				},
+			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+			expectedData: []string{
+				"cpu_data",
+				"memory_data",
+			},
+		},
+		{
+			name:          "server error",
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			statusCode:    http.StatusInternalServerError,
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+		},
+		{
+			name:          "empty response",
+			resp:          map[string]interface{}{"status": "success", "data": []string{}},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+			expectedData:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/metrics/filters/keys", r.URL.Path)
+
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			client := NewClient(logger, server.URL, "test-api-key")
+
+			ctx := context.Background()
+			result, err := client.ListMetricKeys(ctx)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				var response map[string]interface{}
+				err = json.Unmarshal(result, &response)
+				require.NoError(t, err)
+
+				assert.Equal(t, "success", response["status"])
+				if data, ok := response["data"].([]interface{}); ok {
+					assert.Equal(t, len(tt.expectedData), len(data))
+					for i, expectedKey := range tt.expectedData {
+						if i < len(data) {
+							assert.Equal(t, expectedKey, data[i])
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestListDashboards(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -912,12 +1071,12 @@ func TestGetFieldValues(t *testing.T) {
 		expectedError bool
 	}{
 		{
-			name:          "successful retrieval with all params",
-			signal:        "metrics",
-			fieldName:     "host.name",
-			metricName:    "container.cpu.usage",
-			searchText:    "prod",
-			source:        "otel",
+			name:       "successful retrieval with all params",
+			signal:     "metrics",
+			fieldName:  "host.name",
+			metricName: "container.cpu.usage",
+			searchText: "prod",
+			source:     "otel",
 			resp: map[string]interface{}{
 				"status": "success",
 				"data":   []string{"prod-host-1", "prod-host-2"},
@@ -926,12 +1085,12 @@ func TestGetFieldValues(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name:          "successful retrieval with only required params",
-			signal:        "traces",
-			fieldName:     "service.name",
-			metricName:    "",
-			searchText:    "",
-			source:        "",
+			name:       "successful retrieval with only required params",
+			signal:     "traces",
+			fieldName:  "service.name",
+			metricName: "",
+			searchText: "",
+			source:     "",
 			resp: map[string]interface{}{
 				"status": "success",
 				"data":   []string{"frontend", "backend"},
