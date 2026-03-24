@@ -58,8 +58,25 @@ Agreed on three tiers:
 - Wrote 3 integration tests using `NewInProcessClient` for full MCP protocol round-trips: initialize + list 22 tools, list 4 prompts, list 2 resource templates
 - All tests pass: `go build ./...`, `go vet ./...`, `go test ./...` all clean
 
+### 2026-03-24 — Technical review and fixes
+
+Review of all 4 phases found no blocking bugs. 3 issues fixed:
+1. Dead code in `handleDashboardSummaryResource` — removed unused `json.Unmarshal` and misleading comment
+2. Fragile `extractURIParam` — hardened with prefix/suffix validation before slicing
+3. No retry test coverage — added 5 tests: 503→success, retries exhausted, context cancelled, no retry on 4xx, retry on 429
+
+- [x] Retry policy resolved: 3 attempts, 4x exponential backoff (100ms base), retry on 429/502/503/504 and network errors
+
+### 2026-03-24 — All phases complete
+
+Branches:
+- `phase-1-quick-wins` — tool annotations, doRequest helper, named constants
+- `phase-2-refactoring` — split handler.go, Client interface, tool handler middleware
+- `phase-3-mcp-features` — prompts, resource templates, hooks, retry with backoff
+- `phase-4-testing` — mock client, 36 handler/integration tests, 5 retry tests, review fixes
+
 ## Open Questions
 - [ ] Should prompts target specific personas (on-call engineer, platform engineer, developer)?
 - [ ] Should resource templates replace some existing static resources, or be additive?
-- [ ] What retry policy makes sense? (number of attempts, backoff strategy, which status codes to retry)
+- [x] What retry policy makes sense? → 3 attempts, 4x backoff (100ms), retry 429/502/503/504
 - [ ] Should tool filtering be based on API key permissions from SigNoz backend?

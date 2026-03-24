@@ -1,7 +1,7 @@
 # Plan: Code Quality & MCP Best Practices
 
 ## Status
-Planning
+Done
 
 ## Context
 Staff engineer review of the SigNoz MCP server identified code organization improvements and unused MCP protocol features. This plan covers both internal refactoring and MCP-specific enhancements that improve the developer experience for MCP clients consuming this server.
