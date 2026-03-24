@@ -159,17 +159,25 @@ func detectFieldContext(name string) string {
 	return "attribute"
 }
 
-// autoStepInterval calculates a step interval targeting ~300 data points, minimum 60s.
-func autoStepInterval(startMs, endMs int64) int64 {
-	rangeMs := endMs - startMs
-	if rangeMs <= 0 {
-		return 60
+// extractStepInterval parses meta.stepIntervals from the backend response JSON
+// and returns the step interval for the first query (typically "A").
+// Returns 0 if not found or on parse error.
+func extractStepInterval(response json.RawMessage) int64 {
+	var resp struct {
+		Data struct {
+			Meta struct {
+				StepIntervals map[string]int64 `json:"stepIntervals"`
+			} `json:"meta"`
+		} `json:"data"`
 	}
-	step := rangeMs / 300 / 1000 // convert ms range to seconds, divide by 300 points
-	if step < 60 {
-		return 60
+	if err := json.Unmarshal(response, &resp); err != nil {
+		return 0
 	}
-	return step
+	// Return the first (usually "A") step interval
+	for _, v := range resp.Data.Meta.StepIntervals {
+		return v
+	}
+	return 0
 }
 
 // --- helpers ---

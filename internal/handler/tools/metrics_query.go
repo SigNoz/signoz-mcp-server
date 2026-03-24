@@ -78,12 +78,10 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Auto step interval
+	// Step interval: use caller-provided value or let the backend decide
 	stepInterval := mqr.StepInterval
-	if stepInterval <= 0 {
-		stepInterval = autoStepInterval(startTime, endTime)
-		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (auto-calculated)", stepInterval))
-	} else {
+	callerProvidedStep := stepInterval > 0
+	if callerProvidedStep {
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (caller-provided)", stepInterval))
 	}
 
@@ -174,6 +172,13 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	if err != nil {
 		log.Error("Metrics query failed", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %s", err.Error())), nil
+	}
+
+	// Extract backend-determined stepInterval from response if caller didn't provide one
+	if !callerProvidedStep {
+		if si := extractStepInterval(result); si > 0 {
+			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
+		}
 	}
 
 	// Build response with decisions block

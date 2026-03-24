@@ -107,10 +107,6 @@ func (q *QueryPayload) Validate() error {
 			if q.RequestType != "time_series" && q.RequestType != "scalar" {
 				q.RequestType = "time_series"
 			}
-			if spec.StepInterval == nil || *spec.StepInterval <= 0 {
-				def := int64(60)
-				spec.StepInterval = &def
-			}
 
 		case "traces":
 			// Traces support both raw queries and time series aggregations.
@@ -129,10 +125,6 @@ func (q *QueryPayload) Validate() error {
 			case "time_series":
 				if len(spec.Aggregations) == 0 {
 					return fmt.Errorf("%s: missing aggregations for time_series traces query", queryName)
-				}
-				if spec.StepInterval == nil || *spec.StepInterval <= 0 {
-					def := int64(60)
-					spec.StepInterval = &def
 				}
 			default:
 				return fmt.Errorf("%s: unsupported requestType '%s' for traces", queryName, q.RequestType)
@@ -155,10 +147,6 @@ func (q *QueryPayload) Validate() error {
 			case "time_series":
 				if len(spec.Aggregations) == 0 {
 					return fmt.Errorf("%s: missing aggregations for time_series logs query", queryName)
-				}
-				if spec.StepInterval == nil || *spec.StepInterval <= 0 {
-					def := int64(60)
-					spec.StepInterval = &def
 				}
 			default:
 				return fmt.Errorf("%s: unsupported requestType '%s' for logs", queryName, q.RequestType)
@@ -297,15 +285,17 @@ func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64, queries []
 			continue
 		}
 
-		step := stepInterval
 		spec := QuerySpec{
-			Name:         q.Name,
-			Signal:       "metrics",
-			StepInterval: &step,
-			Disabled:     false,
+			Name:     q.Name,
+			Signal:   "metrics",
+			Disabled: false,
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
+		}
+		if stepInterval > 0 {
+			step := stepInterval
+			spec.StepInterval = &step
 		}
 		if q.Filter != "" {
 			spec.Filter = &Filter{Expression: q.Filter}
@@ -369,15 +359,17 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 			continue
 		}
 
-		step := stepInterval
 		spec := QuerySpec{
-			Name:         q.Name,
-			Signal:       "metrics",
-			StepInterval: &step,
-			Disabled:     false,
+			Name:     q.Name,
+			Signal:   "metrics",
+			Disabled: false,
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
+		}
+		if stepInterval > 0 {
+			step := stepInterval
+			spec.StepInterval = &step
 		}
 		if q.Filter != "" {
 			spec.Filter = &Filter{Expression: q.Filter}
