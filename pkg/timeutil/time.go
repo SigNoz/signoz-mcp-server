@@ -60,3 +60,13 @@ func GetTimestampsWithDefaults(args map[string]any, unit string) (start, end str
 
 	return start, end
 }
+
+// NowMillis returns the current time in unix milliseconds.
+func NowMillis() int64 {
+	return time.Now().UnixMilli()
+}
+
+// HoursAgoMillis returns unix milliseconds for the given number of hours ago.
+func HoursAgoMillis(hours int) int64 {
+	return time.Now().Add(-time.Duration(hours) * time.Hour).UnixMilli()
+}

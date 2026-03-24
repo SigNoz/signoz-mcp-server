@@ -1158,3 +1158,103 @@ func TestGetFieldValues(t *testing.T) {
 		})
 	}
 }
+
+func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"temporarily unavailable"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, 3, attempts)
+	assert.Contains(t, string(result), "success")
+}
+
+func TestDoRequest_RetriesExhausted(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"still down"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, 3, attempts)
+	assert.Contains(t, err.Error(), "503")
+}
+
+func TestDoRequest_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"down"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := c.doRequest(ctx, http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	assert.Error(t, err)
+}
+
+func TestDoRequest_NoRetryOn4xx(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"bad request"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	_, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	assert.Error(t, err)
+	assert.Equal(t, 1, attempts)
+	assert.Contains(t, err.Error(), "400")
+}
+
+func TestDoRequest_RetryOn429(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	c := NewClient(logger, srv.URL, "test-key")
+
+	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts)
+	assert.Contains(t, string(result), "success")
+}
