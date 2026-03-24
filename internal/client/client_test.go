@@ -1015,7 +1015,7 @@ func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	require.NoError(t, err)
@@ -1033,7 +1033,7 @@ func TestDoRequest_RetriesExhausted(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	assert.Error(t, err)
@@ -1050,7 +1050,7 @@ func TestDoRequest_ContextCancelled(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -1069,7 +1069,7 @@ func TestDoRequest_NoRetryOn4xx(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
 
 	_, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	assert.Error(t, err)
@@ -1092,7 +1092,7 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	require.NoError(t, err)
