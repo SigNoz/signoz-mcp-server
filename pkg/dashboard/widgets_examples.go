@@ -15,7 +15,7 @@ queryData:
 
 queryName: A dataSource: traces expression: A stepInterval: 60 aggregations:
 expression: count() filter: expression: service.name in $service_name groupBy:
-key: service.name dataType: string type: resource
+key: service.name dataType: string type: resource legend: {{service.name}}
 --- INCORRECT Format (OLD - DEPRECATED) ---
 
 DO NOT USE these fields: aggregateOperator: count aggregateAttribute: key: duration_nano dataType: float64
@@ -32,7 +32,7 @@ INCORRECT: selectColumns: - key: service.name # ERROR: Should be 'name' dataType
 
 ERROR: Using 'key' instead of 'name' in selectColumns causes frontend crash. ERROR: Missing fieldContext or signal causes rendering errors. SOLUTION: Always use 'name' field and include fieldContext, signal for selectColumns.
 
---- groupBy (for pie, table panels) ---
+--- groupBy (for graph, bar, histogram, pie, table panels) ---
 
 CORRECT: groupBy: - key: llm.model_name # Use 'key' not 'name' dataType: string type: tag
 
@@ -62,7 +62,7 @@ expression
 OPTIONAL FIELDS:
 
 groupBy (for multiple series)
-legend (for series labels)
+legend (REQUIRED when groupBy is used - use {{attribute_name}} syntax matching groupBy keys)
 EXAMPLE: panelTypes: graph query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name
 
 ERROR: Missing aggregations causes "No data" error. ERROR: Missing filter may show unfiltered data.
@@ -226,13 +226,13 @@ CORRECT: filter: expression: service.name in $service_name
 
 Before creating a dashboard, verify:
 
-[ ] Using aggregations array (NOT aggregateOperator) [ ] Using filter.expression for filters [ ] List panels have selectColumns with name, fieldContext, signal [ ] Pie/table panels have groupBy with key field [ ] Value panels do NOT have groupBy [ ] All variables use $ prefix [ ] All field names are spelled correctly [ ] All aggregation functions are valid [ ] stepInterval is present (can be null) [ ] queryName, dataSource, expression are present
+[ ] Using aggregations array (NOT aggregateOperator) [ ] Using filter.expression for filters [ ] List panels have selectColumns with name, fieldContext, signal [ ] Graph/bar/histogram/pie/table panels use groupBy with key field when needed [ ] Queries with groupBy have legend set using {{attribute_name}} syntax matching groupBy keys [ ] Value panels do NOT have groupBy [ ] All variables use $ prefix [ ] All field names are spelled correctly [ ] All aggregation functions are valid [ ] stepInterval is present (can be null) [ ] queryName, dataSource, expression are present
 
 === COMPLETE WORKING EXAMPLES ===
 
 --- Graph: Latency P95 ---
 
-panelTypes: graph title: Latency (P95) yAxisUnit: ns query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name
+panelTypes: graph title: Latency (P95) by Service yAxisUnit: ns query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name groupBy: - key: service.name dataType: string type: resource legend: {{service.name}}
 
 --- List: Error Traces ---
 
@@ -403,6 +403,12 @@ Example: Number of Requests (from Anthropic API)
           expression: A
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model llm.provider = 'anthropic'
+          groupBy:
+            -
+              dataType: string
+              key: service.name
+              type: resource
+          legend: {{service.name}}
           queryName: A
     queryType: builder
   selectedLogFields:
