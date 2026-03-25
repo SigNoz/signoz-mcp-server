@@ -21,6 +21,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
 		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription("List alerts from SigNoz. Returns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Default: 50.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
@@ -34,6 +35,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
 		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription("Get details of a specific alert rule by ruleId"),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert ruleId")),
 	)
@@ -41,6 +43,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
 		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional, overrides start/end). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
