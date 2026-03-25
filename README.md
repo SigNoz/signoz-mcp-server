@@ -4,99 +4,70 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![MCP Version](https://img.shields.io/badge/MCP-0.37.0-orange.svg)](https://modelcontextprotocol.io)
 
-A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. This server enables natural language queries for metrics, traces, logs, alerts, dashboards, and service performance data.
+A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. Query metrics, traces, logs, alerts, dashboards, and services using natural language.
 
-## 🚀 Features
+**[📖 Full Documentation](https://signoz.io/docs/ai/signoz-mcp-server/)**
 
-- **List Metrics**: Search and list available metrics by name, time range, and source.
-- **Field Discovery**: Discover available field keys and values for metrics, traces, and logs.
-- **List Alerts**: Get all active alerts with detailed status.
-- **Get Alert Details**: Retrieve comprehensive information about specific alert rules.
-- **Get Alert History**: Gives you timeline of an alert.
-- **Logs**: Search, aggregate, and analyze logs  with flexible filtering.
-- **Traces**: Search, aggregate, analyze, get hierarchy and relationship of traces.
-- **List Dashboards**: Get dashboard summaries (name, UUID, description, tags).
-- **Get Dashboard**: Retrieve complete dashboard configurations with panels and queries.
-- **Create Dashboard**: Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. **Warning**: Requires full dashboard JSON which can consume large amounts of context window space.
-- **Update Dashboard**: Updates an existing dashboard using its UUID and a complete dashboard JSON object. Requires the entire post-update configuration and cannot accept partial patches.
-- **List Services**: Discover all services within specified time ranges.
-- **Service Top Operations**: Analyze performance metrics for specific services.
-- **Query Builder**: Generates query to get complex response.
+## Installation
 
-## 🏗️ Architecture
+### Download Binary (Recommended)
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   MCP Client    │───▶│  MCP Server      │───▶│   SigNoz API    │
-│  (AI Assistant) │    │  (Go)            │    │  (Observability)│
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌──────────────────┐
-                       │   Tool Handlers  │
-                       │  (HTTP Client)   │
-                       └──────────────────┘
+Download the latest binary from [GitHub Releases](https://github.com/SigNoz/signoz-mcp-server/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/SigNoz/signoz-mcp-server/releases/latest/download/signoz-mcp-server_darwin_arm64.tar.gz | tar xz
+
+# macOS (Intel)
+curl -L https://github.com/SigNoz/signoz-mcp-server/releases/latest/download/signoz-mcp-server_darwin_amd64.tar.gz | tar xz
+
+# Linux (amd64)
+curl -L https://github.com/SigNoz/signoz-mcp-server/releases/latest/download/signoz-mcp-server_linux_amd64.tar.gz | tar xz
 ```
 
-### Core Components
+This extracts a `signoz-mcp-server` binary in the current directory. Move it somewhere on your PATH or note the absolute path for the config below.
 
-- **MCP Server**: Handles MCP protocol communication
-- **Tool Handlers**: Register and manage available tools
-- **SigNoz Client**: HTTP client for SigNoz API interactions
-- **OAuth 2.1**: Stateless browser-based authentication for MCP clients (optional, for multi-tenant/cloud)
-- **Configuration**: Environment-based configuration management
-- **Logging**: Structured logging with Zap
+### Go Install
 
-For a detailed architecture overview including request flow, component interactions, and design decisions, see [docs/architecture.md](docs/architecture.md).
+```bash
+go install github.com/SigNoz/signoz-mcp-server/cmd/server@latest
+```
 
-## 🧰 Usage
+The binary is installed as `server` to `$GOPATH/bin/` (default: `$HOME/go/bin/server`). You may want to rename it:
 
-Use this mcp-server with MCP-compatible clients like Claude Desktop and Cursor.
+```bash
+mv "$(go env GOPATH)/bin/server" "$(go env GOPATH)/bin/signoz-mcp-server"
+```
 
-### Claude Desktop
+### Build from Source
 
-1. Build or locate the binary path for `signoz-mcp-server` (for example: `.../signoz-mcp-server/bin/signoz-mcp-server`).
-2. Goto Claude -> Settings -> Developer -> Local MCP Server click on `edit config`
-3. Edit `claude_desktop_config.json` Add shown config with your signoz url, api key and path to signoz-mcp-server binary.
+```bash
+git clone https://github.com/SigNoz/signoz-mcp-server.git
+cd signoz-mcp-server
+make build
+```
 
-    ```json
-    {
-        "mcpServers": {
-            "signoz": {
-                "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
-                "args": [],
-                "env": {
-                    "SIGNOZ_URL": "https://your-signoz-instance.com",
-                    "SIGNOZ_API_KEY": "your-api-key-here",
-                    "LOG_LEVEL": "info"
-                }
-            }
-        }
-    }
-    ```
+The binary is at `./bin/signoz-mcp-server`.
 
-4. Restart Claude Desktop. You should see the `signoz` server load in the developer console and its tools become available.
+## Quick Start
 
-Notes:
+### Prerequisites
 
-- Replace the `command` path with your actual binary location.
+- A running [SigNoz](https://signoz.io) instance
+- A SigNoz API key (Settings → Workspace Settings → API Key in SigNoz UI)
+- The `signoz-mcp-server` binary (see [Installation](#installation))
 
-### Cursor
+> **SigNoz Cloud URL** is typically `https://tenant-slug.<region>.signoz.cloud` (e.g. `main-dinosaur.us.signoz.cloud`)
 
-Option A — GUI:
+### Stdio Mode (Claude Desktop / Cursor / Any MCP Client)
 
-- Open Cursor → Settings → Cursor Settings → Tool & Integrations → `+` New MCP Server
-
-Option B — Project config file:
-Create `.cursor/mcp.json` in your project root:
-
-For Both options use same json struct
+Add this to your MCP client config (`claude_desktop_config.json`, `.cursor/mcp.json`, etc.). Replace the `command` path with the absolute path to your `signoz-mcp-server` binary:
 
 ```json
 {
     "mcpServers": {
         "signoz": {
-            "command": "/absolute/path/to/signoz-mcp-server/bin/signoz-mcp-server",
+            "command": "/absolute/path/to/signoz-mcp-server",
             "args": [],
             "env": {
                 "SIGNOZ_URL": "https://your-signoz-instance.com",
@@ -108,15 +79,11 @@ For Both options use same json struct
 }
 ```
 
-Once added, restart Cursor to use the SigNoz tools.
+### HTTP Mode
 
-### HTTP Mode (Self-Hosted)
+#### With OAuth (Multi-Tenant / Cloud)
 
-#### With OAuth (Recommended for Multi-Tenant / Cloud)
-
-When OAuth is enabled, users only need the server URL — no manual API key or header configuration. The MCP client handles authentication automatically via a browser-based OAuth flow.
-
-1. Build and start the server with OAuth enabled:
+Start the server:
 
 ```bash
 TRANSPORT_MODE=http \
@@ -127,7 +94,7 @@ OAUTH_ISSUER_URL=https://your-public-mcp-url.com \
 ./signoz-mcp-server
 ```
 
-2. In your MCP client (Claude Desktop, Cursor, etc.), just provide the URL:
+Client config — just the URL, no keys needed:
 
 ```json
 {
@@ -139,27 +106,40 @@ OAUTH_ISSUER_URL=https://your-public-mcp-url.com \
 }
 ```
 
-The client will automatically discover the OAuth endpoints, open a browser for the user to enter their SigNoz URL and API key, and handle token exchange. No manual header configuration needed.
-
-**How it works:** On first connection the client gets a `401` challenge, discovers OAuth endpoints via `/.well-known/` metadata, registers itself, then opens a browser where the user enters their SigNoz credentials. The server normalizes the submitted SigNoz URL and validates the credentials before issuing an authorization code. If the URL is invalid, the credentials are rejected, or the SigNoz instance cannot be reached, the authorize page is shown again with an inline error so the user can correct the input. Once validation succeeds, the credentials are encrypted into a stateless token that the client uses for all subsequent requests.
+The client discovers OAuth endpoints automatically, opens a browser for credentials, and handles token exchange.
 
 #### Without OAuth (Simple Setup)
 
-For single-tenant or internal deployments where OAuth is not needed:
+The API key and SigNoz URL only need to be provided in **one** place — either on the server or on the client.
 
-1. Build and run the server:
+**Option A — Credentials on the server** (simpler client config):
 
-    ```bash
-    SIGNOZ_URL=https://your-signoz-instance.com \
-    SIGNOZ_API_KEY=your-api-key \
-    TRANSPORT_MODE=http \
-    MCP_SERVER_PORT=8000 \
-    ./signoz-mcp-server
-    ```
+```bash
+SIGNOZ_URL=https://your-signoz-instance.com \
+SIGNOZ_API_KEY=your-api-key \
+TRANSPORT_MODE=http \
+MCP_SERVER_PORT=8000 \
+./signoz-mcp-server
+```
 
-2. Configure your MCP client:
+```json
+{
+    "mcpServers": {
+        "signoz": {
+            "url": "http://localhost:8000/mcp"
+        }
+    }
+}
+```
 
-**Claude Desktop** — Goto Claude → Settings → Developer → Local MCP Server → Edit Config:
+**Option B — API key on the client** (server holds the URL, client sends the key):
+
+```bash
+SIGNOZ_URL=https://your-signoz-instance.com \
+TRANSPORT_MODE=http \
+MCP_SERVER_PORT=8000 \
+./signoz-mcp-server
+```
 
 ```json
 {
@@ -167,175 +147,60 @@ For single-tenant or internal deployments where OAuth is not needed:
         "signoz": {
             "url": "http://localhost:8000/mcp",
             "headers": {
-                "Authorization": "Bearer your-api-key-here"
+                "SIGNOZ-API-KEY": "your-api-key-here"
             }
         }
     }
 }
 ```
 
-**Cursor** — Open Settings → Cursor Settings → Tools & Integrations → New MCP Server, or create `.cursor/mcp.json`:
-
-```json
-{
-    "mcpServers": {
-        "signoz": {
-            "url": "http://localhost:8000/mcp",
-            "headers": {
-                "Authorization": "Bearer your-api-key-here"
-            }
-        }
-    }
-}
-```
-
-**Note:** You can pass the SigNoz API key either as:
-
-- An environment variable (`SIGNOZ_API_KEY`) when starting the server, or
-- Via the `Authorization` header in the client configuration as shown above
-
-**Note:** By default, the server logs at `info` level. If you need detailed debugging information, set `LOG_LEVEL=debug` in your environment. For production use, consider using `LOG_LEVEL=warn` to reduce log verbosity.
-
-## 🛠️ Development Guide
-
-### Prerequisites
-
-- Go 1.25 or higher
-- SigNoz instance with API access
-- Valid SigNoz API key
-
-### Project Structure
-
-```
-signoz-mcp-server/
-├── cmd/server/           # Main application entry point
-├── internal/
-│   ├── client/          # SigNoz API client
-│   ├── config/          # Configuration management
-│   ├── handler/tools/   # MCP tool implementations
-│   ├── logger/          # Logging utilities
-│   ├── mcp-server/      # MCP server core
-│   └── oauth/           # Stateless OAuth 2.1 (crypto, handlers, PKCE)
-├── go.mod               # Go module dependencies
-├── Makefile             # Build automation
-└── README.md
-```
-
-### Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/SigNoz/signoz-mcp-server.git
-cd signoz-mcp-server
-
-# Build the binary
-make build
-
-# Or build directly with Go
-go build -o bin/signoz-mcp-server ./cmd/server/
-```
-
-### Configuration
-
-Set the following environment variables:
-
-```bash
-
-export SIGNOZ_URL="https://your-signoz-instance.com"
-export SIGNOZ_API_KEY="your-api-key-here"
-export LOG_LEVEL="info"  # Optional: debug, info, error (default: info)
-```
-
-In SigNoz Cloud, SIGNOZ_URL is typically - https://tenant-slug.<region>.signoz.cloud for example main-dinosaur.us.signoz.cloud
-
-You can access API Key by going to Settings -> Workspace Settings -> API Key in SigNoz UI
-
-### Running the Server
-
-```bash
-# Run the built binary
-./bin/signoz-mcp-server
-```
-
-### Development Workflow
-
-1. **Add New Tools**: Implement in `internal/handler/tools/`
-2. **Extend Client**: Add methods to `internal/client/client.go`
-3. **Register Tools**: Add to appropriate handler registration
-4. **Test**: Use MCP client to verify functionality
-
-## 📖 User Guide
-
-### For AI Assistants & LLMs
-
-The MCP server provides the following tools that can be used through natural language:
-
-#### Metrics Exploration
+## What Can You Do With It?
 
 ```
 "Show me all available metrics"
-"Search for CPU related metrics"
-"Query container CPU utilization grouped by namespace"
 "What's the p99 latency for http_request_duration_seconds?"
-"Show me the error rate: http_errors_total / http_requests_total * 100"
-```
-
-#### Alert Monitoring
-
-```
 "List all active alerts"
-"Get details for alert rule ID abc123"
-"Show me the history for alert rule abc123 from the last 6 hours"
-"Get logs related to alert abc456"
-```
-
-#### Dashboard Management
-
-```
-"List all dashboards"
-"Show me the Host Metrics dashboard details"
-"Create a dashboard with a specified name, optional tags, and a widget visualizing a chosen metric."
-```
-
-#### Service Analysis
-
-```
-"List all services from the last 6 hours"
-"What are the top operations for the paymentservice?"
-```
-
-#### Log Analysis
-
-```
-"List all saved log views"
 "Show me error logs for the paymentservice from the last hour"
-"Search paymentservice logs for 'connection timeout' errors"
-"Get error logs with FATAL severity"
 "How many errors per service in the last hour?"
-"What are the top error messages for the consumer service?"
-"Search all logs where workflow_run_id = 'wr_123'"
-"Show me logs containing 'timeout' across all services"
+"Search traces for the checkout service from the last hour"
+"Get details for trace ID abc123"
+"Create a dashboard with CPU and memory widgets"
 ```
 
-#### Trace Analysis
+## Available Tools
 
-```
-"What field keys are available for traces?"
-"What are the possible values for service.name in metrics?"
-"Search traces for the apple service from the last hour"
-"Get details for trace ID ball123"
-"Check for  error patterns in traces from the randomservice"
-"Show me the span hierarchy for trace xyz789"
-"Find traces with errors in the last 2 hours"
-"Give me flow of this trace"
-"What is the p99 latency for the checkout service?"
-"How many errors per service in the last hour?"
-"Average response time by operation for the payment-svc"
-"Request rate per service in the last 30 minutes"
-"Which operations have the highest p95 latency?"
-```
+| Tool | Description |
+|------|-------------|
+| `signoz_list_metrics` | Search and list available metrics |
+| `signoz_query_metrics` | Query metrics with smart aggregation defaults |
+| `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
+| `signoz_get_field_values` | Get possible values for a field key |
+| `signoz_list_alerts` | List all active alerts |
+| `signoz_get_alert` | Get details of a specific alert rule |
+| `signoz_get_alert_history` | Get alert history timeline for a rule |
+| `signoz_list_dashboards` | List all dashboards with summaries |
+| `signoz_get_dashboard` | Get full dashboard configuration |
+| `signoz_create_dashboard` | Create a new dashboard |
+| `signoz_update_dashboard` | Update an existing dashboard |
+| `signoz_list_services` | List services within a time range |
+| `signoz_get_service_top_operations` | Get top operations for a service |
+| `signoz_list_log_views` | List all saved log views |
+| `signoz_get_log_view` | Get details of a saved log view |
+| `signoz_get_error_logs` | Get ERROR/FATAL logs |
+| `signoz_search_logs_by_service` | Search logs for a specific service |
+| `signoz_search_logs` | Search logs with flexible filtering |
+| `signoz_aggregate_logs` | Aggregate logs (count, avg, p99, etc.) with grouping |
+| `signoz_search_traces_by_service` | Search traces for a specific service |
+| `signoz_aggregate_traces` | Aggregate trace statistics with grouping |
+| `signoz_get_trace_details` | Get full trace with all spans |
+| `signoz_get_trace_error_analysis` | Analyze error patterns in traces |
+| `signoz_get_trace_span_hierarchy` | Get span relationships for a trace |
+| `signoz_execute_builder_query` | Execute a raw Query Builder v5 query |
 
-### Tool Reference
+For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
+
+<details>
+<summary><strong>Parameter Reference</strong></summary>
 
 #### `signoz_list_metrics`
 
@@ -383,8 +248,6 @@ Gets details of a specific alert rule.
 
 Lists all dashboards with summaries (name, UUID, description, tags).
 
-- **Returns**: Simplified dashboard information for better LLM processing
-
 #### `signoz_get_dashboard`
 
 Gets complete dashboard configuration.
@@ -392,33 +255,30 @@ Gets complete dashboard configuration.
 - **Parameters**: `uuid` (required) - Dashboard UUID
 
 #### `signoz_create_dashboard`
+
 Creates a dashboard.
 
 - **Parameters:**
-  - title (required) – Dashboard name
-  - description (optional) – Short summary of what the dashboard shows
-  - tags (optional) – List of tags
-  - layout (required) – Widget positioning grid
-  - variables (optional) – Map of variables available for use in queries
-  - widgets (required) – List of widgets added to the dashboard
-- **Returns**
-Dashboard metadata, layout array, widgets array, and stored dashboard config.
+  - `title` (required) – Dashboard name
+  - `description` (optional) – Short summary of what the dashboard shows
+  - `tags` (optional) – List of tags
+  - `layout` (required) – Widget positioning grid
+  - `variables` (optional) – Map of variables available for use in queries
+  - `widgets` (required) – List of widgets added to the dashboard
 
-### `signoz_update_dashboard`
+#### `signoz_update_dashboard`
+
 Updates an existing dashboard.
 
-- **Parameters**
-  - uuid (required) – Unique identifier of the dashboard to update
-  - title (required) – Dashboard name
-  - description (optional) – Short summary of what the dashboard shows
-  - tags (optional) – List of tags applied to the dashboard
-  - layout (required) – Full widget positioning grid
-  - variables (optional) – Map of variables available for use in queries
-  - widgets (required) – Complete set of widgets defining the updated dashboard
-  
-**Returns**
-A success confirmation only. No response body is provided.
-  
+- **Parameters:**
+  - `uuid` (required) – Unique identifier of the dashboard to update
+  - `title` (required) – Dashboard name
+  - `description` (optional) – Short summary of what the dashboard shows
+  - `tags` (optional) – List of tags applied to the dashboard
+  - `layout` (required) – Full widget positioning grid
+  - `variables` (optional) – Map of variables available for use in queries
+  - `widgets` (required) – Complete set of widgets defining the updated dashboard
+
 #### `signoz_list_services`
 
 Lists all services within a time range.
@@ -456,8 +316,6 @@ Gets alert history timeline for a specific rule.
 
 Lists all saved log views from SigNoz.
 
-- **Returns**: Summary with name, ID, description, and query details
-
 #### `signoz_get_log_view`
 
 Gets full details of a specific log view by ID.
@@ -490,7 +348,7 @@ Searches logs for a specific service within a time range.
 
 #### `signoz_aggregate_logs`
 
-Aggregate logs to provide count, average, sum, min, max, or percentiles, optionally grouped by fields. Use this for questions like "how many errors per service?", "average response time by endpoint", or "top error messages by count".
+Aggregate logs with count, average, sum, min, max, or percentiles, optionally grouped by fields.
 
 - **Parameters**:
     - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
@@ -506,7 +364,7 @@ Aggregate logs to provide count, average, sum, min, max, or percentiles, optiona
 
 #### `signoz_search_logs`
 
-Search logs with flexible filtering across all services. Supports query expressions, optional service/severity filters, and body text search.
+Search logs with flexible filtering across all services.
 
 - **Parameters**:
     - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND http.status_code >= 400")
@@ -520,7 +378,7 @@ Search logs with flexible filtering across all services. Supports query expressi
 
 #### `signoz_get_field_keys`
 
-Get available field keys for a given signal (metrics, traces, or logs). Use this to discover filterable fields before building queries.
+Get available field keys for a given signal (metrics, traces, or logs).
 
 - **Parameters**:
     - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
@@ -532,7 +390,7 @@ Get available field keys for a given signal (metrics, traces, or logs). Use this
 
 #### `signoz_get_field_values`
 
-Get possible values for a specific field key for a given signal (metrics, traces, or logs). Use this to discover valid filter values.
+Get possible values for a specific field key for a given signal.
 
 - **Parameters**:
     - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
@@ -558,7 +416,7 @@ Searches traces for a specific service.
 
 #### `signoz_aggregate_traces`
 
-Aggregate traces to gets statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields.
+Aggregate trace statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields.
 
 - **Parameters**:
     - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
@@ -593,7 +451,6 @@ Analyzes error patterns in traces.
     - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
     - `end` (optional) - End time in milliseconds (defaults to now)
     - `service` (optional) - Service name to filter by
-- **Returns**: Traces with errors, useful for identifying patterns and affected services
 
 #### `signoz_get_trace_span_hierarchy`
 
@@ -612,33 +469,9 @@ Executes a SigNoz Query Builder v5 query.
 - **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 
-### Time Format
+</details>
 
-Most tools support flexible time parameters:
-
-#### Recommended: Time Ranges
-
-Use the `timeRange` parameter with formats:
-
-- `'30m'` - Last 30 minutes
-- `'2h'` - Last 2 hours
-- `'6h'` - Last 6 hours
-- `'2d'` - Last 2 days
-- `'7d'` - Last 7 days
-
-The `timeRange` parameter automatically calculates the time window from now backwards. If not specified, most tools default to the last 6 hours. You can also specify time in milliseconds and nanoseconds
-
-### Response Format
-
-All tools return JSON responses that are optimized for LLM consumption:
-
-- **List operations**: Return summaries to avoid overwhelming responses
-- **Detail operations**: Return complete data when specific information is requested
-- **Error handling**: Structured error messages for debugging
-
-## 🔧 Configuration & Deployment
-
-### Environment Variables
+## Environment Variables
 
 | Variable          | Description                                                                    | Required                            |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
@@ -654,58 +487,32 @@ All tools return JSON responses that are optimized for LLM consumption:
 | `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 1440 / 24h)       | No                                  |
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 
-## Claude Desktop Extension Setup
+## Claude Desktop Extension
 
-### 🧱 Building the Claude Extension Bundle
+### Building the Bundle
 
-Ensure **Node.js** is installed on your system.
-For details about the MCPB CLI, see [Anthropic MCPB GitHub repository](https://github.com/anthropics/mcpb).
-
-From the repository root, run:
+Requires **Node.js**. See [Anthropic MCPB](https://github.com/anthropics/mcpb) for details.
 
 ```bash
 make bundle
 ```
 
-This command builds platform binaries (macOS and Windows), copies manifest and assets, installs the MCPB CLI (`@anthropic-ai/mcpb`), and packages everything into a Claude-compatible `.mcpb` bundle.
+### Installing
 
-### 💻 Installing in Claude Desktop
+1. Open **Claude Desktop → Settings → Developer → Edit Config → Add bundle.mcpb**
+2. Select `./bundle/bundle.mcpb`
+3. Enter your `SIGNOZ_URL`, `SIGNOZ_API_KEY`, and optionally `LOG_LEVEL`
+4. Restart Claude Desktop
 
-1. Open **Claude Desktop → Settings → Developer → Edit Config -> Add bundle.mcpb**
-2. Select the generated bundle:
+## Architecture
 
-    ```
-    ./bundle/bundle.mcpb
-    ```
+For a detailed overview of request flow, component interactions, and design decisions, see [docs/architecture.md](docs/architecture.md).
 
-3. Provide your SigNoz configuration:
-    - `SIGNOZ_URL`: URL of your SigNoz instance
-    - `SIGNOZ_API_KEY`: API key from **SigNoz UI → Settings → Workspace Settings → API Key**
-    - `LOG_LEVEL`: Optional (`info`, `debug`, or `warn`)
-
-Restart Claude Desktop and it will then automatically start the SigNoz MCP Server and register its tools.
-
----
-
-## 🤝 Contributing
-
-We welcome contributions!
-
-### Development Setup
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-### Code Style
-
-- Follow Go best practices
-- Use meaningful variable names
-- Add comments for complex logic
-- Ensure proper error handling
+3. Make your changes and add tests
+4. Submit a pull request
 
 **Made with ❤️ for the observability community**
-
-
