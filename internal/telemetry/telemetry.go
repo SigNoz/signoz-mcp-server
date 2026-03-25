@@ -91,7 +91,7 @@ func NewLogger(level LogLevel) (*zap.Logger, error) {
 
 // LoggerWithURL returns a child logger enriched with the given URL field.
 func LoggerWithURL(input *zap.Logger, url string) *zap.Logger {
-	return input.With(zap.String("url", url))
+	return input.With(zap.String("tenant_url", url))
 }
 
 func newResource(ctx context.Context) (*resource.Resource, error) {

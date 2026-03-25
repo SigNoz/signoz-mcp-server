@@ -19,6 +19,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Execute a SigNoz Query Builder v5 query.\n\n"+
 				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+

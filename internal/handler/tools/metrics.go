@@ -17,6 +17,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	listMetricsTool := mcp.NewTool("signoz_list_metrics",
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source. Use searchText to find metrics by name."),
 		mcp.WithString("searchText", mcp.Description("Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.")),
 		mcp.WithString("limit", mcp.Description("Maximum number of metrics to return (optional, default 50).")),
@@ -31,6 +32,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	queryMetricsTool := mcp.NewTool("signoz_query_metrics",
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Query metrics from SigNoz with smart aggregation defaults and validation. "+
 				"Automatically applies the right timeAggregation and spaceAggregation based on metric type "+
