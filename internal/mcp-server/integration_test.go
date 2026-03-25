@@ -83,7 +83,7 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	const expectedToolCount = 22
+	const expectedToolCount = 21
 	if len(toolsResult.Tools) != expectedToolCount {
 		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
 		for _, tool := range toolsResult.Tools {
