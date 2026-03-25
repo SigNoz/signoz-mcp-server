@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,8 @@ const (
 	DashboardWriteTimeout = 30 * time.Second
 )
 
+var ErrUnauthorized = errors.New("signoz credentials rejected")
+
 type SigNoz struct {
 	baseURL        string
 	apiKey         string
@@ -43,6 +46,50 @@ func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz 
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
+	}
+}
+
+// ValidateCredentials performs a lightweight authenticated request against the
+// SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
+// redirecting back to the MCP client.
+func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	reqURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create validation request: %w", err)
+	}
+
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(SignozApiKey, s.apiKey)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		s.logger.Error("SigNoz credential validation request failed", zap.String("url", reqURL), zap.Error(err))
+		return fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			s.logger.Warn("Failed to close response body", zap.Error(err))
+		}
+	}()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	if err != nil {
+		return fmt.Errorf("failed to read validation response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		s.logger.Warn("SigNoz credential validation failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
+		return fmt.Errorf("%w: status %d", ErrUnauthorized, resp.StatusCode)
+	default:
+		s.logger.Warn("SigNoz credential validation returned unexpected status", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 }
 
@@ -160,6 +207,12 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 
 	reqURL := fmt.Sprintf("%s/api/v2/metrics?%s", s.baseURL, params.Encode())
 	s.logger.Debug("Listing metrics", zap.String("searchText", searchText))
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/metrics/filters/keys", s.baseURL)
+	s.logger.Debug("Making request to SigNoz API", zap.String("method", "GET"), zap.String("endpoint", "/api/v1/metrics/filters/keys"))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 

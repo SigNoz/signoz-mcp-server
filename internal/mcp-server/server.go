@@ -2,14 +2,15 @@ package mcp_server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
@@ -116,7 +117,7 @@ func (m *MCPServer) startStdio(s *server.MCPServer) error {
 }
 
 func isJWTToken(token string) bool {
-	return len(token) > 10 && token[0:3] == "eyJ"
+	return strings.Count(token, ".") == 2 && strings.HasPrefix(token, "eyJ")
 }
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
@@ -136,6 +137,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		var apiKey string
 		var signozURL string
+		var usedOAuthToken bool
 
 		if signozAPIKey != "" {
 			// Explicit PAT via SIGNOZ-API-KEY header — forward as-is.
@@ -145,22 +147,51 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 			m.logger.Debug("Using SIGNOZ-API-KEY header for auth")
 		} else if authHeader != "" {
-			// Strip "Bearer " prefix if present to get the raw token.
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-
-			// TODO : depricate below logic after clients have migrated to the new header format. For backward compatibility, we will continue to support both JWT and PAT tokens in the Authorization header, but this adds complexity and confusion. It's better to have a clear separation where JWT tokens must use the Authorization header with Bearer scheme, and PAT tokens must use the SIGNOZ-API-KEY header. This way we can avoid ambiguity and ensure that each token type is handled correctly without needing to guess based on token format.
-			// apiKey = "Bearer " + token
-			// ctx = util.SetAPIKey(ctx, apiKey)
-			// ctx = util.SetAuthHeader(ctx, "Authorization")
-			// m.logger.Debug("Using JWT token authentication via Authorization header")
-			if isJWTToken(token) {
-				// JWT token — forward via Authorization: Bearer <token>
-				apiKey = "Bearer " + token
-				ctx = util.SetAPIKey(ctx, apiKey)
-				ctx = util.SetAuthHeader(ctx, "Authorization")
-				m.logger.Debug("Using JWT token authentication via Authorization header")
+			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+			if customURL != "" {
+				if isJWTToken(token) {
+					// JWT token — forward via Authorization: Bearer <token>
+					apiKey = "Bearer " + token
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "Authorization")
+					m.logger.Debug("Using JWT token authentication via Authorization header")
+				} else {
+					// PAT token — forward via SIGNOZ-API-KEY
+					apiKey = token
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+					m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header")
+				}
+			} else if m.config.OAuthEnabled {
+				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
+				switch {
+				case err == nil:
+					apiKey = decryptedAPIKey
+					signozURL = decryptedURL
+					usedOAuthToken = true
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+					m.logger.Debug("OAuth access token extracted from Authorization header")
+				case errors.Is(err, oauth.ErrExpiredToken):
+					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
+					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
+					return
+				default:
+					// Only fall back to legacy raw API key mode when the request also
+					// carries an explicit SigNoz URL (header or config). Otherwise a
+					// stale bearer token can mask the OAuth challenge flow.
+					if customURL == "" && m.config.URL == "" {
+						m.logger.Warn("Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
+						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
+						http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
+						return
+					}
+					apiKey = token
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+					m.logger.Debug("Bearer token did not match OAuth token format, falling back to raw API key")
+				}
 			} else {
-				// PAT token — forward via SIGNOZ-API-KEY
 				apiKey = token
 				ctx = util.SetAPIKey(ctx, apiKey)
 				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
@@ -175,14 +206,24 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			m.logger.Debug("Using API key from environment config")
 		} else {
 			m.logger.Warn("No API key found in headers or environment")
+			if m.config.OAuthEnabled {
+				m.setOAuthChallenge(w, "")
+			}
 			http.Error(w, "Authorization or SIGNOZ-API-KEY header required", http.StatusUnauthorized)
+			return
+		}
+
+		if usedOAuthToken {
+			ctx = util.SetSigNozURL(ctx, signozURL)
+			r = r.WithContext(ctx)
+			next.ServeHTTP(w, r)
 			return
 		}
 
 		// Determine final URL with precedence: X-SigNoz-URL header > config URL
 		if customURL != "" {
 			trimmed := strings.TrimSuffix(customURL, "/")
-			normalized, err := normalizeSigNozURL(trimmed)
+			normalized, err := util.NormalizeSigNozURL(trimmed)
 			if err != nil {
 				m.logger.Warn("Invalid X-SigNoz-URL header",
 					zap.String("url", customURL), zap.Error(err))
@@ -221,6 +262,16 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 		_, _ = fmt.Fprint(w, "ok")
 	})
 
+	if m.config.OAuthEnabled {
+		oauthHandler := oauth.NewHandler(m.logger, m.config)
+		mux.HandleFunc("GET /.well-known/oauth-protected-resource", oauthHandler.HandleProtectedResourceMetadata)
+		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.HandleAuthorizationServerMetadata)
+		mux.HandleFunc("POST /oauth/register", oauthHandler.HandleRegisterClient)
+		mux.HandleFunc("GET /oauth/authorize", oauthHandler.HandleAuthorizePage)
+		mux.HandleFunc("POST /oauth/authorize", oauthHandler.HandleAuthorizeSubmit)
+		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
+	}
+
 	httpServer := server.NewStreamableHTTPServer(s)
 	mux.Handle("/mcp", m.authMiddleware(httpServer))
 
@@ -246,62 +297,20 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	return srv.ListenAndServe()
 }
 
-// normalizeSigNozURL validates that rawURL is safe to use as a SigNoz backend
-// target and returns the canonical origin form (scheme://host[:port]).
-// It blocks non-HTTP schemes, private/reserved IPs, and localhost to prevent
-// SSRF. Default ports (80 for http, 443 for https) are stripped so that
-// equivalent URLs like https://example.com and https://example.com:443
-// produce the same origin string for caching.
-func normalizeSigNozURL(rawURL string) (string, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return "", fmt.Errorf("malformed URL: %w", err)
+func (m *MCPServer) setOAuthChallenge(w http.ResponseWriter, extra string) {
+	if !m.config.OAuthEnabled {
+		return
 	}
 
-	// Only allow http and https schemes
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return "", fmt.Errorf("scheme %q not allowed, must be http or https", parsed.Scheme)
+	resourceMetadata := m.oauthResourceMetadataURL()
+	if extra == "" {
+		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata="%s"`, resourceMetadata))
+		return
 	}
 
-	// Reject URLs that contain path, query, or fragment components.
-	// Users may copy a full UI URL like https://tenant.example.com/dashboard/123?orgId=1
-	// but baseURL must be an origin only (scheme + host + optional port).
-	if parsed.Path != "" && parsed.Path != "/" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a path, got path %q", parsed.Path)
-	}
-	if parsed.RawQuery != "" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without query parameters")
-	}
-	if parsed.Fragment != "" {
-		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
-	}
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer %s, resource_metadata="%s"`, extra, resourceMetadata))
+}
 
-	host := parsed.Hostname()
-
-	if host == "" {
-		return "", fmt.Errorf("URL must include a host")
-	}
-
-	// Lowercase the host for consistent comparison.
-	host = strings.ToLower(host)
-
-	// Block localhost variants
-	if host == "localhost" || host == "0.0.0.0" || host == "[::]" {
-		return "", fmt.Errorf("host %q is not allowed", host)
-	}
-
-	// Build the canonical origin. Strip default ports so that
-	// https://example.com and https://example.com:443 hash identically.
-	port := parsed.Port()
-	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
-		port = ""
-	}
-
-	origin := scheme + "://" + host
-	if port != "" {
-		origin += ":" + port
-	}
-
-	return origin, nil
+func (m *MCPServer) oauthResourceMetadataURL() string {
+	return strings.TrimSuffix(m.config.OAuthIssuerURL, "/") + "/.well-known/oauth-protected-resource"
 }

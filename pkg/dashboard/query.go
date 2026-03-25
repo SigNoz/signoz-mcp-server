@@ -83,6 +83,7 @@ Before submitting a PromQL query, verify:
   [ ] Grouping labels with dots are quoted: by ("label.name")
   [ ] All quotes are double quotes ", not single quotes '
   [ ] Histogram/Summary metrics use dot suffixes (.bucket, .sum, .count)
+  [ ] For grouped or multi-series charts, legend uses {{label_name}} syntax matching query labels
 ================================================================================
 ERROR PREVENTION
 ================================================================================
@@ -359,6 +360,10 @@ Performance Tips:
   4. Add time range filters to both tables
   5. Order by fingerprint and timestamp for window functions
   6. Filter isNaN() values before final aggregation
+
+Legend Formatting:
+  If the query returns multiple series, include label columns in SELECT and set the dashboard legend with {{column_name}}.
+  Example: service_name column -> legend {{service_name}}
 `
 
 const ClickhouseSqlQueryForLogs = `
@@ -518,6 +523,10 @@ Variables:
   $end_timestamp        - Unix timestamp (seconds)
   $start_timestamp_nano - Unix timestamp (nanoseconds)
   $end_timestamp_nano   - Unix timestamp (nanoseconds)
+
+Legend Formatting:
+  For grouped chart queries, return label columns in SELECT/GROUP BY and set the dashboard legend with {{column_name}}.
+  Example: container_name column -> legend {{container_name}}
 
 Common Fields:
   - severity_text         - Log severity level
@@ -725,6 +734,10 @@ Variables:
   {{.start_datetime}} - DateTime format
   {{.end_datetime}}   - DateTime format
 
+Legend Formatting:
+  For grouped chart queries, return label columns in SELECT/GROUP BY and set the dashboard legend with {{column_name}}.
+  Example: method column -> legend {{method}}
+
 Common Fields:
   - has_error             - Boolean (span error status)
   - http_method           - String (GET, POST, etc.)
@@ -836,8 +849,15 @@ Grouping & Result Manipulation:
   Order By: Sort ascending/descending
   Limit: Top N results (for time series: limits number of series, not data points)
   Having: Filter aggregated results - count() > 1000 AND count() < 5000
-  Legend Format: Customize labels with {{attribute}}
   Missing Values: Records without grouping key → grouped as "". Use field EXISTS to exclude.
+
+Legend Formatting:
+  For grouped chart queries, set legend with {{attribute_name}} placeholders that exactly match groupBy keys.
+  Required for graph/timeseries, bar, pie, and histogram panels when groupBy is non-empty.
+  Examples:
+    - groupBy service.name -> legend {{service.name}}
+    - groupBy service.name and http.method -> legend {{service.name}} - {{http.method}}
+  Without legend, SigNoz shows raw query identifiers.
 
 Multi-Query Analysis:
   Combine queries with formulas:
