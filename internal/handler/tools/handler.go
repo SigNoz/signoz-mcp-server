@@ -38,6 +38,12 @@ func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
 	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 		l = telemetry.LoggerWithURL(l, signozURL)
 	}
+	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
+		l = l.With(zap.String("session_id", sid))
+	}
+	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
+		l = l.With(zap.String("search_context", sc))
+	}
 	return l
 }
 
@@ -63,8 +69,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 		return cachedClient, nil
 	}
 
-	h.logger.Debug("Creating new SigNoz client for tenant",
-		zap.String("url", signozURL))
+	h.tenantLogger(ctx).Debug("Creating new SigNoz client for tenant")
 	newClient := signozclient.NewClient(h.logger, signozURL, apiKey)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil

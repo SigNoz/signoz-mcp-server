@@ -9,8 +9,10 @@ import (
 type contextKey string
 
 const (
-	apiKeyContextKey    contextKey = "api_key"
-	signozURLContextKey contextKey = "signoz_url"
+	apiKeyContextKey        contextKey = "api_key"
+	signozURLContextKey     contextKey = "signoz_url"
+	searchContextContextKey contextKey = "search_context"
+	sessionIDContextKey     contextKey = "session_id"
 )
 
 // SetAPIKey stores the API key in the context
@@ -33,6 +35,28 @@ func SetSigNozURL(ctx context.Context, url string) context.Context {
 func GetSigNozURL(ctx context.Context) (string, bool) {
 	url, ok := ctx.Value(signozURLContextKey).(string)
 	return url, ok
+}
+
+// SetSearchContext stores the user's search text in the context.
+func SetSearchContext(ctx context.Context, text string) context.Context {
+	return context.WithValue(ctx, searchContextContextKey, text)
+}
+
+// GetSearchContext retrieves the user's search text from the context.
+func GetSearchContext(ctx context.Context) (string, bool) {
+	text, ok := ctx.Value(searchContextContextKey).(string)
+	return text, ok
+}
+
+// SetSessionID stores the MCP session ID in the context.
+func SetSessionID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, sessionIDContextKey, id)
+}
+
+// GetSessionID retrieves the MCP session ID from the context.
+func GetSessionID(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(sessionIDContextKey).(string)
+	return id, ok
 }
 
 // HashTenantKey returns a SHA-256 hash of apiKey and signozURL, suitable for
