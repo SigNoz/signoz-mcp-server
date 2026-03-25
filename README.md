@@ -39,6 +39,27 @@ The binary is installed as `server` to `$GOPATH/bin/` (default: `$HOME/go/bin/se
 mv "$(go env GOPATH)/bin/server" "$(go env GOPATH)/bin/signoz-mcp-server"
 ```
 
+### Docker
+
+Docker images are available on [Docker Hub](https://hub.docker.com/r/signoz/signoz-mcp-server/tags):
+
+```bash
+docker pull signoz/signoz-mcp-server:latest
+```
+
+Run in HTTP mode:
+
+```bash
+docker run -p 8000:8000 \
+  -e TRANSPORT_MODE=http \
+  -e MCP_SERVER_PORT=8000 \
+  -e SIGNOZ_URL=https://your-signoz-instance.com \
+  -e SIGNOZ_API_KEY=your-api-key \
+  signoz/signoz-mcp-server:latest
+```
+
+Use a specific version tag (e.g. `v0.1.0`) instead of `latest` for pinned deployments.
+
 ### Build from Source
 
 ```bash
@@ -186,15 +207,11 @@ MCP_SERVER_PORT=8000 \
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_log_views` | List all saved log views |
 | `signoz_get_log_view` | Get details of a saved log view |
-| `signoz_get_error_logs` | Get ERROR/FATAL logs |
-| `signoz_search_logs_by_service` | Search logs for a specific service |
-| `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_logs` | Aggregate logs (count, avg, p99, etc.) with grouping |
-| `signoz_search_traces_by_service` | Search traces for a specific service |
+| `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_traces` | Aggregate trace statistics with grouping |
+| `signoz_search_traces` | Search traces with flexible filtering |
 | `signoz_get_trace_details` | Get full trace with all spans |
-| `signoz_get_trace_error_analysis` | Analyze error patterns in traces |
-| `signoz_get_trace_span_hierarchy` | Get span relationships for a trace |
 | `signoz_execute_builder_query` | Execute a raw Query Builder v5 query |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).

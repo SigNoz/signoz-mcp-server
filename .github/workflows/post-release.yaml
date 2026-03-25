@@ -1,0 +1,206 @@
+name: post-release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-version:
+    # Only run for stable releases (skip pre-releases like v0.0.2-rc.0)
+    if: "!github.event.release.prerelease"
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: extract version from tag
+        id: version
+        run: |
+          set -euo pipefail
+
+          # Strip the leading 'v' from the tag (v0.1.0 -> 0.1.0)
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Belt-and-suspenders: skip pre-release tags even if GitHub checkbox was missed
+          if echo "$GITHUB_REF_NAME" | grep -q '-'; then
+            echo "Pre-release tag detected, skipping."
+            exit 0
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+          # Find the previous stable tag (exclude -rc, -alpha, -beta etc.)
+          # Sort ascending, find current tag, take the line right before it
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=v:refname \
+            | grep -v '-' \
+            | awk -v cur="$GITHUB_REF_NAME" '$0 == cur { print prev; exit } { prev = $0 }')
+          echo "prev_tag=${PREV_TAG:-}" >> "$GITHUB_OUTPUT"
+
+      - name: update manifest.json
+        run: |
+          set -euo pipefail
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' manifest.json > tmp.json && mv tmp.json manifest.json
+
+      - name: update server.json
+        run: |
+          set -euo pipefail
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' server.json > tmp.json && mv tmp.json server.json
+
+      - name: generate changelog entry
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          PREV_TAG="${{ steps.version.outputs.prev_tag }}"
+          DATE=$(date -u +%Y-%m-%d)
+          REPO="https://github.com/${{ github.repository }}"
+
+          # Guard: skip if this version already exists in changelog
+          if grep -q "^## \[${VERSION}\]" CHANGELOG.md 2>/dev/null; then
+            echo "Changelog entry for ${VERSION} already exists, skipping generation."
+            exit 0
+          fi
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="${TAG}"
+            echo "No previous stable tag found — changelog will include all commits up to ${TAG}."
+          else
+            RANGE="${PREV_TAG}..${TAG}"
+          fi
+
+          # Collect commits by conventional-commit type
+          declare -A SECTIONS
+          SECTIONS=(
+            ["feat"]=""
+            ["fix"]=""
+            ["refactor"]=""
+            ["docs"]=""
+            ["ci"]=""
+            ["other"]=""
+          )
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            # Extract the last (#N) as the PR number (squash-merge convention)
+            PR=$(echo "$line" | grep -oP '\(#\d+\)$' | grep -oP '\d+' || true)
+            PR_LINK=""
+            if [ -n "$PR" ]; then
+              PR_LINK=" ([#${PR}](${REPO}/pull/${PR}))"
+            fi
+
+            # Extract commit message (strip hash prefix), then strip trailing (#N)
+            MSG=$(echo "$line" | sed 's/^[a-f0-9]* //' | sed -E 's/( *\(#[0-9]+\))+$//')
+
+            # Categorize by conventional commit prefix
+            if echo "$MSG" | grep -qiP '^feat(\(.+\))?:'; then
+              CLEAN=$(echo "$MSG" | sed -E 's/^feat(\([^)]+\))?: //i')
+              SECTIONS["feat"]+="- ${CLEAN}${PR_LINK}\n"
+            elif echo "$MSG" | grep -qiP '^fix(\(.+\))?:'; then
+              CLEAN=$(echo "$MSG" | sed -E 's/^fix(\([^)]+\))?: //i')
+              SECTIONS["fix"]+="- ${CLEAN}${PR_LINK}\n"
+            elif echo "$MSG" | grep -qiP '^refactor(\(.+\))?:'; then
+              CLEAN=$(echo "$MSG" | sed -E 's/^refactor(\([^)]+\))?: //i')
+              SECTIONS["refactor"]+="- ${CLEAN}${PR_LINK}\n"
+            elif echo "$MSG" | grep -qiP '^docs(\(.+\))?:'; then
+              CLEAN=$(echo "$MSG" | sed -E 's/^docs(\([^)]+\))?: //i')
+              SECTIONS["docs"]+="- ${CLEAN}${PR_LINK}\n"
+            elif echo "$MSG" | grep -qiP '^ci(\(.+\))?:'; then
+              CLEAN=$(echo "$MSG" | sed -E 's/^ci(\([^)]+\))?: //i')
+              SECTIONS["ci"]+="- ${CLEAN}${PR_LINK}\n"
+            elif echo "$MSG" | grep -qiP '^(chore|test|build)(\(.+\))?:'; then
+              CLEAN=$(echo "$MSG" | sed -E 's/^(chore|test|build)(\([^)]+\))?: //i')
+              SECTIONS["other"]+="- ${CLEAN}${PR_LINK}\n"
+            else
+              # No conventional prefix — put in other
+              SECTIONS["other"]+="- ${MSG}${PR_LINK}\n"
+            fi
+          done < <(git log ${RANGE} --oneline --no-merges)
+
+          # Build the changelog entry
+          ENTRY="## [${VERSION}] - ${DATE}\n"
+
+          if [ -n "${SECTIONS["feat"]}" ]; then
+            ENTRY+="\n### Added\n${SECTIONS["feat"]}"
+          fi
+          if [ -n "${SECTIONS["fix"]}" ]; then
+            ENTRY+="\n### Fixed\n${SECTIONS["fix"]}"
+          fi
+          if [ -n "${SECTIONS["refactor"]}" ]; then
+            ENTRY+="\n### Changed\n${SECTIONS["refactor"]}"
+          fi
+          if [ -n "${SECTIONS["docs"]}" ]; then
+            ENTRY+="\n### Documentation\n${SECTIONS["docs"]}"
+          fi
+          if [ -n "${SECTIONS["ci"]}" ]; then
+            ENTRY+="\n### CI\n${SECTIONS["ci"]}"
+          fi
+          if [ -n "${SECTIONS["other"]}" ]; then
+            ENTRY+="\n### Other\n${SECTIONS["other"]}"
+          fi
+
+          # Build comparison link
+          if [ -n "$PREV_TAG" ]; then
+            LINK="[${VERSION}]: ${REPO}/compare/${PREV_TAG}...${TAG}"
+          else
+            LINK="[${VERSION}]: ${REPO}/releases/tag/${TAG}"
+          fi
+
+          # Insert entry into CHANGELOG.md after the header block
+          # Find the line number of the first "## [" heading (existing version entry)
+          FIRST_VERSION_LINE=$(grep -n '^## \[' CHANGELOG.md | head -1 | cut -d: -f1 || true)
+
+          if [ -n "$FIRST_VERSION_LINE" ]; then
+            # Insert new entry before the first existing version heading
+            {
+              head -n $((FIRST_VERSION_LINE - 1)) CHANGELOG.md
+              echo ""
+              echo -e "$ENTRY"
+              tail -n +${FIRST_VERSION_LINE} CHANGELOG.md
+            } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          else
+            # No existing version entries — append after header
+            {
+              cat CHANGELOG.md
+              echo ""
+              echo -e "$ENTRY"
+            } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          fi
+
+          # Append comparison link (only if not already present)
+          if ! grep -q "^\[${VERSION}\]:" CHANGELOG.md; then
+            echo "$LINK" >> CHANGELOG.md
+          fi
+
+      - name: check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: create pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/post-release-${{ steps.version.outputs.tag }}
+          commit-message: "chore: bump version to ${{ steps.version.outputs.version }} after release"
+          title: "chore: post-release ${{ steps.version.outputs.tag }}"
+          body: |
+            Auto-generated after release [${{ steps.version.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}).
+
+            Updates:
+            - `manifest.json` version → `${{ steps.version.outputs.version }}`
+            - `server.json` version → `${{ steps.version.outputs.version }}`
+            - `CHANGELOG.md` — adds `[${{ steps.version.outputs.version }}]` entry generated from commit history
+          labels: automated
