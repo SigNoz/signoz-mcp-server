@@ -78,10 +78,6 @@
       "description": "Get full details of a log view"
     },
     {
-      "name": "signoz_get_logs_for_alert",
-      "description": "Fetch logs related to a specific alert"
-    },
-    {
       "name": "signoz_get_error_logs",
       "description": "Retrieve error and fatal logs"
     },

@@ -3,16 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strconv"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
-	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -39,19 +35,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(getLogViewTool, h.handleGetLogView)
-
-	getLogsForAlertTool := mcp.NewTool("signoz_get_logs_for_alert",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get logs related to a specific alert (automatically determines time range and service from alert details)"),
-		mcp.WithString("alertId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range around alert (optional). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '15m', '30m', '1h', '2h', '6h'. Defaults to '1h' if not provided.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
-		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
-	)
-
-	s.AddTool(getLogsForAlertTool, h.handleGetLogsForAlert)
 
 	// aggregate_logs: compute statistics over logs with GROUP BY
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
@@ -163,87 +146,6 @@ func (h *Handler) handleGetLogView(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
-}
-
-func (h *Handler) handleGetLogsForAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	args := req.Params.Arguments.(map[string]any)
-
-	alertID, ok := args["alertId"].(string)
-	if !ok || alertID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "alertId" must be a non-empty string. Example: {"alertId": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "1h", "limit": "50"}`), nil
-	}
-
-	timeRange := "1h"
-	if tr, ok := args["timeRange"].(string); ok && tr != "" {
-		timeRange = tr
-	}
-
-	limit := 100
-	if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-		if limitInt, err := strconv.Atoi(limitStr); err == nil {
-			limit = limitInt
-		}
-	}
-
-	_, offset := paginate.ParseParams(req.Params.Arguments)
-
-	log.Debug("Tool called: signoz_get_logs_for_alert", zap.String("alertId", alertID))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	alertData, err := client.GetAlertByRuleID(ctx, alertID)
-	if err != nil {
-		log.Error("Failed to get alert details", zap.String("alertId", alertID), zap.Error(err))
-		return mcp.NewToolResultError("failed to get alert details: " + err.Error()), nil
-	}
-
-	var alertResponse map[string]interface{}
-	if err := json.Unmarshal(alertData, &alertResponse); err != nil {
-		log.Error("Failed to parse alert data", zap.Error(err))
-		return mcp.NewToolResultError("failed to parse alert data: " + err.Error()), nil
-	}
-
-	serviceName := ""
-	if data, ok := alertResponse["data"].(map[string]interface{}); ok {
-		if labels, ok := data["labels"].(map[string]interface{}); ok {
-			if service, ok := labels["service_name"].(string); ok {
-				serviceName = service
-			} else if service, ok := labels["service"].(string); ok {
-				serviceName = service
-			}
-		}
-	}
-
-	now := time.Now()
-	startTime := now.Add(-1 * time.Hour).UnixMilli()
-	endTime := now.UnixMilli()
-
-	if duration, err := timeutil.ParseTimeRange(timeRange); err == nil {
-		startTime = now.Add(-duration).UnixMilli()
-	}
-
-	filterExpression := "severity_text IN ('ERROR', 'WARN', 'FATAL')"
-	if serviceName != "" {
-		filterExpression += fmt.Sprintf(" AND service.name in ['%s']", serviceName)
-	}
-
-	queryPayload := types.BuildLogsQueryPayload(startTime, endTime, filterExpression, limit, offset)
-
-	queryJSON, err := json.Marshal(queryPayload)
-	if err != nil {
-		log.Error("Failed to marshal query payload", zap.Error(err))
-		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
-	}
-
-	result, err := client.QueryBuilderV5(ctx, queryJSON)
-	if err != nil {
-		log.Error("Failed to get logs for alert", zap.String("alertId", alertID), zap.Error(err))
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	return mcp.NewToolResultText(string(result)), nil
 }
 
 func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

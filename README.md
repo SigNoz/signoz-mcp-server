@@ -464,15 +464,6 @@ Gets full details of a specific log view by ID.
 
 - **Parameters**: `viewId` (required) - Log view ID
 
-#### `signoz_get_logs_for_alert`
-
-Gets logs related to a specific alert automatically.
-
-- **Parameters**:
-    - `alertId` (required) - Alert rule ID
-    - `timeRange` (optional) - Time range around alert (e.g., '1h', '30m', '2h') - default: '1h'
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
-
 #### `signoz_get_error_logs`
 
 Gets logs with ERROR or FATAL severity within a time range.
