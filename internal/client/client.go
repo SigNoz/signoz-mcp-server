@@ -31,17 +31,19 @@ const (
 var ErrUnauthorized = errors.New("signoz credentials rejected")
 
 type SigNoz struct {
-	baseURL    string
-	apiKey     string
-	logger     *zap.Logger
-	httpClient *http.Client
+	baseURL        string
+	apiKey         string
+	authHeaderName string
+	logger         *zap.Logger
+	httpClient     *http.Client
 }
 
-func NewClient(log *zap.Logger, baseURL, apiKey string) *SigNoz {
+func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz {
 	return &SigNoz{
-		logger:  log,
-		baseURL: baseURL,
-		apiKey:  apiKey,
+		logger:         log,
+		baseURL:        baseURL,
+		apiKey:         apiKey,
+		authHeaderName: authHeaderName,
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
@@ -149,7 +151,8 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		req.Header.Set(ContentType, "application/json")
-		req.Header.Set(SignozApiKey, s.apiKey)
+
+		req.Header.Set(s.authHeaderName, s.apiKey)
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {

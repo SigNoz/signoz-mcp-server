@@ -129,11 +129,16 @@ func (m *MCPServer) startStdio(s *server.MCPServer) error {
 	// so that GetClient works uniformly across both transports.
 	ctxFunc := server.WithStdioContextFunc(func(ctx context.Context) context.Context {
 		ctx = util.SetAPIKey(ctx, m.config.APIKey)
+		ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 		ctx = util.SetSigNozURL(ctx, m.config.URL)
 		return ctx
 	})
 
 	return server.ServeStdio(s, ctxFunc)
+}
+
+func isJWTToken(token string) bool {
+	return strings.Count(token, ".") == 2 && strings.HasPrefix(token, "eyJ")
 }
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
@@ -143,65 +148,89 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
 		customURL := r.Header.Get("X-SigNoz-URL")
 
-		// Extract Authorization header
+		// Check for auth credentials from headers.
+		// Clients can provide either:
+		//   - SIGNOZ-API-KEY: <pat-token>
+		//   - Authorization: Bearer <token>  (JWT, PAT)
+		//   - Authorization: <token>         (legacy)
+		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
 
 		var apiKey string
 		var signozURL string
 		var usedOAuthToken bool
 
-		if authHeader != "" {
-			// Support both "Bearer <token>" and raw token formats
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				bearerToken := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-				if m.config.OAuthEnabled {
-					decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(bearerToken, []byte(m.config.OAuthTokenSecret))
-					switch {
-					case err == nil:
-						apiKey = decryptedAPIKey
-						signozURL = decryptedURL
-						usedOAuthToken = true
-						m.logger.Debug("OAuth access token extracted from Authorization header")
-					case errors.Is(err, oauth.ErrExpiredToken):
-						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
-						http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
-						return
-					default:
-						// Only fall back to legacy raw API key mode when the request also
-						// carries an explicit SigNoz URL (header or config). Otherwise a
-						// stale bearer token can mask the OAuth challenge flow.
-						if customURL == "" && m.config.URL == "" {
-							m.logger.Warn("Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
-							m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
-							http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
-							return
-						}
-						apiKey = bearerToken
-						m.logger.Debug("Bearer token did not match OAuth token format, falling back to raw API key")
-					}
+		if signozAPIKey != "" {
+			// Explicit PAT via SIGNOZ-API-KEY header — forward as-is.
+			apiKey = strings.TrimPrefix(signozAPIKey, "Bearer ")
+
+			ctx = util.SetAPIKey(ctx, apiKey)
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+			m.logger.Debug("Using SIGNOZ-API-KEY header for auth")
+		} else if authHeader != "" {
+			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+			if customURL != "" {
+				if isJWTToken(token) {
+					// JWT token — forward via Authorization: Bearer <token>
+					apiKey = "Bearer " + token
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "Authorization")
+					m.logger.Debug("Using JWT token authentication via Authorization header")
 				} else {
-					apiKey = bearerToken
+					// PAT token — forward via SIGNOZ-API-KEY
+					apiKey = token
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+					m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header")
+				}
+			} else if m.config.OAuthEnabled {
+				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
+				switch {
+				case err == nil:
+					apiKey = decryptedAPIKey
+					signozURL = decryptedURL
+					usedOAuthToken = true
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+					m.logger.Debug("OAuth access token extracted from Authorization header")
+				case errors.Is(err, oauth.ErrExpiredToken):
+					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
+					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
+					return
+				default:
+					// Only fall back to legacy raw API key mode when the request also
+					// carries an explicit SigNoz URL (header or config). Otherwise a
+					// stale bearer token can mask the OAuth challenge flow.
+					if customURL == "" && m.config.URL == "" {
+						m.logger.Warn("Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
+						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
+						http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
+						return
+					}
+					apiKey = token
+					ctx = util.SetAPIKey(ctx, apiKey)
+					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+					m.logger.Debug("Bearer token did not match OAuth token format, falling back to raw API key")
 				}
 			} else {
-				apiKey = authHeader
+				apiKey = token
+				ctx = util.SetAPIKey(ctx, apiKey)
+				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+				m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header")
 			}
 
-			ctx = util.SetAPIKey(ctx, apiKey)
-			m.logger.Debug("API key extracted from Authorization header")
-
-		} else if m.config.OAuthEnabled {
-			m.logger.Warn("No Authorization header found while OAuth is enabled")
-			m.setOAuthChallenge(w, "")
-			http.Error(w, "Authorization header required", http.StatusUnauthorized)
-			return
 		} else if m.config.APIKey != "" {
-			// Fallback to config API key if no Authorization header
+			// Fallback to config API key
 			apiKey = m.config.APIKey
 			ctx = util.SetAPIKey(ctx, apiKey)
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 			m.logger.Debug("Using API key from environment config")
 		} else {
-			m.logger.Warn("No API key found in Authorization header or environment")
-			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			m.logger.Warn("No API key found in headers or environment")
+			if m.config.OAuthEnabled {
+				m.setOAuthChallenge(w, "")
+			}
+			http.Error(w, "Authorization or SIGNOZ-API-KEY header required", http.StatusUnauthorized)
 			return
 		}
 

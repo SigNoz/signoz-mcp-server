@@ -58,9 +58,14 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 
 	apiKey, _ := util.GetAPIKey(ctx)
 	signozURL, _ := util.GetSigNozURL(ctx)
+	authHeader, _ := util.GetAuthHeader(ctx)
 
 	if apiKey == "" || signozURL == "" {
 		return nil, fmt.Errorf("missing tenant credentials in context (apiKey or signozURL)")
+	}
+
+	if authHeader == "" {
+		authHeader = "SIGNOZ-API-KEY"
 	}
 
 	cacheKey := util.HashTenantKey(apiKey, signozURL)
@@ -70,7 +75,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 	}
 
 	h.tenantLogger(ctx).Debug("Creating new SigNoz client for tenant")
-	newClient := signozclient.NewClient(h.logger, signozURL, apiKey)
+	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil
 }
