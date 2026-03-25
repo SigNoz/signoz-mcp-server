@@ -85,17 +85,38 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 }
 
 // loggingMiddleware returns a tool handler middleware that logs tool call
-// start/finish with duration and tool name.
+// start/finish with duration, tool name, session ID, and search context.
 func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			start := time.Now()
-			m.logger.Debug("tool call started", zap.String("tool", req.Params.Name))
+
+			// Extract session ID from mcp-go client session.
+			if session := server.ClientSessionFromContext(ctx); session != nil {
+				ctx = util.SetSessionID(ctx, session.SessionID())
+			}
+
+			// Extract searchContext from tool arguments (LLM-provided).
+			if args, ok := req.Params.Arguments.(map[string]any); ok {
+				if sc, ok := args["searchContext"].(string); ok && sc != "" {
+					ctx = util.SetSearchContext(ctx, sc)
+				}
+			}
+
+			fields := []zap.Field{zap.String("tool", req.Params.Name)}
+			if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
+				fields = append(fields, zap.String("session_id", sid))
+			}
+			if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
+				fields = append(fields, zap.String("search_context", sc))
+			}
+
+			m.logger.Debug("tool call started", fields...)
 			result, err := next(ctx, req)
 			m.logger.Debug("tool call finished",
-				zap.String("tool", req.Params.Name),
-				zap.Duration("duration", time.Since(start)),
-				zap.Bool("error", err != nil))
+				append(fields,
+					zap.Duration("duration", time.Since(start)),
+					zap.Bool("error", err != nil))...)
 			return result, err
 		}
 	}

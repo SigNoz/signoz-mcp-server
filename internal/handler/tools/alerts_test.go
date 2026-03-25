@@ -12,7 +12,7 @@ import (
 
 func TestHandleListAlerts(t *testing.T) {
 	mock := &client.MockClient{
-		ListAlertsFn: func(ctx context.Context) (json.RawMessage, error) {
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 			return json.RawMessage(`{
 				"status": "success",
 				"data": [
@@ -46,7 +46,7 @@ func TestHandleListAlerts(t *testing.T) {
 
 func TestHandleListAlerts_WithPagination(t *testing.T) {
 	mock := &client.MockClient{
-		ListAlertsFn: func(ctx context.Context) (json.RawMessage, error) {
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 			return json.RawMessage(`{
 				"status": "success",
 				"data": [
@@ -74,7 +74,7 @@ func TestHandleListAlerts_WithPagination(t *testing.T) {
 
 func TestHandleListAlerts_ClientError(t *testing.T) {
 	mock := &client.MockClient{
-		ListAlertsFn: func(ctx context.Context) (json.RawMessage, error) {
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 			return nil, fmt.Errorf("connection refused")
 		},
 	}
@@ -233,5 +233,173 @@ func TestHandleGetAlertHistory_InvalidOrder(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Error("expected error result for invalid order value")
+	}
+}
+
+func TestHandleGetAlertHistory_WithStateFilter(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-1",
+		"timeRange": "1h",
+		"state":     "firing",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if capturedReq.State != "firing" {
+		t.Errorf("expected state=firing, got %q", capturedReq.State)
+	}
+}
+
+func TestHandleGetAlertHistory_InvalidState(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-1",
+		"timeRange": "1h",
+		"state":     "invalid",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid state value")
+	}
+}
+
+func TestHandleGetAlertHistory_StateOmitted(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-1",
+		"timeRange": "1h",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if capturedReq.State != "" {
+		t.Errorf("expected state to be empty when omitted, got %q", capturedReq.State)
+	}
+}
+
+func TestHandleListAlerts_WithFilterParams(t *testing.T) {
+	var capturedParams types.ListAlertsParams
+	mock := &client.MockClient{
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
+			capturedParams = params
+			return json.RawMessage(`{"status":"success","data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alerts", map[string]any{
+		"active":   "false",
+		"silenced": "true",
+		"filter":   `alertname="HighCPU",severity="critical"`,
+		"receiver": "slack-.*",
+	})
+
+	result, err := h.handleListAlerts(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if capturedParams.Active == nil || *capturedParams.Active != false {
+		t.Errorf("expected active=false, got %v", capturedParams.Active)
+	}
+	if capturedParams.Silenced == nil || *capturedParams.Silenced != true {
+		t.Errorf("expected silenced=true, got %v", capturedParams.Silenced)
+	}
+	if len(capturedParams.Filter) != 2 {
+		t.Errorf("expected 2 filters, got %d: %v", len(capturedParams.Filter), capturedParams.Filter)
+	}
+	if capturedParams.Receiver != "slack-.*" {
+		t.Errorf("expected receiver='slack-.*', got %q", capturedParams.Receiver)
+	}
+}
+
+func TestHandleListAlerts_BoolParamNilWhenOmitted(t *testing.T) {
+	var capturedParams types.ListAlertsParams
+	mock := &client.MockClient{
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
+			capturedParams = params
+			return json.RawMessage(`{"status":"success","data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alerts", map[string]any{})
+
+	result, err := h.handleListAlerts(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if capturedParams.Active != nil {
+		t.Errorf("expected active=nil when omitted, got %v", *capturedParams.Active)
+	}
+	if capturedParams.Silenced != nil {
+		t.Errorf("expected silenced=nil when omitted, got %v", *capturedParams.Silenced)
+	}
+	if capturedParams.Inhibited != nil {
+		t.Errorf("expected inhibited=nil when omitted, got %v", *capturedParams.Inhibited)
+	}
+}
+
+func TestHandleListAlerts_FilterSplitAndTrim(t *testing.T) {
+	var capturedParams types.ListAlertsParams
+	mock := &client.MockClient{
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
+			capturedParams = params
+			return json.RawMessage(`{"status":"success","data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alerts", map[string]any{
+		"filter": ` alertname="A" , severity="critical" `,
+	})
+
+	result, err := h.handleListAlerts(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if len(capturedParams.Filter) != 2 {
+		t.Fatalf("expected 2 filters, got %d: %v", len(capturedParams.Filter), capturedParams.Filter)
+	}
+	if capturedParams.Filter[0] != `alertname="A"` {
+		t.Errorf("expected first filter='alertname=\"A\"', got %q", capturedParams.Filter[0])
+	}
+	if capturedParams.Filter[1] != `severity="critical"` {
+		t.Errorf("expected second filter='severity=\"critical\"', got %q", capturedParams.Filter[1])
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 const (
@@ -49,10 +50,28 @@ func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz 
 	}
 }
 
+// requestLogger returns a logger enriched with session_id and search_context
+// from the request context, so every client-level log line can be correlated
+// back to the MCP session and user query.
+func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
+	l := s.logger
+	if s.baseURL != "" {
+		l = l.With(zap.String("tenant_url", s.baseURL))
+	}
+	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
+		l = l.With(zap.String("session_id", sid))
+	}
+	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
+		l = l.With(zap.String("search_context", sc))
+	}
+	return l
+}
+
 // ValidateCredentials performs a lightweight authenticated request against the
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
+	log := s.requestLogger(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -67,12 +86,12 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		s.logger.Error("SigNoz credential validation request failed", zap.String("url", reqURL), zap.Error(err))
+		log.Error("SigNoz credential validation request failed", zap.String("url", reqURL), zap.Error(err))
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			s.logger.Warn("Failed to close response body", zap.Error(err))
+			log.Warn("Failed to close response body", zap.Error(err))
 		}
 	}()
 
@@ -85,10 +104,10 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		s.logger.Warn("SigNoz credential validation failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
+		log.Warn("SigNoz credential validation failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
 		return fmt.Errorf("%w: status %d", ErrUnauthorized, resp.StatusCode)
 	default:
-		s.logger.Warn("SigNoz credential validation returned unexpected status", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
+		log.Warn("SigNoz credential validation returned unexpected status", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 }
@@ -103,6 +122,7 @@ const (
 // checking, body reading, and retry with exponential backoff for transient
 // failures (429, 502, 503, 504, network errors).
 func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.Reader, timeout time.Duration) (json.RawMessage, error) {
+	log := s.requestLogger(ctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -141,7 +161,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				return nil, fmt.Errorf("request cancelled: %w", err)
 			}
 			lastErr = fmt.Errorf("failed to do request: %w", err)
-			s.logger.Warn("Request failed, will retry",
+			log.Warn("Request failed, will retry",
 				zap.String("url", reqURL), zap.Int("attempt", attempt+1), zap.Error(err))
 			select {
 			case <-ctx.Done():
@@ -166,7 +186,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		// Retry on transient server errors.
 		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
 			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
-			s.logger.Warn("Retryable status, will retry",
+			log.Warn("Retryable status, will retry",
 				zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.Int("attempt", attempt+1))
 			select {
 			case <-ctx.Done():
@@ -206,25 +226,28 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v2/metrics?%s", s.baseURL, params.Encode())
-	s.logger.Debug("Listing metrics", zap.String("searchText", searchText))
+	s.requestLogger(ctx).Debug("Listing metrics", zap.String("searchText", searchText))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/metrics/filters/keys", s.baseURL)
-	s.logger.Debug("Making request to SigNoz API", zap.String("method", "GET"), zap.String("endpoint", "/api/v1/metrics/filters/keys"))
+	s.requestLogger(ctx).Debug("Making request to SigNoz API", zap.String("method", "GET"), zap.String("endpoint", "/api/v1/metrics/filters/keys"))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) ListAlerts(ctx context.Context) (json.RawMessage, error) {
+func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
-	s.logger.Debug("Fetching alerts from SigNoz")
+	if qp := params.QueryParams(); len(qp) > 0 {
+		reqURL += "?" + qp.Encode()
+	}
+	s.requestLogger(ctx).Debug("Fetching alerts from SigNoz", zap.String("url", reqURL))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/rules/%s", s.baseURL, url.PathEscape(ruleID))
-	s.logger.Debug("Fetching alert rule details", zap.String("ruleID", ruleID))
+	s.requestLogger(ctx).Debug("Fetching alert rule details", zap.String("ruleID", ruleID))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -232,8 +255,9 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 // so we filter and only return required information which might help to get
 // detailed info of a dashboard.
 func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
+	log := s.requestLogger(ctx)
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
-	s.logger.Debug("Fetching dashboards from SigNoz")
+	log.Debug("Fetching dashboards from SigNoz")
 
 	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 	if err != nil {
@@ -289,13 +313,13 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("failed to marshal simplified response: %w", err)
 	}
 
-	s.logger.Debug("Successfully retrieved and simplified dashboards", zap.Int("count", len(simplifiedDashboards)))
+	log.Debug("Successfully retrieved and simplified dashboards", zap.Int("count", len(simplifiedDashboards)))
 	return simplifiedJSON, nil
 }
 
 func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(uuid))
-	s.logger.Debug("Fetching dashboard details", zap.String("uuid", uuid))
+	s.requestLogger(ctx).Debug("Fetching dashboard details", zap.String("uuid", uuid))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -304,7 +328,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	payload := map[string]string{"start": start, "end": end}
 	bodyBytes, _ := json.Marshal(payload)
 
-	s.logger.Debug("Fetching services from SigNoz", zap.String("start", start), zap.String("end", end))
+	s.requestLogger(ctx).Debug("Fetching services from SigNoz", zap.String("start", start), zap.String("end", end))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
 }
 
@@ -313,13 +337,13 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags}
 	bodyBytes, _ := json.Marshal(payload)
 
-	s.logger.Debug("Fetching service top operations", zap.String("service", service))
+	s.requestLogger(ctx).Debug("Fetching service top operations", zap.String("service", service))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
-	s.logger.Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
+	s.requestLogger(ctx).Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }
 
@@ -330,19 +354,19 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	s.logger.Debug("Fetching alert history", zap.String("ruleID", ruleID))
+	s.requestLogger(ctx).Debug("Fetching alert history", zap.String("ruleID", ruleID))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
 }
 
 func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
-	s.logger.Debug("Fetching log views from SigNoz")
+	s.requestLogger(ctx).Debug("Fetching log views from SigNoz")
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
-	s.logger.Debug("Fetching log view details", zap.String("viewID", viewID))
+	s.requestLogger(ctx).Debug("Fetching log view details", zap.String("viewID", viewID))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -366,7 +390,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v1/fields/keys?%s", s.baseURL, params.Encode())
-	s.logger.Debug("Fetching field keys", zap.String("signal", signal), zap.String("searchText", searchText))
+	s.requestLogger(ctx).Debug("Fetching field keys", zap.String("signal", signal), zap.String("searchText", searchText))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -385,7 +409,7 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v1/fields/values?%s", s.baseURL, params.Encode())
-	s.logger.Debug("Fetching field values", zap.String("signal", signal), zap.String("name", name))
+	s.requestLogger(ctx).Debug("Fetching field values", zap.String("signal", signal), zap.String("name", name))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -413,7 +437,7 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 		return nil, fmt.Errorf("marshal dashboard: %w", err)
 	}
 
-	s.logger.Debug("Creating dashboard")
+	s.requestLogger(ctx).Debug("Creating dashboard")
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 }
 
@@ -424,7 +448,7 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 		return fmt.Errorf("marshal dashboard: %w", err)
 	}
 
-	s.logger.Debug("Updating dashboard", zap.String("id", id))
+	s.requestLogger(ctx).Debug("Updating dashboard", zap.String("id", id))
 	_, err = s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 	return err
 }
