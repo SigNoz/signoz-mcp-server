@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
@@ -31,7 +31,7 @@
     },
     {
       "name": "signoz_query_metrics",
-      "description": "Query metrics with smart aggregation defaults and validation. Automatically applies the right timeAggregation and spaceAggregation based on metric type (gauge, counter, histogram). Auto-fetches metric metadata if not provided. Supports formulas (A/B*100) and scalar results."
+      "description": "Query metrics with smart aggregation defaults based on metric type"
     },
     {
       "name": "signoz_get_field_keys",
@@ -43,15 +43,15 @@
     },
     {
       "name": "signoz_list_alerts",
-      "description": "List all active alerts"
+      "description": "List alert rules with optional filtering by name, state, severity, or type"
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get details of a specific alert"
+      "description": "Get details of a specific alert rule by ID"
     },
     {
       "name": "signoz_get_alert_history",
-      "description": "Retrieve alert history for a rule"
+      "description": "Get alert history timeline for a specific rule with optional state filter"
     },
     {
       "name": "signoz_list_dashboards",
@@ -59,7 +59,15 @@
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Retrieve full dashboard configuration"
+      "description": "Get full dashboard configuration by UUID"
+    },
+    {
+      "name": "signoz_create_dashboard",
+      "description": "Create a new monitoring dashboard"
+    },
+    {
+      "name": "signoz_update_dashboard",
+      "description": "Update an existing dashboard by UUID"
     },
     {
       "name": "signoz_list_services",
@@ -75,48 +83,37 @@
     },
     {
       "name": "signoz_get_log_view",
-      "description": "Get full details of a log view"
+      "description": "Get full details of a saved log view by ID"
     },
     {
-      "name": "signoz_get_error_logs",
-      "description": "Retrieve error and fatal logs"
+      "name": "signoz_aggregate_logs",
+      "description": "Aggregate logs to compute statistics (count, avg, sum, min, max, percentiles)"
     },
     {
-      "name": "signoz_search_logs_by_service",
-      "description": "Search logs for a specific service"
+      "name": "signoz_search_logs",
+      "description": "Search logs with flexible filtering by service, severity, and body text"
     },
     {
-      "name": "signoz_search_traces_by_service",
-      "description": "Search traces for a specific service"
+      "name": "signoz_aggregate_traces",
+      "description": "Aggregate traces to compute statistics over spans, optionally grouped by fields"
+    },
+    {
+      "name": "signoz_search_traces",
+      "description": "Search traces with flexible filtering by service, operation, error, and duration"
     },
     {
       "name": "signoz_get_trace_details",
-      "description": "Retrieve full trace details"
-    },
-    {
-      "name": "signoz_get_trace_error_analysis",
-      "description": "Analyze error patterns in traces"
-    },
-    {
-      "name": "signoz_get_trace_span_hierarchy",
-      "description": "Retrieve span hierarchy for a trace"
+      "description": "Get comprehensive trace information including all spans and hierarchy"
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Execute SigNoz Query Builder v5 query"
-    },
-    {
-      "name": "signoz_create_dashboard",
-      "description": "Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. CRITICAL: You MUST read these resources BEFORE generating any dashboard output: 1. signoz://dashboard/instructions - REQUIRED: Dashboard structure and basics 2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules 3. signoz://dashboard/widgets-examples - REQUIRED: Complete widget examples with all required fields QUERY-SPECIFIC RESOURCES (read based on query type used): - For PromQL queries: signoz://dashboard/promql-example - For Query Builder queries: signoz://dashboard/query-builder-example - For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example - For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example - For ClickHouse SQL on traces: signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example IMPORTANT: The widgets-examples resource contains complete, working widget configurations. You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated."
-    },
-    {
-      "name": "signoz_update_dashboard",
-      "description": "Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object. MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE. The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications. REQUIRED RESOURCES (read ALL before generating output): 1. signoz://dashboard/instructions 2. signoz://dashboard/widgets-instructions 3. signoz://dashboard/widgets-examples ← CRITICAL: Shows complete widget field structure CONDITIONAL RESOURCES (based on query type): • PromQL → signoz://dashboard/promql-example • Query Builder → signoz://dashboard/query-builder-example • ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example • ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example • ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks)."
+      "description": "Execute a raw SigNoz Query Builder v5 query"
     }
   ],
   "compatibility": {
     "platforms": [
       "darwin",
+      "linux",
       "win32"
     ]
   },
