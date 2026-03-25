@@ -27,6 +27,9 @@ bundle/
 go.work
 go.work.sum
 
+# Local scripts
+scripts/
+
 # env file
 .env
 
