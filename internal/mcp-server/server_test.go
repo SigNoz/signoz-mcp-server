@@ -159,7 +159,7 @@ func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
 	server := &MCPServer{logger: zap.NewNop(), config: cfg}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+	// req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
 
 	rr := httptest.NewRecorder()
 	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
