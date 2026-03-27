@@ -1,0 +1,81 @@
+package config
+
+import (
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestLoadConfig_CustomHeaders(t *testing.T) {
+	tests := []struct {
+		name            string
+		envValue        string
+		expectedHeaders map[string]string
+	}{
+		{
+			name:            "empty env var produces empty map",
+			envValue:        "",
+			expectedHeaders: map[string]string{},
+		},
+		{
+			name:     "single header pair",
+			envValue: "X-Custom-Auth:my-token",
+			expectedHeaders: map[string]string{
+				"X-Custom-Auth": "my-token",
+			},
+		},
+		{
+			name:     "multiple header pairs",
+			envValue: "CF-Access-Client-Id:abc123.access,CF-Access-Client-Secret:secret456",
+			expectedHeaders: map[string]string{
+				"CF-Access-Client-Id":     "abc123.access",
+				"CF-Access-Client-Secret": "secret456",
+			},
+		},
+		{
+			name:     "whitespace is trimmed",
+			envValue: " Key1 : Value1 , Key2 : Value2 ",
+			expectedHeaders: map[string]string{
+				"Key1": "Value1",
+				"Key2": "Value2",
+			},
+		},
+		{
+			name:     "value containing colon is preserved",
+			envValue: "Authorization:Bearer my-jwt-token:with:colons",
+			expectedHeaders: map[string]string{
+				"Authorization": "Bearer my-jwt-token:with:colons",
+			},
+		},
+		{
+			name:     "malformed entry without colon is skipped",
+			envValue: "ValidKey:ValidValue,MalformedEntry",
+			expectedHeaders: map[string]string{
+				"ValidKey": "ValidValue",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set required env vars so LoadConfig doesn't fail
+			os.Setenv("SIGNOZ_URL", "http://localhost:8080")
+			os.Setenv("SIGNOZ_API_KEY", "test-key")
+			defer os.Unsetenv("SIGNOZ_URL")
+			defer os.Unsetenv("SIGNOZ_API_KEY")
+
+			if tt.envValue != "" {
+				os.Setenv("SIGNOZ_CUSTOM_HEADERS", tt.envValue)
+				defer os.Unsetenv("SIGNOZ_CUSTOM_HEADERS")
+			} else {
+				os.Unsetenv("SIGNOZ_CUSTOM_HEADERS")
+			}
+
+			cfg, err := LoadConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedHeaders, cfg.CustomHeaders)
+		})
+	}
+}
