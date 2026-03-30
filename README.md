@@ -8,7 +8,128 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 
 **[📖 Full Documentation](https://signoz.io/docs/ai/signoz-mcp-server/)**
 
-## Installation
+## Connect to SigNoz Cloud
+
+Connect your AI tool to SigNoz Cloud's hosted MCP server. No installation is required; just add the hosted MCP URL and authenticate.
+
+```text
+https://mcp.<region>.signoz.cloud/mcp
+```
+
+> Make sure you select the correct region that matches your SigNoz Cloud account. Using the wrong region will result in authentication failures.
+>
+> Find your region under **Settings → Ingestion** in SigNoz, or see the [SigNoz Cloud region reference](https://signoz.io/docs/ingestion/signoz-cloud/overview/#endpoint).
+
+### One-Click Install Links
+
+If you want a one-click setup, choose your SigNoz Cloud region once here:
+
+| Region | Hosted MCP URL | Cursor | VS Code |
+| --- | --- | --- | --- |
+| `us` | `https://mcp.us.signoz.cloud/mcp` | [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=SigNoz&config=eyJ1cmwiOiJodHRwczovL21jcC51cy5zaWdub3ouY2xvdWQvbWNwIn0=) | [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22signoz%22%2C%22config%22%3A%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.us.signoz.cloud%2Fmcp%22%7D%7D) |
+| `eu` | `https://mcp.eu.signoz.cloud/mcp` | [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=SigNoz&config=eyJ1cmwiOiJodHRwczovL21jcC5ldS5zaWdub3ouY2xvdWQvbWNwIn0=) | [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22signoz%22%2C%22config%22%3A%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.eu.signoz.cloud%2Fmcp%22%7D%7D) |
+| `in` | `https://mcp.in.signoz.cloud/mcp` | [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=SigNoz&config=eyJ1cmwiOiJodHRwczovL21jcC5pbi5zaWdub3ouY2xvdWQvbWNwIn0=) | [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22signoz%22%2C%22config%22%3A%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.in.signoz.cloud%2Fmcp%22%7D%7D) |
+| `us2` | `https://mcp.us2.signoz.cloud/mcp` | [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=SigNoz&config=eyJ1cmwiOiJodHRwczovL21jcC51czIuc2lnbm96LmNsb3VkL21jcCJ9) | [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22signoz%22%2C%22config%22%3A%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.us2.signoz.cloud%2Fmcp%22%7D%7D) |
+| `eu2` | `https://mcp.eu2.signoz.cloud/mcp` | [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=SigNoz&config=eyJ1cmwiOiJodHRwczovL21jcC5ldTIuc2lnbm96LmNsb3VkL21jcCJ9) | [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22signoz%22%2C%22config%22%3A%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.eu2.signoz.cloud%2Fmcp%22%7D%7D) |
+| `in2` | `https://mcp.in2.signoz.cloud/mcp` | [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=SigNoz&config=eyJ1cmwiOiJodHRwczovL21jcC5pbjIuc2lnbm96LmNsb3VkL21jcCJ9) | [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22signoz%22%2C%22config%22%3A%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.in2.signoz.cloud%2Fmcp%22%7D%7D) |
+
+### Cursor
+
+#### Manual Configuration
+
+Add this configuration to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "url": "https://mcp.<region>.signoz.cloud/mcp"
+    }
+  }
+}
+```
+
+Need help? See the [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol).
+
+### VS Code / GitHub Copilot
+
+#### Manual Configuration
+
+Add this configuration to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "signoz": {
+      "type": "http",
+      "url": "https://mcp.<region>.signoz.cloud/mcp"
+    }
+  }
+}
+```
+
+Need help? See the [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers).
+
+### Claude Desktop
+
+Add SigNoz Cloud as a custom connector in Claude Desktop:
+
+1. Open Claude Desktop.
+2. Go to **Settings → Developer** (or **Features**, depending on your version).
+3. Click **Add Custom Connector** or **Add Remote MCP Server**.
+4. Enter your SigNoz MCP URL: `https://mcp.<region>.signoz.cloud/mcp`
+
+When prompted, complete the authentication flow.
+
+### Claude Code
+
+Run this command to add the hosted SigNoz MCP server:
+
+```bash
+claude mcp add --scope user --transport http signoz https://mcp.<region>.signoz.cloud/mcp
+```
+
+After configuring the MCP server, authenticate in a terminal:
+
+```bash
+claude /mcp
+```
+
+Select the `signoz` server and complete the authentication flow.
+
+### OpenAI Codex
+
+Run this command to add the hosted SigNoz MCP server:
+
+```bash
+codex mcp add signoz --url https://mcp.<region>.signoz.cloud/mcp
+```
+
+Or add this configuration to `config.toml`:
+
+```toml
+[mcp_servers.signoz]
+url = "https://mcp.<region>.signoz.cloud/mcp"
+```
+
+After adding the server, authenticate:
+
+```bash
+codex mcp login signoz
+```
+
+Then run `/mcp` inside Codex to verify the connection.
+
+### SigNoz Cloud Authentication
+
+When you add the hosted MCP URL to your client, the client initiates an authentication flow. You will be prompted to enter:
+
+1. Your SigNoz instance URL (for example, `https://your-instance.signoz.cloud`)
+2. Your API key
+
+Create an API key in **Settings → API Keys** in SigNoz. Only **Admin** users can create API keys.
+
+## Self-Hosted Installation
 
 ### Download Binary (Recommended)
 
@@ -70,15 +191,13 @@ make build
 
 The binary is at `./bin/signoz-mcp-server`.
 
-## Quick Start
+## Self-Hosted Quick Start
 
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
-- A SigNoz API key (Settings → Workspace Settings → API Key in SigNoz UI)
-- The `signoz-mcp-server` binary (see [Installation](#installation))
-
-> **SigNoz Cloud URL** is typically `https://tenant-slug.<region>.signoz.cloud` (e.g. `main-dinosaur.us.signoz.cloud`)
+- A SigNoz API key (Settings → API Keys in the SigNoz UI)
+- The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
 
 ### Stdio Mode (Claude Desktop / Cursor / Any MCP Client)
 
@@ -493,7 +612,7 @@ Executes a SigNoz Query Builder v5 query.
 | Variable          | Description                                                                    | Required                            |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
 | `SIGNOZ_URL`      | SigNoz instance URL                                                            | Yes (stdio); Optional (http with OAuth) |
-| `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
+| `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → API Keys in the SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
