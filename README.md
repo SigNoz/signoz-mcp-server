@@ -8,6 +8,18 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 
 **[📖 Full Documentation](https://signoz.io/docs/ai/signoz-mcp-server/)**
 
+## Table of Contents
+
+- [Connect to SigNoz Cloud](#connect-to-signoz-cloud)
+- [Self-Hosted Installation](#self-hosted-installation)
+- [Connect to Self-Hosted SigNoz](#connect-to-self-hosted-signoz)
+- [What Can You Do With It?](#what-can-you-do-with-it)
+- [Available Tools](#available-tools)
+- [Environment Variables](#environment-variables)
+- [Claude Desktop Extension](#claude-desktop-extension)
+- [Architecture](#architecture)
+- [Contributing](#contributing)
+
 ## Connect to SigNoz Cloud
 
 Connect your AI tool to SigNoz Cloud's hosted MCP server. No installation is required; just add the hosted MCP URL and authenticate.
@@ -189,7 +201,7 @@ make build
 
 The binary is at `./bin/signoz-mcp-server`.
 
-## Self-Hosted Quick Start
+## Connect to Self-Hosted SigNoz
 
 ### Prerequisites
 
