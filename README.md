@@ -8,7 +8,138 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 
 **[📖 Full Documentation](https://signoz.io/docs/ai/signoz-mcp-server/)**
 
-## Installation
+## Table of Contents
+
+- [Connect to SigNoz Cloud](#connect-to-signoz-cloud)
+- [Self-Hosted Installation](#self-hosted-installation)
+- [Connect to Self-Hosted SigNoz](#connect-to-self-hosted-signoz)
+- [What Can You Do With It?](#what-can-you-do-with-it)
+- [Available Tools](#available-tools)
+- [Environment Variables](#environment-variables)
+- [Claude Desktop Extension](#claude-desktop-extension)
+- [Architecture](#architecture)
+- [Contributing](#contributing)
+
+## Connect to SigNoz Cloud
+
+Connect your AI tool to SigNoz Cloud's hosted MCP server. No installation is required; just add the hosted MCP URL and authenticate.
+
+```text
+https://mcp.<region>.signoz.cloud/mcp
+```
+
+> Make sure you select the correct region that matches your SigNoz Cloud account. Using the wrong region will result in authentication failures.
+>
+> Find your region under **Settings → Ingestion** in SigNoz, or see the [SigNoz Cloud region reference](https://signoz.io/docs/ingestion/signoz-cloud/overview/#endpoint).
+
+### One-Click Install Links
+
+GitHub does not reliably make custom-protocol links like `cursor://` and `vscode:` clickable in README rendering.
+
+Use the documentation page for one-click install buttons:
+
+- [Open one-click install links for Cursor](https://signoz.io/docs/ai/signoz-mcp-server/#install-in-one-click)
+- [Open one-click install links for VS Code](https://signoz.io/docs/ai/signoz-mcp-server/#install-in-one-click-1)
+
+If you prefer, use the manual configuration examples below in this README.
+
+### Cursor
+
+#### Manual Configuration
+
+Add this configuration to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "signoz": {
+      "url": "https://mcp.<region>.signoz.cloud/mcp"
+    }
+  }
+}
+```
+
+Need help? See the [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol).
+
+### VS Code / GitHub Copilot
+
+#### Manual Configuration
+
+Add this configuration to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "signoz": {
+      "type": "http",
+      "url": "https://mcp.<region>.signoz.cloud/mcp"
+    }
+  }
+}
+```
+
+Need help? See the [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers).
+
+### Claude Desktop
+
+Add SigNoz Cloud as a custom connector in Claude Desktop:
+
+1. Open Claude Desktop.
+2. Go to **Settings → Developer** (or **Features**, depending on your version).
+3. Click **Add Custom Connector** or **Add Remote MCP Server**.
+4. Enter your SigNoz MCP URL: `https://mcp.<region>.signoz.cloud/mcp`
+
+When prompted, complete the authentication flow.
+
+### Claude Code
+
+Run this command to add the hosted SigNoz MCP server:
+
+```bash
+claude mcp add --scope user --transport http signoz https://mcp.<region>.signoz.cloud/mcp
+```
+
+After configuring the MCP server, authenticate in a terminal:
+
+```bash
+claude /mcp
+```
+
+Select the `signoz` server and complete the authentication flow.
+
+### OpenAI Codex
+
+Run this command to add the hosted SigNoz MCP server:
+
+```bash
+codex mcp add signoz --url https://mcp.<region>.signoz.cloud/mcp
+```
+
+Or add this configuration to `config.toml`:
+
+```toml
+[mcp_servers.signoz]
+url = "https://mcp.<region>.signoz.cloud/mcp"
+```
+
+After adding the server, authenticate:
+
+```bash
+codex mcp login signoz
+```
+
+Then run `/mcp` inside Codex to verify the connection.
+
+### SigNoz Cloud Authentication
+
+When you add the hosted MCP URL to your client, the client initiates an authentication flow. You will be prompted to enter:
+
+1. Your SigNoz instance URL (for example, `https://your-instance.signoz.cloud`)
+2. Your API key
+
+Create an API key in **Settings → API Keys** in SigNoz. Only **Admin** users can create API keys.
+
+## Self-Hosted Installation
 
 ### Download Binary (Recommended)
 
@@ -70,15 +201,13 @@ make build
 
 The binary is at `./bin/signoz-mcp-server`.
 
-## Quick Start
+## Connect to Self-Hosted SigNoz
 
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
-- A SigNoz API key (Settings → Workspace Settings → API Key in SigNoz UI)
-- The `signoz-mcp-server` binary (see [Installation](#installation))
-
-> **SigNoz Cloud URL** is typically `https://tenant-slug.<region>.signoz.cloud` (e.g. `main-dinosaur.us.signoz.cloud`)
+- A SigNoz API key (Settings → API Keys in the SigNoz UI)
+- The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
 
 ### Stdio Mode (Claude Desktop / Cursor / Any MCP Client)
 
@@ -224,32 +353,32 @@ For detailed usage and examples, see the [full documentation](https://signoz.io/
 Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source.
 
 - **Parameters**:
-    - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
-    - `limit` (optional) - Maximum number of metrics to return (default: 50)
-    - `start` (optional) - Start time in unix milliseconds
-    - `end` (optional) - End time in unix milliseconds
-    - `source` (optional) - Filter by source
+  - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
+  - `limit` (optional) - Maximum number of metrics to return (default: 50)
+  - `start` (optional) - Start time in unix milliseconds
+  - `end` (optional) - End time in unix milliseconds
+  - `source` (optional) - Filter by source
 
 #### `signoz_query_metrics`
 
 Query metrics with smart aggregation defaults and validation. Automatically applies the right timeAggregation and spaceAggregation based on metric type (gauge, counter, histogram). Auto-fetches metric metadata if not provided.
 
 - **Parameters**:
-    - `metricName` (required) - Metric name to query
-    - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
-    - `isMonotonic` (optional) - true/false (auto-fetched if absent)
-    - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
-    - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
-    - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
-    - `groupBy` (optional) - Comma-separated field names
-    - `filter` (optional) - Filter expression
-    - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h)
-    - `start`/`end` (optional) - Unix ms timestamps (override timeRange)
-    - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
-    - `requestType` (optional) - time_series (default) or scalar
-    - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
-    - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
-    - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
+  - `metricName` (required) - Metric name to query
+  - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
+  - `isMonotonic` (optional) - true/false (auto-fetched if absent)
+  - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
+  - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
+  - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
+  - `groupBy` (optional) - Comma-separated field names
+  - `filter` (optional) - Filter expression
+  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h)
+  - `start`/`end` (optional) - Unix ms timestamps (override timeRange)
+  - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
+  - `requestType` (optional) - time_series (default) or scalar
+  - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
+  - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
+  - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
 
 #### `signoz_list_alerts`
 
@@ -301,33 +430,33 @@ Updates an existing dashboard.
 Lists all services within a time range.
 
 - **Parameters**:
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in nanoseconds (defaults to now)
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in nanoseconds (defaults to now)
 
 #### `signoz_get_service_top_operations`
 
 Gets top operations for a specific service.
 
 - **Parameters**:
-    - `service` (required) - Service name
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in nanoseconds (defaults to now)
-    - `tags` (optional) - JSON array of tags
+  - `service` (required) - Service name
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in nanoseconds (defaults to now)
+  - `tags` (optional) - JSON array of tags
 
 #### `signoz_get_alert_history`
 
 Gets alert history timeline for a specific rule.
 
 - **Parameters**:
-    - `ruleId` (required) - Alert rule ID
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End timestamp in milliseconds (defaults to now)
-    - `offset` (optional) - Offset for pagination (default: 0)
-    - `limit` (optional) - Limit number of results (default: 20)
-    - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
+  - `ruleId` (required) - Alert rule ID
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End timestamp in milliseconds (defaults to now)
+  - `offset` (optional) - Offset for pagination (default: 0)
+  - `limit` (optional) - Limit number of results (default: 20)
+  - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
 
 #### `signoz_list_log_views`
 
@@ -344,140 +473,140 @@ Gets full details of a specific log view by ID.
 Gets logs with ERROR or FATAL severity within a time range.
 
 - **Parameters**:
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `service` (optional) - Service name to filter by
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in milliseconds (defaults to now)
+  - `service` (optional) - Service name to filter by
+  - `limit` (optional) - Maximum number of logs to return (default: 100)
 
 #### `signoz_search_logs_by_service`
 
 Searches logs for a specific service within a time range.
 
 - **Parameters**:
-    - `service` (required) - Service name to search logs for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
-    - `searchText` (optional) - Text to search for in log body
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
+  - `service` (required) - Service name to search logs for
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in milliseconds (defaults to now)
+  - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
+  - `searchText` (optional) - Text to search for in log body
+  - `limit` (optional) - Maximum number of logs to return (default: 100)
 
 #### `signoz_aggregate_logs`
 
 Aggregate logs with count, average, sum, min, max, or percentiles, optionally grouped by fields.
 
 - **Parameters**:
-    - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
-    - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
-    - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
-    - `filter` (optional) - Filter expression using SigNoz search syntax
-    - `service` (optional) - Shortcut filter for service name
-    - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
-    - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
-    - `limit` (optional) - Maximum number of groups to return (default: 10)
-    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-    - `start` / `end` (optional) - Start/end time in milliseconds
+  - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
+  - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
+  - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
+  - `filter` (optional) - Filter expression using SigNoz search syntax
+  - `service` (optional) - Shortcut filter for service name
+  - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
+  - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
+  - `limit` (optional) - Maximum number of groups to return (default: 10)
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+  - `start` / `end` (optional) - Start/end time in milliseconds
 
 #### `signoz_search_logs`
 
 Search logs with flexible filtering across all services.
 
 - **Parameters**:
-    - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND http.status_code >= 400")
-    - `service` (optional) - Service name to filter by
-    - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
-    - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
-    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-    - `start` / `end` (optional) - Start/end time in milliseconds
-    - `limit` (optional) - Maximum number of logs to return (default: 100)
-    - `offset` (optional) - Offset for pagination (default: 0)
+  - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND http.status_code >= 400")
+  - `service` (optional) - Service name to filter by
+  - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
+  - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `limit` (optional) - Maximum number of logs to return (default: 100)
+  - `offset` (optional) - Offset for pagination (default: 0)
 
 #### `signoz_get_field_keys`
 
 Get available field keys for a given signal (metrics, traces, or logs).
 
 - **Parameters**:
-    - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
-    - `searchText` (optional) - Filter field keys by name substring
-    - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-    - `fieldContext` (optional) - Filter by field context (e.g., `resource`, `span`)
-    - `fieldDataType` (optional) - Filter by data type (e.g., `string`, `int64`)
-    - `source` (optional) - Filter by source
+  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `searchText` (optional) - Filter field keys by name substring
+  - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
+  - `fieldContext` (optional) - Filter by field context (e.g., `resource`, `span`)
+  - `fieldDataType` (optional) - Filter by data type (e.g., `string`, `int64`)
+  - `source` (optional) - Filter by source
 
 #### `signoz_get_field_values`
 
 Get possible values for a specific field key for a given signal.
 
 - **Parameters**:
-    - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
-    - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
-    - `searchText` (optional) - Filter values by substring
-    - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-    - `source` (optional) - Filter by source
+  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
+  - `searchText` (optional) - Filter values by substring
+  - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
+  - `source` (optional) - Filter by source
 
 #### `signoz_search_traces_by_service`
 
 Searches traces for a specific service.
 
 - **Parameters**:
-    - `service` (required) - Service name to search traces for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `operation` (optional) - Operation name to filter by
-    - `error` (optional) - Filter by error status (true/false)
-    - `minDuration` (optional) - Minimum duration in nanoseconds
-    - `maxDuration` (optional) - Maximum duration in nanoseconds
-    - `limit` (optional) - Maximum number of traces to return (default: 100)
+  - `service` (required) - Service name to search traces for
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in milliseconds (defaults to now)
+  - `operation` (optional) - Operation name to filter by
+  - `error` (optional) - Filter by error status (true/false)
+  - `minDuration` (optional) - Minimum duration in nanoseconds
+  - `maxDuration` (optional) - Maximum duration in nanoseconds
+  - `limit` (optional) - Maximum number of traces to return (default: 100)
 
 #### `signoz_aggregate_traces`
 
 Aggregate trace statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields.
 
 - **Parameters**:
-    - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
-    - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
-    - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
-    - `filter` (optional) - Filter expression using SigNoz search syntax
-    - `service` (optional) - Shortcut filter for service name
-    - `operation` (optional) - Shortcut filter for span/operation name
-    - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
-    - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
-    - `limit` (optional) - Maximum number of groups to return (default: 10)
-    - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-    - `start` / `end` (optional) - Start/end time in milliseconds
+  - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
+  - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
+  - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
+  - `filter` (optional) - Filter expression using SigNoz search syntax
+  - `service` (optional) - Shortcut filter for service name
+  - `operation` (optional) - Shortcut filter for span/operation name
+  - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
+  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
+  - `limit` (optional) - Maximum number of groups to return (default: 10)
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
+  - `start` / `end` (optional) - Start/end time in milliseconds
 
 #### `signoz_get_trace_details`
 
 Gets trace information including all spans and metadata.
 
 - **Parameters**:
-    - `traceId` (required) - Trace ID to get details for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
+  - `traceId` (required) - Trace ID to get details for
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in milliseconds (defaults to now)
+  - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
 
 #### `signoz_get_trace_error_analysis`
 
 Analyzes error patterns in traces.
 
 - **Parameters**:
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
-    - `service` (optional) - Service name to filter by
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in milliseconds (defaults to now)
+  - `service` (optional) - Service name to filter by
 
 #### `signoz_get_trace_span_hierarchy`
 
 Gets trace span relationships and hierarchy.
 
 - **Parameters**:
-    - `traceId` (required) - Trace ID to get span hierarchy for
-    - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-    - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-    - `end` (optional) - End time in milliseconds (defaults to now)
+  - `traceId` (required) - Trace ID to get span hierarchy for
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in milliseconds (defaults to now)
 
 #### `signoz_execute_builder_query`
 
@@ -493,7 +622,7 @@ Executes a SigNoz Query Builder v5 query.
 | Variable          | Description                                                                    | Required                            |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
 | `SIGNOZ_URL`      | SigNoz instance URL                                                            | Yes (stdio); Optional (http with OAuth) |
-| `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → Workspace Settings → API Key in SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
+| `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → API Keys in the SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
