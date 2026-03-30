@@ -1258,3 +1258,65 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	assert.Equal(t, 2, attempts)
 	assert.Contains(t, string(result), "success")
 }
+
+func TestNewClientWithHeaders_SetsCustomHeaders(t *testing.T) {
+	customHeaders := map[string]string{
+		"CF-Access-Client-Id":     "test-id.access",
+		"CF-Access-Client-Secret": "test-secret",
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify standard headers are present
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		// Verify custom headers are injected
+		assert.Equal(t, "test-id.access", r.Header.Get("CF-Access-Client-Id"))
+		assert.Equal(t, "test-secret", r.Header.Get("CF-Access-Client-Secret"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClientWithHeaders(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
+
+	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	assert.NoError(t, err)
+}
+
+func TestNewClientWithHeaders_NilHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Standard headers should still be set when custom headers map is nil
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClientWithHeaders(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	assert.NoError(t, err)
+}
+
+func TestNewClientWithHeaders_EmptyHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClientWithHeaders(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{})
+
+	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	assert.NoError(t, err)
+}

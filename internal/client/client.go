@@ -36,6 +36,7 @@ type SigNoz struct {
 	authHeaderName string
 	logger         *zap.Logger
 	httpClient     *http.Client
+	customHeaders  map[string]string
 }
 
 func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz {
@@ -44,6 +45,19 @@ func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz 
 		baseURL:        baseURL,
 		apiKey:         apiKey,
 		authHeaderName: authHeaderName,
+		httpClient: &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+	}
+}
+
+func NewClientWithHeaders(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
+	return &SigNoz{
+		logger:         log,
+		baseURL:        baseURL,
+		apiKey:         apiKey,
+		authHeaderName: authHeaderName,
+		customHeaders:  customHeaders,
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
@@ -153,6 +167,10 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		req.Header.Set(ContentType, "application/json")
 
 		req.Header.Set(s.authHeaderName, s.apiKey)
+
+		for k, v := range s.customHeaders {
+			req.Header.Set(k, v)
+		}
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
