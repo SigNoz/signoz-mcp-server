@@ -144,9 +144,9 @@ func TestApplyDefaults_ExponentialHistogram(t *testing.T) {
 
 func TestApplyDefaults_ScalarReduceTo(t *testing.T) {
 	tests := []struct {
-		name        string
-		params      MetricQueryParams
-		wantReduce  string
+		name       string
+		params     MetricQueryParams
+		wantReduce string
 	}{
 		{"gauge scalar", MetricQueryParams{MetricType: "gauge"}, "avg"},
 		{"counter scalar", MetricQueryParams{MetricType: "sum", IsMonotonic: true}, "sum"},

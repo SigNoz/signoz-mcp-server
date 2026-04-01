@@ -11,22 +11,22 @@ import (
 // Each method delegates to the corresponding function field when non-nil,
 // otherwise returns a default empty JSON object and nil error.
 type MockClient struct {
-	ListMetricsFn            func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-	ListAlertsFn             func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
-	GetAlertByRuleIDFn       func(ctx context.Context, ruleID string) (json.RawMessage, error)
-	GetAlertHistoryFn        func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
-	ListDashboardsFn         func(ctx context.Context) (json.RawMessage, error)
-	GetDashboardFn           func(ctx context.Context, uuid string) (json.RawMessage, error)
-	CreateDashboardFn        func(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error)
-	UpdateDashboardFn        func(ctx context.Context, id string, dashboard types.Dashboard) error
-	ListServicesFn           func(ctx context.Context, start, end string) (json.RawMessage, error)
+	ListMetricsFn             func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	ListAlertsFn              func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
+	GetAlertByRuleIDFn        func(ctx context.Context, ruleID string) (json.RawMessage, error)
+	GetAlertHistoryFn         func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
+	ListDashboardsFn          func(ctx context.Context) (json.RawMessage, error)
+	GetDashboardFn            func(ctx context.Context, uuid string) (json.RawMessage, error)
+	CreateDashboardFn         func(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error)
+	UpdateDashboardFn         func(ctx context.Context, id string, dashboard types.Dashboard) error
+	ListServicesFn            func(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperationsFn func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
-	QueryBuilderV5Fn         func(ctx context.Context, body []byte) (json.RawMessage, error)
-	ListLogViewsFn           func(ctx context.Context) (json.RawMessage, error)
-	GetLogViewFn             func(ctx context.Context, viewID string) (json.RawMessage, error)
-	GetFieldKeysFn           func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValuesFn         func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
-	GetTraceDetailsFn        func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	QueryBuilderV5Fn          func(ctx context.Context, body []byte) (json.RawMessage, error)
+	ListLogViewsFn            func(ctx context.Context) (json.RawMessage, error)
+	GetLogViewFn              func(ctx context.Context, viewID string) (json.RawMessage, error)
+	GetFieldKeysFn            func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
+	GetFieldValuesFn          func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
+	GetTraceDetailsFn         func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 }
 
 // Compile-time check that MockClient satisfies Client.
