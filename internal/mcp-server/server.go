@@ -70,16 +70,32 @@ func (m *MCPServer) Start() error {
 func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks := &server.Hooks{}
 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
-		m.logger.Debug("mcp request", zap.String("method", string(method)))
+		fields := []zap.Field{zap.String("method", string(method))}
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			fields = append(fields, zap.String("tenant_url", signozURL))
+		}
+		m.logger.Debug("mcp request", fields...)
 	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
-		m.logger.Error("mcp error", zap.String("method", string(method)), zap.Error(err))
+		fields := []zap.Field{zap.String("method", string(method)), zap.Error(err)}
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			fields = append(fields, zap.String("tenant_url", signozURL))
+		}
+		m.logger.Error("mcp error", fields...)
 	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
-		m.logger.Info("mcp session registered")
+		fields := []zap.Field{}
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			fields = append(fields, zap.String("tenant_url", signozURL))
+		}
+		m.logger.Info("mcp session registered", fields...)
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
-		m.logger.Info("mcp session unregistered")
+		fields := []zap.Field{}
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			fields = append(fields, zap.String("tenant_url", signozURL))
+		}
+		m.logger.Info("mcp session unregistered", fields...)
 	})
 	return hooks
 }
@@ -109,6 +125,9 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			}
 			if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
 				fields = append(fields, zap.String("search_context", sc))
+			}
+			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+				fields = append(fields, zap.String("tenant_url", signozURL))
 			}
 
 			m.logger.Debug("tool call started", fields...)
@@ -175,13 +194,13 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					apiKey = "Bearer " + token
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "Authorization")
-					m.logger.Debug("Using JWT token authentication via Authorization header")
+					m.logger.Debug("Using JWT token authentication via Authorization header", zap.String("tenant_url", customURL))
 				} else {
 					// PAT token — forward via SIGNOZ-API-KEY
 					apiKey = token
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header")
+					m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header", zap.String("tenant_url", customURL))
 				}
 			} else if m.config.OAuthEnabled {
 				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
@@ -192,7 +211,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					usedOAuthToken = true
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.Debug("OAuth access token extracted from Authorization header")
+					m.logger.Debug("OAuth access token extracted from Authorization header", zap.String("tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
 					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
 					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
@@ -252,10 +271,10 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			signozURL = normalized
-			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("url", signozURL))
+			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("tenant_url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
-			m.logger.Debug("Using URL from environment config", zap.String("url", signozURL))
+			m.logger.Debug("Using URL from environment config", zap.String("tenant_url", signozURL))
 		} else {
 			m.logger.Warn("No SigNoz URL found in X-SigNoz-URL header or environment")
 			http.Error(w, "SigNoz instance URL is required", http.StatusBadRequest)
