@@ -20,7 +20,7 @@ import (
 
 func TestOAuthAuthorizationFlow(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/service_accounts/me" {
+		if r.URL.Path != "/api/v1/user/me" {
 			http.NotFound(w, r)
 			return
 		}
@@ -199,16 +199,16 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 	}
 }
 
-// TestOAuthAuthorizationFlowFallbackToUserMe verifies the full OAuth authorize
-// flow succeeds when the SigNoz instance is an older version that only has the
-// legacy /api/v1/user/me endpoint (service_accounts/me returns 404).
-func TestOAuthAuthorizationFlowFallbackToUserMe(t *testing.T) {
+// TestOAuthAuthorizationFlowServiceAccountFallback verifies the full OAuth
+// authorize flow succeeds when user/me returns 502 (service-account key) and
+// the validation falls back to /api/v1/service_accounts/me.
+func TestOAuthAuthorizationFlowServiceAccountFallback(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/service_accounts/me":
-			// Old SigNoz: endpoint doesn't exist.
-			http.NotFound(w, r)
 		case "/api/v1/user/me":
+			// Service-account key triggers 502 on user/me.
+			w.WriteHeader(http.StatusBadGateway)
+		case "/api/v1/service_accounts/me":
 			if r.Method != http.MethodGet {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
@@ -313,7 +313,7 @@ func TestOAuthAuthorizationFlowFallbackToUserMe(t *testing.T) {
 
 func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/service_accounts/me" {
+		if r.URL.Path != "/api/v1/user/me" {
 			http.NotFound(w, r)
 			return
 		}
@@ -443,7 +443,7 @@ func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 
 func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/service_accounts/me" {
+		if r.URL.Path != "/api/v1/user/me" {
 			http.NotFound(w, r)
 			return
 		}

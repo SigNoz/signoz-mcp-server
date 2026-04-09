@@ -119,56 +119,56 @@ func TestGetAlertByRuleID(t *testing.T) {
 
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
-		name             string
-		saStatus         int // status for /api/v1/service_accounts/me
-		userMeStatus     int // status for /api/v1/user/me (only hit on SA 404)
-		expectedError    bool
-		checkErr         func(t *testing.T, err error)
-		expectSAHit      bool
-		expectUserMeHit  bool
+		name            string
+		userMeStatus    int // status for /api/v1/user/me (always hit first)
+		saStatus        int // status for /api/v1/service_accounts/me (only hit on user/me 502)
+		expectedError   bool
+		checkErr        func(t *testing.T, err error)
+		expectUserMeHit bool
+		expectSAHit     bool
 	}{
 		{
-			name:            "service account endpoint succeeds",
-			saStatus:        http.StatusOK,
-			expectedError:   false,
-			expectSAHit:     true,
-			expectUserMeHit: false,
-		},
-		{
-			name:            "service account 404 falls back to user/me success",
-			saStatus:        http.StatusNotFound,
+			name:            "user/me succeeds (legacy user-level key)",
 			userMeStatus:    http.StatusOK,
 			expectedError:   false,
-			expectSAHit:     true,
 			expectUserMeHit: true,
+			expectSAHit:     false,
 		},
 		{
-			name:            "service account 404 falls back to user/me unauthorized",
-			saStatus:        http.StatusNotFound,
+			name:            "user/me unauthorized returns error directly",
 			userMeStatus:    http.StatusUnauthorized,
 			expectedError:   true,
-			expectSAHit:     true,
 			expectUserMeHit: true,
+			expectSAHit:     false,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:            "service account unauthorized does not fall back",
+			name:            "user/me 502 falls back to service_accounts/me success",
+			userMeStatus:    http.StatusBadGateway,
+			saStatus:        http.StatusOK,
+			expectedError:   false,
+			expectUserMeHit: true,
+			expectSAHit:     true,
+		},
+		{
+			name:            "user/me 502 falls back to service_accounts/me unauthorized",
+			userMeStatus:    http.StatusBadGateway,
 			saStatus:        http.StatusUnauthorized,
 			expectedError:   true,
+			expectUserMeHit: true,
 			expectSAHit:     true,
-			expectUserMeHit: false,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:            "service account unexpected status",
-			saStatus:        http.StatusInternalServerError,
+			name:            "user/me 500 returns error directly without fallback",
+			userMeStatus:    http.StatusInternalServerError,
 			expectedError:   true,
-			expectSAHit:     true,
-			expectUserMeHit: false,
+			expectUserMeHit: true,
+			expectSAHit:     false,
 			checkErr: func(t *testing.T, err error) {
 				assert.Contains(t, err.Error(), "unexpected status 500")
 			},
@@ -177,8 +177,8 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			saRequests := 0
 			userMeRequests := 0
+			saRequests := 0
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -186,12 +186,12 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Equal(t, http.MethodGet, r.Method)
 
 				switch r.URL.Path {
-				case "/api/v1/service_accounts/me":
-					saRequests++
-					w.WriteHeader(tt.saStatus)
 				case "/api/v1/user/me":
 					userMeRequests++
 					w.WriteHeader(tt.userMeStatus)
+				case "/api/v1/service_accounts/me":
+					saRequests++
+					w.WriteHeader(tt.saStatus)
 				default:
 					t.Fatalf("unexpected path %s", r.URL.Path)
 				}
@@ -214,15 +214,15 @@ func TestValidateCredentials(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
+			if tt.expectUserMeHit {
+				assert.Equal(t, 1, userMeRequests, "expected user/me to be called")
+			} else {
+				assert.Equal(t, 0, userMeRequests, "expected user/me NOT to be called")
+			}
 			if tt.expectSAHit {
 				assert.Equal(t, 1, saRequests, "expected service_accounts/me to be called")
 			} else {
 				assert.Equal(t, 0, saRequests, "expected service_accounts/me NOT to be called")
-			}
-			if tt.expectUserMeHit {
-				assert.Equal(t, 1, userMeRequests, "expected user/me fallback to be called")
-			} else {
-				assert.Equal(t, 0, userMeRequests, "expected user/me fallback NOT to be called")
 			}
 		})
 	}

@@ -71,30 +71,29 @@ func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
 //
-// It first tries the service-account endpoint (/api/v1/service_accounts/me)
-// which is required for newer SigNoz releases where API keys are scoped to
-// service accounts. If that endpoint is not found (404), it falls back to
-// the legacy user endpoint (/api/v1/user/me) for older SigNoz versions.
+// It first tries the user endpoint (/api/v1/user/me). A 502 response indicates
+// the API key belongs to a service account (newer SigNoz releases), so it
+// retries against /api/v1/service_accounts/me. Any other response from user/me
+// is returned directly.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	log := s.requestLogger(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Try service-account endpoint first (SigNoz >= latest with service account API keys).
-	saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
-	status, body, err := s.doValidationRequest(ctx, saURL)
+	userURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
+	status, body, err := s.doValidationRequest(ctx, userURL)
 	if err != nil {
-		log.Error("SigNoz credential validation request failed", zap.String("url", saURL), zap.Error(err))
+		log.Error("SigNoz credential validation request failed", zap.String("url", userURL), zap.Error(err))
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 
-	// If the endpoint doesn't exist, fall back to the legacy user endpoint.
-	if status == http.StatusNotFound {
-		log.Debug("service_accounts/me not found, falling back to user/me", zap.String("url", saURL))
-		userURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
-		status, body, err = s.doValidationRequest(ctx, userURL)
+	// 502 means the key is a service-account key; validate via service account endpoint.
+	if status == http.StatusBadGateway {
+		log.Debug("user/me returned 502, retrying with service_accounts/me")
+		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
+		status, body, err = s.doValidationRequest(ctx, saURL)
 		if err != nil {
-			log.Error("SigNoz credential validation request failed", zap.String("url", userURL), zap.Error(err))
+			log.Error("SigNoz credential validation request failed", zap.String("url", saURL), zap.Error(err))
 			return fmt.Errorf("failed to reach SigNoz API: %w", err)
 		}
 	}
