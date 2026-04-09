@@ -70,15 +70,44 @@ func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 // ValidateCredentials performs a lightweight authenticated request against the
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
+//
+// It first tries the service-account endpoint (/api/v1/service_accounts/me)
+// which is required for newer SigNoz releases where API keys are scoped to
+// service accounts. If that endpoint is not found (404), it falls back to
+// the legacy user endpoint (/api/v1/user/me) for older SigNoz versions.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	log := s.requestLogger(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	reqURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
+	// Try service-account endpoint first (SigNoz >= latest with service account API keys).
+	saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
+	status, body, err := s.doValidationRequest(ctx, saURL)
+	if err != nil {
+		log.Error("SigNoz credential validation request failed", zap.String("url", saURL), zap.Error(err))
+		return fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+
+	// If the endpoint doesn't exist, fall back to the legacy user endpoint.
+	if status == http.StatusNotFound {
+		log.Debug("service_accounts/me not found, falling back to user/me", zap.String("url", saURL))
+		userURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
+		status, body, err = s.doValidationRequest(ctx, userURL)
+		if err != nil {
+			log.Error("SigNoz credential validation request failed", zap.String("url", userURL), zap.Error(err))
+			return fmt.Errorf("failed to reach SigNoz API: %w", err)
+		}
+	}
+
+	return s.evaluateValidationResponse(log, status, body)
+}
+
+// doValidationRequest sends a GET request to the given URL with auth headers
+// and returns the HTTP status code, response body, and any transport error.
+func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create validation request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create validation request: %w", err)
 	}
 
 	req.Header.Set(ContentType, "application/json")
@@ -86,29 +115,31 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		log.Error("SigNoz credential validation request failed", zap.String("url", reqURL), zap.Error(err))
-		return fmt.Errorf("failed to reach SigNoz API: %w", err)
+		return 0, nil, err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Warn("Failed to close response body", zap.Error(err))
-		}
+		_ = resp.Body.Close()
 	}()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
 	if err != nil {
-		return fmt.Errorf("failed to read validation response: %w", err)
+		return 0, nil, fmt.Errorf("failed to read validation response: %w", err)
 	}
 
-	switch resp.StatusCode {
+	return resp.StatusCode, body, nil
+}
+
+// evaluateValidationResponse maps the final HTTP status to a Go error.
+func (s *SigNoz) evaluateValidationResponse(log *zap.Logger, status int, body []byte) error {
+	switch status {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		log.Warn("SigNoz credential validation failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
-		return fmt.Errorf("%w: status %d", ErrUnauthorized, resp.StatusCode)
+		log.Warn("SigNoz credential validation failed", zap.Int("status", status))
+		return fmt.Errorf("%w: status %d", ErrUnauthorized, status)
 	default:
-		log.Warn("SigNoz credential validation returned unexpected status", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+		log.Warn("SigNoz credential validation returned unexpected status", zap.Int("status", status), zap.String("response", string(body)))
+		return fmt.Errorf("unexpected status %d: %s", status, string(body))
 	}
 }
 
