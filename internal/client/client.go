@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -56,13 +58,20 @@ func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz 
 func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 	l := s.logger
 	if s.baseURL != "" {
-		l = l.With(zap.String("tenant_url", s.baseURL))
+		l = l.With(zap.String("mcp.tenant_url", s.baseURL))
 	}
 	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-		l = l.With(zap.String("session_id", sid))
+		l = l.With(zap.String("mcp.session.id", sid))
 	}
 	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-		l = l.With(zap.String("search_context", sc))
+		l = l.With(zap.String("mcp.search_context", sc))
+	}
+	// Add trace context for log-trace correlation.
+	if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
+		l = l.With(
+			zap.String("trace_id", spanCtx.TraceID().String()),
+			zap.String("span_id", spanCtx.SpanID().String()),
+		)
 	}
 	return l
 }
@@ -374,6 +383,9 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 	s.requestLogger(ctx).Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(telemetry.MCPQueryPayloadKey.String(string(body)))
+	}
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }
 
