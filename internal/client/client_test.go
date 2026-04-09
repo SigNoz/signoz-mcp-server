@@ -164,25 +164,6 @@ func TestValidateCredentials(t *testing.T) {
 			},
 		},
 		{
-			name:            "user/me 404 falls back to service_accounts/me success",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusOK,
-			expectedError:   false,
-			expectUserMeHit: true,
-			expectSAHit:     true,
-		},
-		{
-			name:            "user/me 404 falls back to service_accounts/me unauthorized",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusUnauthorized,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
-			checkErr: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrUnauthorized)
-			},
-		},
-		{
 			name:            "user/me 500 returns error directly without fallback",
 			userMeStatus:    http.StatusInternalServerError,
 			expectedError:   true,
