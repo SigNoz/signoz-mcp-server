@@ -71,7 +71,7 @@ func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
 //
-// It first tries the user endpoint (/api/v1/user/me). A 502 response indicates
+// It first tries the user endpoint (/api/v1/user/me). A 404 response indicates
 // the API key belongs to a service account (newer SigNoz releases), so it
 // retries against /api/v1/service_accounts/me. Any other response from user/me
 // is returned directly.
@@ -87,9 +87,9 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 
-	// 502 means the key is a service-account key; validate via service account endpoint.
-	if status == http.StatusBadGateway {
-		log.Debug("user/me returned 502, retrying with service_accounts/me")
+	// 404 means the key is a service-account key; validate via service account endpoint.
+	if status == http.StatusNotFound {
+		log.Debug("user/me returned non-user status, retrying with service_accounts/me", zap.Int("status", status))
 		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
 		status, body, err = s.doValidationRequest(ctx, saURL)
 		if err != nil {

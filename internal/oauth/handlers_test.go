@@ -200,14 +200,14 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 }
 
 // TestOAuthAuthorizationFlowServiceAccountFallback verifies the full OAuth
-// authorize flow succeeds when user/me returns 502 (service-account key) and
+// authorize flow succeeds when user/me returns 404 (service-account key) and
 // the validation falls back to /api/v1/service_accounts/me.
 func TestOAuthAuthorizationFlowServiceAccountFallback(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/user/me":
-			// Service-account key triggers 502 on user/me.
-			w.WriteHeader(http.StatusBadGateway)
+			// Service-account key triggers 404 on user/me.
+			w.WriteHeader(http.StatusNotFound)
 		case "/api/v1/service_accounts/me":
 			if r.Method != http.MethodGet {
 				w.WriteHeader(http.StatusMethodNotAllowed)
