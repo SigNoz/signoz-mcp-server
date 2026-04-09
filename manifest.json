@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
