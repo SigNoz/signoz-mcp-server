@@ -3,7 +3,7 @@
   "name": "io.github.SigNoz/signoz-mcp-server",
   "description": "SigNoz MCP server: access metrics, traces, logs, alerts, and dashboards via AI assistants",
   "title": "SigNoz MCP Server",
-  "version": "0.1.0",
+  "version": "V0.1.1",
   "packages": [
     {
       "registryType": "oci",
@@ -14,4 +14,3 @@
     }
   ]
 }
-
