@@ -199,6 +199,118 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 	}
 }
 
+// TestOAuthAuthorizationFlowServiceAccountFallback verifies the full OAuth
+// authorize flow succeeds when user/me returns 404 (service-account key) and
+// the validation falls back to /api/v1/service_accounts/me.
+func TestOAuthAuthorizationFlowServiceAccountFallback(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/user/me":
+			// Service-account key triggers 404 on user/me.
+			w.WriteHeader(http.StatusNotFound)
+		case "/api/v1/service_accounts/me":
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"status":"error","message":"Unauthorized"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer signozServer.Close()
+
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+		AccessTokenTTL:   time.Hour,
+		RefreshTokenTTL:  24 * time.Hour,
+		AuthCodeTTL:      10 * time.Minute,
+	}
+
+	handler := NewHandler(zap.NewNop(), cfg)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
+	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
+	mux.HandleFunc("POST /oauth/authorize", handler.HandleAuthorizeSubmit)
+
+	// Register client.
+	registerRR := httptest.NewRecorder()
+	mux.ServeHTTP(registerRR, httptest.NewRequest(http.MethodPost, "/oauth/register",
+		bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://127.0.0.1:4567/callback"]}`)))
+	if registerRR.Code != http.StatusCreated {
+		t.Fatalf("register status = %d, body = %s", registerRR.Code, registerRR.Body.String())
+	}
+	var registered registerClientResponse
+	if err := json.Unmarshal(registerRR.Body.Bytes(), &registered); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+
+	// Build PKCE challenge.
+	verifier := "s3cr3t-pkce-verifier-that-is-long-enough-for-rfc7636"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	// GET /oauth/authorize to obtain CSRF token.
+	authorizeURL := "/oauth/authorize?response_type=code&client_id=" + url.QueryEscape(registered.ClientID) +
+		"&redirect_uri=" + url.QueryEscape("http://127.0.0.1:4567/callback") +
+		"&state=state-fallback&code_challenge=" + url.QueryEscape(challenge) +
+		"&code_challenge_method=S256"
+	authorizeRR := httptest.NewRecorder()
+	mux.ServeHTTP(authorizeRR, httptest.NewRequest(http.MethodGet, authorizeURL, nil))
+	if authorizeRR.Code != http.StatusOK {
+		t.Fatalf("authorize GET status = %d", authorizeRR.Code)
+	}
+
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	matches := re.FindStringSubmatch(authorizeRR.Body.String())
+	if len(matches) != 2 {
+		t.Fatal("csrf token not found in authorize page")
+	}
+	csrfCookie := authorizeRR.Result().Cookies()[0]
+
+	// POST /oauth/authorize — this is the step that validates credentials
+	// via the fallback path (service_accounts/me 404 → user/me 200).
+	form := url.Values{
+		"client_id":             {registered.ClientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"state":                 {"state-fallback"},
+		"code_challenge":        {challenge},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {matches[1]},
+		"signoz_url":            {signozServer.URL},
+		"api_key":               {"snz-api-key"},
+	}
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(csrfCookie)
+	submitRR := httptest.NewRecorder()
+	mux.ServeHTTP(submitRR, submitReq)
+
+	if submitRR.Code != http.StatusFound {
+		t.Fatalf("authorize POST status = %d, want 302; body = %s", submitRR.Code, submitRR.Body.String())
+	}
+
+	location := submitRR.Header().Get("Location")
+	redirected, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("parse redirect: %v", err)
+	}
+	if redirected.Query().Get("state") != "state-fallback" {
+		t.Fatalf("state = %q, want %q", redirected.Query().Get("state"), "state-fallback")
+	}
+	if redirected.Query().Get("code") == "" {
+		t.Fatalf("authorization code missing from redirect %q", location)
+	}
+}
+
 func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/user/me" {
