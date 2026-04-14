@@ -87,26 +87,6 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
 		}
 		m.logger.Debug("mcp request", fields...)
-
-		// Analytics: track session registration on initialize.
-		// OnRegisterSession hooks only fire for SSE (GET) connections,
-		// so we also track here to cover POST-only streamable HTTP.
-		if method == mcp.MethodInitialize {
-			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-				traits := map[string]any{
-					string(telemetry.MCPTenantURLKey): signozURL,
-				}
-				m.analytics.IdentifyGroup(ctx, signozURL, traits)
-
-				props := map[string]any{
-					string(telemetry.MCPTenantURLKey): signozURL,
-				}
-				if session := server.ClientSessionFromContext(ctx); session != nil {
-					props[string(telemetry.MCPSessionIDKey)] = session.SessionID()
-				}
-				m.analytics.TrackGroup(ctx, signozURL, "MCP Registered", props)
-			}
-		}
 	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 		span := trace.SpanFromContext(ctx)
@@ -117,6 +97,24 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
 		}
 		m.logger.Error("mcp error", fields...)
+	})
+	// Analytics: track session registration after successful initialize.
+	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
+	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			traits := map[string]any{
+				string(telemetry.MCPTenantURLKey): signozURL,
+			}
+			m.analytics.IdentifyGroup(ctx, signozURL, traits)
+
+			props := map[string]any{
+				string(telemetry.MCPTenantURLKey): signozURL,
+			}
+			if session := server.ClientSessionFromContext(ctx); session != nil {
+				props[string(telemetry.MCPSessionIDKey)] = session.SessionID()
+			}
+			m.analytics.TrackGroup(ctx, signozURL, "MCP Registered", props)
+		}
 	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
 		fields := []zap.Field{}
