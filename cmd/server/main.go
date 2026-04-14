@@ -11,6 +11,9 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	mcpserver "github.com/SigNoz/signoz-mcp-server/internal/mcp-server"
 	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/segmentanalytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 )
 
@@ -64,11 +67,31 @@ func main() {
 		log.Info("OpenTelemetry meter provider initialized successfully")
 	}
 
+	var analyticsInstance analytics.Analytics
+	if cfg.AnalyticsEnabled && cfg.SegmentKey != "" {
+		var err error
+		analyticsInstance, err = segmentanalytics.New(log, analytics.Config{
+			Enabled: true,
+			Segment: analytics.SegmentConfig{Key: cfg.SegmentKey},
+		})
+		if err != nil {
+			log.Warn("Failed to initialize Segment analytics, continuing without analytics", zap.Error(err))
+			analyticsInstance = noopanalytics.New()
+		}
+	} else {
+		analyticsInstance = noopanalytics.New()
+	}
+	defer func() {
+		if err := analyticsInstance.Stop(context.Background()); err != nil {
+			log.Error("Failed to stop analytics", zap.Error(err))
+		}
+	}()
+
 	handler := tools.NewHandler(log, cfg)
 
 	dashboard.InitClickhouseSchema()
 
-	if err := mcpserver.NewMCPServer(log, handler, cfg).Start(); err != nil {
+	if err := mcpserver.NewMCPServer(log, handler, cfg, analyticsInstance).Start(); err != nil {
 		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 	}
 }
