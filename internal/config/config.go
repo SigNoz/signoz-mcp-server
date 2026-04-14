@@ -25,6 +25,10 @@ type Config struct {
 	// Client cache settings for multi-tenant mode
 	ClientCacheSize int
 	ClientCacheTTL  time.Duration
+
+	// Analytics settings
+	AnalyticsEnabled bool
+	SegmentKey       string
 }
 
 const (
@@ -36,6 +40,9 @@ const (
 
 	ClientCacheSize = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL  = "CLIENT_CACHE_TTL_MINUTES"
+
+	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
+	SegmentKeyEnv       = "SEGMENT_KEY"
 
 	OAuthEnabledEnv         = "OAUTH_ENABLED"
 	OAuthTokenSecretEnv     = "OAUTH_TOKEN_SECRET"
@@ -75,6 +82,8 @@ func LoadConfig() (*Config, error) {
 		AuthCodeTTL:      time.Duration(authCodeTTLSeconds) * time.Second,
 		ClientCacheSize:  cacheSize,
 		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
+		AnalyticsEnabled: getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:       getEnv(SegmentKeyEnv, ""),
 	}, nil
 }
 

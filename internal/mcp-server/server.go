@@ -12,6 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
 	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
@@ -25,13 +26,14 @@ import (
 )
 
 type MCPServer struct {
-	logger  *zap.Logger
-	handler *tools.Handler
-	config  *config.Config
+	logger    *zap.Logger
+	handler   *tools.Handler
+	config    *config.Config
+	analytics analytics.Analytics
 }
 
-func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config) *MCPServer {
-	return &MCPServer{logger: log, handler: handler, config: cfg}
+func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {
+	return &MCPServer{logger: log, handler: handler, config: cfg, analytics: a}
 }
 
 func (m *MCPServer) Start() error {
@@ -96,19 +98,56 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		}
 		m.logger.Error("mcp error", fields...)
 	})
+	// Analytics: track session registration after successful initialize.
+	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
+	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			traits := map[string]any{
+				string(telemetry.MCPTenantURLKey): signozURL,
+			}
+			m.analytics.IdentifyGroup(ctx, signozURL, traits)
+
+			props := map[string]any{
+				string(telemetry.MCPTenantURLKey): signozURL,
+			}
+			if session := server.ClientSessionFromContext(ctx); session != nil {
+				props[string(telemetry.MCPSessionIDKey)] = session.SessionID()
+			}
+			m.analytics.TrackGroup(ctx, signozURL, "MCP Registered", props)
+		}
+	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
 		fields := []zap.Field{}
+		var tenantURL string
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
+			tenantURL = signozURL
 		}
 		m.logger.Info("mcp session registered", fields...)
+
+		if tenantURL != "" {
+			traits := map[string]any{
+				string(telemetry.MCPTenantURLKey): tenantURL,
+			}
+			m.analytics.IdentifyGroup(ctx, tenantURL, traits)
+		}
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
 		fields := []zap.Field{}
+		var tenantURL string
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
+			tenantURL = signozURL
 		}
 		m.logger.Info("mcp session unregistered", fields...)
+
+		if tenantURL != "" {
+			props := map[string]any{
+				string(telemetry.MCPTenantURLKey): tenantURL,
+				string(telemetry.MCPSessionIDKey): session.SessionID(),
+			}
+			m.analytics.TrackGroup(ctx, tenantURL, "MCP Unregistered", props)
+		}
 	})
 	return hooks
 }
@@ -194,6 +233,21 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				append(fields,
 					zap.Duration("duration", time.Since(start)),
 					zap.Bool("mcp.tool.is_error", isErr))...)
+
+			// Analytics: track tool call
+			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+				props := map[string]any{
+					string(telemetry.MCPTenantURLKey):  signozURL,
+					string(telemetry.GenAIToolNameKey): req.Params.Name,
+					string(telemetry.MCPToolIsErrorKey): isErr,
+					"duration_ms": time.Since(start).Milliseconds(),
+				}
+				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
+					props[string(telemetry.MCPSessionIDKey)] = sid
+				}
+				m.analytics.TrackGroup(ctx, signozURL, "Tool Call", props)
+			}
+
 			return result, err
 		}
 	}
