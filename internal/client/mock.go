@@ -32,6 +32,7 @@ type MockClient struct {
 	GetTraceDetailsFn              func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	ListNotificationChannelsFn     func(ctx context.Context) (json.RawMessage, error)
 	CreateNotificationChannelFn    func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
+	UpdateNotificationChannelFn    func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error)
 	TestNotificationChannelFn      func(ctx context.Context, receiverJSON []byte) error
 }
 
@@ -181,6 +182,13 @@ func (m *MockClient) ListNotificationChannels(ctx context.Context) (json.RawMess
 func (m *MockClient) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
 	if m.CreateNotificationChannelFn != nil {
 		return m.CreateNotificationChannelFn(ctx, receiverJSON)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+	if m.UpdateNotificationChannelFn != nil {
+		return m.UpdateNotificationChannelFn(ctx, id, receiverJSON)
 	}
 	return json.RawMessage(`{}`), nil
 }

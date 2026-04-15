@@ -534,6 +534,12 @@ func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []b
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
 }
 
+func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Updating notification channel", zap.String("id", id))
+	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/testChannel", s.baseURL)
 	s.requestLogger(ctx).Debug("Testing notification channel")

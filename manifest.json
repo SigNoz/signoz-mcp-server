@@ -112,6 +112,14 @@
     {
       "name": "signoz_execute_builder_query",
       "description": "Execute a raw SigNoz Query Builder v5 query"
+    },
+    {
+      "name": "signoz_create_notification_channel",
+      "description": "Create a notification channel and send a test notification"
+    },
+    {
+      "name": "signoz_update_notification_channel",
+      "description": "Update an existing notification channel and send a test notification"
     }
   ],
   "compatibility": {
