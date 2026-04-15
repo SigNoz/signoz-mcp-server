@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/alert"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
@@ -70,6 +71,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				"1. signoz://alert/instructions — REQUIRED: Alert structure, field descriptions, valid values\n"+
 				"2. signoz://alert/examples — REQUIRED: Complete working examples for each alert type\n\n"+
 				"RECOMMENDED: Use signoz_get_alert on an existing alert to study the exact structure.\n\n"+
+				"NOTIFICATION CHANNELS: At least one notification channel is required. "+
+				"If the user explicitly names a channel, use it directly. "+
+				"Otherwise, do NOT guess or assume channel names — call this tool WITHOUT channels to get the list of available channels, "+
+				"present that list to the user, let them choose, then call again with their selection. "+
+				"If no suitable channel exists, use signoz_create_notification_channel first.\n\n"+
 				"Supports all alert types (metrics, logs, traces, exceptions) and rule types (threshold, promql, anomaly).\n"+
 				"Uses v2alpha1 schema with structured thresholds (multi-threshold with per-level channel routing), "+
 				"evaluation block, and notificationSettings.\n"+
@@ -298,14 +304,156 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	data, err := client.CreateAlertRule(ctx, cleanJSON)
 
+	// Fetch existing notification channels and validate channel references.
+	availableChannels, err := fetchChannelNames(ctx, client)
+	if err != nil {
+		log.Warn("Failed to fetch notification channels for validation", zap.Error(err))
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch notification channels: %s", err.Error())), nil
+	}
+
+	referencedChannels := extractReferencedChannels(rawConfig)
+
+	if len(referencedChannels) == 0 {
+		return mcp.NewToolResultError(formatNoChannelsError(availableChannels)), nil
+	}
+
+	// Validate that all referenced channels exist.
+	if invalid := findInvalidChannels(referencedChannels, availableChannels); len(invalid) > 0 {
+		return mcp.NewToolResultError(formatInvalidChannelsError(invalid, availableChannels)), nil
+	}
+
+	data, err := client.CreateAlertRule(ctx, cleanJSON)
 	if err != nil {
 		log.Error("Failed to create alert rule in SigNoz", zap.Error(err))
 		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
 	}
 
 	return mcp.NewToolResultText(string(data)), nil
+}
+
+// fetchChannelNames retrieves all notification channel names from the SigNoz API.
+func fetchChannelNames(ctx context.Context, c signozclient.Client) ([]string, error) {
+	resp, err := c.ListNotificationChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var parsed struct {
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(resp, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse notification channels response: %w", err)
+	}
+
+	names := make([]string, 0, len(parsed.Data))
+	for _, ch := range parsed.Data {
+		if ch.Name != "" {
+			names = append(names, ch.Name)
+		}
+	}
+	return names, nil
+}
+
+// extractReferencedChannels collects all channel names referenced in the alert
+// payload from condition.thresholds.spec[].channels and preferredChannels.
+func extractReferencedChannels(rawConfig map[string]any) []string {
+	seen := map[string]bool{}
+
+	// Check preferredChannels
+	if pc, ok := rawConfig["preferredChannels"].([]any); ok {
+		for _, v := range pc {
+			if name, ok := v.(string); ok && name != "" {
+				seen[name] = true
+			}
+		}
+	}
+
+	// Check condition.thresholds.spec[].channels
+	cond, _ := rawConfig["condition"].(map[string]any)
+	if cond == nil {
+		return mapKeys(seen)
+	}
+	thresholds, _ := cond["thresholds"].(map[string]any)
+	if thresholds == nil {
+		return mapKeys(seen)
+	}
+	specs, _ := thresholds["spec"].([]any)
+	for _, s := range specs {
+		spec, ok := s.(map[string]any)
+		if !ok {
+			continue
+		}
+		channels, ok := spec["channels"].([]any)
+		if !ok {
+			continue
+		}
+		for _, ch := range channels {
+			if name, ok := ch.(string); ok && name != "" {
+				seen[name] = true
+			}
+		}
+	}
+
+	return mapKeys(seen)
+}
+
+func mapKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// findInvalidChannels returns channel names that are not in the available list.
+func findInvalidChannels(referenced, available []string) []string {
+	avail := map[string]bool{}
+	for _, name := range available {
+		avail[name] = true
+	}
+	var invalid []string
+	for _, name := range referenced {
+		if !avail[name] {
+			invalid = append(invalid, name)
+		}
+	}
+	return invalid
+}
+
+func formatNoChannelsError(available []string) string {
+	var sb strings.Builder
+	sb.WriteString("No notification channels specified in the alert. At least one channel is required.\n\n")
+
+	if len(available) > 0 {
+		sb.WriteString("Available notification channels:\n")
+		for _, name := range available {
+			sb.WriteString(fmt.Sprintf("  - %s\n", name))
+		}
+		sb.WriteString("\nPlease choose one or more channels and set them in condition.thresholds.spec[].channels.\n")
+	} else {
+		sb.WriteString("No notification channels exist yet.\n")
+	}
+	sb.WriteString("To create a new channel, use the signoz_create_notification_channel tool first.")
+	return sb.String()
+}
+
+func formatInvalidChannelsError(invalid, available []string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("The following notification channels do not exist: %s\n\n", strings.Join(invalid, ", ")))
+
+	if len(available) > 0 {
+		sb.WriteString("Available notification channels:\n")
+		for _, name := range available {
+			sb.WriteString(fmt.Sprintf("  - %s\n", name))
+		}
+		sb.WriteString("\nPlease use one of the available channels, or create a new one with signoz_create_notification_channel.")
+	} else {
+		sb.WriteString("No notification channels exist yet. Create one with signoz_create_notification_channel first.")
+	}
+	return sb.String()
 }
 
 // registerAlertResources registers MCP resources needed for alert creation.
