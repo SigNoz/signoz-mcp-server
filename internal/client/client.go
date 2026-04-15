@@ -522,6 +522,12 @@ func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
 // ChannelWriteTimeout is used for notification channel create/test operations.
 const ChannelWriteTimeout = 30 * time.Second
 
+func (s *SigNoz) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Fetching notification channels from SigNoz")
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
 func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
 	s.requestLogger(ctx).Debug("Creating notification channel")
