@@ -29,7 +29,9 @@ type MockClient struct {
 	GetLogViewFn              func(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeysFn            func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
 	GetFieldValuesFn          func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
-	GetTraceDetailsFn         func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	GetTraceDetailsFn              func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	CreateNotificationChannelFn    func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
+	TestNotificationChannelFn      func(ctx context.Context, receiverJSON []byte) error
 }
 
 // Compile-time check that MockClient satisfies Client.
@@ -166,4 +168,18 @@ func (m *MockClient) GetTraceDetails(ctx context.Context, traceID string, includ
 		return m.GetTraceDetailsFn(ctx, traceID, includeSpans, startTime, endTime)
 	}
 	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+	if m.CreateNotificationChannelFn != nil {
+		return m.CreateNotificationChannelFn(ctx, receiverJSON)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
+	if m.TestNotificationChannelFn != nil {
+		return m.TestNotificationChannelFn(ctx, receiverJSON)
+	}
+	return nil
 }
