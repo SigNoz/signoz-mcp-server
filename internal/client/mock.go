@@ -30,6 +30,7 @@ type MockClient struct {
 	GetFieldKeysFn            func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
 	GetFieldValuesFn          func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
 	GetTraceDetailsFn              func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	CreateAlertRuleFn              func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	ListNotificationChannelsFn     func(ctx context.Context) (json.RawMessage, error)
 	CreateNotificationChannelFn    func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
 	UpdateNotificationChannelFn    func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error)
@@ -168,6 +169,13 @@ func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricNam
 func (m *MockClient) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
 	if m.GetTraceDetailsFn != nil {
 		return m.GetTraceDetailsFn(ctx, traceID, includeSpans, startTime, endTime)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+	if m.CreateAlertRuleFn != nil {
+		return m.CreateAlertRuleFn(ctx, alertJSON)
 	}
 	return json.RawMessage(`{}`), nil
 }
