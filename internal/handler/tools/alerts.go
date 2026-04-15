@@ -283,6 +283,9 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
 	}
 
+	// Remove MCP-specific metadata that is not part of the alert rule schema.
+	delete(rawConfig, "searchContext")
+
 	// Validate and normalize the alert payload.
 	cleanJSON, err := alert.ValidateFromMap(rawConfig)
 	if err != nil {

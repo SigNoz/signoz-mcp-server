@@ -473,6 +473,66 @@ func TestHandleCreateAlert(t *testing.T) {
 	}
 }
 
+func TestHandleCreateAlert_StripsSearchContext(t *testing.T) {
+	var capturedJSON []byte
+	mock := &client.MockClient{
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			capturedJSON = alertJSON
+			return json.RawMessage(`{"status":"success","data":{"id":"rule-456"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"searchContext": "user wants to create an alert for high CPU",
+		"alert":         "CPU Alert",
+		"alertType":     "METRIC_BASED_ALERT",
+		"ruleType":      "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name": "warning", "target": float64(90),
+						"op": "1", "matchType": "1",
+					},
+				},
+			},
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(capturedJSON, &parsed); err != nil {
+		t.Fatalf("failed to parse captured JSON: %v", err)
+	}
+	if _, hasSearchContext := parsed["searchContext"]; hasSearchContext {
+		t.Error("searchContext should be stripped from the API payload")
+	}
+}
+
 func TestHandleCreateAlert_EmptyArgs(t *testing.T) {
 	mock := &client.MockClient{}
 	h := newTestHandler(mock)
