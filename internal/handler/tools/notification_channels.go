@@ -190,24 +190,32 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 
-	// Parse the "data" string field in each channel into a JSON object for readability.
+	// Summarize each channel to essential fields only (id, name, type, timestamps).
+	// The raw "data" field contains the full config (webhook URLs, API keys, templates)
+	// which bloats the response beyond token limits. We parse it only to extract the name.
+	summarized := make([]any, 0, len(data))
 	for _, item := range data {
 		ch, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
-		dataStr, ok := ch["data"].(string)
-		if !ok || dataStr == "" {
-			continue
+		summary := map[string]any{
+			"id":        ch["id"],
+			"type":      ch["type"],
+			"createdAt": ch["createdAt"],
+			"updatedAt": ch["updatedAt"],
 		}
-		var parsed any
-		if err := json.Unmarshal([]byte(dataStr), &parsed); err == nil {
-			ch["data"] = parsed
+		if dataStr, ok := ch["data"].(string); ok && dataStr != "" {
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(dataStr), &parsed); err == nil {
+				summary["name"] = parsed["name"]
+			}
 		}
+		summarized = append(summarized, summary)
 	}
 
-	total := len(data)
-	pagedData := paginate.Array(data, offset, limit)
+	total := len(summarized)
+	pagedData := paginate.Array(summarized, offset, limit)
 
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {

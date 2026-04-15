@@ -42,17 +42,19 @@ func TestHandleListNotificationChannels_Success(t *testing.T) {
 		t.Fatalf("expected 2 channels, got %d", len(data))
 	}
 
-	// Verify the "data" field was parsed from string to object
+	// Verify summarized fields only (id, name, type, timestamps — no full config)
 	ch := data[0].(map[string]any)
 	if ch["name"] != "my-slack" {
 		t.Errorf("expected name=my-slack, got %v", ch["name"])
 	}
-	chData, ok := ch["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected data field to be parsed object, got %T", ch["data"])
+	if ch["type"] != "slack" {
+		t.Errorf("expected type=slack, got %v", ch["type"])
 	}
-	if _, ok := chData["slack_configs"]; !ok {
-		t.Error("expected parsed data to contain slack_configs")
+	if ch["id"] != "1" {
+		t.Errorf("expected id=1, got %v", ch["id"])
+	}
+	if _, exists := ch["data"]; exists {
+		t.Error("expected summarized response to omit the full data/config field")
 	}
 
 	// Verify pagination metadata

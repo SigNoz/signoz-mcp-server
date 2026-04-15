@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -407,6 +410,9 @@ func TestHandleListAlerts_FilterSplitAndTrim(t *testing.T) {
 func TestHandleCreateAlert(t *testing.T) {
 	var capturedJSON []byte
 	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
 		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
 			capturedJSON = alertJSON
 			return json.RawMessage(`{"status":"success","data":{"id":"rule-123"}}`), nil
@@ -443,6 +449,7 @@ func TestHandleCreateAlert(t *testing.T) {
 						"target":    float64(100),
 						"op":        "1",
 						"matchType": "1",
+						"channels":  []any{"slack-alerts"},
 					},
 				},
 			},
@@ -476,6 +483,9 @@ func TestHandleCreateAlert(t *testing.T) {
 func TestHandleCreateAlert_StripsSearchContext(t *testing.T) {
 	var capturedJSON []byte
 	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
 		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
 			capturedJSON = alertJSON
 			return json.RawMessage(`{"status":"success","data":{"id":"rule-456"}}`), nil
@@ -510,6 +520,7 @@ func TestHandleCreateAlert_StripsSearchContext(t *testing.T) {
 					map[string]any{
 						"name": "warning", "target": float64(90),
 						"op": "1", "matchType": "1",
+						"channels": []any{"slack-alerts"},
 					},
 				},
 			},
@@ -567,8 +578,63 @@ func TestHandleCreateAlert_ValidationError(t *testing.T) {
 
 func TestHandleCreateAlert_ClientError(t *testing.T) {
 	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
 		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
 			return nil, fmt.Errorf("unexpected status 400: bad request")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert":     "Test Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+						"channels":  []any{"slack-alerts"},
+					},
+				},
+			},
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when client returns error")
+	}
+}
+
+func TestHandleCreateAlert_NoChannelsReturnsAvailable(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"},{"name":"pagerduty-oncall","type":"pagerduty"}]}`), nil
 		},
 	}
 	h := newTestHandler(mock)
@@ -612,6 +678,188 @@ func TestHandleCreateAlert_ClientError(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !result.IsError {
-		t.Error("expected error result when client returns error")
+		t.Error("expected error result when no channels are specified")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "slack-alerts") {
+		t.Error("expected error to list available channel 'slack-alerts'")
+	}
+	if !strings.Contains(text, "pagerduty-oncall") {
+		t.Error("expected error to list available channel 'pagerduty-oncall'")
+	}
+	if !strings.Contains(text, "signoz_create_notification_channel") {
+		t.Error("expected error to mention signoz_create_notification_channel")
+	}
+}
+
+func TestHandleCreateAlert_InvalidChannelReturnsError(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert":     "Test Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+						"channels":  []any{"nonexistent-channel"},
+					},
+				},
+			},
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when channel does not exist")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "nonexistent-channel") {
+		t.Error("expected error to mention the invalid channel name")
+	}
+	if !strings.Contains(text, "slack-alerts") {
+		t.Error("expected error to list available channels")
+	}
+}
+
+func TestHandleCreateAlert_PreferredChannelsValidated(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"rule-789"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert":             "Test Alert",
+		"alertType":         "METRIC_BASED_ALERT",
+		"ruleType":          "threshold_rule",
+		"preferredChannels": []any{"slack-alerts"},
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+					},
+				},
+			},
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+}
+
+func TestHandleCreateAlert_NoChannelsExist(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert":     "Test Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+					},
+				},
+			},
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when no channels exist and none specified")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "No notification channels exist yet") {
+		t.Error("expected error to indicate no channels exist")
+	}
+	if !strings.Contains(text, "signoz_create_notification_channel") {
+		t.Error("expected error to suggest creating a new channel")
 	}
 }
