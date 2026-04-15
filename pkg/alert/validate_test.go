@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// minimalValidAlert returns a minimal valid alert rule as map[string]any.
-// Uses v1-style op/target/matchType which will be auto-converted to v2.
+// minimalValidAlert returns a minimal valid alert rule using v2alpha1 schema.
 func minimalValidAlert() map[string]any {
 	return map[string]any{
 		"alert":     "Test Alert",
@@ -32,9 +31,17 @@ func minimalValidAlert() map[string]any {
 					},
 				},
 			},
-			"op":        "1",
-			"target":    float64(100),
-			"matchType": "1",
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+					},
+				},
+			},
 		},
 	}
 }
@@ -51,23 +58,15 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 		t.Fatalf("failed to parse result: %v", err)
 	}
 
-	// Check v2 defaults were applied
+	// Check defaults were applied
 	if parsed["version"] != "v5" {
 		t.Errorf("expected version=v5, got %v", parsed["version"])
 	}
-	if parsed["schemaVersion"] != "v2" {
-		t.Errorf("expected schemaVersion=v2, got %v", parsed["schemaVersion"])
+	if parsed["schemaVersion"] != "v2alpha1" {
+		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
 	}
 	if parsed["source"] != "mcp" {
 		t.Errorf("expected source=mcp, got %v", parsed["source"])
-	}
-
-	// v1 evalWindow/frequency should be removed
-	if _, has := parsed["evalWindow"]; has {
-		t.Error("evalWindow should be removed (converted to evaluation block)")
-	}
-	if _, has := parsed["frequency"]; has {
-		t.Error("frequency should be removed (converted to evaluation block)")
 	}
 
 	// evaluation block should exist
@@ -97,7 +96,7 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 		t.Errorf("expected severity=warning, got %v", labels["severity"])
 	}
 
-	// Check v1→v2 threshold conversion
+	// thresholds should be preserved
 	cond := parsed["condition"].(map[string]any)
 	if cond["selectedQueryName"] != "A" {
 		t.Errorf("expected selectedQueryName=A, got %v", cond["selectedQueryName"])
@@ -114,23 +113,6 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 	if spec["target"] != float64(100) {
 		t.Errorf("expected threshold target=100, got %v", spec["target"])
 	}
-	if spec["op"] != "1" {
-		t.Errorf("expected threshold op=1, got %v", spec["op"])
-	}
-	if spec["matchType"] != "1" {
-		t.Errorf("expected threshold matchType=1, got %v", spec["matchType"])
-	}
-	if spec["name"] != "warning" {
-		t.Errorf("expected threshold name=warning (from default severity), got %v", spec["name"])
-	}
-
-	// v1 condition-level fields should be cleared
-	if cond["op"] != "" {
-		t.Errorf("expected condition.op to be cleared, got %v", cond["op"])
-	}
-	if cond["matchType"] != "" {
-		t.Errorf("expected condition.matchType to be cleared, got %v", cond["matchType"])
-	}
 
 	// annotations
 	annotations, ok := parsed["annotations"].(map[string]any)
@@ -139,100 +121,6 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 	}
 	if _, hasDesc := annotations["description"]; !hasDesc {
 		t.Error("expected default description annotation")
-	}
-}
-
-func TestValidate_V1ToV2Conversion(t *testing.T) {
-	alert := map[string]any{
-		"alert":     "V1 Alert",
-		"alertType": "LOGS_BASED_ALERT",
-		"ruleType":  "threshold_rule",
-		"evalWindow": "10m0s",
-		"frequency":  "2m0s",
-		"labels": map[string]any{
-			"severity": "critical",
-		},
-		"preferredChannels": []any{"slack-alerts"},
-		"condition": map[string]any{
-			"compositeQuery": map[string]any{
-				"queryType": "builder",
-				"queries": []any{
-					map[string]any{
-						"type": "builder_query",
-						"spec": map[string]any{
-							"name":   "A",
-							"signal": "logs",
-							"aggregations": []any{
-								map[string]any{"expression": "count()"},
-							},
-							"filter": map[string]any{"expression": ""},
-						},
-					},
-				},
-			},
-			"op":        "1",
-			"target":    float64(500),
-			"matchType": "4",
-			"targetUnit": "count",
-		},
-	}
-
-	result, err := ValidateFromMap(alert)
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-
-	var parsed map[string]any
-	if err := json.Unmarshal(result, &parsed); err != nil {
-		t.Fatalf("failed to unmarshal result: %v", err)
-	}
-
-	// schemaVersion should be v2
-	if parsed["schemaVersion"] != "v2" {
-		t.Errorf("expected schemaVersion=v2, got %v", parsed["schemaVersion"])
-	}
-
-	// evalWindow/frequency should be removed, evaluation block created
-	if _, has := parsed["evalWindow"]; has {
-		t.Error("evalWindow should be removed")
-	}
-	if _, has := parsed["frequency"]; has {
-		t.Error("frequency should be removed")
-	}
-	eval := parsed["evaluation"].(map[string]any)
-	evalSpec := eval["spec"].(map[string]any)
-	if evalSpec["evalWindow"] != "10m0s" {
-		t.Errorf("expected evaluation.spec.evalWindow=10m0s (from v1), got %v", evalSpec["evalWindow"])
-	}
-	if evalSpec["frequency"] != "2m0s" {
-		t.Errorf("expected evaluation.spec.frequency=2m0s (from v1), got %v", evalSpec["frequency"])
-	}
-
-	// v1 threshold should be converted to v2
-	cond := parsed["condition"].(map[string]any)
-	thresholds := cond["thresholds"].(map[string]any)
-	specs := thresholds["spec"].([]any)
-	spec := specs[0].(map[string]any)
-	if spec["name"] != "critical" {
-		t.Errorf("expected threshold name=critical (from severity label), got %v", spec["name"])
-	}
-	if spec["target"] != float64(500) {
-		t.Errorf("expected threshold target=500, got %v", spec["target"])
-	}
-	if spec["targetUnit"] != "count" {
-		t.Errorf("expected threshold targetUnit=count, got %v", spec["targetUnit"])
-	}
-	if spec["op"] != "1" {
-		t.Errorf("expected threshold op=1, got %v", spec["op"])
-	}
-	if spec["matchType"] != "4" {
-		t.Errorf("expected threshold matchType=4, got %v", spec["matchType"])
-	}
-
-	// preferredChannels should be copied to threshold channels
-	channels, ok := spec["channels"].([]any)
-	if !ok || len(channels) != 1 || channels[0] != "slack-alerts" {
-		t.Errorf("expected threshold channels=[slack-alerts], got %v", spec["channels"])
 	}
 }
 
@@ -408,56 +296,23 @@ func TestValidate_EmptyQueries(t *testing.T) {
 	}
 }
 
-func TestValidate_NoThresholdOrOp(t *testing.T) {
+func TestValidate_NoThresholds(t *testing.T) {
 	alert := minimalValidAlert()
 	cond := alert["condition"].(map[string]any)
-	delete(cond, "op")
-	delete(cond, "target")
-	delete(cond, "matchType")
+	delete(cond, "thresholds")
 
 	_, err := ValidateFromMap(alert)
 	if err == nil {
-		t.Fatal("expected error when neither op/target nor thresholds is set")
+		t.Fatal("expected error when thresholds are missing")
 	}
-	if !strings.Contains(err.Error(), "op+target") || !strings.Contains(err.Error(), "thresholds") {
-		t.Errorf("error should mention both options, got: %v", err)
-	}
-}
-
-func TestValidate_V1ThresholdPartialOpOnly(t *testing.T) {
-	alert := minimalValidAlert()
-	cond := alert["condition"].(map[string]any)
-	delete(cond, "target")
-
-	_, err := ValidateFromMap(alert)
-	if err == nil {
-		t.Fatal("expected error when only op is set without target")
-	}
-	if !strings.Contains(err.Error(), "both op and target") {
-		t.Errorf("error should mention both op and target, got: %v", err)
-	}
-}
-
-func TestValidate_V1ThresholdPartialTargetOnly(t *testing.T) {
-	alert := minimalValidAlert()
-	cond := alert["condition"].(map[string]any)
-	delete(cond, "op")
-
-	_, err := ValidateFromMap(alert)
-	if err == nil {
-		t.Fatal("expected error when only target is set without op")
-	}
-	if !strings.Contains(err.Error(), "both op and target") {
-		t.Errorf("error should mention both op and target, got: %v", err)
+	if !strings.Contains(err.Error(), "thresholds") {
+		t.Errorf("error should mention thresholds, got: %v", err)
 	}
 }
 
 func TestValidate_V2ThresholdMissingOpAndMatchType(t *testing.T) {
 	alert := minimalValidAlert()
 	cond := alert["condition"].(map[string]any)
-	delete(cond, "op")
-	delete(cond, "target")
-	delete(cond, "matchType")
 	cond["thresholds"] = map[string]any{
 		"kind": "basic",
 		"spec": []any{
@@ -478,34 +333,6 @@ func TestValidate_V2ThresholdMissingOpAndMatchType(t *testing.T) {
 	}
 	if !strings.Contains(errStr, ".matchType") {
 		t.Errorf("error should mention missing matchType, got: %v", errStr)
-	}
-}
-
-func TestValidate_InvalidCompareOp(t *testing.T) {
-	alert := minimalValidAlert()
-	cond := alert["condition"].(map[string]any)
-	cond["op"] = "invalid_op"
-
-	_, err := ValidateFromMap(alert)
-	if err == nil {
-		t.Fatal("expected error for invalid op")
-	}
-	if !strings.Contains(err.Error(), "invalid_op") {
-		t.Errorf("error should mention the invalid value, got: %v", err)
-	}
-}
-
-func TestValidate_InvalidMatchType(t *testing.T) {
-	alert := minimalValidAlert()
-	cond := alert["condition"].(map[string]any)
-	cond["matchType"] = "invalid_match"
-
-	_, err := ValidateFromMap(alert)
-	if err == nil {
-		t.Fatal("expected error for invalid matchType")
-	}
-	if !strings.Contains(err.Error(), "invalid_match") {
-		t.Errorf("error should mention the invalid value, got: %v", err)
 	}
 }
 
@@ -557,9 +384,7 @@ func TestValidate_SignalMismatch(t *testing.T) {
 func TestValidate_AlertOnAbsentNoThreshold(t *testing.T) {
 	alert := minimalValidAlert()
 	cond := alert["condition"].(map[string]any)
-	delete(cond, "op")
-	delete(cond, "target")
-	delete(cond, "matchType")
+	delete(cond, "thresholds")
 	cond["alertOnAbsent"] = true
 
 	result, err := ValidateFromMap(alert)
@@ -570,13 +395,12 @@ func TestValidate_AlertOnAbsentNoThreshold(t *testing.T) {
 		t.Fatal("expected non-nil result")
 	}
 
-	// Should still have v2 schema but no auto-generated thresholds
 	var parsed map[string]any
 	if err := json.Unmarshal(result, &parsed); err != nil {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
-	if parsed["schemaVersion"] != "v2" {
-		t.Errorf("expected schemaVersion=v2, got %v", parsed["schemaVersion"])
+	if parsed["schemaVersion"] != "v2alpha1" {
+		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
 	}
 }
 
@@ -608,9 +432,6 @@ func TestValidate_PreservesExistingLabels(t *testing.T) {
 func TestValidate_V2ThresholdsMissingSpec(t *testing.T) {
 	alert := minimalValidAlert()
 	cond := alert["condition"].(map[string]any)
-	delete(cond, "op")
-	delete(cond, "target")
-	delete(cond, "matchType")
 	cond["thresholds"] = map[string]any{
 		"kind": "basic",
 		"spec": []any{},
@@ -711,12 +532,8 @@ func TestValidate_ExistingEvaluationPreserved(t *testing.T) {
 		t.Fatalf("failed to unmarshal result: %v", err)
 	}
 
-	// evalWindow/frequency should be removed
-	if _, has := parsed["evalWindow"]; has {
-		t.Error("evalWindow should be removed")
-	}
-	if _, has := parsed["frequency"]; has {
-		t.Error("frequency should be removed")
+	if parsed["schemaVersion"] != "v2alpha1" {
+		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
 	}
 
 	// existing evaluation should be preserved

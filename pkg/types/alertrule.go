@@ -26,8 +26,6 @@ type AlertRule struct {
 	AlertType         AlertType         `json:"alertType" jsonschema:"required" jsonschema_extras:"description=Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT."`
 	RuleType          RuleType          `json:"ruleType" jsonschema:"required" jsonschema_extras:"description=Evaluation type: threshold_rule (compare against value) or promql_rule (PromQL expression) or anomaly_rule (anomaly detection on metrics)."`
 	Description       string            `json:"description,omitempty" jsonschema_extras:"description=Human-readable description of what this alert monitors."`
-	EvalWindow        string            `json:"evalWindow,omitempty" jsonschema_extras:"description=Deprecated: use evaluation field instead. Auto-converted to v2 evaluation block. Go duration string (e.g. 5m0s)."`
-	Frequency         string            `json:"frequency,omitempty" jsonschema_extras:"description=Deprecated: use evaluation field instead. Auto-converted to v2 evaluation block. Go duration string (e.g. 1m0s)."`
 	Condition         AlertCondition    `json:"condition" jsonschema:"required" jsonschema_extras:"description=Alert condition containing the query and threshold configuration."`
 	Labels            map[string]string `json:"labels,omitempty" jsonschema_extras:"description=Labels for the alert rule. MUST include severity (info or warning or critical). Labels enable routing policies - use labels like team or service or environment for routing."`
 	Annotations       map[string]string `json:"annotations,omitempty" jsonschema_extras:"description=Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values."`
@@ -38,7 +36,7 @@ type AlertRule struct {
 
 	// v2 schema fields
 	Evaluation           *AlertEvaluation     `json:"evaluation,omitempty" jsonschema_extras:"description=Evaluation configuration. Specifies eval window and frequency. Auto-generated with defaults (5m0s window and 1m0s frequency) if omitted."`
-	SchemaVersion        string               `json:"schemaVersion,omitempty" jsonschema_extras:"description=Schema version. Always set to v2 automatically."`
+	SchemaVersion        string               `json:"schemaVersion,omitempty" jsonschema_extras:"description=Schema version. Always set to v2alpha1 automatically."`
 	NotificationSettings *NotificationSettings `json:"notificationSettings,omitempty" jsonschema_extras:"description=Notification settings. Controls grouping and re-notification behavior. Auto-generated with defaults if omitted."`
 }
 
@@ -46,13 +44,7 @@ type AlertRule struct {
 type AlertCondition struct {
 	CompositeQuery AlertCompositeQuery `json:"compositeQuery" jsonschema:"required" jsonschema_extras:"description=The composite query defining what data to monitor."`
 
-	// Deprecated: use thresholds instead. These are auto-converted to v2 thresholds.
-	CompareOp string   `json:"op,omitempty" jsonschema_extras:"description=Deprecated: use thresholds instead. Auto-converted to v2 thresholds. Numeric codes: 1=above 2=below 3=equal 4=not_equal."`
-	Target    *float64 `json:"target,omitempty" jsonschema_extras:"description=Deprecated: use thresholds instead. Auto-converted to v2 thresholds. Threshold value to compare against."`
-	MatchType string   `json:"matchType,omitempty" jsonschema_extras:"description=Deprecated: use thresholds instead. Auto-converted to v2 thresholds. Numeric codes: 1=at_least_once 2=all_the_times 3=on_average 4=in_total 5=last."`
-
 	SelectedQuery string `json:"selectedQueryName,omitempty" jsonschema_extras:"description=Which query name triggers the alert (e.g. A or B or F1). Required when multiple queries exist. Defaults to the first query name."`
-	TargetUnit    string `json:"targetUnit,omitempty" jsonschema_extras:"description=Unit for the target value (e.g. ms percent bytes)."`
 
 	// Absent data alerting
 	AlertOnAbsent     bool   `json:"alertOnAbsent,omitempty" jsonschema_extras:"description=Alert when no data is received within the evaluation window."`
@@ -64,8 +56,8 @@ type AlertCondition struct {
 	Algorithm   string `json:"algorithm,omitempty" jsonschema_extras:"description=Anomaly detection algorithm. Currently only zscore is supported."`
 	Seasonality string `json:"seasonality,omitempty" jsonschema_extras:"description=Seasonality pattern for anomaly detection: hourly or daily or weekly."`
 
-	// Threshold configuration — the primary way to define alert thresholds.
-	Thresholds *AlertThresholds `json:"thresholds,omitempty" jsonschema_extras:"description=Threshold configuration. Each threshold level (critical or warning or info) can route to different notification channels. Auto-generated from op/target/matchType if not provided."`
+	// Threshold configuration (v2alpha1 schema).
+	Thresholds *AlertThresholds `json:"thresholds,omitempty" jsonschema_extras:"description=Threshold configuration (v2alpha1 schema). Each threshold level (critical or warning or info) can route to different notification channels. Required unless alertOnAbsent is true."`
 }
 
 // AlertCompositeQuery contains the queries that define what data to monitor.

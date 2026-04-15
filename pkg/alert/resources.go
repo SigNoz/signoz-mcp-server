@@ -5,7 +5,7 @@ const Instructions = `# SigNoz Alert Rule — Instructions
 
 ## Overview
 An alert rule monitors a signal (metrics, logs, traces, or exceptions) and fires when a condition is met.
-The alert is created via POST /api/v1/rules. All alerts use v2 schema with structured thresholds and evaluation.
+The alert is created via POST /api/v1/rules. All alerts use v2alpha1 schema with structured thresholds and evaluation.
 
 ## CRITICAL: Before Creating an Alert
 1. ALWAYS read signoz://alert/examples for complete working payloads
@@ -172,7 +172,7 @@ Controls grouping and re-notification:
 
 ## Auto-Applied Defaults
 - version → "v5"
-- schemaVersion → "v2"
+- schemaVersion → "v2alpha1"
 - evaluation → {kind: "rolling", spec: {evalWindow: "5m0s", frequency: "1m0s"}}
 - notificationSettings → {renotify: {enabled: false, interval: "30m"}}
 - panelType → "graph"
@@ -180,13 +180,12 @@ Controls grouping and re-notification:
 - source → "mcp"
 - labels.severity → "warning" (if not set)
 - annotations → default description and summary templates
-- If op/target/matchType are provided without thresholds, they are auto-converted to v2 thresholds
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.
 const Examples = `# SigNoz Alert Rule — Examples
 
-All examples use v2 schema. Fields like schemaVersion, evaluation, and notificationSettings
+All examples use v2alpha1 schema. Fields like schemaVersion, evaluation, and notificationSettings
 are auto-generated if omitted, but shown here for clarity.
 
 ## Example 1: Metrics Threshold Alert
@@ -682,6 +681,5 @@ Use two queries and a formula to calculate error rate percentage.
 3. The selectedQueryName should reference the query or formula that determines the alert condition
 4. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects
 5. Channel names in thresholds.spec[].channels must match exactly the channel names configured in SigNoz
-6. If you provide deprecated v1 fields (op/target/matchType at condition level), they are auto-converted to v2 thresholds
-7. schemaVersion, evaluation, and notificationSettings are auto-generated if omitted
+6. schemaVersion, evaluation, and notificationSettings are auto-generated if omitted
 `

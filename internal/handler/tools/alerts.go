@@ -71,8 +71,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				"2. signoz://alert/examples — REQUIRED: Complete working examples for each alert type\n\n"+
 				"RECOMMENDED: Use signoz_get_alert on an existing alert to study the exact structure.\n\n"+
 				"Supports all alert types (metrics, logs, traces, exceptions) and rule types (threshold, promql, anomaly).\n"+
-				"Always uses v2 schema with structured thresholds (multi-threshold with per-level channel routing), "+
-				"evaluation block, and notificationSettings. If v1-style fields (op/target/matchType) are provided, they are auto-converted to v2.\n"+
+				"Uses v2alpha1 schema with structured thresholds (multi-threshold with per-level channel routing), "+
+				"evaluation block, and notificationSettings.\n"+
 				"Labels enable routing policies — always include severity (info, warning, critical) and team/service labels for routing.",
 		),
 		mcp.WithInputSchema[types.AlertRule](),
@@ -310,7 +310,7 @@ func (h *Handler) registerAlertResources(s *server.MCPServer) {
 	alertInstructions := mcp.NewResource(
 		"signoz://alert/instructions",
 		"Alert Rule Instructions",
-		mcp.WithResourceDescription("SigNoz alert rule creation guide: alert types, rule types, condition structure, threshold configuration (v1 and v2 schema), composite query format, filter expressions, labels, routing, and notification settings."),
+		mcp.WithResourceDescription("SigNoz alert rule creation guide: alert types, rule types, condition structure, threshold configuration (v2alpha1 schema), composite query format, filter expressions, labels, routing, and notification settings."),
 		mcp.WithMIMEType("text/plain"),
 	)
 

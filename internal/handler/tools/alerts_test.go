@@ -435,9 +435,17 @@ func TestHandleCreateAlert(t *testing.T) {
 					},
 				},
 			},
-			"op":        "1",
-			"target":    float64(100),
-			"matchType": "1",
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+					},
+				},
+			},
 		},
 	})
 
@@ -459,6 +467,9 @@ func TestHandleCreateAlert(t *testing.T) {
 	}
 	if parsed["version"] != "v5" {
 		t.Errorf("expected version=v5, got %v", parsed["version"])
+	}
+	if parsed["schemaVersion"] != "v2alpha1" {
+		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
 	}
 }
 
@@ -522,9 +533,17 @@ func TestHandleCreateAlert_ClientError(t *testing.T) {
 					},
 				},
 			},
-			"op":        "1",
-			"target":    float64(100),
-			"matchType": "1",
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+					},
+				},
+			},
 		},
 	})
 

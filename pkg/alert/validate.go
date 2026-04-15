@@ -112,7 +112,7 @@ func Validate(jsonBytes []byte) ([]byte, error) {
 	}
 
 	applyDefaults(rule)
-	upgradeToV2(rule)
+	applyV2Defaults(rule)
 
 	out, err := json.Marshal(rule)
 	if err != nil {
@@ -151,14 +151,6 @@ func validateEnums(rule map[string]any, errs *ValidationError) {
 		return
 	}
 
-	// op and matchType are optional (v2 schema uses thresholds instead)
-	if op := strVal(cond, "op"); op != "" && !validCompareOps[op] {
-		errs.Addf("condition.op", "must be one of 1(above), 2(below), 3(equal), 4(not_equal); got %q", op)
-	}
-	if mt := strVal(cond, "matchType"); mt != "" && !validMatchTypes[mt] {
-		errs.Addf("condition.matchType", "must be one of 1(at_least_once), 2(all_the_times), 3(on_average), 4(in_total), 5(last); got %q", mt)
-	}
-
 	cq := mapVal(cond, "compositeQuery")
 	if cq != nil {
 		if qt := strVal(cq, "queryType"); qt != "" && !validQueryTypes[qt] {
@@ -190,19 +182,12 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 		return
 	}
 
-	// Check that either v1 threshold (op+target) or v2 thresholds are specified
-	hasOp := strVal(cond, "op") != ""
-	hasTarget := cond["target"] != nil
-	hasV1Threshold := hasOp || hasTarget
-	hasV2Thresholds := mapVal(cond, "thresholds") != nil
+	// Require v2alpha1 thresholds (unless alertOnAbsent is set)
+	hasThresholds := mapVal(cond, "thresholds") != nil
 	hasAlertOnAbsent := boolVal(cond, "alertOnAbsent")
 
-	if hasV1Threshold && !(hasOp && hasTarget) {
-		errs.Add("condition", "v1 threshold requires both op and target; only one was provided")
-	}
-
-	if !hasV1Threshold && !hasV2Thresholds && !hasAlertOnAbsent {
-		errs.Add("condition", "must specify either op+target (v1 schema) or thresholds (v2 schema) or alertOnAbsent=true")
+	if !hasThresholds && !hasAlertOnAbsent {
+		errs.Add("condition.thresholds", "is required (v2alpha1 schema); use condition.thresholds with kind and spec array")
 	}
 
 	// Validate individual queries
@@ -246,8 +231,8 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 		}
 	}
 
-	// Validate v2 thresholds structure
-	if hasV2Thresholds {
+	// Validate v2alpha1 thresholds structure
+	if hasThresholds {
 		thresholds := mapVal(cond, "thresholds")
 		if strVal(thresholds, "kind") == "" {
 			errs.Add("condition.thresholds.kind", "is required (use 'basic')")
@@ -395,77 +380,21 @@ func applyDefaults(rule map[string]any) {
 	}
 }
 
-// upgradeToV2 converts any v1-style fields to v2 format and ensures the
-// output always uses v2 schema. This runs after applyDefaults.
-func upgradeToV2(rule map[string]any) {
-	// Always set schemaVersion to v2
-	rule["schemaVersion"] = "v2"
+// applyV2Defaults sets v2alpha1 schema fields and defaults.
+// This runs after applyDefaults.
+func applyV2Defaults(rule map[string]any) {
+	rule["schemaVersion"] = "v2alpha1"
 
-	cond := mapVal(rule, "condition")
-	if cond == nil {
-		return
-	}
-
-	// Convert v1 threshold (op/target/matchType) to v2 thresholds
-	if mapVal(cond, "thresholds") == nil && !boolVal(cond, "alertOnAbsent") {
-		op := strVal(cond, "op")
-		matchType := strVal(cond, "matchType")
-		targetUnit := strVal(cond, "targetUnit")
-
-		// Determine severity name from labels
-		severityName := "warning"
-		if labels := mapVal(rule, "labels"); labels != nil {
-			if sev := strVal(labels, "severity"); sev != "" {
-				severityName = sev
-			}
-		}
-
-		threshold := map[string]any{
-			"name":           severityName,
-			"target":         cond["target"],
-			"targetUnit":     targetUnit,
-			"recoveryTarget": nil,
-			"matchType":      matchType,
-			"op":             op,
-		}
-
-		// Carry over preferredChannels as the threshold's channels
-		if channels, ok := rule["preferredChannels"].([]any); ok && len(channels) > 0 {
-			threshold["channels"] = channels
-		}
-
-		cond["thresholds"] = map[string]any{
-			"kind": "basic",
-			"spec": []any{threshold},
-		}
-	}
-
-	// Clear v1 condition-level threshold fields (set to empty for v2)
-	cond["op"] = ""
-	cond["matchType"] = ""
-
-	// Convert v1 evalWindow/frequency to v2 evaluation block
+	// Default evaluation block if missing
 	if rule["evaluation"] == nil {
-		evalWindow := strVal(rule, "evalWindow")
-		frequency := strVal(rule, "frequency")
-		if evalWindow == "" {
-			evalWindow = "5m0s"
-		}
-		if frequency == "" {
-			frequency = "1m0s"
-		}
 		rule["evaluation"] = map[string]any{
 			"kind": "rolling",
 			"spec": map[string]any{
-				"evalWindow": evalWindow,
-				"frequency":  frequency,
+				"evalWindow": "5m0s",
+				"frequency":  "1m0s",
 			},
 		}
 	}
-
-	// Remove v1 top-level evalWindow/frequency
-	delete(rule, "evalWindow")
-	delete(rule, "frequency")
 
 	// Default notificationSettings if not present
 	if rule["notificationSettings"] == nil {
