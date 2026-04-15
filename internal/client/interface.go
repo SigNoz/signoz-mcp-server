@@ -20,6 +20,7 @@ type Client interface {
 	UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error
 	CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
 	UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error
+	DeleteDashboard(ctx context.Context, id string) error
 	ListServices(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
 	QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error)
