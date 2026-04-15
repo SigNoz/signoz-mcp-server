@@ -1,0 +1,161 @@
+{
+  "title": "Full Dashboard",
+  "description": "A fully specified dashboard for testing",
+  "tags": ["test", "monitoring"],
+  "version": "v5",
+  "variables": {
+    "service": {
+      "id": "var-service",
+      "name": "service",
+      "description": "Service name",
+      "type": "DYNAMIC",
+      "sort": "ASC",
+      "multiSelect": true,
+      "showALLOption": true,
+      "dynamicVariablesAttribute": "service.name",
+      "dynamicVariablesSource": "Traces",
+      "order": 0
+    },
+    "environment": {
+      "id": "var-env",
+      "name": "environment",
+      "description": "Environment",
+      "type": "CUSTOM",
+      "customValue": "prod,staging,dev",
+      "sort": "DESC",
+      "multiSelect": true,
+      "showALLOption": false,
+      "order": 1
+    },
+    "query_var": {
+      "id": "var-query",
+      "name": "query_var",
+      "description": "Query variable",
+      "type": "QUERY",
+      "queryValue": "SELECT DISTINCT service_name FROM signoz_traces.signoz_index_v3",
+      "sort": "ASC",
+      "multiSelect": false,
+      "showALLOption": false,
+      "order": 2
+    },
+    "search": {
+      "id": "var-search",
+      "name": "search",
+      "description": "Search term",
+      "type": "TEXTBOX",
+      "textboxValue": "default",
+      "defaultValue": "default",
+      "sort": "DISABLED",
+      "multiSelect": false,
+      "showALLOption": false,
+      "order": 3
+    }
+  },
+  "widgets": [
+    {
+      "id": "row-1",
+      "panelTypes": "row",
+      "title": "Service Metrics",
+      "description": ""
+    },
+    {
+      "id": "widget-1",
+      "panelTypes": "graph",
+      "title": "P99 Latency",
+      "description": "Service P99 latency over time",
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "yAxisUnit": "ms",
+      "softMin": 0,
+      "softMax": 0,
+      "legendPosition": "bottom",
+      "selectedLogFields": null,
+      "selectedTracesFields": null,
+      "query": {
+        "queryType": "builder",
+        "id": "query-1",
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "traces",
+              "aggregateOperator": "p99",
+              "expression": "A",
+              "disabled": false,
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "groupBy": [],
+              "orderBy": [],
+              "legend": "P99"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [],
+        "promql": []
+      }
+    },
+    {
+      "id": "widget-2",
+      "panelTypes": "value",
+      "title": "Error Rate",
+      "description": "",
+      "opacity": "0.8",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "selectedLogFields": null,
+      "selectedTracesFields": null,
+      "query": {
+        "queryType": "promql",
+        "id": "query-2",
+        "promql": [
+          {
+            "name": "A",
+            "query": "sum(rate(errors_total[5m]))",
+            "legend": "Error Rate",
+            "disabled": false
+          }
+        ],
+        "clickhouse_sql": []
+      }
+    },
+    {
+      "id": "widget-3",
+      "panelTypes": "table",
+      "title": "Top Queries",
+      "description": "",
+      "opacity": "1",
+      "nullZeroValues": "zero",
+      "timePreferance": "GLOBAL_TIME",
+      "softMin": 0,
+      "softMax": 0,
+      "selectedLogFields": null,
+      "selectedTracesFields": null,
+      "query": {
+        "queryType": "clickhouse_sql",
+        "id": "query-3",
+        "clickhouse_sql": [
+          {
+            "name": "A",
+            "query": "SELECT * FROM signoz_traces.top_level_operations LIMIT 10",
+            "legend": "",
+            "disabled": false
+          }
+        ],
+        "promql": []
+      }
+    }
+  ],
+  "layout": [
+    { "i": "row-1", "x": 0, "y": 0, "w": 12, "h": 1 },
+    { "i": "widget-1", "x": 0, "y": 1, "w": 6, "h": 6 },
+    { "i": "widget-2", "x": 6, "y": 1, "w": 6, "h": 6 },
+    { "i": "widget-3", "x": 0, "y": 7, "w": 12, "h": 6 }
+  ],
+  "panelMap": {}
+}
