@@ -238,6 +238,13 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 				errs.Addf(prefix+".spec.query", "is required for %s queries", queryType)
 			}
 		}
+
+		// For builder_formula, require expression
+		if qType == "builder_formula" {
+			if strVal(spec, "expression") == "" {
+				errs.Add(prefix+".spec.expression", "is required for builder_formula (e.g. A / B * 100)")
+			}
+		}
 	}
 
 	// Validate v2alpha1 thresholds structure

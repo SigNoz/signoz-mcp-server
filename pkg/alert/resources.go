@@ -75,6 +75,34 @@ The filter.expression field uses SigNoz query syntax:
 - IN: severity_text IN ('ERROR', 'WARN', 'FATAL')
 - EXISTS: trace_id EXISTS
 
+## Formulas (builder_formula)
+
+Formulas combine multiple queries using math expressions. Add a builder_formula entry in the queries array:
+
+` + "```" + `json
+{
+  "type": "builder_formula",
+  "spec": {
+    "name": "F1",
+    "expression": "A * 100 / B"
+  }
+}
+` + "```" + `
+
+- name: formula identifier (F1, F2, etc.)
+- expression: math expression referencing other query names (A, B, C). Supports +, -, *, /, and functions like abs(), sqrt(), log(), exp()
+- Set selectedQueryName to the formula name (e.g. "F1") so the alert triggers on the formula result
+
+## Units
+
+Set compositeQuery.unit to specify the unit of the queried data (Y-axis). This is used for:
+- Value formatting in alert messages ({{$value}})
+- Unit conversion when targetUnit on a threshold differs from the query unit
+
+Common units: percent, ms, s, ns, bytes, kbytes, mbytes, gbytes, reqps, ops, cps
+
+When compositeQuery.unit and threshold targetUnit differ, SigNoz auto-converts during evaluation (e.g. query returns bytes but threshold is in gbytes).
+
 ## Threshold Configuration
 
 Use condition.thresholds to define alert thresholds. Each threshold level can route to different channels:
@@ -108,7 +136,7 @@ Use condition.thresholds to define alert thresholds. Each threshold level can ro
 ### Threshold Fields
 - name: severity level (critical, warning, or info)
 - target: numeric threshold value
-- targetUnit: unit for display (e.g. ms, percent, bytes)
+- targetUnit: unit of the target value (e.g. ms, percent, bytes). Auto-converted to compositeQuery.unit during evaluation
 - recoveryTarget: value for recovery (null if not needed)
 - matchType: 1=at_least_once, 2=all_the_times, 3=on_average, 4=in_total, 5=last
 - op: 1=above, 2=below, 3=equal, 4=not_equal
@@ -612,6 +640,7 @@ Use two queries and a formula to calculate error rate percentage.
     "compositeQuery": {
       "queryType": "builder",
       "panelType": "graph",
+      "unit": "percent",
       "queries": [
         {
           "type": "builder_query",

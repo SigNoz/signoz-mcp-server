@@ -618,3 +618,59 @@ func TestValidate_PromQLQueryMissingQueryText(t *testing.T) {
 		t.Errorf("error should mention missing query, got: %v", err)
 	}
 }
+
+func TestValidate_FormulaMissingExpression(t *testing.T) {
+	alert := minimalValidAlert()
+	cond := alert["condition"].(map[string]any)
+	cq := cond["compositeQuery"].(map[string]any)
+	queries := cq["queries"].([]any)
+	// Add a formula with empty expression
+	queries = append(queries, map[string]any{
+		"type": "builder_formula",
+		"spec": map[string]any{
+			"name": "F1",
+		},
+	})
+	cq["queries"] = queries
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when builder_formula is missing expression")
+	}
+	if !strings.Contains(err.Error(), "expression") {
+		t.Errorf("error should mention missing expression, got: %v", err)
+	}
+}
+
+func TestValidate_FormulaWithExpression(t *testing.T) {
+	alert := minimalValidAlert()
+	cond := alert["condition"].(map[string]any)
+	cq := cond["compositeQuery"].(map[string]any)
+	cq["unit"] = "percent"
+	queries := cq["queries"].([]any)
+	queries = append(queries, map[string]any{
+		"type": "builder_formula",
+		"spec": map[string]any{
+			"name":       "F1",
+			"expression": "A * 100",
+		},
+	})
+	cq["queries"] = queries
+	cond["selectedQueryName"] = "F1"
+
+	result, err := ValidateFromMap(alert)
+	if err != nil {
+		t.Fatalf("expected no error for valid formula, got: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+	// unit should be preserved
+	parsedCond := parsed["condition"].(map[string]any)
+	parsedCQ := parsedCond["compositeQuery"].(map[string]any)
+	if parsedCQ["unit"] != "percent" {
+		t.Errorf("expected compositeQuery.unit=percent, got %v", parsedCQ["unit"])
+	}
+}

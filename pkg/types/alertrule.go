@@ -64,7 +64,7 @@ type AlertCondition struct {
 type AlertCompositeQuery struct {
 	QueryType QueryType    `json:"queryType" jsonschema:"required" jsonschema_extras:"description=Query type: builder for Query Builder or promql for PromQL or clickhouse_sql for ClickHouse SQL."`
 	PanelType string       `json:"panelType,omitempty" jsonschema_extras:"description=Panel type. Use graph for alerts. Defaults to graph."`
-	Unit      string       `json:"unit,omitempty" jsonschema_extras:"description=Unit for the query result display."`
+	Unit      string       `json:"unit,omitempty" jsonschema_extras:"description=Unit of the queried data (Y-axis unit). Used for value formatting in alert messages and for unit conversion with targetUnit in thresholds. Common values: percent, ms, s, bytes, ns, reqps, ops."`
 	Queries   []AlertQuery `json:"queries" jsonschema:"required" jsonschema_extras:"description=Array of queries. At least one query is required."`
 }
 
@@ -135,7 +135,7 @@ type AlertThresholds struct {
 type BasicThreshold struct {
 	Name           string   `json:"name" jsonschema:"required" jsonschema_extras:"description=Threshold name: critical or warning or info."`
 	Target         *float64 `json:"target" jsonschema:"required" jsonschema_extras:"description=Threshold value to compare against."`
-	TargetUnit     string   `json:"targetUnit,omitempty" jsonschema_extras:"description=Unit for the target value."`
+	TargetUnit     string   `json:"targetUnit,omitempty" jsonschema_extras:"description=Unit of the threshold target value. If different from compositeQuery.unit the backend converts between them during evaluation. Common values: percent, ms, s, bytes, ns."`
 	RecoveryTarget *float64 `json:"recoveryTarget" jsonschema_extras:"description=Value below which the alert is considered recovered. Use null if not needed."`
 	MatchType      string   `json:"matchType" jsonschema:"required" jsonschema_extras:"description=How to evaluate: 1=at_least_once 2=all_the_times 3=on_average 4=in_total 5=last."`
 	CompareOp      string   `json:"op" jsonschema:"required" jsonschema_extras:"description=Comparison operator: 1=above 2=below 3=equal 4=not_equal."`
