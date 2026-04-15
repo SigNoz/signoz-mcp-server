@@ -59,6 +59,7 @@ func (m *MCPServer) Start() error {
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
+	m.handler.RegisterNotificationChannelHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
 
 	// Register prompts

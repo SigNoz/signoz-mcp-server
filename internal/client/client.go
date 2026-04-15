@@ -524,3 +524,31 @@ func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
 	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
 	return err
 }
+
+// ChannelWriteTimeout is used for notification channel create/test operations.
+const ChannelWriteTimeout = 30 * time.Second
+
+func (s *SigNoz) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Fetching notification channels from SigNoz")
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating notification channel")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
+func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Updating notification channel", zap.String("id", id))
+	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
+func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
+	reqURL := fmt.Sprintf("%s/api/v1/testChannel", s.baseURL)
+	s.requestLogger(ctx).Debug("Testing notification channel")
+	_, err := s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	return err
+}
