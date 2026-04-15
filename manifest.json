@@ -70,6 +70,10 @@
       "description": "Update an existing dashboard by UUID"
     },
     {
+      "name": "signoz_delete_dashboard",
+      "description": "Delete a dashboard by UUID"
+    },
+    {
       "name": "signoz_list_services",
       "description": "List services within a given time range"
     },

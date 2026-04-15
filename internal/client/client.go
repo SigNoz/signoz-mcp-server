@@ -511,3 +511,10 @@ func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSO
 	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 	return err
 }
+
+func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Deleting dashboard", zap.String("id", id))
+	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	return err
+}

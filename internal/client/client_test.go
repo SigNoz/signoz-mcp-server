@@ -995,6 +995,23 @@ func TestUpdateDashboard(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestDeleteDashboard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/api/v1/dashboards/dash-456", r.URL.Path)
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY")
+
+	err := client.DeleteDashboard(context.Background(), "dash-456")
+	require.NoError(t, err)
+}
+
 func TestGetFieldKeys(t *testing.T) {
 	tests := []struct {
 		name          string

@@ -21,6 +21,7 @@ type MockClient struct {
 	UpdateDashboardFn         func(ctx context.Context, id string, dashboard types.Dashboard) error
 	CreateDashboardRawFn      func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
 	UpdateDashboardRawFn      func(ctx context.Context, id string, dashboardJSON []byte) error
+	DeleteDashboardFn         func(ctx context.Context, id string) error
 	ListServicesFn            func(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperationsFn func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
 	QueryBuilderV5Fn          func(ctx context.Context, body []byte) (json.RawMessage, error)
@@ -100,6 +101,13 @@ func (m *MockClient) CreateDashboardRaw(ctx context.Context, dashboardJSON []byt
 func (m *MockClient) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
 	if m.UpdateDashboardRawFn != nil {
 		return m.UpdateDashboardRawFn(ctx, id, dashboardJSON)
+	}
+	return nil
+}
+
+func (m *MockClient) DeleteDashboard(ctx context.Context, id string) error {
+	if m.DeleteDashboardFn != nil {
+		return m.DeleteDashboardFn(ctx, id)
 	}
 	return nil
 }
