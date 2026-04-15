@@ -191,9 +191,15 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 	}
 
 	// Check that either v1 threshold (op+target) or v2 thresholds are specified
-	hasV1Threshold := strVal(cond, "op") != "" || cond["target"] != nil
+	hasOp := strVal(cond, "op") != ""
+	hasTarget := cond["target"] != nil
+	hasV1Threshold := hasOp || hasTarget
 	hasV2Thresholds := mapVal(cond, "thresholds") != nil
 	hasAlertOnAbsent := boolVal(cond, "alertOnAbsent")
+
+	if hasV1Threshold && !(hasOp && hasTarget) {
+		errs.Add("condition", "v1 threshold requires both op and target; only one was provided")
+	}
 
 	if !hasV1Threshold && !hasV2Thresholds && !hasAlertOnAbsent {
 		errs.Add("condition", "must specify either op+target (v1 schema) or thresholds (v2 schema) or alertOnAbsent=true")
@@ -262,10 +268,16 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			if sm["target"] == nil {
 				errs.Add(prefix+".target", "is required")
 			}
-			if op := strVal(sm, "op"); op != "" && !validCompareOps[op] {
+			op := strVal(sm, "op")
+			if op == "" {
+				errs.Add(prefix+".op", "is required (e.g. above, below, equal, not_equal)")
+			} else if !validCompareOps[op] {
 				errs.Addf(prefix+".op", "must be a valid operator; got %q", op)
 			}
-			if mt := strVal(sm, "matchType"); mt != "" && !validMatchTypes[mt] {
+			mt := strVal(sm, "matchType")
+			if mt == "" {
+				errs.Add(prefix+".matchType", "is required (e.g. at_least_once, all_the_times, on_average, in_total, last)")
+			} else if !validMatchTypes[mt] {
 				errs.Addf(prefix+".matchType", "must be a valid match type; got %q", mt)
 			}
 		}

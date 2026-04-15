@@ -183,7 +183,9 @@ func TestValidate_V1ToV2Conversion(t *testing.T) {
 	}
 
 	var parsed map[string]any
-	json.Unmarshal(result, &parsed)
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
 
 	// schemaVersion should be v2
 	if parsed["schemaVersion"] != "v2" {
@@ -292,7 +294,9 @@ func TestValidate_V2ThresholdsPreserved(t *testing.T) {
 	}
 
 	var parsed map[string]any
-	json.Unmarshal(result, &parsed)
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
 
 	// v2 thresholds should be preserved as-is
 	cond := parsed["condition"].(map[string]any)
@@ -420,6 +424,63 @@ func TestValidate_NoThresholdOrOp(t *testing.T) {
 	}
 }
 
+func TestValidate_V1ThresholdPartialOpOnly(t *testing.T) {
+	alert := minimalValidAlert()
+	cond := alert["condition"].(map[string]any)
+	delete(cond, "target")
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when only op is set without target")
+	}
+	if !strings.Contains(err.Error(), "both op and target") {
+		t.Errorf("error should mention both op and target, got: %v", err)
+	}
+}
+
+func TestValidate_V1ThresholdPartialTargetOnly(t *testing.T) {
+	alert := minimalValidAlert()
+	cond := alert["condition"].(map[string]any)
+	delete(cond, "op")
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when only target is set without op")
+	}
+	if !strings.Contains(err.Error(), "both op and target") {
+		t.Errorf("error should mention both op and target, got: %v", err)
+	}
+}
+
+func TestValidate_V2ThresholdMissingOpAndMatchType(t *testing.T) {
+	alert := minimalValidAlert()
+	cond := alert["condition"].(map[string]any)
+	delete(cond, "op")
+	delete(cond, "target")
+	delete(cond, "matchType")
+	cond["thresholds"] = map[string]any{
+		"kind": "basic",
+		"spec": []any{
+			map[string]any{
+				"name":   "critical",
+				"target": float64(5),
+			},
+		},
+	}
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when v2 threshold spec is missing op and matchType")
+	}
+	errStr := err.Error()
+	if !strings.Contains(errStr, ".op") {
+		t.Errorf("error should mention missing op, got: %v", errStr)
+	}
+	if !strings.Contains(errStr, ".matchType") {
+		t.Errorf("error should mention missing matchType, got: %v", errStr)
+	}
+}
+
 func TestValidate_InvalidCompareOp(t *testing.T) {
 	alert := minimalValidAlert()
 	cond := alert["condition"].(map[string]any)
@@ -511,7 +572,9 @@ func TestValidate_AlertOnAbsentNoThreshold(t *testing.T) {
 
 	// Should still have v2 schema but no auto-generated thresholds
 	var parsed map[string]any
-	json.Unmarshal(result, &parsed)
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
 	if parsed["schemaVersion"] != "v2" {
 		t.Errorf("expected schemaVersion=v2, got %v", parsed["schemaVersion"])
 	}
@@ -530,7 +593,9 @@ func TestValidate_PreservesExistingLabels(t *testing.T) {
 	}
 
 	var parsed map[string]any
-	json.Unmarshal(result, &parsed)
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
 	labels := parsed["labels"].(map[string]any)
 	if labels["severity"] != "critical" {
 		t.Errorf("should preserve existing severity=critical, got %v", labels["severity"])
@@ -642,7 +707,9 @@ func TestValidate_ExistingEvaluationPreserved(t *testing.T) {
 	}
 
 	var parsed map[string]any
-	json.Unmarshal(result, &parsed)
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
 
 	// evalWindow/frequency should be removed
 	if _, has := parsed["evalWindow"]; has {
