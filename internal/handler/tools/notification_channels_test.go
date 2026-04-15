@@ -1,0 +1,501 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+func TestHandleCreateNotificationChannel_Slack(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-1","name":"my-slack","type":"slack"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "my-slack",
+		"slack_api_url": "https://hooks.slack.com/services/T123/B456/xxx",
+		"slack_channel": "#alerts",
+		"slack_title":   "{{ .CommonLabels.alertname }}",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	// Verify receiver JSON structure
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	if receiver["name"] != "my-slack" {
+		t.Errorf("expected name=my-slack, got %v", receiver["name"])
+	}
+	slackConfigs, ok := receiver["slack_configs"].([]any)
+	if !ok || len(slackConfigs) != 1 {
+		t.Fatalf("expected 1 slack_configs entry, got %v", receiver["slack_configs"])
+	}
+	cfg := slackConfigs[0].(map[string]any)
+	if cfg["api_url"] != "https://hooks.slack.com/services/T123/B456/xxx" {
+		t.Errorf("expected api_url to match, got %v", cfg["api_url"])
+	}
+	if cfg["channel"] != "#alerts" {
+		t.Errorf("expected channel=#alerts, got %v", cfg["channel"])
+	}
+
+	// Verify response contains test_notification success
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, `"success":true`) {
+		t.Errorf("expected test_notification success in response, got: %s", text)
+	}
+}
+
+func TestHandleCreateNotificationChannel_Webhook(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-2","name":"my-webhook","type":"webhook"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":             "webhook",
+		"name":             "my-webhook",
+		"webhook_url":      "https://example.com/hook",
+		"webhook_username": "user1",
+		"webhook_password": "pass1",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	webhookConfigs, ok := receiver["webhook_configs"].([]any)
+	if !ok || len(webhookConfigs) != 1 {
+		t.Fatalf("expected 1 webhook_configs entry, got %v", receiver["webhook_configs"])
+	}
+	cfg := webhookConfigs[0].(map[string]any)
+	if cfg["url"] != "https://example.com/hook" {
+		t.Errorf("expected url to match, got %v", cfg["url"])
+	}
+	httpConfig, ok := cfg["http_config"].(map[string]any)
+	if !ok {
+		t.Fatal("expected http_config in webhook config")
+	}
+	basicAuth, ok := httpConfig["basic_auth"].(map[string]any)
+	if !ok {
+		t.Fatal("expected basic_auth in http_config")
+	}
+	if basicAuth["username"] != "user1" {
+		t.Errorf("expected username=user1, got %v", basicAuth["username"])
+	}
+}
+
+func TestHandleCreateNotificationChannel_PagerDuty(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-3","name":"my-pd","type":"pagerduty"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":                  "pagerduty",
+		"name":                  "my-pd",
+		"pagerduty_routing_key": "key-123",
+		"pagerduty_severity":    "critical",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	pdConfigs, ok := receiver["pagerduty_configs"].([]any)
+	if !ok || len(pdConfigs) != 1 {
+		t.Fatalf("expected 1 pagerduty_configs entry, got %v", receiver["pagerduty_configs"])
+	}
+	cfg := pdConfigs[0].(map[string]any)
+	if cfg["routing_key"] != "key-123" {
+		t.Errorf("expected routing_key=key-123, got %v", cfg["routing_key"])
+	}
+	if cfg["severity"] != "critical" {
+		t.Errorf("expected severity=critical, got %v", cfg["severity"])
+	}
+}
+
+func TestHandleCreateNotificationChannel_Email(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-4","name":"my-email","type":"email"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":     "email",
+		"name":     "my-email",
+		"email_to": "oncall@example.com,backup@example.com",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	emailConfigs, ok := receiver["email_configs"].([]any)
+	if !ok || len(emailConfigs) != 1 {
+		t.Fatalf("expected 1 email_configs entry, got %v", receiver["email_configs"])
+	}
+	cfg := emailConfigs[0].(map[string]any)
+	if cfg["to"] != "oncall@example.com,backup@example.com" {
+		t.Errorf("expected to field to match, got %v", cfg["to"])
+	}
+}
+
+func TestHandleCreateNotificationChannel_OpsGenie(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-5","name":"my-og","type":"opsgenie"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":                 "opsgenie",
+		"name":                 "my-og",
+		"opsgenie_api_key":     "og-key-abc",
+		"opsgenie_priority":    "P1",
+		"opsgenie_message":     "{{ .CommonLabels.alertname }}",
+		"opsgenie_description": "Alert fired",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	ogConfigs, ok := receiver["opsgenie_configs"].([]any)
+	if !ok || len(ogConfigs) != 1 {
+		t.Fatalf("expected 1 opsgenie_configs entry, got %v", receiver["opsgenie_configs"])
+	}
+	cfg := ogConfigs[0].(map[string]any)
+	if cfg["api_key"] != "og-key-abc" {
+		t.Errorf("expected api_key=og-key-abc, got %v", cfg["api_key"])
+	}
+	if cfg["priority"] != "P1" {
+		t.Errorf("expected priority=P1, got %v", cfg["priority"])
+	}
+}
+
+func TestHandleCreateNotificationChannel_MSTeams(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-6","name":"my-teams","type":"msteams"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":               "msteams",
+		"name":               "my-teams",
+		"msteams_webhook_url": "https://outlook.webhook.office.com/webhookb2/xxx",
+		"msteams_title":      "Alert",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	teamsConfigs, ok := receiver["msteamsv2_configs"].([]any)
+	if !ok || len(teamsConfigs) != 1 {
+		t.Fatalf("expected 1 msteamsv2_configs entry, got %v", receiver["msteamsv2_configs"])
+	}
+	cfg := teamsConfigs[0].(map[string]any)
+	if cfg["webhook_url"] != "https://outlook.webhook.office.com/webhookb2/xxx" {
+		t.Errorf("expected webhook_url to match, got %v", cfg["webhook_url"])
+	}
+}
+
+func TestHandleCreateNotificationChannel_MissingType(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"name": "test",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for missing type")
+	}
+}
+
+func TestHandleCreateNotificationChannel_InvalidType(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type": "invalid",
+		"name": "test",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid type")
+	}
+}
+
+func TestHandleCreateNotificationChannel_MissingName(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type": "slack",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for missing name")
+	}
+}
+
+func TestHandleCreateNotificationChannel_MissingRequiredField(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+	}{
+		{
+			name: "slack missing api_url",
+			args: map[string]any{"type": "slack", "name": "test"},
+		},
+		{
+			name: "webhook missing url",
+			args: map[string]any{"type": "webhook", "name": "test"},
+		},
+		{
+			name: "pagerduty missing routing_key",
+			args: map[string]any{"type": "pagerduty", "name": "test"},
+		},
+		{
+			name: "email missing to",
+			args: map[string]any{"type": "email", "name": "test"},
+		},
+		{
+			name: "opsgenie missing api_key",
+			args: map[string]any{"type": "opsgenie", "name": "test"},
+		},
+		{
+			name: "msteams missing webhook_url",
+			args: map[string]any{"type": "msteams", "name": "test"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &client.MockClient{}
+			h := newTestHandler(mock)
+			req := makeToolRequest("signoz_create_notification_channel", tt.args)
+
+			result, err := h.handleCreateNotificationChannel(testCtx(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Error("expected error result for missing required field")
+			}
+		})
+	}
+}
+
+func TestHandleCreateNotificationChannel_CreateError(t *testing.T) {
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			return nil, fmt.Errorf("channel name already exists")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "duplicate",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when create fails")
+	}
+}
+
+func TestHandleCreateNotificationChannel_TestFails(t *testing.T) {
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"ch-1","name":"bad-slack","type":"slack"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return fmt.Errorf("webhook returned 403 forbidden")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "bad-slack",
+		"slack_api_url": "https://hooks.slack.com/services/invalid",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The tool should NOT return an error result — channel was created, only test failed
+	if result.IsError {
+		t.Fatal("expected success result (channel was created, test failure is in the response body)")
+	}
+
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, `"success":false`) {
+		t.Errorf("expected test_notification failure in response, got: %s", text)
+	}
+	if !strings.Contains(text, "webhook returned 403 forbidden") {
+		t.Errorf("expected test error message in response, got: %s", text)
+	}
+}
+
+func TestHandleCreateNotificationChannel_SendResolvedFalse(t *testing.T) {
+	var capturedBody []byte
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"ch-1"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "test-sr",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+		"send_resolved": "false",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	slackConfigs := receiver["slack_configs"].([]any)
+	cfg := slackConfigs[0].(map[string]any)
+	if cfg["send_resolved"] != false {
+		t.Errorf("expected send_resolved=false, got %v", cfg["send_resolved"])
+	}
+}
+
+func TestHandleCreateNotificationChannel_InvalidSendResolved(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "test",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+		"send_resolved": "maybe",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid send_resolved value")
+	}
+}
