@@ -403,3 +403,136 @@ func TestHandleListAlerts_FilterSplitAndTrim(t *testing.T) {
 		t.Errorf("expected second filter='severity=\"critical\"', got %q", capturedParams.Filter[1])
 	}
 }
+
+func TestHandleCreateAlert(t *testing.T) {
+	var capturedJSON []byte
+	mock := &client.MockClient{
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			capturedJSON = alertJSON
+			return json.RawMessage(`{"status":"success","data":{"id":"rule-123"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert":     "Test Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"op":        "1",
+			"target":    float64(100),
+			"matchType": "1",
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if capturedJSON == nil {
+		t.Fatal("expected CreateAlertRuleFn to be called")
+	}
+
+	// Verify defaults were applied in the JSON sent to the API
+	var parsed map[string]any
+	if err := json.Unmarshal(capturedJSON, &parsed); err != nil {
+		t.Fatalf("failed to parse captured JSON: %v", err)
+	}
+	if parsed["version"] != "v5" {
+		t.Errorf("expected version=v5, got %v", parsed["version"])
+	}
+}
+
+func TestHandleCreateAlert_EmptyArgs(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for empty args")
+	}
+}
+
+func TestHandleCreateAlert_ValidationError(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	// Missing required fields
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert": "Test Alert",
+		// missing alertType, ruleType, condition
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for validation failure")
+	}
+}
+
+func TestHandleCreateAlert_ClientError(t *testing.T) {
+	mock := &client.MockClient{
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			return nil, fmt.Errorf("unexpected status 400: bad request")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", map[string]any{
+		"alert":     "Test Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"op":        "1",
+			"target":    float64(100),
+			"matchType": "1",
+		},
+	})
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when client returns error")
+	}
+}

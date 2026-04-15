@@ -400,6 +400,12 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
 }
 
+func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/rules", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating alert rule")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
+}
+
 func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
 	s.requestLogger(ctx).Debug("Fetching log views from SigNoz")

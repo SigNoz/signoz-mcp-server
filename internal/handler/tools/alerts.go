@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/alert"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -58,6 +59,28 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
 	s.AddTool(alertHistoryTool, h.handleGetAlertHistory)
+
+	createAlertTool := mcp.NewTool(
+		"signoz_create_alert",
+		mcp.WithDestructiveHintAnnotation(true),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithDescription(
+			"Creates a new alert rule in SigNoz using v2 schema.\n\n"+
+				"CRITICAL: You MUST read these resources BEFORE generating any alert payload:\n"+
+				"1. signoz://alert/instructions — REQUIRED: Alert structure, field descriptions, valid values\n"+
+				"2. signoz://alert/examples — REQUIRED: Complete working examples for each alert type\n\n"+
+				"RECOMMENDED: Use signoz_get_alert on an existing alert to study the exact structure.\n\n"+
+				"Supports all alert types (metrics, logs, traces, exceptions) and rule types (threshold, promql, anomaly).\n"+
+				"Always uses v2 schema with structured thresholds (multi-threshold with per-level channel routing), "+
+				"evaluation block, and notificationSettings. If v1-style fields (op/target/matchType) are provided, they are auto-converted to v2.\n"+
+				"Labels enable routing policies — always include severity (info, warning, critical) and team/service labels for routing.",
+		),
+		mcp.WithInputSchema[types.AlertRule](),
+	)
+	s.AddTool(createAlertTool, h.handleCreateAlert)
+
+	// Register alert resources for create alert
+	h.registerAlertResources(s)
 }
 
 func parseBoolParam(args map[string]any, key string) *bool {
@@ -249,4 +272,72 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(respJSON)), nil
+}
+
+func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log := h.tenantLogger(ctx)
+	rawConfig, ok := req.Params.Arguments.(map[string]any)
+
+	if !ok || len(rawConfig) == 0 {
+		log.Warn("Received empty or invalid arguments map for create alert.")
+		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
+	}
+
+	// Validate and normalize the alert payload.
+	cleanJSON, err := alert.ValidateFromMap(rawConfig)
+	if err != nil {
+		log.Warn("Alert validation failed", zap.Error(err))
+		return mcp.NewToolResultError(fmt.Sprintf("Alert validation error: %s", err.Error())), nil
+	}
+
+	log.Debug("Tool called: signoz_create_alert")
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	data, err := client.CreateAlertRule(ctx, cleanJSON)
+
+	if err != nil {
+		log.Error("Failed to create alert rule in SigNoz", zap.Error(err))
+		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+// registerAlertResources registers MCP resources needed for alert creation.
+func (h *Handler) registerAlertResources(s *server.MCPServer) {
+	alertInstructions := mcp.NewResource(
+		"signoz://alert/instructions",
+		"Alert Rule Instructions",
+		mcp.WithResourceDescription("SigNoz alert rule creation guide: alert types, rule types, condition structure, threshold configuration (v1 and v2 schema), composite query format, filter expressions, labels, routing, and notification settings."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(alertInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     alert.Instructions,
+			},
+		}, nil
+	})
+
+	alertExamples := mcp.NewResource(
+		"signoz://alert/examples",
+		"Alert Rule Examples",
+		mcp.WithResourceDescription("Complete working alert rule examples for all types: metrics threshold, logs with v2 multi-threshold routing, traces latency, PromQL, ClickHouse SQL exceptions, anomaly detection, and formula-based alerts."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(alertExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     alert.Examples,
+			},
+		}, nil
+	})
 }
