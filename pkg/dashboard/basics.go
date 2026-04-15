@@ -58,22 +58,29 @@ Layout Validation Checklist:
 8. Full-width widgets have X=0 and W=12
 
 Variables [Critical]:
-- Define variables as strict, deterministic inputs that parameterize dashboards and constrain query scope.
+- Use variables to parameterize dashboards and eliminate hard-coded query values, enabling template reuse and context-driven panel updates.
 - Keep Name stable and set Key identical to it for consistent reference.
 - Write Description as a terse statement of what the variable controls.
-- Choose Type deliberately: query-backed, static list, or textbox.
-- For query-backed variables, make QueryValue minimal, filtered, and domain-specific.
+
+Default to DYNAMIC Variables:
+- ALWAYS prefer DYNAMIC type variables. They auto-derive dropdown values from OpenTelemetry resource/tag attributes using DynamicVariablesAttribute and DynamicVariablesSource, require no manual SQL, and stay in sync with backend state automatically.
+- Set DynamicVariablesSource to one of: "Traces", "Logs", "Metrics", or "all sources".
+- Set DynamicVariablesAttribute to the attribute key (e.g., "service.name", "deployment.environment", "k8s.namespace.name").
+- When you know the attribute (e.g., the user says "filter by service" → use service.name, "filter by environment" → use deployment.environment), create the DYNAMIC variable directly without extra API calls.
+- When the right attribute is NOT obvious, call signoz_get_field_keys with the relevant signal and fieldContext=resource to discover available resource attributes, then pick the best match. Optionally call signoz_get_field_values to preview values and confirm the attribute is populated. Use the discovered attribute as DynamicVariablesAttribute.
+
+Other Variable Types (use only when DYNAMIC is not suitable):
+- CUSTOM: for short, fixed enumerations (comma-separated values). Use when the set of values is static and known upfront (e.g., "production,staging,development").
+- TEXTBOX: for free-form input with optional defaults. Use when the user needs to type arbitrary values.
+- QUERY: backed by ClickHouse SQL. Avoid due to performance and maintenance overhead; prefer DYNAMIC instead.
+
+Variable Configuration:
 - Use MultiSelect, ShowALLOption, AllSelected, and DefaultValue to fix selection semantics explicitly.
 - Use Sort only to enforce predictable value ordering.
 - Use Order to control strict UI placement.
 - Store overrides only when needed using CustomValue or TextboxValue.
-- Use DynamicVariablesSource and DynamicVariablesAttribute only when values must auto-sync with backend state.
 - Treat SelectedValue and HaveCustomValuesSelected as runtime-only, not design-time configuration.
-- Use variables to parameterize dashboards and eliminate hard-coded query values, enabling template reuse and context-driven panel updates.
-- Prefer dynamic variables; they auto-derive values from OTEL attributes using Field and Source, and expose two lists: context-driven Related values and global All values.
 - Interpret ALL in dynamic variables as no filter, not select everything.
-- Treat query variables as ClickHouse SQL sources but avoid them due to performance and maintenance issues.
-- Use custom variables for short, fixed enumerations (comma-separated), and textbox variables for free-form input with optional defaults.
 - Reference variables using $var syntax across Query Builder, ClickHouse SQL, and PromQL; use IN for multi-select inputs.
 - Chain variables by constraining one variable using another, but rely on dynamic variables for automatic dependency handling.
 

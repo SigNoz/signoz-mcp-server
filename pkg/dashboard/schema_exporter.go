@@ -84,7 +84,7 @@ type TableSchema struct {
 	Name    string
 	Columns []schemamigrator.Column
 	Indexes []schemamigrator.Index
-	Engine  interface{}
+	Engine  any
 }
 
 // GetClickHouseSchema returns the ClickHouse schema for the specified signal type(s) as a string
@@ -271,7 +271,7 @@ func outputTableDetails(buf *bytes.Buffer, table *TableSchema) {
 	buf.WriteString("---\n\n")
 }
 
-func formatColumnType(colType interface{}) string {
+func formatColumnType(colType any) string {
 	switch t := colType.(type) {
 	case schemamigrator.LowCardinalityColumnType:
 		return fmt.Sprintf("LowCardinality(%s)", formatColumnType(t.ElementType))
@@ -320,7 +320,7 @@ func formatColumnType(colType interface{}) string {
 	}
 }
 
-func getEngineType(engine interface{}) string {
+func getEngineType(engine any) string {
 	switch engine.(type) {
 	case schemamigrator.MergeTree:
 		return "MergeTree"

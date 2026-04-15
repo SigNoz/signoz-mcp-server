@@ -1,0 +1,23 @@
+{
+  "title": "Minimal Dashboard",
+  "variables": {},
+  "widgets": [
+    {
+      "panelTypes": "graph",
+      "title": "Test Widget",
+      "query": {
+        "queryType": "builder",
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "expression": "A"
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    }
+  ]
+}

@@ -494,3 +494,20 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 	_, err = s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 	return err
 }
+
+// CreateDashboardRaw creates a dashboard from pre-validated JSON bytes,
+// avoiding a round-trip through types.Dashboard.
+func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating dashboard (raw)")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+}
+
+// UpdateDashboardRaw updates a dashboard from pre-validated JSON bytes,
+// avoiding a round-trip through types.Dashboard.
+func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Updating dashboard (raw)", zap.String("id", id))
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return err
+}
