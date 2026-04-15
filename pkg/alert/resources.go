@@ -11,7 +11,7 @@ The alert is created via POST /api/v1/rules. All alerts use v2alpha1 schema with
 1. ALWAYS read signoz://alert/examples for complete working payloads
 2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy
-4. Use signoz_list_notification_channels to discover available notification channel names for thresholds and preferredChannels
+4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first
 
 ## Alert Types (alertType)
 | Value | Signal | Use When |
