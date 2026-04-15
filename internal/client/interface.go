@@ -30,5 +30,6 @@ type Client interface {
 	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
 	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
+	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error)
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
 }

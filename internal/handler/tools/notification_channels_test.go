@@ -499,3 +499,140 @@ func TestHandleCreateNotificationChannel_InvalidSendResolved(t *testing.T) {
 		t.Error("expected error result for invalid send_resolved value")
 	}
 }
+
+// --- Update notification channel tests ---
+
+func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
+	var capturedID string
+	var capturedBody []byte
+	mock := &client.MockClient{
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+			capturedID = id
+			capturedBody = receiverJSON
+			return json.RawMessage(`{"data":{"id":"1","name":"my-slack","type":"slack"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_notification_channel", map[string]any{
+		"id":            "1",
+		"type":          "slack",
+		"name":          "my-slack",
+		"slack_api_url": "https://hooks.slack.com/services/T123/B456/new",
+		"slack_channel": "#updated-alerts",
+	})
+
+	result, err := h.handleUpdateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	if capturedID != "1" {
+		t.Errorf("expected id=1, got %v", capturedID)
+	}
+
+	var receiver map[string]any
+	if err := json.Unmarshal(capturedBody, &receiver); err != nil {
+		t.Fatalf("failed to parse captured body: %v", err)
+	}
+	if receiver["name"] != "my-slack" {
+		t.Errorf("expected name=my-slack, got %v", receiver["name"])
+	}
+	slackConfigs, ok := receiver["slack_configs"].([]any)
+	if !ok || len(slackConfigs) != 1 {
+		t.Fatalf("expected 1 slack_configs entry, got %v", receiver["slack_configs"])
+	}
+	cfg := slackConfigs[0].(map[string]any)
+	if cfg["api_url"] != "https://hooks.slack.com/services/T123/B456/new" {
+		t.Errorf("expected api_url to match, got %v", cfg["api_url"])
+	}
+	if cfg["channel"] != "#updated-alerts" {
+		t.Errorf("expected channel=#updated-alerts, got %v", cfg["channel"])
+	}
+
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, `"success":true`) {
+		t.Errorf("expected test_notification success in response, got: %s", text)
+	}
+}
+
+func TestHandleUpdateNotificationChannel_MissingID(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "test",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+	})
+
+	result, err := h.handleUpdateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for missing id")
+	}
+}
+
+func TestHandleUpdateNotificationChannel_UpdateError(t *testing.T) {
+	mock := &client.MockClient{
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+			return nil, fmt.Errorf("channel not found")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_notification_channel", map[string]any{
+		"id":            "999",
+		"type":          "slack",
+		"name":          "missing",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+	})
+
+	result, err := h.handleUpdateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when update fails")
+	}
+}
+
+func TestHandleUpdateNotificationChannel_TestFails(t *testing.T) {
+	mock := &client.MockClient{
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"1","name":"bad-slack","type":"slack"}}`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return fmt.Errorf("webhook returned 403 forbidden")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_notification_channel", map[string]any{
+		"id":            "1",
+		"type":          "slack",
+		"name":          "bad-slack",
+		"slack_api_url": "https://hooks.slack.com/services/invalid",
+	})
+
+	result, err := h.handleUpdateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The tool should NOT return an error result — channel was updated, only test failed
+	if result.IsError {
+		t.Fatal("expected success result (channel was updated, test failure is in the response body)")
+	}
+
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, `"success":false`) {
+		t.Errorf("expected test_notification failure in response, got: %s", text)
+	}
+	if !strings.Contains(text, "webhook returned 403 forbidden") {
+		t.Errorf("expected test error message in response, got: %s", text)
+	}
+}
