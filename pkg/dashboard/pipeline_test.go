@@ -503,3 +503,124 @@ func TestValidate_RowPanelPassesThrough(t *testing.T) {
 	widgets := result["widgets"].([]any)
 	assert.Len(t, widgets, 2)
 }
+
+// --- Threshold round-trip preservation ---
+
+func TestValidate_ThresholdFieldsPreserved(t *testing.T) {
+	data := toJSON(t, map[string]any{
+		"title": "Test",
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "graph", "title": "Latency",
+				"thresholds": []map[string]any{
+					{
+						"index":                 "0",
+						"isEditEnabled":         true,
+						"keyIndex":              0,
+						"selectedGraph":         "A",
+						"thresholdColor":        "#FF0000",
+						"thresholdFormat":       "Text",
+						"thresholdLabel":        "SLO Breach",
+						"thresholdOperator":     ">",
+						"thresholdTableOptions": "1",
+						"thresholdUnit":         "ms",
+						"thresholdValue":        500,
+					},
+				},
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []map[string]any{
+							{"queryName": "A", "dataSource": "traces", "expression": "A"},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	out, err := Validate(data)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(out, &result))
+
+	widgets := result["widgets"].([]any)
+	w := widgets[0].(map[string]any)
+	thresholds := w["thresholds"].([]any)
+	require.Len(t, thresholds, 1)
+
+	th := thresholds[0].(map[string]any)
+	assert.Equal(t, "0", th["index"])
+	assert.Equal(t, true, th["isEditEnabled"])
+	assert.Equal(t, "A", th["selectedGraph"])
+	assert.Equal(t, "#FF0000", th["thresholdColor"])
+	assert.Equal(t, "Text", th["thresholdFormat"])
+	assert.Equal(t, "SLO Breach", th["thresholdLabel"])
+	assert.Equal(t, ">", th["thresholdOperator"])
+	assert.Equal(t, "1", th["thresholdTableOptions"])
+	assert.Equal(t, "ms", th["thresholdUnit"])
+	assert.Equal(t, float64(500), th["thresholdValue"])
+}
+
+// --- DecimalPrecision string variant ---
+
+func TestValidate_DecimalPrecisionStringAccepted(t *testing.T) {
+	data := toJSON(t, map[string]any{
+		"title": "Test",
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "value", "title": "V",
+				"decimalPrecision": "full precision",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []map[string]any{
+							{"queryName": "A", "dataSource": "traces", "expression": "A"},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	out, err := Validate(data)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(out, &result))
+
+	widgets := result["widgets"].([]any)
+	w := widgets[0].(map[string]any)
+	assert.Equal(t, "full precision", w["decimalPrecision"])
+}
+
+func TestValidate_DecimalPrecisionIntAccepted(t *testing.T) {
+	data := toJSON(t, map[string]any{
+		"title": "Test",
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "value", "title": "V",
+				"decimalPrecision": 2,
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []map[string]any{
+							{"queryName": "A", "dataSource": "traces", "expression": "A"},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	out, err := Validate(data)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(out, &result))
+
+	widgets := result["widgets"].([]any)
+	w := widgets[0].(map[string]any)
+	assert.Equal(t, float64(2), w["decimalPrecision"])
+}

@@ -4,6 +4,7 @@
 package panelvalidator
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -342,7 +343,7 @@ type Panel struct {
 	NullZeroValues        string            `json:"nullZeroValues"`
 	TimePreferance        string            `json:"timePreferance,omitempty"`
 	YAxisUnit             string            `json:"yAxisUnit,omitempty"`
-	DecimalPrecision      *int              `json:"decimalPrecision,omitempty"`
+	DecimalPrecision      *json.RawMessage  `json:"decimalPrecision,omitempty"`
 	SoftMin               *float64          `json:"softMin"`
 	SoftMax               *float64          `json:"softMax"`
 	Thresholds            []Threshold       `json:"thresholds,omitempty"`
@@ -477,15 +478,17 @@ type CHQuery struct {
 
 // Threshold represents a threshold configuration for a panel.
 type Threshold struct {
-	Index                 string   `json:"index"`
-	KeyIndex              int      `json:"keyIndex"`
-	ThresholdOperator     string   `json:"thresholdOperator,omitempty"`
-	ThresholdValue        *float64 `json:"thresholdValue,omitempty"`
-	ThresholdUnit         string   `json:"thresholdUnit,omitempty"`
-	ThresholdColor        string   `json:"thresholdColor,omitempty"`
-	ThresholdFormat       string   `json:"thresholdFormat,omitempty"`
-	ThresholdLabel        string   `json:"thresholdLabel,omitempty"`
-	ThresholdTableOptions string   `json:"thresholdTableOptions,omitempty"`
+	Index                 string `json:"index"`
+	IsEditEnabled         bool   `json:"isEditEnabled,omitempty"`
+	KeyIndex              int    `json:"keyIndex"`
+	SelectedGraph         string `json:"selectedGraph,omitempty"`
+	ThresholdOperator     string `json:"thresholdOperator,omitempty"`
+	ThresholdValue        any    `json:"thresholdValue,omitempty"`
+	ThresholdUnit         string `json:"thresholdUnit,omitempty"`
+	ThresholdColor        string `json:"thresholdColor,omitempty"`
+	ThresholdFormat       string `json:"thresholdFormat,omitempty"`
+	ThresholdLabel        string `json:"thresholdLabel,omitempty"`
+	ThresholdTableOptions string `json:"thresholdTableOptions,omitempty"`
 }
 
 // =============================================================================

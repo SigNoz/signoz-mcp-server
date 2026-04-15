@@ -151,12 +151,11 @@ func TestValidatePanel_FormulaReferencingExistingQueries(t *testing.T) {
 
 func TestValidatePanel_ThresholdOnListPanel(t *testing.T) {
 	panel := CreateDefaultPanel(PanelTypeList, DataSourceLogs)
-	val := 100.0
 	panel.Thresholds = []Threshold{
 		{
 			Index:             "1",
 			ThresholdOperator: ">",
-			ThresholdValue:    &val,
+			ThresholdValue:    100.0,
 			ThresholdFormat:   "Text",
 			ThresholdColor:    "#FF0000",
 		},
@@ -383,13 +382,12 @@ func TestValidatePanel_InvalidFunctionName(t *testing.T) {
 }
 
 func TestValidatePanel_InvalidThresholdOperator(t *testing.T) {
-	val := 50.0
 	panel := CreateDefaultPanel(PanelTypeTimeSeries, DataSourceMetrics)
 	panel.Thresholds = []Threshold{
 		{
 			Index:             "1",
 			ThresholdOperator: "BETWEEN",
-			ThresholdValue:    &val,
+			ThresholdValue:    50.0,
 			ThresholdFormat:   "Text",
 		},
 	}

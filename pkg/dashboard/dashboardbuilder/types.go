@@ -151,11 +151,20 @@ type PanelMapEntry struct {
 	Collapsed bool         `json:"collapsed"`
 }
 
-// Threshold represents a visual threshold line on a chart.
+// Threshold represents a visual threshold on a chart.
+// Fields match the SigNoz frontend schema (types.Threshold).
 type Threshold struct {
-	Value any `json:"value,omitempty"`
-	Color string      `json:"color,omitempty"`
-	Label string      `json:"label,omitempty"`
+	Index                 string `json:"index,omitempty"`
+	IsEditEnabled         bool   `json:"isEditEnabled,omitempty"`
+	KeyIndex              int    `json:"keyIndex,omitempty"`
+	SelectedGraph         string `json:"selectedGraph,omitempty"`
+	ThresholdColor        string `json:"thresholdColor,omitempty"`
+	ThresholdFormat       string `json:"thresholdFormat,omitempty"`
+	ThresholdLabel        string `json:"thresholdLabel,omitempty"`
+	ThresholdOperator     string `json:"thresholdOperator,omitempty"`
+	ThresholdTableOptions string `json:"thresholdTableOptions,omitempty"`
+	ThresholdUnit         string `json:"thresholdUnit,omitempty"`
+	ThresholdValue        any    `json:"thresholdValue,omitempty"`
 }
 
 // ContextLinksData holds context link definitions for a widget.
