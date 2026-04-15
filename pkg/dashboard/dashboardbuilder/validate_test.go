@@ -197,7 +197,7 @@ func TestValidate_BuilderQueryMissingQueryData(t *testing.T) {
 				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
 				Query: &Query{
 					QueryType: QueryTypeBuilder,
-					Builder:   &BuilderData{QueryData: []map[string]interface{}{}},
+					Builder:   &BuilderData{QueryData: []map[string]any{}},
 				},
 			},
 		},
@@ -223,7 +223,7 @@ func TestValidate_BuilderQueryMissingDataSource(t *testing.T) {
 				Query: &Query{
 					QueryType: QueryTypeBuilder,
 					Builder: &BuilderData{
-						QueryData: []map[string]interface{}{
+						QueryData: []map[string]any{
 							{"queryName": "A", "expression": "A"},
 						},
 					},
@@ -417,7 +417,7 @@ func validBuilderQuery() *Query {
 	return &Query{
 		QueryType: QueryTypeBuilder,
 		Builder: &BuilderData{
-			QueryData: []map[string]interface{}{
+			QueryData: []map[string]any{
 				{"queryName": "A", "dataSource": "metrics", "expression": "A"},
 			},
 		},

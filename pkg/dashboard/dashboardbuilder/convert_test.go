@@ -151,9 +151,9 @@ func TestParseFromJSON_ValidationError(t *testing.T) {
 }
 
 func TestParseFromMap(t *testing.T) {
-	m := map[string]interface{}{
+	m := map[string]any{
 		"title": "From Map",
-		"variables": map[string]interface{}{},
+		"variables": map[string]any{},
 	}
 
 	d, err := ParseFromMap(m)
@@ -188,7 +188,7 @@ func TestToMap_RoundTrip(t *testing.T) {
 	}
 
 	// Verify variables survive.
-	vars, ok := m["variables"].(map[string]interface{})
+	vars, ok := m["variables"].(map[string]any)
 	if !ok {
 		t.Fatal("expected variables in map")
 	}

@@ -20,7 +20,7 @@ type rawDashboardVariable struct {
 	Sort                      string      `json:"sort"`
 	MultiSelect               *bool       `json:"multiSelect,omitempty"`
 	ShowALLOption             *bool       `json:"showALLOption,omitempty"`
-	SelectedValue             interface{} `json:"selectedValue,omitempty"`
+	SelectedValue             any `json:"selectedValue,omitempty"`
 	DefaultValue              string      `json:"defaultValue,omitempty"`
 	DynamicVariablesAttribute string      `json:"dynamicVariablesAttribute,omitempty"`
 	DynamicVariablesSource    string      `json:"dynamicVariablesSource,omitempty"`
@@ -101,9 +101,9 @@ func ParseFromJSON(data []byte) (*DashboardData, error) {
 	return d, nil
 }
 
-// ParseFromMap parses a map[string]interface{} (the StorableDashboardData format)
+// ParseFromMap parses a map[string]any (the StorableDashboardData format)
 // into a validated DashboardData.
-func ParseFromMap(m map[string]interface{}) (*DashboardData, error) {
+func ParseFromMap(m map[string]any) (*DashboardData, error) {
 	data, err := json.Marshal(m)
 	if err != nil {
 		return nil, fmt.Errorf("cannot marshal map to JSON: %w", err)
@@ -111,14 +111,14 @@ func ParseFromMap(m map[string]interface{}) (*DashboardData, error) {
 	return ParseFromJSON(data)
 }
 
-// ToMap converts the DashboardData to map[string]interface{},
+// ToMap converts the DashboardData to map[string]any,
 // compatible with StorableDashboardData / PostableDashboard.
-func (d *DashboardData) ToMap() (map[string]interface{}, error) {
+func (d *DashboardData) ToMap() (map[string]any, error) {
 	data, err := json.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("cannot marshal dashboard data: %w", err)
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("cannot unmarshal to map: %w", err)
 	}

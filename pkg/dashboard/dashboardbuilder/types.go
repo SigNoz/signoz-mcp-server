@@ -31,7 +31,7 @@ type DashboardVariable struct {
 	Sort                      string      `json:"sort"`
 	MultiSelect               bool        `json:"multiSelect"`
 	ShowALLOption             bool        `json:"showALLOption"`
-	SelectedValue             interface{} `json:"selectedValue,omitempty"`
+	SelectedValue             any `json:"selectedValue,omitempty"`
 	DefaultValue              string      `json:"defaultValue,omitempty"`
 	DynamicVariablesAttribute string      `json:"dynamicVariablesAttribute,omitempty"`
 	DynamicVariablesSource    string      `json:"dynamicVariablesSource,omitempty"`
@@ -109,13 +109,13 @@ type Query struct {
 }
 
 // BuilderData holds query builder queries, formulas, and trace operators.
-// Fields use []map[string]interface{} to tolerate schema evolution without
+// Fields use []map[string]any to tolerate schema evolution without
 // tight coupling — the validator checks structural keys (queryName, dataSource,
 // expression) without deep-typing every field.
 type BuilderData struct {
-	QueryData          []map[string]interface{} `json:"queryData"`
-	QueryFormulas      []map[string]interface{} `json:"queryFormulas"`
-	QueryTraceOperator []map[string]interface{} `json:"queryTraceOperator,omitempty"`
+	QueryData          []map[string]any `json:"queryData"`
+	QueryFormulas      []map[string]any `json:"queryFormulas"`
+	QueryTraceOperator []map[string]any `json:"queryTraceOperator,omitempty"`
 }
 
 // ClickHouseQuery represents a raw ClickHouse SQL query.
@@ -153,7 +153,7 @@ type PanelMapEntry struct {
 
 // Threshold represents a visual threshold line on a chart.
 type Threshold struct {
-	Value interface{} `json:"value,omitempty"`
+	Value any `json:"value,omitempty"`
 	Color string      `json:"color,omitempty"`
 	Label string      `json:"label,omitempty"`
 }

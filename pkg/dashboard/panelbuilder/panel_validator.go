@@ -352,15 +352,15 @@ type Panel struct {
 	BucketWidth           *float64          `json:"bucketWidth,omitempty"`
 	MergeAllActiveQueries *bool             `json:"mergeAllActiveQueries,omitempty"`
 	ColumnUnits           map[string]string `json:"columnUnits,omitempty"`
-	SelectedLogFields     interface{}       `json:"selectedLogFields"`
-	SelectedTracesFields  interface{}       `json:"selectedTracesFields"`
+	SelectedLogFields     any       `json:"selectedLogFields"`
+	SelectedTracesFields  any       `json:"selectedTracesFields"`
 	IsLogScale            *bool             `json:"isLogScale,omitempty"`
 	LegendPosition        string            `json:"legendPosition,omitempty"`
 	LineInterpolation     string            `json:"lineInterpolation,omitempty"`
 	ShowPoints            *bool             `json:"showPoints,omitempty"`
 	LineStyle             string            `json:"lineStyle,omitempty"`
 	FillMode              string            `json:"fillMode,omitempty"`
-	SpanGaps              interface{}       `json:"spanGaps,omitempty"`
+	SpanGaps              any       `json:"spanGaps,omitempty"`
 }
 
 // Query represents the query configuration for a panel.
@@ -436,14 +436,14 @@ type TagFilterItem struct {
 	ID    string            `json:"id"`
 	Key   *AutocompleteData `json:"key,omitempty"`
 	Op    string            `json:"op"`
-	Value interface{}       `json:"value"`
+	Value any       `json:"value"`
 }
 
 // HavingClause represents a HAVING condition.
 type HavingClause struct {
 	ColumnName string      `json:"columnName"`
 	Op         string      `json:"op"`
-	Value      interface{} `json:"value"`
+	Value      any `json:"value"`
 }
 
 // OrderByPayload represents an ORDER BY clause.
@@ -455,8 +455,8 @@ type OrderByPayload struct {
 // QueryFunction represents a post-processing function applied to query results.
 type QueryFunction struct {
 	Name      string                 `json:"name"`
-	Args      []interface{}          `json:"args,omitempty"`
-	NamedArgs map[string]interface{} `json:"namedArgs,omitempty"`
+	Args      []any          `json:"args,omitempty"`
+	NamedArgs map[string]any `json:"namedArgs,omitempty"`
 }
 
 // PromQLQuery represents a PromQL query.

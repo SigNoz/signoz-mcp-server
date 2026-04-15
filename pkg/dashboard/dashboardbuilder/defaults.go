@@ -173,9 +173,6 @@ func ApplyDefaults(d *DashboardData, multiSelectSet, showALLSet map[string]bool)
 				if _, wasSet := multiSelectSet[key]; !wasSet {
 					v.MultiSelect = true
 				}
-			} else {
-				// No tracking info — set defaults if still at zero value.
-				// (This path is used by the builder API.)
 			}
 			if showALLSet != nil {
 				if _, wasSet := showALLSet[key]; !wasSet {
@@ -225,10 +222,10 @@ func ApplyDefaults(d *DashboardData, multiSelectSet, showALLSet map[string]bool)
 		// Ensure builder sub-fields are not nil.
 		if w.Query != nil && w.Query.QueryType == QueryTypeBuilder && w.Query.Builder != nil {
 			if w.Query.Builder.QueryData == nil {
-				w.Query.Builder.QueryData = []map[string]interface{}{}
+				w.Query.Builder.QueryData = []map[string]any{}
 			}
 			if w.Query.Builder.QueryFormulas == nil {
-				w.Query.Builder.QueryFormulas = []map[string]interface{}{}
+				w.Query.Builder.QueryFormulas = []map[string]any{}
 			}
 		}
 		// Ensure clickhouse_sql and promql are not nil.
@@ -328,10 +325,10 @@ func applyBuilderDefaults(d *DashboardData) {
 		}
 		if w.Query != nil && w.Query.QueryType == QueryTypeBuilder && w.Query.Builder != nil {
 			if w.Query.Builder.QueryData == nil {
-				w.Query.Builder.QueryData = []map[string]interface{}{}
+				w.Query.Builder.QueryData = []map[string]any{}
 			}
 			if w.Query.Builder.QueryFormulas == nil {
-				w.Query.Builder.QueryFormulas = []map[string]interface{}{}
+				w.Query.Builder.QueryFormulas = []map[string]any{}
 			}
 		}
 		if w.Query != nil {

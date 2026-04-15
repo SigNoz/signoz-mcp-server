@@ -13,7 +13,7 @@
 //	    Tags("latency", "sre").
 //	    AddVariable("service", dashboardbuilder.NewDynamicVariable("service.name", "Traces")).
 //	    AddTimeSeriesWidget("P99 Latency", dashboardbuilder.NewBuilderQuery(
-//	        map[string]interface{}{
+//	        map[string]any{
 //	            "queryName":  "A",
 //	            "dataSource": "traces",
 //	            "aggregateOperator": "p99",
@@ -139,7 +139,7 @@ func (b *DashboardBuilder) Build() (*DashboardData, error) {
 }
 
 // BuildMap is Build + ToMap for direct use with the SigNoz API.
-func (b *DashboardBuilder) BuildMap() (map[string]interface{}, error) {
+func (b *DashboardBuilder) BuildMap() (map[string]any, error) {
 	d, err := b.Build()
 	if err != nil {
 		return nil, err
@@ -190,12 +190,12 @@ func NewTextboxVariable(defaultValue string) *DashboardVariable {
 // --- Query constructors ---
 
 // NewBuilderQuery creates a builder-type Query from one or more query data entries.
-func NewBuilderQuery(queryData ...map[string]interface{}) Query {
+func NewBuilderQuery(queryData ...map[string]any) Query {
 	return Query{
 		QueryType: QueryTypeBuilder,
 		Builder: &BuilderData{
 			QueryData:     queryData,
-			QueryFormulas: []map[string]interface{}{},
+			QueryFormulas: []map[string]any{},
 		},
 		ClickhouseSQL: []ClickHouseQuery{},
 		PromQL:        []PromQLQuery{},

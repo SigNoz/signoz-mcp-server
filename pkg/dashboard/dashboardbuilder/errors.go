@@ -43,6 +43,6 @@ func (e *ValidationError) Add(field, message string) {
 }
 
 // Addf appends a formatted field error.
-func (e *ValidationError) Addf(field, format string, args ...interface{}) {
+func (e *ValidationError) Addf(field, format string, args ...any) {
 	e.Errors = append(e.Errors, FieldError{Field: field, Message: fmt.Sprintf(format, args...)})
 }

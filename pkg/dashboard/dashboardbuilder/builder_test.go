@@ -30,7 +30,7 @@ func TestBuilder_WithVariableAndWidget(t *testing.T) {
 		Tags("sre", "latency").
 		AddVariable("service", NewDynamicVariable("service.name", DynamicSourceTraces)).
 		AddTimeSeriesWidget("P99 Latency", NewBuilderQuery(
-			map[string]interface{}{
+			map[string]any{
 				"queryName":  "A",
 				"dataSource": DataSourceTraces,
 				"expression": "A",
@@ -83,7 +83,7 @@ func TestBuilder_MultipleWidgetTypes(t *testing.T) {
 			Query: "SELECT * FROM services LIMIT 10",
 		})).
 		AddBarWidget("Distribution", NewBuilderQuery(
-			map[string]interface{}{
+			map[string]any{
 				"queryName":  "A",
 				"dataSource": DataSourceMetrics,
 				"expression": "A",
@@ -113,13 +113,13 @@ func TestBuilder_WithRows(t *testing.T) {
 	d, err := New("Row Dashboard").
 		AddRow("Section 1").
 		AddTimeSeriesWidget("Widget 1", NewBuilderQuery(
-			map[string]interface{}{
+			map[string]any{
 				"queryName": "A", "dataSource": DataSourceMetrics, "expression": "A",
 			},
 		)).
 		AddRow("Section 2").
 		AddTimeSeriesWidget("Widget 2", NewBuilderQuery(
-			map[string]interface{}{
+			map[string]any{
 				"queryName": "A", "dataSource": DataSourceLogs, "expression": "A",
 			},
 		)).
@@ -143,7 +143,7 @@ func TestBuilder_WithRows(t *testing.T) {
 func TestBuildMap_ProducesValidMap(t *testing.T) {
 	m, err := New("Map Test").
 		AddTimeSeriesWidget("W1", NewBuilderQuery(
-			map[string]interface{}{
+			map[string]any{
 				"queryName": "A", "dataSource": DataSourceMetrics, "expression": "A",
 			},
 		)).
