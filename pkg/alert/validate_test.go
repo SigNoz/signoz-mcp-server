@@ -546,3 +546,75 @@ func TestValidate_ExistingEvaluationPreserved(t *testing.T) {
 		t.Errorf("expected preserved frequency=2m0s, got %v", evalSpec["frequency"])
 	}
 }
+
+func TestValidate_ConditionNotObject(t *testing.T) {
+	alert := map[string]any{
+		"alert":     "Test",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": "not-an-object",
+	}
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when condition is not an object")
+	}
+	if !strings.Contains(err.Error(), "condition") || !strings.Contains(err.Error(), "compositeQuery") {
+		t.Errorf("error should mention condition must be an object with compositeQuery, got: %v", err)
+	}
+}
+
+func TestValidate_ThresholdSpecNotObject(t *testing.T) {
+	alert := minimalValidAlert()
+	cond := alert["condition"].(map[string]any)
+	cond["thresholds"] = map[string]any{
+		"kind": "basic",
+		"spec": []any{"not-an-object"},
+	}
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when threshold spec entry is not an object")
+	}
+	if !strings.Contains(err.Error(), "name, target, op, and matchType") {
+		t.Errorf("error should describe expected threshold fields, got: %v", err)
+	}
+}
+
+func TestValidate_PromQLQueryMissingQueryText(t *testing.T) {
+	alert := map[string]any{
+		"alert":     "PromQL Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "promql_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "promql",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name": "A",
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name": "warning", "target": float64(5),
+						"op": "1", "matchType": "1",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected error when promql query is missing query text")
+	}
+	if !strings.Contains(err.Error(), "query") {
+		t.Errorf("error should mention missing query, got: %v", err)
+	}
+}

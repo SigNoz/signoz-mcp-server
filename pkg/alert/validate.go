@@ -132,8 +132,10 @@ func validateRequired(rule map[string]any, errs *ValidationError) {
 	if strVal(rule, "ruleType") == "" {
 		errs.Add("ruleType", "is required (threshold_rule, promql_rule, or anomaly_rule)")
 	}
-	if _, ok := rule["condition"]; !ok {
+	if v, ok := rule["condition"]; !ok {
 		errs.Add("condition", "is required")
+	} else if _, isMap := v.(map[string]any); !isMap {
+		errs.Add("condition", "must be an object containing compositeQuery and thresholds")
 	}
 }
 
@@ -196,7 +198,7 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 		prefix := fmt.Sprintf("condition.compositeQuery.queries[%d]", i)
 		qm, ok := q.(map[string]any)
 		if !ok {
-			errs.Add(prefix, "must be an object")
+			errs.Add(prefix, "must be an object with type and spec fields")
 			continue
 		}
 
@@ -229,6 +231,13 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 				errs.Addf(prefix+".spec.signal", "must be metrics, logs, or traces; got %q", sig)
 			}
 		}
+
+		// For promql/clickhouse_sql queries, require the query text
+		if qType == "builder_query" && (queryType == "promql" || queryType == "clickhouse_sql") {
+			if strVal(spec, "query") == "" {
+				errs.Addf(prefix+".spec.query", "is required for %s queries", queryType)
+			}
+		}
 	}
 
 	// Validate v2alpha1 thresholds structure
@@ -245,6 +254,7 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			prefix := fmt.Sprintf("condition.thresholds.spec[%d]", i)
 			sm, ok := s.(map[string]any)
 			if !ok {
+				errs.Add(prefix, "must be an object with name, target, op, and matchType fields")
 				continue
 			}
 			if strVal(sm, "name") == "" {
