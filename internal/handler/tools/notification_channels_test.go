@@ -11,6 +11,159 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+func TestHandleListNotificationChannels_Success(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[{"id":"1","name":"my-slack","type":"slack","data":"{\"name\":\"my-slack\",\"slack_configs\":[{\"api_url\":\"https://hooks.slack.com/x\",\"channel\":\"#alerts\",\"send_resolved\":true}]}","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"},{"id":"2","name":"my-email","type":"email","data":"{\"name\":\"my-email\",\"email_configs\":[{\"to\":\"oncall@example.com\",\"send_resolved\":true}]}","created_at":"2024-02-01T00:00:00Z","updated_at":"2024-02-01T00:00:00Z"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_notification_channels", map[string]any{})
+
+	result, err := h.handleListNotificationChannels(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	text := result.Content[0].(mcp.TextContent).Text
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	data, ok := resp["data"].([]any)
+	if !ok {
+		t.Fatalf("expected data array, got %T", resp["data"])
+	}
+	if len(data) != 2 {
+		t.Fatalf("expected 2 channels, got %d", len(data))
+	}
+
+	// Verify the "data" field was parsed from string to object
+	ch := data[0].(map[string]any)
+	if ch["name"] != "my-slack" {
+		t.Errorf("expected name=my-slack, got %v", ch["name"])
+	}
+	chData, ok := ch["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data field to be parsed object, got %T", ch["data"])
+	}
+	if _, ok := chData["slack_configs"]; !ok {
+		t.Error("expected parsed data to contain slack_configs")
+	}
+
+	// Verify pagination metadata
+	pagination, ok := resp["pagination"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected pagination metadata")
+	}
+	if pagination["total"].(float64) != 2 {
+		t.Errorf("expected total=2, got %v", pagination["total"])
+	}
+}
+
+func TestHandleListNotificationChannels_Empty(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_notification_channels", map[string]any{})
+
+	result, err := h.handleListNotificationChannels(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	text := result.Content[0].(mcp.TextContent).Text
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	data := resp["data"].([]any)
+	if len(data) != 0 {
+		t.Errorf("expected 0 channels, got %d", len(data))
+	}
+
+	pagination := resp["pagination"].(map[string]any)
+	if pagination["total"].(float64) != 0 {
+		t.Errorf("expected total=0, got %v", pagination["total"])
+	}
+}
+
+func TestHandleListNotificationChannels_APIError(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return nil, fmt.Errorf("connection refused")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_notification_channels", map[string]any{})
+
+	result, err := h.handleListNotificationChannels(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for API failure")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "connection refused") {
+		t.Errorf("expected error message in result, got: %s", text)
+	}
+}
+
+func TestHandleListNotificationChannels_Pagination(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[{"id":"1","name":"ch-1","type":"slack","data":"{}"},{"id":"2","name":"ch-2","type":"email","data":"{}"},{"id":"3","name":"ch-3","type":"webhook","data":"{}"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_notification_channels", map[string]any{
+		"limit":  "2",
+		"offset": "0",
+	})
+
+	result, err := h.handleListNotificationChannels(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	text := result.Content[0].(mcp.TextContent).Text
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	data := resp["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("expected 2 channels (limit=2), got %d", len(data))
+	}
+
+	pagination := resp["pagination"].(map[string]any)
+	if pagination["total"].(float64) != 3 {
+		t.Errorf("expected total=3, got %v", pagination["total"])
+	}
+	if pagination["hasMore"] != true {
+		t.Error("expected hasMore=true")
+	}
+	if pagination["nextOffset"].(float64) != 2 {
+		t.Errorf("expected nextOffset=2, got %v", pagination["nextOffset"])
+	}
+}
+
 func TestHandleCreateNotificationChannel_Slack(t *testing.T) {
 	var capturedBody []byte
 	mock := &client.MockClient{

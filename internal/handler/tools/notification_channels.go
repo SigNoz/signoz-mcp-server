@@ -9,6 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -23,6 +24,24 @@ var validChannelTypes = map[string]bool{
 
 func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering notification channel handlers")
+
+	listChannelsTool := mcp.NewTool("signoz_list_notification_channels",
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithDescription(
+			"List all notification channels configured in SigNoz.\n\n"+
+				"Returns channel id, name, type (slack, webhook, pagerduty, email, opsgenie, msteams), "+
+				"configuration details, and timestamps.\n\n"+
+				"Use this tool to discover existing channels before creating new ones or to verify channel configurations.\n\n"+
+				"Results are paginated. Use 'limit' and 'offset' to page through large result sets. "+
+				"The response includes pagination metadata: total count, hasMore flag, and nextOffset for the next page.",
+		),
+		mcp.WithString("limit", mcp.Description("Maximum number of channels to return per page. Default: 50.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
+	)
+
+	s.AddTool(listChannelsTool, h.handleListNotificationChannels)
 
 	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -78,6 +97,62 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(createChannelTool, h.handleCreateNotificationChannel)
+}
+
+func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log := h.tenantLogger(ctx)
+	log.Debug("Tool called: signoz_list_notification_channels")
+	limit, offset := paginate.ParseParams(req.Params.Arguments)
+
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	result, err := client.ListNotificationChannels(ctx)
+	if err != nil {
+		log.Error("Failed to list notification channels", zap.Error(err))
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(result, &response); err != nil {
+		log.Error("Failed to parse notification channels response", zap.Error(err))
+		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+	}
+
+	data, ok := response["data"].([]any)
+	if !ok {
+		log.Error("Invalid notification channels response format", zap.Any("data", response["data"]))
+		return mcp.NewToolResultError("invalid response format: expected data array"), nil
+	}
+
+	// Parse the "data" string field in each channel into a JSON object for readability.
+	for _, item := range data {
+		ch, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		dataStr, ok := ch["data"].(string)
+		if !ok || dataStr == "" {
+			continue
+		}
+		var parsed any
+		if err := json.Unmarshal([]byte(dataStr), &parsed); err == nil {
+			ch["data"] = parsed
+		}
+	}
+
+	total := len(data)
+	pagedData := paginate.Array(data, offset, limit)
+
+	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
+	if err != nil {
+		log.Error("Failed to wrap notification channels with pagination", zap.Error(err))
+		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
