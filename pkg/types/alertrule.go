@@ -31,7 +31,7 @@ type AlertRule struct {
 	Annotations       map[string]string `json:"annotations,omitempty" jsonschema_extras:"description=Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values."`
 	Disabled          bool              `json:"disabled,omitempty" jsonschema_extras:"description=Whether the alert rule is disabled. Defaults to false (enabled)."`
 	Source            string            `json:"source,omitempty" jsonschema_extras:"description=Source URL for the alert. Set automatically."`
-	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema_extras:"description=Notification channel names to send alerts to. Use signoz_get_alert on an existing alert to discover available channel names."`
+	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema_extras:"description=Notification channel names to send alerts to. Use signoz_list_notification_channels to discover available channel names."`
 	Version           string            `json:"version,omitempty" jsonschema_extras:"description=API version. Always v5. Set automatically if omitted."`
 
 	// v2 schema fields
@@ -139,7 +139,7 @@ type BasicThreshold struct {
 	RecoveryTarget *float64 `json:"recoveryTarget" jsonschema_extras:"description=Value below which the alert is considered recovered. Use null if not needed."`
 	MatchType      string   `json:"matchType" jsonschema:"required" jsonschema_extras:"description=How to evaluate: 1=at_least_once 2=all_the_times 3=on_average 4=in_total 5=last."`
 	CompareOp      string   `json:"op" jsonschema:"required" jsonschema_extras:"description=Comparison operator: 1=above 2=below 3=equal 4=not_equal."`
-	Channels       []string `json:"channels,omitempty" jsonschema_extras:"description=Notification channel names for this threshold level."`
+	Channels       []string `json:"channels,omitempty" jsonschema_extras:"description=Notification channel names for this threshold level. Use signoz_list_notification_channels to discover available names."`
 }
 
 // AlertEvaluation holds the evaluation schedule for v2 schema alerts.

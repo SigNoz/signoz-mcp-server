@@ -11,6 +11,7 @@ The alert is created via POST /api/v1/rules. All alerts use v2alpha1 schema with
 1. ALWAYS read signoz://alert/examples for complete working payloads
 2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy
+4. Use signoz_list_notification_channels to discover available notification channel names for thresholds and preferredChannels
 
 ## Alert Types (alertType)
 | Value | Signal | Use When |
@@ -111,7 +112,7 @@ Use condition.thresholds to define alert thresholds. Each threshold level can ro
 - recoveryTarget: value for recovery (null if not needed)
 - matchType: 1=at_least_once, 2=all_the_times, 3=on_average, 4=in_total, 5=last
 - op: 1=above, 2=below, 3=equal, 4=not_equal
-- channels: notification channel names for this threshold level
+- channels: notification channel names for this threshold level (use signoz_list_notification_channels to discover available names)
 
 ## Evaluation Configuration
 
@@ -154,7 +155,7 @@ Controls grouping and re-notification:
 ## Labels & Routing
 - labels.severity: MUST be set (info, warning, or critical) — auto-defaults to warning
 - Additional labels like team, service, environment enable routing policies
-- preferredChannels: fallback notification channel names (thresholds.channels takes priority)
+- preferredChannels: fallback notification channel names (thresholds.channels takes priority). Use signoz_list_notification_channels to discover available names
 - Set usePolicy: true in notificationSettings to enable label-based routing
 
 ## Annotations
@@ -680,6 +681,6 @@ Use two queries and a formula to calculate error rate percentage.
 2. For logs/traces alerts, aggregations use the expression format: {expression: "count()"} or {expression: "avg(duration)"}
 3. The selectedQueryName should reference the query or formula that determines the alert condition
 4. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects
-5. Channel names in thresholds.spec[].channels must match exactly the channel names configured in SigNoz
+5. Channel names in thresholds.spec[].channels must match exactly the names from signoz_list_notification_channels
 6. schemaVersion, evaluation, and notificationSettings are auto-generated if omitted
 `

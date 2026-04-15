@@ -65,7 +65,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
-			"Creates a new alert rule in SigNoz using v2 schema.\n\n"+
+			"Creates a new alert rule in SigNoz using v2alpha1 schema.\n\n"+
 				"CRITICAL: You MUST read these resources BEFORE generating any alert payload:\n"+
 				"1. signoz://alert/instructions — REQUIRED: Alert structure, field descriptions, valid values\n"+
 				"2. signoz://alert/examples — REQUIRED: Complete working examples for each alert type\n\n"+
