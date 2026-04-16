@@ -119,30 +119,57 @@ func TestGetAlertByRuleID(t *testing.T) {
 
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
-		name          string
-		userMeStatus  int
-		expectedError bool
-		checkErr      func(t *testing.T, err error)
+		name            string
+		userMeStatus    int // status for /api/v1/user/me (always hit first)
+		saStatus        int // status for /api/v1/service_accounts/me (only hit on user/me 502)
+		expectedError   bool
+		checkErr        func(t *testing.T, err error)
+		expectUserMeHit bool
+		expectSAHit     bool
 	}{
 		{
-			name:          "successful validation",
-			userMeStatus:  http.StatusOK,
-			expectedError: false,
+			name:            "user/me succeeds (legacy user-level key)",
+			userMeStatus:    http.StatusOK,
+			expectedError:   false,
+			expectUserMeHit: true,
+			expectSAHit:     false,
 		},
 		{
-			name:          "unauthorized credentials",
-			userMeStatus:  http.StatusUnauthorized,
-			expectedError: true,
+			name:            "user/me unauthorized returns error directly",
+			userMeStatus:    http.StatusUnauthorized,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     false,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:          "unexpected status",
-			userMeStatus:  http.StatusInternalServerError,
-			expectedError: true,
+			name:            "user/me 404 falls back to service_accounts/me success",
+			userMeStatus:    http.StatusNotFound,
+			saStatus:        http.StatusOK,
+			expectedError:   false,
+			expectUserMeHit: true,
+			expectSAHit:     true,
+		},
+		{
+			name:            "user/me 404 falls back to service_accounts/me unauthorized",
+			userMeStatus:    http.StatusNotFound,
+			saStatus:        http.StatusUnauthorized,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     true,
 			checkErr: func(t *testing.T, err error) {
-				assert.NotNil(t, err)
+				assert.ErrorIs(t, err, ErrUnauthorized)
+			},
+		},
+		{
+			name:            "user/me 500 returns error directly without fallback",
+			userMeStatus:    http.StatusInternalServerError,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     false,
+			checkErr: func(t *testing.T, err error) {
 				assert.Contains(t, err.Error(), "unexpected status 500")
 			},
 		},
@@ -151,16 +178,20 @@ func TestValidateCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			userMeRequests := 0
+			saRequests := 0
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+				assert.Equal(t, http.MethodGet, r.Method)
 
 				switch r.URL.Path {
 				case "/api/v1/user/me":
 					userMeRequests++
-					assert.Equal(t, http.MethodGet, r.Method)
 					w.WriteHeader(tt.userMeStatus)
+				case "/api/v1/service_accounts/me":
+					saRequests++
+					w.WriteHeader(tt.saStatus)
 				default:
 					t.Fatalf("unexpected path %s", r.URL.Path)
 				}
@@ -179,11 +210,20 @@ func TestValidateCredentials(t *testing.T) {
 				if tt.checkErr != nil {
 					tt.checkErr(t, err)
 				}
-				return
+			} else {
+				assert.NoError(t, err)
 			}
 
-			assert.NoError(t, err)
-			assert.Equal(t, 1, userMeRequests)
+			if tt.expectUserMeHit {
+				assert.Equal(t, 1, userMeRequests, "expected user/me to be called")
+			} else {
+				assert.Equal(t, 0, userMeRequests, "expected user/me NOT to be called")
+			}
+			if tt.expectSAHit {
+				assert.Equal(t, 1, saRequests, "expected service_accounts/me to be called")
+			} else {
+				assert.Equal(t, 0, saRequests, "expected service_accounts/me NOT to be called")
+			}
 		})
 	}
 }
@@ -952,6 +992,23 @@ func TestUpdateDashboard(t *testing.T) {
 	}
 
 	err := client.UpdateDashboard(context.Background(), "id-123", d)
+	require.NoError(t, err)
+}
+
+func TestDeleteDashboard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/api/v1/dashboards/dash-456", r.URL.Path)
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY")
+
+	err := client.DeleteDashboard(context.Background(), "dash-456")
 	require.NoError(t, err)
 }
 

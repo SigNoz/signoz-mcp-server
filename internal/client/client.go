@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -59,13 +61,20 @@ func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHe
 func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 	l := s.logger
 	if s.baseURL != "" {
-		l = l.With(zap.String("tenant_url", s.baseURL))
+		l = l.With(zap.String("mcp.tenant_url", s.baseURL))
 	}
 	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-		l = l.With(zap.String("session_id", sid))
+		l = l.With(zap.String("mcp.session.id", sid))
 	}
 	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-		l = l.With(zap.String("search_context", sc))
+		l = l.With(zap.String("mcp.search_context", sc))
+	}
+	// Add trace context for log-trace correlation.
+	if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
+		l = l.With(
+			zap.String("trace_id", spanCtx.TraceID().String()),
+			zap.String("span_id", spanCtx.SpanID().String()),
+		)
 	}
 	return l
 }
@@ -73,15 +82,43 @@ func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 // ValidateCredentials performs a lightweight authenticated request against the
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
+//
+// It first tries the user endpoint (/api/v1/user/me). A 404 response indicates
+// the API key belongs to a service account (newer SigNoz releases), so it
+// retries against /api/v1/service_accounts/me. Any other response from user/me
+// is returned directly.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	log := s.requestLogger(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	reqURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
+	userURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
+	status, body, err := s.doValidationRequest(ctx, userURL)
+	if err != nil {
+		log.Error("SigNoz credential validation request failed", zap.String("url", userURL), zap.Error(err))
+		return fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+
+	// 404 means the key is a service-account key; validate via service account endpoint.
+	if status == http.StatusNotFound {
+		log.Debug("user/me returned non-user status, retrying with service_accounts/me", zap.Int("status", status))
+		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
+		status, body, err = s.doValidationRequest(ctx, saURL)
+		if err != nil {
+			log.Error("SigNoz credential validation request failed", zap.String("url", saURL), zap.Error(err))
+			return fmt.Errorf("failed to reach SigNoz API: %w", err)
+		}
+	}
+
+	return s.evaluateValidationResponse(log, status, body)
+}
+
+// doValidationRequest sends a GET request to the given URL with auth headers
+// and returns the HTTP status code, response body, and any transport error.
+func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create validation request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create validation request: %w", err)
 	}
 
 	req.Header.Set(ContentType, "application/json")
@@ -89,29 +126,31 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		log.Error("SigNoz credential validation request failed", zap.String("url", reqURL), zap.Error(err))
-		return fmt.Errorf("failed to reach SigNoz API: %w", err)
+		return 0, nil, err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Warn("Failed to close response body", zap.Error(err))
-		}
+		_ = resp.Body.Close()
 	}()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
 	if err != nil {
-		return fmt.Errorf("failed to read validation response: %w", err)
+		return 0, nil, fmt.Errorf("failed to read validation response: %w", err)
 	}
 
-	switch resp.StatusCode {
+	return resp.StatusCode, body, nil
+}
+
+// evaluateValidationResponse maps the final HTTP status to a Go error.
+func (s *SigNoz) evaluateValidationResponse(log *zap.Logger, status int, body []byte) error {
+	switch status {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		log.Warn("SigNoz credential validation failed", zap.String("url", reqURL), zap.Int("status", resp.StatusCode))
-		return fmt.Errorf("%w: status %d", ErrUnauthorized, resp.StatusCode)
+		log.Warn("SigNoz credential validation failed", zap.Int("status", status))
+		return fmt.Errorf("%w: status %d", ErrUnauthorized, status)
 	default:
-		log.Warn("SigNoz credential validation returned unexpected status", zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.String("response", string(body)))
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+		log.Warn("SigNoz credential validation returned unexpected status", zap.Int("status", status), zap.String("response", string(body)))
+		return fmt.Errorf("unexpected status %d: %s", status, string(body))
 	}
 }
 
@@ -356,6 +395,9 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 	s.requestLogger(ctx).Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(telemetry.MCPQueryPayloadKey.String(string(body)))
+	}
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }
 
@@ -368,6 +410,12 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 
 	s.requestLogger(ctx).Debug("Fetching alert history", zap.String("ruleID", ruleID))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
+}
+
+func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/rules", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating alert rule")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
 }
 
 func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
@@ -462,5 +510,57 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 
 	s.requestLogger(ctx).Debug("Updating dashboard", zap.String("id", id))
 	_, err = s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return err
+}
+
+// CreateDashboardRaw creates a dashboard from pre-validated JSON bytes,
+// avoiding a round-trip through types.Dashboard.
+func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating dashboard (raw)")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+}
+
+// UpdateDashboardRaw updates a dashboard from pre-validated JSON bytes,
+// avoiding a round-trip through types.Dashboard.
+func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Updating dashboard (raw)", zap.String("id", id))
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return err
+}
+
+func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Deleting dashboard", zap.String("id", id))
+	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	return err
+}
+
+// ChannelWriteTimeout is used for notification channel create/test operations.
+const ChannelWriteTimeout = 30 * time.Second
+
+func (s *SigNoz) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Fetching notification channels from SigNoz")
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating notification channel")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
+func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Updating notification channel", zap.String("id", id))
+	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
+func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
+	reqURL := fmt.Sprintf("%s/api/v1/testChannel", s.baseURL)
+	s.requestLogger(ctx).Debug("Testing notification channel")
+	_, err := s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
 	return err
 }

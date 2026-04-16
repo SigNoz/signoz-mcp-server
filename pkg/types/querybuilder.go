@@ -286,9 +286,9 @@ func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64, queries []
 		}
 
 		spec := QuerySpec{
-			Name:     q.Name,
-			Signal:   "metrics",
-			Disabled: false,
+			Name:         q.Name,
+			Signal:       "metrics",
+			Disabled:     false,
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
@@ -360,9 +360,9 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 		}
 
 		spec := QuerySpec{
-			Name:     q.Name,
-			Signal:   "metrics",
-			Disabled: false,
+			Name:         q.Name,
+			Signal:       "metrics",
+			Disabled:     false,
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
@@ -382,10 +382,10 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 	}
 
 	payload := struct {
-		SchemaVersion  string         `json:"schemaVersion"`
-		Start          int64          `json:"start"`
-		End            int64          `json:"end"`
-		RequestType    string         `json:"requestType"`
+		SchemaVersion  string `json:"schemaVersion"`
+		Start          int64  `json:"start"`
+		End            int64  `json:"end"`
+		RequestType    string `json:"requestType"`
 		CompositeQuery struct {
 			Queries []rawQuery `json:"queries"`
 		} `json:"compositeQuery"`

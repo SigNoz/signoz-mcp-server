@@ -5,7 +5,13 @@ fmt:
 
 goimports:
 	@echo "📦 Running goimports..."
-	@goimports -w .
+	@if ! command -v goimports > /dev/null; then \
+		echo "goimports not found on PATH."; \
+		echo "Install it with: go install golang.org/x/tools/cmd/goimports@latest"; \
+		exit 1; \
+	else \
+		goimports -w .; \
+	fi
 
 build: fmt goimports
 	@echo "🚀 Building ..."

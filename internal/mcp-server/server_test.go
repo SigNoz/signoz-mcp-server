@@ -11,6 +11,7 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
@@ -156,7 +157,7 @@ func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
 		t.Fatalf("EncryptToken() error = %v", err)
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	// req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
@@ -188,7 +189,7 @@ func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer raw-api-key")
 	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
@@ -220,7 +221,7 @@ func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer stale-token")
 
@@ -245,7 +246,7 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 		OAuthIssuerURL: "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg}
+	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 

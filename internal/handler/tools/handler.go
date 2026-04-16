@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -41,10 +42,17 @@ func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
 		l = telemetry.LoggerWithURL(l, signozURL)
 	}
 	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-		l = l.With(zap.String("session_id", sid))
+		l = l.With(zap.String("mcp.session.id", sid))
 	}
 	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-		l = l.With(zap.String("search_context", sc))
+		l = l.With(zap.String("mcp.search_context", sc))
+	}
+	// Add trace context for log-trace correlation.
+	if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
+		l = l.With(
+			zap.String("trace_id", spanCtx.TraceID().String()),
+			zap.String("span_id", spanCtx.SpanID().String()),
+		)
 	}
 	return l
 }

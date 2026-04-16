@@ -5,6 +5,17 @@ All notable changes to the SigNoz MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.1.2] - 2026-04-09
+
+### Fixed
+- use service account endpoint for API key validation ([#112](https://github.com/SigNoz/signoz-mcp-server/pull/112))
+
+### Other
+- simplify MCP link guidance and goimports setup ([#109](https://github.com/SigNoz/signoz-mcp-server/pull/109))
+- add signoz cloud setup to readme ([#107](https://github.com/SigNoz/signoz-mcp-server/pull/107))
+- bump version to v0.1.0 and update manifest ([#106](https://github.com/SigNoz/signoz-mcp-server/pull/106))
+
 ## [0.1.0] - 2026-03-25
 
 ### Deprecated
@@ -116,3 +127,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.0.3]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/SigNoz/signoz-mcp-server/releases/tag/v0.0.1
+[0.1.2]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.1.0...v0.1.2

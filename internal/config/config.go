@@ -28,6 +28,9 @@ type Config struct {
 	ClientCacheTTL  time.Duration
 
 	CustomHeaders map[string]string
+	// Analytics settings
+	AnalyticsEnabled bool
+	SegmentKey       string
 }
 
 const (
@@ -38,8 +41,11 @@ const (
 	MCPPort       = "MCP_SERVER_PORT"
 
 	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
-	ClientCacheSize    = "CLIENT_CACHE_SIZE"
-	ClientCacheTTL     = "CLIENT_CACHE_TTL_MINUTES"
+	ClientCacheSize     = "CLIENT_CACHE_SIZE"
+	ClientCacheTTL      = "CLIENT_CACHE_TTL_MINUTES"
+
+	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
+	SegmentKeyEnv       = "SEGMENT_KEY"
 
 	OAuthEnabledEnv         = "OAUTH_ENABLED"
 	OAuthTokenSecretEnv     = "OAUTH_TOKEN_SECRET"
@@ -93,6 +99,8 @@ func LoadConfig() (*Config, error) {
 		ClientCacheSize:  cacheSize,
 		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
 		CustomHeaders:    customHeaders,
+		AnalyticsEnabled: getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:       getEnv(SegmentKeyEnv, ""),
 	}, nil
 }
 
