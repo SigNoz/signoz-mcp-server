@@ -76,10 +76,12 @@ func LoadConfig() (*Config, error) {
 	if headersStr := getEnv(SignozCustomHeaders, ""); headersStr != "" {
 		for _, pair := range strings.Split(headersStr, ",") {
 			parts := strings.SplitN(pair, ":", 2)
-			if len(parts) == 2 {
-				customHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-			} else {
+			if len(parts) != 2 {
 				log.Printf("WARN: skipping malformed custom header entry (missing ':'): %q", strings.TrimSpace(pair))
+			} else if strings.TrimSpace(parts[0]) == "" {
+				log.Printf("WARN: skipping custom header entry with empty name: %q", strings.TrimSpace(pair))
+			} else {
+				customHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 			}
 		}
 	}

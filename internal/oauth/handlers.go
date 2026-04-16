@@ -265,7 +265,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiKey string) error {
-	signozClient := client.NewClient(h.logger, signozURL, apiKey, "SIGNOZ-API-KEY", nil)
+	signozClient := client.NewClient(h.logger, signozURL, apiKey, "SIGNOZ-API-KEY", h.config.CustomHeaders)
 	return signozClient.ValidateCredentials(ctx)
 }
 

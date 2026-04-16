@@ -55,6 +55,13 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 				"ValidKey": "ValidValue",
 			},
 		},
+		{
+			name:     "empty header name is skipped",
+			envValue: ":some-value,ValidKey:ValidValue",
+			expectedHeaders: map[string]string{
+				"ValidKey": "ValidValue",
+			},
+		},
 	}
 
 	for _, tt := range tests {

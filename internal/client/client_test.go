@@ -1006,7 +1006,7 @@ func TestDeleteDashboard(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY")
+	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	err := client.DeleteDashboard(context.Background(), "dash-456")
 	require.NoError(t, err)

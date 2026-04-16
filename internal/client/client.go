@@ -124,6 +124,12 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
+	for k, v := range s.customHeaders {
+		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, SignozApiKey) {
+			req.Header.Set(k, v)
+		}
+	}
+
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return 0, nil, err
