@@ -28,10 +28,17 @@ type Handler struct {
 }
 
 func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
+	// Normalize the configured URL so that the URL comparison in GetClient
+	// works reliably (e.g. https://example.com:443 == https://example.com).
+	normalizedURL := cfg.URL
+	if n, err := util.NormalizeSigNozURL(cfg.URL); err == nil {
+		normalizedURL = n
+	}
+
 	return &Handler{
 		logger:        log,
 		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
-		configURL:     cfg.URL,
+		configURL:     normalizedURL,
 		customHeaders: cfg.CustomHeaders,
 	}
 }
