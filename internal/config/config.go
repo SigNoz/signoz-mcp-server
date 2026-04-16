@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ type Config struct {
 	ClientCacheSize int
 	ClientCacheTTL  time.Duration
 
+	CustomHeaders map[string]string
 	// Analytics settings
 	AnalyticsEnabled bool
 	SegmentKey       string
@@ -38,8 +40,9 @@ const (
 	TransportMode = "TRANSPORT_MODE"
 	MCPPort       = "MCP_SERVER_PORT"
 
-	ClientCacheSize = "CLIENT_CACHE_SIZE"
-	ClientCacheTTL  = "CLIENT_CACHE_TTL_MINUTES"
+	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
+	ClientCacheSize     = "CLIENT_CACHE_SIZE"
+	ClientCacheTTL      = "CLIENT_CACHE_TTL_MINUTES"
 
 	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
 	SegmentKeyEnv       = "SEGMENT_KEY"
@@ -53,8 +56,8 @@ const (
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
-	defaultAccessTTLMinutes      = 60       // 1 hour
-	defaultRefreshTTLMinutes     = 43200    // 30 days
+	defaultAccessTTLMinutes      = 60    // 1 hour
+	defaultRefreshTTLMinutes     = 43200 // 30 days
 	defaultAuthCodeTTLSeconds    = 600
 )
 
@@ -67,6 +70,21 @@ func LoadConfig() (*Config, error) {
 	accessTTLMinutes := getEnvInt(OAuthAccessTTLMinutes, defaultAccessTTLMinutes)
 	refreshTTLMinutes := getEnvInt(OAuthRefreshTTLMinutes, defaultRefreshTTLMinutes)
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
+
+	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
+	customHeaders := make(map[string]string)
+	if headersStr := getEnv(SignozCustomHeaders, ""); headersStr != "" {
+		for _, pair := range strings.Split(headersStr, ",") {
+			parts := strings.SplitN(pair, ":", 2)
+			if len(parts) != 2 {
+				log.Printf("WARN: skipping malformed custom header entry (missing ':'): %q", strings.TrimSpace(pair))
+			} else if strings.TrimSpace(parts[0]) == "" {
+				log.Printf("WARN: skipping custom header entry with empty name: %q", strings.TrimSpace(pair))
+			} else {
+				customHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+	}
 
 	return &Config{
 		URL:              url,
@@ -82,6 +100,7 @@ func LoadConfig() (*Config, error) {
 		AuthCodeTTL:      time.Duration(authCodeTTLSeconds) * time.Second,
 		ClientCacheSize:  cacheSize,
 		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
+		CustomHeaders:    customHeaders,
 		AnalyticsEnabled: getEnvBool(AnalyticsEnabledEnv, false),
 		SegmentKey:       getEnv(SegmentKeyEnv, ""),
 	}, nil

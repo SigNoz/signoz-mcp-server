@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -38,14 +39,16 @@ type SigNoz struct {
 	authHeaderName string
 	logger         *zap.Logger
 	httpClient     *http.Client
+	customHeaders  map[string]string
 }
 
-func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz {
+func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
 	return &SigNoz{
 		logger:         log,
 		baseURL:        baseURL,
 		apiKey:         apiKey,
 		authHeaderName: authHeaderName,
+		customHeaders:  customHeaders,
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
@@ -121,6 +124,12 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 	req.Header.Set(ContentType, "application/json")
 	req.Header.Set(SignozApiKey, s.apiKey)
 
+	for k, v := range s.customHeaders {
+		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, SignozApiKey) {
+			req.Header.Set(k, v)
+		}
+	}
+
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return 0, nil, err
@@ -192,6 +201,15 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		req.Header.Set(ContentType, "application/json")
 
 		req.Header.Set(s.authHeaderName, s.apiKey)
+
+		for k, v := range s.customHeaders {
+			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
+				log.Warn("Custom header overrides a reserved header",
+					zap.String("header", k), zap.String("value", v))
+				continue
+			}
+			req.Header.Set(k, v)
+		}
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
