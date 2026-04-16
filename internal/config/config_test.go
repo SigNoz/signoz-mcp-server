@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,17 +59,11 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set required env vars so LoadConfig doesn't fail
-			os.Setenv("SIGNOZ_URL", "http://localhost:8080")
-			os.Setenv("SIGNOZ_API_KEY", "test-key")
-			defer os.Unsetenv("SIGNOZ_URL")
-			defer os.Unsetenv("SIGNOZ_API_KEY")
+			t.Setenv("SIGNOZ_URL", "http://localhost:8080")
+			t.Setenv("SIGNOZ_API_KEY", "test-key")
 
 			if tt.envValue != "" {
-				os.Setenv("SIGNOZ_CUSTOM_HEADERS", tt.envValue)
-				defer os.Unsetenv("SIGNOZ_CUSTOM_HEADERS")
-			} else {
-				os.Unsetenv("SIGNOZ_CUSTOM_HEADERS")
+				t.Setenv("SIGNOZ_CUSTOM_HEADERS", tt.envValue)
 			}
 
 			cfg, err := LoadConfig()

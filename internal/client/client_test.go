@@ -88,7 +88,7 @@ func TestGetAlertByRuleID(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.GetAlertByRuleID(ctx, tt.ruleID)
@@ -170,7 +170,7 @@ func TestValidateCredentials(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			err := client.ValidateCredentials(context.Background())
 
@@ -249,7 +249,7 @@ func TestListMetricKeys(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.ListMetricKeys(ctx)
@@ -369,7 +369,7 @@ func TestListDashboards(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.ListDashboards(ctx)
@@ -498,7 +498,7 @@ func TestListServices(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.ListServices(ctx, tt.start, tt.end)
@@ -684,7 +684,7 @@ func TestGetAlertHistory(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.GetAlertHistory(ctx, tt.ruleID, tt.request)
@@ -849,7 +849,7 @@ func TestQueryBuilderV5(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.QueryBuilderV5(ctx, tt.queryBody)
@@ -905,7 +905,7 @@ func TestCreateDashboard(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	d := types.Dashboard{
 		Title:   "whatever",
@@ -943,7 +943,7 @@ func TestUpdateDashboard(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY")
+	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	d := types.Dashboard{
 		Title:   "updated-title",
@@ -1037,7 +1037,7 @@ func TestGetFieldKeys(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.GetFieldKeys(ctx, tt.signal, tt.metricName, tt.searchText, tt.fieldContext, tt.fieldDataType, tt.source)
@@ -1138,7 +1138,7 @@ func TestGetFieldValues(t *testing.T) {
 			defer server.Close()
 
 			logger, _ := zap.NewDevelopment()
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY")
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
 			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.source)
@@ -1174,7 +1174,7 @@ func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	require.NoError(t, err)
@@ -1192,7 +1192,7 @@ func TestDoRequest_RetriesExhausted(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	assert.Error(t, err)
@@ -1209,7 +1209,7 @@ func TestDoRequest_ContextCancelled(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -1228,7 +1228,7 @@ func TestDoRequest_NoRetryOn4xx(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	_, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	assert.Error(t, err)
@@ -1251,7 +1251,7 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	defer srv.Close()
 
 	logger, _ := zap.NewDevelopment()
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY")
+	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	require.NoError(t, err)
@@ -1259,7 +1259,7 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	assert.Contains(t, string(result), "success")
 }
 
-func TestNewClientWithHeaders_SetsCustomHeaders(t *testing.T) {
+func TestNewClient_SetsCustomHeaders(t *testing.T) {
 	customHeaders := map[string]string{
 		"CF-Access-Client-Id":     "test-id.access",
 		"CF-Access-Client-Secret": "test-secret",
@@ -1280,13 +1280,13 @@ func TestNewClientWithHeaders_SetsCustomHeaders(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClientWithHeaders(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)
 }
 
-func TestNewClientWithHeaders_NilHeaders(t *testing.T) {
+func TestNewClient_NilHeaders(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Standard headers should still be set when custom headers map is nil
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -1298,13 +1298,13 @@ func TestNewClientWithHeaders_NilHeaders(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClientWithHeaders(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)
 }
 
-func TestNewClientWithHeaders_EmptyHeaders(t *testing.T) {
+func TestNewClient_EmptyHeaders(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
@@ -1315,7 +1315,34 @@ func TestNewClientWithHeaders_EmptyHeaders(t *testing.T) {
 	defer server.Close()
 
 	logger, _ := zap.NewDevelopment()
-	client := NewClientWithHeaders(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{})
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{})
+
+	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	assert.NoError(t, err)
+}
+
+func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
+	customHeaders := map[string]string{
+		"Content-Type":            "text/plain",
+		"SIGNOZ-API-KEY":         "overridden-key",
+		"CF-Access-Client-Id":    "test-id",
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Reserved headers should NOT be overridden by custom headers
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		// Non-reserved custom headers should still be injected
+		assert.Equal(t, "test-id", r.Header.Get("CF-Access-Client-Id"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)

@@ -77,7 +77,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 	}
 
 	h.tenantLogger(ctx).Debug("Creating new SigNoz client for tenant")
-	newClient := signozclient.NewClientWithHeaders(h.logger, signozURL, apiKey, authHeader, h.customHeaders)
+	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader, h.customHeaders)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil
 }

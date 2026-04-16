@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -36,8 +37,9 @@ const (
 	TransportMode = "TRANSPORT_MODE"
 	MCPPort       = "MCP_SERVER_PORT"
 
-	ClientCacheSize = "CLIENT_CACHE_SIZE"
-	ClientCacheTTL  = "CLIENT_CACHE_TTL_MINUTES"
+	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
+	ClientCacheSize    = "CLIENT_CACHE_SIZE"
+	ClientCacheTTL     = "CLIENT_CACHE_TTL_MINUTES"
 
 	OAuthEnabledEnv         = "OAUTH_ENABLED"
 	OAuthTokenSecretEnv     = "OAUTH_TOKEN_SECRET"
@@ -65,11 +67,13 @@ func LoadConfig() (*Config, error) {
 
 	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
 	customHeaders := make(map[string]string)
-	if headersStr := getEnv("SIGNOZ_CUSTOM_HEADERS", ""); headersStr != "" {
+	if headersStr := getEnv(SignozCustomHeaders, ""); headersStr != "" {
 		for _, pair := range strings.Split(headersStr, ",") {
 			parts := strings.SplitN(pair, ":", 2)
 			if len(parts) == 2 {
 				customHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			} else {
+				log.Printf("WARN: skipping malformed custom header entry (missing ':'): %q", strings.TrimSpace(pair))
 			}
 		}
 	}
