@@ -1,8 +1,14 @@
-name: post-release
+name: pre-release
 
 on:
   release:
-    types: [published]
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to prepare (semver without leading 'v'), e.g. 0.1.3 or 0.1.3-rc.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -10,8 +16,9 @@ permissions:
 
 jobs:
   bump-version:
-    # Fallback to pre-release.yaml: runs after publish and no-ops if the version
-    # files already match the released tag (see "check if bump already applied").
+    # Only run for drafts from the release event, or for a manual dispatch.
+    # Published/edited releases are handled by post-release.yaml (fallback).
+    if: github.event_name == 'workflow_dispatch' || github.event.release.draft == true
     runs-on: ubuntu-latest
     steps:
       - name: checkout
@@ -20,57 +27,51 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: extract version from tag
+      - name: resolve version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
-          # Strip the leading 'v' from the tag (v0.1.0 -> 0.1.0)
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-
-          # Find the previous stable tag (exclude -rc, -alpha, -beta etc.)
-          # For stable tags: find current in the sorted list, take the line right before it.
-          # For pre-release tags: take the most recent stable tag (current tag isn't in the list).
-          if echo "$GITHUB_REF_NAME" | grep -q '-'; then
-            PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
-              | grep -v '-' \
-              | head -1 || true)
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RAW="$INPUT_VERSION"
           else
-            PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=v:refname \
-              | grep -v '-' \
-              | awk -v cur="$GITHUB_REF_NAME" '$0 == cur { print prev; exit } { prev = $0 }')
+            RAW="$RELEASE_TAG"
           fi
+
+          if [ -z "$RAW" ]; then
+            echo "No version provided." >&2
+            exit 1
+          fi
+
+          # Strip leading 'v' if present
+          VERSION="${RAW#v}"
+          TAG="v${VERSION}"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # Previous stable tag — newest tag matching vX.Y.Z without a '-' suffix.
+          # The new tag does not exist yet (draft or dispatch), so just take the head.
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
+            | grep -v '-' \
+            | head -1 || true)
           echo "prev_tag=${PREV_TAG:-}" >> "$GITHUB_OUTPUT"
 
-      - name: check if bump already applied
-        id: state
-        run: |
-          set -euo pipefail
-          CURRENT=$(jq -r '.version' manifest.json)
-          if [ "$CURRENT" = "${{ steps.version.outputs.version }}" ]; then
-            echo "pre-release workflow already bumped files to ${CURRENT}; post-release will no-op."
-            echo "already_bumped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "version files still at ${CURRENT}; post-release will bump to ${{ steps.version.outputs.version }}."
-            echo "already_bumped=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: update manifest.json
-        if: steps.state.outputs.already_bumped == 'false'
         run: |
           set -euo pipefail
           jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' manifest.json > tmp.json && mv tmp.json manifest.json
 
       - name: update server.json
-        if: steps.state.outputs.already_bumped == 'false'
         run: |
           set -euo pipefail
           jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' server.json > tmp.json && mv tmp.json server.json
 
       - name: generate changelog entry
-        if: steps.state.outputs.already_bumped == 'false'
         run: |
           set -euo pipefail
 
@@ -86,11 +87,12 @@ jobs:
             exit 0
           fi
 
+          # Range: the tag does not exist yet, so compare against HEAD on main.
           if [ -z "$PREV_TAG" ]; then
-            RANGE="${TAG}"
-            echo "No previous stable tag found — changelog will include all commits up to ${TAG}."
+            RANGE="HEAD"
+            echo "No previous stable tag found — changelog will include all commits up to HEAD."
           else
-            RANGE="${PREV_TAG}..${TAG}"
+            RANGE="${PREV_TAG}..HEAD"
           fi
 
           # Collect commits by conventional-commit type
@@ -164,7 +166,7 @@ jobs:
             ENTRY+="\n### Other\n${SECTIONS["other"]}"
           fi
 
-          # Build comparison link
+          # Build comparison link — the tag will exist after the draft is published.
           if [ -n "$PREV_TAG" ]; then
             LINK="[${VERSION}]: ${REPO}/compare/${PREV_TAG}...${TAG}"
           else
@@ -172,11 +174,9 @@ jobs:
           fi
 
           # Insert entry into CHANGELOG.md after the header block
-          # Find the line number of the first "## [" heading (existing version entry)
           FIRST_VERSION_LINE=$(grep -n '^## \[' CHANGELOG.md | head -1 | cut -d: -f1 || true)
 
           if [ -n "$FIRST_VERSION_LINE" ]; then
-            # Insert new entry before the first existing version heading
             {
               head -n $((FIRST_VERSION_LINE - 1)) CHANGELOG.md
               echo ""
@@ -184,7 +184,6 @@ jobs:
               tail -n +${FIRST_VERSION_LINE} CHANGELOG.md
             } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
           else
-            # No existing version entries — append after header
             {
               cat CHANGELOG.md
               echo ""
@@ -192,7 +191,6 @@ jobs:
             } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
           fi
 
-          # Append comparison link (only if not already present)
           if ! grep -q "^\[${VERSION}\]:" CHANGELOG.md; then
             echo "$LINK" >> CHANGELOG.md
           fi
@@ -211,14 +209,16 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          branch: chore/post-release-${{ steps.version.outputs.tag }}
-          commit-message: "chore: bump version to ${{ steps.version.outputs.version }} after release"
-          title: "chore: post-release ${{ steps.version.outputs.tag }}"
+          branch: chore/pre-release-${{ steps.version.outputs.tag }}
+          commit-message: "chore: bump version to ${{ steps.version.outputs.version }} before release"
+          title: "chore: pre-release ${{ steps.version.outputs.tag }}"
           body: |
-            Auto-generated after release [${{ steps.version.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}).
+            Auto-generated for upcoming release `${{ steps.version.outputs.tag }}`.
 
             Updates:
             - `manifest.json` version → `${{ steps.version.outputs.version }}`
             - `server.json` version → `${{ steps.version.outputs.version }}`
             - `CHANGELOG.md` — adds `[${{ steps.version.outputs.version }}]` entry generated from commit history
+
+            Merge this PR **before** publishing the draft release so the tag lands on the bumped commit and artifacts carry the correct version.
           labels: automated
