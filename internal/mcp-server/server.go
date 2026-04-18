@@ -39,7 +39,7 @@ func (m *MCPServer) analyticsEnabled() bool {
 	return m.analytics != nil && m.analytics.Enabled()
 }
 
-func cloneMap(src map[string]any) map[string]any {
+func cloneAttrs(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return map[string]any{}
 	}
@@ -50,27 +50,29 @@ func cloneMap(src map[string]any) map[string]any {
 	return dst
 }
 
-func (m *MCPServer) enrichAnalyticsAttrs(identity *signozclient.AnalyticsIdentity, attrs map[string]any) map[string]any {
-	enriched := cloneMap(attrs)
+// mergeIdentityAttrs returns a copy of attrs augmented with identity-derived
+// fields (org_id, principal, and a principal-scoped email key).
+func (m *MCPServer) mergeIdentityAttrs(identity *signozclient.AnalyticsIdentity, attrs map[string]any) map[string]any {
+	merged := cloneAttrs(attrs)
 	if identity == nil {
-		return enriched
+		return merged
 	}
-	enriched["org_id"] = identity.OrgID
-	enriched["principal"] = identity.Principal
+	merged["org_id"] = identity.OrgID
+	merged["principal"] = identity.Principal
 	if identity.Email != "" {
 		switch identity.Principal {
 		case "user":
-			enriched["user_email"] = identity.Email
+			merged["user_email"] = identity.Email
 		case "service_account":
-			enriched["service_email"] = identity.Email
+			merged["service_email"] = identity.Email
 		}
 	}
-	return enriched
+	return merged
 }
 
-func (m *MCPServer) resolveAnalyticsIdentity(ctx context.Context) (*signozclient.AnalyticsIdentity, error) {
+func (m *MCPServer) resolveIdentity(ctx context.Context) (*signozclient.AnalyticsIdentity, error) {
 	if m.handler == nil {
-		return nil, fmt.Errorf("analytics identity resolution requires a handler")
+		return nil, errors.New("analytics identity resolution requires a handler")
 	}
 
 	client, err := m.handler.GetClient(ctx)
@@ -81,63 +83,65 @@ func (m *MCPServer) resolveAnalyticsIdentity(ctx context.Context) (*signozclient
 	return client.GetAnalyticsIdentity(ctx)
 }
 
-func (m *MCPServer) identifyAnalyticsUser(ctx context.Context, attrs map[string]any) (*signozclient.AnalyticsIdentity, bool) {
+// identifyAsync emits an Identify call on a detached goroutine. Returns
+// without blocking the caller; failures are logged, not surfaced.
+func (m *MCPServer) identifyAsync(ctx context.Context, traits map[string]any) {
 	if !m.analyticsEnabled() {
-		return nil, false
+		return
 	}
 
-	attrs = cloneMap(attrs)
+	traits = cloneAttrs(traits)
 	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
-		identity, err := m.resolveAnalyticsIdentity(detachedCtx)
+		identity, err := m.resolveIdentity(detachedCtx)
 		if err != nil {
 			m.logger.Warn("analytics identity resolution failed; skipping identify",
 				append(m.analyticsLogFields(detachedCtx), zap.Error(err))...)
 			return
 		}
 
-		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, attrs))
+		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.mergeIdentityAttrs(identity, traits))
 	})
-	return nil, true
 }
 
-func (m *MCPServer) trackAnalyticsUser(ctx context.Context, event string, attrs map[string]any) bool {
+// trackEventAsync emits a Track call on a detached goroutine.
+func (m *MCPServer) trackEventAsync(ctx context.Context, event string, properties map[string]any) {
 	if !m.analyticsEnabled() {
-		return false
+		return
 	}
 
-	attrs = cloneMap(attrs)
+	properties = cloneAttrs(properties)
 	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
-		identity, err := m.resolveAnalyticsIdentity(detachedCtx)
+		identity, err := m.resolveIdentity(detachedCtx)
 		if err != nil {
 			m.logger.Warn("analytics identity resolution failed; skipping track",
 				append(m.analyticsLogFields(detachedCtx), zap.String("event", event), zap.Error(err))...)
 			return
 		}
 
-		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, attrs))
+		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.mergeIdentityAttrs(identity, properties))
 	})
-	return true
 }
 
-func (m *MCPServer) identifyAndTrackAnalyticsUser(ctx context.Context, event string, traits map[string]any, properties map[string]any) bool {
+// identifyAndTrackAsync resolves identity once and emits both an Identify and
+// a Track call under the same detached goroutine.
+func (m *MCPServer) identifyAndTrackAsync(ctx context.Context, event string, traits map[string]any, properties map[string]any) {
 	if !m.analyticsEnabled() {
-		return false
+		return
 	}
 
-	traits = cloneMap(traits)
-	properties = cloneMap(properties)
+	traits = cloneAttrs(traits)
+	properties = cloneAttrs(properties)
 	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
-		identity, err := m.resolveAnalyticsIdentity(detachedCtx)
+		identity, err := m.resolveIdentity(detachedCtx)
 		if err != nil {
 			m.logger.Warn("analytics identity resolution failed; skipping identify+track",
 				append(m.analyticsLogFields(detachedCtx), zap.String("event", event), zap.Error(err))...)
 			return
 		}
 
-		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, traits))
-		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, properties))
+		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.mergeIdentityAttrs(identity, traits))
+		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.mergeIdentityAttrs(identity, properties))
 	})
-	return true
 }
 
 func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
@@ -151,6 +155,11 @@ func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
 	return fields
 }
 
+// detachedAnalyticsContext returns a background-rooted context (so the async
+// goroutine survives the parent request) bounded by analyticsAsyncTimeout, and
+// carries forward the values the client lookup + analytics call need:
+// credentials, tenant URL, session/search context, and the OTel span so
+// identity HTTP requests remain linked to the originating tool call.
 func (m *MCPServer) detachedAnalyticsContext(parent context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), analyticsAsyncTimeout)
 
@@ -168,6 +177,9 @@ func (m *MCPServer) detachedAnalyticsContext(parent context.Context) (context.Co
 	}
 	if sessionID, ok := util.GetSessionID(parent); ok && sessionID != "" {
 		ctx = util.SetSessionID(ctx, sessionID)
+	}
+	if spanCtx := trace.SpanContextFromContext(parent); spanCtx.IsValid() {
+		ctx = trace.ContextWithSpanContext(ctx, spanCtx)
 	}
 
 	return ctx, cancel
@@ -262,7 +274,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			if session := server.ClientSessionFromContext(ctx); session != nil {
 				props[string(telemetry.MCPSessionIDKey)] = session.SessionID()
 			}
-			m.identifyAndTrackAnalyticsUser(ctx, "MCP Registered", traits, props)
+			m.identifyAndTrackAsync(ctx, "MCP Registered", traits, props)
 		}
 	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
@@ -276,7 +288,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			traits := map[string]any{
 				string(telemetry.MCPTenantURLKey): signozURL,
 			}
-			m.identifyAnalyticsUser(ctx, traits)
+			m.identifyAsync(ctx, traits)
 		}
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
@@ -291,7 +303,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				string(telemetry.MCPTenantURLKey): signozURL,
 				string(telemetry.MCPSessionIDKey): session.SessionID(),
 			}
-			m.trackAnalyticsUser(ctx, "MCP Unregistered", props)
+			m.trackEventAsync(ctx, "MCP Unregistered", props)
 		}
 	})
 	return hooks
@@ -390,7 +402,7 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
 					props[string(telemetry.MCPSessionIDKey)] = sid
 				}
-				m.trackAnalyticsUser(ctx, "Tool Call", props)
+				m.trackEventAsync(ctx, "Tool Call", props)
 			}
 
 			return result, err

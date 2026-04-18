@@ -25,62 +25,50 @@ import (
 )
 
 type analyticsCall struct {
-	group string
-	user  string
-	event string
-	attrs map[string]any
+	groupID string
+	userID  string
+	event   string
+	attrs   map[string]any
 }
 
 type spyAnalytics struct {
-	mu                sync.Mutex
-	enabled           bool
-	identifyUserCalls []analyticsCall
-	trackUserCalls    []analyticsCall
-	identifyGroupHits int
-	trackGroupHits    int
+	mu            sync.Mutex
+	enabled       bool
+	identifyCalls []analyticsCall
+	trackCalls    []analyticsCall
 }
 
 func (s *spyAnalytics) Enabled() bool                                   { return s.enabled }
 func (s *spyAnalytics) Start(context.Context) error                     { return nil }
 func (s *spyAnalytics) Stop(context.Context) error                      { return nil }
 func (s *spyAnalytics) Send(context.Context, ...analyticstypes.Message) {}
-func (s *spyAnalytics) TrackGroup(context.Context, string, string, map[string]any) {
+func (s *spyAnalytics) TrackUser(_ context.Context, groupID, userID, event string, attrs map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.trackGroupHits++
-}
-func (s *spyAnalytics) IdentifyGroup(context.Context, string, map[string]any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.identifyGroupHits++
-}
-func (s *spyAnalytics) TrackUser(_ context.Context, group, user, event string, attrs map[string]any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.trackUserCalls = append(s.trackUserCalls, analyticsCall{
-		group: group,
-		user:  user,
-		event: event,
-		attrs: attrs,
+	s.trackCalls = append(s.trackCalls, analyticsCall{
+		groupID: groupID,
+		userID:  userID,
+		event:   event,
+		attrs:   attrs,
 	})
 }
-func (s *spyAnalytics) IdentifyUser(_ context.Context, group, user string, attrs map[string]any) {
+func (s *spyAnalytics) IdentifyUser(_ context.Context, groupID, userID string, attrs map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.identifyUserCalls = append(s.identifyUserCalls, analyticsCall{
-		group: group,
-		user:  user,
-		attrs: attrs,
+	s.identifyCalls = append(s.identifyCalls, analyticsCall{
+		groupID: groupID,
+		userID:  userID,
+		attrs:   attrs,
 	})
 }
 
-func (s *spyAnalytics) snapshot() (identify []analyticsCall, track []analyticsCall, identifyGroupHits, trackGroupHits int) {
+func (s *spyAnalytics) snapshot() (identify []analyticsCall, track []analyticsCall) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	identify = append([]analyticsCall(nil), s.identifyUserCalls...)
-	track = append([]analyticsCall(nil), s.trackUserCalls...)
-	return identify, track, s.identifyGroupHits, s.trackGroupHits
+	identify = append([]analyticsCall(nil), s.identifyCalls...)
+	track = append([]analyticsCall(nil), s.trackCalls...)
+	return identify, track
 }
 
 var _ analytics.Analytics = (*spyAnalytics)(nil)
@@ -399,26 +387,25 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	hooks.UnregisterSession(ctx, session)
 
 	waitForCondition(t, time.Second, func() bool {
-		identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
-		return requests.Load() == 2 && identifyGroupHits == 0 && trackGroupHits == 0 && len(identifyCalls) == 1 && len(trackCalls) == 1
+		identifyCalls, trackCalls := spy.snapshot()
+		// Identity caching is exercised directly in the client package; here
+		// we only assert the hooks fire the right analytics events.
+		return requests.Load() >= 1 && len(identifyCalls) == 1 && len(trackCalls) == 1
 	}, "timed out waiting for async API-key analytics")
 
-	identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
-	if identifyGroupHits != 0 || trackGroupHits != 0 {
-		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", identifyGroupHits, trackGroupHits)
-	}
+	identifyCalls, trackCalls := spy.snapshot()
 
 	identify := identifyCalls[0]
-	if identify.group != "org-456" || identify.user != "sa-123" {
-		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.group, identify.user, "org-456", "sa-123")
+	if identify.groupID != "org-456" || identify.userID != "sa-123" {
+		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.groupID, identify.userID, "org-456", "sa-123")
 	}
 	if identify.attrs["org_id"] != "org-456" || identify.attrs["principal"] != "service_account" || identify.attrs["service_email"] != "service@example.com" {
 		t.Fatalf("identify attrs = %#v, want org_id, principal, and service_email", identify.attrs)
 	}
 
 	track := trackCalls[0]
-	if track.group != "org-456" || track.user != "sa-123" || track.event != "MCP Unregistered" {
-		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.group, track.user, track.event, "org-456", "sa-123", "MCP Unregistered")
+	if track.groupID != "org-456" || track.userID != "sa-123" || track.event != "MCP Unregistered" {
+		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.groupID, track.userID, track.event, "org-456", "sa-123", "MCP Unregistered")
 	}
 	if track.attrs[string(telemetry.MCPSessionIDKey)] != "sess-api" {
 		t.Fatalf("session id attr = %v, want %q", track.attrs[string(telemetry.MCPSessionIDKey)], "sess-api")
@@ -477,18 +464,15 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	}
 
 	waitForCondition(t, time.Second, func() bool {
-		identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
-		return requests.Load() == 2 && identifyGroupHits == 0 && trackGroupHits == 0 && len(identifyCalls) == 1 && len(trackCalls) == 2
+		identifyCalls, trackCalls := spy.snapshot()
+		return requests.Load() >= 1 && len(identifyCalls) == 1 && len(trackCalls) == 2
 	}, "timed out waiting for async JWT analytics")
 
-	identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
-	if identifyGroupHits != 0 || trackGroupHits != 0 {
-		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", identifyGroupHits, trackGroupHits)
-	}
+	identifyCalls, trackCalls := spy.snapshot()
 
 	identify := identifyCalls[0]
-	if identify.group != "org-123" || identify.user != "user-123" {
-		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.group, identify.user, "org-123", "user-123")
+	if identify.groupID != "org-123" || identify.userID != "user-123" {
+		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.groupID, identify.userID, "org-123", "user-123")
 	}
 	if identify.attrs["org_id"] != "org-123" || identify.attrs["principal"] != "user" || identify.attrs["user_email"] != "user@example.com" {
 		t.Fatalf("identify attrs = %#v, want org_id, principal, and user_email", identify.attrs)
@@ -505,15 +489,15 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 		}
 	}
 
-	if registered.event != "MCP Registered" || registered.group != "org-123" || registered.user != "user-123" {
-		t.Fatalf("registered track call = (%q, %q, %q), want (%q, %q, %q)", registered.group, registered.user, registered.event, "org-123", "user-123", "MCP Registered")
+	if registered.event != "MCP Registered" || registered.groupID != "org-123" || registered.userID != "user-123" {
+		t.Fatalf("registered track call = (%q, %q, %q), want (%q, %q, %q)", registered.groupID, registered.userID, registered.event, "org-123", "user-123", "MCP Registered")
 	}
 	if registered.attrs[string(telemetry.MCPSessionIDKey)] != "sess-jwt" {
 		t.Fatalf("registered session attr = %v, want %q", registered.attrs[string(telemetry.MCPSessionIDKey)], "sess-jwt")
 	}
 
-	if toolCall.event != "Tool Call" || toolCall.group != "org-123" || toolCall.user != "user-123" {
-		t.Fatalf("tool track call = (%q, %q, %q), want (%q, %q, %q)", toolCall.group, toolCall.user, toolCall.event, "org-123", "user-123", "Tool Call")
+	if toolCall.event != "Tool Call" || toolCall.groupID != "org-123" || toolCall.userID != "user-123" {
+		t.Fatalf("tool track call = (%q, %q, %q), want (%q, %q, %q)", toolCall.groupID, toolCall.userID, toolCall.event, "org-123", "user-123", "Tool Call")
 	}
 	if toolCall.attrs[string(telemetry.GenAIToolNameKey)] != "signoz_list_services" {
 		t.Fatalf("tool name attr = %v, want %q", toolCall.attrs[string(telemetry.GenAIToolNameKey)], "signoz_list_services")
@@ -572,12 +556,9 @@ func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 	hooks.RegisterSession(ctx, session)
 	hooks.UnregisterSession(ctx, session)
 
-	identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
+	identifyCalls, trackCalls := spy.snapshot()
 	if requests.Load() != 0 {
 		t.Fatalf("identity requests = %d, want %d", requests.Load(), 0)
-	}
-	if identifyGroupHits != 0 || trackGroupHits != 0 {
-		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", identifyGroupHits, trackGroupHits)
 	}
 	if len(identifyCalls) != 0 {
 		t.Fatalf("identify user calls = %d, want %d", len(identifyCalls), 0)
@@ -646,11 +627,11 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 	}
 
 	waitForCondition(t, time.Second, func() bool {
-		_, trackCalls, _, _ := spy.snapshot()
+		_, trackCalls := spy.snapshot()
 		return requests.Load() == 1 && len(trackCalls) == 1
 	}, "timed out waiting for async tool analytics")
 
-	_, trackCalls, _, _ := spy.snapshot()
+	_, trackCalls := spy.snapshot()
 	toolCall := trackCalls[0]
 	if toolCall.event != "Tool Call" {
 		t.Fatalf("track event = %q, want %q", toolCall.event, "Tool Call")

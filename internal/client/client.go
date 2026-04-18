@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -29,6 +30,11 @@ const (
 	DefaultQueryTimeout = 600 * time.Second
 	// DashboardWriteTimeout is used for dashboard create/update operations.
 	DashboardWriteTimeout = 30 * time.Second
+
+	// analyticsIdentityCacheTTL bounds how stale a cached identity may be.
+	// Identity rarely changes, so a long TTL keeps the SigNoz backend from
+	// absorbing an extra /me request for every analytics event.
+	analyticsIdentityCacheTTL = 10 * time.Minute
 )
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
@@ -51,6 +57,10 @@ type SigNoz struct {
 	logger         *zap.Logger
 	httpClient     *http.Client
 	customHeaders  map[string]string
+
+	identityMu       sync.Mutex
+	cachedIdentity   *AnalyticsIdentity
+	identityCachedAt time.Time
 }
 
 func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
@@ -125,12 +135,36 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 }
 
 // GetAnalyticsIdentity resolves the org and effective analytics identity for
-// the current credentials.
+// the current credentials. The result is cached per-client for
+// analyticsIdentityCacheTTL so analytics hot paths (one event per tool call)
+// don't each trigger a /me roundtrip. The lookup is serialized by a mutex, so
+// a burst of concurrent callers during a cache miss results in a single
+// upstream request.
 //
 // Auth-mode specific behavior:
-//   - Authorization header clients resolve via /api/v2/users/me
-//   - SIGNOZ-API-KEY clients resolve via /api/v1/service_accounts/me
+//   - Authorization header clients resolve via /api/v2/users/me. v2 is used
+//     (vs. the v1 path in ValidateCredentials) because it returns orgId,
+//     which is required to set the analytics groupId.
+//   - SIGNOZ-API-KEY clients resolve via /api/v1/service_accounts/me.
 func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	s.identityMu.Lock()
+	defer s.identityMu.Unlock()
+
+	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
+		return s.cachedIdentity, nil
+	}
+
+	identity, err := s.fetchAnalyticsIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	s.cachedIdentity = identity
+	s.identityCachedAt = time.Now()
+	return identity, nil
+}
+
+func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
 	log := s.requestLogger(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -213,7 +247,10 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		_ = resp.Body.Close()
 	}()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	// 64 KiB accommodates the full /api/v2/users/me payload (roles, groups,
+	// nested org metadata) without the risk of truncating valid JSON — the
+	// previous 2 KiB cap caused identity parsing to fail on rich responses.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to read validation response: %w", err)
 	}
