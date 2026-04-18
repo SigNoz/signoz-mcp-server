@@ -48,12 +48,23 @@ jobs:
         id: state
         run: |
           set -euo pipefail
-          CURRENT=$(jq -r '.version' manifest.json)
-          if [ "$CURRENT" = "${{ steps.version.outputs.version }}" ]; then
-            echo "pre-release workflow already bumped files to ${CURRENT}; post-release will no-op."
+          VERSION="${{ steps.version.outputs.version }}"
+          MANIFEST=$(jq -r '.version' manifest.json)
+          SERVER=$(jq -r '.version' server.json)
+          CHANGELOG_HAS_ENTRY=false
+          if grep -q "^## \[${VERSION}\]" CHANGELOG.md 2>/dev/null; then
+            CHANGELOG_HAS_ENTRY=true
+          fi
+
+          # Short-circuit only when *all three* artifacts already reflect this
+          # release. If any is missing (e.g., a partial bump, or CHANGELOG was
+          # never generated), fall through to the full flow — the per-step
+          # idempotency guards keep it safe to re-run.
+          if [ "$MANIFEST" = "$VERSION" ] && [ "$SERVER" = "$VERSION" ] && [ "$CHANGELOG_HAS_ENTRY" = "true" ]; then
+            echo "pre-release workflow already bumped files and changelog to ${VERSION}; post-release will no-op."
             echo "already_bumped=true" >> "$GITHUB_OUTPUT"
           else
-            echo "version files still at ${CURRENT}; post-release will bump to ${{ steps.version.outputs.version }}."
+            echo "state incomplete (manifest=${MANIFEST} server=${SERVER} changelog_entry=${CHANGELOG_HAS_ENTRY}); post-release will reconcile to ${VERSION}."
             echo "already_bumped=false" >> "$GITHUB_OUTPUT"
           fi
 
