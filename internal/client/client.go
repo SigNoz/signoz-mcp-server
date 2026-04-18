@@ -33,6 +33,17 @@ const (
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
 
+// AnalyticsIdentity is the identity tuple used for analytics attribution.
+// UserID is the effective distinct/user identifier for analytics. For API key
+// sessions this is the service account ID; for auth-token sessions this is the
+// SigNoz user ID.
+type AnalyticsIdentity struct {
+	OrgID     string
+	UserID    string
+	Email     string
+	Principal string
+}
+
 type SigNoz struct {
 	baseURL        string
 	apiKey         string
@@ -113,6 +124,70 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	return s.evaluateValidationResponse(log, status, body)
 }
 
+// GetAnalyticsIdentity resolves the org and effective analytics identity for
+// the current credentials.
+//
+// Auth-mode specific behavior:
+//   - Authorization header clients resolve via /api/v2/users/me
+//   - SIGNOZ-API-KEY clients resolve via /api/v1/service_accounts/me
+func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	log := s.requestLogger(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	endpoint := "/api/v1/service_accounts/me"
+	principal := "service_account"
+	if strings.EqualFold(s.authHeaderName, "Authorization") {
+		endpoint = "/api/v2/users/me"
+		principal = "user"
+	}
+
+	reqURL := fmt.Sprintf("%s%s", s.baseURL, endpoint)
+	status, body, err := s.doValidationRequest(ctx, reqURL)
+	if err != nil {
+		log.Error("SigNoz analytics identity request failed", zap.String("url", reqURL), zap.Error(err))
+		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, s.evaluateValidationResponse(log, status, body)
+	}
+
+	identity, err := parseAnalyticsIdentity(body, principal)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s response: %w", endpoint, err)
+	}
+
+	return identity, nil
+}
+
+type analyticsIdentityResponse struct {
+	Data struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+		OrgID string `json:"orgId"`
+	} `json:"data"`
+}
+
+func parseAnalyticsIdentity(body []byte, principal string) (*AnalyticsIdentity, error) {
+	var resp analyticsIdentityResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+	if resp.Data.ID == "" {
+		return nil, fmt.Errorf("missing data.id")
+	}
+	if resp.Data.OrgID == "" {
+		return nil, fmt.Errorf("missing data.orgId")
+	}
+
+	return &AnalyticsIdentity{
+		OrgID:     resp.Data.OrgID,
+		UserID:    resp.Data.ID,
+		Email:     resp.Data.Email,
+		Principal: principal,
+	}, nil
+}
+
 // doValidationRequest sends a GET request to the given URL with auth headers
 // and returns the HTTP status code, response body, and any transport error.
 func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
@@ -122,10 +197,10 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 	}
 
 	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(SignozApiKey, s.apiKey)
+	req.Header.Set(s.authHeaderName, s.apiKey)
 
 	for k, v := range s.customHeaders {
-		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, SignozApiKey) {
+		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, s.authHeaderName) {
 			req.Header.Set(k, v)
 		}
 	}

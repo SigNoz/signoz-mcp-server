@@ -1,19 +1,82 @@
 package mcp_server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mark3labs/mcp-go/mcp"
+	mcpgoserver "github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
+	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types/analyticstypes"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
+
+type analyticsCall struct {
+	group string
+	user  string
+	event string
+	attrs map[string]any
+}
+
+type spyAnalytics struct {
+	identifyUserCalls []analyticsCall
+	trackUserCalls    []analyticsCall
+	identifyGroupHits int
+	trackGroupHits    int
+}
+
+func (s *spyAnalytics) Start(context.Context) error                     { return nil }
+func (s *spyAnalytics) Stop(context.Context) error                      { return nil }
+func (s *spyAnalytics) Send(context.Context, ...analyticstypes.Message) {}
+func (s *spyAnalytics) TrackGroup(context.Context, string, string, map[string]any) {
+	s.trackGroupHits++
+}
+func (s *spyAnalytics) IdentifyGroup(context.Context, string, map[string]any) {
+	s.identifyGroupHits++
+}
+func (s *spyAnalytics) TrackUser(_ context.Context, group, user, event string, attrs map[string]any) {
+	s.trackUserCalls = append(s.trackUserCalls, analyticsCall{
+		group: group,
+		user:  user,
+		event: event,
+		attrs: attrs,
+	})
+}
+func (s *spyAnalytics) IdentifyUser(_ context.Context, group, user string, attrs map[string]any) {
+	s.identifyUserCalls = append(s.identifyUserCalls, analyticsCall{
+		group: group,
+		user:  user,
+		attrs: attrs,
+	})
+}
+
+var _ analytics.Analytics = (*spyAnalytics)(nil)
+
+type fakeSession struct {
+	id string
+	ch chan mcp.JSONRPCNotification
+}
+
+func (f fakeSession) Initialize()                                         {}
+func (f fakeSession) Initialized() bool                                   { return true }
+func (f fakeSession) NotificationChannel() chan<- mcp.JSONRPCNotification { return f.ch }
+func (f fakeSession) SessionID() string                                   { return f.id }
+
+func newAnalyticsTestContext(ctx context.Context, sessionID string) context.Context {
+	base := mcpgoserver.NewMCPServer("test", "1.0.0")
+	return base.WithContext(ctx, fakeSession{id: sessionID, ch: make(chan mcp.JSONRPCNotification, 1)})
+}
 
 func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
 	tests := []struct {
@@ -261,5 +324,165 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 	wantHeader := `Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`
 	if rr.Header().Get("WWW-Authenticate") != wantHeader {
 		t.Fatalf("WWW-Authenticate = %q, want %q", rr.Header().Get("WWW-Authenticate"), wantHeader)
+	}
+}
+
+func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
+	requests := 0
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/v1/service_accounts/me" {
+			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v1/service_accounts/me")
+		}
+		if r.Header.Get("SIGNOZ-API-KEY") != "test-api-key" {
+			t.Fatalf("SIGNOZ-API-KEY = %q, want %q", r.Header.Get("SIGNOZ-API-KEY"), "test-api-key")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-123","email":"service@example.com","orgId":"org-456"}}`))
+	}))
+	defer sigNoz.Close()
+
+	cfg := &config.Config{
+		URL:             sigNoz.URL,
+		APIKey:          "test-api-key",
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+	}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "test-api-key")
+	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+
+	session := fakeSession{id: "sess-api", ch: make(chan mcp.JSONRPCNotification, 1)}
+	hooks.RegisterSession(ctx, session)
+	hooks.UnregisterSession(ctx, session)
+
+	if requests != 2 {
+		t.Fatalf("identity requests = %d, want %d", requests, 2)
+	}
+	if spy.identifyGroupHits != 0 || spy.trackGroupHits != 0 {
+		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", spy.identifyGroupHits, spy.trackGroupHits)
+	}
+	if len(spy.identifyUserCalls) != 1 {
+		t.Fatalf("identify user calls = %d, want %d", len(spy.identifyUserCalls), 1)
+	}
+	if len(spy.trackUserCalls) != 1 {
+		t.Fatalf("track user calls = %d, want %d", len(spy.trackUserCalls), 1)
+	}
+
+	identify := spy.identifyUserCalls[0]
+	if identify.group != "org-456" || identify.user != "sa-123" {
+		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.group, identify.user, "org-456", "sa-123")
+	}
+	if identify.attrs["org_id"] != "org-456" || identify.attrs["principal"] != "service_account" || identify.attrs["service_email"] != "service@example.com" {
+		t.Fatalf("identify attrs = %#v, want org_id, principal, and service_email", identify.attrs)
+	}
+
+	track := spy.trackUserCalls[0]
+	if track.group != "org-456" || track.user != "sa-123" || track.event != "MCP Unregistered" {
+		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.group, track.user, track.event, "org-456", "sa-123", "MCP Unregistered")
+	}
+	if track.attrs[string(telemetry.MCPSessionIDKey)] != "sess-api" {
+		t.Fatalf("session id attr = %v, want %q", track.attrs[string(telemetry.MCPSessionIDKey)], "sess-api")
+	}
+	if track.attrs["org_id"] != "org-456" || track.attrs["principal"] != "service_account" || track.attrs["service_email"] != "service@example.com" {
+		t.Fatalf("track attrs = %#v, want org_id, principal, and service_email", track.attrs)
+	}
+}
+
+func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
+	requests := 0
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/v2/users/me" {
+			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v2/users/me")
+		}
+		if r.Header.Get("Authorization") != "Bearer jwt-token" {
+			t.Fatalf("Authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer jwt-token")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-123","email":"user@example.com","orgId":"org-123"}}`))
+	}))
+	defer sigNoz.Close()
+
+	cfg := &config.Config{
+		URL:             sigNoz.URL,
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+	}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "Bearer jwt-token")
+	ctx = util.SetAuthHeader(ctx, "Authorization")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+	ctx = newAnalyticsTestContext(ctx, "sess-jwt")
+
+	hooks.OnAfterInitialize[0](ctx, nil, &mcp.InitializeRequest{}, &mcp.InitializeResult{})
+
+	middleware := mcpServer.loggingMiddleware()
+	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "signoz_list_services",
+			Arguments: map[string]any{
+				"searchContext": "list services",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+
+	if requests != 2 {
+		t.Fatalf("identity requests = %d, want %d", requests, 2)
+	}
+	if spy.identifyGroupHits != 0 || spy.trackGroupHits != 0 {
+		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", spy.identifyGroupHits, spy.trackGroupHits)
+	}
+	if len(spy.identifyUserCalls) != 1 {
+		t.Fatalf("identify user calls = %d, want %d", len(spy.identifyUserCalls), 1)
+	}
+	if len(spy.trackUserCalls) != 2 {
+		t.Fatalf("track user calls = %d, want %d", len(spy.trackUserCalls), 2)
+	}
+
+	identify := spy.identifyUserCalls[0]
+	if identify.group != "org-123" || identify.user != "user-123" {
+		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.group, identify.user, "org-123", "user-123")
+	}
+	if identify.attrs["org_id"] != "org-123" || identify.attrs["principal"] != "user" || identify.attrs["user_email"] != "user@example.com" {
+		t.Fatalf("identify attrs = %#v, want org_id, principal, and user_email", identify.attrs)
+	}
+
+	registered := spy.trackUserCalls[0]
+	if registered.event != "MCP Registered" || registered.group != "org-123" || registered.user != "user-123" {
+		t.Fatalf("registered track call = (%q, %q, %q), want (%q, %q, %q)", registered.group, registered.user, registered.event, "org-123", "user-123", "MCP Registered")
+	}
+	if registered.attrs[string(telemetry.MCPSessionIDKey)] != "sess-jwt" {
+		t.Fatalf("registered session attr = %v, want %q", registered.attrs[string(telemetry.MCPSessionIDKey)], "sess-jwt")
+	}
+
+	toolCall := spy.trackUserCalls[1]
+	if toolCall.event != "Tool Call" || toolCall.group != "org-123" || toolCall.user != "user-123" {
+		t.Fatalf("tool track call = (%q, %q, %q), want (%q, %q, %q)", toolCall.group, toolCall.user, toolCall.event, "org-123", "user-123", "Tool Call")
+	}
+	if toolCall.attrs[string(telemetry.GenAIToolNameKey)] != "signoz_list_services" {
+		t.Fatalf("tool name attr = %v, want %q", toolCall.attrs[string(telemetry.GenAIToolNameKey)], "signoz_list_services")
+	}
+	if toolCall.attrs[string(telemetry.MCPToolIsErrorKey)] != false {
+		t.Fatalf("tool error attr = %v, want false", toolCall.attrs[string(telemetry.MCPToolIsErrorKey)])
+	}
+	if toolCall.attrs["org_id"] != "org-123" || toolCall.attrs["principal"] != "user" || toolCall.attrs["user_email"] != "user@example.com" {
+		t.Fatalf("tool attrs = %#v, want org_id, principal, and user_email", toolCall.attrs)
 	}
 }

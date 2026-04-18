@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
@@ -30,6 +31,96 @@ type MCPServer struct {
 	handler   *tools.Handler
 	config    *config.Config
 	analytics analytics.Analytics
+}
+
+func cloneMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return map[string]any{}
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func (m *MCPServer) enrichAnalyticsAttrs(identity *signozclient.AnalyticsIdentity, attrs map[string]any) map[string]any {
+	enriched := cloneMap(attrs)
+	if identity == nil {
+		return enriched
+	}
+	enriched["org_id"] = identity.OrgID
+	enriched["principal"] = identity.Principal
+	if identity.Email != "" {
+		switch identity.Principal {
+		case "user":
+			enriched["user_email"] = identity.Email
+		case "service_account":
+			enriched["service_email"] = identity.Email
+		}
+	}
+	return enriched
+}
+
+func (m *MCPServer) resolveAnalyticsIdentity(ctx context.Context) (*signozclient.AnalyticsIdentity, error) {
+	if m.handler == nil {
+		return nil, fmt.Errorf("analytics identity resolution requires a handler")
+	}
+
+	client, err := m.handler.GetClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return client.GetAnalyticsIdentity(ctx)
+}
+
+func (m *MCPServer) identifyAnalyticsUser(ctx context.Context, attrs map[string]any) (*signozclient.AnalyticsIdentity, bool) {
+	identity, err := m.resolveAnalyticsIdentity(ctx)
+	if err != nil {
+		m.logger.Warn("analytics identity resolution failed; skipping identify",
+			append(m.analyticsLogFields(ctx), zap.Error(err))...)
+		return nil, false
+	}
+
+	m.analytics.IdentifyUser(ctx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, attrs))
+	return identity, true
+}
+
+func (m *MCPServer) trackAnalyticsUser(ctx context.Context, event string, attrs map[string]any) bool {
+	identity, err := m.resolveAnalyticsIdentity(ctx)
+	if err != nil {
+		m.logger.Warn("analytics identity resolution failed; skipping track",
+			append(m.analyticsLogFields(ctx), zap.String("event", event), zap.Error(err))...)
+		return false
+	}
+
+	m.analytics.TrackUser(ctx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, attrs))
+	return true
+}
+
+func (m *MCPServer) identifyAndTrackAnalyticsUser(ctx context.Context, event string, traits map[string]any, properties map[string]any) bool {
+	identity, err := m.resolveAnalyticsIdentity(ctx)
+	if err != nil {
+		m.logger.Warn("analytics identity resolution failed; skipping identify+track",
+			append(m.analyticsLogFields(ctx), zap.String("event", event), zap.Error(err))...)
+		return false
+	}
+
+	m.analytics.IdentifyUser(ctx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, traits))
+	m.analytics.TrackUser(ctx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, properties))
+	return true
+}
+
+func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
+	fields := []zap.Field{}
+	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
+		fields = append(fields, zap.String("mcp.session.id", sid))
+	}
+	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+		fields = append(fields, zap.String("mcp.tenant_url", signozURL))
+	}
+	return fields
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {
@@ -106,7 +197,6 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			traits := map[string]any{
 				string(telemetry.MCPTenantURLKey): signozURL,
 			}
-			m.analytics.IdentifyGroup(ctx, signozURL, traits)
 
 			props := map[string]any{
 				string(telemetry.MCPTenantURLKey): signozURL,
@@ -114,40 +204,36 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			if session := server.ClientSessionFromContext(ctx); session != nil {
 				props[string(telemetry.MCPSessionIDKey)] = session.SessionID()
 			}
-			m.analytics.TrackGroup(ctx, signozURL, "MCP Registered", props)
+			m.identifyAndTrackAnalyticsUser(ctx, "MCP Registered", traits, props)
 		}
 	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
 		fields := []zap.Field{}
-		var tenantURL string
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-			tenantURL = signozURL
 		}
 		m.logger.Info("mcp session registered", fields...)
 
-		if tenantURL != "" {
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
-				string(telemetry.MCPTenantURLKey): tenantURL,
+				string(telemetry.MCPTenantURLKey): signozURL,
 			}
-			m.analytics.IdentifyGroup(ctx, tenantURL, traits)
+			m.identifyAnalyticsUser(ctx, traits)
 		}
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
 		fields := []zap.Field{}
-		var tenantURL string
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-			tenantURL = signozURL
 		}
 		m.logger.Info("mcp session unregistered", fields...)
 
-		if tenantURL != "" {
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			props := map[string]any{
-				string(telemetry.MCPTenantURLKey): tenantURL,
+				string(telemetry.MCPTenantURLKey): signozURL,
 				string(telemetry.MCPSessionIDKey): session.SessionID(),
 			}
-			m.analytics.TrackGroup(ctx, tenantURL, "MCP Unregistered", props)
+			m.trackAnalyticsUser(ctx, "MCP Unregistered", props)
 		}
 	})
 	return hooks
@@ -238,15 +324,15 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			// Analytics: track tool call
 			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 				props := map[string]any{
-					string(telemetry.MCPTenantURLKey):  signozURL,
-					string(telemetry.GenAIToolNameKey): req.Params.Name,
+					string(telemetry.MCPTenantURLKey):   signozURL,
+					string(telemetry.GenAIToolNameKey):  req.Params.Name,
 					string(telemetry.MCPToolIsErrorKey): isErr,
-					"duration_ms": time.Since(start).Milliseconds(),
+					"duration_ms":                       time.Since(start).Milliseconds(),
 				}
 				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
 					props[string(telemetry.MCPSessionIDKey)] = sid
 				}
-				m.analytics.TrackGroup(ctx, signozURL, "Tool Call", props)
+				m.trackAnalyticsUser(ctx, "Tool Call", props)
 			}
 
 			return result, err
