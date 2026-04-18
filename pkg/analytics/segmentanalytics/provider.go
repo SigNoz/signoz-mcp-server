@@ -30,6 +30,8 @@ func New(logger *zap.Logger, cfg analytics.Config) (analytics.Analytics, error) 
 	}, nil
 }
 
+func (p *provider) Enabled() bool { return true }
+
 func (p *provider) Start(_ context.Context) error {
 	<-p.stopC
 	return nil

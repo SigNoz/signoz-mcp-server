@@ -7,6 +7,8 @@ import (
 )
 
 type Analytics interface {
+	// Enabled reports whether analytics is actively emitting events.
+	Enabled() bool
 	// Start blocks until the analytics backend is stopped.
 	Start(context.Context) error
 	// Stop flushes pending events and closes the client.

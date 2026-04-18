@@ -33,6 +33,10 @@ type MCPServer struct {
 	analytics analytics.Analytics
 }
 
+func (m *MCPServer) analyticsEnabled() bool {
+	return m.analytics != nil && m.analytics.Enabled()
+}
+
 func cloneMap(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return map[string]any{}
@@ -76,6 +80,10 @@ func (m *MCPServer) resolveAnalyticsIdentity(ctx context.Context) (*signozclient
 }
 
 func (m *MCPServer) identifyAnalyticsUser(ctx context.Context, attrs map[string]any) (*signozclient.AnalyticsIdentity, bool) {
+	if !m.analyticsEnabled() {
+		return nil, false
+	}
+
 	identity, err := m.resolveAnalyticsIdentity(ctx)
 	if err != nil {
 		m.logger.Warn("analytics identity resolution failed; skipping identify",
@@ -88,6 +96,10 @@ func (m *MCPServer) identifyAnalyticsUser(ctx context.Context, attrs map[string]
 }
 
 func (m *MCPServer) trackAnalyticsUser(ctx context.Context, event string, attrs map[string]any) bool {
+	if !m.analyticsEnabled() {
+		return false
+	}
+
 	identity, err := m.resolveAnalyticsIdentity(ctx)
 	if err != nil {
 		m.logger.Warn("analytics identity resolution failed; skipping track",
@@ -100,6 +112,10 @@ func (m *MCPServer) trackAnalyticsUser(ctx context.Context, event string, attrs 
 }
 
 func (m *MCPServer) identifyAndTrackAnalyticsUser(ctx context.Context, event string, traits map[string]any, properties map[string]any) bool {
+	if !m.analyticsEnabled() {
+		return false
+	}
+
 	identity, err := m.resolveAnalyticsIdentity(ctx)
 	if err != nil {
 		m.logger.Warn("analytics identity resolution failed; skipping identify+track",
