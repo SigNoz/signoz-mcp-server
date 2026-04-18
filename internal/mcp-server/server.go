@@ -33,6 +33,8 @@ type MCPServer struct {
 	analytics analytics.Analytics
 }
 
+const analyticsAsyncTimeout = 5 * time.Second
+
 func (m *MCPServer) analyticsEnabled() bool {
 	return m.analytics != nil && m.analytics.Enabled()
 }
@@ -84,15 +86,18 @@ func (m *MCPServer) identifyAnalyticsUser(ctx context.Context, attrs map[string]
 		return nil, false
 	}
 
-	identity, err := m.resolveAnalyticsIdentity(ctx)
-	if err != nil {
-		m.logger.Warn("analytics identity resolution failed; skipping identify",
-			append(m.analyticsLogFields(ctx), zap.Error(err))...)
-		return nil, false
-	}
+	attrs = cloneMap(attrs)
+	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
+		identity, err := m.resolveAnalyticsIdentity(detachedCtx)
+		if err != nil {
+			m.logger.Warn("analytics identity resolution failed; skipping identify",
+				append(m.analyticsLogFields(detachedCtx), zap.Error(err))...)
+			return
+		}
 
-	m.analytics.IdentifyUser(ctx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, attrs))
-	return identity, true
+		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, attrs))
+	})
+	return nil, true
 }
 
 func (m *MCPServer) trackAnalyticsUser(ctx context.Context, event string, attrs map[string]any) bool {
@@ -100,14 +105,17 @@ func (m *MCPServer) trackAnalyticsUser(ctx context.Context, event string, attrs 
 		return false
 	}
 
-	identity, err := m.resolveAnalyticsIdentity(ctx)
-	if err != nil {
-		m.logger.Warn("analytics identity resolution failed; skipping track",
-			append(m.analyticsLogFields(ctx), zap.String("event", event), zap.Error(err))...)
-		return false
-	}
+	attrs = cloneMap(attrs)
+	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
+		identity, err := m.resolveAnalyticsIdentity(detachedCtx)
+		if err != nil {
+			m.logger.Warn("analytics identity resolution failed; skipping track",
+				append(m.analyticsLogFields(detachedCtx), zap.String("event", event), zap.Error(err))...)
+			return
+		}
 
-	m.analytics.TrackUser(ctx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, attrs))
+		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, attrs))
+	})
 	return true
 }
 
@@ -116,15 +124,19 @@ func (m *MCPServer) identifyAndTrackAnalyticsUser(ctx context.Context, event str
 		return false
 	}
 
-	identity, err := m.resolveAnalyticsIdentity(ctx)
-	if err != nil {
-		m.logger.Warn("analytics identity resolution failed; skipping identify+track",
-			append(m.analyticsLogFields(ctx), zap.String("event", event), zap.Error(err))...)
-		return false
-	}
+	traits = cloneMap(traits)
+	properties = cloneMap(properties)
+	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
+		identity, err := m.resolveAnalyticsIdentity(detachedCtx)
+		if err != nil {
+			m.logger.Warn("analytics identity resolution failed; skipping identify+track",
+				append(m.analyticsLogFields(detachedCtx), zap.String("event", event), zap.Error(err))...)
+			return
+		}
 
-	m.analytics.IdentifyUser(ctx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, traits))
-	m.analytics.TrackUser(ctx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, properties))
+		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.enrichAnalyticsAttrs(identity, traits))
+		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.enrichAnalyticsAttrs(identity, properties))
+	})
 	return true
 }
 
@@ -137,6 +149,36 @@ func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
 		fields = append(fields, zap.String("mcp.tenant_url", signozURL))
 	}
 	return fields
+}
+
+func (m *MCPServer) detachedAnalyticsContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), analyticsAsyncTimeout)
+
+	if apiKey, ok := util.GetAPIKey(parent); ok && apiKey != "" {
+		ctx = util.SetAPIKey(ctx, apiKey)
+	}
+	if authHeader, ok := util.GetAuthHeader(parent); ok && authHeader != "" {
+		ctx = util.SetAuthHeader(ctx, authHeader)
+	}
+	if signozURL, ok := util.GetSigNozURL(parent); ok && signozURL != "" {
+		ctx = util.SetSigNozURL(ctx, signozURL)
+	}
+	if searchContext, ok := util.GetSearchContext(parent); ok && searchContext != "" {
+		ctx = util.SetSearchContext(ctx, searchContext)
+	}
+	if sessionID, ok := util.GetSessionID(parent); ok && sessionID != "" {
+		ctx = util.SetSessionID(ctx, sessionID)
+	}
+
+	return ctx, cancel
+}
+
+func (m *MCPServer) dispatchAnalytics(parent context.Context, fn func(context.Context)) {
+	ctx, cancel := m.detachedAnalyticsContext(parent)
+	go func() {
+		defer cancel()
+		fn(ctx)
+	}()
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {

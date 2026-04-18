@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +32,7 @@ type analyticsCall struct {
 }
 
 type spyAnalytics struct {
+	mu                sync.Mutex
 	enabled           bool
 	identifyUserCalls []analyticsCall
 	trackUserCalls    []analyticsCall
@@ -37,17 +40,23 @@ type spyAnalytics struct {
 	trackGroupHits    int
 }
 
-func (s *spyAnalytics) Enabled() bool                                  { return s.enabled }
+func (s *spyAnalytics) Enabled() bool                                   { return s.enabled }
 func (s *spyAnalytics) Start(context.Context) error                     { return nil }
 func (s *spyAnalytics) Stop(context.Context) error                      { return nil }
 func (s *spyAnalytics) Send(context.Context, ...analyticstypes.Message) {}
 func (s *spyAnalytics) TrackGroup(context.Context, string, string, map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.trackGroupHits++
 }
 func (s *spyAnalytics) IdentifyGroup(context.Context, string, map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.identifyGroupHits++
 }
 func (s *spyAnalytics) TrackUser(_ context.Context, group, user, event string, attrs map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.trackUserCalls = append(s.trackUserCalls, analyticsCall{
 		group: group,
 		user:  user,
@@ -56,11 +65,22 @@ func (s *spyAnalytics) TrackUser(_ context.Context, group, user, event string, a
 	})
 }
 func (s *spyAnalytics) IdentifyUser(_ context.Context, group, user string, attrs map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.identifyUserCalls = append(s.identifyUserCalls, analyticsCall{
 		group: group,
 		user:  user,
 		attrs: attrs,
 	})
+}
+
+func (s *spyAnalytics) snapshot() (identify []analyticsCall, track []analyticsCall, identifyGroupHits, trackGroupHits int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	identify = append([]analyticsCall(nil), s.identifyUserCalls...)
+	track = append([]analyticsCall(nil), s.trackUserCalls...)
+	return identify, track, s.identifyGroupHits, s.trackGroupHits
 }
 
 var _ analytics.Analytics = (*spyAnalytics)(nil)
@@ -78,6 +98,20 @@ func (f fakeSession) SessionID() string                                   { retu
 func newAnalyticsTestContext(ctx context.Context, sessionID string) context.Context {
 	base := mcpgoserver.NewMCPServer("test", "1.0.0")
 	return base.WithContext(ctx, fakeSession{id: sessionID, ch: make(chan mcp.JSONRPCNotification, 1)})
+}
+
+func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool, failureMessage string) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal(failureMessage)
 }
 
 func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
@@ -330,9 +364,9 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 }
 
 func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
-	requests := 0
+	var requests atomic.Int32
 	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		if r.URL.Path != "/api/v1/service_accounts/me" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v1/service_accounts/me")
 		}
@@ -364,20 +398,17 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	hooks.RegisterSession(ctx, session)
 	hooks.UnregisterSession(ctx, session)
 
-	if requests != 2 {
-		t.Fatalf("identity requests = %d, want %d", requests, 2)
-	}
-	if spy.identifyGroupHits != 0 || spy.trackGroupHits != 0 {
-		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", spy.identifyGroupHits, spy.trackGroupHits)
-	}
-	if len(spy.identifyUserCalls) != 1 {
-		t.Fatalf("identify user calls = %d, want %d", len(spy.identifyUserCalls), 1)
-	}
-	if len(spy.trackUserCalls) != 1 {
-		t.Fatalf("track user calls = %d, want %d", len(spy.trackUserCalls), 1)
+	waitForCondition(t, time.Second, func() bool {
+		identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
+		return requests.Load() == 2 && identifyGroupHits == 0 && trackGroupHits == 0 && len(identifyCalls) == 1 && len(trackCalls) == 1
+	}, "timed out waiting for async API-key analytics")
+
+	identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
+	if identifyGroupHits != 0 || trackGroupHits != 0 {
+		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", identifyGroupHits, trackGroupHits)
 	}
 
-	identify := spy.identifyUserCalls[0]
+	identify := identifyCalls[0]
 	if identify.group != "org-456" || identify.user != "sa-123" {
 		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.group, identify.user, "org-456", "sa-123")
 	}
@@ -385,7 +416,7 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 		t.Fatalf("identify attrs = %#v, want org_id, principal, and service_email", identify.attrs)
 	}
 
-	track := spy.trackUserCalls[0]
+	track := trackCalls[0]
 	if track.group != "org-456" || track.user != "sa-123" || track.event != "MCP Unregistered" {
 		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.group, track.user, track.event, "org-456", "sa-123", "MCP Unregistered")
 	}
@@ -398,9 +429,9 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 }
 
 func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
-	requests := 0
+	var requests atomic.Int32
 	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		if r.URL.Path != "/api/v2/users/me" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v2/users/me")
 		}
@@ -445,20 +476,17 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 		t.Fatalf("middleware error = %v", err)
 	}
 
-	if requests != 2 {
-		t.Fatalf("identity requests = %d, want %d", requests, 2)
-	}
-	if spy.identifyGroupHits != 0 || spy.trackGroupHits != 0 {
-		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", spy.identifyGroupHits, spy.trackGroupHits)
-	}
-	if len(spy.identifyUserCalls) != 1 {
-		t.Fatalf("identify user calls = %d, want %d", len(spy.identifyUserCalls), 1)
-	}
-	if len(spy.trackUserCalls) != 2 {
-		t.Fatalf("track user calls = %d, want %d", len(spy.trackUserCalls), 2)
+	waitForCondition(t, time.Second, func() bool {
+		identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
+		return requests.Load() == 2 && identifyGroupHits == 0 && trackGroupHits == 0 && len(identifyCalls) == 1 && len(trackCalls) == 2
+	}, "timed out waiting for async JWT analytics")
+
+	identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
+	if identifyGroupHits != 0 || trackGroupHits != 0 {
+		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", identifyGroupHits, trackGroupHits)
 	}
 
-	identify := spy.identifyUserCalls[0]
+	identify := identifyCalls[0]
 	if identify.group != "org-123" || identify.user != "user-123" {
 		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.group, identify.user, "org-123", "user-123")
 	}
@@ -466,7 +494,17 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 		t.Fatalf("identify attrs = %#v, want org_id, principal, and user_email", identify.attrs)
 	}
 
-	registered := spy.trackUserCalls[0]
+	var registered analyticsCall
+	var toolCall analyticsCall
+	for _, call := range trackCalls {
+		switch call.event {
+		case "MCP Registered":
+			registered = call
+		case "Tool Call":
+			toolCall = call
+		}
+	}
+
 	if registered.event != "MCP Registered" || registered.group != "org-123" || registered.user != "user-123" {
 		t.Fatalf("registered track call = (%q, %q, %q), want (%q, %q, %q)", registered.group, registered.user, registered.event, "org-123", "user-123", "MCP Registered")
 	}
@@ -474,7 +512,6 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 		t.Fatalf("registered session attr = %v, want %q", registered.attrs[string(telemetry.MCPSessionIDKey)], "sess-jwt")
 	}
 
-	toolCall := spy.trackUserCalls[1]
 	if toolCall.event != "Tool Call" || toolCall.group != "org-123" || toolCall.user != "user-123" {
 		t.Fatalf("tool track call = (%q, %q, %q), want (%q, %q, %q)", toolCall.group, toolCall.user, toolCall.event, "org-123", "user-123", "Tool Call")
 	}
@@ -490,9 +527,9 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 }
 
 func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
-	requests := 0
+	var requests atomic.Int32
 	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		t.Fatalf("unexpected identity request: %s", r.URL.Path)
 	}))
 	defer sigNoz.Close()
@@ -535,16 +572,90 @@ func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 	hooks.RegisterSession(ctx, session)
 	hooks.UnregisterSession(ctx, session)
 
-	if requests != 0 {
-		t.Fatalf("identity requests = %d, want %d", requests, 0)
+	identifyCalls, trackCalls, identifyGroupHits, trackGroupHits := spy.snapshot()
+	if requests.Load() != 0 {
+		t.Fatalf("identity requests = %d, want %d", requests.Load(), 0)
 	}
-	if spy.identifyGroupHits != 0 || spy.trackGroupHits != 0 {
-		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", spy.identifyGroupHits, spy.trackGroupHits)
+	if identifyGroupHits != 0 || trackGroupHits != 0 {
+		t.Fatalf("expected no group analytics calls, got identify=%d track=%d", identifyGroupHits, trackGroupHits)
 	}
-	if len(spy.identifyUserCalls) != 0 {
-		t.Fatalf("identify user calls = %d, want %d", len(spy.identifyUserCalls), 0)
+	if len(identifyCalls) != 0 {
+		t.Fatalf("identify user calls = %d, want %d", len(identifyCalls), 0)
 	}
-	if len(spy.trackUserCalls) != 0 {
-		t.Fatalf("track user calls = %d, want %d", len(spy.trackUserCalls), 0)
+	if len(trackCalls) != 0 {
+		t.Fatalf("track user calls = %d, want %d", len(trackCalls), 0)
+	}
+}
+
+func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
+	var requests atomic.Int32
+	identityStarted := make(chan struct{}, 1)
+
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		select {
+		case identityStarted <- struct{}{}:
+		default:
+		}
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-123","email":"user@example.com","orgId":"org-123"}}`))
+	}))
+	defer sigNoz.Close()
+
+	cfg := &config.Config{
+		URL:             sigNoz.URL,
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+	}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{enabled: true}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "Bearer jwt-token")
+	ctx = util.SetAuthHeader(ctx, "Authorization")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+	ctx = newAnalyticsTestContext(ctx, "sess-jwt")
+
+	middleware := mcpServer.loggingMiddleware()
+
+	start := time.Now()
+	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "signoz_list_services",
+			Arguments: map[string]any{
+				"searchContext": "list services",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+	elapsed := time.Since(start)
+	if elapsed >= 150*time.Millisecond {
+		t.Fatalf("tool call took %v, want less than %v", elapsed, 150*time.Millisecond)
+	}
+
+	select {
+	case <-identityStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for async identity request to start")
+	}
+
+	waitForCondition(t, time.Second, func() bool {
+		_, trackCalls, _, _ := spy.snapshot()
+		return requests.Load() == 1 && len(trackCalls) == 1
+	}, "timed out waiting for async tool analytics")
+
+	_, trackCalls, _, _ := spy.snapshot()
+	toolCall := trackCalls[0]
+	if toolCall.event != "Tool Call" {
+		t.Fatalf("track event = %q, want %q", toolCall.event, "Tool Call")
+	}
+	if toolCall.attrs["user_email"] != "user@example.com" {
+		t.Fatalf("tool attrs = %#v, want user_email", toolCall.attrs)
 	}
 }
