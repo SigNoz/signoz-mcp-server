@@ -1,8 +1,11 @@
 name: pre-release
 
 on:
-  release:
-    types: [created]
+  # Dispatch-only: GitHub does not fire `release` events for draft releases
+  # (see https://docs.github.com/en/actions/reference/events-that-trigger-workflows#release),
+  # and by the time `published`/`released` fire, the tag already exists and the
+  # tag-triggered artifact workflows have started. Run this manually before
+  # creating the release, merge the bump PR, then create & publish the release.
   workflow_dispatch:
     inputs:
       version:
@@ -16,9 +19,6 @@ permissions:
 
 jobs:
   bump-version:
-    # Only run for drafts from the release event, or for a manual dispatch.
-    # Published/edited releases are handled by post-release.yaml (fallback).
-    if: github.event_name == 'workflow_dispatch' || github.event.release.draft == true
     runs-on: ubuntu-latest
     steps:
       - name: checkout
@@ -30,18 +30,11 @@ jobs:
       - name: resolve version
         id: version
         env:
-          EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            RAW="$INPUT_VERSION"
-          else
-            RAW="$RELEASE_TAG"
-          fi
-
+          RAW="$INPUT_VERSION"
           if [ -z "$RAW" ]; then
             echo "No version provided." >&2
             exit 1
@@ -220,5 +213,5 @@ jobs:
             - `server.json` version → `${{ steps.version.outputs.version }}`
             - `CHANGELOG.md` — adds `[${{ steps.version.outputs.version }}]` entry generated from commit history
 
-            Merge this PR **before** publishing the draft release so the tag lands on the bumped commit and artifacts carry the correct version.
+            Merge this PR **before** creating the GitHub release so the tag lands on the bumped commit and artifacts carry the correct version.
           labels: automated
