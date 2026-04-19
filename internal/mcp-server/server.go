@@ -17,6 +17,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -26,11 +27,59 @@ import (
 	"go.uber.org/zap"
 )
 
+// Streamable HTTP only fires OnUnregisterSession for the long-lived GET
+// listener — POST-only clients never trigger explicit cleanup — so the
+// session → ClientInfo map needs bounded eviction.
+const (
+	sessionClientCacheSize = 1024
+	sessionClientCacheTTL  = 30 * time.Minute
+)
+
 type MCPServer struct {
-	logger    *zap.Logger
-	handler   *tools.Handler
-	config    *config.Config
-	analytics analytics.Analytics
+	logger         *zap.Logger
+	handler        *tools.Handler
+	config         *config.Config
+	analytics      analytics.Analytics
+	sessionClients *expirable.LRU[string, mcp.Implementation]
+}
+
+func (m *MCPServer) rememberClientInfo(sessionID string, info mcp.Implementation) {
+	if sessionID == "" || info.Name == "" || m.sessionClients == nil {
+		return
+	}
+	m.sessionClients.Add(sessionID, info)
+}
+
+// lookupClientInfo re-Adds on hit so the TTL behaves as a sliding window
+// keyed on last use, keeping long-running sessions from losing attribution.
+func (m *MCPServer) lookupClientInfo(sessionID string) mcp.Implementation {
+	if sessionID == "" || m.sessionClients == nil {
+		return mcp.Implementation{}
+	}
+	v, ok := m.sessionClients.Get(sessionID)
+	if !ok {
+		return mcp.Implementation{}
+	}
+	m.sessionClients.Add(sessionID, v)
+	return v
+}
+
+func (m *MCPServer) forgetClientInfo(sessionID string) {
+	if sessionID == "" || m.sessionClients == nil {
+		return
+	}
+	m.sessionClients.Remove(sessionID)
+}
+
+func (m *MCPServer) attachClientInfo(props map[string]any, sessionID string) {
+	info := m.lookupClientInfo(sessionID)
+	if info.Name == "" {
+		return
+	}
+	props[analytics.AttrClientName] = info.Name
+	if info.Version != "" {
+		props[analytics.AttrClientVersion] = info.Version
+	}
 }
 
 const analyticsAsyncTimeout = 5 * time.Second
@@ -50,21 +99,19 @@ func cloneAttrs(src map[string]any) map[string]any {
 	return dst
 }
 
-// mergeIdentityAttrs returns a copy of attrs augmented with identity-derived
-// fields (org_id, principal, and a principal-scoped email key).
 func (m *MCPServer) mergeIdentityAttrs(identity *signozclient.AnalyticsIdentity, attrs map[string]any) map[string]any {
 	merged := cloneAttrs(attrs)
 	if identity == nil {
 		return merged
 	}
-	merged["org_id"] = identity.OrgID
-	merged["principal"] = identity.Principal
+	merged[analytics.AttrOrgID] = identity.OrgID
+	merged[analytics.AttrPrincipal] = identity.Principal
 	if identity.Email != "" {
 		switch identity.Principal {
 		case "user":
-			merged["user_email"] = identity.Email
+			merged[analytics.AttrUserEmail] = identity.Email
 		case "service_account":
-			merged["service_email"] = identity.Email
+			merged[analytics.AttrServiceEmail] = identity.Email
 		}
 	}
 	return merged
@@ -83,8 +130,6 @@ func (m *MCPServer) resolveIdentity(ctx context.Context) (*signozclient.Analytic
 	return client.GetAnalyticsIdentity(ctx)
 }
 
-// identifyAsync emits an Identify call on a detached goroutine. Returns
-// without blocking the caller; failures are logged, not surfaced.
 func (m *MCPServer) identifyAsync(ctx context.Context, traits map[string]any) {
 	if !m.analyticsEnabled() {
 		return
@@ -103,7 +148,6 @@ func (m *MCPServer) identifyAsync(ctx context.Context, traits map[string]any) {
 	})
 }
 
-// trackEventAsync emits a Track call on a detached goroutine.
 func (m *MCPServer) trackEventAsync(ctx context.Context, event string, properties map[string]any) {
 	if !m.analyticsEnabled() {
 		return
@@ -122,8 +166,8 @@ func (m *MCPServer) trackEventAsync(ctx context.Context, event string, propertie
 	})
 }
 
-// identifyAndTrackAsync resolves identity once and emits both an Identify and
-// a Track call under the same detached goroutine.
+// identifyAndTrackAsync resolves identity once and emits both calls under
+// the same goroutine to avoid a second /me roundtrip.
 func (m *MCPServer) identifyAndTrackAsync(ctx context.Context, event string, traits map[string]any, properties map[string]any) {
 	if !m.analyticsEnabled() {
 		return
@@ -144,6 +188,20 @@ func (m *MCPServer) identifyAndTrackAsync(ctx context.Context, event string, tra
 	})
 }
 
+// trackOAuthEvent seeds tenant credentials on ctx so the async identity
+// lookup can run even though the OAuth HTTP request carried them in form
+// fields or an encrypted grant, not in util-context.
+func (m *MCPServer) trackOAuthEvent(ctx context.Context, event, apiKey, signozURL string, props map[string]any) {
+	if apiKey != "" {
+		ctx = util.SetAPIKey(ctx, apiKey)
+		ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+	}
+	if signozURL != "" {
+		ctx = util.SetSigNozURL(ctx, signozURL)
+	}
+	m.trackEventAsync(ctx, event, props)
+}
+
 func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
 	fields := []zap.Field{}
 	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
@@ -155,11 +213,9 @@ func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
 	return fields
 }
 
-// detachedAnalyticsContext returns a background-rooted context (so the async
-// goroutine survives the parent request) bounded by analyticsAsyncTimeout, and
-// carries forward the values the client lookup + analytics call need:
-// credentials, tenant URL, session/search context, and the OTel span so
-// identity HTTP requests remain linked to the originating tool call.
+// detachedAnalyticsContext roots the async goroutine off context.Background
+// (so it survives the parent request) while copying forward the credentials,
+// tenant/session fields, and span context the identity lookup needs.
 func (m *MCPServer) detachedAnalyticsContext(parent context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), analyticsAsyncTimeout)
 
@@ -194,7 +250,13 @@ func (m *MCPServer) dispatchAnalytics(parent context.Context, fn func(context.Co
 }
 
 func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {
-	return &MCPServer{logger: log, handler: handler, config: cfg, analytics: a}
+	return &MCPServer{
+		logger:         log,
+		handler:        handler,
+		config:         cfg,
+		analytics:      a,
+		sessionClients: expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
+	}
 }
 
 func (m *MCPServer) Start() error {
@@ -263,18 +325,27 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	// Analytics: track session registration after successful initialize.
 	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
+		var sessionID string
+		if session := server.ClientSessionFromContext(ctx); session != nil {
+			sessionID = session.SessionID()
+		}
+		if message != nil {
+			m.rememberClientInfo(sessionID, message.Params.ClientInfo)
+		}
+
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
-				string(telemetry.MCPTenantURLKey): signozURL,
+				analytics.AttrTenantURL: signozURL,
 			}
-
 			props := map[string]any{
-				string(telemetry.MCPTenantURLKey): signozURL,
+				analytics.AttrTenantURL: signozURL,
 			}
-			if session := server.ClientSessionFromContext(ctx); session != nil {
-				props[string(telemetry.MCPSessionIDKey)] = session.SessionID()
+			if sessionID != "" {
+				props[analytics.AttrSessionID] = sessionID
 			}
-			m.identifyAndTrackAsync(ctx, "MCP Registered", traits, props)
+			m.attachClientInfo(traits, sessionID)
+			m.attachClientInfo(props, sessionID)
+			m.identifyAndTrackAsync(ctx, analytics.EventSessionRegistered, traits, props)
 		}
 	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
@@ -286,12 +357,14 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
-				string(telemetry.MCPTenantURLKey): signozURL,
+				analytics.AttrTenantURL: signozURL,
 			}
+			m.attachClientInfo(traits, session.SessionID())
 			m.identifyAsync(ctx, traits)
 		}
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
+		sessionID := session.SessionID()
 		fields := []zap.Field{}
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
@@ -300,10 +373,40 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			props := map[string]any{
-				string(telemetry.MCPTenantURLKey): signozURL,
-				string(telemetry.MCPSessionIDKey): session.SessionID(),
+				analytics.AttrTenantURL: signozURL,
+				analytics.AttrSessionID: sessionID,
 			}
-			m.trackEventAsync(ctx, "MCP Unregistered", props)
+			m.attachClientInfo(props, sessionID)
+			m.trackEventAsync(ctx, analytics.EventSessionUnregistered, props)
+		}
+
+		// Delete after dispatch — trackEventAsync has already snapshotted props.
+		m.forgetClientInfo(sessionID)
+	})
+	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			props := map[string]any{
+				analytics.AttrTenantURL:  signozURL,
+				analytics.AttrPromptName: message.Params.Name,
+			}
+			if session := server.ClientSessionFromContext(ctx); session != nil {
+				props[analytics.AttrSessionID] = session.SessionID()
+				m.attachClientInfo(props, session.SessionID())
+			}
+			m.trackEventAsync(ctx, analytics.EventPromptFetched, props)
+		}
+	})
+	hooks.AddAfterReadResource(func(ctx context.Context, id any, message *mcp.ReadResourceRequest, result *mcp.ReadResourceResult) {
+		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+			props := map[string]any{
+				analytics.AttrTenantURL:   signozURL,
+				analytics.AttrResourceURI: message.Params.URI,
+			}
+			if session := server.ClientSessionFromContext(ctx); session != nil {
+				props[analytics.AttrSessionID] = session.SessionID()
+				m.attachClientInfo(props, session.SessionID())
+			}
+			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
 		}
 	})
 	return hooks
@@ -394,15 +497,19 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			// Analytics: track tool call
 			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 				props := map[string]any{
-					string(telemetry.MCPTenantURLKey):   signozURL,
-					string(telemetry.GenAIToolNameKey):  req.Params.Name,
-					string(telemetry.MCPToolIsErrorKey): isErr,
-					"duration_ms":                       time.Since(start).Milliseconds(),
+					analytics.AttrTenantURL:   signozURL,
+					analytics.AttrToolName:    req.Params.Name,
+					analytics.AttrToolIsError: isErr,
+					analytics.AttrDurationMs:  time.Since(start).Milliseconds(),
 				}
 				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-					props[string(telemetry.MCPSessionIDKey)] = sid
+					props[analytics.AttrSessionID] = sid
+					m.attachClientInfo(props, sid)
 				}
-				m.trackEventAsync(ctx, "Tool Call", props)
+				if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
+					props[analytics.AttrSearchContext] = sc
+				}
+				m.trackEventAsync(ctx, analytics.EventToolCalled, props)
 			}
 
 			return result, err
@@ -585,7 +692,7 @@ func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	})
 
 	if m.config.OAuthEnabled {
-		oauthHandler := oauth.NewHandler(m.logger, m.config)
+		oauthHandler := oauth.NewHandler(m.logger, m.config, m.trackOAuthEvent)
 		mux.HandleFunc("GET /.well-known/oauth-protected-resource", oauthHandler.HandleProtectedResourceMetadata)
 		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.HandleAuthorizationServerMetadata)
 		mux.HandleFunc("POST /oauth/register", oauthHandler.HandleRegisterClient)

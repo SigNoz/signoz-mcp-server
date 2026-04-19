@@ -31,18 +31,16 @@ const (
 	// DashboardWriteTimeout is used for dashboard create/update operations.
 	DashboardWriteTimeout = 30 * time.Second
 
-	// analyticsIdentityCacheTTL bounds how stale a cached identity may be.
-	// Identity rarely changes, so a long TTL keeps the SigNoz backend from
-	// absorbing an extra /me request for every analytics event.
+	// analyticsIdentityCacheTTL keeps /me out of the hot analytics path;
+	// identity rarely changes, so 10 min is long enough to absorb bursts.
 	analyticsIdentityCacheTTL = 10 * time.Minute
 )
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
 
 // AnalyticsIdentity is the identity tuple used for analytics attribution.
-// UserID is the effective distinct/user identifier for analytics. For API key
-// sessions this is the service account ID; for auth-token sessions this is the
-// SigNoz user ID.
+// UserID holds the service-account ID for API-key sessions, or the SigNoz
+// user ID for auth-token sessions.
 type AnalyticsIdentity struct {
 	OrgID     string
 	UserID    string
@@ -134,18 +132,12 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	return s.evaluateValidationResponse(log, status, body)
 }
 
-// GetAnalyticsIdentity resolves the org and effective analytics identity for
-// the current credentials. The result is cached per-client for
-// analyticsIdentityCacheTTL so analytics hot paths (one event per tool call)
-// don't each trigger a /me roundtrip. The lookup is serialized by a mutex, so
-// a burst of concurrent callers during a cache miss results in a single
-// upstream request.
+// GetAnalyticsIdentity returns the org + user identity for the current
+// credentials, cached per-client and mutex-serialized so a burst of events
+// produces a single /me roundtrip.
 //
-// Auth-mode specific behavior:
-//   - Authorization header clients resolve via /api/v2/users/me. v2 is used
-//     (vs. the v1 path in ValidateCredentials) because it returns orgId,
-//     which is required to set the analytics groupId.
-//   - SIGNOZ-API-KEY clients resolve via /api/v1/service_accounts/me.
+// Auth-token clients hit /api/v2/users/me (v2 is required — it returns
+// orgId, v1 doesn't). API-key clients hit /api/v1/service_accounts/me.
 func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
 	s.identityMu.Lock()
 	defer s.identityMu.Unlock()
@@ -247,9 +239,8 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		_ = resp.Body.Close()
 	}()
 
-	// 64 KiB accommodates the full /api/v2/users/me payload (roles, groups,
-	// nested org metadata) without the risk of truncating valid JSON — the
-	// previous 2 KiB cap caused identity parsing to fail on rich responses.
+	// 64 KiB holds the full /api/v2/users/me payload (roles, groups, nested
+	// org metadata); anything smaller risks truncating valid JSON.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to read validation response: %w", err)

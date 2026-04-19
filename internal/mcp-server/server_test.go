@@ -17,7 +17,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
-	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types/analyticstypes"
@@ -399,19 +398,19 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	if identify.groupID != "org-456" || identify.userID != "sa-123" {
 		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.groupID, identify.userID, "org-456", "sa-123")
 	}
-	if identify.attrs["org_id"] != "org-456" || identify.attrs["principal"] != "service_account" || identify.attrs["service_email"] != "service@example.com" {
-		t.Fatalf("identify attrs = %#v, want org_id, principal, and service_email", identify.attrs)
+	if identify.attrs[analytics.AttrOrgID] != "org-456" || identify.attrs[analytics.AttrPrincipal] != "service_account" || identify.attrs[analytics.AttrServiceEmail] != "service@example.com" {
+		t.Fatalf("identify attrs = %#v, want orgId, principal, and serviceEmail", identify.attrs)
 	}
 
 	track := trackCalls[0]
-	if track.groupID != "org-456" || track.userID != "sa-123" || track.event != "MCP Unregistered" {
-		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.groupID, track.userID, track.event, "org-456", "sa-123", "MCP Unregistered")
+	if track.groupID != "org-456" || track.userID != "sa-123" || track.event != analytics.EventSessionUnregistered {
+		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.groupID, track.userID, track.event, "org-456", "sa-123", analytics.EventSessionUnregistered)
 	}
-	if track.attrs[string(telemetry.MCPSessionIDKey)] != "sess-api" {
-		t.Fatalf("session id attr = %v, want %q", track.attrs[string(telemetry.MCPSessionIDKey)], "sess-api")
+	if track.attrs[analytics.AttrSessionID] != "sess-api" {
+		t.Fatalf("session id attr = %v, want %q", track.attrs[analytics.AttrSessionID], "sess-api")
 	}
-	if track.attrs["org_id"] != "org-456" || track.attrs["principal"] != "service_account" || track.attrs["service_email"] != "service@example.com" {
-		t.Fatalf("track attrs = %#v, want org_id, principal, and service_email", track.attrs)
+	if track.attrs[analytics.AttrOrgID] != "org-456" || track.attrs[analytics.AttrPrincipal] != "service_account" || track.attrs[analytics.AttrServiceEmail] != "service@example.com" {
+		t.Fatalf("track attrs = %#v, want orgId, principal, and serviceEmail", track.attrs)
 	}
 }
 
@@ -474,39 +473,42 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	if identify.groupID != "org-123" || identify.userID != "user-123" {
 		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.groupID, identify.userID, "org-123", "user-123")
 	}
-	if identify.attrs["org_id"] != "org-123" || identify.attrs["principal"] != "user" || identify.attrs["user_email"] != "user@example.com" {
-		t.Fatalf("identify attrs = %#v, want org_id, principal, and user_email", identify.attrs)
+	if identify.attrs[analytics.AttrOrgID] != "org-123" || identify.attrs[analytics.AttrPrincipal] != "user" || identify.attrs[analytics.AttrUserEmail] != "user@example.com" {
+		t.Fatalf("identify attrs = %#v, want orgId, principal, and userEmail", identify.attrs)
 	}
 
 	var registered analyticsCall
 	var toolCall analyticsCall
 	for _, call := range trackCalls {
 		switch call.event {
-		case "MCP Registered":
+		case analytics.EventSessionRegistered:
 			registered = call
-		case "Tool Call":
+		case analytics.EventToolCalled:
 			toolCall = call
 		}
 	}
 
-	if registered.event != "MCP Registered" || registered.groupID != "org-123" || registered.userID != "user-123" {
-		t.Fatalf("registered track call = (%q, %q, %q), want (%q, %q, %q)", registered.groupID, registered.userID, registered.event, "org-123", "user-123", "MCP Registered")
+	if registered.event != analytics.EventSessionRegistered || registered.groupID != "org-123" || registered.userID != "user-123" {
+		t.Fatalf("registered track call = (%q, %q, %q), want (%q, %q, %q)", registered.groupID, registered.userID, registered.event, "org-123", "user-123", analytics.EventSessionRegistered)
 	}
-	if registered.attrs[string(telemetry.MCPSessionIDKey)] != "sess-jwt" {
-		t.Fatalf("registered session attr = %v, want %q", registered.attrs[string(telemetry.MCPSessionIDKey)], "sess-jwt")
+	if registered.attrs[analytics.AttrSessionID] != "sess-jwt" {
+		t.Fatalf("registered session attr = %v, want %q", registered.attrs[analytics.AttrSessionID], "sess-jwt")
 	}
 
-	if toolCall.event != "Tool Call" || toolCall.groupID != "org-123" || toolCall.userID != "user-123" {
-		t.Fatalf("tool track call = (%q, %q, %q), want (%q, %q, %q)", toolCall.groupID, toolCall.userID, toolCall.event, "org-123", "user-123", "Tool Call")
+	if toolCall.event != analytics.EventToolCalled || toolCall.groupID != "org-123" || toolCall.userID != "user-123" {
+		t.Fatalf("tool track call = (%q, %q, %q), want (%q, %q, %q)", toolCall.groupID, toolCall.userID, toolCall.event, "org-123", "user-123", analytics.EventToolCalled)
 	}
-	if toolCall.attrs[string(telemetry.GenAIToolNameKey)] != "signoz_list_services" {
-		t.Fatalf("tool name attr = %v, want %q", toolCall.attrs[string(telemetry.GenAIToolNameKey)], "signoz_list_services")
+	if toolCall.attrs[analytics.AttrToolName] != "signoz_list_services" {
+		t.Fatalf("tool name attr = %v, want %q", toolCall.attrs[analytics.AttrToolName], "signoz_list_services")
 	}
-	if toolCall.attrs[string(telemetry.MCPToolIsErrorKey)] != false {
-		t.Fatalf("tool error attr = %v, want false", toolCall.attrs[string(telemetry.MCPToolIsErrorKey)])
+	if toolCall.attrs[analytics.AttrToolIsError] != false {
+		t.Fatalf("tool error attr = %v, want false", toolCall.attrs[analytics.AttrToolIsError])
 	}
-	if toolCall.attrs["org_id"] != "org-123" || toolCall.attrs["principal"] != "user" || toolCall.attrs["user_email"] != "user@example.com" {
-		t.Fatalf("tool attrs = %#v, want org_id, principal, and user_email", toolCall.attrs)
+	if toolCall.attrs[analytics.AttrSearchContext] != "list services" {
+		t.Fatalf("tool searchContext attr = %v, want %q", toolCall.attrs[analytics.AttrSearchContext], "list services")
+	}
+	if toolCall.attrs[analytics.AttrOrgID] != "org-123" || toolCall.attrs[analytics.AttrPrincipal] != "user" || toolCall.attrs[analytics.AttrUserEmail] != "user@example.com" {
+		t.Fatalf("tool attrs = %#v, want orgId, principal, and userEmail", toolCall.attrs)
 	}
 }
 
@@ -633,10 +635,221 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 
 	_, trackCalls := spy.snapshot()
 	toolCall := trackCalls[0]
-	if toolCall.event != "Tool Call" {
-		t.Fatalf("track event = %q, want %q", toolCall.event, "Tool Call")
+	if toolCall.event != analytics.EventToolCalled {
+		t.Fatalf("track event = %q, want %q", toolCall.event, analytics.EventToolCalled)
 	}
-	if toolCall.attrs["user_email"] != "user@example.com" {
-		t.Fatalf("tool attrs = %#v, want user_email", toolCall.attrs)
+	if toolCall.attrs[analytics.AttrUserEmail] != "user@example.com" {
+		t.Fatalf("tool attrs = %#v, want userEmail", toolCall.attrs)
+	}
+}
+
+// meEndpointServer stubs the SigNoz /me endpoint with a stable identity.
+func meEndpointServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","email":"svc@example.com","orgId":"org-1"}}`))
+	}))
+}
+
+func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
+	sigNoz := meEndpointServer(t)
+	defer sigNoz.Close()
+
+	cfg := &config.Config{
+		URL:             sigNoz.URL,
+		APIKey:          "test-key",
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+	}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{enabled: true}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "test-key")
+	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+	ctx = newAnalyticsTestContext(ctx, "sess-client")
+
+	hooks.OnAfterInitialize[0](ctx, nil, &mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ClientInfo: mcp.Implementation{Name: "claude-desktop", Version: "1.2.3"},
+		},
+	}, &mcp.InitializeResult{})
+
+	middleware := mcpServer.loggingMiddleware()
+	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Name: "signoz_list_services"},
+	})
+	if err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+
+	waitForCondition(t, time.Second, func() bool {
+		_, trackCalls := spy.snapshot()
+		return len(trackCalls) == 2
+	}, "timed out waiting for tool analytics")
+
+	_, trackCalls := spy.snapshot()
+	var toolCall analyticsCall
+	for _, c := range trackCalls {
+		if c.event == analytics.EventToolCalled {
+			toolCall = c
+		}
+	}
+	if toolCall.attrs[analytics.AttrClientName] != "claude-desktop" {
+		t.Fatalf("clientName = %v, want claude-desktop", toolCall.attrs[analytics.AttrClientName])
+	}
+	if toolCall.attrs[analytics.AttrClientVersion] != "1.2.3" {
+		t.Fatalf("clientVersion = %v, want 1.2.3", toolCall.attrs[analytics.AttrClientVersion])
+	}
+
+	mcpServer.forgetClientInfo("sess-client")
+	if mcpServer.lookupClientInfo("sess-client").Name != "" {
+		t.Fatalf("expected ClientInfo to be cleared after forgetClientInfo")
+	}
+}
+
+func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
+	sigNoz := meEndpointServer(t)
+	defer sigNoz.Close()
+
+	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{enabled: true}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "k")
+	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+	ctx = newAnalyticsTestContext(ctx, "sess-cleanup")
+
+	hooks.OnAfterInitialize[0](ctx, nil,
+		&mcp.InitializeRequest{Params: mcp.InitializeParams{
+			ClientInfo: mcp.Implementation{Name: "cursor", Version: "0.9"},
+		}}, &mcp.InitializeResult{})
+
+	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "cursor" {
+		t.Fatalf("pre-unregister ClientInfo = %+v, want name=cursor", got)
+	}
+
+	session := fakeSession{id: "sess-cleanup", ch: make(chan mcp.JSONRPCNotification, 1)}
+	hooks.OnUnregisterSession[0](ctx, session)
+
+	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "" {
+		t.Fatalf("post-unregister ClientInfo = %+v, want empty", got)
+	}
+}
+
+func TestPromptFetchedEvent(t *testing.T) {
+	sigNoz := meEndpointServer(t)
+	defer sigNoz.Close()
+
+	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{enabled: true}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "k")
+	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+	ctx = newAnalyticsTestContext(ctx, "sess-prompt")
+
+	hooks.OnAfterGetPrompt[0](ctx, nil,
+		&mcp.GetPromptRequest{Params: mcp.GetPromptParams{Name: "rca"}},
+		&mcp.GetPromptResult{})
+
+	waitForCondition(t, time.Second, func() bool {
+		_, trackCalls := spy.snapshot()
+		return len(trackCalls) == 1
+	}, "timed out waiting for prompt analytics")
+
+	_, trackCalls := spy.snapshot()
+	call := trackCalls[0]
+	if call.event != analytics.EventPromptFetched {
+		t.Fatalf("event = %q, want %q", call.event, analytics.EventPromptFetched)
+	}
+	if call.attrs[analytics.AttrPromptName] != "rca" {
+		t.Fatalf("promptName attr = %v, want rca", call.attrs[analytics.AttrPromptName])
+	}
+	if call.attrs[analytics.AttrSessionID] != "sess-prompt" {
+		t.Fatalf("sessionId attr = %v, want sess-prompt", call.attrs[analytics.AttrSessionID])
+	}
+}
+
+func TestResourceFetchedEvent(t *testing.T) {
+	sigNoz := meEndpointServer(t)
+	defer sigNoz.Close()
+
+	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{enabled: true}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetAPIKey(ctx, "k")
+	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
+	ctx = newAnalyticsTestContext(ctx, "sess-res")
+
+	hooks.OnAfterReadResource[0](ctx, nil,
+		&mcp.ReadResourceRequest{Params: mcp.ReadResourceParams{URI: "signoz://dashboard/abc"}},
+		&mcp.ReadResourceResult{})
+
+	waitForCondition(t, time.Second, func() bool {
+		_, trackCalls := spy.snapshot()
+		return len(trackCalls) == 1
+	}, "timed out waiting for resource analytics")
+
+	_, trackCalls := spy.snapshot()
+	call := trackCalls[0]
+	if call.event != analytics.EventResourceFetched {
+		t.Fatalf("event = %q, want %q", call.event, analytics.EventResourceFetched)
+	}
+	if call.attrs[analytics.AttrResourceURI] != "signoz://dashboard/abc" {
+		t.Fatalf("resourceUri attr = %v, want signoz://dashboard/abc", call.attrs[analytics.AttrResourceURI])
+	}
+}
+
+func TestOAuthEventEmitter_InjectsCredentialsAndDispatches(t *testing.T) {
+	sigNoz := meEndpointServer(t)
+	defer sigNoz.Close()
+
+	cfg := &config.Config{URL: sigNoz.URL, ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(zap.NewNop(), cfg)
+	spy := &spyAnalytics{enabled: true}
+	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+
+	mcpServer.trackOAuthEvent(context.Background(), analytics.EventOAuthTokenIssued,
+		"oauth-api-key", sigNoz.URL,
+		map[string]any{
+			analytics.AttrTenantURL: sigNoz.URL,
+			analytics.AttrGrantType: "authorization_code",
+		})
+
+	waitForCondition(t, time.Second, func() bool {
+		_, trackCalls := spy.snapshot()
+		return len(trackCalls) == 1
+	}, "timed out waiting for OAuth analytics")
+
+	_, trackCalls := spy.snapshot()
+	call := trackCalls[0]
+	if call.event != analytics.EventOAuthTokenIssued {
+		t.Fatalf("event = %q, want %q", call.event, analytics.EventOAuthTokenIssued)
+	}
+	if call.attrs[analytics.AttrGrantType] != "authorization_code" {
+		t.Fatalf("grantType attr = %v, want authorization_code", call.attrs[analytics.AttrGrantType])
+	}
+	if call.groupID != "org-1" || call.userID != "sa-1" {
+		t.Fatalf("identity (%q, %q), want (org-1, sa-1)", call.groupID, call.userID)
 	}
 }
