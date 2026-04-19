@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -29,9 +30,23 @@ const (
 	DefaultQueryTimeout = 600 * time.Second
 	// DashboardWriteTimeout is used for dashboard create/update operations.
 	DashboardWriteTimeout = 30 * time.Second
+
+	// analyticsIdentityCacheTTL keeps /me out of the hot analytics path;
+	// identity rarely changes, so 10 min is long enough to absorb bursts.
+	analyticsIdentityCacheTTL = 10 * time.Minute
 )
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
+
+// AnalyticsIdentity is the identity tuple used for analytics attribution.
+// UserID holds the service-account ID for API-key sessions, or the SigNoz
+// user ID for auth-token sessions.
+type AnalyticsIdentity struct {
+	OrgID     string
+	UserID    string
+	Email     string
+	Principal string
+}
 
 type SigNoz struct {
 	baseURL        string
@@ -40,6 +55,10 @@ type SigNoz struct {
 	logger         *zap.Logger
 	httpClient     *http.Client
 	customHeaders  map[string]string
+
+	identityMu       sync.Mutex
+	cachedIdentity   *AnalyticsIdentity
+	identityCachedAt time.Time
 }
 
 func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
@@ -113,6 +132,88 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	return s.evaluateValidationResponse(log, status, body)
 }
 
+// GetAnalyticsIdentity returns the org + user identity for the current
+// credentials, cached per-client and mutex-serialized so a burst of events
+// produces a single /me roundtrip.
+//
+// Auth-token clients hit /api/v2/users/me (v2 is required — it returns
+// orgId, v1 doesn't). API-key clients hit /api/v1/service_accounts/me.
+func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	s.identityMu.Lock()
+	defer s.identityMu.Unlock()
+
+	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
+		return s.cachedIdentity, nil
+	}
+
+	identity, err := s.fetchAnalyticsIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	s.cachedIdentity = identity
+	s.identityCachedAt = time.Now()
+	return identity, nil
+}
+
+func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	log := s.requestLogger(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	endpoint := "/api/v1/service_accounts/me"
+	principal := "service_account"
+	if strings.EqualFold(s.authHeaderName, "Authorization") {
+		endpoint = "/api/v2/users/me"
+		principal = "user"
+	}
+
+	reqURL := fmt.Sprintf("%s%s", s.baseURL, endpoint)
+	status, body, err := s.doValidationRequest(ctx, reqURL)
+	if err != nil {
+		log.Error("SigNoz analytics identity request failed", zap.String("url", reqURL), zap.Error(err))
+		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, s.evaluateValidationResponse(log, status, body)
+	}
+
+	identity, err := parseAnalyticsIdentity(body, principal)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s response: %w", endpoint, err)
+	}
+
+	return identity, nil
+}
+
+type analyticsIdentityResponse struct {
+	Data struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+		OrgID string `json:"orgId"`
+	} `json:"data"`
+}
+
+func parseAnalyticsIdentity(body []byte, principal string) (*AnalyticsIdentity, error) {
+	var resp analyticsIdentityResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+	if resp.Data.ID == "" {
+		return nil, fmt.Errorf("missing data.id")
+	}
+	if resp.Data.OrgID == "" {
+		return nil, fmt.Errorf("missing data.orgId")
+	}
+
+	return &AnalyticsIdentity{
+		OrgID:     resp.Data.OrgID,
+		UserID:    resp.Data.ID,
+		Email:     resp.Data.Email,
+		Principal: principal,
+	}, nil
+}
+
 // doValidationRequest sends a GET request to the given URL with auth headers
 // and returns the HTTP status code, response body, and any transport error.
 func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
@@ -122,10 +223,10 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 	}
 
 	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(SignozApiKey, s.apiKey)
+	req.Header.Set(s.authHeaderName, s.apiKey)
 
 	for k, v := range s.customHeaders {
-		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, SignozApiKey) {
+		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, s.authHeaderName) {
 			req.Header.Set(k, v)
 		}
 	}
@@ -138,7 +239,9 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		_ = resp.Body.Close()
 	}()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	// 64 KiB holds the full /api/v2/users/me payload (roles, groups, nested
+	// org metadata); anything smaller risks truncating valid JSON.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to read validation response: %w", err)
 	}
