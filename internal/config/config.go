@@ -28,6 +28,11 @@ type Config struct {
 	ClientCacheTTL  time.Duration
 
 	CustomHeaders map[string]string
+
+	// MCPTestTokenEnabled accepts `Bearer mcp_<base64url(json)>` tokens
+	// that carry SigNoz URL and API key inline. Testing only.
+	MCPTestTokenEnabled bool
+
 	// Analytics settings
 	AnalyticsEnabled bool
 	SegmentKey       string
@@ -43,6 +48,8 @@ const (
 	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
 	ClientCacheSize     = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL      = "CLIENT_CACHE_TTL_MINUTES"
+
+	MCPTestTokenEnabledEnv = "MCP_TEST_TOKEN_ENABLED"
 
 	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
 	SegmentKeyEnv       = "SEGMENT_KEY"
@@ -101,6 +108,7 @@ func LoadConfig() (*Config, error) {
 		ClientCacheSize:  cacheSize,
 		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
 		CustomHeaders:    customHeaders,
+		MCPTestTokenEnabled: getEnvBool(MCPTestTokenEnabledEnv, false),
 		AnalyticsEnabled: getEnvBool(AnalyticsEnabledEnv, false),
 		SegmentKey:       getEnv(SegmentKeyEnv, ""),
 	}, nil
