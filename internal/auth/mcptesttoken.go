@@ -28,7 +28,6 @@ type mcpTestTokenPayload struct {
 // This format is testing-only: the payload is neither signed nor encrypted.
 func ParseMCPTestToken(authHeader string) (signozURL, apiKey string, err error) {
 	raw := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, MCPTestTokenPrefix) {
 		return "", "", errors.New("not an mcp_ token")
 	}
@@ -51,7 +50,7 @@ func ParseMCPTestToken(authHeader string) (signozURL, apiKey string, err error) 
 	if rawURL == "" {
 		return "", "", errors.New("invalid mcp_ token: missing or invalid X-SigNoz-URL")
 	}
-	normalized, nerr := util.NormalizeSigNozURL(strings.TrimSuffix(rawURL, "/"))
+	normalized, nerr := util.NormalizeSigNozURL(rawURL)
 	if nerr != nil {
 		return "", "", errors.New("invalid mcp_ token: missing or invalid X-SigNoz-URL")
 	}
