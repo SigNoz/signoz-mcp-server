@@ -7,7 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -226,6 +229,174 @@ func TestValidateCredentials(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetAnalyticsIdentity(t *testing.T) {
+	tests := []struct {
+		name              string
+		authHeaderName    string
+		expectedHeader    string
+		expectedHeaderVal string
+		expectedPath      string
+		statusCode        int
+		responseBody      string
+		expectedIdentity  *AnalyticsIdentity
+		checkErr          func(t *testing.T, err error)
+	}{
+		{
+			name:              "authorization auth resolves via v2 users me",
+			authHeaderName:    "Authorization",
+			expectedHeader:    "Authorization",
+			expectedHeaderVal: "Bearer jwt-token",
+			expectedPath:      "/api/v2/users/me",
+			statusCode:        http.StatusOK,
+			responseBody:      `{"status":"success","data":{"id":"user-123","email":"user@example.com","orgId":"org-123"}}`,
+			expectedIdentity: &AnalyticsIdentity{
+				OrgID:     "org-123",
+				UserID:    "user-123",
+				Email:     "user@example.com",
+				Principal: "user",
+			},
+		},
+		{
+			name:              "api key auth resolves via service accounts me",
+			authHeaderName:    "SIGNOZ-API-KEY",
+			expectedHeader:    "SIGNOZ-API-KEY",
+			expectedHeaderVal: "test-api-key",
+			expectedPath:      "/api/v1/service_accounts/me",
+			statusCode:        http.StatusOK,
+			responseBody:      `{"status":"success","data":{"id":"sa-123","email":"service@example.com","orgId":"org-456"}}`,
+			expectedIdentity: &AnalyticsIdentity{
+				OrgID:     "org-456",
+				UserID:    "sa-123",
+				Email:     "service@example.com",
+				Principal: "service_account",
+			},
+		},
+		{
+			name:              "authorization auth does not fall back from v2 users me",
+			authHeaderName:    "Authorization",
+			expectedHeader:    "Authorization",
+			expectedHeaderVal: "Bearer jwt-token",
+			expectedPath:      "/api/v2/users/me",
+			statusCode:        http.StatusNotFound,
+			responseBody:      `{"status":"error"}`,
+			checkErr: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "unexpected status 404")
+			},
+		},
+		{
+			name:              "unauthorized identity lookup returns auth error",
+			authHeaderName:    "SIGNOZ-API-KEY",
+			expectedHeader:    "SIGNOZ-API-KEY",
+			expectedHeaderVal: "test-api-key",
+			expectedPath:      "/api/v1/service_accounts/me",
+			statusCode:        http.StatusUnauthorized,
+			responseBody:      `{"status":"error"}`,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrUnauthorized)
+			},
+		},
+		{
+			name:              "malformed success response returns parse error",
+			authHeaderName:    "SIGNOZ-API-KEY",
+			expectedHeader:    "SIGNOZ-API-KEY",
+			expectedHeaderVal: "test-api-key",
+			expectedPath:      "/api/v1/service_accounts/me",
+			statusCode:        http.StatusOK,
+			responseBody:      `{"status":"success","data":{"orgId":"org-123"}}`,
+			checkErr: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "missing data.id")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, tt.expectedPath, r.URL.Path)
+				assert.Equal(t, tt.expectedHeaderVal, r.Header.Get(tt.expectedHeader))
+
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			logger, _ := zap.NewDevelopment()
+			apiKey := "test-api-key"
+			if tt.authHeaderName == "Authorization" {
+				apiKey = "Bearer jwt-token"
+			}
+			client := NewClient(logger, server.URL, apiKey, tt.authHeaderName, nil)
+
+			identity, err := client.GetAnalyticsIdentity(context.Background())
+
+			if tt.checkErr != nil {
+				assert.Error(t, err)
+				tt.checkErr(t, err)
+				assert.Nil(t, identity)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedIdentity, identity)
+			}
+			assert.Equal(t, 1, requests, "expected exactly one identity request")
+		})
+	}
+}
+
+func TestGetAnalyticsIdentity_CachesResult(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-1","email":"u@example.com","orgId":"org-1"}}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
+
+	for i := 0; i < 5; i++ {
+		identity, err := client.GetAnalyticsIdentity(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "user-1", identity.UserID)
+	}
+
+	assert.Equal(t, 1, requests, "expected identity cache to serve repeated lookups")
+}
+
+func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-1","email":"u@example.com","orgId":"org-1"}}`))
+	}))
+	defer server.Close()
+
+	logger, _ := zap.NewDevelopment()
+	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
+
+	const callers = 10
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for i := 0; i < callers; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := client.GetAnalyticsIdentity(context.Background())
+			assert.NoError(t, err)
+		}()
+	}
+	wg.Wait()
+
+	// The mutex serializes lookups; the first request populates the cache
+	// and every other caller observes the cached result.
+	assert.Equal(t, int32(1), requests.Load(), "expected concurrent callers to share a single upstream request")
 }
 
 func TestListMetricKeys(t *testing.T) {
@@ -1380,9 +1551,9 @@ func TestNewClient_EmptyHeaders(t *testing.T) {
 
 func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	customHeaders := map[string]string{
-		"Content-Type":            "text/plain",
-		"SIGNOZ-API-KEY":         "overridden-key",
-		"CF-Access-Client-Id":    "test-id",
+		"Content-Type":        "text/plain",
+		"SIGNOZ-API-KEY":      "overridden-key",
+		"CF-Access-Client-Id": "test-id",
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
