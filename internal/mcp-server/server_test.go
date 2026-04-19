@@ -916,3 +916,34 @@ func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
 		t.Errorf("signozURL = %q, want configured URL", captured.signozURL)
 	}
 }
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
+	cfg := &config.Config{MCPTestTokenEnabled: true}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if !captured.called {
+		t.Fatal("next handler was not called")
+	}
+	if captured.apiKey != "sk_xxx" {
+		t.Errorf("apiKey = %q, want sk_xxx", captured.apiKey)
+	}
+	if captured.authHeader != "SIGNOZ-API-KEY" {
+		t.Errorf("authHeader = %q, want SIGNOZ-API-KEY", captured.authHeader)
+	}
+	if captured.signozURL != "https://tenant.signoz.cloud" {
+		t.Errorf("signozURL = %q, want https://tenant.signoz.cloud", captured.signozURL)
+	}
+}
