@@ -325,13 +325,15 @@ MCP_SERVER_PORT=8000 \
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
-| `signoz_list_alerts` | List all active alerts |
+| `signoz_list_alerts` | List alerts with filtering and pagination |
 | `signoz_get_alert` | Get details of a specific alert rule |
 | `signoz_get_alert_history` | Get alert history timeline for a rule |
+| `signoz_create_alert` | Create an alert rule using v2 schema validation |
 | `signoz_list_dashboards` | List all dashboards with summaries |
 | `signoz_get_dashboard` | Get full dashboard configuration |
 | `signoz_create_dashboard` | Create a new dashboard |
 | `signoz_update_dashboard` | Update an existing dashboard |
+| `signoz_delete_dashboard` | Delete a dashboard by UUID |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_log_views` | List all saved log views |
@@ -342,6 +344,9 @@ MCP_SERVER_PORT=8000 \
 | `signoz_search_traces` | Search traces with flexible filtering |
 | `signoz_get_trace_details` | Get full trace with all spans |
 | `signoz_execute_builder_query` | Execute a raw Query Builder v5 query |
+| `signoz_list_notification_channels` | List notification channels |
+| `signoz_create_notification_channel` | Create a notification channel and send a test notification |
+| `signoz_update_notification_channel` | Update a notification channel and send a test notification |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
@@ -468,29 +473,7 @@ Gets full details of a specific log view by ID.
 
 - **Parameters**: `viewId` (required) - Log view ID
 
-#### `signoz_get_error_logs`
 
-Gets logs with ERROR or FATAL severity within a time range.
-
-- **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in milliseconds (defaults to now)
-  - `service` (optional) - Service name to filter by
-  - `limit` (optional) - Maximum number of logs to return (default: 100)
-
-#### `signoz_search_logs_by_service`
-
-Searches logs for a specific service within a time range.
-
-- **Parameters**:
-  - `service` (required) - Service name to search logs for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in milliseconds (defaults to now)
-  - `severity` (optional) - Log severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
-  - `searchText` (optional) - Text to search for in log body
-  - `limit` (optional) - Maximum number of logs to return (default: 100)
 
 #### `signoz_aggregate_logs`
 
@@ -545,20 +528,6 @@ Get possible values for a specific field key for a given signal.
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
   - `source` (optional) - Filter by source
 
-#### `signoz_search_traces_by_service`
-
-Searches traces for a specific service.
-
-- **Parameters**:
-  - `service` (required) - Service name to search traces for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in milliseconds (defaults to now)
-  - `operation` (optional) - Operation name to filter by
-  - `error` (optional) - Filter by error status (true/false)
-  - `minDuration` (optional) - Minimum duration in nanoseconds
-  - `maxDuration` (optional) - Maximum duration in nanoseconds
-  - `limit` (optional) - Maximum number of traces to return (default: 100)
 
 #### `signoz_aggregate_traces`
 
@@ -588,25 +557,47 @@ Gets trace information including all spans and metadata.
   - `end` (optional) - End time in milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
 
-#### `signoz_get_trace_error_analysis`
 
-Analyzes error patterns in traces.
+
+#### `signoz_create_alert`
+
+Create a new alert rule in SigNoz using the v2alpha1 schema.
+
+- **Parameters**: JSON payload matching the SigNoz alert rule schema.
+- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` before composing payloads.
+
+#### `signoz_delete_dashboard`
+
+Delete a dashboard by UUID.
+
+- **Parameters**: `uuid` (required) - Dashboard UUID to delete
+
+#### `signoz_list_notification_channels`
+
+List notification channels configured in SigNoz.
 
 - **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in milliseconds (defaults to now)
-  - `service` (optional) - Service name to filter by
+  - `limit` (optional) - Maximum number of channels to return (default: 50)
+  - `offset` (optional) - Offset for pagination (default: 0)
 
-#### `signoz_get_trace_span_hierarchy`
+#### `signoz_create_notification_channel`
 
-Gets trace span relationships and hierarchy.
+Create a notification channel and send a test notification.
 
 - **Parameters**:
-  - `traceId` (required) - Trace ID to get span hierarchy for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
-  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in milliseconds (defaults to now)
+  - `type` (required) - Channel type: slack, webhook, pagerduty, email, opsgenie, msteams
+  - `name` (required) - Channel name
+  - Type-specific fields (required by channel type), such as `slack_api_url`, `webhook_url`, `pagerduty_routing_key`, `email_to`, `opsgenie_api_key`, or `msteams_webhook_url`
+
+#### `signoz_update_notification_channel`
+
+Update an existing notification channel and send a test notification.
+
+- **Parameters**:
+  - `id` (required) - Notification channel ID
+  - `type` (required) - Channel type
+  - `name` (required) - Channel name
+  - Full channel configuration fields for the selected channel type
 
 #### `signoz_execute_builder_query`
 
@@ -657,9 +648,6 @@ For a detailed overview of request flow, component interactions, and design deci
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes and add tests
-4. Submit a pull request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, required docs/manifest sync for MCP changes, and PR checklist.
 
 **Made with ❤️ for the observability community**
