@@ -40,10 +40,12 @@ var ErrUnauthorized = errors.New("signoz credentials rejected")
 
 // AnalyticsIdentity is the identity tuple used for analytics attribution.
 // UserID holds the service-account ID for API-key sessions, or the SigNoz
-// user ID for auth-token sessions.
+// user ID for auth-token sessions. Name is the service-account name or the
+// user's displayName, respectively.
 type AnalyticsIdentity struct {
 	OrgID     string
 	UserID    string
+	Name      string
 	Email     string
 	Principal string
 }
@@ -188,9 +190,11 @@ func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity
 
 type analyticsIdentityResponse struct {
 	Data struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
-		OrgID string `json:"orgId"`
+		ID          string `json:"id"`
+		Email       string `json:"email"`
+		OrgID       string `json:"orgId"`
+		Name        string `json:"name"`        // service_accounts/me
+		DisplayName string `json:"displayName"` // users/me
 	} `json:"data"`
 }
 
@@ -206,9 +210,15 @@ func parseAnalyticsIdentity(body []byte, principal string) (*AnalyticsIdentity, 
 		return nil, fmt.Errorf("missing data.orgId")
 	}
 
+	name := resp.Data.Name
+	if name == "" {
+		name = resp.Data.DisplayName
+	}
+
 	return &AnalyticsIdentity{
 		OrgID:     resp.Data.OrgID,
 		UserID:    resp.Data.ID,
+		Name:      name,
 		Email:     resp.Data.Email,
 		Principal: principal,
 	}, nil
