@@ -998,3 +998,30 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
 		t.Errorf("body = %q, want 'bad base64' error", rec.Body.String())
 	}
 }
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_NonMCPBearerUnaffected(t *testing.T) {
+	cfg := &config.Config{
+		MCPTestTokenEnabled: true,
+		URL:                 "https://configured.signoz.cloud",
+	}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer plain_pat_token")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if captured.apiKey != "plain_pat_token" {
+		t.Errorf("apiKey = %q, want plain_pat_token (legacy path)", captured.apiKey)
+	}
+	if captured.signozURL != "https://configured.signoz.cloud" {
+		t.Errorf("signozURL = %q, want configured URL", captured.signozURL)
+	}
+}
