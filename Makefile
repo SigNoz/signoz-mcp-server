@@ -1,4 +1,6 @@
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 fmt:
 	@echo "🧹 Running go fmt..."
 	@go fmt ./...
@@ -15,7 +17,7 @@ goimports:
 
 build: fmt goimports
 	@echo "🚀 Building ..."
-	@go build $(GO_FLAGS) -o bin/signoz-mcp-server ./cmd/server/...
+	@go build $(GO_FLAGS) -ldflags "-X github.com/SigNoz/signoz-mcp-server/pkg/version.Version=$(VERSION)" -o bin/signoz-mcp-server ./cmd/server/...
 
 test:
 	@echo "🧪 Running all tests..."

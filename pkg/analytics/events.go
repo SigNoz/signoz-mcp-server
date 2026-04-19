@@ -14,7 +14,7 @@ const (
 )
 
 // camelCase for analytics destinations. OTel span attrs use the dotted
-// semantic-convention form and live in internal/telemetry.
+// semantic-convention form and live in pkg/otel.
 const (
 	AttrOrgID         = "orgId"
 	AttrPrincipal     = "principal"

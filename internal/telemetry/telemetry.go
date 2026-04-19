@@ -4,14 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/propagation"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
+
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 // InitTracer sets up an OTLP gRPC trace exporter and registers a global
@@ -20,28 +16,11 @@ import (
 //
 // It returns a shutdown function that should be deferred in main.
 func InitTracer(ctx context.Context) (func(context.Context) error, error) {
-	res, err := newResource(ctx)
+	res, err := otelpkg.NewResource(ctx, version.Version)
 	if err != nil {
 		return nil, err
 	}
-
-	traceExporter, err := otlptracegrpc.New(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(traceExporter),
-		sdktrace.WithResource(res),
-	)
-
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
-
-	return tp.Shutdown, nil
+	return otelpkg.InitTracerProvider(ctx, res)
 }
 
 // InitMeterProvider sets up an OTLP gRPC metric exporter and registers a
@@ -50,24 +29,11 @@ func InitTracer(ctx context.Context) (func(context.Context) error, error) {
 //
 // It returns a shutdown function that should be deferred in main.
 func InitMeterProvider(ctx context.Context) (func(context.Context) error, error) {
-	res, err := newResource(ctx)
+	res, err := otelpkg.NewResource(ctx, version.Version)
 	if err != nil {
 		return nil, err
 	}
-
-	metricExporter, err := otlpmetricgrpc.New(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	mp := sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)),
-		sdkmetric.WithResource(res),
-	)
-
-	otel.SetMeterProvider(mp)
-
-	return mp.Shutdown, nil
+	return otelpkg.InitMeterProvider(ctx, res)
 }
 
 type LogLevel string
@@ -92,13 +58,4 @@ func NewLogger(level LogLevel) (*zap.Logger, error) {
 // LoggerWithURL returns a child logger enriched with the given URL field.
 func LoggerWithURL(input *zap.Logger, url string) *zap.Logger {
 	return input.With(zap.String("mcp.tenant_url", url))
-}
-
-func newResource(ctx context.Context) (*resource.Resource, error) {
-	return resource.New(ctx,
-		resource.WithFromEnv(),
-		resource.WithHost(),
-		resource.WithOS(),
-		resource.WithProcess(),
-	)
 }

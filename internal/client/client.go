@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -515,7 +515,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 	s.requestLogger(ctx).Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
-		span.SetAttributes(telemetry.MCPQueryPayloadKey.String(string(body)))
+		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }

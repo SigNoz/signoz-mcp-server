@@ -12,6 +12,8 @@ builds:
   - id: signoz
     binary: bin/signoz-mcp-server
     main: ./cmd/server/
+    ldflags:
+      - -s -w -X github.com/SigNoz/signoz-mcp-server/pkg/version.Version={{.Version}}
     goos:
       - linux
       - darwin

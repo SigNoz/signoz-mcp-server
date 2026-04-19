@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -15,9 +21,14 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/segmentanalytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
@@ -39,37 +50,32 @@ func main() {
 		zap.String("log_level", cfg.LogLevel),
 		zap.String("transport_mode", cfg.TransportMode))
 
-	// Initialize OpenTelemetry tracer. Configuration is driven by OTEL_*
-	// environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, etc.).
-	shutdownTracer, err := telemetry.InitTracer(context.Background())
+	res, err := otelpkg.NewResource(context.Background(), version.Version)
+	if err != nil {
+		log.Error("Failed to initialize OpenTelemetry resource", zap.Error(err))
+		os.Exit(1)
+	}
+
+	shutdownTracer, err := otelpkg.InitTracerProvider(context.Background(), res)
 	if err != nil {
 		log.Warn("Failed to initialize OpenTelemetry tracer, continuing without tracing", zap.Error(err))
 	} else {
-		defer func() {
-			if err := shutdownTracer(context.Background()); err != nil {
-				log.Error("Failed to shutdown tracer provider", zap.Error(err))
-			}
-		}()
 		log.Info("OpenTelemetry tracer initialized successfully")
 	}
 
-	// Initialize OpenTelemetry meter provider for exporting HTTP metrics
-	// (request duration, size, etc.) recorded by otelhttp middleware.
-	shutdownMeter, err := telemetry.InitMeterProvider(context.Background())
+	shutdownMeter, err := otelpkg.InitMeterProvider(context.Background(), res)
 	if err != nil {
 		log.Warn("Failed to initialize OpenTelemetry meter provider, continuing without metrics export", zap.Error(err))
 	} else {
-		defer func() {
-			if err := shutdownMeter(context.Background()); err != nil {
-				log.Error("Failed to shutdown meter provider", zap.Error(err))
-			}
-		}()
 		log.Info("OpenTelemetry meter provider initialized successfully")
+	}
+
+	if err := otelruntime.Start(); err != nil {
+		log.Warn("Failed to initialize OpenTelemetry runtime metrics", zap.Error(err))
 	}
 
 	var analyticsInstance analytics.Analytics
 	if cfg.AnalyticsEnabled && cfg.SegmentKey != "" {
-		var err error
 		analyticsInstance, err = segmentanalytics.New(log, analytics.Config{
 			Enabled: true,
 			Segment: analytics.SegmentConfig{Key: cfg.SegmentKey},
@@ -81,17 +87,65 @@ func main() {
 	} else {
 		analyticsInstance = noopanalytics.New()
 	}
-	defer func() {
-		if err := analyticsInstance.Stop(context.Background()); err != nil {
-			log.Error("Failed to stop analytics", zap.Error(err))
-		}
-	}()
 
 	handler := tools.NewHandler(log, cfg)
 
 	dashboard.InitClickhouseSchema()
 
-	if err := mcpserver.NewMCPServer(log, handler, cfg, analyticsInstance).Start(); err != nil {
-		log.Fatal(fmt.Sprintf("Failed to start server: %v", err))
+	srv := mcpserver.NewMCPServer(log, handler, cfg, analyticsInstance)
+
+	runGroup, runCtx := errgroup.WithContext(ctx)
+	runGroup.Go(func() error {
+		return srv.Run(runCtx)
+	})
+
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- runGroup.Wait()
+	}()
+
+	var runErr error
+	select {
+	case runErr = <-serverErrCh:
+	case <-ctx.Done():
+		log.Info("Received shutdown signal")
+	}
+
+	shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var shutdownErr error
+	if err := srv.Shutdown(shutCtx); err != nil {
+		log.Error("Failed to shutdown server", zap.Error(err))
+		shutdownErr = errors.Join(shutdownErr, err)
+	}
+	if err := srv.WaitForAnalytics(shutCtx); err != nil {
+		log.Error("Failed while waiting for analytics dispatches", zap.Error(err))
+		shutdownErr = errors.Join(shutdownErr, err)
+	}
+	if err := analyticsInstance.Stop(shutCtx); err != nil {
+		log.Error("Failed to stop analytics", zap.Error(err))
+		shutdownErr = errors.Join(shutdownErr, err)
+	}
+	if shutdownMeter != nil {
+		if err := shutdownMeter(shutCtx); err != nil {
+			log.Error("Failed to shutdown meter provider", zap.Error(err))
+			shutdownErr = errors.Join(shutdownErr, err)
+		}
+	}
+	if shutdownTracer != nil {
+		if err := shutdownTracer(shutCtx); err != nil {
+			log.Error("Failed to shutdown tracer provider", zap.Error(err))
+			shutdownErr = errors.Join(shutdownErr, err)
+		}
+	}
+
+	if runErr == nil {
+		runErr = <-serverErrCh
+	}
+
+	if runErr != nil || shutdownErr != nil {
+		log.Error("Server exited with errors", zap.Error(errors.Join(runErr, shutdownErr)))
+		os.Exit(1)
 	}
 }
