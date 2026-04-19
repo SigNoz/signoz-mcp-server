@@ -3,11 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -85,8 +86,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListLogViews(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	log.Debug("Tool called: signoz_list_log_views")
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_log_views")
 	limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
@@ -95,19 +95,19 @@ func (h *Handler) handleListLogViews(ctx context.Context, req mcp.CallToolReques
 	}
 	result, err := client.ListLogViews(ctx)
 	if err != nil {
-		log.Error("Failed to list log views", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to list log views", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	var logViews map[string]any
 	if err := json.Unmarshal(result, &logViews); err != nil {
-		log.Error("Failed to parse log views response", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to parse log views response", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
 	data, ok := logViews["data"].([]any)
 	if !ok {
-		log.Error("Invalid log views response format", zap.Any("data", logViews["data"]))
+		h.logger.ErrorContext(ctx, "Invalid log views response format", slog.Any("data", logViews["data"]))
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 
@@ -116,7 +116,7 @@ func (h *Handler) handleListLogViews(ctx context.Context, req mcp.CallToolReques
 
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
-		log.Error("Failed to wrap log views with pagination", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to wrap log views with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
@@ -124,32 +124,30 @@ func (h *Handler) handleListLogViews(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetLogView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	viewID, ok := req.Params.Arguments.(map[string]any)["viewId"].(string)
 	if !ok {
-		log.Warn("Invalid viewId parameter type", zap.Any("type", req.Params.Arguments))
+		h.logger.WarnContext(ctx, "Invalid viewId parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "viewId" must be a string. Example: {"viewId": "error-logs-view-123"}`), nil
 	}
 	if viewID == "" {
-		log.Warn("Empty viewId parameter")
+		h.logger.WarnContext(ctx, "Empty viewId parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use signoz_list_log_views tool to see available log views.`), nil
 	}
 
-	log.Debug("Tool called: signoz_get_log_view", zap.String("viewId", viewID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_log_view", slog.String("viewId", viewID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	data, err := client.GetLogView(ctx, viewID)
 	if err != nil {
-		log.Error("Failed to get log view", zap.String("viewId", viewID), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get log view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
 
 func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -169,13 +167,13 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
-		log.Error("Failed to marshal aggregate query payload", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to marshal aggregate query payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 	}
 
-	log.Debug("Tool called: signoz_aggregate_logs",
-		zap.String("aggregation", reqData.AggregationExpr),
-		zap.String("filter", reqData.FilterExpression))
+	h.logger.DebugContext(ctx, "Tool called: signoz_aggregate_logs",
+		slog.String("aggregation", reqData.AggregationExpr),
+		slog.String("filter", reqData.FilterExpression))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -183,7 +181,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		log.Error("Failed to aggregate logs", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to aggregate logs", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -191,7 +189,6 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -209,12 +206,12 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
-		log.Error("Failed to marshal search query payload", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to marshal search query payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 	}
 
-	log.Debug("Tool called: signoz_search_logs",
-		zap.String("filter", reqData.FilterExpression))
+	h.logger.DebugContext(ctx, "Tool called: signoz_search_logs",
+		slog.String("filter", reqData.FilterExpression))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -222,7 +219,7 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		log.Error("Failed to search logs", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to search logs", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
@@ -27,7 +29,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
 // Streamable HTTP only fires OnUnregisterSession for the long-lived GET
@@ -39,7 +40,7 @@ const (
 )
 
 type MCPServer struct {
-	logger         *zap.Logger
+	logger         *slog.Logger
 	handler        *tools.Handler
 	config         *config.Config
 	analytics      analytics.Analytics
@@ -144,8 +145,7 @@ func (m *MCPServer) identifyAsync(ctx context.Context, traits map[string]any) {
 	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
 		identity, err := m.resolveIdentity(detachedCtx)
 		if err != nil {
-			m.logger.Warn("analytics identity resolution failed; skipping identify",
-				append(m.analyticsLogFields(detachedCtx), zap.Error(err))...)
+			m.logger.WarnContext(detachedCtx, "analytics identity resolution failed; skipping identify", logpkg.ErrAttr(err))
 			return
 		}
 
@@ -162,8 +162,9 @@ func (m *MCPServer) trackEventAsync(ctx context.Context, event string, propertie
 	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
 		identity, err := m.resolveIdentity(detachedCtx)
 		if err != nil {
-			m.logger.Warn("analytics identity resolution failed; skipping track",
-				append(m.analyticsLogFields(detachedCtx), zap.String("event", event), zap.Error(err))...)
+			m.logger.WarnContext(detachedCtx, "analytics identity resolution failed; skipping track",
+				slog.String("event", event),
+				logpkg.ErrAttr(err))
 			return
 		}
 
@@ -183,8 +184,9 @@ func (m *MCPServer) identifyAndTrackAsync(ctx context.Context, event string, tra
 	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
 		identity, err := m.resolveIdentity(detachedCtx)
 		if err != nil {
-			m.logger.Warn("analytics identity resolution failed; skipping identify+track",
-				append(m.analyticsLogFields(detachedCtx), zap.String("event", event), zap.Error(err))...)
+			m.logger.WarnContext(detachedCtx, "analytics identity resolution failed; skipping identify+track",
+				slog.String("event", event),
+				logpkg.ErrAttr(err))
 			return
 		}
 
@@ -205,17 +207,6 @@ func (m *MCPServer) trackOAuthEvent(ctx context.Context, event, apiKey, signozUR
 		ctx = util.SetSigNozURL(ctx, signozURL)
 	}
 	m.trackEventAsync(ctx, event, props)
-}
-
-func (m *MCPServer) analyticsLogFields(ctx context.Context) []zap.Field {
-	fields := []zap.Field{}
-	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-		fields = append(fields, zap.String("mcp.session.id", sid))
-	}
-	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-		fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-	}
-	return fields
 }
 
 // detachedAnalyticsContext roots the async goroutine off context.Background
@@ -256,7 +247,7 @@ func (m *MCPServer) dispatchAnalytics(parent context.Context, fn func(context.Co
 	}()
 }
 
-func NewMCPServer(log *zap.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {
+func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {
 	return &MCPServer{
 		logger:         log,
 		handler:        handler,
@@ -276,9 +267,9 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
 	)
 
-	m.logger.Info("Starting SigNoz MCP Server",
-		zap.String("server_name", "SigNozMCPServer"),
-		zap.String("transport_mode", m.config.TransportMode))
+	m.logger.InfoContext(ctx, "Starting SigNoz MCP Server",
+		slog.String("server_name", "SigNozMCPServer"),
+		slog.String("transport_mode", m.config.TransportMode))
 
 	// Register all handlers
 	m.handler.RegisterMetricsHandlers(s)
@@ -295,7 +286,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	// Register prompts
 	prompts.RegisterPrompts(s.AddPrompt)
 
-	m.logger.Info("All handlers registered successfully")
+	m.logger.InfoContext(ctx, "All handlers registered successfully")
 
 	if m.config.TransportMode == "http" {
 		m.httpSrv = m.buildHTTP(s)
@@ -338,22 +329,18 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			otelpkg.GenAISystemKey.String(otelpkg.GenAISystemMCP),
 			otelpkg.MCPMethodKey.String(string(method)),
 		)
-		fields := []zap.Field{zap.String("mcp.method", string(method))}
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			span.SetAttributes(otelpkg.MCPTenantURLKey.String(signozURL))
-			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
 		}
-		m.logger.Debug("mcp request", fields...)
+		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method", string(method)))
 	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 		span := trace.SpanFromContext(ctx)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		fields := []zap.Field{zap.String("mcp.method", string(method)), zap.Error(err)}
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-		}
-		m.logger.Error("mcp error", fields...)
+		m.logger.ErrorContext(ctx, "mcp error",
+			slog.String("mcp.method", string(method)),
+			logpkg.ErrAttr(err))
 	})
 	// Analytics: track session registration after successful initialize.
 	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
@@ -382,11 +369,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		}
 	})
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
-		fields := []zap.Field{}
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-		}
-		m.logger.Info("mcp session registered", fields...)
+		m.logger.InfoContext(ctx, "mcp session registered")
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
@@ -398,11 +381,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
 		sessionID := session.SessionID()
-		fields := []zap.Field{}
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-		}
-		m.logger.Info("mcp session unregistered", fields...)
+		m.logger.InfoContext(ctx, "mcp session unregistered")
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			props := map[string]any{
@@ -489,25 +468,7 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				span.SetAttributes(otelpkg.MCPTenantURLKey.String(signozURL))
 			}
 
-			// Add trace_id and span_id to log fields for correlation.
-			traceID := span.SpanContext().TraceID().String()
-			spanID := span.SpanContext().SpanID().String()
-			fields := []zap.Field{
-				zap.String("gen_ai.tool.name", req.Params.Name),
-				zap.String("trace_id", traceID),
-				zap.String("span_id", spanID),
-			}
-			if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-				fields = append(fields, zap.String("mcp.session.id", sid))
-			}
-			if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-				fields = append(fields, zap.String("mcp.search_context", sc))
-			}
-			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-				fields = append(fields, zap.String("mcp.tenant_url", signozURL))
-			}
-
-			m.logger.Debug("tool call started", fields...)
+			m.logger.DebugContext(ctx, "tool call started", slog.String("gen_ai.tool.name", req.Params.Name))
 			result, err := next(ctx, req)
 
 			// Determine error status: either a Go error or an MCP tool result error.
@@ -522,10 +483,10 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				span.SetStatus(codes.Error, errMsg)
 			}
 
-			m.logger.Debug("tool call finished",
-				append(fields,
-					zap.Duration("duration", time.Since(start)),
-					zap.Bool("mcp.tool.is_error", isErr))...)
+			m.logger.DebugContext(ctx, "tool call finished",
+				slog.String("gen_ai.tool.name", req.Params.Name),
+				slog.Duration("duration", time.Since(start)),
+				slog.Bool("mcp.tool.is_error", isErr))
 
 			// Analytics: track tool call
 			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -564,7 +525,7 @@ func extractToolErrorMessage(result *mcp.CallToolResult) string {
 }
 
 func (m *MCPServer) runStdio(ctx context.Context, s *server.MCPServer) error {
-	m.logger.Info("MCP Server running in stdio mode")
+	m.logger.InfoContext(ctx, "MCP Server running in stdio mode")
 
 	// Inject env-configured credentials into every request context
 	// so that GetClient works uniformly across both transports.
@@ -611,7 +572,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-			m.logger.Debug("Using SIGNOZ-API-KEY header for auth")
+			m.logger.DebugContext(ctx, "Using SIGNOZ-API-KEY header for auth")
 		} else if authHeader != "" {
 			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 			if customURL != "" {
@@ -620,13 +581,13 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					apiKey = "Bearer " + token
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "Authorization")
-					m.logger.Debug("Using JWT token authentication via Authorization header", zap.String("mcp.tenant_url", customURL))
+					m.logger.DebugContext(ctx, "Using JWT token authentication via Authorization header", slog.String("mcp.tenant_url", customURL))
 				} else {
 					// PAT token — forward via SIGNOZ-API-KEY
 					apiKey = token
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header", zap.String("mcp.tenant_url", customURL))
+					m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header", slog.String("mcp.tenant_url", customURL))
 				}
 			} else if m.config.OAuthEnabled {
 				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
@@ -637,7 +598,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					usedOAuthToken = true
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.Debug("OAuth access token extracted from Authorization header", zap.String("mcp.tenant_url", signozURL))
+					m.logger.DebugContext(ctx, "OAuth access token extracted from Authorization header", slog.String("mcp.tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
 					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
 					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
@@ -647,7 +608,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					// carries an explicit SigNoz URL (header or config). Otherwise a
 					// stale bearer token can mask the OAuth challenge flow.
 					if customURL == "" && m.config.URL == "" {
-						m.logger.Warn("Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
+						m.logger.WarnContext(ctx, "Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
 						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
 						http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
 						return
@@ -655,13 +616,13 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					apiKey = token
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.Debug("Bearer token did not match OAuth token format, falling back to raw API key")
+					m.logger.DebugContext(ctx, "Bearer token did not match OAuth token format, falling back to raw API key")
 				}
 			} else {
 				apiKey = token
 				ctx = util.SetAPIKey(ctx, apiKey)
 				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-				m.logger.Debug("Using API KEY token authentication via SIGNOZ-API-KEY header")
+				m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header")
 			}
 
 		} else if m.config.APIKey != "" {
@@ -669,9 +630,9 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			apiKey = m.config.APIKey
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-			m.logger.Debug("Using API key from environment config")
+			m.logger.DebugContext(ctx, "Using API key from environment config")
 		} else {
-			m.logger.Warn("No API key found in headers or environment")
+			m.logger.WarnContext(ctx, "No API key found in headers or environment")
 			if m.config.OAuthEnabled {
 				m.setOAuthChallenge(w, "")
 			}
@@ -691,18 +652,18 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			trimmed := strings.TrimSuffix(customURL, "/")
 			normalized, err := util.NormalizeSigNozURL(trimmed)
 			if err != nil {
-				m.logger.Warn("Invalid X-SigNoz-URL header",
-					zap.String("url", customURL), zap.Error(err))
+				m.logger.WarnContext(ctx, "Invalid X-SigNoz-URL header",
+					slog.String("url", customURL), logpkg.ErrAttr(err))
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
 			signozURL = normalized
-			m.logger.Debug("Using URL from X-SigNoz-URL header", zap.String("mcp.tenant_url", signozURL))
+			m.logger.DebugContext(ctx, "Using URL from X-SigNoz-URL header", slog.String("mcp.tenant_url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
-			m.logger.Debug("Using URL from environment config", zap.String("mcp.tenant_url", signozURL))
+			m.logger.DebugContext(ctx, "Using URL from environment config", slog.String("mcp.tenant_url", signozURL))
 		} else {
-			m.logger.Warn("No SigNoz URL found in X-SigNoz-URL header or environment")
+			m.logger.WarnContext(ctx, "No SigNoz URL found in X-SigNoz-URL header or environment")
 			http.Error(w, "SigNoz instance URL is required", http.StatusBadRequest)
 			return
 		}
@@ -742,8 +703,8 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	mux.Handle("/mcp", m.authMiddleware(httpServer))
 
 	m.logger.Info("Listening for MCP clients",
-		zap.String("addr", addr),
-		zap.String("mcp_endpoint", "/mcp"))
+		slog.String("addr", addr),
+		slog.String("mcp_endpoint", "/mcp"))
 
 	// Wrap the entire mux with OpenTelemetry HTTP instrumentation to
 	// automatically create spans for every inbound request.

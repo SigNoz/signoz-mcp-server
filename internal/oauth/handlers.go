@@ -9,16 +9,16 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
@@ -35,7 +35,7 @@ var authorizeTemplateFS embed.FS
 var authorizePageTemplate = template.Must(template.ParseFS(authorizeTemplateFS, "static/authorize.html"))
 
 type Handler struct {
-	logger            *zap.Logger
+	logger            *slog.Logger
 	config            *config.Config
 	tokenSecret       []byte
 	authorizeTemplate *template.Template
@@ -78,7 +78,7 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func NewHandler(logger *zap.Logger, cfg *config.Config, emitEvent AnalyticsEmitter) *Handler {
+func NewHandler(logger *slog.Logger, cfg *config.Config, emitEvent AnalyticsEmitter) *Handler {
 	return &Handler{
 		logger:            logger,
 		config:            cfg,
@@ -320,7 +320,7 @@ func (h *Handler) renderAuthorizePage(w http.ResponseWriter, status int, data au
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := h.authorizeTemplate.Execute(w, data); err != nil {
-		h.logger.Error("failed to render authorization page", zap.Error(err))
+		h.logger.ErrorContext(context.Background(), "failed to render authorization page", logpkg.ErrAttr(err))
 	}
 }
 
@@ -485,7 +485,7 @@ func (h *Handler) writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		h.logger.Error("failed to write JSON response", zap.Error(err))
+		h.logger.ErrorContext(context.Background(), "failed to write JSON response", logpkg.ErrAttr(err))
 	}
 }
 

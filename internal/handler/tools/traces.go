@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -83,7 +84,6 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -103,13 +103,13 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
-		log.Error("Failed to marshal aggregate traces query payload", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to marshal aggregate traces query payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 	}
 
-	log.Debug("Tool called: signoz_aggregate_traces",
-		zap.String("aggregation", reqData.AggregationExpr),
-		zap.String("filter", reqData.FilterExpression))
+	h.logger.DebugContext(ctx, "Tool called: signoz_aggregate_traces",
+		slog.String("aggregation", reqData.AggregationExpr),
+		slog.String("filter", reqData.FilterExpression))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -117,7 +117,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		log.Error("Failed to aggregate traces", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to aggregate traces", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -125,7 +125,6 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
@@ -140,12 +139,12 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
-		log.Error("Failed to marshal query payload", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to marshal query payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
 	}
 
-	log.Debug("Tool called: signoz_search_traces",
-		zap.String("filter", reqData.FilterExpression))
+	h.logger.DebugContext(ctx, "Tool called: signoz_search_traces",
+		slog.String("filter", reqData.FilterExpression))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -153,7 +152,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		log.Error("Failed to search traces", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to search traces", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -161,7 +160,6 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args := req.Params.Arguments.(map[string]any)
 
 	traceID, ok := args["traceId"].(string)
@@ -184,14 +182,14 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
 	}
 
-	log.Debug("Tool called: signoz_get_trace_details", zap.String("traceId", traceID), zap.Bool("includeSpans", includeSpans), zap.String("start", start), zap.String("end", end))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {
-		log.Error("Failed to get trace details", zap.String("traceId", traceID), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get trace details", slog.String("traceId", traceID), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

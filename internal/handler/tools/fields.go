@@ -2,10 +2,12 @@ package tools
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
+
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
@@ -42,7 +44,6 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format"), nil
@@ -62,21 +63,20 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 	fieldDataType, _ := args["fieldDataType"].(string)
 	source, _ := args["source"].(string)
 
-	log.Debug("Tool called: signoz_get_field_keys", zap.String("signal", signal), zap.String("searchText", searchText))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_field_keys", slog.String("signal", signal), slog.String("searchText", searchText))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	result, err := client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
 	if err != nil {
-		log.Error("Failed to get field keys", zap.String("signal", signal), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get field keys", slog.String("signal", signal), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }
 
 func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format"), nil
@@ -99,14 +99,14 @@ func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequ
 	metricName, _ := args["metricName"].(string)
 	source, _ := args["source"].(string)
 
-	log.Debug("Tool called: signoz_get_field_values", zap.String("signal", signal), zap.String("name", name))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_field_values", slog.String("signal", signal), slog.String("name", name))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	result, err := client.GetFieldValues(ctx, signal, name, metricName, searchText, source)
 	if err != nil {
-		log.Error("Failed to get field values", zap.String("signal", signal), zap.String("name", name), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get field values", slog.String("signal", signal), slog.String("name", name), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

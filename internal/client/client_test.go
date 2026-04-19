@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -90,7 +90,7 @@ func TestGetAlertByRuleID(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -203,7 +203,7 @@ func TestValidateCredentials(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			err := client.ValidateCredentials(context.Background())
@@ -328,7 +328,7 @@ func TestGetAnalyticsIdentity(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			apiKey := "test-api-key"
 			if tt.authHeaderName == "Authorization" {
 				apiKey = "Bearer jwt-token"
@@ -359,7 +359,7 @@ func TestGetAnalyticsIdentity_CachesResult(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
 
 	for i := 0; i < 5; i++ {
@@ -381,7 +381,7 @@ func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
 
 	const callers = 10
@@ -461,7 +461,7 @@ func TestListMetricKeys(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -581,7 +581,7 @@ func TestListDashboards(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -710,7 +710,7 @@ func TestListServices(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -896,7 +896,7 @@ func TestGetAlertHistory(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -1061,7 +1061,7 @@ func TestQueryBuilderV5(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -1117,7 +1117,7 @@ func TestCreateDashboard(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	d := types.Dashboard{
@@ -1155,7 +1155,7 @@ func TestUpdateDashboard(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	d := types.Dashboard{
@@ -1178,7 +1178,7 @@ func TestDeleteDashboard(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	err := client.DeleteDashboard(context.Background(), "dash-456")
@@ -1266,7 +1266,7 @@ func TestGetFieldKeys(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -1367,7 +1367,7 @@ func TestGetFieldValues(t *testing.T) {
 			}))
 			defer server.Close()
 
-			logger, _ := zap.NewDevelopment()
+			logger := logpkg.New("debug")
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
@@ -1403,7 +1403,7 @@ func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
@@ -1421,7 +1421,7 @@ func TestDoRequest_RetriesExhausted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
@@ -1438,7 +1438,7 @@ func TestDoRequest_ContextCancelled(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1457,7 +1457,7 @@ func TestDoRequest_NoRetryOn4xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	_, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
@@ -1480,7 +1480,7 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
 
 	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
@@ -1509,7 +1509,7 @@ func TestNewClient_SetsCustomHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
@@ -1527,7 +1527,7 @@ func TestNewClient_NilHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
@@ -1544,7 +1544,7 @@ func TestNewClient_EmptyHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{})
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
@@ -1571,7 +1571,7 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger, _ := zap.NewDevelopment()
+	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})

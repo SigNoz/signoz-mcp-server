@@ -417,10 +417,10 @@ func TestHandleCreateNotificationChannel_MSTeams(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
-		"type":               "msteams",
-		"name":               "my-teams",
+		"type":                "msteams",
+		"name":                "my-teams",
 		"msteams_webhook_url": "https://outlook.webhook.office.com/webhookb2/xxx",
-		"msteams_title":      "Alert",
+		"msteams_title":       "Alert",
 	})
 
 	result, err := h.handleCreateNotificationChannel(testCtx(), req)

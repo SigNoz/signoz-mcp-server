@@ -4,23 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 var validChannelTypes = map[string]bool{
-	"slack":    true,
-	"webhook":  true,
+	"slack":     true,
+	"webhook":   true,
 	"pagerduty": true,
-	"email":    true,
-	"opsgenie": true,
-	"msteams":  true,
+	"email":     true,
+	"opsgenie":  true,
+	"msteams":   true,
 }
 
 func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
@@ -163,8 +164,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	log.Debug("Tool called: signoz_list_notification_channels")
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_notification_channels")
 	limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
@@ -174,19 +174,19 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 
 	result, err := client.ListNotificationChannels(ctx)
 	if err != nil {
-		log.Error("Failed to list notification channels", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to list notification channels", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	var response map[string]any
 	if err := json.Unmarshal(result, &response); err != nil {
-		log.Error("Failed to parse notification channels response", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to parse notification channels response", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
 	data, ok := response["data"].([]any)
 	if !ok {
-		log.Error("Invalid notification channels response format", zap.Any("data", response["data"]))
+		h.logger.ErrorContext(ctx, "Invalid notification channels response format", slog.Any("data", response["data"]))
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 
@@ -219,7 +219,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
-		log.Error("Failed to wrap notification channels with pagination", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to wrap notification channels with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
@@ -227,8 +227,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	log.Debug("Tool called: signoz_create_notification_channel")
+	h.logger.DebugContext(ctx, "Tool called: signoz_create_notification_channel")
 
 	args := req.Params.Arguments.(map[string]any)
 
@@ -258,7 +257,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	// Build receiver JSON based on type
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
-		log.Warn("Failed to build receiver JSON", zap.Error(err))
+		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -270,11 +269,11 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	// Step 1: Create the channel
 	createResp, err := client.CreateNotificationChannel(ctx, receiverJSON)
 	if err != nil {
-		log.Error("Failed to create notification channel", zap.String("type", channelType), zap.String("name", name), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to create notification channel", slog.String("type", channelType), slog.String("name", name), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create notification channel: %s", err.Error())), nil
 	}
 
-	log.Info("Notification channel created", zap.String("type", channelType), zap.String("name", name))
+	h.logger.InfoContext(ctx, "Notification channel created", slog.String("type", channelType), slog.String("name", name))
 
 	// Step 2: Test the channel
 	testErr := client.TestNotificationChannel(ctx, receiverJSON)
@@ -285,14 +284,14 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	}
 
 	if testErr != nil {
-		log.Warn("Test notification failed", zap.String("name", name), zap.Error(testErr))
+		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
 		result["test_notification"] = map[string]any{
 			"success": false,
 			"error":   testErr.Error(),
 			"message": fmt.Sprintf("Channel '%s' was created but the test notification failed: %s. Please verify the channel configuration.", name, testErr.Error()),
 		}
 	} else {
-		log.Info("Test notification sent successfully", zap.String("name", name))
+		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{
 			"success": true,
 			"message": fmt.Sprintf("Test notification sent successfully to channel '%s'. The channel is working correctly.", name),
@@ -308,8 +307,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	log.Debug("Tool called: signoz_update_notification_channel")
+	h.logger.DebugContext(ctx, "Tool called: signoz_update_notification_channel")
 
 	args := req.Params.Arguments.(map[string]any)
 
@@ -350,7 +348,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// Build receiver JSON based on type
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
-		log.Warn("Failed to build receiver JSON", zap.Error(err))
+		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -373,11 +371,11 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// Step 1: Update the channel
 	updateResp, err := client.UpdateNotificationChannel(ctx, id, receiverJSON)
 	if err != nil {
-		log.Error("Failed to update notification channel", zap.String("type", channelType), zap.String("name", name), zap.String("id", id), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to update notification channel", slog.String("type", channelType), slog.String("name", name), slog.String("id", id), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to update notification channel: %s", err.Error())), nil
 	}
 
-	log.Info("Notification channel updated", zap.String("type", channelType), zap.String("name", name), zap.String("id", id))
+	h.logger.InfoContext(ctx, "Notification channel updated", slog.String("type", channelType), slog.String("name", name), slog.String("id", id))
 
 	// Step 2: Test the channel
 	testErr := client.TestNotificationChannel(ctx, receiverJSON)
@@ -388,14 +386,14 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	}
 
 	if testErr != nil {
-		log.Warn("Test notification failed", zap.String("name", name), zap.Error(testErr))
+		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
 		result["test_notification"] = map[string]any{
 			"success": false,
 			"error":   testErr.Error(),
 			"message": fmt.Sprintf("Channel '%s' was updated but the test notification failed: %s. Please verify the channel configuration.", name, testErr.Error()),
 		}
 	} else {
-		log.Info("Test notification sent successfully", zap.String("name", name))
+		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{
 			"success": true,
 			"message": fmt.Sprintf("Test notification sent successfully to channel '%s'. The channel is working correctly.", name),

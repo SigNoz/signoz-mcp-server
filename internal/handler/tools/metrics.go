@@ -2,12 +2,13 @@ package tools
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
 )
 
@@ -82,7 +83,6 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args := req.Params.Arguments.(map[string]any)
 
 	searchText, _ := args["searchText"].(string)
@@ -110,14 +110,14 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 		}
 	}
 
-	log.Debug("Tool called: signoz_list_metrics", zap.String("searchText", searchText))
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_metrics", slog.String("searchText", searchText))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	result, err := client.ListMetrics(ctx, start, end, limit, searchText, source)
 	if err != nil {
-		log.Error("Failed to list metrics", zap.String("searchText", searchText), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to list metrics", slog.String("searchText", searchText), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

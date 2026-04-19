@@ -2,6 +2,7 @@ package mcp_server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpgoserver "github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -22,6 +23,46 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types/analyticstypes"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
+
+type testServer struct {
+	URL   string
+	close func()
+}
+
+func (s *testServer) Close() {
+	if s != nil && s.close != nil {
+		s.close()
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func newTestServer(t *testing.T, handler http.Handler) *testServer {
+	t.Helper()
+
+	host := fmt.Sprintf("signoz-test-%d.invalid", time.Now().UnixNano())
+	prev := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != host {
+			return nil, fmt.Errorf("unexpected test host %q", req.URL.Host)
+		}
+
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder.Result(), nil
+	})
+
+	return &testServer{
+		URL: "http://" + host,
+		close: func() {
+			http.DefaultTransport = prev
+		},
+	}
+}
 
 type analyticsCall struct {
 	groupID string
@@ -243,7 +284,7 @@ func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
 		t.Fatalf("EncryptToken() error = %v", err)
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	// req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
@@ -275,7 +316,7 @@ func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer raw-api-key")
 	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
@@ -307,7 +348,7 @@ func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer stale-token")
 
@@ -332,7 +373,7 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 		OAuthIssuerURL: "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: zap.NewNop(), config: cfg, analytics: noopanalytics.New()}
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
@@ -352,7 +393,7 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 
 func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	var requests atomic.Int32
-	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.URL.Path != "/api/v1/service_accounts/me" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v1/service_accounts/me")
@@ -371,9 +412,9 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 		ClientCacheSize: 1,
 		ClientCacheTTL:  time.Minute,
 	}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -422,7 +463,7 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 
 func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	var requests atomic.Int32
-	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.URL.Path != "/api/v2/users/me" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v2/users/me")
@@ -440,9 +481,9 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 		ClientCacheSize: 1,
 		ClientCacheTTL:  time.Minute,
 	}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -523,7 +564,7 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 
 func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 	var requests atomic.Int32
-	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		t.Fatalf("unexpected identity request: %s", r.URL.Path)
 	}))
@@ -535,9 +576,9 @@ func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 		ClientCacheSize: 1,
 		ClientCacheTTL:  time.Minute,
 	}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: false}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -583,7 +624,7 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 	var requests atomic.Int32
 	identityStarted := make(chan struct{}, 1)
 
-	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		select {
 		case identityStarted <- struct{}{}:
@@ -600,9 +641,9 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 		ClientCacheSize: 1,
 		ClientCacheTTL:  time.Minute,
 	}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 
 	ctx := context.Background()
 	ctx = util.SetAPIKey(ctx, "Bearer jwt-token")
@@ -653,9 +694,9 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 }
 
 // meEndpointServer stubs the SigNoz /me endpoint with a stable identity.
-func meEndpointServer(t *testing.T) *httptest.Server {
+func meEndpointServer(t *testing.T) *testServer {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","email":"svc@example.com","orgId":"org-1"}}`))
 	}))
@@ -671,9 +712,9 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 		ClientCacheSize: 1,
 		ClientCacheTTL:  time.Minute,
 	}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -728,9 +769,9 @@ func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
 	defer sigNoz.Close()
 
 	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -761,9 +802,9 @@ func TestPromptFetchedEvent(t *testing.T) {
 	defer sigNoz.Close()
 
 	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -799,9 +840,9 @@ func TestResourceFetchedEvent(t *testing.T) {
 	defer sigNoz.Close()
 
 	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -834,9 +875,9 @@ func TestOAuthEventEmitter_InjectsCredentialsAndDispatches(t *testing.T) {
 	defer sigNoz.Close()
 
 	cfg := &config.Config{URL: sigNoz.URL, ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	handler := tools.NewHandler(zap.NewNop(), cfg)
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(zap.NewNop(), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
 
 	mcpServer.trackOAuthEvent(context.Background(), analytics.EventOAuthTokenIssued,
 		"oauth-api-key", sigNoz.URL,

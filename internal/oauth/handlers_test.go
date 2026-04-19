@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
@@ -51,7 +51,7 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", handler.HandleProtectedResourceMetadata)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", handler.HandleAuthorizationServerMetadata)
@@ -238,7 +238,7 @@ func TestOAuthAuthorizationFlowServiceAccountFallback(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
 	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
@@ -337,7 +337,7 @@ func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -410,7 +410,7 @@ func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://[::1]:4567/callback"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -429,7 +429,7 @@ func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["javascript:alert(1)"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -472,7 +472,7 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -586,7 +586,7 @@ func TestOAuthEmitterFiresOnAuthorizeAndTokenIssue(t *testing.T) {
 	}
 
 	capture := &capturingEmitter{}
-	handler := NewHandler(zap.NewNop(), cfg, capture.emit)
+	handler := NewHandler(logpkg.New("error"), cfg, capture.emit)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
 	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)

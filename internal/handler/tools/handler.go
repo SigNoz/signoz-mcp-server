@@ -3,20 +3,18 @@ package tools
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
-	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 type Handler struct {
-	logger        *zap.Logger
+	logger        *slog.Logger
 	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
 	configURL     string
 	customHeaders map[string]string
@@ -27,7 +25,7 @@ type Handler struct {
 	clientOverride signozclient.Client
 }
 
-func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
+func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 	// Normalize the configured URL so that the URL comparison in GetClient
 	// works reliably (e.g. https://example.com:443 == https://example.com).
 	normalizedURL := cfg.URL
@@ -41,30 +39,6 @@ func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
 		configURL:     normalizedURL,
 		customHeaders: cfg.CustomHeaders,
 	}
-}
-
-// tenantLogger returns a logger enriched with tenant-identifying fields
-// extracted from the request context. Safe to call even when the context
-// is missing credentials — fields are simply omitted.
-func (h *Handler) tenantLogger(ctx context.Context) *zap.Logger {
-	l := h.logger
-	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-		l = telemetry.LoggerWithURL(l, signozURL)
-	}
-	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-		l = l.With(zap.String("mcp.session.id", sid))
-	}
-	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-		l = l.With(zap.String("mcp.search_context", sc))
-	}
-	// Add trace context for log-trace correlation.
-	if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
-		l = l.With(
-			zap.String("trace_id", spanCtx.TraceID().String()),
-			zap.String("span_id", spanCtx.SpanID().String()),
-		)
-	}
-	return l
 }
 
 // GetClient returns a cached SigNoz client for the tenant identified by
@@ -102,7 +76,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 		headers = h.customHeaders
 	}
 
-	h.tenantLogger(ctx).Debug("Creating new SigNoz client for tenant")
+	h.logger.DebugContext(ctx, "Creating new SigNoz client for tenant")
 	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader, headers)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil
