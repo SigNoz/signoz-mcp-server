@@ -974,3 +974,27 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
 		t.Errorf("apiKey = %q, want token's key sk_xxx", captured.apiKey)
 	}
 }
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
+	cfg := &config.Config{MCPTestTokenEnabled: true}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer mcp_!!!not-base64!!!")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401; body = %q", rec.Code, rec.Body.String())
+	}
+	if captured.called {
+		t.Error("next handler should NOT be called on malformed mcp_ token")
+	}
+	if !strings.Contains(rec.Body.String(), "bad base64") {
+		t.Errorf("body = %q, want 'bad base64' error", rec.Body.String())
+	}
+}
