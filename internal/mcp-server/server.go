@@ -699,6 +699,10 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	m.logger.Info("MCP Server running in HTTP mode")
 
+	if m.config.MCPTestTokenEnabled {
+		m.logger.Warn("MCP_TEST_TOKEN_ENABLED is on — accepting unsigned mcp_ tokens; do not use in production")
+	}
+
 	addr := fmt.Sprintf(":%s", m.config.Port)
 
 	mux := http.NewServeMux()
