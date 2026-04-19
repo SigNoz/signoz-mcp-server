@@ -133,7 +133,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 
 	var apiResponse types.APIAlertsResponse
 	if err := json.Unmarshal(alerts, &apiResponse); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to parse alerts response", logpkg.ErrAttr(err), slog.String("response", string(alerts)))
+		h.logger.ErrorContext(ctx, "Failed to parse alerts response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(alerts)))
 		return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
 	}
 

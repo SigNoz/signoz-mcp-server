@@ -1,6 +1,7 @@
 package log
 
 import (
+	"encoding/json"
 	"log/slog"
 	"os"
 	"strings"
@@ -57,4 +58,15 @@ func TruncBody(b []byte) string {
 	}
 
 	return string(b[:cutoff]) + truncBodySuffix
+}
+
+// TruncAny marshals v to JSON and applies TruncBody so structured values
+// (e.g. response bodies of unknown size) can be logged without leaking
+// unbounded payloads into stdout or the collector pipeline.
+func TruncAny(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "<unmarshalable>"
+	}
+	return TruncBody(b)
 }

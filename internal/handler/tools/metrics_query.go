@@ -166,7 +166,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to build query payload: %s", err.Error())), nil
 	}
 
-	h.logger.DebugContext(ctx, "Executing metrics query", slog.String("payload", string(queryJSON)))
+	h.logger.DebugContext(ctx, "Executing metrics query", slog.String("payload", logpkg.TruncBody(queryJSON)))
 
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {

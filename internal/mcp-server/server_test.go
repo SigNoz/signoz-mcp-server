@@ -14,55 +14,23 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpgoserver "github.com/mark3labs/mcp-go/server"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types/analyticstypes"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
-
-type testServer struct {
-	URL   string
-	close func()
-}
-
-func (s *testServer) Close() {
-	if s != nil && s.close != nil {
-		s.close()
-	}
-}
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
-func newTestServer(t *testing.T, handler http.Handler) *testServer {
-	t.Helper()
-
-	host := fmt.Sprintf("signoz-test-%d.invalid", time.Now().UnixNano())
-	prev := http.DefaultTransport
-	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Host != host {
-			return nil, fmt.Errorf("unexpected test host %q", req.URL.Host)
-		}
-
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, req)
-		return recorder.Result(), nil
-	})
-
-	return &testServer{
-		URL: "http://" + host,
-		close: func() {
-			http.DefaultTransport = prev
-		},
-	}
-}
 
 type analyticsCall struct {
 	groupID string
@@ -393,7 +361,7 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 
 func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	var requests atomic.Int32
-	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.URL.Path != "/api/v1/service_accounts/me" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v1/service_accounts/me")
@@ -414,7 +382,7 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -463,7 +431,7 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 
 func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	var requests atomic.Int32
-	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.URL.Path != "/api/v2/users/me" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/api/v2/users/me")
@@ -483,7 +451,7 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -564,7 +532,7 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 
 func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 	var requests atomic.Int32
-	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		t.Fatalf("unexpected identity request: %s", r.URL.Path)
 	}))
@@ -578,7 +546,7 @@ func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 	}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: false}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -624,7 +592,7 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 	var requests atomic.Int32
 	identityStarted := make(chan struct{}, 1)
 
-	sigNoz := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		select {
 		case identityStarted <- struct{}{}:
@@ -643,7 +611,7 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 	}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 
 	ctx := context.Background()
 	ctx = util.SetAPIKey(ctx, "Bearer jwt-token")
@@ -694,9 +662,9 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 }
 
 // meEndpointServer stubs the SigNoz /me endpoint with a stable identity.
-func meEndpointServer(t *testing.T) *testServer {
+func meEndpointServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","email":"svc@example.com","orgId":"org-1"}}`))
 	}))
@@ -714,7 +682,7 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 	}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -764,6 +732,121 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 	}
 }
 
+func findInt64SumMetric(rm metricdata.ResourceMetrics, name string) (metricdata.Sum[int64], bool) {
+	for _, scopeMetric := range rm.ScopeMetrics {
+		for _, metric := range scopeMetric.Metrics {
+			if metric.Name != name {
+				continue
+			}
+			sum, ok := metric.Data.(metricdata.Sum[int64])
+			if ok {
+				return sum, true
+			}
+		}
+	}
+	return metricdata.Sum[int64]{}, false
+}
+
+func TestLoggingMiddleware_PanicPathRecordsErrorMetricAndSpan(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, noopanalytics.New(), meters)
+
+	// Build the same middleware composition mcp-go would build for production:
+	// loggingMiddleware wraps recovery wraps the tool. If the tool panics,
+	// recovery catches it and surfaces an error via the normal return path,
+	// and loggingMiddleware's post-next() block records metrics + span error.
+	panicTool := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		panic("boom")
+	}
+	recovery := func(next mcpgoserver.ToolHandlerFunc) mcpgoserver.ToolHandlerFunc {
+		return func(ctx context.Context, req mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("panic recovered in %s tool handler: %v", req.Params.Name, r)
+				}
+			}()
+			return next(ctx, req)
+		}
+	}
+	chain := mcpServer.loggingMiddleware()(recovery(panicTool))
+
+	_, err = chain(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "panic_tool",
+			Arguments: map[string]any{},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected recovered panic to surface as error")
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	toolCalls, found := findInt64SumMetric(metrics, "mcp.tool.calls")
+	if !found {
+		t.Fatal("mcp.tool.calls metric not found")
+	}
+	if len(toolCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.tool.calls datapoints = %d, want 1", len(toolCalls.DataPoints))
+	}
+	dataPoint := toolCalls.DataPoints[0]
+	if dataPoint.Value != 1 {
+		t.Fatalf("mcp.tool.calls value = %d, want 1", dataPoint.Value)
+	}
+	toolName, ok := dataPoint.Attributes.Value(attribute.Key("gen_ai.tool.name"))
+	if !ok {
+		t.Fatal("gen_ai.tool.name attribute missing")
+	}
+	if got := toolName.AsString(); got != "panic_tool" {
+		t.Fatalf("gen_ai.tool.name = %q, want %q", got, "panic_tool")
+	}
+	toolIsError, ok := dataPoint.Attributes.Value(attribute.Key("mcp.tool.is_error"))
+	if !ok {
+		t.Fatal("mcp.tool.is_error attribute missing")
+	}
+	if got := toolIsError.AsBool(); !got {
+		t.Fatalf("mcp.tool.is_error = %t, want true", got)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("span status code = %v, want %v", spans[0].Status.Code, codes.Error)
+	}
+}
+
 func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
 	sigNoz := meEndpointServer(t)
 	defer sigNoz.Close()
@@ -771,7 +854,7 @@ func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
 	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -804,7 +887,7 @@ func TestPromptFetchedEvent(t *testing.T) {
 	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -842,7 +925,7 @@ func TestResourceFetchedEvent(t *testing.T) {
 	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 	hooks := mcpServer.buildHooks()
 
 	ctx := context.Background()
@@ -877,7 +960,7 @@ func TestOAuthEventEmitter_InjectsCredentialsAndDispatches(t *testing.T) {
 	cfg := &config.Config{URL: sigNoz.URL, ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
 
 	mcpServer.trackOAuthEvent(context.Background(), analytics.EventOAuthTokenIssued,
 		"oauth-api-key", sigNoz.URL,

@@ -107,7 +107,7 @@ func (h *Handler) handleListLogViews(ctx context.Context, req mcp.CallToolReques
 
 	data, ok := logViews["data"].([]any)
 	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid log views response format", slog.Any("data", logViews["data"]))
+		h.logger.ErrorContext(ctx, "Invalid log views response format", slog.String("data", logpkg.TruncAny(logViews["data"])))
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
@@ -18,11 +19,16 @@ type Handler struct {
 	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
 	configURL     string
 	customHeaders map[string]string
+	meters        *otelpkg.Meters
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
 	// with mock clients.
 	clientOverride signozclient.Client
+}
+
+func (h *Handler) SetMeters(meters *otelpkg.Meters) {
+	h.meters = meters
 }
 
 func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
@@ -78,6 +84,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 
 	h.logger.DebugContext(ctx, "Creating new SigNoz client for tenant")
 	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader, headers)
+	newClient.SetMeters(h.meters)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil
 }

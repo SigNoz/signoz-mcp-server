@@ -124,7 +124,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 
 	data, ok := dashboards["data"].([]any)
 	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid dashboards response format", slog.Any("data", dashboards["data"]))
+		h.logger.ErrorContext(ctx, "Invalid dashboards response format", slog.String("data", logpkg.TruncAny(dashboards["data"])))
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 

@@ -186,7 +186,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 
 	data, ok := response["data"].([]any)
 	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid notification channels response format", slog.Any("data", response["data"]))
+		h.logger.ErrorContext(ctx, "Invalid notification channels response format", slog.String("data", logpkg.TruncAny(response["data"])))
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 

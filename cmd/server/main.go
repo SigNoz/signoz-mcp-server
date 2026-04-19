@@ -11,6 +11,7 @@ import (
 	"time"
 
 	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
@@ -45,20 +46,20 @@ func main() {
 		slog.String("log_level", cfg.LogLevel),
 		slog.String("transport_mode", cfg.TransportMode))
 
-	res, err := otelpkg.NewResource(context.Background(), version.Version)
+	res, err := otelpkg.NewResource(ctx, version.Version)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize OpenTelemetry resource", logpkg.ErrAttr(err))
 		os.Exit(1)
 	}
 
-	shutdownTracer, err := otelpkg.InitTracerProvider(context.Background(), res)
+	shutdownTracer, err := otelpkg.InitTracerProvider(ctx, res)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to initialize OpenTelemetry tracer, continuing without tracing", logpkg.ErrAttr(err))
 	} else {
 		logger.InfoContext(ctx, "OpenTelemetry tracer initialized successfully")
 	}
 
-	shutdownMeter, err := otelpkg.InitMeterProvider(context.Background(), res)
+	shutdownMeter, err := otelpkg.InitMeterProvider(ctx, res)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to initialize OpenTelemetry meter provider, continuing without metrics export", logpkg.ErrAttr(err))
 	} else {
@@ -67,6 +68,12 @@ func main() {
 
 	if err := otelruntime.Start(); err != nil {
 		logger.WarnContext(ctx, "Failed to initialize OpenTelemetry runtime metrics", logpkg.ErrAttr(err))
+	}
+
+	meters, err := otelpkg.NewMeters(otel.GetMeterProvider())
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to initialize custom OpenTelemetry meters", logpkg.ErrAttr(err))
+		os.Exit(1)
 	}
 
 	var analyticsInstance analytics.Analytics
@@ -87,7 +94,7 @@ func main() {
 
 	dashboard.InitClickhouseSchema()
 
-	srv := mcpserver.NewMCPServer(logger, handler, cfg, analyticsInstance)
+	srv := mcpserver.NewMCPServer(logger, handler, cfg, analyticsInstance, meters)
 
 	runGroup, runCtx := errgroup.WithContext(ctx)
 	runGroup.Go(func() error {

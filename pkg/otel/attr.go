@@ -21,5 +21,5 @@ const (
 	MCPQueryPayloadKey  = attribute.Key("mcp.query.payload")
 )
 
-// GenAISystemMCP is the gen_ai.system value for MCP tool servers.
-const GenAISystemMCP = "mcp"
+// GenAISystemValueMCP is the gen_ai.system value for MCP tool servers.
+const GenAISystemValueMCP = "mcp"

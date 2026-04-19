@@ -62,6 +62,7 @@ type SigNoz struct {
 	identityMu       sync.Mutex
 	cachedIdentity   *AnalyticsIdentity
 	identityCachedAt time.Time
+	meters           *otelpkg.Meters
 }
 
 func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
@@ -75,6 +76,10 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
+}
+
+func (s *SigNoz) SetMeters(meters *otelpkg.Meters) {
+	s.meters = meters
 }
 
 func (s *SigNoz) ensureTenantContext(ctx context.Context) context.Context {
@@ -133,7 +138,13 @@ func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, 
 	defer s.identityMu.Unlock()
 
 	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
+		if s.meters != nil {
+			s.meters.IdentityCacheHits.Add(ctx, 1)
+		}
 		return s.cachedIdentity, nil
+	}
+	if s.meters != nil {
+		s.meters.IdentityCacheMisses.Add(ctx, 1)
 	}
 
 	identity, err := s.fetchAnalyticsIdentity(ctx)

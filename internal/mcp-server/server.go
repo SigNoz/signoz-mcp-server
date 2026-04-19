@@ -27,7 +27,9 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -44,8 +46,9 @@ type MCPServer struct {
 	handler        *tools.Handler
 	config         *config.Config
 	analytics      analytics.Analytics
+	meters         *otelpkg.Meters
 	sessionClients *expirable.LRU[string, mcp.Implementation]
-	httpSrv        *http.Server
+	httpServer     *http.Server
 	analyticsWG    sync.WaitGroup
 }
 
@@ -206,6 +209,9 @@ func (m *MCPServer) trackOAuthEvent(ctx context.Context, event, apiKey, signozUR
 	if signozURL != "" {
 		ctx = util.SetSigNozURL(ctx, signozURL)
 	}
+	if m.meters != nil {
+		m.meters.OAuthEvents.Add(ctx, 1, metric.WithAttributes(attribute.String("event", event)))
+	}
 	m.trackEventAsync(ctx, event, props)
 }
 
@@ -247,24 +253,34 @@ func (m *MCPServer) dispatchAnalytics(parent context.Context, fn func(context.Co
 	}()
 }
 
-func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics) *MCPServer {
+func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, a analytics.Analytics, meters *otelpkg.Meters) *MCPServer {
+	if handler != nil {
+		handler.SetMeters(meters)
+	}
 	return &MCPServer{
 		logger:         log,
 		handler:        handler,
 		config:         cfg,
 		analytics:      a,
+		meters:         meters,
 		sessionClients: expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
 	}
 }
 
 func (m *MCPServer) Run(ctx context.Context) error {
+	// Middleware order matters: mcp-go applies tool-handler middlewares in
+	// reverse-slice order, so the first-appended wraps outermost. Register
+	// loggingMiddleware FIRST so it wraps recovery — when a tool panics,
+	// recovery converts it to an error that bubbles back to loggingMiddleware
+	// via the normal return path, so mcp.tool.calls{is_error=true} and the
+	// codes.Error span status actually get recorded.
 	s := server.NewMCPServer("SigNozMCP", version.Version,
 		server.WithLogging(),
 		server.WithToolCapabilities(false),
-		server.WithRecovery(),
 		server.WithInstructions(instructions.ServerInstructions),
 		server.WithHooks(m.buildHooks()),
 		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
+		server.WithRecovery(),
 	)
 
 	m.logger.InfoContext(ctx, "Starting SigNoz MCP Server",
@@ -289,8 +305,8 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.logger.InfoContext(ctx, "All handlers registered successfully")
 
 	if m.config.TransportMode == "http" {
-		m.httpSrv = m.buildHTTP(s)
-		if err := m.httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		m.httpServer = m.buildHTTP(s)
+		if err := m.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
@@ -299,10 +315,10 @@ func (m *MCPServer) Run(ctx context.Context) error {
 }
 
 func (m *MCPServer) Shutdown(ctx context.Context) error {
-	if m.config.TransportMode != "http" || m.httpSrv == nil {
+	if m.config.TransportMode != "http" || m.httpServer == nil {
 		return nil
 	}
-	return m.httpSrv.Shutdown(ctx)
+	return m.httpServer.Shutdown(ctx)
 }
 
 func (m *MCPServer) WaitForAnalytics(ctx context.Context) error {
@@ -326,7 +342,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		span := trace.SpanFromContext(ctx)
 		span.SetAttributes(
-			otelpkg.GenAISystemKey.String(otelpkg.GenAISystemMCP),
+			otelpkg.GenAISystemKey.String(otelpkg.GenAISystemValueMCP),
 			otelpkg.MCPMethodKey.String(string(method)),
 		)
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -345,6 +361,10 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	// Analytics: track session registration after successful initialize.
 	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
+		if m.meters != nil {
+			m.meters.SessionRegistered.Add(ctx, 1)
+		}
+
 		var sessionID string
 		if session := server.ClientSessionFromContext(ctx); session != nil {
 			sessionID = session.SessionID()
@@ -449,7 +469,7 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			ctx, span := tracer.Start(ctx, "execute_tool",
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
-					otelpkg.GenAISystemKey.String(otelpkg.GenAISystemMCP),
+					otelpkg.GenAISystemKey.String(otelpkg.GenAISystemValueMCP),
 					otelpkg.GenAIOperationNameKey.String("execute_tool"),
 					otelpkg.GenAIToolNameKey.String(req.Params.Name),
 				))
@@ -483,10 +503,20 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				span.SetStatus(codes.Error, errMsg)
 			}
 
+			duration := time.Since(start)
 			m.logger.DebugContext(ctx, "tool call finished",
 				slog.String("gen_ai.tool.name", req.Params.Name),
-				slog.Duration("duration", time.Since(start)),
+				slog.Duration("duration", duration),
 				slog.Bool("mcp.tool.is_error", isErr))
+
+			if m.meters != nil {
+				attrs := metric.WithAttributes(
+					attribute.String("gen_ai.tool.name", req.Params.Name),
+					attribute.Bool("mcp.tool.is_error", isErr),
+				)
+				m.meters.ToolCalls.Add(ctx, 1, attrs)
+				m.meters.ToolCallDuration.Record(ctx, float64(duration)/float64(time.Millisecond), attrs)
+			}
 
 			// Analytics: track tool call
 			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -530,12 +560,12 @@ func (m *MCPServer) runStdio(ctx context.Context, s *server.MCPServer) error {
 	// Inject env-configured credentials into every request context
 	// so that GetClient works uniformly across both transports.
 	stdio := server.NewStdioServer(s)
-	server.WithStdioContextFunc(func(ctx context.Context) context.Context {
+	stdio.SetContextFunc(func(ctx context.Context) context.Context {
 		ctx = util.SetAPIKey(ctx, m.config.APIKey)
 		ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 		ctx = util.SetSigNozURL(ctx, m.config.URL)
 		return ctx
-	})(stdio)
+	})
 
 	if err := stdio.Listen(ctx, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
 		return err
@@ -699,8 +729,8 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
 	}
 
-	httpServer := server.NewStreamableHTTPServer(s)
-	mux.Handle("/mcp", m.authMiddleware(httpServer))
+	mcpHandler := server.NewStreamableHTTPServer(s)
+	mux.Handle("/mcp", m.authMiddleware(mcpHandler))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),
