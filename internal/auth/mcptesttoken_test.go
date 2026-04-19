@@ -105,11 +105,25 @@ func TestParseMCPTestToken_MissingURL(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_NonHTTPSchemeRejected(t *testing.T) {
+func TestParseMCPTestToken_UnsupportedSchemeRejected(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"ftp://x.example.com","KEY":"sk_xxx"}}`)
 	_, _, err := ParseMCPTestToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "X-SigNoz-URL") {
 		t.Errorf("err = %v, want 'X-SigNoz-URL' error", err)
+	}
+}
+
+func TestParseMCPTestToken_HTTPSchemeAccepted(t *testing.T) {
+	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"http://tenant.example.com","KEY":"sk_xxx"}}`)
+	url, key, err := ParseMCPTestToken("Bearer " + token)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "http://tenant.example.com" {
+		t.Errorf("url = %q, want http://tenant.example.com", url)
+	}
+	if key != "sk_xxx" {
+		t.Errorf("key = %q, want sk_xxx", key)
 	}
 }
 

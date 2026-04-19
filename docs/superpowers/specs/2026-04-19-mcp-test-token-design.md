@@ -39,7 +39,7 @@ Decoded payload:
 - The body is decoded with `base64.RawURLEncoding` first; if that fails, `base64.URLEncoding` (padded) is tried as a tolerance.
 - Decoded bytes must be valid JSON containing a `headers` object.
 - Only two keys in `headers` drive behavior:
-  - `X-SigNoz-URL` — required, must be a non-empty absolute HTTPS URL. Trailing slash is trimmed (matches `config.go:66`).
+  - `X-SigNoz-URL` — required, must be a non-empty absolute `http://` or `https://` URL that passes `util.NormalizeSigNozURL` (rejects non-http(s) schemes, `localhost`, `0.0.0.0`, and URLs with paths/queries/fragments). Trailing slash is accepted. The normalized origin is what gets forwarded. `http://` is permitted to support testing against reverse-proxied or on-network SigNoz instances — the token is testing-only and carries a raw API key, so operators opting into `MCP_TEST_TOKEN_ENABLED` own the transport-security decision for their test environment.
   - `KEY` — required, non-empty string, used as the SigNoz API key.
 - All other keys in `headers` (including `Authorization`) are ignored.
 - No signing, no encryption, no expiry. The enabling env var is the only guardrail.
@@ -127,14 +127,14 @@ No special fallthrough handling needed.
 
 ## Error Reference
 
-All return `401 Unauthorized` with a JSON body matching the middleware's existing error shape:
+All return `401 Unauthorized` with a plain-text body (via `http.Error`, matching every other branch in `authMiddleware`):
 
 | Condition | Message |
 |---|---|
 | base64 decode failure | `invalid mcp_ token: bad base64` |
 | JSON unmarshal failure | `invalid mcp_ token: bad json` |
 | `headers` key missing or not an object | `invalid mcp_ token: missing headers object` |
-| `X-SigNoz-URL` missing / non-HTTPS / malformed | `invalid mcp_ token: missing or invalid X-SigNoz-URL` |
+| `X-SigNoz-URL` missing, or rejected by `util.NormalizeSigNozURL` (non-http/https scheme, localhost, path/query/fragment, empty host) | `invalid mcp_ token: missing or invalid X-SigNoz-URL` |
 | `KEY` missing or empty | `invalid mcp_ token: missing KEY` |
 
 ## Testing
@@ -148,7 +148,7 @@ All return `401 Unauthorized` with a JSON body matching the middleware's existin
 - Valid base64 but not JSON → `bad json` error.
 - JSON without `headers` → `missing headers object` error.
 - `X-SigNoz-URL` missing → error.
-- `X-SigNoz-URL` present but not HTTPS (e.g. `http://...`) → error.
+- `X-SigNoz-URL` with a scheme rejected by `util.NormalizeSigNozURL` (e.g. `ftp://`) → error. (`http://` is permitted; only non-http/https schemes are rejected.)
 - `X-SigNoz-URL` with trailing slash → slash trimmed in returned URL.
 - `KEY` missing → error.
 - `KEY` empty string → error.
