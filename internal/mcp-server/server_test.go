@@ -2,6 +2,7 @@ package mcp_server
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -851,5 +852,176 @@ func TestOAuthEventEmitter_InjectsCredentialsAndDispatches(t *testing.T) {
 	}
 	if call.groupID != "org-1" || call.userID != "sa-1" {
 		t.Fatalf("identity (%q, %q), want (org-1, sa-1)", call.groupID, call.userID)
+	}
+}
+
+func newTestMCPServerForAuth(t *testing.T, cfg *config.Config) *MCPServer {
+	t.Helper()
+	return &MCPServer{
+		config: cfg,
+		logger: zap.NewNop(),
+	}
+}
+
+type capturedCtx struct {
+	apiKey     string
+	authHeader string
+	signozURL  string
+	called     bool
+}
+
+func captureNext(captured *capturedCtx) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured.called = true
+		captured.apiKey, _ = util.GetAPIKey(r.Context())
+		captured.authHeader, _ = util.GetAuthHeader(r.Context())
+		captured.signozURL, _ = util.GetSigNozURL(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+func mcpTestTokenForTest(t *testing.T, url, key string) string {
+	t.Helper()
+	payload := `{"headers":{"X-SigNoz-URL":"` + url + `","KEY":"` + key + `"}}`
+	return "mcp_" + base64.RawURLEncoding.EncodeToString([]byte(payload))
+}
+
+func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
+	cfg := &config.Config{
+		MCPTestTokenEnabled: false,
+		URL:                 "https://configured.signoz.cloud",
+	}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// With flag off, the mcp_ branch is skipped. The token falls into the
+	// legacy "raw API key" path (no OAuth, no JWT, no customURL), which sets
+	// the bearer body as the api key and uses the configured URL.
+	if !captured.called {
+		t.Fatalf("next handler was not called; status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if captured.apiKey != token {
+		t.Errorf("apiKey = %q, want %q (raw token, untouched by mcp_ branch)", captured.apiKey, token)
+	}
+	if captured.signozURL != "https://configured.signoz.cloud" {
+		t.Errorf("signozURL = %q, want configured URL", captured.signozURL)
+	}
+}
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
+	cfg := &config.Config{MCPTestTokenEnabled: true}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if !captured.called {
+		t.Fatal("next handler was not called")
+	}
+	if captured.apiKey != "sk_xxx" {
+		t.Errorf("apiKey = %q, want sk_xxx", captured.apiKey)
+	}
+	if captured.authHeader != "SIGNOZ-API-KEY" {
+		t.Errorf("authHeader = %q, want SIGNOZ-API-KEY", captured.authHeader)
+	}
+	if captured.signozURL != "https://tenant.signoz.cloud" {
+		t.Errorf("signozURL = %q, want https://tenant.signoz.cloud", captured.signozURL)
+	}
+}
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
+	cfg := &config.Config{MCPTestTokenEnabled: true}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-SigNoz-URL", "https://conflicting.signoz.cloud")
+	req.Header.Set("SIGNOZ-API-KEY", "conflicting_key")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if captured.signozURL != "https://tenant.signoz.cloud" {
+		t.Errorf("signozURL = %q, want token's URL https://tenant.signoz.cloud", captured.signozURL)
+	}
+	if captured.apiKey != "sk_xxx" {
+		t.Errorf("apiKey = %q, want token's key sk_xxx", captured.apiKey)
+	}
+}
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
+	cfg := &config.Config{MCPTestTokenEnabled: true}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer mcp_!!!not-base64!!!")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401; body = %q", rec.Code, rec.Body.String())
+	}
+	if captured.called {
+		t.Error("next handler should NOT be called on malformed mcp_ token")
+	}
+	if !strings.Contains(rec.Body.String(), "bad base64") {
+		t.Errorf("body = %q, want 'bad base64' error", rec.Body.String())
+	}
+}
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_NonMCPBearerUnaffected(t *testing.T) {
+	cfg := &config.Config{
+		MCPTestTokenEnabled: true,
+		URL:                 "https://configured.signoz.cloud",
+	}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer plain_pat_token")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if captured.apiKey != "plain_pat_token" {
+		t.Errorf("apiKey = %q, want plain_pat_token (legacy path)", captured.apiKey)
+	}
+	if captured.signozURL != "https://configured.signoz.cloud" {
+		t.Errorf("signozURL = %q, want configured URL", captured.signozURL)
 	}
 }

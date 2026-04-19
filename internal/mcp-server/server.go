@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/auth"
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -564,6 +565,24 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
 
+		// mcp_ test token — self-contained token carrying URL + API key.
+		// Gated by MCP_TEST_TOKEN_ENABLED; ignores any X-SigNoz-URL /
+		// SIGNOZ-API-KEY headers on the request when it fires.
+		if m.config.MCPTestTokenEnabled && strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer ")), auth.MCPTestTokenPrefix) {
+			tokenURL, tokenKey, err := auth.ParseMCPTestToken(authHeader)
+			if err != nil {
+				m.logger.Warn("invalid mcp_ test token", zap.Error(err))
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			ctx = util.SetAPIKey(ctx, tokenKey)
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+			ctx = util.SetSigNozURL(ctx, tokenURL)
+			m.logger.Debug("authenticated via mcp_ test token", zap.String("mcp.tenant_url", tokenURL))
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		var apiKey string
 		var signozURL string
 		var usedOAuthToken bool
@@ -679,6 +698,10 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	m.logger.Info("MCP Server running in HTTP mode")
+
+	if m.config.MCPTestTokenEnabled {
+		m.logger.Warn("MCP_TEST_TOKEN_ENABLED is on — accepting unsigned mcp_ tokens; do not use in production")
+	}
 
 	addr := fmt.Sprintf(":%s", m.config.Port)
 

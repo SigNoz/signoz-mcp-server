@@ -28,6 +28,11 @@ type Config struct {
 	ClientCacheTTL  time.Duration
 
 	CustomHeaders map[string]string
+
+	// MCPTestTokenEnabled accepts `Bearer mcp_<base64url(json)>` tokens
+	// that carry SigNoz URL and API key inline. Testing only.
+	MCPTestTokenEnabled bool
+
 	// Analytics settings
 	AnalyticsEnabled bool
 	SegmentKey       string
@@ -43,6 +48,8 @@ const (
 	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
 	ClientCacheSize     = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL      = "CLIENT_CACHE_TTL_MINUTES"
+
+	MCPTestTokenEnabledEnv = "MCP_TEST_TOKEN_ENABLED"
 
 	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
 	SegmentKeyEnv       = "SEGMENT_KEY"
@@ -87,22 +94,23 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		URL:              url,
-		APIKey:           getEnv(SignozApiKey, ""),
-		LogLevel:         getEnv(LogLevel, "info"),
-		TransportMode:    getEnv(TransportMode, "stdio"),
-		Port:             getEnv(MCPPort, "8000"),
-		OAuthEnabled:     getEnvBool(OAuthEnabledEnv, false),
-		OAuthTokenSecret: getEnv(OAuthTokenSecretEnv, ""),
-		OAuthIssuerURL:   strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
-		AccessTokenTTL:   time.Duration(accessTTLMinutes) * time.Minute,
-		RefreshTokenTTL:  time.Duration(refreshTTLMinutes) * time.Minute,
-		AuthCodeTTL:      time.Duration(authCodeTTLSeconds) * time.Second,
-		ClientCacheSize:  cacheSize,
-		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
-		CustomHeaders:    customHeaders,
-		AnalyticsEnabled: getEnvBool(AnalyticsEnabledEnv, false),
-		SegmentKey:       getEnv(SegmentKeyEnv, ""),
+		URL:                 url,
+		APIKey:              getEnv(SignozApiKey, ""),
+		LogLevel:            getEnv(LogLevel, "info"),
+		TransportMode:       getEnv(TransportMode, "stdio"),
+		Port:                getEnv(MCPPort, "8000"),
+		OAuthEnabled:        getEnvBool(OAuthEnabledEnv, false),
+		OAuthTokenSecret:    getEnv(OAuthTokenSecretEnv, ""),
+		OAuthIssuerURL:      strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
+		AccessTokenTTL:      time.Duration(accessTTLMinutes) * time.Minute,
+		RefreshTokenTTL:     time.Duration(refreshTTLMinutes) * time.Minute,
+		AuthCodeTTL:         time.Duration(authCodeTTLSeconds) * time.Second,
+		ClientCacheSize:     cacheSize,
+		ClientCacheTTL:      time.Duration(cacheTTLMinutes) * time.Minute,
+		CustomHeaders:       customHeaders,
+		MCPTestTokenEnabled: getEnvBool(MCPTestTokenEnabledEnv, false),
+		AnalyticsEnabled:    getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:          getEnv(SegmentKeyEnv, ""),
 	}, nil
 }
 
