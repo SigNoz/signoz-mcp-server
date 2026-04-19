@@ -361,7 +361,7 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 			t.Fatalf("SIGNOZ-API-KEY = %q, want %q", r.Header.Get("SIGNOZ-API-KEY"), "test-api-key")
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-123","email":"service@example.com","orgId":"org-456"}}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-123","name":"ingest-bot","email":"service@example.com","orgId":"org-456"}}`))
 	}))
 	defer sigNoz.Close()
 
@@ -398,8 +398,11 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	if identify.groupID != "org-456" || identify.userID != "sa-123" {
 		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.groupID, identify.userID, "org-456", "sa-123")
 	}
-	if identify.attrs[analytics.AttrOrgID] != "org-456" || identify.attrs[analytics.AttrPrincipal] != "service_account" || identify.attrs[analytics.AttrServiceEmail] != "service@example.com" {
-		t.Fatalf("identify attrs = %#v, want orgId, principal, and serviceEmail", identify.attrs)
+	if identify.attrs[analytics.AttrOrgID] != "org-456" || identify.attrs[analytics.AttrPrincipal] != "service_account" || identify.attrs[analytics.AttrEmail] != "service@example.com" {
+		t.Fatalf("identify attrs = %#v, want orgId, principal, and email", identify.attrs)
+	}
+	if identify.attrs[analytics.AttrName] != "ingest-bot" {
+		t.Fatalf("identify name = %v, want ingest-bot", identify.attrs[analytics.AttrName])
 	}
 
 	track := trackCalls[0]
@@ -409,8 +412,11 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	if track.attrs[analytics.AttrSessionID] != "sess-api" {
 		t.Fatalf("session id attr = %v, want %q", track.attrs[analytics.AttrSessionID], "sess-api")
 	}
-	if track.attrs[analytics.AttrOrgID] != "org-456" || track.attrs[analytics.AttrPrincipal] != "service_account" || track.attrs[analytics.AttrServiceEmail] != "service@example.com" {
-		t.Fatalf("track attrs = %#v, want orgId, principal, and serviceEmail", track.attrs)
+	if track.attrs[analytics.AttrOrgID] != "org-456" || track.attrs[analytics.AttrPrincipal] != "service_account" || track.attrs[analytics.AttrEmail] != "service@example.com" {
+		t.Fatalf("track attrs = %#v, want orgId, principal, and email", track.attrs)
+	}
+	if track.attrs[analytics.AttrName] != "ingest-bot" {
+		t.Fatalf("track name = %v, want ingest-bot", track.attrs[analytics.AttrName])
 	}
 }
 
@@ -425,7 +431,7 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 			t.Fatalf("Authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer jwt-token")
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-123","email":"user@example.com","orgId":"org-123"}}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-123","displayName":"Ada Lovelace","email":"user@example.com","orgId":"org-123"}}`))
 	}))
 	defer sigNoz.Close()
 
@@ -473,8 +479,11 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	if identify.groupID != "org-123" || identify.userID != "user-123" {
 		t.Fatalf("identify user args = (%q, %q), want (%q, %q)", identify.groupID, identify.userID, "org-123", "user-123")
 	}
-	if identify.attrs[analytics.AttrOrgID] != "org-123" || identify.attrs[analytics.AttrPrincipal] != "user" || identify.attrs[analytics.AttrUserEmail] != "user@example.com" {
-		t.Fatalf("identify attrs = %#v, want orgId, principal, and userEmail", identify.attrs)
+	if identify.attrs[analytics.AttrOrgID] != "org-123" || identify.attrs[analytics.AttrPrincipal] != "user" || identify.attrs[analytics.AttrEmail] != "user@example.com" {
+		t.Fatalf("identify attrs = %#v, want orgId, principal, and email", identify.attrs)
+	}
+	if identify.attrs[analytics.AttrName] != "Ada Lovelace" {
+		t.Fatalf("identify name = %v, want Ada Lovelace", identify.attrs[analytics.AttrName])
 	}
 
 	var registered analyticsCall
@@ -507,8 +516,8 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	if toolCall.attrs[analytics.AttrSearchContext] != "list services" {
 		t.Fatalf("tool searchContext attr = %v, want %q", toolCall.attrs[analytics.AttrSearchContext], "list services")
 	}
-	if toolCall.attrs[analytics.AttrOrgID] != "org-123" || toolCall.attrs[analytics.AttrPrincipal] != "user" || toolCall.attrs[analytics.AttrUserEmail] != "user@example.com" {
-		t.Fatalf("tool attrs = %#v, want orgId, principal, and userEmail", toolCall.attrs)
+	if toolCall.attrs[analytics.AttrOrgID] != "org-123" || toolCall.attrs[analytics.AttrPrincipal] != "user" || toolCall.attrs[analytics.AttrEmail] != "user@example.com" {
+		t.Fatalf("tool attrs = %#v, want orgId, principal, and email", toolCall.attrs)
 	}
 }
 
@@ -582,7 +591,7 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 		}
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-123","email":"user@example.com","orgId":"org-123"}}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"user-123","displayName":"Ada Lovelace","email":"user@example.com","orgId":"org-123"}}`))
 	}))
 	defer sigNoz.Close()
 
@@ -638,8 +647,8 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 	if toolCall.event != analytics.EventToolCalled {
 		t.Fatalf("track event = %q, want %q", toolCall.event, analytics.EventToolCalled)
 	}
-	if toolCall.attrs[analytics.AttrUserEmail] != "user@example.com" {
-		t.Fatalf("tool attrs = %#v, want userEmail", toolCall.attrs)
+	if toolCall.attrs[analytics.AttrEmail] != "user@example.com" {
+		t.Fatalf("tool attrs = %#v, want email", toolCall.attrs)
 	}
 }
 

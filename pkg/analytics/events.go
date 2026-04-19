@@ -18,8 +18,8 @@ const (
 const (
 	AttrOrgID         = "orgId"
 	AttrPrincipal     = "principal"
-	AttrUserEmail     = "userEmail"
-	AttrServiceEmail  = "serviceEmail"
+	AttrName          = "name"
+	AttrEmail         = "email"
 	AttrTenantURL     = "tenantUrl"
 	AttrSessionID     = "sessionId"
 	AttrClientName    = "clientName"
