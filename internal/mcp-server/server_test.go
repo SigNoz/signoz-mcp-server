@@ -947,3 +947,30 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
 		t.Errorf("signozURL = %q, want https://tenant.signoz.cloud", captured.signozURL)
 	}
 }
+
+func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
+	cfg := &config.Config{MCPTestTokenEnabled: true}
+	m := newTestMCPServerForAuth(t, cfg)
+
+	captured := &capturedCtx{}
+	handler := m.authMiddleware(captureNext(captured))
+
+	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-SigNoz-URL", "https://conflicting.signoz.cloud")
+	req.Header.Set("SIGNOZ-API-KEY", "conflicting_key")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if captured.signozURL != "https://tenant.signoz.cloud" {
+		t.Errorf("signozURL = %q, want token's URL https://tenant.signoz.cloud", captured.signozURL)
+	}
+	if captured.apiKey != "sk_xxx" {
+		t.Errorf("apiKey = %q, want token's key sk_xxx", captured.apiKey)
+	}
+}
