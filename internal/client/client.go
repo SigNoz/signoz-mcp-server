@@ -74,16 +74,13 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 		customHeaders:  customHeaders,
 		httpClient: &http.Client{
 			// Default client span name is just the HTTP method (per OTel HTTP
-			// semconv — the client doesn't know a templated route). Override
-			// with the path so traces read as "HTTP GET /api/v1/dashboards"
-			// rather than a forest of indistinguishable "HTTP GET" spans. The
-			// full URL is already attached as a span attribute by otelhttp.
-			Transport: otelhttp.NewTransport(
-				http.DefaultTransport,
-				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-					return "HTTP " + r.Method + " " + r.URL.Path
-				}),
-			),
+			// semconv — the client doesn't know a templated route). We keep
+			// the default rather than stamping the raw path because several
+			// SigNoz API paths embed IDs (/dashboards/{uuid}, /rules/{id},
+			// /channels/{id}, /explorer/views/{id}, /rules/{id}/history/...)
+			// which would blow up span-name cardinality in the backend. The
+			// full URL is still attached as a span attribute for drilling.
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
 }
