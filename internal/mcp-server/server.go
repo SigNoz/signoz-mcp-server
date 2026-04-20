@@ -341,10 +341,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks := &server.Hooks{}
 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		span := trace.SpanFromContext(ctx)
-		span.SetAttributes(
-			otelpkg.GenAISystemKey.String(otelpkg.GenAISystemValueMCP),
-			otelpkg.MCPMethodKey.String(string(method)),
-		)
+		span.SetAttributes(otelpkg.MCPMethodKey.String(string(method)))
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			span.SetAttributes(otelpkg.MCPTenantURLKey.String(signozURL))
 		}
@@ -469,7 +466,6 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			ctx, span := tracer.Start(ctx, "execute_tool",
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
-					otelpkg.GenAISystemKey.String(otelpkg.GenAISystemValueMCP),
 					otelpkg.GenAIOperationNameKey.String("execute_tool"),
 					otelpkg.GenAIToolNameKey.String(req.Params.Name),
 				))
