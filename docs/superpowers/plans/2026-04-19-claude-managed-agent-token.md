@@ -1,8 +1,14 @@
-# `mcp_` Test Token Implementation Plan
+# Claude Managed-Agent Token Implementation Plan
+
+> **Revised 2026-04-20 (twice):**
+> 1. This plan originally described the token as "testing-only". That framing was dropped when the feature was promoted to a supported auth path.
+> 2. Identifiers were renamed again to scope the feature to its actual consumer (Claude managed agents): `MCPToken*` → `ClaudeManagedAgentToken*`, `MCP_TOKEN_ENABLED` → `CLAUDE_MANAGED_AGENT_TOKEN_ENABLED`. The `mcp_` wire prefix is kept for client compatibility.
+>
+> Security properties (unsigned, raw API key, opt-in flag) are unchanged. Historical "test" and "MCP token" wording in the task bodies below is retained for traceability but does not reflect current intent — see `docs/superpowers/specs/2026-04-19-claude-managed-agent-token-design.md` for the authoritative design.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a testing-only bearer token format `mcp_<base64url(json)>` that carries SigNoz URL and API key in one token, gated by `MCP_TEST_TOKEN_ENABLED`.
+**Goal:** Add a testing-only bearer token format `mcp_<base64url(json)>` that carries SigNoz URL and API key in one token, gated by `MCP_TOKEN_ENABLED`.
 
 **Architecture:** New package `internal/auth` with a single parser function. Config gains one bool field. HTTP auth middleware gets a new first branch for `Bearer mcp_...` that populates context and short-circuits the downstream URL-resolution block (same pattern as the existing `usedOAuthToken` fast-path).
 
@@ -15,33 +21,33 @@
 ## File Structure
 
 **New files:**
-- `internal/auth/mcptesttoken.go` — `ParseMCPTestToken(authHeader string) (signozURL, apiKey string, err error)`. Strips `Bearer ` prefix and the `mcp_` prefix, base64-decodes, JSON-unmarshals, validates, returns normalized URL + key.
-- `internal/auth/mcptesttoken_test.go` — unit tests for `ParseMCPTestToken`.
+- `internal/auth/mcptoken.go` — `ParseMCPToken(authHeader string) (signozURL, apiKey string, err error)`. Strips `Bearer ` prefix and the `mcp_` prefix, base64-decodes, JSON-unmarshals, validates, returns normalized URL + key.
+- `internal/auth/mcptoken_test.go` — unit tests for `ParseMCPToken`.
 
 **Modified files:**
-- `internal/config/config.go` — add `MCPTestTokenEnabled bool` field, `MCPTestTokenEnabledEnv` const, load via `getEnvBool`.
-- `internal/mcp-server/server.go` — add new branch in `authMiddleware` that calls `ParseMCPTestToken`, populates context, and returns early. Add startup warning log if flag is on.
+- `internal/config/config.go` — add `MCPTokenEnabled bool` field, `MCPTokenEnabledEnv` const, load via `getEnvBool`.
+- `internal/mcp-server/server.go` — add new branch in `authMiddleware` that calls `ParseMCPToken`, populates context, and returns early. Add startup warning log if flag is on.
 - `internal/mcp-server/server_test.go` — integration tests for the new middleware branch.
 
 **Why a new package (`internal/auth`) instead of colocating in `mcp-server`:** keeps the parser unit-testable in isolation without depending on the full MCP server package, and leaves room for additional auth helpers without bloating `server.go` (already 700+ lines).
 
 ---
 
-## Task 1: Add `MCP_TEST_TOKEN_ENABLED` to config
+## Task 1: Add `MCP_TOKEN_ENABLED` to config
 
 **Files:**
 - Modify: `internal/config/config.go`
 
 - [ ] **Step 1: Add the env var constant and config field**
 
-Open `internal/config/config.go`. Add `MCPTestTokenEnabled bool` to the `Config` struct after `CustomHeaders`:
+Open `internal/config/config.go`. Add `MCPTokenEnabled bool` to the `Config` struct after `CustomHeaders`:
 
 ```go
 	CustomHeaders map[string]string
 
-	// MCPTestTokenEnabled accepts `Bearer mcp_<base64url(json)>` tokens
+	// MCPTokenEnabled accepts `Bearer mcp_<base64url(json)>` tokens
 	// that carry SigNoz URL and API key inline. Testing only.
-	MCPTestTokenEnabled bool
+	MCPTokenEnabled bool
 
 	// Analytics settings
 	AnalyticsEnabled bool
@@ -54,14 +60,14 @@ Add the env var constant to the `const` block near `SignozCustomHeaders`:
 	ClientCacheSize     = "CLIENT_CACHE_SIZE"
 	ClientCacheTTL      = "CLIENT_CACHE_TTL_MINUTES"
 
-	MCPTestTokenEnabledEnv = "MCP_TEST_TOKEN_ENABLED"
+	MCPTokenEnabledEnv = "MCP_TOKEN_ENABLED"
 ```
 
 Populate it in `LoadConfig` inside the returned `&Config{...}`. Place it after `CustomHeaders`:
 
 ```go
 		CustomHeaders:       customHeaders,
-		MCPTestTokenEnabled: getEnvBool(MCPTestTokenEnabledEnv, false),
+		MCPTokenEnabled: getEnvBool(MCPTokenEnabledEnv, false),
 		AnalyticsEnabled:    getEnvBool(AnalyticsEnabledEnv, false),
 ```
 
@@ -74,20 +80,20 @@ Expected: builds with no errors.
 
 ```bash
 git add internal/config/config.go
-git commit -m "feat(config): add MCP_TEST_TOKEN_ENABLED flag"
+git commit -m "feat(config): add MCP_TOKEN_ENABLED flag"
 ```
 
 ---
 
-## Task 2: Create `ParseMCPTestToken` with the first test case
+## Task 2: Create `ParseMCPToken` with the first test case
 
 **Files:**
-- Create: `internal/auth/mcptesttoken.go`
-- Create: `internal/auth/mcptesttoken_test.go`
+- Create: `internal/auth/mcptoken.go`
+- Create: `internal/auth/mcptoken_test.go`
 
 - [ ] **Step 1: Write the failing test — valid token, unpadded base64**
 
-Create `internal/auth/mcptesttoken_test.go`:
+Create `internal/auth/mcptoken_test.go`:
 
 ```go
 package auth
@@ -102,11 +108,11 @@ func makeToken(t *testing.T, payload string) string {
 	return "mcp_" + base64.RawURLEncoding.EncodeToString([]byte(payload))
 }
 
-func TestParseMCPTestToken_ValidUnpadded(t *testing.T) {
+func TestParseMCPToken_ValidUnpadded(t *testing.T) {
 	payload := `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"sk_xxx"}}`
 	token := makeToken(t, payload)
 
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseMCPToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,11 +128,11 @@ func TestParseMCPTestToken_ValidUnpadded(t *testing.T) {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/auth/...`
-Expected: FAIL — package `internal/auth` doesn't exist / `ParseMCPTestToken` undefined.
+Expected: FAIL — package `internal/auth` doesn't exist / `ParseMCPToken` undefined.
 
 - [ ] **Step 3: Create the parser file with a minimal implementation**
 
-Create `internal/auth/mcptesttoken.go`:
+Create `internal/auth/mcptoken.go`:
 
 ```go
 // Package auth provides authentication helpers for the MCP server.
@@ -141,15 +147,15 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-// MCPTestTokenPrefix is the literal prefix that marks a test token.
-const MCPTestTokenPrefix = "mcp_"
+// MCPTokenPrefix is the literal prefix that marks a test token.
+const MCPTokenPrefix = "mcp_"
 
-// mcpTestTokenPayload is the JSON shape carried inside the base64-encoded body.
-type mcpTestTokenPayload struct {
+// mcpTokenPayload is the JSON shape carried inside the base64-encoded body.
+type mcpTokenPayload struct {
 	Headers map[string]string `json:"headers"`
 }
 
-// ParseMCPTestToken parses a bearer token of the form `Bearer mcp_<base64url(json)>`
+// ParseMCPToken parses a bearer token of the form `Bearer mcp_<base64url(json)>`
 // and returns the SigNoz URL and API key carried inside it.
 //
 // The caller is responsible for deciding whether the token applies (prefix match
@@ -157,20 +163,20 @@ type mcpTestTokenPayload struct {
 // returns a non-nil error; the returned URL and key are empty in that case.
 //
 // This format is testing-only: the payload is neither signed nor encrypted.
-func ParseMCPTestToken(authHeader string) (signozURL, apiKey string, err error) {
+func ParseMCPToken(authHeader string) (signozURL, apiKey string, err error) {
 	raw := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 	raw = strings.TrimSpace(raw)
-	if !strings.HasPrefix(raw, MCPTestTokenPrefix) {
+	if !strings.HasPrefix(raw, MCPTokenPrefix) {
 		return "", "", errors.New("not an mcp_ token")
 	}
-	body := strings.TrimPrefix(raw, MCPTestTokenPrefix)
+	body := strings.TrimPrefix(raw, MCPTokenPrefix)
 
 	decoded, err := decodeBase64(body)
 	if err != nil {
 		return "", "", errors.New("invalid mcp_ token: bad base64")
 	}
 
-	var payload mcpTestTokenPayload
+	var payload mcpTokenPayload
 	if err := json.Unmarshal(decoded, &payload); err != nil {
 		return "", "", errors.New("invalid mcp_ token: bad json")
 	}
@@ -207,14 +213,14 @@ func decodeBase64(s string) ([]byte, error) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `go test ./internal/auth/... -run TestParseMCPTestToken_ValidUnpadded -v`
+Run: `go test ./internal/auth/... -run TestParseMCPToken_ValidUnpadded -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/auth/mcptesttoken.go internal/auth/mcptesttoken_test.go
-git commit -m "feat(auth): add ParseMCPTestToken for mcp_ test token format"
+git add internal/auth/mcptoken.go internal/auth/mcptoken_test.go
+git commit -m "feat(auth): add ParseMCPToken for mcp_ test token format"
 ```
 
 ---
@@ -222,19 +228,19 @@ git commit -m "feat(auth): add ParseMCPTestToken for mcp_ test token format"
 ## Task 3: Cover the remaining parser cases
 
 **Files:**
-- Modify: `internal/auth/mcptesttoken_test.go`
+- Modify: `internal/auth/mcptoken_test.go`
 
 - [ ] **Step 1: Add all remaining test cases**
 
-Append to `internal/auth/mcptesttoken_test.go`:
+Append to `internal/auth/mcptoken_test.go`:
 
 ```go
-func TestParseMCPTestToken_ValidPadded(t *testing.T) {
+func TestParseMCPToken_ValidPadded(t *testing.T) {
 	payload := `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"sk_xxx"}}`
 	padded := base64.URLEncoding.EncodeToString([]byte(payload))
 	token := "mcp_" + padded
 
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseMCPToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -243,11 +249,11 @@ func TestParseMCPTestToken_ValidPadded(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_ExtraHeadersIgnored(t *testing.T) {
+func TestParseMCPToken_ExtraHeadersIgnored(t *testing.T) {
 	payload := `{"headers":{"Authorization":"Bearer","X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"sk_xxx","X-Extra":"ignored"}}`
 	token := makeToken(t, payload)
 
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseMCPToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,11 +262,11 @@ func TestParseMCPTestToken_ExtraHeadersIgnored(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_TrailingSlashTrimmed(t *testing.T) {
+func TestParseMCPToken_TrailingSlashTrimmed(t *testing.T) {
 	payload := `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud/","KEY":"sk_xxx"}}`
 	token := makeToken(t, payload)
 
-	url, _, err := ParseMCPTestToken("Bearer " + token)
+	url, _, err := ParseMCPToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,63 +275,63 @@ func TestParseMCPTestToken_TrailingSlashTrimmed(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_NotAnMCPToken(t *testing.T) {
-	_, _, err := ParseMCPTestToken("Bearer eyJhbGciOi.aaa.bbb")
+func TestParseMCPToken_NotAnMCPToken(t *testing.T) {
+	_, _, err := ParseMCPToken("Bearer eyJhbGciOi.aaa.bbb")
 	if err == nil || !strings.Contains(err.Error(), "not an mcp_ token") {
 		t.Errorf("err = %v, want 'not an mcp_ token'", err)
 	}
 }
 
-func TestParseMCPTestToken_BadBase64(t *testing.T) {
-	_, _, err := ParseMCPTestToken("Bearer mcp_!!!not-base64!!!")
+func TestParseMCPToken_BadBase64(t *testing.T) {
+	_, _, err := ParseMCPToken("Bearer mcp_!!!not-base64!!!")
 	if err == nil || !strings.Contains(err.Error(), "bad base64") {
 		t.Errorf("err = %v, want 'bad base64'", err)
 	}
 }
 
-func TestParseMCPTestToken_BadJSON(t *testing.T) {
+func TestParseMCPToken_BadJSON(t *testing.T) {
 	token := "mcp_" + base64.RawURLEncoding.EncodeToString([]byte("not-json"))
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseMCPToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "bad json") {
 		t.Errorf("err = %v, want 'bad json'", err)
 	}
 }
 
-func TestParseMCPTestToken_MissingHeadersObject(t *testing.T) {
+func TestParseMCPToken_MissingHeadersObject(t *testing.T) {
 	token := makeToken(t, `{"something":"else"}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseMCPToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "missing headers object") {
 		t.Errorf("err = %v, want 'missing headers object'", err)
 	}
 }
 
-func TestParseMCPTestToken_MissingURL(t *testing.T) {
+func TestParseMCPToken_MissingURL(t *testing.T) {
 	token := makeToken(t, `{"headers":{"KEY":"sk_xxx"}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseMCPToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "X-SigNoz-URL") {
 		t.Errorf("err = %v, want 'X-SigNoz-URL' error", err)
 	}
 }
 
-func TestParseMCPTestToken_NonHTTPSchemeRejected(t *testing.T) {
+func TestParseMCPToken_NonHTTPSchemeRejected(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"ftp://x.example.com","KEY":"sk_xxx"}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseMCPToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "X-SigNoz-URL") {
 		t.Errorf("err = %v, want 'X-SigNoz-URL' error", err)
 	}
 }
 
-func TestParseMCPTestToken_MissingKey(t *testing.T) {
+func TestParseMCPToken_MissingKey(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud"}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseMCPToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "missing KEY") {
 		t.Errorf("err = %v, want 'missing KEY'", err)
 	}
 }
 
-func TestParseMCPTestToken_EmptyKey(t *testing.T) {
+func TestParseMCPToken_EmptyKey(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"   "}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseMCPToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "missing KEY") {
 		t.Errorf("err = %v, want 'missing KEY'", err)
 	}
@@ -350,8 +356,8 @@ Expected: all tests PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add internal/auth/mcptesttoken_test.go
-git commit -m "test(auth): cover ParseMCPTestToken error and edge cases"
+git add internal/auth/mcptoken_test.go
+git commit -m "test(auth): cover ParseMCPToken error and edge cases"
 ```
 
 ---
@@ -393,10 +399,10 @@ with:
 		authHeader := r.Header.Get("Authorization")
 
 		// mcp_ test token — self-contained token carrying URL + API key.
-		// Gated by MCP_TEST_TOKEN_ENABLED; ignores any X-SigNoz-URL /
+		// Gated by MCP_TOKEN_ENABLED; ignores any X-SigNoz-URL /
 		// SIGNOZ-API-KEY headers on the request when it fires.
-		if m.config.MCPTestTokenEnabled && strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer ")), auth.MCPTestTokenPrefix) {
-			tokenURL, tokenKey, err := auth.ParseMCPTestToken(authHeader)
+		if m.config.MCPTokenEnabled && strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer ")), auth.MCPTokenPrefix) {
+			tokenURL, tokenKey, err := auth.ParseMCPToken(authHeader)
 			if err != nil {
 				m.logger.Warn("invalid mcp_ test token", zap.Error(err))
 				http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -443,8 +449,8 @@ In `startHTTP` (around `server.go:680`), immediately after `m.logger.Info("MCP S
 ```go
 	m.logger.Info("MCP Server running in HTTP mode")
 
-	if m.config.MCPTestTokenEnabled {
-		m.logger.Warn("MCP_TEST_TOKEN_ENABLED is on — accepting unsigned mcp_ tokens; do not use in production")
+	if m.config.MCPTokenEnabled {
+		m.logger.Info("MCP token auth enabled")
 	}
 ```
 
@@ -499,7 +505,7 @@ func captureNext(captured *capturedCtx) http.Handler {
 	})
 }
 
-func mcpTestTokenForTest(t *testing.T, url, key string) string {
+func mcpTokenForTest(t *testing.T, url, key string) string {
 	t.Helper()
 	payload := `{"headers":{"X-SigNoz-URL":"` + url + `","KEY":"` + key + `"}}`
 	return "mcp_" + base64.RawURLEncoding.EncodeToString([]byte(payload))
@@ -524,9 +530,9 @@ import (
 Append:
 
 ```go
-func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
+func TestAuthMiddleware_MCPToken_FlagOff_FallsThrough(t *testing.T) {
 	cfg := &config.Config{
-		MCPTestTokenEnabled: false,
+		MCPTokenEnabled: false,
 		URL:                 "https://configured.signoz.cloud",
 	}
 	m := newTestMCPServerForAuth(t, cfg)
@@ -534,7 +540,7 @@ func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
 	captured := &capturedCtx{}
 	handler := m.authMiddleware(captureNext(captured))
 
-	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	token := mcpTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
@@ -558,7 +564,7 @@ func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
 
 - [ ] **Step 3: Run it — should PASS immediately because the branch is guarded by the flag**
 
-Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough -v`
+Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPToken_FlagOff_FallsThrough -v`
 Expected: PASS. (This confirms the flag-off guard works.)
 
 - [ ] **Step 4: Commit**
@@ -580,14 +586,14 @@ git commit -m "test(mcp-server): mcp_ token ignored when flag is off"
 Append:
 
 ```go
-func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
-	cfg := &config.Config{MCPTestTokenEnabled: true}
+func TestAuthMiddleware_MCPToken_FlagOn_ValidToken(t *testing.T) {
+	cfg := &config.Config{MCPTokenEnabled: true}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
 	handler := m.authMiddleware(captureNext(captured))
 
-	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	token := mcpTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
@@ -614,7 +620,7 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
 
 - [ ] **Step 2: Run the test**
 
-Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken -v`
+Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPToken_FlagOn_ValidToken -v`
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
@@ -636,14 +642,14 @@ git commit -m "test(mcp-server): mcp_ token populates context when flag is on"
 Append:
 
 ```go
-func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
-	cfg := &config.Config{MCPTestTokenEnabled: true}
+func TestAuthMiddleware_MCPToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
+	cfg := &config.Config{MCPTokenEnabled: true}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
 	handler := m.authMiddleware(captureNext(captured))
 
-	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	token := mcpTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-SigNoz-URL", "https://conflicting.signoz.cloud")
@@ -666,7 +672,7 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
 
 - [ ] **Step 2: Run it**
 
-Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader -v`
+Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPToken_FlagOn_TokenWinsOverHeader -v`
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
@@ -688,8 +694,8 @@ git commit -m "test(mcp-server): mcp_ token URL takes precedence over headers"
 Append:
 
 ```go
-func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
-	cfg := &config.Config{MCPTestTokenEnabled: true}
+func TestAuthMiddleware_MCPToken_FlagOn_MalformedReturns401(t *testing.T) {
+	cfg := &config.Config{MCPTokenEnabled: true}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
@@ -715,7 +721,7 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
 
 - [ ] **Step 2: Run it**
 
-Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401 -v`
+Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPToken_FlagOn_MalformedReturns401 -v`
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
@@ -737,9 +743,9 @@ git commit -m "test(mcp-server): malformed mcp_ token rejected with 401"
 Append:
 
 ```go
-func TestAuthMiddleware_MCPTestToken_FlagOn_NonMCPBearerUnaffected(t *testing.T) {
+func TestAuthMiddleware_MCPToken_FlagOn_NonMCPBearerUnaffected(t *testing.T) {
 	cfg := &config.Config{
-		MCPTestTokenEnabled: true,
+		MCPTokenEnabled: true,
 		URL:                 "https://configured.signoz.cloud",
 	}
 	m := newTestMCPServerForAuth(t, cfg)
@@ -767,7 +773,7 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_NonMCPBearerUnaffected(t *testing.T)
 
 - [ ] **Step 2: Run it**
 
-Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPTestToken_FlagOn_NonMCPBearerUnaffected -v`
+Run: `go test ./internal/mcp-server/... -run TestAuthMiddleware_MCPToken_FlagOn_NonMCPBearerUnaffected -v`
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
@@ -799,12 +805,12 @@ Build and start the server with only the test flag set (no URL, no API key):
 
 ```bash
 go build -o /tmp/signoz-mcp-server ./...
-MCP_TEST_TOKEN_ENABLED=true TRANSPORT_MODE=http MCP_SERVER_PORT=8765 /tmp/signoz-mcp-server &
+MCP_TOKEN_ENABLED=true TRANSPORT_MODE=http MCP_SERVER_PORT=8765 /tmp/signoz-mcp-server &
 SERVER_PID=$!
 sleep 1
 ```
 
-Expected: the process starts and the logs contain `MCP_TEST_TOKEN_ENABLED is on — accepting unsigned mcp_ tokens; do not use in production`.
+Expected: the process starts and the logs contain `MCP token auth enabled`.
 
 Forge a token pointing at a real SigNoz tenant you can test against (substitute real values):
 
@@ -855,13 +861,13 @@ No code changes in this task. If all checks pass, the feature is complete.
 
 **Spec coverage:**
 - Token format & parsing → Task 2 (parser) + Task 3 (all edge cases).
-- `MCP_TEST_TOKEN_ENABLED` env var → Task 1.
+- `MCP_TOKEN_ENABLED` env var → Task 1.
 - Middleware integration (first branch, early return) → Task 4.
 - Token-wins precedence → Task 8.
 - Auth header selection (`SIGNOZ-API-KEY`) → Task 7 assertion + Task 4 code.
 - Client cache untouched → no task needed (no code change there).
 - Behavior when disabled → Task 6.
-- `ParseMCPTestToken` signature and location → Task 2.
+- `ParseMCPToken` signature and location → Task 2.
 - Config changes → Task 1.
 - Logging (success debug, failure warn, startup warn) → Task 4 (success/failure logs), Task 5 (startup warn).
 - Error messages → parser error strings in Task 2, asserted in Task 3 and Task 9.
@@ -873,6 +879,6 @@ No gaps.
 
 **Placeholder scan:** No TBDs, no "add error handling", no "similar to task N". Every test case has the actual code. Every edit site has the exact before/after text or insertion point.
 
-**Type consistency:** `ParseMCPTestToken(authHeader string) (signozURL, apiKey string, err error)` — same signature used in Task 2 (definition) and Task 4 (call site). `MCPTestTokenPrefix` constant defined in Task 2, referenced in Task 4. `MCPTestTokenEnabled` field name consistent across Tasks 1, 4, 5, 6, 7, 8, 10. Context helpers (`util.SetAPIKey`, `util.SetAuthHeader`, `util.SetSigNozURL`) match the existing signatures in `pkg/util/context.go`.
+**Type consistency:** `ParseMCPToken(authHeader string) (signozURL, apiKey string, err error)` — same signature used in Task 2 (definition) and Task 4 (call site). `MCPTokenPrefix` constant defined in Task 2, referenced in Task 4. `MCPTokenEnabled` field name consistent across Tasks 1, 4, 5, 6, 7, 8, 10. Context helpers (`util.SetAPIKey`, `util.SetAuthHeader`, `util.SetSigNozURL`) match the existing signatures in `pkg/util/context.go`.
 
 **One note on Task 6:** The test passes immediately without new code because the flag-off behavior is produced by the *guard* added in Task 4. This is intentional — it locks in that the guard keeps working, not that new code needs to be added. If Task 4's guard is ever removed or broken, this test will catch it.

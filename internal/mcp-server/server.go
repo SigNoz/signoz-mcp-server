@@ -565,20 +565,21 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
 
-		// mcp_ test token — self-contained token carrying URL + API key.
-		// Gated by MCP_TEST_TOKEN_ENABLED; ignores any X-SigNoz-URL /
-		// SIGNOZ-API-KEY headers on the request when it fires.
-		if m.config.MCPTestTokenEnabled && strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer ")), auth.MCPTestTokenPrefix) {
-			tokenURL, tokenKey, err := auth.ParseMCPTestToken(authHeader)
+		// Claude managed-agent token — self-contained token carrying URL + API key.
+		// Gated by CLAUDE_MANAGED_AGENT_TOKEN_ENABLED; ignores any X-SigNoz-URL /
+		// SIGNOZ-API-KEY headers on the request when it fires. The `mcp_` wire
+		// prefix is preserved for backwards compatibility with existing agent builds.
+		if m.config.ClaudeManagedAgentTokenEnabled && strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer ")), auth.ClaudeManagedAgentTokenPrefix) {
+			tokenURL, tokenKey, err := auth.ParseClaudeManagedAgentToken(authHeader)
 			if err != nil {
-				m.logger.Warn("invalid mcp_ test token", zap.Error(err))
+				m.logger.Warn("invalid claude managed-agent token", zap.Error(err))
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 			ctx = util.SetAPIKey(ctx, tokenKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 			ctx = util.SetSigNozURL(ctx, tokenURL)
-			m.logger.Debug("authenticated via mcp_ test token", zap.String("mcp.tenant_url", tokenURL))
+			m.logger.Debug("authenticated via claude managed-agent token", zap.String("mcp.tenant_url", tokenURL))
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -699,8 +700,8 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 func (m *MCPServer) startHTTP(s *server.MCPServer) error {
 	m.logger.Info("MCP Server running in HTTP mode")
 
-	if m.config.MCPTestTokenEnabled {
-		m.logger.Warn("MCP_TEST_TOKEN_ENABLED is on — accepting unsigned mcp_ tokens; do not use in production")
+	if m.config.ClaudeManagedAgentTokenEnabled {
+		m.logger.Info("Claude managed-agent token auth enabled")
 	}
 
 	addr := fmt.Sprintf(":%s", m.config.Port)

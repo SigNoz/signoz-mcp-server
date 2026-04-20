@@ -11,11 +11,11 @@ func makeToken(t *testing.T, payload string) string {
 	return "mcp_" + base64.RawURLEncoding.EncodeToString([]byte(payload))
 }
 
-func TestParseMCPTestToken_ValidUnpadded(t *testing.T) {
+func TestParseClaudeManagedAgentToken_ValidUnpadded(t *testing.T) {
 	payload := `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"sk_xxx"}}`
 	token := makeToken(t, payload)
 
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -27,12 +27,12 @@ func TestParseMCPTestToken_ValidUnpadded(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_ValidPadded(t *testing.T) {
+func TestParseClaudeManagedAgentToken_ValidPadded(t *testing.T) {
 	payload := `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"sk_xxx"}}`
 	padded := base64.URLEncoding.EncodeToString([]byte(payload))
 	token := "mcp_" + padded
 
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -41,11 +41,11 @@ func TestParseMCPTestToken_ValidPadded(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_ExtraHeadersIgnored(t *testing.T) {
+func TestParseClaudeManagedAgentToken_ExtraHeadersIgnored(t *testing.T) {
 	payload := `{"headers":{"Authorization":"Bearer","X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"sk_xxx","X-Extra":"ignored"}}`
 	token := makeToken(t, payload)
 
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,11 +54,11 @@ func TestParseMCPTestToken_ExtraHeadersIgnored(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_TrailingSlashTrimmed(t *testing.T) {
+func TestParseClaudeManagedAgentToken_TrailingSlashTrimmed(t *testing.T) {
 	payload := `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud/","KEY":"sk_xxx"}}`
 	token := makeToken(t, payload)
 
-	url, _, err := ParseMCPTestToken("Bearer " + token)
+	url, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,55 +67,55 @@ func TestParseMCPTestToken_TrailingSlashTrimmed(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_NotAnMCPToken(t *testing.T) {
-	_, _, err := ParseMCPTestToken("Bearer eyJhbGciOi.aaa.bbb")
-	if err == nil || !strings.Contains(err.Error(), "not an mcp_ token") {
-		t.Errorf("err = %v, want 'not an mcp_ token'", err)
+func TestParseClaudeManagedAgentToken_NotAClaudeManagedAgentToken(t *testing.T) {
+	_, _, err := ParseClaudeManagedAgentToken("Bearer eyJhbGciOi.aaa.bbb")
+	if err == nil || !strings.Contains(err.Error(), "not a claude managed-agent token") {
+		t.Errorf("err = %v, want 'not a claude managed-agent token'", err)
 	}
 }
 
-func TestParseMCPTestToken_BadBase64(t *testing.T) {
-	_, _, err := ParseMCPTestToken("Bearer mcp_!!!not-base64!!!")
+func TestParseClaudeManagedAgentToken_BadBase64(t *testing.T) {
+	_, _, err := ParseClaudeManagedAgentToken("Bearer mcp_!!!not-base64!!!")
 	if err == nil || !strings.Contains(err.Error(), "bad base64") {
 		t.Errorf("err = %v, want 'bad base64'", err)
 	}
 }
 
-func TestParseMCPTestToken_BadJSON(t *testing.T) {
+func TestParseClaudeManagedAgentToken_BadJSON(t *testing.T) {
 	token := "mcp_" + base64.RawURLEncoding.EncodeToString([]byte("not-json"))
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "bad json") {
 		t.Errorf("err = %v, want 'bad json'", err)
 	}
 }
 
-func TestParseMCPTestToken_MissingHeadersObject(t *testing.T) {
+func TestParseClaudeManagedAgentToken_MissingHeadersObject(t *testing.T) {
 	token := makeToken(t, `{"something":"else"}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "missing headers object") {
 		t.Errorf("err = %v, want 'missing headers object'", err)
 	}
 }
 
-func TestParseMCPTestToken_MissingURL(t *testing.T) {
+func TestParseClaudeManagedAgentToken_MissingURL(t *testing.T) {
 	token := makeToken(t, `{"headers":{"KEY":"sk_xxx"}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "X-SigNoz-URL") {
 		t.Errorf("err = %v, want 'X-SigNoz-URL' error", err)
 	}
 }
 
-func TestParseMCPTestToken_UnsupportedSchemeRejected(t *testing.T) {
+func TestParseClaudeManagedAgentToken_UnsupportedSchemeRejected(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"ftp://x.example.com","KEY":"sk_xxx"}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "X-SigNoz-URL") {
 		t.Errorf("err = %v, want 'X-SigNoz-URL' error", err)
 	}
 }
 
-func TestParseMCPTestToken_HTTPSchemeAccepted(t *testing.T) {
+func TestParseClaudeManagedAgentToken_HTTPSchemeAccepted(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"http://tenant.example.com","KEY":"sk_xxx"}}`)
-	url, key, err := ParseMCPTestToken("Bearer " + token)
+	url, key, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -127,17 +127,17 @@ func TestParseMCPTestToken_HTTPSchemeAccepted(t *testing.T) {
 	}
 }
 
-func TestParseMCPTestToken_MissingKey(t *testing.T) {
+func TestParseClaudeManagedAgentToken_MissingKey(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud"}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "missing KEY") {
 		t.Errorf("err = %v, want 'missing KEY'", err)
 	}
 }
 
-func TestParseMCPTestToken_EmptyKey(t *testing.T) {
+func TestParseClaudeManagedAgentToken_EmptyKey(t *testing.T) {
 	token := makeToken(t, `{"headers":{"X-SigNoz-URL":"https://tenant.signoz.cloud","KEY":"   "}}`)
-	_, _, err := ParseMCPTestToken("Bearer " + token)
+	_, _, err := ParseClaudeManagedAgentToken("Bearer " + token)
 	if err == nil || !strings.Contains(err.Error(), "missing KEY") {
 		t.Errorf("err = %v, want 'missing KEY'", err)
 	}

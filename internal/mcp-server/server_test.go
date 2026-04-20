@@ -889,23 +889,23 @@ func captureNext(captured *capturedCtx) http.Handler {
 	})
 }
 
-func mcpTestTokenForTest(t *testing.T, url, key string) string {
+func claudeManagedAgentTokenForTest(t *testing.T, url, key string) string {
 	t.Helper()
 	payload := `{"headers":{"X-SigNoz-URL":"` + url + `","KEY":"` + key + `"}}`
 	return "mcp_" + base64.RawURLEncoding.EncodeToString([]byte(payload))
 }
 
-func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
+func TestAuthMiddleware_ClaudeManagedAgentToken_FlagOff_FallsThrough(t *testing.T) {
 	cfg := &config.Config{
-		MCPTestTokenEnabled: false,
-		URL:                 "https://configured.signoz.cloud",
+		ClaudeManagedAgentTokenEnabled: false,
+		URL:                            "https://configured.signoz.cloud",
 	}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
 	handler := m.authMiddleware(captureNext(captured))
 
-	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	token := claudeManagedAgentTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
@@ -926,14 +926,14 @@ func TestAuthMiddleware_MCPTestToken_FlagOff_FallsThrough(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
-	cfg := &config.Config{MCPTestTokenEnabled: true}
+func TestAuthMiddleware_ClaudeManagedAgentToken_FlagOn_ValidToken(t *testing.T) {
+	cfg := &config.Config{ClaudeManagedAgentTokenEnabled: true}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
 	handler := m.authMiddleware(captureNext(captured))
 
-	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	token := claudeManagedAgentTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
@@ -957,14 +957,14 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_ValidToken(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
-	cfg := &config.Config{MCPTestTokenEnabled: true}
+func TestAuthMiddleware_ClaudeManagedAgentToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
+	cfg := &config.Config{ClaudeManagedAgentTokenEnabled: true}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
 	handler := m.authMiddleware(captureNext(captured))
 
-	token := mcpTestTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
+	token := claudeManagedAgentTokenForTest(t, "https://tenant.signoz.cloud", "sk_xxx")
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-SigNoz-URL", "https://conflicting.signoz.cloud")
@@ -984,8 +984,8 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_TokenWinsOverHeader(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
-	cfg := &config.Config{MCPTestTokenEnabled: true}
+func TestAuthMiddleware_ClaudeManagedAgentToken_FlagOn_MalformedReturns401(t *testing.T) {
+	cfg := &config.Config{ClaudeManagedAgentTokenEnabled: true}
 	m := newTestMCPServerForAuth(t, cfg)
 
 	captured := &capturedCtx{}
@@ -1008,10 +1008,10 @@ func TestAuthMiddleware_MCPTestToken_FlagOn_MalformedReturns401(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_MCPTestToken_FlagOn_NonMCPBearerUnaffected(t *testing.T) {
+func TestAuthMiddleware_ClaudeManagedAgentToken_FlagOn_NonMCPBearerUnaffected(t *testing.T) {
 	cfg := &config.Config{
-		MCPTestTokenEnabled: true,
-		URL:                 "https://configured.signoz.cloud",
+		ClaudeManagedAgentTokenEnabled: true,
+		URL:                            "https://configured.signoz.cloud",
 	}
 	m := newTestMCPServerForAuth(t, cfg)
 
