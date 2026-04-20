@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+
+## [0.2.0] - 2026-04-18
+
+### Added
+- support custom HTTP headers via SIGNOZ_CUSTOM_HEADERS env var ([#129](https://github.com/SigNoz/signoz-mcp-server/pull/129))
+- validate notification channels before creating alerts ([#128](https://github.com/SigNoz/signoz-mcp-server/pull/128))
+- add signoz_create_alert MCP tool with v2 schema validation ([#123](https://github.com/SigNoz/signoz-mcp-server/pull/123))
+- add signoz_list_notification_channels MCP tool ([#126](https://github.com/SigNoz/signoz-mcp-server/pull/126))
+- add signoz_update_notification_channel MCP tool ([#125](https://github.com/SigNoz/signoz-mcp-server/pull/125))
+- add signoz_create_notification_channel MCP tool ([#124](https://github.com/SigNoz/signoz-mcp-server/pull/124))
+- add signoz_delete_dashboard MCP tool ([#122](https://github.com/SigNoz/signoz-mcp-server/pull/122))
+- add dashboard validation pipeline with builder and panel validator ([#121](https://github.com/SigNoz/signoz-mcp-server/pull/121))
+- add Segment analytics for session and tool call tracking ([#120](https://github.com/SigNoz/signoz-mcp-server/pull/120))
+- add OTel GenAI semantic instrumentation and standardize log att… ([#116](https://github.com/SigNoz/signoz-mcp-server/pull/116))
+
+### Other
+- post-release v0.1.2 ([#114](https://github.com/SigNoz/signoz-mcp-server/pull/114))
+- improve logs ([#115](https://github.com/SigNoz/signoz-mcp-server/pull/115))
+
 ## [0.1.2] - 2026-04-09
 
 ### Fixed
@@ -128,3 +147,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.0.2]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/SigNoz/signoz-mcp-server/releases/tag/v0.0.1
 [0.1.2]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.1.0...v0.1.2
+[0.2.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.1.2...v0.2.0

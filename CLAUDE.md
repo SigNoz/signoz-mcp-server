@@ -23,6 +23,15 @@ plans/
    - `In Progress` — implementation underway
    - `Done` — shipped
 
+## Documentation & Metadata Sync Checklist
+
+When adding, renaming, or removing MCP tools/resources/configuration, update docs and metadata in the same PR.
+
+- Update `README.md` tool tables/parameter references to match current behavior.
+- Update `manifest.json` tool metadata (`tools`, descriptions, and related fields) to match registered handlers.
+- Review any user-facing docs under `docs/` for stale references.
+- Mention these doc updates explicitly in the PR summary.
+
 ### File templates
 
 **`<feature>.context.md`**

@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -10,12 +11,14 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 )
 
 func TestOAuthAuthorizationFlow(t *testing.T) {
@@ -48,7 +51,7 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg)
+	handler := NewHandler(zap.NewNop(), cfg, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", handler.HandleProtectedResourceMetadata)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", handler.HandleAuthorizationServerMetadata)
@@ -235,7 +238,7 @@ func TestOAuthAuthorizationFlowServiceAccountFallback(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg)
+	handler := NewHandler(zap.NewNop(), cfg, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
 	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
@@ -334,7 +337,7 @@ func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg)
+	handler := NewHandler(zap.NewNop(), cfg, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -407,7 +410,7 @@ func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg)
+	handler := NewHandler(zap.NewNop(), cfg, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://[::1]:4567/callback"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -426,7 +429,7 @@ func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg)
+	handler := NewHandler(zap.NewNop(), cfg, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["javascript:alert(1)"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -469,7 +472,7 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg)
+	handler := NewHandler(zap.NewNop(), cfg, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -528,5 +531,146 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 	}
 	if !strings.Contains(submitRR.Header().Get("Set-Cookie"), "Path=/signoz-mcp/oauth/authorize") {
 		t.Fatalf("clearing CSRF cookie missing issuer path prefix: %s", submitRR.Header().Get("Set-Cookie"))
+	}
+}
+
+type capturedEmission struct {
+	event     string
+	apiKey    string
+	signozURL string
+	props     map[string]any
+}
+
+type capturingEmitter struct {
+	mu        sync.Mutex
+	emissions []capturedEmission
+}
+
+func (c *capturingEmitter) emit(_ context.Context, event, apiKey, signozURL string, props map[string]any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.emissions = append(c.emissions, capturedEmission{event: event, apiKey: apiKey, signozURL: signozURL, props: props})
+}
+
+func (c *capturingEmitter) snapshot() []capturedEmission {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]capturedEmission, len(c.emissions))
+	copy(out, c.emissions)
+	return out
+}
+
+func TestOAuthEmitterFiresOnAuthorizeAndTokenIssue(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/user/me" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"status":"error"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer signozServer.Close()
+
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+		AccessTokenTTL:   time.Hour,
+		RefreshTokenTTL:  24 * time.Hour,
+		AuthCodeTTL:      10 * time.Minute,
+	}
+
+	capture := &capturingEmitter{}
+	handler := NewHandler(zap.NewNop(), cfg, capture.emit)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
+	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
+	mux.HandleFunc("POST /oauth/authorize", handler.HandleAuthorizeSubmit)
+	mux.HandleFunc("POST /oauth/token", handler.HandleToken)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/oauth/register",
+		bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://127.0.0.1:4567/callback"]}`))
+	registerReq.Header.Set("Content-Type", "application/json")
+	registerRR := httptest.NewRecorder()
+	mux.ServeHTTP(registerRR, registerReq)
+	var registered registerClientResponse
+	if err := json.Unmarshal(registerRR.Body.Bytes(), &registered); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+
+	verifier := "s3cr3t-pkce-verifier-that-is-long-enough-for-rfc7636"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	authorizeURL := "/oauth/authorize?response_type=code&client_id=" + url.QueryEscape(registered.ClientID) +
+		"&redirect_uri=" + url.QueryEscape("http://127.0.0.1:4567/callback") +
+		"&code_challenge=" + url.QueryEscape(challenge) + "&code_challenge_method=S256"
+
+	authorizeRR := httptest.NewRecorder()
+	mux.ServeHTTP(authorizeRR, httptest.NewRequest(http.MethodGet, authorizeURL, nil))
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	csrfToken := re.FindStringSubmatch(authorizeRR.Body.String())[1]
+	csrfCookie := authorizeRR.Result().Cookies()[0]
+
+	form := url.Values{
+		"client_id":             {registered.ClientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"code_challenge":        {challenge},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {csrfToken},
+		"signoz_url":            {signozServer.URL},
+		"api_key":               {"snz-api-key"},
+	}
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(csrfCookie)
+	submitRR := httptest.NewRecorder()
+	mux.ServeHTTP(submitRR, submitReq)
+	location := submitRR.Result().Header.Get("Location")
+	parsedLoc, _ := url.Parse(location)
+	authCode := parsedLoc.Query().Get("code")
+	if authCode == "" {
+		t.Fatalf("no auth code in redirect: %s", location)
+	}
+
+	tokenForm := url.Values{
+		"grant_type":    {"authorization_code"},
+		"client_id":     {registered.ClientID},
+		"code":          {authCode},
+		"redirect_uri":  {"http://127.0.0.1:4567/callback"},
+		"code_verifier": {verifier},
+	}
+	tokenReq := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString(tokenForm.Encode()))
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tokenRR := httptest.NewRecorder()
+	mux.ServeHTTP(tokenRR, tokenReq)
+	if tokenRR.Code != http.StatusOK {
+		t.Fatalf("token status = %d, body = %s", tokenRR.Code, tokenRR.Body.String())
+	}
+
+	emissions := capture.snapshot()
+	if len(emissions) != 2 {
+		t.Fatalf("expected 2 emissions (authorize submit + token issued), got %d: %+v", len(emissions), emissions)
+	}
+
+	submitted := emissions[0]
+	if submitted.event != analytics.EventOAuthAuthorizationSubmitted {
+		t.Fatalf("first emission event = %q, want %q", submitted.event, analytics.EventOAuthAuthorizationSubmitted)
+	}
+	if submitted.apiKey != "snz-api-key" || submitted.signozURL != signozServer.URL {
+		t.Fatalf("first emission creds = (%q, %q), want (snz-api-key, %q)", submitted.apiKey, submitted.signozURL, signozServer.URL)
+	}
+
+	issued := emissions[1]
+	if issued.event != analytics.EventOAuthTokenIssued {
+		t.Fatalf("second emission event = %q, want %q", issued.event, analytics.EventOAuthTokenIssued)
+	}
+	if issued.props[analytics.AttrGrantType] != "authorization_code" {
+		t.Fatalf("grantType attr = %v, want authorization_code", issued.props[analytics.AttrGrantType])
 	}
 }

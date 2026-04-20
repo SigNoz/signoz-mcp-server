@@ -18,10 +18,16 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 const csrfCookieName = "signoz_mcp_oauth_csrf"
+
+// AnalyticsEmitter publishes OAuth flow events. apiKey and signozURL are
+// the validated tenant credentials the emitter needs to resolve identity
+// (orgId) for the event. Nil disables OAuth analytics.
+type AnalyticsEmitter func(ctx context.Context, event, apiKey, signozURL string, props map[string]any)
 
 //go:embed static/authorize.html
 var authorizeTemplateFS embed.FS
@@ -33,6 +39,7 @@ type Handler struct {
 	config            *config.Config
 	tokenSecret       []byte
 	authorizeTemplate *template.Template
+	emitEvent         AnalyticsEmitter
 }
 
 type registerClientRequest struct {
@@ -71,13 +78,21 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func NewHandler(logger *zap.Logger, cfg *config.Config) *Handler {
+func NewHandler(logger *zap.Logger, cfg *config.Config, emitEvent AnalyticsEmitter) *Handler {
 	return &Handler{
 		logger:            logger,
 		config:            cfg,
 		tokenSecret:       []byte(cfg.OAuthTokenSecret),
 		authorizeTemplate: authorizePageTemplate,
+		emitEvent:         emitEvent,
 	}
+}
+
+func (h *Handler) emit(ctx context.Context, event, apiKey, signozURL string, props map[string]any) {
+	if h.emitEvent == nil {
+		return
+	}
+	h.emitEvent(ctx, event, apiKey, signozURL, props)
 }
 
 func (h *Handler) HandleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
@@ -261,11 +276,24 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		Secure:   h.isSecure(),
 		MaxAge:   -1,
 	})
+
+	h.emit(r.Context(), analytics.EventOAuthAuthorizationSubmitted, apiKey, normalizedURL, map[string]any{
+		analytics.AttrTenantURL: normalizedURL,
+	})
+
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiKey string) error {
-	signozClient := client.NewClient(h.logger, signozURL, apiKey, "SIGNOZ-API-KEY")
+	// Only forward custom headers when the user-supplied URL matches the
+	// configured SIGNOZ_URL to prevent leaking proxy-auth credentials to
+	// attacker-controlled hosts.
+	var headers map[string]string
+	configNormalized, _ := util.NormalizeSigNozURL(h.config.URL)
+	if strings.EqualFold(signozURL, configNormalized) {
+		headers = h.config.CustomHeaders
+	}
+	signozClient := client.NewClient(h.logger, signozURL, apiKey, "SIGNOZ-API-KEY", headers)
 	return signozClient.ValidateCredentials(ctx)
 }
 
@@ -337,7 +365,7 @@ func (h *Handler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	h.issueTokenPair(w, clientID, apiKey, signozURL)
+	h.issueTokenPair(r.Context(), w, clientID, apiKey, signozURL, "authorization_code")
 }
 
 func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request) {
@@ -358,10 +386,10 @@ func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.issueTokenPair(w, refreshClientID, apiKey, signozURL)
+	h.issueTokenPair(r.Context(), w, refreshClientID, apiKey, signozURL, "refresh_token")
 }
 
-func (h *Handler) issueTokenPair(w http.ResponseWriter, clientID, apiKey, signozURL string) {
+func (h *Handler) issueTokenPair(ctx context.Context, w http.ResponseWriter, clientID, apiKey, signozURL, grantType string) {
 	accessTokenExpiresAt := time.Now().UTC().Add(h.config.AccessTokenTTL)
 	accessToken, err := EncryptToken(apiKey, signozURL, clientID, accessTokenExpiresAt, h.tokenSecret)
 	if err != nil {
@@ -386,6 +414,11 @@ func (h *Handler) issueTokenPair(w http.ResponseWriter, clientID, apiKey, signoz
 		TokenType:    "Bearer",
 		ExpiresIn:    int(h.config.AccessTokenTTL.Seconds()),
 		RefreshToken: refreshTokenValue,
+	})
+
+	h.emit(ctx, analytics.EventOAuthTokenIssued, apiKey, signozURL, map[string]any{
+		analytics.AttrTenantURL: signozURL,
+		analytics.AttrGrantType: grantType,
 	})
 }
 
