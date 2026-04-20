@@ -54,6 +54,10 @@
       "description": "Get alert history timeline for a specific rule with optional state filter"
     },
     {
+      "name": "signoz_create_alert",
+      "description": "Create a new alert rule using SigNoz v2alpha1 alert schema"
+    },
+    {
       "name": "signoz_list_dashboards",
       "description": "List all dashboards with summaries"
     },
@@ -112,6 +116,10 @@
     {
       "name": "signoz_execute_builder_query",
       "description": "Execute a raw SigNoz Query Builder v5 query"
+    },
+    {
+      "name": "signoz_list_notification_channels",
+      "description": "List all configured notification channels"
     },
     {
       "name": "signoz_create_notification_channel",
