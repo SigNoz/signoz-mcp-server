@@ -73,7 +73,17 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 		authHeaderName: authHeaderName,
 		customHeaders:  customHeaders,
 		httpClient: &http.Client{
-			Transport: otelhttp.NewTransport(http.DefaultTransport),
+			// Default client span name is just the HTTP method (per OTel HTTP
+			// semconv — the client doesn't know a templated route). Override
+			// with the path so traces read as "HTTP GET /api/v1/dashboards"
+			// rather than a forest of indistinguishable "HTTP GET" spans. The
+			// full URL is already attached as a span attribute by otelhttp.
+			Transport: otelhttp.NewTransport(
+				http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return "HTTP " + r.Method + " " + r.URL.Path
+				}),
+			),
 		},
 	}
 }
