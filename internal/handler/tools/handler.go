@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"go.opentelemetry.io/otel/trace"
@@ -15,8 +16,10 @@ import (
 )
 
 type Handler struct {
-	logger      *zap.Logger
-	clientCache *expirable.LRU[string, *signozclient.SigNoz]
+	logger        *zap.Logger
+	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
+	configURL     string
+	customHeaders map[string]string
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
@@ -25,9 +28,18 @@ type Handler struct {
 }
 
 func NewHandler(log *zap.Logger, cfg *config.Config) *Handler {
+	// Normalize the configured URL so that the URL comparison in GetClient
+	// works reliably (e.g. https://example.com:443 == https://example.com).
+	normalizedURL := cfg.URL
+	if n, err := util.NormalizeSigNozURL(cfg.URL); err == nil {
+		normalizedURL = n
+	}
+
 	return &Handler{
-		logger:      log,
-		clientCache: expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
+		logger:        log,
+		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
+		configURL:     normalizedURL,
+		customHeaders: cfg.CustomHeaders,
 	}
 }
 
@@ -82,8 +94,16 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 		return cachedClient, nil
 	}
 
+	// Only attach custom headers when the tenant URL matches the configured
+	// SIGNOZ_URL to prevent leaking proxy-auth credentials (e.g. Cloudflare
+	// Access tokens) to arbitrary third-party hosts.
+	var headers map[string]string
+	if strings.EqualFold(signozURL, h.configURL) {
+		headers = h.customHeaders
+	}
+
 	h.tenantLogger(ctx).Debug("Creating new SigNoz client for tenant")
-	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader)
+	newClient := signozclient.NewClient(h.logger, signozURL, apiKey, authHeader, headers)
 	h.clientCache.Add(cacheKey, newClient)
 	return newClient, nil
 }

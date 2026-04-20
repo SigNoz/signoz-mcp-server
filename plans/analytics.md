@@ -794,3 +794,48 @@ Based on above doc implement analytics in this repo following pieces from https:
     6. Avg tool calls per tenant
 8. Verify the events and attributes sent using console log and iterate till you do it properly
 9. Remove the console logs from step 8 post verification
+
+---
+
+## Implementation Notes (post-ship)
+
+Sections 1–13 above describe the upstream SigNoz analytics pattern used as a reference. The MCP server's shipped implementation deliberately diverges on a few points — capture them here so future readers aren't misled by the reference.
+
+### Interface surface
+
+- `Analytics` keeps only `TrackUser` and `IdentifyUser` (plus `Enabled`, `Start`, `Stop`, `Send`). The group-scoped `TrackGroup` / `IdentifyGroup` methods from the reference are **not** present — every event carries an identity (orgId, userId) resolved against `/api/v2/users/me` (JWT) or `/api/v1/service_accounts/me` (API key).
+- Identity lookups are cached per-`SigNoz` client with a 10-min TTL and a mutex so concurrent callers share a single roundtrip. Definition: [internal/client/client.go](../internal/client/client.go).
+
+### Event catalog
+
+All event names are defined in [pkg/analytics/events.go](../pkg/analytics/events.go). The naming convention is `Section: Action`, with every MCP-server event prefixed `MCP <Subsection>` so they stay distinct from main-app SigNoz events (Alert, Dashboard, Host Metrics) in shared destinations.
+
+| Event | Fired at | Notable attributes |
+| --- | --- | --- |
+| `MCP Session: Registered` | `AddAfterInitialize` hook (successful initialize) | `tenantUrl`, `sessionId`, `clientName`, `clientVersion` |
+| `MCP Session: Unregistered` | `AddOnUnregisterSession` hook (only fires for long-lived GET listener, not POST-only clients) | `tenantUrl`, `sessionId`, `clientName`, `clientVersion` |
+| `MCP Tool: Called` | tool-handler middleware, post-return | `toolName`, `toolIsError`, `durationMs`, `searchContext`, `sessionId`, `clientName`, `clientVersion` |
+| `MCP Prompt: Fetched` | `AddAfterGetPrompt` (success only) | `promptName`, `sessionId` |
+| `MCP Resource: Fetched` | `AddAfterReadResource` (success only) | `resourceUri`, `sessionId` |
+| `MCP OAuth: Authorization submitted` | `HandleAuthorizeSubmit` after credential validation | `tenantUrl` |
+| `MCP OAuth: Token issued` | `issueTokenPair` for both auth-code and refresh-token grants | `grantType` |
+
+Every event is enriched with identity attributes (`orgId`, `principal`, `name`, `email`) by `mergeIdentityAttrs` in [internal/mcp-server/server.go](../internal/mcp-server/server.go). `name` and `email` are Segment's reserved traits so downstream destinations (Mixpanel, etc.) auto-map them; `principal` (`"user"` or `"service_account"`) disambiguates. For users, `name` is the `displayName` from `/api/v2/users/me`; for service accounts, it's the `name` from `/api/v1/service_accounts/me`. All attribute keys are camelCase (not OTel-dotted) — OTel spans and zap log fields keep the dotted convention for semantic-convention compatibility.
+
+### Async dispatch
+
+All analytics emission runs on a detached goroutine via `trackEventAsync` / `identifyAsync` / `identifyAndTrackAsync` with a 5s budget and its own context carrying credentials, session/tenant context, and the OTel span context (so the identity HTTP request joins the originating tool-call trace). Tool-call latency is never blocked on analytics.
+
+### Client attribution
+
+MCP `ClientInfo` (Name, Version from `InitializeRequest.Params.ClientInfo`) is captured on `AfterInitialize` into an `expirable.LRU[string, mcp.Implementation]` cache keyed by session ID (cap 1024, TTL 30min, sliding window on read). Attribute attach happens synchronously before the async dispatch, so the goroutine snapshots client info correctly even when the session cleanup fires immediately after.
+
+### OAuth
+
+The `oauth.Handler` takes an optional `AnalyticsEmitter` callback (nullable — noop when nil). The MCP server passes a bound method `trackOAuthEvent` that seeds the credentials on the ctx and forwards to `trackEventAsync`. Pre-credential OAuth steps (client registration, authorize GET) are **not** tracked — identity resolution requires credentials in hand.
+
+### Not tracked
+
+- Prompt/Resource errors (routed through the existing `OnError` hook; only success fires an event).
+- Pre-auth OAuth flow steps (no identity yet).
+- Tool-argument payloads (PII risk; `searchContext` conveys intent instead).
