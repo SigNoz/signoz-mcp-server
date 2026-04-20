@@ -80,7 +80,7 @@ Additional hygiene: added `pkg/log/handler_test.go` with 5 tests pinning Context
 Two real findings beyond the agent pass:
 
 ### 2026-04-20 — Remaining observability cleanup pass
-- Hardened `methodSpanMiddleware` against oversized JSON-RPC bodies by capping reads at 1 MiB and returning HTTP 413 instead of buffering unbounded request bodies.
+- Hardened `methodSpanMiddleware` against oversized JSON-RPC bodies by capping inspection at 1 MiB. Oversized bodies now skip method-span extraction and continue to the MCP handler instead of being rejected by observability code.
 - Moved method-observation timeout tuning from a package-global test override to per-server fields so future `t.Parallel()` usage cannot race on shared state.
 - Added a true concurrent finish-vs-expire race test plus stronger assertions for timeout warning logs and span exception event names/messages.
 - Deduplicated OTel metric test helpers into `internal/testutil/oteltest` and replaced brittle hook-slice indexing with `singleHook(...)` helpers.
@@ -89,7 +89,7 @@ Two real findings beyond the agent pass:
 ### 2026-04-20 — Cardinality and timeout alignment follow-up
 - Tightened `methodSpanMiddleware` to whitelist only known MCP request methods before starting a span, preventing attacker-controlled span-name cardinality on unknown JSON-RPC methods.
 - Interactive OAuth authorize-submit failures now feed the same `mcp.oauth.failures` counter and structured failure log path as JSON OAuth errors, so credential-entry mistakes show up in dashboards and alerts.
-- Non-tool method spans are no longer ended at raw HTTP-handler return. They now stay open until hook success/error completion or timeout cleanup, which keeps timeout traces aligned with `mcp.method.calls{error.type=internal}` metrics in production.
+- Non-tool method spans are no longer ended at raw HTTP-handler return. They now stay open until hook success/error completion or request-context cleanup, which keeps traces aligned with `mcp.method.calls{error.type=internal}` metrics in production without mislabeling legitimate long-running calls.
 1. 5 payload-logging sites in `internal/handler/tools/*.go` bypass the 4 KiB cap (`metrics_query.go`, `alerts.go`, `logs.go`, `dashboards.go`, `notification_channels.go`). Added `pkg/log.TruncAny` helper that marshals an `any` to JSON and applies `TruncBody`; wrapped all five sites.
 2. Plan text no longer matched shipped design after the middleware-order fix and the decision to start `runtime.Start()` from main.go rather than meter.go. Plan updated in-place to reflect what shipped.
 
@@ -102,7 +102,7 @@ Follow-up fixes for the PR review findings:
 
 ### 2026-04-20 — Cleanup pass after agent review
 Claude's follow-up comments uncovered two real cleanup items and several design nits:
-1. The non-tool method observation map could leak on panics because mcp-go only recovers tool handlers. Since hooks cannot replace the request context, the fix is a bounded timeout cleanup for hook-started method spans rather than a ctx-attached defer.
+1. The non-tool method observation map could leak on panics because mcp-go only recovers tool handlers. Since hooks cannot replace the request context, the fix is request-context cleanup for hook-started method spans rather than a ctx-attached defer.
 2. `writeOAuthError(nil, ...)` dropped request context on a few server-error paths. The handler signatures were adjusted so OAuth failures always log and emit metrics with the real request context.
 3. The custom `mcp.method.is_error` attribute was removed in favor of semconv-aligned `error.type` on method spans and metrics.
 4. Zero-duration session register/unregister spans were removed; the remaining signal is the session counter plus structured logs.
@@ -140,6 +140,12 @@ Codex P2 suggested seeding `mcp.tenant_url` from the `signoz_url` form field in 
 This is materially different from the post-decrypt OAuth paths (`handleAuthorizationCodeGrant`, `handleRefreshTokenGrant`, `issueTokenPair`), where `signozURL` comes out of an encrypted token the **server itself issued** — values there are bounded to real, completed authorize flows. Those keep the tenant seeding.
 
 Rule: only seed `mcp.tenant_url` from values we have asserted ownership of (OAuth-decrypted token, validated JWT audience, authenticated header). User-submitted form fields on unauthenticated endpoints do not qualify.
+
+### 2026-04-21 — PR follow-up: non-blocking body peek and request-scoped observation cleanup
+Two live PR comments on `internal/mcp-server/server.go` were valid and led to one more design pass:
+
+1. The initial 1 MiB body cap in `methodSpanMiddleware` returned HTTP 413 before `next`, which let observability code reject legitimate large MCP tool calls. The middleware now only peeks at up to 1 MiB, reconstructs the original request body, and skips method-span extraction when the body exceeds the inspection cap.
+2. The one-minute method-observation timer could mark legitimate long-running `resources/read` or `prompts/get` requests as internal failures before they finished. Cleanup now uses `context.AfterFunc(ctx, ...)`, so observations only auto-complete if the request context ends without any success/error hook.
 
 ### 2026-04-20 — Auth-method coverage audit for tenant_url
 Walked every authentication path in `authMiddleware` and `runStdio.SetContextFunc` to confirm `mcp.tenant_url` lands on ctx for each. All covered except one: the OAuth `ErrExpiredToken` branch rejected the 401 without seeding tenant_url, even though `DecryptToken` returns the full payload (incl. `signozURL`) alongside the expiry error. That URL is trusted — it was written into the token by the server at grant time, so it's bounded by real tenants. Fix: on the expiry branch, seed `util.SetSigNozURL(ctx, decryptedURL)` (when non-empty) and decorate the otelhttp root span before returning 401. Now "which customers are hitting OAuth token expiry" is queryable. Paths that correctly remain un-seeded: no-auth (401), malformed `X-SigNoz-URL` (400), OAuth-invalid without fallback URL (401) — these either have no URL at all or have only an un-validated/unclaimed URL and seeding would be unsafe.

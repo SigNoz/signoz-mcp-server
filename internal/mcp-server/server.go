@@ -43,20 +43,18 @@ import (
 const (
 	sessionClientCacheSize       = 1024
 	sessionClientCacheTTL        = 30 * time.Minute
-	defaultMethodObservationTTL  = time.Minute
 	defaultMethodSpanBodyMaxSize = 1 << 20
 )
 
 type MCPServer struct {
-	logger                   *slog.Logger
-	handler                  *tools.Handler
-	config                   *config.Config
-	analytics                analytics.Analytics
-	meters                   *otelpkg.Meters
-	methodObs                sync.Map
-	sessionClients           *expirable.LRU[string, mcp.Implementation]
-	methodObservationTimeout time.Duration
-	maxMethodSpanBodyBytes   int64
+	logger                 *slog.Logger
+	handler                *tools.Handler
+	config                 *config.Config
+	analytics              analytics.Analytics
+	meters                 *otelpkg.Meters
+	methodObs              sync.Map
+	sessionClients         *expirable.LRU[string, mcp.Implementation]
+	maxMethodSpanBodyBytes int64
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
 	// goroutine) can safely race Run's publication (on the errgroup
 	// goroutine) when SIGTERM lands mid-startup.
@@ -272,14 +270,13 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		handler.SetMeters(meters)
 	}
 	return &MCPServer{
-		logger:                   log,
-		handler:                  handler,
-		config:                   cfg,
-		analytics:                a,
-		meters:                   meters,
-		sessionClients:           expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
-		methodObservationTimeout: defaultMethodObservationTTL,
-		maxMethodSpanBodyBytes:   defaultMethodSpanBodyMaxSize,
+		logger:                 log,
+		handler:                handler,
+		config:                 cfg,
+		analytics:              a,
+		meters:                 meters,
+		sessionClients:         expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
+		maxMethodSpanBodyBytes: defaultMethodSpanBodyMaxSize,
 	}
 }
 
@@ -377,10 +374,10 @@ func (m *MCPServer) WaitForAnalytics(ctx context.Context) error {
 }
 
 type methodObservation struct {
-	ctx     context.Context
-	method  mcp.MCPMethod
-	started time.Time
-	timer   *time.Timer
+	ctx         context.Context
+	method      mcp.MCPMethod
+	started     time.Time
+	cleanupStop func() bool
 }
 
 type methodObservationStartedKey struct{}
@@ -459,11 +456,14 @@ func (m *MCPServer) beginMethodObservation(ctx context.Context, id any, method m
 		method:  method,
 		started: time.Now(),
 	}
-	observation.timer = time.AfterFunc(m.methodObservationTimeout, func() {
+	stored := make(chan struct{})
+	observation.cleanupStop = context.AfterFunc(ctx, func() {
+		<-stored
 		m.expireMethodObservation(key)
 	})
 
 	m.methodObs.Store(key, observation)
+	close(stored)
 }
 
 func (m *MCPServer) finishMethodObservation(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) bool {
@@ -496,27 +496,36 @@ func (m *MCPServer) expireMethodObservation(key string) {
 		return
 	}
 
-	timeoutErr := fmt.Errorf("method observation timed out before success/error hook")
-	m.completeMethodObservation(observation, timeoutErr)
-	m.logger.WarnContext(observation.ctx, "mcp method observation timed out",
-		slog.String("mcp.method", string(observation.method)),
-		slog.Duration("timeout", m.methodObservationTimeout))
+	ctxErr := observation.ctx.Err()
+	expireErr := errors.New("request context ended before success/error hook")
+	if ctxErr != nil {
+		expireErr = fmt.Errorf("%w: %v", expireErr, ctxErr)
+	}
+	m.completeMethodObservation(observation, expireErr)
+
+	logCtx := context.WithoutCancel(observation.ctx)
+	attrs := []any{slog.String("mcp.method", string(observation.method))}
+	if ctxErr != nil {
+		attrs = append(attrs, slog.String("context_error", ctxErr.Error()))
+	}
+	m.logger.WarnContext(logCtx, "mcp method observation ended without success/error hook", attrs...)
 }
 
 func (m *MCPServer) completeMethodObservation(observation *methodObservation, err error) {
 	if observation == nil {
 		return
 	}
-	if observation.timer != nil {
-		observation.timer.Stop()
+	if observation.cleanupStop != nil {
+		observation.cleanupStop()
 	}
 
-	span := trace.SpanFromContext(observation.ctx)
+	ctx := context.WithoutCancel(observation.ctx)
+	span := trace.SpanFromContext(ctx)
 	spanAttrs := []attribute.KeyValue{}
-	if session := server.ClientSessionFromContext(observation.ctx); session != nil && session.SessionID() != "" {
+	if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
 		spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
 	}
-	spanAttrs = otelpkg.AppendTenantURL(observation.ctx, spanAttrs)
+	spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
 
 	errorType := methodErrorType(err)
 	if errorType != "" {
@@ -530,14 +539,14 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 		metricAttrs := []attribute.KeyValue{
 			attribute.String("mcp.method.name", string(observation.method)),
 		}
-		metricAttrs = otelpkg.AppendTenantURL(observation.ctx, metricAttrs)
+		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
 		if errorType != "" {
 			metricAttrs = append(metricAttrs, attribute.String("error.type", errorType))
 		}
 
 		opts := metric.WithAttributes(metricAttrs...)
-		m.meters.MethodCalls.Add(observation.ctx, 1, opts)
-		m.meters.MethodDuration.Record(observation.ctx, float64(time.Since(observation.started))/float64(time.Millisecond), opts)
+		m.meters.MethodCalls.Add(ctx, 1, opts)
+		m.meters.MethodDuration.Record(ctx, float64(time.Since(observation.started))/float64(time.Millisecond), opts)
 	}
 
 	span.End()
@@ -595,6 +604,31 @@ func methodFromJSONRPCMessage(message []byte) (mcp.MCPMethod, bool) {
 	return envelope.Method, true
 }
 
+type delegatedReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
+func (m *MCPServer) peekMethodSpanBody(body io.ReadCloser) ([]byte, io.ReadCloser, bool, error) {
+	if body == nil {
+		return nil, nil, false, nil
+	}
+
+	limited := &io.LimitedReader{R: body, N: m.maxMethodSpanBodyBytes + 1}
+	prefix, err := io.ReadAll(limited)
+	reconstructed := delegatedReadCloser{
+		Reader: io.MultiReader(bytes.NewReader(prefix), body),
+		Closer: body,
+	}
+	if err != nil {
+		return nil, reconstructed, false, err
+	}
+	if int64(len(prefix)) > m.maxMethodSpanBodyBytes {
+		return nil, reconstructed, true, nil
+	}
+	return prefix, reconstructed, false, nil
+}
+
 func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.Body == nil {
@@ -602,17 +636,18 @@ func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, m.maxMethodSpanBodyBytes))
+		body, reconstructed, oversized, err := m.peekMethodSpanBody(r.Body)
+		if reconstructed != nil {
+			r.Body = reconstructed
+		}
 		if err != nil {
-			var maxBytesErr *http.MaxBytesError
-			if errors.As(err, &maxBytesErr) {
-				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-				return
-			}
-			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			next.ServeHTTP(w, r)
 			return
 		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
+		if oversized {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		method, ok := methodFromJSONRPCMessage(body)
 		if !ok {

@@ -1014,7 +1014,7 @@ func TestBuildHooks_NonToolMethodSuccessEndsSpanWithoutMeters(t *testing.T) {
 	}
 }
 
-func TestBuildHooks_NonToolMethodObservationTimeoutCleansUp(t *testing.T) {
+func TestBuildHooks_NonToolMethodObservationContextCleanupCleansUp(t *testing.T) {
 	var logBuf lockedBuffer
 	traceExporter := tracetest.NewInMemoryExporter()
 	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
@@ -1045,15 +1045,17 @@ func TestBuildHooks_NonToolMethodObservationTimeoutCleansUp(t *testing.T) {
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	logger := newBufferedLogger(&logBuf, slog.LevelDebug)
 	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
-	mcpServer.methodObservationTimeout = 10 * time.Millisecond
 	hooks := mcpServer.buildHooks()
 
-	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-timeout")
+	baseCtx, cancel := context.WithCancel(newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-context-cleanup"))
+	defer cancel()
+	ctx := baseCtx
 	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
 	req := &mcp.InitializeRequest{}
-	key := methodObservationKey(ctx, "req-timeout", mcp.MethodInitialize, req)
+	key := methodObservationKey(ctx, "req-context-cleanup", mcp.MethodInitialize, req)
 
-	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-timeout", mcp.MethodInitialize, req)
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-context-cleanup", mcp.MethodInitialize, req)
+	cancel()
 
 	var metrics metricdata.ResourceMetrics
 	waitForCondition(t, time.Second, func() bool {
@@ -1073,13 +1075,13 @@ func TestBuildHooks_NonToolMethodObservationTimeoutCleansUp(t *testing.T) {
 		}
 
 		for _, rec := range parseJSONLogLines(t, &logBuf) {
-			if rec["msg"] == "mcp method observation timed out" {
+			if rec["msg"] == "mcp method observation ended without success/error hook" {
 				return true
 			}
 		}
 
 		return false
-	}, "timed out waiting for method observation timeout cleanup")
+	}, "timed out waiting for method observation context cleanup")
 	span.End()
 
 	if _, ok := mcpServer.methodObs.Load(key); ok {
@@ -1110,8 +1112,8 @@ func TestBuildHooks_NonToolMethodObservationTimeoutCleansUp(t *testing.T) {
 	if spans[0].Events[0].Name != "exception" {
 		t.Fatalf("span event name = %q, want %q", spans[0].Events[0].Name, "exception")
 	}
-	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "timed out before success/error hook") {
-		t.Fatalf("exception.message = %v, want timeout message", attr)
+	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "request context ended before success/error hook") {
+		t.Fatalf("exception.message = %v, want context cleanup message", attr)
 	}
 	if attr, ok := spanAttrValue(spans[0].Attributes, attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
 		t.Fatalf("span error.type = %v, want internal", attr)
@@ -1120,7 +1122,7 @@ func TestBuildHooks_NonToolMethodObservationTimeoutCleansUp(t *testing.T) {
 	records := parseJSONLogLines(t, &logBuf)
 	var foundWarn bool
 	for _, rec := range records {
-		if rec["msg"] == "mcp method observation timed out" {
+		if rec["msg"] == "mcp method observation ended without success/error hook" {
 			foundWarn = true
 			if rec["level"] != "WARN" {
 				t.Fatalf("level = %v, want WARN", rec["level"])
@@ -1228,7 +1230,6 @@ func TestMethodObservationLateFinishNoOpsAfterExpire(t *testing.T) {
 
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
-	mcpServer.methodObservationTimeout = 10 * time.Millisecond
 	hooks := mcpServer.buildHooks()
 
 	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-race-expire")
@@ -1237,10 +1238,7 @@ func TestMethodObservationLateFinishNoOpsAfterExpire(t *testing.T) {
 	key := methodObservationKey(ctx, "req-race-expire", mcp.MethodInitialize, req)
 
 	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-race-expire", mcp.MethodInitialize, req)
-	waitForCondition(t, time.Second, func() bool {
-		_, ok := mcpServer.methodObs.Load(key)
-		return !ok
-	}, "timed out waiting for method observation to expire")
+	mcpServer.expireMethodObservation(key)
 
 	singleHook(t, hooks.OnSuccess, "OnSuccess")(ctx, "req-race-expire", mcp.MethodInitialize, req, &mcp.InitializeResult{})
 	span.End()
@@ -1274,8 +1272,8 @@ func TestMethodObservationLateFinishNoOpsAfterExpire(t *testing.T) {
 	if spans[0].Events[0].Name != "exception" {
 		t.Fatalf("span event name = %q, want %q", spans[0].Events[0].Name, "exception")
 	}
-	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "timed out before success/error hook") {
-		t.Fatalf("exception.message = %v, want timeout message", attr)
+	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "request context ended before success/error hook") {
+		t.Fatalf("exception.message = %v, want context cleanup message", attr)
 	}
 }
 
@@ -1308,7 +1306,6 @@ func TestMethodObservationConcurrentFinishAndExpireDedupes(t *testing.T) {
 
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
-	mcpServer.methodObservationTimeout = time.Hour
 	hooks := mcpServer.buildHooks()
 
 	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-race-concurrent")
@@ -1448,7 +1445,7 @@ func TestMethodSpanMiddleware_SkipsUnknownMethodNames(t *testing.T) {
 	}
 }
 
-func TestMethodSpanMiddleware_TimeoutObservationKeepsMethodSpanOpen(t *testing.T) {
+func TestMethodSpanMiddleware_RequestContextCleanupEndsMethodSpan(t *testing.T) {
 	var logBuf lockedBuffer
 	traceExporter := tracetest.NewInMemoryExporter()
 	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
@@ -1479,7 +1476,6 @@ func TestMethodSpanMiddleware_TimeoutObservationKeepsMethodSpanOpen(t *testing.T
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	logger := newBufferedLogger(&logBuf, slog.LevelDebug)
 	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
-	mcpServer.methodObservationTimeout = 10 * time.Millisecond
 	hooks := mcpServer.buildHooks()
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1488,11 +1484,14 @@ func TestMethodSpanMiddleware_TimeoutObservationKeepsMethodSpanOpen(t *testing.T
 		w.WriteHeader(http.StatusOK)
 	})
 
+	baseCtx, cancel := context.WithCancel(util.SetSigNozURL(context.Background(), "https://tenant.example.com"))
+	defer cancel()
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":"req-timeout-http","method":"initialize","params":{}}`))
-	req = req.WithContext(util.SetSigNozURL(req.Context(), "https://tenant.example.com"))
+	req = req.WithContext(baseCtx)
 	rr := httptest.NewRecorder()
 
 	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
+	cancel()
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
@@ -1511,13 +1510,13 @@ func TestMethodSpanMiddleware_TimeoutObservationKeepsMethodSpanOpen(t *testing.T
 		}
 
 		for _, rec := range parseJSONLogLines(t, &logBuf) {
-			if rec["msg"] == "mcp method observation timed out" {
+			if rec["msg"] == "mcp method observation ended without success/error hook" {
 				return true
 			}
 		}
 
 		return false
-	}, "timed out waiting for HTTP-backed method observation timeout")
+	}, "timed out waiting for HTTP-backed method observation context cleanup")
 
 	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
 	if !found {
@@ -1614,21 +1613,55 @@ func TestMethodSpanMiddleware_OnErrorWithoutBeforeAnyStillEndsSpan(t *testing.T)
 	}
 }
 
-func TestMethodSpanMiddleware_RejectsOversizedBody(t *testing.T) {
+func TestMethodSpanMiddleware_SkipsOversizedBodyAndPassesThrough(t *testing.T) {
 	mcpServer := NewMCPServer(logpkg.New("error"), nil, &config.Config{}, noopanalytics.New(), nil)
 	mcpServer.maxMethodSpanBodyBytes = 32
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	var nextCalled bool
+	var seenBody string
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("next handler should not be called for oversized body")
+		nextCalled = true
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read forwarded body: %v", err)
+		}
+		seenBody = string(body)
+		if trace.SpanFromContext(r.Context()).SpanContext().IsValid() {
+			t.Fatal("did not expect a method span for oversized body")
+		}
+		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"payload":"this body is much larger than 32 bytes"}}`))
+	payload := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"payload":"this body is much larger than 32 bytes"}}`
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(payload))
 	rr := httptest.NewRecorder()
 
 	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if !nextCalled {
+		t.Fatal("expected next handler to be called for oversized body")
+	}
+	if seenBody != payload {
+		t.Fatalf("forwarded body = %q, want original payload", seenBody)
+	}
+	if spans := traceExporter.GetSpans(); len(spans) != 0 {
+		t.Fatalf("span count = %d, want 0", len(spans))
 	}
 }
 
