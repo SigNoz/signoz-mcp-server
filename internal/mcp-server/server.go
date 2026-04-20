@@ -333,6 +333,11 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	return m.runStdio(ctx, s)
 }
 
+// Shutdown closes the HTTP listener if one is active. It is the caller's
+// responsibility to also cancel the context passed to Run — Shutdown alone
+// does not stop Run from starting a listener if it has not yet reached the
+// publication point. In normal use (main.go), signal.NotifyContext cancels
+// the run ctx and Shutdown is called right after, so both signals converge.
 func (m *MCPServer) Shutdown(ctx context.Context) error {
 	if m.config.TransportMode != "http" {
 		return nil

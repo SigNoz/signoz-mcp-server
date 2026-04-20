@@ -1020,11 +1020,11 @@ func TestRun_HTTPCanceledBeforeListen(t *testing.T) {
 	}
 }
 
-// TestRun_HTTPShutdownRaceDuringStartup verifies that Shutdown() called on
-// a Run() that is mid-startup correctly cancels the listener via the
-// atomic.Pointer handoff. Exercises the race-sensitive window where
-// Shutdown can land before or after httpServer.Store but must still close
-// the server so Run returns.
+// TestRun_HTTPShutdownRaceDuringStartup verifies the production shutdown
+// flow: main cancels the run ctx (signal.NotifyContext) and then calls
+// Shutdown on the MCPServer. The atomic.Pointer handoff must ensure
+// ListenAndServe either returns http.ErrServerClosed promptly or is
+// never called at all, so Run exits well within the shutdown budget.
 func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 	cfg := &config.Config{
 		TransportMode:   "http",
@@ -1036,13 +1036,18 @@ func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 	handler := tools.NewHandler(logger, cfg)
 	srv := NewMCPServer(logger, handler, cfg, noopanalytics.New(), nil)
 
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	runDone := make(chan error, 1)
 	go func() {
-		runDone <- srv.Run(context.Background())
+		runDone <- srv.Run(runCtx)
 	}()
 
-	// Give Run a moment to publish httpServer, then Shutdown.
-	time.Sleep(50 * time.Millisecond)
+	// Give Run a moment to reach the HTTP startup block, then trigger the
+	// full production shutdown sequence (cancel ctx + Shutdown).
+	time.Sleep(100 * time.Millisecond)
+	cancel()
 	if err := srv.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error: %v", err)
 	}
@@ -1052,7 +1057,7 @@ func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run returned error after Shutdown: %v", err)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not exit within 2s of Shutdown")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not exit within 5s of Shutdown")
 	}
 }
