@@ -103,20 +103,26 @@ Replace zap everywhere. Delete hand-rolled correlators. Delete `internal/telemet
 Add tool + oauth metrics as a typed struct.
 
 **New:**
-- `pkg/otel/metrics.go` — `type Meters struct { ToolCalls metric.Int64Counter; ToolCallDuration metric.Float64Histogram; SessionRegistered metric.Int64Counter; OAuthEvents metric.Int64Counter; IdentityCacheHits metric.Int64Counter; IdentityCacheMisses metric.Int64Counter }` and `NewMeters(mp metric.MeterProvider) (*Meters, error)`. Instantiated once in `main`, injected via `NewMCPServer(..., meters)`.
+- `pkg/otel/metrics.go` — `type Meters struct { ToolCalls metric.Int64Counter; ToolCallDuration metric.Float64Histogram; MethodCalls metric.Int64Counter; MethodDuration metric.Float64Histogram; SessionRegistered metric.Int64Counter; OAuthEvents metric.Int64Counter; OAuthFailures metric.Int64Counter; IdentityCacheHits metric.Int64Counter; IdentityCacheMisses metric.Int64Counter }` and `NewMeters(mp metric.MeterProvider) (*Meters, error)`. Instantiated once in `main`, injected via `NewMCPServer(..., meters)`.
 
 **Metrics chosen (after deferring broken ones):**
 - `mcp.tool.calls` — counter, attrs: `gen_ai.tool.name`, `mcp.tool.is_error`.
 - `mcp.tool.call.duration` — histogram (ms), same attrs.
+- `mcp.method.calls` — counter, attrs: `mcp.method.name`, optional `error.type`. Recorded for non-tool MCP methods from the hook layer.
+- `mcp.method.duration` — histogram (ms), same attrs.
 - `mcp.session.registered` — counter (no attrs). Incremented from `AddAfterInitialize` hook, which only fires after a successful initialize, so counts are accurate for session rate even though unregister is unreliable for streamable HTTP.
 - `mcp.oauth.events` — counter, attr: `event` (one of authorize/register/token/refresh).
+- `mcp.oauth.failures` — counter, attrs: `oauth.error_code`, `http.response.status_code`.
 - `mcp.identity_cache.hit` / `mcp.identity_cache.miss` — counters, low cost, immediately actionable for the /me hot path.
 - **Deferred**: `mcp.sessions.active` up/down gauge. `OnUnregisterSession` is documented-unreliable for streamable HTTP POST-only clients, so the counter would leak upward. Revisit when mcp-go fires unregister reliably.
 
 **Wiring:**
-- `loggingMiddleware` records `ToolCalls` + `ToolCallDuration` after the handler returns (error surfaces through inner recovery middleware as a normal return value).
+- `loggingMiddleware` records `ToolCalls` + `ToolCallDuration` after the handler returns (error surfaces through inner recovery middleware as a normal return value) and logs handled `result.IsError` outcomes at `Warn`, not only `Debug`.
+- Non-tool MCP method spans are started at the HTTP transport boundary before `mcp-go` calls `HandleMessage`, but only for known MCP request methods to avoid attacker-controlled span-name cardinality. The request context seen by hooks and handlers already carries the method span. `AddBeforeAny` + `OnSuccess` / `OnError` then decorate that active span and record `MethodCalls` + `MethodDuration`, and the span is ended from the observation lifecycle itself so timeout cleanup can still set error state before export. A bounded in-memory map still tracks in-flight observations for duration/error accounting and panic-timeout cleanup.
+- `methodSpanMiddleware` caps request-body inspection at 1 MiB while extracting JSON-RPC method names, so observability parsing cannot buffer arbitrarily large POST bodies.
 - `AddAfterInitialize` hook increments `SessionRegistered`.
 - `trackOAuthEvent` records `OAuthEvents` alongside the analytics dispatch.
+- `writeOAuthError` records `OAuthFailures` and emits structured warn/error logs for OAuth failures, and interactive authorize-form failures reuse the same telemetry path when the form is re-rendered with an error.
 - `GetAnalyticsIdentity` records hit/miss after the TTL check in `client.go`.
 
 ## Commit Atomicity

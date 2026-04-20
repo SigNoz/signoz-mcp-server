@@ -1,9 +1,12 @@
 package mcp_server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -38,17 +41,22 @@ import (
 // listener — POST-only clients never trigger explicit cleanup — so the
 // session → ClientInfo map needs bounded eviction.
 const (
-	sessionClientCacheSize = 1024
-	sessionClientCacheTTL  = 30 * time.Minute
+	sessionClientCacheSize       = 1024
+	sessionClientCacheTTL        = 30 * time.Minute
+	defaultMethodObservationTTL  = time.Minute
+	defaultMethodSpanBodyMaxSize = 1 << 20
 )
 
 type MCPServer struct {
-	logger         *slog.Logger
-	handler        *tools.Handler
-	config         *config.Config
-	analytics      analytics.Analytics
-	meters         *otelpkg.Meters
-	sessionClients *expirable.LRU[string, mcp.Implementation]
+	logger                   *slog.Logger
+	handler                  *tools.Handler
+	config                   *config.Config
+	analytics                analytics.Analytics
+	meters                   *otelpkg.Meters
+	methodObs                sync.Map
+	sessionClients           *expirable.LRU[string, mcp.Implementation]
+	methodObservationTimeout time.Duration
+	maxMethodSpanBodyBytes   int64
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
 	// goroutine) can safely race Run's publication (on the errgroup
 	// goroutine) when SIGTERM lands mid-startup.
@@ -262,12 +270,14 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		handler.SetMeters(meters)
 	}
 	return &MCPServer{
-		logger:         log,
-		handler:        handler,
-		config:         cfg,
-		analytics:      a,
-		meters:         meters,
-		sessionClients: expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
+		logger:                   log,
+		handler:                  handler,
+		config:                   cfg,
+		analytics:                a,
+		meters:                   meters,
+		sessionClients:           expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
+		methodObservationTimeout: defaultMethodObservationTTL,
+		maxMethodSpanBodyBytes:   defaultMethodSpanBodyMaxSize,
 	}
 }
 
@@ -364,21 +374,280 @@ func (m *MCPServer) WaitForAnalytics(ctx context.Context) error {
 	}
 }
 
+type methodObservation struct {
+	ctx     context.Context
+	method  mcp.MCPMethod
+	started time.Time
+	timer   *time.Timer
+}
+
+type methodObservationStartedKey struct{}
+
+func withMethodObservationStarted(ctx context.Context, started time.Time) context.Context {
+	return context.WithValue(ctx, methodObservationStartedKey{}, started)
+}
+
+func methodObservationStartedAt(ctx context.Context) (time.Time, bool) {
+	started, ok := ctx.Value(methodObservationStartedKey{}).(time.Time)
+	return started, ok
+}
+
+func methodObservationKey(ctx context.Context, id any, method mcp.MCPMethod, message any) string {
+	sessionID := ""
+	if session := server.ClientSessionFromContext(ctx); session != nil {
+		sessionID = session.SessionID()
+	}
+
+	messageID := fmt.Sprintf("%T", message)
+	if message != nil {
+		messageID = fmt.Sprintf("%s:%p", messageID, message)
+	}
+
+	return fmt.Sprintf("%s|%s|%v|%s", sessionID, method, id, messageID)
+}
+
+func shouldObserveMethod(method mcp.MCPMethod) bool {
+	return method != mcp.MethodToolsCall && !strings.HasPrefix(string(method), "notifications/")
+}
+
+func isKnownRequestMethod(method mcp.MCPMethod) bool {
+	switch method {
+	case mcp.MethodInitialize,
+		mcp.MethodPing,
+		mcp.MethodSetLogLevel,
+		mcp.MethodResourcesList,
+		mcp.MethodResourcesTemplatesList,
+		mcp.MethodResourcesRead,
+		mcp.MethodPromptsList,
+		mcp.MethodPromptsGet,
+		mcp.MethodToolsList,
+		mcp.MethodToolsCall:
+		return true
+	default:
+		return false
+	}
+}
+
+func methodErrorType(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var unparsable *server.UnparsableMessageError
+	switch {
+	case errors.As(err, &unparsable):
+		return "parse"
+	case errors.Is(err, server.ErrUnsupported):
+		return "unsupported"
+	case errors.Is(err, server.ErrResourceNotFound), errors.Is(err, server.ErrPromptNotFound), errors.Is(err, server.ErrToolNotFound):
+		return "not_found"
+	default:
+		return "internal"
+	}
+}
+
+func (m *MCPServer) beginMethodObservation(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+	if !shouldObserveMethod(method) {
+		return
+	}
+
+	key := methodObservationKey(ctx, id, method, message)
+	observation := &methodObservation{
+		ctx:     ctx,
+		method:  method,
+		started: time.Now(),
+	}
+	observation.timer = time.AfterFunc(m.methodObservationTimeout, func() {
+		m.expireMethodObservation(key)
+	})
+
+	m.methodObs.Store(key, observation)
+}
+
+func (m *MCPServer) finishMethodObservation(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) bool {
+	if !shouldObserveMethod(method) {
+		return false
+	}
+
+	value, ok := m.methodObs.LoadAndDelete(methodObservationKey(ctx, id, method, message))
+	if !ok {
+		return false
+	}
+
+	observation, ok := value.(*methodObservation)
+	if !ok {
+		return false
+	}
+
+	m.completeMethodObservation(observation, err)
+	return true
+}
+
+func (m *MCPServer) expireMethodObservation(key string) {
+	value, ok := m.methodObs.LoadAndDelete(key)
+	if !ok {
+		return
+	}
+
+	observation, ok := value.(*methodObservation)
+	if !ok {
+		return
+	}
+
+	timeoutErr := fmt.Errorf("method observation timed out before success/error hook")
+	m.completeMethodObservation(observation, timeoutErr)
+	m.logger.WarnContext(observation.ctx, "mcp method observation timed out",
+		slog.String("mcp.method", string(observation.method)),
+		slog.Duration("timeout", m.methodObservationTimeout))
+}
+
+func (m *MCPServer) completeMethodObservation(observation *methodObservation, err error) {
+	if observation == nil {
+		return
+	}
+	if observation.timer != nil {
+		observation.timer.Stop()
+	}
+
+	span := trace.SpanFromContext(observation.ctx)
+	spanAttrs := []attribute.KeyValue{}
+	if session := server.ClientSessionFromContext(observation.ctx); session != nil && session.SessionID() != "" {
+		spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
+	}
+
+	errorType := methodErrorType(err)
+	if errorType != "" {
+		spanAttrs = append(spanAttrs, attribute.String("error.type", errorType))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.SetAttributes(spanAttrs...)
+
+	if m.meters != nil {
+		metricAttrs := []attribute.KeyValue{
+			attribute.String("mcp.method.name", string(observation.method)),
+		}
+		if errorType != "" {
+			metricAttrs = append(metricAttrs, attribute.String("error.type", errorType))
+		}
+
+		opts := metric.WithAttributes(metricAttrs...)
+		m.meters.MethodCalls.Add(observation.ctx, 1, opts)
+		m.meters.MethodDuration.Record(observation.ctx, float64(time.Since(observation.started))/float64(time.Millisecond), opts)
+	}
+
+	span.End()
+}
+
+func (m *MCPServer) completeMethodObservationFallback(ctx context.Context, method mcp.MCPMethod, err error) {
+	started, ok := methodObservationStartedAt(ctx)
+	if !ok {
+		started = time.Now()
+	}
+
+	observation := &methodObservation{
+		ctx:     ctx,
+		method:  method,
+		started: started,
+	}
+	m.completeMethodObservation(observation, err)
+}
+
+func (m *MCPServer) startMethodSpan(ctx context.Context, method mcp.MCPMethod) (context.Context, trace.Span) {
+	attrs := []attribute.KeyValue{
+		otelpkg.MCPMethodKey.String(string(method)),
+	}
+	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
+		attrs = append(attrs, otelpkg.MCPTenantURLKey.String(signozURL))
+	}
+
+	return otel.Tracer("signoz-mcp-server").Start(ctx, "MCP "+string(method),
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(attrs...),
+	)
+}
+
+func methodFromJSONRPCMessage(message []byte) (mcp.MCPMethod, bool) {
+	var envelope struct {
+		JSONRPC string        `json:"jsonrpc"`
+		Method  mcp.MCPMethod `json:"method"`
+		ID      any           `json:"id,omitempty"`
+		Result  any           `json:"result,omitempty"`
+	}
+
+	if err := json.Unmarshal(message, &envelope); err != nil {
+		return "", false
+	}
+	if envelope.JSONRPC != mcp.JSONRPC_VERSION || envelope.ID == nil || envelope.Result != nil {
+		return "", false
+	}
+	if !isKnownRequestMethod(envelope.Method) {
+		return "", false
+	}
+	if !shouldObserveMethod(envelope.Method) {
+		return "", false
+	}
+
+	return envelope.Method, true
+}
+
+func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, m.maxMethodSpanBodyBytes))
+		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+
+		method, ok := methodFromJSONRPCMessage(body)
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ctx, _ := m.startMethodSpan(r.Context(), method)
+		ctx = withMethodObservationStarted(ctx, time.Now())
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // buildHooks returns lifecycle hooks for observability.
 func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks := &server.Hooks{}
 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+		m.beginMethodObservation(ctx, id, method, message)
 		span := trace.SpanFromContext(ctx)
-		span.SetAttributes(otelpkg.MCPMethodKey.String(string(method)))
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			span.SetAttributes(otelpkg.MCPTenantURLKey.String(signozURL))
+		if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
+			span.SetAttributes(otelpkg.MCPSessionIDKey.String(session.SessionID()))
 		}
 		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method", string(method)))
 	})
+	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
+		if !m.finishMethodObservation(ctx, id, method, message, nil) && shouldObserveMethod(method) {
+			trace.SpanFromContext(ctx).End()
+		}
+	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
-		span := trace.SpanFromContext(ctx)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		if shouldObserveMethod(method) {
+			if !m.finishMethodObservation(ctx, id, method, message, err) {
+				m.completeMethodObservationFallback(ctx, method, err)
+			}
+		} else {
+			span := trace.SpanFromContext(ctx)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
 		m.logger.ErrorContext(ctx, "mcp error",
 			slog.String("mcp.method", string(method)),
 			logpkg.ErrAttr(err))
@@ -512,7 +781,8 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				span.SetAttributes(otelpkg.MCPTenantURLKey.String(signozURL))
 			}
 
-			m.logger.DebugContext(ctx, "tool call started", slog.String("gen_ai.tool.name", req.Params.Name))
+			toolNameAttr := slog.String("gen_ai.tool.name", req.Params.Name)
+			m.logger.DebugContext(ctx, "tool call started", toolNameAttr)
 			result, err := next(ctx, req)
 
 			// Determine error status: either a Go error or an MCP tool result error.
@@ -528,10 +798,25 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			}
 
 			duration := time.Since(start)
-			m.logger.DebugContext(ctx, "tool call finished",
-				slog.String("gen_ai.tool.name", req.Params.Name),
-				slog.Duration("duration", duration),
-				slog.Bool("mcp.tool.is_error", isErr))
+			switch {
+			case err != nil:
+				m.logger.ErrorContext(ctx, "tool call failed",
+					toolNameAttr,
+					slog.Duration("duration", duration),
+					slog.Bool("mcp.tool.is_error", isErr),
+					logpkg.ErrAttr(err))
+			case result != nil && result.IsError:
+				m.logger.WarnContext(ctx, "tool call returned error result",
+					toolNameAttr,
+					slog.Duration("duration", duration),
+					slog.Bool("mcp.tool.is_error", isErr),
+					slog.String("error_message", extractToolErrorMessage(result)))
+			default:
+				m.logger.DebugContext(ctx, "tool call finished",
+					toolNameAttr,
+					slog.Duration("duration", duration),
+					slog.Bool("mcp.tool.is_error", isErr))
+			}
 
 			if m.meters != nil {
 				attrs := metric.WithAttributes(
@@ -744,7 +1029,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	})
 
 	if m.config.OAuthEnabled {
-		oauthHandler := oauth.NewHandler(m.logger, m.config, m.trackOAuthEvent)
+		oauthHandler := oauth.NewHandler(m.logger, m.config, m.trackOAuthEvent, m.meters)
 		mux.HandleFunc("GET /.well-known/oauth-protected-resource", oauthHandler.HandleProtectedResourceMetadata)
 		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauthHandler.HandleAuthorizationServerMetadata)
 		mux.HandleFunc("POST /oauth/register", oauthHandler.HandleRegisterClient)
@@ -754,7 +1039,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	}
 
 	mcpHandler := server.NewStreamableHTTPServer(s)
-	mux.Handle("/mcp", m.authMiddleware(mcpHandler))
+	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),

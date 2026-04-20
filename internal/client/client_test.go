@@ -1,12 +1,15 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +21,11 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
+
+func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
+	base := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: level})
+	return slog.New(logpkg.NewContextHandler(base))
+}
 
 func TestGetAlertByRuleID(t *testing.T) {
 	tests := []struct {
@@ -399,6 +407,131 @@ func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
 	// The mutex serializes lookups; the first request populates the cache
 	// and every other caller observes the cached result.
 	assert.Equal(t, int32(1), requests.Load(), "expected concurrent callers to share a single upstream request")
+}
+
+func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
+	var logBuf bytes.Buffer
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"status":"error","message":"temporary outage"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected status 503")
+
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	var sawRetryDebug bool
+	var sawTerminalWarn bool
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &rec))
+
+		switch rec["msg"] {
+		case "Retryable status, will retry":
+			assert.Equal(t, "DEBUG", rec["level"])
+			sawRetryDebug = true
+		case "SigNoz request returned unexpected status":
+			assert.Equal(t, "WARN", rec["level"])
+			assert.Equal(t, true, rec["retryable"])
+			assert.Equal(t, true, rec["retries_exhausted"])
+			sawTerminalWarn = true
+		}
+	}
+
+	assert.True(t, sawRetryDebug, "expected intermediate retry log at DEBUG")
+	assert.True(t, sawTerminalWarn, "expected terminal retry exhaustion log at WARN")
+}
+
+func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
+	var logBuf bytes.Buffer
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"error","message":"temporary outage"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	body, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"status":"success"}`, string(body))
+
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	var sawRetryDebug bool
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &rec))
+
+		switch rec["msg"] {
+		case "Retryable status, will retry":
+			sawRetryDebug = true
+		case "SigNoz request returned unexpected status":
+			t.Fatalf("unexpected terminal warn log on eventual success: %v", rec)
+		}
+		if _, ok := rec["retries_exhausted"]; ok {
+			t.Fatalf("unexpected retries_exhausted field on eventual success path: %v", rec)
+		}
+	}
+
+	assert.True(t, sawRetryDebug, "expected intermediate retry log before success")
+}
+
+func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
+	var logBuf bytes.Buffer
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","message":"bad request"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected status 400")
+
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	var sawTerminalWarn bool
+	var sawRetryDebug bool
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &rec))
+
+		if rec["msg"] == "Retryable status, will retry" {
+			sawRetryDebug = true
+		}
+		if rec["msg"] != "SigNoz request returned unexpected status" {
+			continue
+		}
+		assert.Equal(t, "WARN", rec["level"])
+		assert.Equal(t, false, rec["retryable"])
+		if _, ok := rec["retries_exhausted"]; ok {
+			t.Fatalf("unexpected retries_exhausted field in non-retryable log: %v", rec)
+		}
+		sawTerminalWarn = true
+	}
+
+	assert.False(t, sawRetryDebug, "did not expect retry log for non-retryable status")
+	assert.True(t, sawTerminalWarn, "expected terminal non-retryable warning log")
 }
 
 func TestListMetricKeys(t *testing.T) {

@@ -341,17 +341,24 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				return nil, fmt.Errorf("request cancelled: %w", err)
 			}
 			lastErr = fmt.Errorf("failed to do request: %w", err)
-			s.logger.WarnContext(ctx, "Request failed, will retry",
+			if attempt < maxRetries-1 {
+				s.logger.DebugContext(ctx, "Request failed, will retry",
+					slog.String("url", reqURL),
+					slog.Int("attempt", attempt+1),
+					logpkg.ErrAttr(err))
+				select {
+				case <-ctx.Done():
+					return nil, fmt.Errorf("retry aborted: %w", lastErr)
+				case <-time.After(wait):
+				}
+				wait *= retryMultiply
+				continue
+			}
+			s.logger.WarnContext(ctx, "Request failed after retries exhausted",
 				slog.String("url", reqURL),
 				slog.Int("attempt", attempt+1),
 				logpkg.ErrAttr(err))
-			select {
-			case <-ctx.Done():
-				return nil, fmt.Errorf("retry aborted: %w", lastErr)
-			case <-time.After(wait):
-			}
-			wait *= retryMultiply
-			continue
+			break
 		}
 
 		respBody, readErr := io.ReadAll(resp.Body)
@@ -369,7 +376,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
 			truncatedBody := logpkg.TruncBody(respBody)
 			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
-			s.logger.WarnContext(ctx, "Retryable status, will retry",
+			s.logger.DebugContext(ctx, "Retryable status, will retry",
 				slog.String("url", reqURL),
 				slog.Int("status", resp.StatusCode),
 				slog.Int("attempt", attempt+1),
@@ -383,11 +390,19 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			continue
 		}
 
+		retryable := isRetryableStatus(resp.StatusCode)
 		truncatedBody := logpkg.TruncBody(respBody)
-		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status",
+		attrs := []any{
 			slog.String("url", reqURL),
 			slog.Int("status", resp.StatusCode),
-			slog.String("response", truncatedBody))
+			slog.Int("attempt", attempt+1),
+			slog.Bool("retryable", retryable),
+			slog.String("response", truncatedBody),
+		}
+		if retryable {
+			attrs = append(attrs, slog.Bool("retries_exhausted", true))
+		}
+		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status", attrs...)
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
 	}
 

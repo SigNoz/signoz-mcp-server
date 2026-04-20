@@ -19,7 +19,10 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 const csrfCookieName = "signoz_mcp_oauth_csrf"
@@ -40,6 +43,7 @@ type Handler struct {
 	tokenSecret       []byte
 	authorizeTemplate *template.Template
 	emitEvent         AnalyticsEmitter
+	meters            *otelpkg.Meters
 }
 
 type registerClientRequest struct {
@@ -69,6 +73,7 @@ type authorizeTemplateData struct {
 	CSRFToken           string
 	SignozURL           string
 	ErrorMessage        string
+	ErrorCode           string
 }
 
 type tokenResponse struct {
@@ -78,13 +83,14 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func NewHandler(logger *slog.Logger, cfg *config.Config, emitEvent AnalyticsEmitter) *Handler {
+func NewHandler(logger *slog.Logger, cfg *config.Config, emitEvent AnalyticsEmitter, meters *otelpkg.Meters) *Handler {
 	return &Handler{
 		logger:            logger,
 		config:            cfg,
 		tokenSecret:       []byte(cfg.OAuthTokenSecret),
 		authorizeTemplate: authorizePageTemplate,
 		emitEvent:         emitEvent,
+		meters:            meters,
 	}
 }
 
@@ -119,23 +125,23 @@ func (h *Handler) HandleAuthorizationServerMetadata(w http.ResponseWriter, r *ht
 func (h *Handler) HandleRegisterClient(w http.ResponseWriter, r *http.Request) {
 	var req registerClientRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_client_metadata", "request body must be valid JSON")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_client_metadata", "request body must be valid JSON")
 		return
 	}
 
 	req.ClientName = strings.TrimSpace(req.ClientName)
 	if req.ClientName == "" {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_client_metadata", "client_name is required")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_client_metadata", "client_name is required")
 		return
 	}
 	if len(req.RedirectURIs) == 0 {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri", "at least one redirect URI is required")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_redirect_uri", "at least one redirect URI is required")
 		return
 	}
 
 	for _, redirectURI := range req.RedirectURIs {
 		if err := validateRedirectURI(redirectURI); err != nil {
-			h.writeOAuthError(w, http.StatusBadRequest, "invalid_redirect_uri", err.Error())
+			h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_redirect_uri", err.Error())
 			return
 		}
 	}
@@ -143,7 +149,7 @@ func (h *Handler) HandleRegisterClient(w http.ResponseWriter, r *http.Request) {
 	createdAt := time.Now().UTC()
 	clientID, err := EncryptClientID(req.RedirectURIs, req.ClientName, createdAt, h.tokenSecret)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to register client")
+		h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to register client")
 		return
 	}
 
@@ -161,34 +167,34 @@ func (h *Handler) HandleRegisterClient(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleAuthorizePage(w http.ResponseWriter, r *http.Request) {
 	params, err := h.validateAuthorizeRequest(r.URL.Query())
 	if err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 
-	h.renderAuthorizePage(w, http.StatusOK, params)
+	h.renderAuthorizePage(w, r, http.StatusOK, params)
 }
 
 func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", "form data is required")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", "form data is required")
 		return
 	}
 
 	if !h.validateCSRF(r) {
-		h.writeOAuthError(w, http.StatusForbidden, "access_denied", "invalid CSRF token")
+		h.writeOAuthError(r, w, http.StatusForbidden, "access_denied", "invalid CSRF token")
 		return
 	}
 
 	params, err := h.validateAuthorizeRequest(r.PostForm)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 
 	apiKey := strings.TrimSpace(r.FormValue("api_key"))
 	signozURL := strings.TrimSpace(r.FormValue("signoz_url"))
 	if apiKey == "" {
-		h.renderAuthorizePage(w, http.StatusBadRequest, authorizeTemplateData{
+		h.renderAuthorizePage(w, r, http.StatusBadRequest, authorizeTemplateData{
 			ClientID:            params.ClientID,
 			ClientName:          params.ClientName,
 			RedirectURI:         params.RedirectURI,
@@ -198,12 +204,13 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 			Scope:               params.Scope,
 			SignozURL:           signozURL,
 			ErrorMessage:        "Enter your SigNoz API key to continue.",
+			ErrorCode:           "invalid_request",
 		})
 		return
 	}
 	normalizedURL, err := util.NormalizeSigNozURL(signozURL)
 	if err != nil {
-		h.renderAuthorizePage(w, http.StatusBadRequest, authorizeTemplateData{
+		h.renderAuthorizePage(w, r, http.StatusBadRequest, authorizeTemplateData{
 			ClientID:            params.ClientID,
 			ClientName:          params.ClientName,
 			RedirectURI:         params.RedirectURI,
@@ -213,13 +220,14 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 			Scope:               params.Scope,
 			SignozURL:           signozURL,
 			ErrorMessage:        "Enter a valid SigNoz base URL, for example https://your-signoz-instance.",
+			ErrorCode:           "invalid_request",
 		})
 		return
 	}
 	if err := h.validateSigNozCredentials(r.Context(), normalizedURL, apiKey); err != nil {
 		switch {
 		case errors.Is(err, client.ErrUnauthorized):
-			h.renderAuthorizePage(w, http.StatusUnauthorized, authorizeTemplateData{
+			h.renderAuthorizePage(w, r, http.StatusUnauthorized, authorizeTemplateData{
 				ClientID:            params.ClientID,
 				ClientName:          params.ClientName,
 				RedirectURI:         params.RedirectURI,
@@ -229,9 +237,10 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 				Scope:               params.Scope,
 				SignozURL:           normalizedURL,
 				ErrorMessage:        "We couldn't sign in to that SigNoz instance. Check the URL and API key, then try again.",
+				ErrorCode:           "access_denied",
 			})
 		default:
-			h.renderAuthorizePage(w, http.StatusBadGateway, authorizeTemplateData{
+			h.renderAuthorizePage(w, r, http.StatusBadGateway, authorizeTemplateData{
 				ClientID:            params.ClientID,
 				ClientName:          params.ClientName,
 				RedirectURI:         params.RedirectURI,
@@ -241,6 +250,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 				Scope:               params.Scope,
 				SignozURL:           normalizedURL,
 				ErrorMessage:        "We couldn't reach that SigNoz instance. Check the URL and try again.",
+				ErrorCode:           "temporarily_unavailable",
 			})
 		}
 		return
@@ -257,13 +267,13 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		h.tokenSecret,
 	)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to generate authorization code")
+		h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to generate authorization code")
 		return
 	}
 
 	redirectURL, err := addAuthorizeResponse(params.RedirectURI, code, params.State)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to build redirect URL")
+		h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to build redirect URL")
 		return
 	}
 
@@ -297,10 +307,15 @@ func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiK
 	return signozClient.ValidateCredentials(ctx)
 }
 
-func (h *Handler) renderAuthorizePage(w http.ResponseWriter, status int, data authorizeTemplateData) {
+func (h *Handler) renderAuthorizePage(w http.ResponseWriter, r *http.Request, status int, data authorizeTemplateData) {
+	ctx := context.Background()
+	if r != nil {
+		ctx = r.Context()
+	}
+
 	csrfToken, err := randomURLSafeString(32)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to generate CSRF token")
+		h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to generate CSRF token")
 		return
 	}
 
@@ -317,16 +332,20 @@ func (h *Handler) renderAuthorizePage(w http.ResponseWriter, status int, data au
 	data.AuthorizePath = h.authorizePath()
 	data.CSRFToken = csrfToken
 
+	if status >= http.StatusBadRequest && data.ErrorCode != "" {
+		h.recordOAuthFailure(ctx, r, status, data.ErrorCode, data.ErrorMessage)
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := h.authorizeTemplate.Execute(w, data); err != nil {
-		h.logger.ErrorContext(context.Background(), "failed to render authorization page", logpkg.ErrAttr(err))
+		h.logger.ErrorContext(ctx, "failed to render authorization page", logpkg.ErrAttr(err))
 	}
 }
 
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", "form data is required")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", "form data is required")
 		return
 	}
 
@@ -336,7 +355,7 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	case "refresh_token":
 		h.handleRefreshTokenGrant(w, r)
 	default:
-		h.writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type", "grant_type must be authorization_code or refresh_token")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "unsupported_grant_type", "grant_type must be authorization_code or refresh_token")
 	}
 }
 
@@ -347,53 +366,53 @@ func (h *Handler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Re
 	codeVerifier := strings.TrimSpace(r.FormValue("code_verifier"))
 
 	if clientID == "" || code == "" || redirectURI == "" || codeVerifier == "" {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", "client_id, code, redirect_uri, and code_verifier are required")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", "client_id, code, redirect_uri, and code_verifier are required")
 		return
 	}
 
 	apiKey, signozURL, authClientID, authRedirectURI, codeChallenge, codeChallengeMethod, _, err := DecryptAuthorizationCode(code, h.tokenSecret)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "authorization code is invalid or expired")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "authorization code is invalid or expired")
 		return
 	}
 	if authClientID != clientID || authRedirectURI != redirectURI {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "authorization code does not match the client or redirect URI")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "authorization code does not match the client or redirect URI")
 		return
 	}
 	if !ValidatePKCE(codeVerifier, codeChallenge, codeChallengeMethod) {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "PKCE validation failed")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "PKCE validation failed")
 		return
 	}
 
-	h.issueTokenPair(r.Context(), w, clientID, apiKey, signozURL, "authorization_code")
+	h.issueTokenPair(w, r, clientID, apiKey, signozURL, "authorization_code")
 }
 
 func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request) {
 	refreshTokenValue := strings.TrimSpace(r.FormValue("refresh_token"))
 	clientID := strings.TrimSpace(r.FormValue("client_id"))
 	if refreshTokenValue == "" {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_request", "refresh_token is required")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_request", "refresh_token is required")
 		return
 	}
 
 	apiKey, signozURL, refreshClientID, _, err := DecryptRefreshToken(refreshTokenValue, h.tokenSecret)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid or expired")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid or expired")
 		return
 	}
 	if clientID != "" && refreshClientID != clientID {
-		h.writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "refresh token does not belong to this client")
+		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "refresh token does not belong to this client")
 		return
 	}
 
-	h.issueTokenPair(r.Context(), w, refreshClientID, apiKey, signozURL, "refresh_token")
+	h.issueTokenPair(w, r, refreshClientID, apiKey, signozURL, "refresh_token")
 }
 
-func (h *Handler) issueTokenPair(ctx context.Context, w http.ResponseWriter, clientID, apiKey, signozURL, grantType string) {
+func (h *Handler) issueTokenPair(w http.ResponseWriter, r *http.Request, clientID, apiKey, signozURL, grantType string) {
 	accessTokenExpiresAt := time.Now().UTC().Add(h.config.AccessTokenTTL)
 	accessToken, err := EncryptToken(apiKey, signozURL, clientID, accessTokenExpiresAt, h.tokenSecret)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to create access token")
+		h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to create access token")
 		return
 	}
 
@@ -405,7 +424,7 @@ func (h *Handler) issueTokenPair(ctx context.Context, w http.ResponseWriter, cli
 		h.tokenSecret,
 	)
 	if err != nil {
-		h.writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to create refresh token")
+		h.writeOAuthError(r, w, http.StatusInternalServerError, "server_error", "failed to create refresh token")
 		return
 	}
 
@@ -416,7 +435,7 @@ func (h *Handler) issueTokenPair(ctx context.Context, w http.ResponseWriter, cli
 		RefreshToken: refreshTokenValue,
 	})
 
-	h.emit(ctx, analytics.EventOAuthTokenIssued, apiKey, signozURL, map[string]any{
+	h.emit(r.Context(), analytics.EventOAuthTokenIssued, apiKey, signozURL, map[string]any{
 		analytics.AttrTenantURL: signozURL,
 		analytics.AttrGrantType: grantType,
 	})
@@ -472,7 +491,41 @@ func (h *Handler) writeTokenResponse(w http.ResponseWriter, resp tokenResponse) 
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-func (h *Handler) writeOAuthError(w http.ResponseWriter, status int, code, description string) {
+func (h *Handler) recordOAuthFailure(ctx context.Context, r *http.Request, status int, code, description string) {
+	attrs := []slog.Attr{
+		slog.Int("http.response.status_code", status),
+		slog.String("oauth.error_code", code),
+		slog.String("oauth.error_description", description),
+	}
+	if r != nil {
+		attrs = append(attrs,
+			slog.String("http.request.method", r.Method),
+			slog.String("url.path", r.URL.Path),
+		)
+	}
+
+	if h.meters != nil {
+		h.meters.OAuthFailures.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("oauth.error_code", code),
+			attribute.Int("http.response.status_code", status),
+		))
+	}
+
+	level := slog.LevelWarn
+	if status >= http.StatusInternalServerError {
+		level = slog.LevelError
+	}
+	h.logger.LogAttrs(ctx, level, "OAuth request failed", attrs...)
+}
+
+func (h *Handler) writeOAuthError(r *http.Request, w http.ResponseWriter, status int, code, description string) {
+	ctx := context.Background()
+	if r != nil {
+		ctx = r.Context()
+	}
+
+	h.recordOAuthFailure(ctx, r, status, code, description)
+
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 	h.writeJSON(w, status, map[string]string{

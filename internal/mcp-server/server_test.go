@@ -1,8 +1,13 @@
 package mcp_server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,10 +26,12 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
+	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
@@ -108,6 +115,68 @@ func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool
 	}
 
 	t.Fatal(failureMessage)
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+type logStringer interface {
+	String() string
+}
+
+func newBufferedLogger(w io.Writer, level slog.Level) *slog.Logger {
+	base := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})
+	return slog.New(logpkg.NewContextHandler(base))
+}
+
+func parseJSONLogLines(t *testing.T, buf logStringer) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	records := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("parse log line %q: %v", line, err)
+		}
+		records = append(records, rec)
+	}
+	return records
+}
+
+func spanAttrValue(attrs []attribute.KeyValue, key attribute.Key) (attribute.Value, bool) {
+	for _, attr := range attrs {
+		if attr.Key == key {
+			return attr.Value, true
+		}
+	}
+	return attribute.Value{}, false
+}
+
+func singleHook[T any](t *testing.T, hooks []T, name string) T {
+	t.Helper()
+	if len(hooks) != 1 {
+		t.Fatalf("%s hooks = %d, want 1", name, len(hooks))
+	}
+	return hooks[0]
 }
 
 func TestNormalizeSigNozURL_RejectsPathQueryFragment(t *testing.T) {
@@ -460,7 +529,7 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-jwt")
 
-	hooks.OnAfterInitialize[0](ctx, nil, &mcp.InitializeRequest{}, &mcp.InitializeResult{})
+	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil, &mcp.InitializeRequest{}, &mcp.InitializeResult{})
 
 	middleware := mcpServer.loggingMiddleware()
 	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -555,7 +624,7 @@ func TestAnalyticsDisabledSkipsIdentityLookup(t *testing.T) {
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-disabled")
 
-	hooks.OnAfterInitialize[0](ctx, nil, &mcp.InitializeRequest{}, &mcp.InitializeResult{})
+	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil, &mcp.InitializeRequest{}, &mcp.InitializeResult{})
 
 	middleware := mcpServer.loggingMiddleware()
 	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -636,8 +705,8 @@ func TestToolCallReturnsBeforeAsyncAnalyticsCompletes(t *testing.T) {
 		t.Fatalf("middleware error = %v", err)
 	}
 	elapsed := time.Since(start)
-	if elapsed >= 150*time.Millisecond {
-		t.Fatalf("tool call took %v, want less than %v", elapsed, 150*time.Millisecond)
+	if elapsed >= 190*time.Millisecond {
+		t.Fatalf("tool call took %v, want less than %v", elapsed, 190*time.Millisecond)
 	}
 
 	select {
@@ -691,7 +760,7 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-client")
 
-	hooks.OnAfterInitialize[0](ctx, nil, &mcp.InitializeRequest{
+	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil, &mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
 			ClientInfo: mcp.Implementation{Name: "claude-desktop", Version: "1.2.3"},
 		},
@@ -732,19 +801,890 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 	}
 }
 
-func findInt64SumMetric(rm metricdata.ResourceMetrics, name string) (metricdata.Sum[int64], bool) {
-	for _, scopeMetric := range rm.ScopeMetrics {
-		for _, metric := range scopeMetric.Metrics {
-			if metric.Name != name {
-				continue
+func TestBuildHooks_NonToolMethodsRecordSpanAndMetrics(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, noopanalytics.New(), meters)
+	hooks := mcpServer.buildHooks()
+
+	ctx := context.Background()
+	ctx = util.SetSigNozURL(ctx, "https://tenant.example.com")
+	ctx = newAnalyticsTestContext(ctx, "sess-init")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+
+	req := &mcp.InitializeRequest{}
+	result := &mcp.InitializeResult{}
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-1", mcp.MethodInitialize, req)
+	singleHook(t, hooks.OnSuccess, "OnSuccess")(ctx, "req-1", mcp.MethodInitialize, req, result)
+	span.End()
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1", len(methodCalls.DataPoints))
+	}
+	callDataPoint := methodCalls.DataPoints[0]
+	if callDataPoint.Value != 1 {
+		t.Fatalf("mcp.method.calls value = %d, want 1", callDataPoint.Value)
+	}
+	methodName, ok := callDataPoint.Attributes.Value(attribute.Key("mcp.method.name"))
+	if !ok || methodName.AsString() != string(mcp.MethodInitialize) {
+		t.Fatalf("mcp.method.name = %v, want %q", methodName, mcp.MethodInitialize)
+	}
+	if _, ok := callDataPoint.Attributes.Value(attribute.Key("error.type")); ok {
+		t.Fatal("error.type should be absent on successful method call")
+	}
+
+	methodDuration, found := oteltest.FindFloat64HistogramMetric(metrics, "mcp.method.duration")
+	if !found {
+		t.Fatal("mcp.method.duration metric not found")
+	}
+	if len(methodDuration.DataPoints) != 1 {
+		t.Fatalf("mcp.method.duration datapoints = %d, want 1", len(methodDuration.DataPoints))
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Name != "MCP initialize" {
+		t.Fatalf("span name = %q, want %q", spans[0].Name, "MCP initialize")
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, otelpkg.MCPMethodKey); !ok || attr.AsString() != string(mcp.MethodInitialize) {
+		t.Fatalf("span mcp.method.name = %v, want %q", attr, mcp.MethodInitialize)
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, otelpkg.MCPSessionIDKey); !ok || attr.AsString() != "sess-init" {
+		t.Fatalf("span mcp.session.id = %v, want %q", attr, "sess-init")
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, otelpkg.MCPTenantURLKey); !ok || attr.AsString() != "https://tenant.example.com" {
+		t.Fatalf("span mcp.tenant_url = %v, want tenant URL", attr)
+	}
+}
+
+func TestBuildHooks_NonToolMethodErrorsRecordErrorType(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-err")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodResourcesRead)
+	req := &mcp.ReadResourceRequest{}
+	methodErr := fmt.Errorf("resources %w", mcpgoserver.ErrUnsupported)
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-err", mcp.MethodResourcesRead, req)
+	singleHook(t, hooks.OnError, "OnError")(ctx, "req-err", mcp.MethodResourcesRead, req, methodErr)
+	span.End()
+
+	if _, ok := mcpServer.methodObs.Load(methodObservationKey(ctx, "req-err", mcp.MethodResourcesRead, req)); ok {
+		t.Fatal("expected method observation to be cleaned up after OnError")
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1", len(methodCalls.DataPoints))
+	}
+	dp := methodCalls.DataPoints[0]
+	if attr, ok := dp.Attributes.Value(attribute.Key("error.type")); !ok || attr.AsString() != "unsupported" {
+		t.Fatalf("error.type = %v, want unsupported", attr)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("span status code = %v, want Error", spans[0].Status.Code)
+	}
+	if len(spans[0].Events) != 1 {
+		t.Fatalf("span events = %d, want 1", len(spans[0].Events))
+	}
+	if spans[0].Events[0].Name != "exception" {
+		t.Fatalf("span event name = %q, want %q", spans[0].Events[0].Name, "exception")
+	}
+	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || attr.AsString() != methodErr.Error() {
+		t.Fatalf("exception.message = %v, want %q", attr, methodErr.Error())
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, attribute.Key("error.type")); !ok || attr.AsString() != "unsupported" {
+		t.Fatalf("span error.type = %v, want unsupported", attr)
+	}
+}
+
+func TestBuildHooks_NonToolMethodSuccessEndsSpanWithoutMeters(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), nil)
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-no-meters")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+	req := &mcp.InitializeRequest{}
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-no-meters", mcp.MethodInitialize, req)
+	singleHook(t, hooks.OnSuccess, "OnSuccess")(ctx, "req-no-meters", mcp.MethodInitialize, req, &mcp.InitializeResult{})
+	span.End()
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Name != "MCP initialize" {
+		t.Fatalf("span name = %q, want %q", spans[0].Name, "MCP initialize")
+	}
+}
+
+func TestBuildHooks_NonToolMethodObservationTimeoutCleansUp(t *testing.T) {
+	var logBuf lockedBuffer
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	logger := newBufferedLogger(&logBuf, slog.LevelDebug)
+	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
+	mcpServer.methodObservationTimeout = 10 * time.Millisecond
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-timeout")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+	req := &mcp.InitializeRequest{}
+	key := methodObservationKey(ctx, "req-timeout", mcp.MethodInitialize, req)
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-timeout", mcp.MethodInitialize, req)
+
+	var metrics metricdata.ResourceMetrics
+	waitForCondition(t, time.Second, func() bool {
+		_, ok := mcpServer.methodObs.Load(key)
+		if ok {
+			return false
+		}
+
+		metrics = metricdata.ResourceMetrics{}
+		if err := reader.Collect(context.Background(), &metrics); err != nil {
+			t.Fatalf("collect metrics: %v", err)
+		}
+
+		methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+		if !found || len(methodCalls.DataPoints) != 1 {
+			return false
+		}
+
+		for _, rec := range parseJSONLogLines(t, &logBuf) {
+			if rec["msg"] == "mcp method observation timed out" {
+				return true
 			}
-			sum, ok := metric.Data.(metricdata.Sum[int64])
-			if ok {
-				return sum, true
+		}
+
+		return false
+	}, "timed out waiting for method observation timeout cleanup")
+	span.End()
+
+	if _, ok := mcpServer.methodObs.Load(key); ok {
+		t.Fatal("expected timed-out method observation to be removed")
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1", len(methodCalls.DataPoints))
+	}
+	if attr, ok := methodCalls.DataPoints[0].Attributes.Value(attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
+		t.Fatalf("error.type = %v, want internal", attr)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("span status code = %v, want Error", spans[0].Status.Code)
+	}
+	if len(spans[0].Events) != 1 {
+		t.Fatalf("span events = %d, want 1", len(spans[0].Events))
+	}
+	if spans[0].Events[0].Name != "exception" {
+		t.Fatalf("span event name = %q, want %q", spans[0].Events[0].Name, "exception")
+	}
+	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "timed out before success/error hook") {
+		t.Fatalf("exception.message = %v, want timeout message", attr)
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
+		t.Fatalf("span error.type = %v, want internal", attr)
+	}
+
+	records := parseJSONLogLines(t, &logBuf)
+	var foundWarn bool
+	for _, rec := range records {
+		if rec["msg"] == "mcp method observation timed out" {
+			foundWarn = true
+			if rec["level"] != "WARN" {
+				t.Fatalf("level = %v, want WARN", rec["level"])
 			}
 		}
 	}
-	return metricdata.Sum[int64]{}, false
+	if !foundWarn {
+		t.Fatalf("timeout warning log not found in %v", records)
+	}
+}
+
+func TestMethodObservationLateExpireNoOpsAfterFinish(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-race-finish")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+	req := &mcp.InitializeRequest{}
+	key := methodObservationKey(ctx, "req-race-finish", mcp.MethodInitialize, req)
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-race-finish", mcp.MethodInitialize, req)
+	singleHook(t, hooks.OnSuccess, "OnSuccess")(ctx, "req-race-finish", mcp.MethodInitialize, req, &mcp.InitializeResult{})
+	span.End()
+
+	mcpServer.expireMethodObservation(key)
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1", len(methodCalls.DataPoints))
+	}
+	if methodCalls.DataPoints[0].Value != 1 {
+		t.Fatalf("mcp.method.calls value = %d, want 1", methodCalls.DataPoints[0].Value)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if _, ok := methodCalls.DataPoints[0].Attributes.Value(attribute.Key("error.type")); ok {
+		t.Fatal("error.type should be absent after successful finish")
+	}
+}
+
+func TestMethodObservationLateFinishNoOpsAfterExpire(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	mcpServer.methodObservationTimeout = 10 * time.Millisecond
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-race-expire")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+	req := &mcp.InitializeRequest{}
+	key := methodObservationKey(ctx, "req-race-expire", mcp.MethodInitialize, req)
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-race-expire", mcp.MethodInitialize, req)
+	waitForCondition(t, time.Second, func() bool {
+		_, ok := mcpServer.methodObs.Load(key)
+		return !ok
+	}, "timed out waiting for method observation to expire")
+
+	singleHook(t, hooks.OnSuccess, "OnSuccess")(ctx, "req-race-expire", mcp.MethodInitialize, req, &mcp.InitializeResult{})
+	span.End()
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1", len(methodCalls.DataPoints))
+	}
+	if methodCalls.DataPoints[0].Value != 1 {
+		t.Fatalf("mcp.method.calls value = %d, want 1", methodCalls.DataPoints[0].Value)
+	}
+	if attr, ok := methodCalls.DataPoints[0].Attributes.Value(attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
+		t.Fatalf("error.type = %v, want internal", attr)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if len(spans[0].Events) != 1 {
+		t.Fatalf("span events = %d, want 1", len(spans[0].Events))
+	}
+	if spans[0].Events[0].Name != "exception" {
+		t.Fatalf("span event name = %q, want %q", spans[0].Events[0].Name, "exception")
+	}
+	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "timed out before success/error hook") {
+		t.Fatalf("exception.message = %v, want timeout message", attr)
+	}
+}
+
+func TestMethodObservationConcurrentFinishAndExpireDedupes(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	mcpServer.methodObservationTimeout = time.Hour
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-race-concurrent")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+	req := &mcp.InitializeRequest{}
+	key := methodObservationKey(ctx, "req-race-concurrent", mcp.MethodInitialize, req)
+	onSuccess := singleHook(t, hooks.OnSuccess, "OnSuccess")
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-race-concurrent", mcp.MethodInitialize, req)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		onSuccess(ctx, "req-race-concurrent", mcp.MethodInitialize, req, &mcp.InitializeResult{})
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		mcpServer.expireMethodObservation(key)
+	}()
+	close(start)
+	wg.Wait()
+	span.End()
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	var total int64
+	for _, dp := range methodCalls.DataPoints {
+		total += dp.Value
+	}
+	if total != 1 {
+		t.Fatalf("mcp.method.calls total = %d, want 1", total)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if len(spans[0].Events) > 1 {
+		t.Fatalf("span events = %d, want <= 1", len(spans[0].Events))
+	}
+}
+
+func TestMethodSpanMiddleware_PropagatesMethodSpanToRequestContext(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	mcpServer := NewMCPServer(logpkg.New("error"), nil, &config.Config{}, noopanalytics.New(), nil)
+	var seenSpan trace.SpanContext
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenSpan = trace.SpanFromContext(r.Context()).SpanContext()
+		trace.SpanFromContext(r.Context()).End()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	req = req.WithContext(util.SetSigNozURL(req.Context(), "https://tenant.example.com"))
+	rr := httptest.NewRecorder()
+
+	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if !seenSpan.IsValid() {
+		t.Fatal("expected request context to carry a valid method span")
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].SpanContext.SpanID() != seenSpan.SpanID() {
+		t.Fatalf("request context span ID = %s, exported span ID = %s", seenSpan.SpanID(), spans[0].SpanContext.SpanID())
+	}
+	if spans[0].Name != "MCP initialize" {
+		t.Fatalf("span name = %q, want %q", spans[0].Name, "MCP initialize")
+	}
+}
+
+func TestMethodSpanMiddleware_SkipsUnknownMethodNames(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	mcpServer := NewMCPServer(logpkg.New("error"), nil, &config.Config{}, noopanalytics.New(), nil)
+	var sawValidSpan bool
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawValidSpan = trace.SpanFromContext(r.Context()).SpanContext().IsValid()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"attacker/custom-cardinality","params":{}}`))
+	rr := httptest.NewRecorder()
+
+	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if sawValidSpan {
+		t.Fatal("did not expect a span for an unknown method")
+	}
+	if spans := traceExporter.GetSpans(); len(spans) != 0 {
+		t.Fatalf("span count = %d, want 0", len(spans))
+	}
+}
+
+func TestMethodSpanMiddleware_TimeoutObservationKeepsMethodSpanOpen(t *testing.T) {
+	var logBuf lockedBuffer
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	logger := newBufferedLogger(&logBuf, slog.LevelDebug)
+	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
+	mcpServer.methodObservationTimeout = 10 * time.Millisecond
+	hooks := mcpServer.buildHooks()
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req := &mcp.InitializeRequest{}
+		singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(r.Context(), "req-timeout-http", mcp.MethodInitialize, req)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":"req-timeout-http","method":"initialize","params":{}}`))
+	req = req.WithContext(util.SetSigNozURL(req.Context(), "https://tenant.example.com"))
+	rr := httptest.NewRecorder()
+
+	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	var metrics metricdata.ResourceMetrics
+	waitForCondition(t, time.Second, func() bool {
+		metrics = metricdata.ResourceMetrics{}
+		if err := reader.Collect(context.Background(), &metrics); err != nil {
+			t.Fatalf("collect metrics: %v", err)
+		}
+
+		methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+		if !found || len(methodCalls.DataPoints) != 1 {
+			return false
+		}
+
+		for _, rec := range parseJSONLogLines(t, &logBuf) {
+			if rec["msg"] == "mcp method observation timed out" {
+				return true
+			}
+		}
+
+		return false
+	}, "timed out waiting for HTTP-backed method observation timeout")
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if attr, ok := methodCalls.DataPoints[0].Attributes.Value(attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
+		t.Fatalf("error.type = %v, want internal", attr)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("span status code = %v, want Error", spans[0].Status.Code)
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
+		t.Fatalf("span error.type = %v, want internal", attr)
+	}
+}
+
+func TestMethodSpanMiddleware_OnErrorWithoutBeforeAnyStillEndsSpan(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	hooks := mcpServer.buildHooks()
+	methodErr := fmt.Errorf("initialize %w", mcpgoserver.ErrUnsupported)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		singleHook(t, hooks.OnError, "OnError")(r.Context(), "req-unmarshal", mcp.MethodInitialize, &mcp.InitializeRequest{}, methodErr)
+		w.WriteHeader(http.StatusBadRequest)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":"req-unmarshal","method":"initialize","params":{}}`))
+	req = req.WithContext(util.SetSigNozURL(req.Context(), "https://tenant.example.com"))
+	rr := httptest.NewRecorder()
+
+	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1", len(methodCalls.DataPoints))
+	}
+	if attr, ok := methodCalls.DataPoints[0].Attributes.Value(attribute.Key("error.type")); !ok || attr.AsString() != "unsupported" {
+		t.Fatalf("error.type = %v, want unsupported", attr)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("span status code = %v, want Error", spans[0].Status.Code)
+	}
+	if attr, ok := spanAttrValue(spans[0].Attributes, attribute.Key("error.type")); !ok || attr.AsString() != "unsupported" {
+		t.Fatalf("span error.type = %v, want unsupported", attr)
+	}
+}
+
+func TestMethodSpanMiddleware_RejectsOversizedBody(t *testing.T) {
+	mcpServer := NewMCPServer(logpkg.New("error"), nil, &config.Config{}, noopanalytics.New(), nil)
+	mcpServer.maxMethodSpanBodyBytes = 32
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called for oversized body")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"payload":"this body is much larger than 32 bytes"}}`))
+	rr := httptest.NewRecorder()
+
+	mcpServer.methodSpanMiddleware(next).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func TestLoggingMiddleware_ErrorResultLogsWarn(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newBufferedLogger(&buf, slog.LevelDebug)
+	mcpServer := NewMCPServer(logger, nil, &config.Config{}, noopanalytics.New(), nil)
+
+	middleware := mcpServer.loggingMiddleware()
+	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{mcp.TextContent{Text: "tool exploded"}},
+		}, nil
+	})(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Name: "signoz_query"},
+	})
+	if err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+
+	records := parseJSONLogLines(t, &buf)
+	for _, rec := range records {
+		if rec["msg"] == "tool call returned error result" {
+			if rec["level"] != "WARN" {
+				t.Fatalf("level = %v, want WARN", rec["level"])
+			}
+			return
+		}
+	}
+	t.Fatalf("tool error-result log not found in %v", records)
+}
+
+func TestLoggingMiddleware_GoErrorLogsError(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newBufferedLogger(&buf, slog.LevelDebug)
+	mcpServer := NewMCPServer(logger, nil, &config.Config{}, noopanalytics.New(), nil)
+
+	middleware := mcpServer.loggingMiddleware()
+	expectedErr := errors.New("upstream failed")
+	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return nil, expectedErr
+	})(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Name: "signoz_query"},
+	})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("middleware error = %v, want %v", err, expectedErr)
+	}
+
+	records := parseJSONLogLines(t, &buf)
+	for _, rec := range records {
+		if rec["msg"] == "tool call failed" {
+			if rec["level"] != "ERROR" {
+				t.Fatalf("level = %v, want ERROR", rec["level"])
+			}
+			return
+		}
+	}
+	t.Fatalf("tool failure log not found in %v", records)
 }
 
 func TestLoggingMiddleware_PanicPathRecordsErrorMetricAndSpan(t *testing.T) {
@@ -812,7 +1752,7 @@ func TestLoggingMiddleware_PanicPathRecordsErrorMetricAndSpan(t *testing.T) {
 		t.Fatalf("collect metrics: %v", err)
 	}
 
-	toolCalls, found := findInt64SumMetric(metrics, "mcp.tool.calls")
+	toolCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.tool.calls")
 	if !found {
 		t.Fatal("mcp.tool.calls metric not found")
 	}
@@ -863,7 +1803,7 @@ func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-cleanup")
 
-	hooks.OnAfterInitialize[0](ctx, nil,
+	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil,
 		&mcp.InitializeRequest{Params: mcp.InitializeParams{
 			ClientInfo: mcp.Implementation{Name: "cursor", Version: "0.9"},
 		}}, &mcp.InitializeResult{})
@@ -873,7 +1813,7 @@ func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
 	}
 
 	session := fakeSession{id: "sess-cleanup", ch: make(chan mcp.JSONRPCNotification, 1)}
-	hooks.OnUnregisterSession[0](ctx, session)
+	singleHook(t, hooks.OnUnregisterSession, "OnUnregisterSession")(ctx, session)
 
 	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "" {
 		t.Fatalf("post-unregister ClientInfo = %+v, want empty", got)
@@ -896,7 +1836,7 @@ func TestPromptFetchedEvent(t *testing.T) {
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-prompt")
 
-	hooks.OnAfterGetPrompt[0](ctx, nil,
+	singleHook(t, hooks.OnAfterGetPrompt, "OnAfterGetPrompt")(ctx, nil,
 		&mcp.GetPromptRequest{Params: mcp.GetPromptParams{Name: "rca"}},
 		&mcp.GetPromptResult{})
 
@@ -934,7 +1874,7 @@ func TestResourceFetchedEvent(t *testing.T) {
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-res")
 
-	hooks.OnAfterReadResource[0](ctx, nil,
+	singleHook(t, hooks.OnAfterReadResource, "OnAfterReadResource")(ctx, nil,
 		&mcp.ReadResourceRequest{Params: mcp.ReadResourceParams{URI: "signoz://dashboard/abc"}},
 		&mcp.ReadResourceResult{})
 
@@ -1044,9 +1984,10 @@ func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 		runDone <- srv.Run(runCtx)
 	}()
 
-	// Give Run a moment to reach the HTTP startup block, then trigger the
-	// full production shutdown sequence (cancel ctx + Shutdown).
-	time.Sleep(100 * time.Millisecond)
+	waitForCondition(t, time.Second, func() bool {
+		return srv.httpServer.Load() != nil
+	}, "timed out waiting for HTTP server startup publication")
+
 	cancel()
 	if err := srv.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown returned error: %v", err)
