@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
@@ -54,6 +54,10 @@
       "description": "Get alert history timeline for a specific rule with optional state filter"
     },
     {
+      "name": "signoz_create_alert",
+      "description": "Create a new alert rule using SigNoz v2alpha1 alert schema"
+    },
+    {
       "name": "signoz_list_dashboards",
       "description": "List all dashboards with summaries"
     },
@@ -68,6 +72,10 @@
     {
       "name": "signoz_update_dashboard",
       "description": "Update an existing dashboard by UUID"
+    },
+    {
+      "name": "signoz_delete_dashboard",
+      "description": "Delete a dashboard by UUID"
     },
     {
       "name": "signoz_list_services",
@@ -108,6 +116,18 @@
     {
       "name": "signoz_execute_builder_query",
       "description": "Execute a raw SigNoz Query Builder v5 query"
+    },
+    {
+      "name": "signoz_list_notification_channels",
+      "description": "List all configured notification channels"
+    },
+    {
+      "name": "signoz_create_notification_channel",
+      "description": "Create a notification channel and send a test notification"
+    },
+    {
+      "name": "signoz_update_notification_channel",
+      "description": "Update an existing notification channel and send a test notification"
     }
   ],
   "compatibility": {

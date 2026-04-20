@@ -17,10 +17,9 @@ func New() *Provider {
 	return &Provider{stopC: make(chan struct{})}
 }
 
-func (p *Provider) Start(_ context.Context) error  { <-p.stopC; return nil }
-func (p *Provider) Stop(_ context.Context) error   { close(p.stopC); return nil }
-func (p *Provider) Send(_ context.Context, _ ...analyticstypes.Message) {}
-func (p *Provider) TrackGroup(_ context.Context, _, _ string, _ map[string]any)     {}
-func (p *Provider) TrackUser(_ context.Context, _, _, _ string, _ map[string]any)    {}
-func (p *Provider) IdentifyGroup(_ context.Context, _ string, _ map[string]any)      {}
-func (p *Provider) IdentifyUser(_ context.Context, _, _ string, _ map[string]any)    {}
+func (p *Provider) Enabled() bool                                                 { return false }
+func (p *Provider) Start(_ context.Context) error                                 { <-p.stopC; return nil }
+func (p *Provider) Stop(_ context.Context) error                                  { close(p.stopC); return nil }
+func (p *Provider) Send(_ context.Context, _ ...analyticstypes.Message)           {}
+func (p *Provider) TrackUser(_ context.Context, _, _, _ string, _ map[string]any) {}
+func (p *Provider) IdentifyUser(_ context.Context, _, _ string, _ map[string]any) {}

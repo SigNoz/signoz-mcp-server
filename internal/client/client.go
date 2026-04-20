@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -28,9 +30,25 @@ const (
 	DefaultQueryTimeout = 600 * time.Second
 	// DashboardWriteTimeout is used for dashboard create/update operations.
 	DashboardWriteTimeout = 30 * time.Second
+
+	// analyticsIdentityCacheTTL keeps /me out of the hot analytics path;
+	// identity rarely changes, so 10 min is long enough to absorb bursts.
+	analyticsIdentityCacheTTL = 10 * time.Minute
 )
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
+
+// AnalyticsIdentity is the identity tuple used for analytics attribution.
+// UserID holds the service-account ID for API-key sessions, or the SigNoz
+// user ID for auth-token sessions. Name is the service-account name or the
+// user's displayName, respectively.
+type AnalyticsIdentity struct {
+	OrgID     string
+	UserID    string
+	Name      string
+	Email     string
+	Principal string
+}
 
 type SigNoz struct {
 	baseURL        string
@@ -38,14 +56,20 @@ type SigNoz struct {
 	authHeaderName string
 	logger         *zap.Logger
 	httpClient     *http.Client
+	customHeaders  map[string]string
+
+	identityMu       sync.Mutex
+	cachedIdentity   *AnalyticsIdentity
+	identityCachedAt time.Time
 }
 
-func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string) *SigNoz {
+func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
 	return &SigNoz{
 		logger:         log,
 		baseURL:        baseURL,
 		apiKey:         apiKey,
 		authHeaderName: authHeaderName,
+		customHeaders:  customHeaders,
 		httpClient: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
@@ -110,6 +134,96 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	return s.evaluateValidationResponse(log, status, body)
 }
 
+// GetAnalyticsIdentity returns the org + user identity for the current
+// credentials, cached per-client and mutex-serialized so a burst of events
+// produces a single /me roundtrip.
+//
+// Auth-token clients hit /api/v2/users/me (v2 is required — it returns
+// orgId, v1 doesn't). API-key clients hit /api/v1/service_accounts/me.
+func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	s.identityMu.Lock()
+	defer s.identityMu.Unlock()
+
+	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
+		return s.cachedIdentity, nil
+	}
+
+	identity, err := s.fetchAnalyticsIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	s.cachedIdentity = identity
+	s.identityCachedAt = time.Now()
+	return identity, nil
+}
+
+func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	log := s.requestLogger(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	endpoint := "/api/v1/service_accounts/me"
+	principal := "service_account"
+	if strings.EqualFold(s.authHeaderName, "Authorization") {
+		endpoint = "/api/v2/users/me"
+		principal = "user"
+	}
+
+	reqURL := fmt.Sprintf("%s%s", s.baseURL, endpoint)
+	status, body, err := s.doValidationRequest(ctx, reqURL)
+	if err != nil {
+		log.Error("SigNoz analytics identity request failed", zap.String("url", reqURL), zap.Error(err))
+		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, s.evaluateValidationResponse(log, status, body)
+	}
+
+	identity, err := parseAnalyticsIdentity(body, principal)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s response: %w", endpoint, err)
+	}
+
+	return identity, nil
+}
+
+type analyticsIdentityResponse struct {
+	Data struct {
+		ID          string `json:"id"`
+		Email       string `json:"email"`
+		OrgID       string `json:"orgId"`
+		Name        string `json:"name"`        // service_accounts/me
+		DisplayName string `json:"displayName"` // users/me
+	} `json:"data"`
+}
+
+func parseAnalyticsIdentity(body []byte, principal string) (*AnalyticsIdentity, error) {
+	var resp analyticsIdentityResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+	if resp.Data.ID == "" {
+		return nil, fmt.Errorf("missing data.id")
+	}
+	if resp.Data.OrgID == "" {
+		return nil, fmt.Errorf("missing data.orgId")
+	}
+
+	name := resp.Data.Name
+	if name == "" {
+		name = resp.Data.DisplayName
+	}
+
+	return &AnalyticsIdentity{
+		OrgID:     resp.Data.OrgID,
+		UserID:    resp.Data.ID,
+		Name:      name,
+		Email:     resp.Data.Email,
+		Principal: principal,
+	}, nil
+}
+
 // doValidationRequest sends a GET request to the given URL with auth headers
 // and returns the HTTP status code, response body, and any transport error.
 func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
@@ -119,7 +233,13 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 	}
 
 	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(SignozApiKey, s.apiKey)
+	req.Header.Set(s.authHeaderName, s.apiKey)
+
+	for k, v := range s.customHeaders {
+		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, s.authHeaderName) {
+			req.Header.Set(k, v)
+		}
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -129,7 +249,9 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		_ = resp.Body.Close()
 	}()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	// 64 KiB holds the full /api/v2/users/me payload (roles, groups, nested
+	// org metadata); anything smaller risks truncating valid JSON.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to read validation response: %w", err)
 	}
@@ -192,6 +314,15 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		req.Header.Set(ContentType, "application/json")
 
 		req.Header.Set(s.authHeaderName, s.apiKey)
+
+		for k, v := range s.customHeaders {
+			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
+				log.Warn("Custom header overrides a reserved header",
+					zap.String("header", k), zap.String("value", v))
+				continue
+			}
+			req.Header.Set(k, v)
+		}
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
@@ -400,6 +531,12 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
 }
 
+func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/rules", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating alert rule")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
+}
+
 func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
 	s.requestLogger(ctx).Debug("Fetching log views from SigNoz")
@@ -509,5 +646,40 @@ func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSO
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.requestLogger(ctx).Debug("Updating dashboard (raw)", zap.String("id", id))
 	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return err
+}
+
+func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
+	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Deleting dashboard", zap.String("id", id))
+	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	return err
+}
+
+// ChannelWriteTimeout is used for notification channel create/test operations.
+const ChannelWriteTimeout = 30 * time.Second
+
+func (s *SigNoz) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Fetching notification channels from SigNoz")
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
+	s.requestLogger(ctx).Debug("Creating notification channel")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
+func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
+	s.requestLogger(ctx).Debug("Updating notification channel", zap.String("id", id))
+	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+}
+
+func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
+	reqURL := fmt.Sprintf("%s/api/v1/testChannel", s.baseURL)
+	s.requestLogger(ctx).Debug("Testing notification channel")
+	_, err := s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
 	return err
 }

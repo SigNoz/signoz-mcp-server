@@ -88,6 +88,15 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	s.AddTool(updateDashboardTool, h.handleUpdateDashboard)
 
+	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
+		mcp.WithDestructiveHintAnnotation(true),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithDescription("Delete a dashboard by its UUID. This action is irreversible. Use signoz_list_dashboards to find dashboard UUIDs."),
+		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID to delete")),
+	)
+
+	s.AddTool(deleteDashboardTool, h.handleDeleteDashboard)
+
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)
 }
@@ -229,6 +238,31 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	return mcp.NewToolResultText("dashboard updated"), nil
+}
+
+func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log := h.tenantLogger(ctx)
+	uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
+	if !ok {
+		log.Warn("Invalid uuid parameter type", zap.Any("type", req.Params.Arguments))
+		return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
+	}
+	if uuid == "" {
+		log.Warn("Empty uuid parameter")
+		return mcp.NewToolResultError(`Parameter validation failed: "uuid" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
+	}
+
+	log.Debug("Tool called: signoz_delete_dashboard", zap.String("uuid", uuid))
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	err = client.DeleteDashboard(ctx, uuid)
+	if err != nil {
+		log.Error("Failed to delete dashboard", zap.String("uuid", uuid), zap.Error(err))
+		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+	}
+	return mcp.NewToolResultText("dashboard deleted"), nil
 }
 
 // registerDashboardResources registers all MCP resources needed for dashboard creation/update.
