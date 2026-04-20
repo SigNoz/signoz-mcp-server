@@ -35,8 +35,8 @@ type AlertRule struct {
 	Version           string            `json:"version,omitempty" jsonschema_extras:"description=API version. Always v5. Set automatically if omitted."`
 
 	// v2 schema fields
-	Evaluation           *AlertEvaluation     `json:"evaluation,omitempty" jsonschema_extras:"description=Evaluation configuration. Specifies eval window and frequency. Auto-generated with defaults (5m0s window and 1m0s frequency) if omitted."`
-	SchemaVersion        string               `json:"schemaVersion,omitempty" jsonschema_extras:"description=Schema version. Always set to v2alpha1 automatically."`
+	Evaluation           *AlertEvaluation      `json:"evaluation,omitempty" jsonschema_extras:"description=Evaluation configuration. Specifies eval window and frequency. Auto-generated with defaults (5m0s window and 1m0s frequency) if omitted."`
+	SchemaVersion        string                `json:"schemaVersion,omitempty" jsonschema_extras:"description=Schema version. Always set to v2alpha1 automatically."`
 	NotificationSettings *NotificationSettings `json:"notificationSettings,omitempty" jsonschema_extras:"description=Notification settings. Controls grouping and re-notification behavior. Auto-generated with defaults if omitted."`
 }
 
@@ -156,9 +156,9 @@ type AlertEvaluationSpec struct {
 
 // NotificationSettings controls alert notification behavior for v2 schema.
 type NotificationSettings struct {
-	GroupBy  []string  `json:"groupBy,omitempty" jsonschema_extras:"description=Fields to group alert notifications by (e.g. service.name). Reduces notification noise by batching alerts with the same group key."`
-	Renotify *Renotify `json:"renotify,omitempty" jsonschema_extras:"description=Re-notification configuration."`
-	UsePolicy bool     `json:"usePolicy,omitempty" jsonschema_extras:"description=Whether to use routing policies for notification routing."`
+	GroupBy   []string  `json:"groupBy,omitempty" jsonschema_extras:"description=Fields to group alert notifications by (e.g. service.name). Reduces notification noise by batching alerts with the same group key."`
+	Renotify  *Renotify `json:"renotify,omitempty" jsonschema_extras:"description=Re-notification configuration."`
+	UsePolicy bool      `json:"usePolicy,omitempty" jsonschema_extras:"description=Whether to use routing policies for notification routing."`
 }
 
 // Renotify controls re-notification behavior.

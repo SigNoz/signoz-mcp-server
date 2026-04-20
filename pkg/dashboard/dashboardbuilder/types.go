@@ -21,21 +21,21 @@ type DashboardData struct {
 // DashboardVariable represents a dashboard variable.
 // When Type is empty, it defaults to "DYNAMIC" during ApplyDefaults.
 type DashboardVariable struct {
-	ID                        string      `json:"id"`
-	Name                      string      `json:"name,omitempty"`
-	Description               string      `json:"description"`
-	Type                      string      `json:"type"`
-	QueryValue                string      `json:"queryValue,omitempty"`
-	CustomValue               string      `json:"customValue,omitempty"`
-	TextboxValue              string      `json:"textboxValue,omitempty"`
-	Sort                      string      `json:"sort"`
-	MultiSelect               bool        `json:"multiSelect"`
-	ShowALLOption             bool        `json:"showALLOption"`
-	SelectedValue             any `json:"selectedValue,omitempty"`
-	DefaultValue              string      `json:"defaultValue,omitempty"`
-	DynamicVariablesAttribute string      `json:"dynamicVariablesAttribute,omitempty"`
-	DynamicVariablesSource    string      `json:"dynamicVariablesSource,omitempty"`
-	Order                     *int        `json:"order,omitempty"`
+	ID                        string `json:"id"`
+	Name                      string `json:"name,omitempty"`
+	Description               string `json:"description"`
+	Type                      string `json:"type"`
+	QueryValue                string `json:"queryValue,omitempty"`
+	CustomValue               string `json:"customValue,omitempty"`
+	TextboxValue              string `json:"textboxValue,omitempty"`
+	Sort                      string `json:"sort"`
+	MultiSelect               bool   `json:"multiSelect"`
+	ShowALLOption             bool   `json:"showALLOption"`
+	SelectedValue             any    `json:"selectedValue,omitempty"`
+	DefaultValue              string `json:"defaultValue,omitempty"`
+	DynamicVariablesAttribute string `json:"dynamicVariablesAttribute,omitempty"`
+	DynamicVariablesSource    string `json:"dynamicVariablesSource,omitempty"`
+	Order                     *int   `json:"order,omitempty"`
 }
 
 // WidgetOrRow is a union type representing either a widget panel or a row separator.
@@ -74,18 +74,18 @@ type WidgetOrRow struct {
 
 	// Chart display options
 	LegendPosition     string            `json:"legendPosition,omitempty"`
-	CustomLegendColors map[string]string  `json:"customLegendColors,omitempty"`
-	ContextLinks       *ContextLinksData  `json:"contextLinks,omitempty"`
-	LineInterpolation  string             `json:"lineInterpolation,omitempty"`
-	ShowPoints         *bool              `json:"showPoints,omitempty"`
-	LineStyle          string             `json:"lineStyle,omitempty"`
-	FillMode           string             `json:"fillMode,omitempty"`
-	SpanGaps           *json.RawMessage   `json:"spanGaps,omitempty"` // bool | number
+	CustomLegendColors map[string]string `json:"customLegendColors,omitempty"`
+	ContextLinks       *ContextLinksData `json:"contextLinks,omitempty"`
+	LineInterpolation  string            `json:"lineInterpolation,omitempty"`
+	ShowPoints         *bool             `json:"showPoints,omitempty"`
+	LineStyle          string            `json:"lineStyle,omitempty"`
+	FillMode           string            `json:"fillMode,omitempty"`
+	SpanGaps           *json.RawMessage  `json:"spanGaps,omitempty"` // bool | number
 
 	// Bar/histogram specific
-	StackedBarChart    *bool `json:"stackedBarChart,omitempty"`
-	BucketCount        *int  `json:"bucketCount,omitempty"`
-	BucketWidth        *int  `json:"bucketWidth,omitempty"`
+	StackedBarChart *bool `json:"stackedBarChart,omitempty"`
+	BucketCount     *int  `json:"bucketCount,omitempty"`
+	BucketWidth     *int  `json:"bucketWidth,omitempty"`
 
 	// Precision
 	DecimalPrecision *json.RawMessage `json:"decimalPrecision,omitempty"` // number | "full precision"
@@ -100,12 +100,12 @@ type WidgetOrRow struct {
 
 // Query represents the query configuration of a widget.
 type Query struct {
-	QueryType     string             `json:"queryType"`
-	Builder       *BuilderData       `json:"builder,omitempty"`
-	ClickhouseSQL []ClickHouseQuery  `json:"clickhouse_sql,omitempty"`
-	PromQL        []PromQLQuery      `json:"promql,omitempty"`
-	ID            string             `json:"id"`
-	Unit          string             `json:"unit,omitempty"`
+	QueryType     string            `json:"queryType"`
+	Builder       *BuilderData      `json:"builder,omitempty"`
+	ClickhouseSQL []ClickHouseQuery `json:"clickhouse_sql,omitempty"`
+	PromQL        []PromQLQuery     `json:"promql,omitempty"`
+	ID            string            `json:"id"`
+	Unit          string            `json:"unit,omitempty"`
 }
 
 // BuilderData holds query builder queries, formulas, and trace operators.

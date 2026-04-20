@@ -50,9 +50,9 @@ var validDataSources = map[string]bool{
 
 // Query types
 const (
-	QueryTypeBuilder      = "builder"
-	QueryTypeClickHouse   = "clickhouse_sql"
-	QueryTypePromQL       = "promql"
+	QueryTypeBuilder    = "builder"
+	QueryTypeClickHouse = "clickhouse_sql"
+	QueryTypePromQL     = "promql"
 )
 
 var validQueryTypes = map[string]bool{
@@ -68,32 +68,32 @@ var validReduceToOperators = map[string]bool{
 
 // Metric aggregate operators
 var validMetricAggregateOperators = map[string]bool{
-	"":               true, // empty is valid for some metric types
-	"noop":           true,
-	"count":          true,
-	"count_distinct": true,
-	"sum":            true,
-	"avg":            true,
-	"max":            true,
-	"min":            true,
-	"p05":            true,
-	"p10":            true,
-	"p20":            true,
-	"p25":            true,
-	"p50":            true,
-	"p75":            true,
-	"p90":            true,
-	"p95":            true,
-	"p99":            true,
-	"rate":           true,
-	"sum_rate":       true,
-	"avg_rate":       true,
-	"max_rate":       true,
-	"min_rate":       true,
-	"rate_sum":       true,
-	"rate_avg":       true,
-	"rate_min":       true,
-	"rate_max":       true,
+	"":                 true, // empty is valid for some metric types
+	"noop":             true,
+	"count":            true,
+	"count_distinct":   true,
+	"sum":              true,
+	"avg":              true,
+	"max":              true,
+	"min":              true,
+	"p05":              true,
+	"p10":              true,
+	"p20":              true,
+	"p25":              true,
+	"p50":              true,
+	"p75":              true,
+	"p90":              true,
+	"p95":              true,
+	"p99":              true,
+	"rate":             true,
+	"sum_rate":         true,
+	"avg_rate":         true,
+	"max_rate":         true,
+	"min_rate":         true,
+	"rate_sum":         true,
+	"rate_avg":         true,
+	"rate_min":         true,
+	"rate_max":         true,
 	"hist_quantile_50": true,
 	"hist_quantile_75": true,
 	"hist_quantile_90": true,
@@ -353,15 +353,15 @@ type Panel struct {
 	BucketWidth           *float64          `json:"bucketWidth,omitempty"`
 	MergeAllActiveQueries *bool             `json:"mergeAllActiveQueries,omitempty"`
 	ColumnUnits           map[string]string `json:"columnUnits,omitempty"`
-	SelectedLogFields     any       `json:"selectedLogFields"`
-	SelectedTracesFields  any       `json:"selectedTracesFields"`
+	SelectedLogFields     any               `json:"selectedLogFields"`
+	SelectedTracesFields  any               `json:"selectedTracesFields"`
 	IsLogScale            *bool             `json:"isLogScale,omitempty"`
 	LegendPosition        string            `json:"legendPosition,omitempty"`
 	LineInterpolation     string            `json:"lineInterpolation,omitempty"`
 	ShowPoints            *bool             `json:"showPoints,omitempty"`
 	LineStyle             string            `json:"lineStyle,omitempty"`
 	FillMode              string            `json:"fillMode,omitempty"`
-	SpanGaps              any       `json:"spanGaps,omitempty"`
+	SpanGaps              any               `json:"spanGaps,omitempty"`
 }
 
 // Query represents the query configuration for a panel.
@@ -376,7 +376,7 @@ type Query struct {
 
 // QueryBuilderData holds the builder query data and formulas.
 type QueryBuilderData struct {
-	QueryData    []BuilderQuery   `json:"queryData"`
+	QueryData     []BuilderQuery   `json:"queryData"`
 	QueryFormulas []BuilderFormula `json:"queryFormulas"`
 }
 
@@ -437,14 +437,14 @@ type TagFilterItem struct {
 	ID    string            `json:"id"`
 	Key   *AutocompleteData `json:"key,omitempty"`
 	Op    string            `json:"op"`
-	Value any       `json:"value"`
+	Value any               `json:"value"`
 }
 
 // HavingClause represents a HAVING condition.
 type HavingClause struct {
-	ColumnName string      `json:"columnName"`
-	Op         string      `json:"op"`
-	Value      any `json:"value"`
+	ColumnName string `json:"columnName"`
+	Op         string `json:"op"`
+	Value      any    `json:"value"`
 }
 
 // OrderByPayload represents an ORDER BY clause.
@@ -455,7 +455,7 @@ type OrderByPayload struct {
 
 // QueryFunction represents a post-processing function applied to query results.
 type QueryFunction struct {
-	Name      string                 `json:"name"`
+	Name      string         `json:"name"`
 	Args      []any          `json:"args,omitempty"`
 	NamedArgs map[string]any `json:"namedArgs,omitempty"`
 }
@@ -1031,15 +1031,15 @@ func CreateDefaultPanel(panelType string, dataSource string) Panel {
 	}
 
 	panel := Panel{
-		ID:                    generateID(),
-		PanelTypes:            panelType,
-		Title:                 "",
-		Description:           "",
-		Query:                 query,
-		Opacity:               "1",
-		NullZeroValues:        "zero",
-		SelectedLogFields:     nil,
-		SelectedTracesFields:  nil,
+		ID:                   generateID(),
+		PanelTypes:           panelType,
+		Title:                "",
+		Description:          "",
+		Query:                query,
+		Opacity:              "1",
+		NullZeroValues:       "zero",
+		SelectedLogFields:    nil,
+		SelectedTracesFields: nil,
 	}
 
 	// Panel-type-specific defaults

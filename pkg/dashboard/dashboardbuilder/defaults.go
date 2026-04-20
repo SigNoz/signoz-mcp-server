@@ -17,9 +17,9 @@ const (
 
 // Query types (from frontend EQueryType enum).
 const (
-	QueryTypeBuilder      = "builder"
-	QueryTypeClickHouse   = "clickhouse_sql"
-	QueryTypePromQL       = "promql"
+	QueryTypeBuilder    = "builder"
+	QueryTypeClickHouse = "clickhouse_sql"
+	QueryTypePromQL     = "promql"
 )
 
 // Variable types.
@@ -81,11 +81,11 @@ const (
 
 // Grid constants (from react-grid-layout configuration).
 const (
-	GridColumns        = 12
-	DefaultWidgetWidth = 6
+	GridColumns         = 12
+	DefaultWidgetWidth  = 6
 	DefaultWidgetHeight = 6
-	RowWidth           = 12
-	RowHeight          = 1
+	RowWidth            = 12
+	RowHeight           = 1
 )
 
 // Default widget display values.

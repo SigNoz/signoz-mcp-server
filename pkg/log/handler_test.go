@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func newTestLogger(buf *bytes.Buffer) *slog.Logger {

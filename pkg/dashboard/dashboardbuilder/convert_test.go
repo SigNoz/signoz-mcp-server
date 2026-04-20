@@ -152,7 +152,7 @@ func TestParseFromJSON_ValidationError(t *testing.T) {
 
 func TestParseFromMap(t *testing.T) {
 	m := map[string]any{
-		"title": "From Map",
+		"title":     "From Map",
 		"variables": map[string]any{},
 	}
 

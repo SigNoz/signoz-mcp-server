@@ -10,34 +10,34 @@ import (
 // Go's bool type defaults to false, making it impossible to distinguish "explicitly
 // set to false" from "not provided" with the final DashboardVariable type.
 type rawDashboardVariable struct {
-	ID                        string      `json:"id"`
-	Name                      string      `json:"name,omitempty"`
-	Description               string      `json:"description"`
-	Type                      string      `json:"type"`
-	QueryValue                string      `json:"queryValue,omitempty"`
-	CustomValue               string      `json:"customValue,omitempty"`
-	TextboxValue              string      `json:"textboxValue,omitempty"`
-	Sort                      string      `json:"sort"`
-	MultiSelect               *bool       `json:"multiSelect,omitempty"`
-	ShowALLOption             *bool       `json:"showALLOption,omitempty"`
-	SelectedValue             any `json:"selectedValue,omitempty"`
-	DefaultValue              string      `json:"defaultValue,omitempty"`
-	DynamicVariablesAttribute string      `json:"dynamicVariablesAttribute,omitempty"`
-	DynamicVariablesSource    string      `json:"dynamicVariablesSource,omitempty"`
-	Order                     *int        `json:"order,omitempty"`
+	ID                        string `json:"id"`
+	Name                      string `json:"name,omitempty"`
+	Description               string `json:"description"`
+	Type                      string `json:"type"`
+	QueryValue                string `json:"queryValue,omitempty"`
+	CustomValue               string `json:"customValue,omitempty"`
+	TextboxValue              string `json:"textboxValue,omitempty"`
+	Sort                      string `json:"sort"`
+	MultiSelect               *bool  `json:"multiSelect,omitempty"`
+	ShowALLOption             *bool  `json:"showALLOption,omitempty"`
+	SelectedValue             any    `json:"selectedValue,omitempty"`
+	DefaultValue              string `json:"defaultValue,omitempty"`
+	DynamicVariablesAttribute string `json:"dynamicVariablesAttribute,omitempty"`
+	DynamicVariablesSource    string `json:"dynamicVariablesSource,omitempty"`
+	Order                     *int   `json:"order,omitempty"`
 }
 
 // rawDashboardData uses rawDashboardVariable for intermediate parsing.
 type rawDashboardData struct {
-	Title       string                          `json:"title"`
-	Description string                          `json:"description,omitempty"`
-	Tags        []string                        `json:"tags,omitempty"`
-	Name        string                          `json:"name,omitempty"`
-	Version     string                          `json:"version,omitempty"`
+	Title       string                           `json:"title"`
+	Description string                           `json:"description,omitempty"`
+	Tags        []string                         `json:"tags,omitempty"`
+	Name        string                           `json:"name,omitempty"`
+	Version     string                           `json:"version,omitempty"`
 	Variables   map[string]*rawDashboardVariable `json:"variables"`
-	Widgets     []WidgetOrRow                   `json:"widgets,omitempty"`
-	Layout      []LayoutItem                    `json:"layout,omitempty"`
-	PanelMap    map[string]*PanelMapEntry       `json:"panelMap,omitempty"`
+	Widgets     []WidgetOrRow                    `json:"widgets,omitempty"`
+	Layout      []LayoutItem                     `json:"layout,omitempty"`
+	PanelMap    map[string]*PanelMapEntry        `json:"panelMap,omitempty"`
 }
 
 // ParseFromJSON parses raw JSON bytes into a validated DashboardData.
