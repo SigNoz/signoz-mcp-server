@@ -106,9 +106,15 @@ func main() {
 		serverErrCh <- runGroup.Wait()
 	}()
 
-	var runErr error
+	var (
+		runErr     error
+		serverDone bool
+	)
 	select {
 	case runErr = <-serverErrCh:
+		// Server exited (cleanly or with an error) before a signal arrived.
+		// The channel is now drained; do not receive from it again.
+		serverDone = true
 	case <-ctx.Done():
 		logger.InfoContext(ctx, "Received shutdown signal")
 	}
@@ -142,8 +148,16 @@ func main() {
 		}
 	}
 
-	if runErr == nil {
-		runErr = <-serverErrCh
+	// Wait for the server goroutine to return after Shutdown so we do not
+	// leak it and can surface any error it produced. Bounded by shutCtx so a
+	// stuck server does not keep the process alive past the shutdown budget.
+	if !serverDone {
+		select {
+		case err := <-serverErrCh:
+			runErr = err
+		case <-shutCtx.Done():
+			logger.WarnContext(ctx, "Timed out waiting for server goroutine to exit", logpkg.ErrAttr(shutCtx.Err()))
+		}
 	}
 
 	if runErr != nil || shutdownErr != nil {
