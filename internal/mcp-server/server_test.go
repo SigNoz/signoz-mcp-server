@@ -986,3 +986,73 @@ func TestOAuthEventEmitter_InjectsCredentialsAndDispatches(t *testing.T) {
 		t.Fatalf("identity (%q, %q), want (org-1, sa-1)", call.groupID, call.userID)
 	}
 }
+
+// TestRun_HTTPCanceledBeforeListen verifies Run returns promptly when its
+// context is already canceled before ListenAndServe would be called — the
+// ctx.Err() guard in Run plus the atomic.Pointer handoff should prevent
+// the listener from binding and the process from hanging on shutdown.
+func TestRun_HTTPCanceledBeforeListen(t *testing.T) {
+	cfg := &config.Config{
+		TransportMode:   "http",
+		Port:            "0", // OS picks a free port if the listener ever binds
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+	}
+	logger := logpkg.New("error")
+	handler := tools.NewHandler(logger, cfg)
+	srv := NewMCPServer(logger, handler, cfg, noopanalytics.New(), nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel so Run should short-circuit before ListenAndServe
+
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Run(ctx)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit within 2s on pre-canceled context")
+	}
+}
+
+// TestRun_HTTPShutdownRaceDuringStartup verifies that Shutdown() called on
+// a Run() that is mid-startup correctly cancels the listener via the
+// atomic.Pointer handoff. Exercises the race-sensitive window where
+// Shutdown can land before or after httpServer.Store but must still close
+// the server so Run returns.
+func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
+	cfg := &config.Config{
+		TransportMode:   "http",
+		Port:            "0",
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+	}
+	logger := logpkg.New("error")
+	handler := tools.NewHandler(logger, cfg)
+	srv := NewMCPServer(logger, handler, cfg, noopanalytics.New(), nil)
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- srv.Run(context.Background())
+	}()
+
+	// Give Run a moment to publish httpServer, then Shutdown.
+	time.Sleep(50 * time.Millisecond)
+	if err := srv.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("Run returned error after Shutdown: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit within 2s of Shutdown")
+	}
+}

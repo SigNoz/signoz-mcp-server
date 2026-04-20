@@ -140,14 +140,24 @@ func main() {
 		select {
 		case err := <-serverErrCh:
 			runErr = err
+			serverDone = true
 		case <-shutCtx.Done():
 			logger.WarnContext(ctx, "Timed out waiting for server goroutine to exit", logpkg.ErrAttr(shutCtx.Err()))
 		}
 	}
 
-	if err := srv.WaitForAnalytics(shutCtx); err != nil {
-		logger.ErrorContext(ctx, "Failed while waiting for analytics dispatches", logpkg.ErrAttr(err))
-		shutdownErr = errors.Join(shutdownErr, err)
+	// Only drain the analytics WaitGroup when the run loop is guaranteed to
+	// have stopped producing new dispatches. If the join timed out above,
+	// WaitForAnalytics would spawn a goroutine doing analyticsWG.Wait() that
+	// shutCtx cannot cancel, and a still-alive run loop calling Add(1) would
+	// trip "sync: WaitGroup misuse: Add called concurrently with Wait".
+	if serverDone {
+		if err := srv.WaitForAnalytics(shutCtx); err != nil {
+			logger.ErrorContext(ctx, "Failed while waiting for analytics dispatches", logpkg.ErrAttr(err))
+			shutdownErr = errors.Join(shutdownErr, err)
+		}
+	} else {
+		logger.WarnContext(ctx, "Skipping analytics drain because server goroutine did not exit; late dispatches may be lost")
 	}
 	if err := analyticsInstance.Stop(shutCtx); err != nil {
 		logger.ErrorContext(ctx, "Failed to stop analytics", logpkg.ErrAttr(err))

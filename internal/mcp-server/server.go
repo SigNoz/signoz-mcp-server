@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -48,8 +49,11 @@ type MCPServer struct {
 	analytics      analytics.Analytics
 	meters         *otelpkg.Meters
 	sessionClients *expirable.LRU[string, mcp.Implementation]
-	httpServer     *http.Server
-	analyticsWG    sync.WaitGroup
+	// httpServer is published via atomic.Pointer so Shutdown (on the main
+	// goroutine) can safely race Run's publication (on the errgroup
+	// goroutine) when SIGTERM lands mid-startup.
+	httpServer  atomic.Pointer[http.Server]
+	analyticsWG sync.WaitGroup
 }
 
 func (m *MCPServer) rememberClientInfo(sessionID string, info mcp.Implementation) {
@@ -305,8 +309,23 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.logger.InfoContext(ctx, "All handlers registered successfully")
 
 	if m.config.TransportMode == "http" {
-		m.httpServer = m.buildHTTP(s)
-		if err := m.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		// Build the *http.Server and publish it via the atomic pointer
+		// BEFORE checking ctx or calling ListenAndServe. That way, if main
+		// calls Shutdown after we publish but before we call
+		// ListenAndServe, Shutdown will observe the non-nil pointer and
+		// close the server — so ListenAndServe returns promptly with
+		// http.ErrServerClosed instead of hanging until the 15s join
+		// timeout. If Shutdown ran earlier (before we published), we
+		// detect that via ctx.Err() below and explicitly close the server
+		// we just built so it does not leak.
+		srv := m.buildHTTP(s)
+		m.httpServer.Store(srv)
+		if err := ctx.Err(); err != nil {
+			m.logger.InfoContext(ctx, "Shutdown signaled before HTTP listener started; closing the unused server")
+			_ = srv.Shutdown(context.Background())
+			return nil
+		}
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
@@ -315,10 +334,14 @@ func (m *MCPServer) Run(ctx context.Context) error {
 }
 
 func (m *MCPServer) Shutdown(ctx context.Context) error {
-	if m.config.TransportMode != "http" || m.httpServer == nil {
+	if m.config.TransportMode != "http" {
 		return nil
 	}
-	return m.httpServer.Shutdown(ctx)
+	srv := m.httpServer.Load()
+	if srv == nil {
+		return nil
+	}
+	return srv.Shutdown(ctx)
 }
 
 func (m *MCPServer) WaitForAnalytics(ctx context.Context) error {
