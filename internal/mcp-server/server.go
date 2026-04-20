@@ -222,7 +222,9 @@ func (m *MCPServer) trackOAuthEvent(ctx context.Context, event, apiKey, signozUR
 		ctx = util.SetSigNozURL(ctx, signozURL)
 	}
 	if m.meters != nil {
-		m.meters.OAuthEvents.Add(ctx, 1, metric.WithAttributes(attribute.String("event", event)))
+		attrs := []attribute.KeyValue{attribute.String("event", event)}
+		attrs = otelpkg.AppendTenantURL(ctx, attrs)
+		m.meters.OAuthEvents.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 	m.trackEventAsync(ctx, event, props)
 }
@@ -514,6 +516,7 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 	if session := server.ClientSessionFromContext(observation.ctx); session != nil && session.SessionID() != "" {
 		spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
 	}
+	spanAttrs = otelpkg.AppendTenantURL(observation.ctx, spanAttrs)
 
 	errorType := methodErrorType(err)
 	if errorType != "" {
@@ -527,6 +530,7 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 		metricAttrs := []attribute.KeyValue{
 			attribute.String("mcp.method.name", string(observation.method)),
 		}
+		metricAttrs = otelpkg.AppendTenantURL(observation.ctx, metricAttrs)
 		if errorType != "" {
 			metricAttrs = append(metricAttrs, attribute.String("error.type", errorType))
 		}
@@ -628,8 +632,13 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		m.beginMethodObservation(ctx, id, method, message)
 		span := trace.SpanFromContext(ctx)
+		spanAttrs := []attribute.KeyValue{}
 		if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
-			span.SetAttributes(otelpkg.MCPSessionIDKey.String(session.SessionID()))
+			spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
+		}
+		spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
+		if len(spanAttrs) > 0 {
+			span.SetAttributes(spanAttrs...)
 		}
 		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method", string(method)))
 	})
@@ -645,6 +654,9 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			}
 		} else {
 			span := trace.SpanFromContext(ctx)
+			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
+				span.SetAttributes(attr)
+			}
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
@@ -656,7 +668,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
 		if m.meters != nil {
-			m.meters.SessionRegistered.Add(ctx, 1)
+			attrs := otelpkg.AppendTenantURL(ctx, nil)
+			m.meters.SessionRegistered.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
 
 		var sessionID string
@@ -777,8 +790,8 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
 				span.SetAttributes(otelpkg.MCPSearchContextKey.String(sc))
 			}
-			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-				span.SetAttributes(otelpkg.MCPTenantURLKey.String(signozURL))
+			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
+				span.SetAttributes(attr)
 			}
 
 			toolNameAttr := slog.String("gen_ai.tool.name", req.Params.Name)
@@ -819,10 +832,12 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			}
 
 			if m.meters != nil {
-				attrs := metric.WithAttributes(
+				attrKVs := []attribute.KeyValue{
 					attribute.String("gen_ai.tool.name", req.Params.Name),
 					attribute.Bool("mcp.tool.is_error", isErr),
-				)
+				}
+				attrKVs = otelpkg.AppendTenantURL(ctx, attrKVs)
+				attrs := metric.WithAttributes(attrKVs...)
 				m.meters.ToolCalls.Add(ctx, 1, attrs)
 				m.meters.ToolCallDuration.Record(ctx, float64(duration)/float64(time.Millisecond), attrs)
 			}
@@ -939,6 +954,16 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 					m.logger.DebugContext(ctx, "OAuth access token extracted from Authorization header", slog.String("mcp.tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
+					// The token is expired but was once server-issued, so the
+					// embedded URL is a trusted tenant value. Seed it so the 401
+					// trace and any downstream metric carry mcp.tenant_url.
+					if decryptedURL != "" {
+						ctx = util.SetSigNozURL(ctx, decryptedURL)
+						if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
+							trace.SpanFromContext(ctx).SetAttributes(attr)
+						}
+						r = r.WithContext(ctx)
+					}
 					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
 					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
 					return
@@ -981,6 +1006,9 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		if usedOAuthToken {
 			ctx = util.SetSigNozURL(ctx, signozURL)
+			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
+				trace.SpanFromContext(ctx).SetAttributes(attr)
+			}
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)
 			return
@@ -1008,6 +1036,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx = util.SetSigNozURL(ctx, signozURL)
+
+		// Decorate the otelhttp root span with tenant_url so every /mcp
+		// request trace is queryable per customer in SigNoz.
+		if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
+			trace.SpanFromContext(ctx).SetAttributes(attr)
+		}
 
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)

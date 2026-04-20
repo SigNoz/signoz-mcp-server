@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -146,12 +147,14 @@ func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, 
 
 	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
 		if s.meters != nil {
-			s.meters.IdentityCacheHits.Add(ctx, 1)
+			attrs := otelpkg.AppendTenantURL(ctx, nil)
+			s.meters.IdentityCacheHits.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
 		return s.cachedIdentity, nil
 	}
 	if s.meters != nil {
-		s.meters.IdentityCacheMisses.Add(ctx, 1)
+		attrs := otelpkg.AppendTenantURL(ctx, nil)
+		s.meters.IdentityCacheMisses.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 
 	identity, err := s.fetchAnalyticsIdentity(ctx)

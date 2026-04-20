@@ -1,6 +1,11 @@
 package otel
 
-import "go.opentelemetry.io/otel/attribute"
+import (
+	"context"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
+)
 
 // GenAI semantic convention attribute keys — used on tool-execution spans
 // to describe "which tool, what operation." We deliberately do NOT set
@@ -28,3 +33,23 @@ const (
 	MCPToolIsErrorKey   = attribute.Key("mcp.tool.is_error")
 	MCPQueryPayloadKey  = attribute.Key("mcp.query.payload")
 )
+
+// TenantURLAttr returns mcp.tenant_url as an OTel attribute when the context
+// carries a SigNoz URL. Returns the zero KeyValue and false when absent, so
+// callers can append conditionally without emitting an empty string value.
+func TenantURLAttr(ctx context.Context) (attribute.KeyValue, bool) {
+	signozURL, ok := util.GetSigNozURL(ctx)
+	if !ok || signozURL == "" {
+		return attribute.KeyValue{}, false
+	}
+	return MCPTenantURLKey.String(signozURL), true
+}
+
+// AppendTenantURL appends the mcp.tenant_url attribute to attrs when the
+// context carries a SigNoz URL. Returns attrs unchanged when absent.
+func AppendTenantURL(ctx context.Context, attrs []attribute.KeyValue) []attribute.KeyValue {
+	if attr, ok := TenantURLAttr(ctx); ok {
+		return append(attrs, attr)
+	}
+	return attrs
+}

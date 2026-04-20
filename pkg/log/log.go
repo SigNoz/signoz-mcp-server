@@ -26,7 +26,8 @@ func New(level string) *slog.Logger {
 		slogLevel = slog.LevelInfo
 	}
 
-	baseHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	// Use stderr so stdio transport can keep stdout reserved for MCP frames.
+	baseHandler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level:     slogLevel,
 		AddSource: true,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {

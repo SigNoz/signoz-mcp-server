@@ -118,5 +118,36 @@ The next review pass surfaced a few smaller but real issues:
 3. Method-span attributes were being redundantly restamped. The method span now gets `mcp.method.name` and tenant URL at start, session ID in `BeforeAny`, and `error.type` at completion.
 4. Added deterministic regression tests for late-expire-after-finish and late-finish-after-expire so the timer cleanup path stays idempotent.
 
+### 2026-04-20 — Multi-tenant `mcp.tenant_url` propagation
+Hosted multi-tenant MCP server needs every metric/span dimensioned by tenant so customer-level SLIs are derivable. Audited all emission sites; tenant_url was present on some spans (tool span, method span at start, analytics props) but missing from every metric and several spans. Fix:
+1. Added `TenantURLAttr(ctx) (KeyValue, bool)` and `AppendTenantURL(ctx, attrs)` helpers in `pkg/otel/attr.go`. Conditionally append — no empty-string attrs emitted, no cardinality leak from absent values.
+2. All 9 meters now carry `mcp.tenant_url`: `mcp.tool.calls`, `mcp.tool.call.duration`, `mcp.method.calls`, `mcp.method.duration`, `mcp.session.registered`, `mcp.oauth.events`, `mcp.oauth.failures`, `mcp.identity_cache.hit`, `mcp.identity_cache.miss`.
+3. `otelhttp` root span (`HTTP POST /mcp`) is now decorated with `mcp.tenant_url` inside `authMiddleware` for both OAuth and non-OAuth paths, so every request trace is queryable per customer at the entry span.
+4. Post-decrypt OAuth failure paths (`handleAuthorizationCodeGrant` invalid_grant, PKCE failure; `handleRefreshTokenGrant` invalid_grant; `issueTokenPair` token-encryption server_error) now seed `signozURL` on the request context before `writeOAuthError`, so per-tenant `mcp.oauth.failures` are populated for the most actionable failure modes. Pre-decrypt failures (malformed request, missing grant_type) legitimately have no tenant.
+5. `loggingMiddleware` tool-span decoration switched to the helper for consistency.
+
+Cardinality: bounded by customer count (hundreds to low thousands) multiplied by existing dimensions (`error.type`, `gen_ai.tool.name`, `mcp.method.name`). Safe for Prometheus/OTLP.
+
+Skipped: `config.URL` normalization at load time. `NormalizeSigNozURL` rejects `localhost`, which would break local stdio dev. The un-normalized paths (stdio env-var, HTTP config fallback) are single-tenant deployments where cardinality is 1 by definition, so no real leak.
+
+Two parallel agent reviews ran over this change — one flagged the `otelhttp` root-span gap and the post-decrypt OAuth gap; the other confirmed item 4 (ctx staleness, nil-slice safety, stdio empty-string guard) are non-issues.
+
+### 2026-04-20 — Interactive authorize-submit tenant_url — considered and rejected
+Codex P2 suggested seeding `mcp.tenant_url` from the `signoz_url` form field in `HandleAuthorizeSubmit` before rendering the form-error page, so the `api_key == ""` interactive failure path would carry tenant attribution. Initially applied, then reverted.
+
+**Reason for reversal:** `/oauth/authorize` is an **unauthenticated** endpoint. The form's `signoz_url` is attacker-controlled and unbounded — an adversary can submit arbitrary well-formed URLs that normalize cleanly (`https://a.com`, `https://b.com`, …), each producing a distinct `mcp.oauth.failures{mcp.tenant_url=<attacker-value>}` series. That's an unbounded cardinality attack vector on a public endpoint. Filtering by "normalizes cleanly" doesn't defend against it, because any valid hostname normalizes cleanly.
+
+This is materially different from the post-decrypt OAuth paths (`handleAuthorizationCodeGrant`, `handleRefreshTokenGrant`, `issueTokenPair`), where `signozURL` comes out of an encrypted token the **server itself issued** — values there are bounded to real, completed authorize flows. Those keep the tenant seeding.
+
+Rule: only seed `mcp.tenant_url` from values we have asserted ownership of (OAuth-decrypted token, validated JWT audience, authenticated header). User-submitted form fields on unauthenticated endpoints do not qualify.
+
+### 2026-04-20 — Auth-method coverage audit for tenant_url
+Walked every authentication path in `authMiddleware` and `runStdio.SetContextFunc` to confirm `mcp.tenant_url` lands on ctx for each. All covered except one: the OAuth `ErrExpiredToken` branch rejected the 401 without seeding tenant_url, even though `DecryptToken` returns the full payload (incl. `signozURL`) alongside the expiry error. That URL is trusted — it was written into the token by the server at grant time, so it's bounded by real tenants. Fix: on the expiry branch, seed `util.SetSigNozURL(ctx, decryptedURL)` (when non-empty) and decorate the otelhttp root span before returning 401. Now "which customers are hitting OAuth token expiry" is queryable. Paths that correctly remain un-seeded: no-auth (401), malformed `X-SigNoz-URL` (400), OAuth-invalid without fallback URL (401) — these either have no URL at all or have only an un-validated/unclaimed URL and seeding would be unsafe.
+
+### 2026-04-20 — Stdio log sink correction
+PR review surfaced one remaining transport-safety regression: `pkg/log.New` was writing JSON logs to stdout, while stdio mode also writes MCP protocol frames to stdout via `server.NewStdioServer(...).Listen(ctx, os.Stdin, os.Stdout)`. That makes even harmless startup/info logs capable of corrupting MCP framing for stdio clients.
+
+Fix: move the default slog JSON sink from stdout to stderr. This preserves structured log collection in containerized deployments while keeping stdout protocol-safe for stdio transport. Added a regression test that temporarily redirects both file descriptors and asserts `log.New(...).InfoContext(...)` writes only to stderr.
+
 ## Open Questions
 _(none — plan approved by Codex after 3 rounds; post-ship review findings addressed)_

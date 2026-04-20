@@ -375,6 +375,9 @@ func (h *Handler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Re
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "authorization code is invalid or expired")
 		return
 	}
+	// Seed tenant_url on ctx so downstream OAuth failure metrics and logs
+	// carry the tenant dimension for post-decrypt failure modes.
+	r = r.WithContext(util.SetSigNozURL(r.Context(), signozURL))
 	if authClientID != clientID || authRedirectURI != redirectURI {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "authorization code does not match the client or redirect URI")
 		return
@@ -400,6 +403,7 @@ func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid or expired")
 		return
 	}
+	r = r.WithContext(util.SetSigNozURL(r.Context(), signozURL))
 	if clientID != "" && refreshClientID != clientID {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant", "refresh token does not belong to this client")
 		return
@@ -409,6 +413,7 @@ func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) issueTokenPair(w http.ResponseWriter, r *http.Request, clientID, apiKey, signozURL, grantType string) {
+	r = r.WithContext(util.SetSigNozURL(r.Context(), signozURL))
 	accessTokenExpiresAt := time.Now().UTC().Add(h.config.AccessTokenTTL)
 	accessToken, err := EncryptToken(apiKey, signozURL, clientID, accessTokenExpiresAt, h.tokenSecret)
 	if err != nil {
@@ -505,10 +510,12 @@ func (h *Handler) recordOAuthFailure(ctx context.Context, r *http.Request, statu
 	}
 
 	if h.meters != nil {
-		h.meters.OAuthFailures.Add(ctx, 1, metric.WithAttributes(
+		metricAttrs := []attribute.KeyValue{
 			attribute.String("oauth.error_code", code),
 			attribute.Int("http.response.status_code", status),
-		))
+		}
+		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
+		h.meters.OAuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 	}
 
 	level := slog.LevelWarn

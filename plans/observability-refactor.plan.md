@@ -14,7 +14,7 @@ Goal: match Zeus's shape — slog + ContextHandler + `pkg/otel` — so the MCP s
 
 ## Cross-Cutting Decisions (apply to all commits)
 
-- **Logs ship as stdout JSON** (Zeus-style). No direct OTLP log exporter. Collector scrapes stdout.
+- **Logs ship as JSON on stderr**. No direct OTLP log exporter. This keeps stdout reserved for MCP stdio protocol frames while remaining compatible with container log collection.
 - **OTLP always on** for traces + metrics — no `deployment.environment` noop gating. Exporters fail gracefully at connect time with a single warning log. (Simpler than Zeus; acceptable because a missing OTLP endpoint just means no data, not crashes.)
 - **Metrics container**: a typed `*otel.Meters` struct instantiated in `main` and injected into `MCPServer`. No package-level globals — simpler to test, explicit dependencies.
 - **Redaction / size caps**: any log field that carries a request body, response body, or error payload is capped at 4 KiB and truncated with a `...(truncated)` suffix. Existing "log detailed errors for LLM" behavior stays (per `feedback_security_scope`), but unbounded bodies don't.
@@ -106,15 +106,17 @@ Add tool + oauth metrics as a typed struct.
 - `pkg/otel/metrics.go` — `type Meters struct { ToolCalls metric.Int64Counter; ToolCallDuration metric.Float64Histogram; MethodCalls metric.Int64Counter; MethodDuration metric.Float64Histogram; SessionRegistered metric.Int64Counter; OAuthEvents metric.Int64Counter; OAuthFailures metric.Int64Counter; IdentityCacheHits metric.Int64Counter; IdentityCacheMisses metric.Int64Counter }` and `NewMeters(mp metric.MeterProvider) (*Meters, error)`. Instantiated once in `main`, injected via `NewMCPServer(..., meters)`.
 
 **Metrics chosen (after deferring broken ones):**
-- `mcp.tool.calls` — counter, attrs: `gen_ai.tool.name`, `mcp.tool.is_error`.
+- `mcp.tool.calls` — counter, attrs: `gen_ai.tool.name`, `mcp.tool.is_error`, `mcp.tenant_url`.
 - `mcp.tool.call.duration` — histogram (ms), same attrs.
-- `mcp.method.calls` — counter, attrs: `mcp.method.name`, optional `error.type`. Recorded for non-tool MCP methods from the hook layer.
+- `mcp.method.calls` — counter, attrs: `mcp.method.name`, optional `error.type`, `mcp.tenant_url`. Recorded for non-tool MCP methods from the hook layer.
 - `mcp.method.duration` — histogram (ms), same attrs.
-- `mcp.session.registered` — counter (no attrs). Incremented from `AddAfterInitialize` hook, which only fires after a successful initialize, so counts are accurate for session rate even though unregister is unreliable for streamable HTTP.
-- `mcp.oauth.events` — counter, attr: `event` (one of authorize/register/token/refresh).
-- `mcp.oauth.failures` — counter, attrs: `oauth.error_code`, `http.response.status_code`.
-- `mcp.identity_cache.hit` / `mcp.identity_cache.miss` — counters, low cost, immediately actionable for the /me hot path.
+- `mcp.session.registered` — counter, attr: `mcp.tenant_url`. Incremented from `AddAfterInitialize` hook, which only fires after a successful initialize, so counts are accurate for session rate even though unregister is unreliable for streamable HTTP.
+- `mcp.oauth.events` — counter, attrs: `event` (one of authorize/register/token/refresh), `mcp.tenant_url`.
+- `mcp.oauth.failures` — counter, attrs: `oauth.error_code`, `http.response.status_code`, `mcp.tenant_url` (present on post-decrypt failure modes; absent on pre-decrypt malformed-request failures).
+- `mcp.identity_cache.hit` / `mcp.identity_cache.miss` — counters, attr: `mcp.tenant_url`. Low cost, immediately actionable for the /me hot path.
 - **Deferred**: `mcp.sessions.active` up/down gauge. `OnUnregisterSession` is documented-unreliable for streamable HTTP POST-only clients, so the counter would leak upward. Revisit when mcp-go fires unregister reliably.
+
+**Multi-tenant attribution:** `pkg/otel/attr.go` exposes `TenantURLAttr(ctx)` and `AppendTenantURL(ctx, attrs)` helpers that read `util.GetSigNozURL` and conditionally emit `mcp.tenant_url`. Every metric above uses these; every span that the MCP server creates or decorates (`otelhttp` root span inside `authMiddleware`, method span at start, `AddBeforeAny` parent-span decoration, tool span in `loggingMiddleware`, method-observation completion, `AddOnError` non-observed path) carries the attr. Post-decrypt OAuth handlers (`handleAuthorizationCodeGrant`, `handleRefreshTokenGrant`, `issueTokenPair`) seed `signozURL` on the request context before invoking `writeOAuthError`, so per-tenant failure dashboards are populated for actionable failure modes. Cardinality is bounded by customer count (hundreds to low thousands), safe for Prometheus/OTLP.
 
 **Wiring:**
 - `loggingMiddleware` records `ToolCalls` + `ToolCallDuration` after the handler returns (error surfaces through inner recovery middleware as a normal return value) and logs handled `result.IsError` outcomes at `Warn`, not only `Debug`.

@@ -867,6 +867,9 @@ func TestBuildHooks_NonToolMethodsRecordSpanAndMetrics(t *testing.T) {
 	if _, ok := callDataPoint.Attributes.Value(attribute.Key("error.type")); ok {
 		t.Fatal("error.type should be absent on successful method call")
 	}
+	if attr, ok := callDataPoint.Attributes.Value(otelpkg.MCPTenantURLKey); !ok || attr.AsString() != "https://tenant.example.com" {
+		t.Fatalf("mcp.method.calls mcp.tenant_url = %v, want tenant URL", attr)
+	}
 
 	methodDuration, found := oteltest.FindFloat64HistogramMetric(metrics, "mcp.method.duration")
 	if !found {
