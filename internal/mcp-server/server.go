@@ -107,13 +107,13 @@ func (m *MCPServer) mergeIdentityAttrs(identity *signozclient.AnalyticsIdentity,
 	}
 	merged[analytics.AttrOrgID] = identity.OrgID
 	merged[analytics.AttrPrincipal] = identity.Principal
+	// name and email are Segment reserved traits; user vs service_account is
+	// disambiguated via the principal attr rather than key prefixes.
+	if identity.Name != "" {
+		merged[analytics.AttrName] = identity.Name
+	}
 	if identity.Email != "" {
-		switch identity.Principal {
-		case "user":
-			merged[analytics.AttrUserEmail] = identity.Email
-		case "service_account":
-			merged[analytics.AttrServiceEmail] = identity.Email
-		}
+		merged[analytics.AttrEmail] = identity.Email
 	}
 	return merged
 }

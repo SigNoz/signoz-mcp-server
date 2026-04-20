@@ -820,7 +820,7 @@ All event names are defined in [pkg/analytics/events.go](../pkg/analytics/events
 | `MCP OAuth: Authorization submitted` | `HandleAuthorizeSubmit` after credential validation | `tenantUrl` |
 | `MCP OAuth: Token issued` | `issueTokenPair` for both auth-code and refresh-token grants | `grantType` |
 
-Every event is enriched with identity attributes (`orgId`, `principal`, `userEmail` or `serviceEmail`) by `mergeIdentityAttrs` in [internal/mcp-server/server.go](../internal/mcp-server/server.go). All attribute keys are camelCase (not OTel-dotted) — OTel spans and zap log fields keep the dotted convention for semantic-convention compatibility.
+Every event is enriched with identity attributes (`orgId`, `principal`, `name`, `email`) by `mergeIdentityAttrs` in [internal/mcp-server/server.go](../internal/mcp-server/server.go). `name` and `email` are Segment's reserved traits so downstream destinations (Mixpanel, etc.) auto-map them; `principal` (`"user"` or `"service_account"`) disambiguates. For users, `name` is the `displayName` from `/api/v2/users/me`; for service accounts, it's the `name` from `/api/v1/service_accounts/me`. All attribute keys are camelCase (not OTel-dotted) — OTel spans and zap log fields keep the dotted convention for semantic-convention compatibility.
 
 ### Async dispatch
 
