@@ -51,7 +51,22 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	if r.Level >= slog.LevelError {
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {
-			span.SetStatus(codes.Error, r.Message)
+			// Prefer an attached error's text so the span status carries
+			// the specific failure reason (e.g. "dial tcp: connection
+			// refused") rather than the generic log prefix ("mcp error").
+			// Callers attach errors via pkg/log.ErrAttr(err) which keys
+			// on "error" and stores the error as slog.Any.
+			msg := r.Message
+			r.Attrs(func(a slog.Attr) bool {
+				if a.Key == "error" {
+					if err, ok := a.Value.Any().(error); ok && err != nil {
+						msg = err.Error()
+					}
+					return false
+				}
+				return true
+			})
+			span.SetStatus(codes.Error, msg)
 		}
 		if h.stacktraceEnabled {
 			if stacktrace := captureStacktrace(4); stacktrace != "" {

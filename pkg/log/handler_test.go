@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -84,6 +86,52 @@ func TestContextHandler_ErrorLevelAttachesStacktraceByDefault(t *testing.T) {
 	}
 	if trace, ok := exception["stacktrace"].(string); !ok || !strings.Contains(trace, "handler_test.go") {
 		t.Fatalf("stacktrace missing or unexpected: %v", exception["stacktrace"])
+	}
+}
+
+func TestContextHandler_SpanStatusPrefersErrorAttrText(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	ctx, span := tp.Tracer("t").Start(context.Background(), "op")
+
+	upstream := errors.New("dial tcp 10.0.0.1:443: connection refused")
+	logger.ErrorContext(ctx, "mcp error", ErrAttr(upstream))
+	span.End()
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Code != codes.Error {
+		t.Fatalf("status code = %v, want Error", spans[0].Status.Code)
+	}
+	if spans[0].Status.Description != upstream.Error() {
+		t.Fatalf("status description = %q, want %q (error attr text, not log msg)", spans[0].Status.Description, upstream.Error())
+	}
+}
+
+func TestContextHandler_SpanStatusFallsBackToMessage(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	ctx, span := tp.Tracer("t").Start(context.Background(), "op")
+
+	logger.ErrorContext(ctx, "something broke")
+	span.End()
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	if spans[0].Status.Description != "something broke" {
+		t.Fatalf("status description = %q, want log message fallback", spans[0].Status.Description)
 	}
 }
 

@@ -46,10 +46,13 @@ func main() {
 		slog.String("log_level", cfg.LogLevel),
 		slog.String("transport_mode", cfg.TransportMode))
 
+	// resource.New returns a best-effort Resource even when individual
+	// detectors fail (e.g. malformed OTEL_RESOURCE_ATTRIBUTES), so log the
+	// error and continue with whatever attributes were detected rather than
+	// turning observability misconfiguration into a startup outage.
 	res, err := otelpkg.NewResource(ctx, version.Version)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to initialize OpenTelemetry resource", logpkg.ErrAttr(err))
-		os.Exit(1)
+		logger.WarnContext(ctx, "OpenTelemetry resource detection partially failed; continuing with available attributes", logpkg.ErrAttr(err))
 	}
 
 	shutdownTracer, err := otelpkg.InitTracerProvider(ctx, res)
