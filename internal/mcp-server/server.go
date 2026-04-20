@@ -955,14 +955,13 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					m.logger.DebugContext(ctx, "OAuth access token extracted from Authorization header", slog.String("mcp.tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
 					// The token is expired but was once server-issued, so the
-					// embedded URL is a trusted tenant value. Seed it so the 401
-					// trace and any downstream metric carry mcp.tenant_url.
+					// embedded URL is a trusted tenant value. Decorate the
+					// otelhttp root span so the 401 trace carries mcp.tenant_url.
 					if decryptedURL != "" {
 						ctx = util.SetSigNozURL(ctx, decryptedURL)
 						if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 							trace.SpanFromContext(ctx).SetAttributes(attr)
 						}
-						r = r.WithContext(ctx)
 					}
 					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
 					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
