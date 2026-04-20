@@ -44,6 +44,12 @@ const (
 	sessionClientCacheSize       = 1024
 	sessionClientCacheTTL        = 30 * time.Minute
 	defaultMethodSpanBodyMaxSize = 1 << 20
+	// methodObsTombstoneTTL is how long an expired method observation lingers
+	// in methodObs so a late OnError hook can detect the race and skip its
+	// fallback (preventing double-count). Finish deletes the entry immediately;
+	// this timer is the safety net for the pathological case where finish
+	// never runs at all.
+	methodObsTombstoneTTL = time.Second
 )
 
 type MCPServer struct {
@@ -55,6 +61,7 @@ type MCPServer struct {
 	methodObs              sync.Map
 	sessionClients         *expirable.LRU[string, mcp.Implementation]
 	maxMethodSpanBodyBytes int64
+	methodObsTombstoneTTL  time.Duration
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
 	// goroutine) can safely race Run's publication (on the errgroup
 	// goroutine) when SIGTERM lands mid-startup.
@@ -277,6 +284,7 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		meters:                 meters,
 		sessionClients:         expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
 		maxMethodSpanBodyBytes: defaultMethodSpanBodyMaxSize,
+		methodObsTombstoneTTL:  methodObsTombstoneTTL,
 	}
 }
 
@@ -378,17 +386,12 @@ type methodObservation struct {
 	method      mcp.MCPMethod
 	started     time.Time
 	cleanupStop func() bool
-}
-
-type methodObservationStartedKey struct{}
-
-func withMethodObservationStarted(ctx context.Context, started time.Time) context.Context {
-	return context.WithValue(ctx, methodObservationStartedKey{}, started)
-}
-
-func methodObservationStartedAt(ctx context.Context) (time.Time, bool) {
-	started, ok := ctx.Value(methodObservationStartedKey{}).(time.Time)
-	return started, ok
+	// completed is the exactly-once guard. CAS'd by finishMethodObservation
+	// (the hook path) or expireMethodObservation (the ctx-cancel path); whichever
+	// wins emits the metric and ends the span. The loser skips emission but the
+	// entry stays in methodObs so the loser can still detect "we were beaten by
+	// a race" vs "observation was never stored at all" (unmarshal-failure path).
+	completed atomic.Bool
 }
 
 func methodObservationKey(ctx context.Context, id any, method mcp.MCPMethod, message any) string {
@@ -466,33 +469,55 @@ func (m *MCPServer) beginMethodObservation(ctx context.Context, id any, method m
 	close(stored)
 }
 
+// finishMethodObservation is called from OnSuccess/OnError hooks. Returns true
+// if a matching observation entry was found (regardless of whether the caller's
+// emission won the race with expireMethodObservation), so callers can skip the
+// unmarshal-path fallback. Returns false only when no observation was ever
+// stored for this key — that's the "OnError without BeforeAny" path (e.g.,
+// mcp-go unmarshal failures in request_handler.go), where the caller SHOULD
+// fallback to synthesize a one-shot emission so the method span gets ended.
 func (m *MCPServer) finishMethodObservation(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) bool {
 	if !shouldObserveMethod(method) {
 		return false
 	}
 
-	value, ok := m.methodObs.LoadAndDelete(methodObservationKey(ctx, id, method, message))
+	key := methodObservationKey(ctx, id, method, message)
+	value, ok := m.methodObs.Load(key)
 	if !ok {
 		return false
 	}
 
 	observation, ok := value.(*methodObservation)
 	if !ok {
+		m.methodObs.Delete(key)
 		return false
 	}
 
-	m.completeMethodObservation(observation, err)
+	if observation.completed.CompareAndSwap(false, true) {
+		m.completeMethodObservation(observation, err)
+	}
+	// finish owns map cleanup — delete regardless of which path won the CAS so
+	// expire's tombstone doesn't leak indefinitely.
+	m.methodObs.Delete(key)
 	return true
 }
 
 func (m *MCPServer) expireMethodObservation(key string) {
-	value, ok := m.methodObs.LoadAndDelete(key)
+	// Load (not LoadAndDelete) so a late finishMethodObservation can still see
+	// the tombstone and skip its own emission. finish removes the entry.
+	value, ok := m.methodObs.Load(key)
 	if !ok {
 		return
 	}
 
 	observation, ok := value.(*methodObservation)
 	if !ok {
+		m.methodObs.Delete(key)
+		return
+	}
+
+	if !observation.completed.CompareAndSwap(false, true) {
+		// finish already emitted; nothing to do.
 		return
 	}
 
@@ -509,6 +534,31 @@ func (m *MCPServer) expireMethodObservation(key string) {
 		attrs = append(attrs, slog.String("context_error", ctxErr.Error()))
 	}
 	m.logger.WarnContext(logCtx, "mcp method observation ended without success/error hook", attrs...)
+
+	// Drop the tombstone after a short window. Finish usually deletes the
+	// entry first; this timer is only load-bearing when no hook ever fires.
+	ttl := m.methodObsTombstoneTTL
+	if ttl <= 0 {
+		ttl = methodObsTombstoneTTL
+	}
+	time.AfterFunc(ttl, func() {
+		m.methodObs.Delete(key)
+	})
+}
+
+// completeMethodObservationFallback synthesizes a one-shot observation for
+// paths where BeforeAny never fired (mcp-go unmarshal-failure OnError invocations
+// and "notification channel blocked" operational errors — see mcp-go
+// request_handler.go and session.go). Without this, the method span started in
+// methodSpanMiddleware would leak and the error would be invisible in
+// mcp.method.calls.
+func (m *MCPServer) completeMethodObservationFallback(ctx context.Context, method mcp.MCPMethod, err error) {
+	observation := &methodObservation{
+		ctx:     ctx,
+		method:  method,
+		started: time.Now(),
+	}
+	m.completeMethodObservation(observation, err)
 }
 
 func (m *MCPServer) completeMethodObservation(observation *methodObservation, err error) {
@@ -550,20 +600,6 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 	}
 
 	span.End()
-}
-
-func (m *MCPServer) completeMethodObservationFallback(ctx context.Context, method mcp.MCPMethod, err error) {
-	started, ok := methodObservationStartedAt(ctx)
-	if !ok {
-		started = time.Now()
-	}
-
-	observation := &methodObservation{
-		ctx:     ctx,
-		method:  method,
-		started: started,
-	}
-	m.completeMethodObservation(observation, err)
 }
 
 func (m *MCPServer) startMethodSpan(ctx context.Context, method mcp.MCPMethod) (context.Context, trace.Span) {
@@ -656,7 +692,6 @@ func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx, _ := m.startMethodSpan(r.Context(), method)
-		ctx = withMethodObservationStarted(ctx, time.Now())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -684,6 +719,12 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 		if shouldObserveMethod(method) {
+			// finish returns true iff a matching observation existed (even if
+			// expireMethodObservation already emitted on the race path — the
+			// tombstone prevents double-count). It returns false only when
+			// BeforeAny never stored one (mcp-go unmarshal-failure paths), in
+			// which case we synthesize a one-shot emission so the method span
+			// gets ended and mcp.method.calls records the failure.
 			if !m.finishMethodObservation(ctx, id, method, message, err) {
 				m.completeMethodObservationFallback(ctx, method, err)
 			}

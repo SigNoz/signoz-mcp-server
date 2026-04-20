@@ -1045,6 +1045,7 @@ func TestBuildHooks_NonToolMethodObservationContextCleanupCleansUp(t *testing.T)
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	logger := newBufferedLogger(&logBuf, slog.LevelDebug)
 	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
+	mcpServer.methodObsTombstoneTTL = 10 * time.Millisecond
 	hooks := mcpServer.buildHooks()
 
 	baseCtx, cancel := context.WithCancel(newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-context-cleanup"))
@@ -1274,6 +1275,78 @@ func TestMethodObservationLateFinishNoOpsAfterExpire(t *testing.T) {
 	}
 	if attr, ok := spanAttrValue(spans[0].Events[0].Attributes, attribute.Key("exception.message")); !ok || !strings.Contains(attr.AsString(), "request context ended before success/error hook") {
 		t.Fatalf("exception.message = %v, want context cleanup message", attr)
+	}
+}
+
+func TestMethodObservationLateOnErrorNoOpsAfterExpire(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(util.SetSigNozURL(context.Background(), "https://tenant.example.com"), "sess-race-error")
+	ctx, span := mcpServer.startMethodSpan(ctx, mcp.MethodInitialize)
+	req := &mcp.InitializeRequest{}
+	key := methodObservationKey(ctx, "req-race-error", mcp.MethodInitialize, req)
+
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-race-error", mcp.MethodInitialize, req)
+	mcpServer.expireMethodObservation(key)
+
+	// OnError firing after expiry must NOT synthesize a second datapoint via a
+	// fallback. Client-disconnect races would otherwise double-count.
+	singleHook(t, hooks.OnError, "OnError")(ctx, "req-race-error", mcp.MethodInitialize, req, context.Canceled)
+	span.End()
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	methodCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls")
+	if !found {
+		t.Fatal("mcp.method.calls metric not found")
+	}
+	if len(methodCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.method.calls datapoints = %d, want 1 (expire-then-OnError must not double-count)", len(methodCalls.DataPoints))
+	}
+	if methodCalls.DataPoints[0].Value != 1 {
+		t.Fatalf("mcp.method.calls value = %d, want 1", methodCalls.DataPoints[0].Value)
+	}
+	if attr, ok := methodCalls.DataPoints[0].Attributes.Value(attribute.Key("error.type")); !ok || attr.AsString() != "internal" {
+		t.Fatalf("error.type = %v, want internal (from expire, not OnError)", attr)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1 (span must not be ended twice)", len(spans))
+	}
+	if len(spans[0].Events) != 1 {
+		t.Fatalf("span events = %d, want 1 (single exception from expire, none from OnError fallback)", len(spans[0].Events))
 	}
 }
 
