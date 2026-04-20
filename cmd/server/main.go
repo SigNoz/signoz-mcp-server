@@ -127,6 +127,24 @@ func main() {
 		logger.ErrorContext(ctx, "Failed to shutdown server", logpkg.ErrAttr(err))
 		shutdownErr = errors.Join(shutdownErr, err)
 	}
+
+	// Join the server goroutine BEFORE draining analytics. Otherwise, a tool
+	// call that is still executing (stdio is especially prone to this, since
+	// srv.Shutdown is a no-op there) can call dispatchAnalytics and
+	// analyticsWG.Add while WaitForAnalytics is running — the sync.WaitGroup
+	// misuse contract forbids Add concurrent with a Wait at counter zero,
+	// and any late dispatches would otherwise race analyticsInstance.Stop.
+	// Bounded by shutCtx so a stuck stdio reader cannot hold the process
+	// past the shutdown budget.
+	if !serverDone {
+		select {
+		case err := <-serverErrCh:
+			runErr = err
+		case <-shutCtx.Done():
+			logger.WarnContext(ctx, "Timed out waiting for server goroutine to exit", logpkg.ErrAttr(shutCtx.Err()))
+		}
+	}
+
 	if err := srv.WaitForAnalytics(shutCtx); err != nil {
 		logger.ErrorContext(ctx, "Failed while waiting for analytics dispatches", logpkg.ErrAttr(err))
 		shutdownErr = errors.Join(shutdownErr, err)
@@ -145,18 +163,6 @@ func main() {
 		if err := shutdownTracer(shutCtx); err != nil {
 			logger.ErrorContext(ctx, "Failed to shutdown tracer provider", logpkg.ErrAttr(err))
 			shutdownErr = errors.Join(shutdownErr, err)
-		}
-	}
-
-	// Wait for the server goroutine to return after Shutdown so we do not
-	// leak it and can surface any error it produced. Bounded by shutCtx so a
-	// stuck server does not keep the process alive past the shutdown budget.
-	if !serverDone {
-		select {
-		case err := <-serverErrCh:
-			runErr = err
-		case <-shutCtx.Done():
-			logger.WarnContext(ctx, "Timed out waiting for server goroutine to exit", logpkg.ErrAttr(shutCtx.Err()))
 		}
 	}
 
