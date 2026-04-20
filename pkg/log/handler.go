@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const stacktraceDepth = 32
+const stacktraceDepth = 64
 
 type ContextHandler struct {
 	handler           slog.Handler

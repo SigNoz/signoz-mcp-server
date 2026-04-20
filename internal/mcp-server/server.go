@@ -733,8 +733,16 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 		slog.String("mcp_endpoint", "/mcp"))
 
 	// Wrap the entire mux with OpenTelemetry HTTP instrumentation to
-	// automatically create spans for every inbound request.
-	handler := otelhttp.NewHandler(mux, "signoz-mcp-server")
+	// automatically create spans for every inbound request. Use a span-name
+	// formatter matching the OTel HTTP semconv recommendation
+	// ({http.request.method} {http.route}) so each endpoint produces a
+	// distinct, readable span name like "HTTP POST /mcp" instead of every
+	// request collapsing into the default operation name.
+	handler := otelhttp.NewHandler(mux, "signoz-mcp-server",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return "HTTP " + r.Method + " " + r.URL.Path
+		}),
+	)
 
 	srv := &http.Server{
 		Addr:              addr,

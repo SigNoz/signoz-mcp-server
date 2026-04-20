@@ -18,7 +18,7 @@ Goal: match Zeus's shape — slog + ContextHandler + `pkg/otel` — so the MCP s
 - **OTLP always on** for traces + metrics — no `deployment.environment` noop gating. Exporters fail gracefully at connect time with a single warning log. (Simpler than Zeus; acceptable because a missing OTLP endpoint just means no data, not crashes.)
 - **Metrics container**: a typed `*otel.Meters` struct instantiated in `main` and injected into `MCPServer`. No package-level globals — simpler to test, explicit dependencies.
 - **Redaction / size caps**: any log field that carries a request body, response body, or error payload is capped at 4 KiB and truncated with a `...(truncated)` suffix. Existing "log detailed errors for LLM" behavior stays (per `feedback_security_scope`), but unbounded bodies don't.
-- **Stacktraces on Error**: `ContextHandler` captures stacktraces, but depth is capped at 32 frames (half of Zeus's 64). Configurable via `LOG_STACKTRACE=false` env to disable entirely for hot error paths.
+- **Stacktraces on Error**: `ContextHandler` captures stacktraces, but depth is capped at 64 frames (matches Zeus). Configurable via `LOG_STACKTRACE=false` env to disable entirely for hot error paths.
 
 ## Approach
 
@@ -83,7 +83,7 @@ Replace zap everywhere. Delete hand-rolled correlators. Delete `internal/telemet
   - `mcp.tenant_url` (from `util.GetSigNozURL`)
   - `mcp.session.id` (from `util.GetSessionID`)
   - `mcp.search_context` (from `util.GetSearchContext`)
-  - On `>=Error` records: sets `codes.Error` status on the active span, captures stacktrace (depth 32, env-toggleable) under `exception.stacktrace` group.
+  - On `>=Error` records: sets `codes.Error` status on the active span, captures stacktrace (depth 64, env-toggleable) under `exception.stacktrace` group.
   - `ErrAttr(err) slog.Attr` helper.
 - This handler reads tenant/session/search-context **from ctx**, so deleting `requestLogger`/`tenantLogger` does not drop those fields from logs.
 
