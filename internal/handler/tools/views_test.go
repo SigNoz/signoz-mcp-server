@@ -503,3 +503,47 @@ func TestHandleUpdateView_StripsServerPopulatedFields(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleListViews_EmptyResult(t *testing.T) {
+	// Upstream returns `data: null` when there are zero views for a
+	// sourcePage. The handler must treat that as an empty list, not an
+	// "invalid response format" error.
+	mock := &client.MockClient{
+		ListViewsFn: func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":null}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_views", map[string]any{"sourcePage": "metrics"})
+	result, err := h.handleListViews(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success on empty data; got error: %v", result.Content)
+	}
+	body := renderContent(result.Content)
+	for _, want := range []string{`\"data\":[]`, `\"total\":0`, `\"hasMore\":false`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("empty-list response missing %q; got: %s", want, body)
+		}
+	}
+}
+
+func TestHandleListViews_MissingDataField(t *testing.T) {
+	// Same fallback when upstream omits `data` entirely.
+	mock := &client.MockClient{
+		ListViewsFn: func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_views", map[string]any{"sourcePage": "traces"})
+	result, err := h.handleListViews(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success on missing data field; got: %v", result.Content)
+	}
+}
