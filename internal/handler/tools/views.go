@@ -230,16 +230,17 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 		h.logger.ErrorContext(ctx, "Failed to parse views response", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
-	// Upstream returns `data: null` (or omits it) when there are no views;
-	// treat that as an empty list, not a format error.
+	// Upstream returns `data: null`, omits `data`, or — on some deployments —
+	// returns an empty object/scalar when there are no views. Treat any
+	// non-array shape as zero rows rather than surfacing a format error.
 	var data []any
 	if raw, present := parsed["data"]; present && raw != nil {
-		arr, ok := raw.([]any)
-		if !ok {
-			h.logger.ErrorContext(ctx, "Invalid views response format", slog.String("data", logpkg.TruncAny(raw)))
-			return mcp.NewToolResultError("invalid response format: expected data array"), nil
+		if arr, ok := raw.([]any); ok {
+			data = arr
+		} else {
+			h.logger.DebugContext(ctx, "views response data was not an array; treating as empty",
+				slog.String("data", logpkg.TruncAny(raw)))
 		}
-		data = arr
 	}
 	total := len(data)
 	pagedData := paginate.Array(data, offset, limit)

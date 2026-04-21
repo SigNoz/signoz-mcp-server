@@ -547,3 +547,36 @@ func TestHandleListViews_MissingDataField(t *testing.T) {
 		t.Fatalf("expected success on missing data field; got: %v", result.Content)
 	}
 }
+
+func TestHandleListViews_NonArrayDataIsEmpty(t *testing.T) {
+	// Some SigNoz deployments return `data: {}` (or a scalar) when the
+	// filter matches zero rows. The handler must treat any non-array shape
+	// as an empty list rather than surfacing "invalid response format".
+	cases := map[string]string{
+		"empty object": `{"status":"success","data":{}}`,
+		"string":       `{"status":"success","data":"nope"}`,
+		"number":       `{"status":"success","data":0}`,
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			mock := &client.MockClient{
+				ListViewsFn: func(ctx context.Context, sourcePage, n, category string) (json.RawMessage, error) {
+					return json.RawMessage(raw), nil
+				},
+			}
+			h := newTestHandler(mock)
+			req := makeToolRequest("signoz_list_views", map[string]any{"sourcePage": "metrics"})
+			result, err := h.handleListViews(testCtx(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.IsError {
+				t.Fatalf("expected success on non-array data %q; got error: %v", raw, result.Content)
+			}
+			body := renderContent(result.Content)
+			if !strings.Contains(body, `\"data\":[]`) || !strings.Contains(body, `\"total\":0`) {
+				t.Errorf("expected empty data+total=0; got: %s", body)
+			}
+		})
+	}
+}
