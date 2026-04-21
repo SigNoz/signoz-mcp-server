@@ -316,6 +316,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.handler.RegisterServiceHandlers(s)
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
+	m.handler.RegisterViewHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
 	m.handler.RegisterNotificationChannelHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
