@@ -26,8 +26,11 @@ type MockClient struct {
 	ListServicesFn              func(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperationsFn   func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
 	QueryBuilderV5Fn            func(ctx context.Context, body []byte) (json.RawMessage, error)
-	ListLogViewsFn              func(ctx context.Context) (json.RawMessage, error)
-	GetLogViewFn                func(ctx context.Context, viewID string) (json.RawMessage, error)
+	ListViewsFn                 func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error)
+	GetViewFn                   func(ctx context.Context, viewID string) (json.RawMessage, error)
+	CreateViewFn                func(ctx context.Context, body []byte) (json.RawMessage, error)
+	UpdateViewFn                func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
+	DeleteViewFn                func(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeysFn              func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
 	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
 	GetTraceDetailsFn           func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
@@ -146,16 +149,37 @@ func (m *MockClient) QueryBuilderV5(ctx context.Context, body []byte) (json.RawM
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) ListLogViews(ctx context.Context) (json.RawMessage, error) {
-	if m.ListLogViewsFn != nil {
-		return m.ListLogViewsFn(ctx)
+func (m *MockClient) ListViews(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+	if m.ListViewsFn != nil {
+		return m.ListViewsFn(ctx, sourcePage, name, category)
 	}
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) GetLogView(ctx context.Context, viewID string) (json.RawMessage, error) {
-	if m.GetLogViewFn != nil {
-		return m.GetLogViewFn(ctx, viewID)
+func (m *MockClient) GetView(ctx context.Context, viewID string) (json.RawMessage, error) {
+	if m.GetViewFn != nil {
+		return m.GetViewFn(ctx, viewID)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) CreateView(ctx context.Context, body []byte) (json.RawMessage, error) {
+	if m.CreateViewFn != nil {
+		return m.CreateViewFn(ctx, body)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
+	if m.UpdateViewFn != nil {
+		return m.UpdateViewFn(ctx, viewID, body)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) DeleteView(ctx context.Context, viewID string) (json.RawMessage, error) {
+	if m.DeleteViewFn != nil {
+		return m.DeleteViewFn(ctx, viewID)
 	}
 	return json.RawMessage(`{}`), nil
 }
