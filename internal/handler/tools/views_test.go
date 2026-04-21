@@ -428,3 +428,78 @@ func TestHandleListViews_Pagination(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleCreateView_StripsServerPopulatedFields(t *testing.T) {
+	// If an LLM copies a signoz_get_view response wholesale (including
+	// server-populated id, createdAt/By, updatedAt/By), the create body
+	// sent upstream must omit them.
+	var gotBody []byte
+	mock := &client.MockClient{
+		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			gotBody = body
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"id":             "019dade7-3edc-79f4-b885-f6fad49722f2",
+		"name":           "x",
+		"sourcePage":     "traces",
+		"compositeQuery": map[string]any{"queryType": "builder"},
+		"createdAt":      "2026-04-21T10:00:00Z",
+		"createdBy":      "user@example.com",
+		"updatedAt":      "2026-04-21T10:00:00Z",
+		"updatedBy":      "user@example.com",
+	})
+	result, err := h.handleCreateView(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler error: %v", result.Content)
+	}
+	for _, forbidden := range []string{`"id":`, `"createdAt":`, `"createdBy":`, `"updatedAt":`, `"updatedBy":`} {
+		if strings.Contains(string(gotBody), forbidden) {
+			t.Errorf("server-populated field %q leaked into body: %s", forbidden, gotBody)
+		}
+	}
+	if !strings.Contains(string(gotBody), `"name":"x"`) {
+		t.Errorf("body missing view fields: %s", gotBody)
+	}
+}
+
+func TestHandleUpdateView_StripsServerPopulatedFields(t *testing.T) {
+	var gotBody []byte
+	mock := &client.MockClient{
+		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
+			gotBody = body
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId": "v1",
+		"view": map[string]any{
+			"id":             "v1",
+			"name":           "renamed",
+			"sourcePage":     "traces",
+			"compositeQuery": map[string]any{"queryType": "builder"},
+			"createdAt":      "2026-04-21T10:00:00Z",
+			"createdBy":      "user@example.com",
+			"updatedAt":      "2026-04-21T10:00:00Z",
+			"updatedBy":      "user@example.com",
+		},
+	})
+	result, err := h.handleUpdateView(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler error: %v", result.Content)
+	}
+	for _, forbidden := range []string{`"id":`, `"createdAt":`, `"createdBy":`, `"updatedAt":`, `"updatedBy":`} {
+		if strings.Contains(string(gotBody), forbidden) {
+			t.Errorf("server-populated field %q leaked into body: %s", forbidden, gotBody)
+		}
+	}
+}

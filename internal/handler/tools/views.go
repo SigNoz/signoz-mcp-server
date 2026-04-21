@@ -62,28 +62,28 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 
 	createTool := mcp.NewTool("signoz_create_view",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Create a new SigNoz saved Explorer view.\n\n"+
 				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
 				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
 				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics\n\n"+
-				"Required fields: name, sourcePage (one of traces|logs|metrics), compositeQuery. "+
-				"Optional: category, tags, extraData. Server populates id, createdAt/By, updatedAt/By.",
+				"Required fields: name, sourcePage (one of traces|logs|metrics), compositeQuery (object). "+
+				"Optional: category, tags, extraData. Server populates id, createdAt/By, updatedAt/By — "+
+				"do not send them.",
 		),
-		mcp.WithInputSchema[types.SavedView](),
+		mcp.WithInputSchema[types.SavedViewInput](),
 	)
 	s.AddTool(createTool, h.handleCreateView)
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Replace an existing SigNoz saved view (HTTP PUT — full body replace). "+
 				"Pass the view's UUID as viewId and the full SavedView body as view. "+
 				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
 				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
-				"See signoz://view/instructions for the SavedView schema.",
+				"See signoz://view/instructions for the SavedView schema. "+
+				"Do not send id/createdAt/createdBy/updatedAt/updatedBy — the server ignores them.",
 		),
 		mcp.WithInputSchema[types.UpdateViewInput](),
 	)
@@ -130,11 +130,28 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	})
 }
 
-// marshalViewBody strips MCP-specific metadata and path parameters from
-// the args map, then marshals the remainder as a SavedView body.
+// serverPopulatedViewFields are set by the SigNoz API on create/read and
+// must not be echoed back on create or update — upstream ignores them at
+// best and rejects them at worst.
+var serverPopulatedViewFields = []string{
+	"id", "createdAt", "createdBy", "updatedAt", "updatedBy",
+}
+
+// stripNonBodyFields removes MCP-specific metadata (searchContext, viewId)
+// and server-populated SavedView fields from a map so what remains is a
+// clean request body.
+func stripNonBodyFields(m map[string]any) {
+	delete(m, "searchContext")
+	delete(m, "viewId")
+	for _, k := range serverPopulatedViewFields {
+		delete(m, k)
+	}
+}
+
+// marshalViewBody strips non-body fields and marshals the remainder as a
+// SavedView body.
 func marshalViewBody(args map[string]any) ([]byte, error) {
-	delete(args, "searchContext")
-	delete(args, "viewId")
+	stripNonBodyFields(args)
 	return json.Marshal(args)
 }
 
@@ -349,6 +366,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		view["compositeQuery"] = tmp
 	}
 
+	stripNonBodyFields(view)
 	body, err := json.Marshal(view)
 	if err != nil {
 		return mcp.NewToolResultError("failed to build request body: " + err.Error()), nil
