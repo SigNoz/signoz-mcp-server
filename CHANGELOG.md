@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.2.1] - 2026-04-21
+
+### Added
+- move to slog + pkg/otel + custom meters ([#137](https://github.com/SigNoz/signoz-mcp-server/pull/137))
+- attach name on analytics identity events ([#134](https://github.com/SigNoz/signoz-mcp-server/pull/134))
+
+### CI
+- bump version pre-release instead of after publish ([#132](https://github.com/SigNoz/signoz-mcp-server/pull/132))
+
+### Other
+- bump google.golang.org/grpc from 1.79.2 to 1.79.3 ([#71](https://github.com/SigNoz/signoz-mcp-server/pull/71))
+- bump github.com/buger/jsonparser from 1.1.1 to 1.1.2 ([#76](https://github.com/SigNoz/signoz-mcp-server/pull/76))
+- bump go.opentelemetry.io/otel/sdk from 1.42.0 to 1.43.0 ([#111](https://github.com/SigNoz/signoz-mcp-server/pull/111))
+- Add CONTRIBUTING/CLAUDE docs, update README and manifest for new MCP tools ([#135](https://github.com/SigNoz/signoz-mcp-server/pull/135))
+- Align analytics identity tracking ([#131](https://github.com/SigNoz/signoz-mcp-server/pull/131))
+- post-release v0.2.0 ([#130](https://github.com/SigNoz/signoz-mcp-server/pull/130))
+
 ## [0.2.0] - 2026-04-18
 
 ### Added
@@ -148,3 +166,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.0.1]: https://github.com/SigNoz/signoz-mcp-server/releases/tag/v0.0.1
 [0.1.2]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.1.0...v0.1.2
 [0.2.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.1.2...v0.2.0
+[0.2.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.2.0...v0.2.1
