@@ -418,6 +418,23 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	// Saved views are keyed to an Explorer; upstream PUT silently allows the
+	// sourcePage to be switched, which effectively moves the view to a
+	// different Explorer. Pre-fetch and reject the change — callers who truly
+	// want a cross-Explorer view should delete and re-create.
+	if existing, ferr := client.GetView(ctx, viewID); ferr == nil {
+		var probe struct {
+			Data struct {
+				SourcePage string `json:"sourcePage"`
+			} `json:"data"`
+		}
+		if jerr := json.Unmarshal(existing, &probe); jerr == nil && probe.Data.SourcePage != "" && probe.Data.SourcePage != sourcePage {
+			return mcp.NewToolResultError(fmt.Sprintf(
+				`Parameter validation failed: cannot change sourcePage on update (existing=%q, new=%q). Saved views are scoped to an Explorer; delete and re-create to move across Explorers.`,
+				probe.Data.SourcePage, sourcePage,
+			)), nil
+		}
+	}
 	data, err := client.UpdateView(ctx, viewID, body)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update view", slog.String("viewId", viewID), logpkg.ErrAttr(err))

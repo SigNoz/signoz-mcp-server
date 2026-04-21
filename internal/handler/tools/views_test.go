@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -689,5 +690,101 @@ func TestHandleUpdateView_RejectsSignalMismatch(t *testing.T) {
 	result, _ := h.handleUpdateView(testCtx(), req)
 	if !result.IsError {
 		t.Fatalf("expected signal-mismatch rejection")
+	}
+}
+
+func TestHandleUpdateView_RejectsSourcePageChange(t *testing.T) {
+	// Saved views are scoped to an Explorer. The handler must GET the
+	// existing view and reject a sourcePage that differs.
+	updateCalled := false
+	mock := &client.MockClient{
+		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"v1","name":"old","sourcePage":"traces","compositeQuery":{"queryType":"builder"}}}`), nil
+		},
+		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
+			updateCalled = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId": "v1",
+		"view": map[string]any{
+			"name":           "renamed",
+			"sourcePage":     "logs",
+			"compositeQuery": map[string]any{"queryType": "builder"},
+		},
+	})
+	result, _ := h.handleUpdateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected sourcePage-change to be rejected")
+	}
+	if updateCalled {
+		t.Errorf("UpdateView must not be called when sourcePage is changing")
+	}
+	body := renderContent(result.Content)
+	if !strings.Contains(body, "sourcePage") || !strings.Contains(body, "traces") || !strings.Contains(body, "logs") {
+		t.Errorf("error should name existing and new sourcePage; got: %s", body)
+	}
+}
+
+func TestHandleUpdateView_AllowsSameSourcePage(t *testing.T) {
+	updateCalled := false
+	mock := &client.MockClient{
+		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"v1","sourcePage":"logs"}}`), nil
+		},
+		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
+			updateCalled = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId": "v1",
+		"view": map[string]any{
+			"name":           "renamed",
+			"sourcePage":     "logs",
+			"compositeQuery": map[string]any{"queryType": "builder"},
+		},
+	})
+	result, _ := h.handleUpdateView(testCtx(), req)
+	if result.IsError {
+		t.Fatalf("expected success; got: %v", result.Content)
+	}
+	if !updateCalled {
+		t.Fatalf("UpdateView should have been called when sourcePage matches")
+	}
+}
+
+func TestHandleUpdateView_ProceedsWhenGetViewFails(t *testing.T) {
+	// If the sourcePage-lock pre-fetch fails (network blip, 404 after a
+	// concurrent delete), prefer to let the PUT attempt proceed rather than
+	// block on a diagnostic GET. Upstream will return its own error.
+	updateCalled := false
+	mock := &client.MockClient{
+		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return nil, fmt.Errorf("boom")
+		},
+		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
+			updateCalled = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId": "v1",
+		"view": map[string]any{
+			"name":           "x",
+			"sourcePage":     "traces",
+			"compositeQuery": map[string]any{"queryType": "builder"},
+		},
+	})
+	result, _ := h.handleUpdateView(testCtx(), req)
+	if result.IsError {
+		t.Fatalf("expected handler to proceed when GetView fails; got: %v", result.Content)
+	}
+	if !updateCalled {
+		t.Fatalf("UpdateView should have been called")
 	}
 }
