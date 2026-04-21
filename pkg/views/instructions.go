@@ -52,12 +52,14 @@ Rules:
 
 ## Update flow
 
-PUT /api/v1/explorer/views/{id} **replaces** the view. To rename or
-tweak one field:
+signoz_update_view **replaces** the view (upstream is HTTP PUT). To
+rename or tweak one field:
 
-1. Call signoz_get_view with the view's id.
-2. Modify the field(s) you want to change in the returned object.
-3. Call signoz_update_view with the FULL modified SavedView body.
+1. Call signoz_get_view with the view's id. It returns
+   {"status":"success","data":{...SavedView...}}.
+2. Take the **data** object from that response.
+3. Modify the field(s) you want to change.
+4. Call signoz_update_view with { "viewId": "<id>", "view": <modified data> }.
 
 Never hand-craft an update body from memory — you will lose fields.
 

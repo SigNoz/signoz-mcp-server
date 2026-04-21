@@ -183,10 +183,12 @@ func TestHandleUpdateView_Success(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_update_view", map[string]any{
-		"viewId":         "v1",
-		"name":           "renamed",
-		"sourcePage":     "logs",
-		"compositeQuery": map[string]any{"queryType": "builder"},
+		"viewId": "v1",
+		"view": map[string]any{
+			"name":           "renamed",
+			"sourcePage":     "logs",
+			"compositeQuery": map[string]any{"queryType": "builder"},
+		},
 	})
 	result, err := h.handleUpdateView(testCtx(), req)
 	if err != nil {
@@ -201,18 +203,52 @@ func TestHandleUpdateView_Success(t *testing.T) {
 	if strings.Contains(string(gotBody), `"viewId"`) {
 		t.Errorf("viewId should not leak into body: %s", gotBody)
 	}
+	if !strings.Contains(string(gotBody), `"name":"renamed"`) {
+		t.Errorf("body missing view fields: %s", gotBody)
+	}
 }
 
 func TestHandleUpdateView_MissingID(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	req := makeToolRequest("signoz_update_view", map[string]any{
-		"name":           "x",
-		"sourcePage":     "logs",
-		"compositeQuery": map[string]any{},
+		"view": map[string]any{
+			"name":           "x",
+			"sourcePage":     "logs",
+			"compositeQuery": map[string]any{},
+		},
 	})
 	result, _ := h.handleUpdateView(testCtx(), req)
 	if !result.IsError {
 		t.Fatalf("expected validation error")
+	}
+}
+
+// Back-compat: callers that send SavedView fields flat at the top level
+// (pre-UpdateViewInput schema) should still work.
+func TestHandleUpdateView_FlatFieldsBackCompat(t *testing.T) {
+	var gotBody []byte
+	mock := &client.MockClient{
+		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
+			gotBody = body
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId":         "v1",
+		"name":           "flat",
+		"sourcePage":     "traces",
+		"compositeQuery": map[string]any{"queryType": "builder"},
+	})
+	result, err := h.handleUpdateView(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler error: %v", result.Content)
+	}
+	if !strings.Contains(string(gotBody), `"name":"flat"`) {
+		t.Errorf("flat body not accepted: %s", gotBody)
 	}
 }
 
@@ -248,10 +284,8 @@ func TestHandleDeleteView_MissingID(t *testing.T) {
 }
 
 func TestHandleUpdateView_UnwrapsGetViewEnvelope(t *testing.T) {
-	// Simulate a caller who follows the documented flow: call signoz_get_view,
-	// then pass the entire response back into signoz_update_view. The response
-	// shape is {"status":"success","data":{...view fields...}} — the handler
-	// must unwrap `data` before validating.
+	// Caller pastes the entire signoz_get_view response under "view"
+	// ({status,data:{...}}). Handler must unwrap `data` before validating.
 	var gotBody []byte
 	mock := &client.MockClient{
 		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
@@ -262,12 +296,14 @@ func TestHandleUpdateView_UnwrapsGetViewEnvelope(t *testing.T) {
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_update_view", map[string]any{
 		"viewId": "v1",
-		"status": "success",
-		"data": map[string]any{
-			"id":             "v1",
-			"name":           "renamed",
-			"sourcePage":     "traces",
-			"compositeQuery": map[string]any{"queryType": "builder"},
+		"view": map[string]any{
+			"status": "success",
+			"data": map[string]any{
+				"id":             "v1",
+				"name":           "renamed",
+				"sourcePage":     "traces",
+				"compositeQuery": map[string]any{"queryType": "builder"},
+			},
 		},
 	})
 	result, err := h.handleUpdateView(testCtx(), req)
@@ -317,11 +353,10 @@ func TestHandleCreateView_UnwrapsEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateView_NoUnwrapWhenTopLevelValid(t *testing.T) {
-	// If the caller sends a top-level SavedView that happens to have a
-	// `data` key (e.g. someone stuffing payload metadata under a field they
-	// named `data`), we must NOT unwrap — `name` and `sourcePage` at the
-	// top level indicate an un-enveloped body.
+func TestHandleUpdateView_NoUnwrapWhenViewIsValid(t *testing.T) {
+	// When the "view" object has valid top-level name/sourcePage, the
+	// envelope unwrap must leave any `data` subfield alone — it might be
+	// legitimate SavedView payload content the caller wanted to preserve.
 	var gotBody []byte
 	mock := &client.MockClient{
 		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
@@ -331,11 +366,13 @@ func TestHandleUpdateView_NoUnwrapWhenTopLevelValid(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_update_view", map[string]any{
-		"viewId":         "v1",
-		"name":           "direct",
-		"sourcePage":     "metrics",
-		"compositeQuery": map[string]any{"queryType": "builder"},
-		"data":           map[string]any{"unrelated": "stuff"},
+		"viewId": "v1",
+		"view": map[string]any{
+			"name":           "direct",
+			"sourcePage":     "metrics",
+			"compositeQuery": map[string]any{"queryType": "builder"},
+			"data":           map[string]any{"unrelated": "stuff"},
+		},
 	})
 	result, err := h.handleUpdateView(testCtx(), req)
 	if err != nil {
@@ -345,9 +382,49 @@ func TestHandleUpdateView_NoUnwrapWhenTopLevelValid(t *testing.T) {
 		t.Fatalf("handler error: %v", result.Content)
 	}
 	if !strings.Contains(string(gotBody), `"name":"direct"`) {
-		t.Errorf("top-level body got clobbered: %s", gotBody)
+		t.Errorf("view body got clobbered: %s", gotBody)
 	}
 	if !strings.Contains(string(gotBody), `"unrelated"`) {
-		t.Errorf("`data` subfield should be preserved when top-level is valid: %s", gotBody)
+		t.Errorf("`data` subfield should be preserved when view is valid: %s", gotBody)
+	}
+}
+
+func TestHandleListViews_Pagination(t *testing.T) {
+	// Upstream returns 5 views; request page size 2, offset 2 → expect items
+	// [2, 3] and pagination metadata with total=5, hasMore=true, nextOffset=4.
+	mock := &client.MockClient{
+		ListViewsFn: func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[` +
+				`{"id":"v0","name":"a"},` +
+				`{"id":"v1","name":"b"},` +
+				`{"id":"v2","name":"c"},` +
+				`{"id":"v3","name":"d"},` +
+				`{"id":"v4","name":"e"}` +
+				`]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_views", map[string]any{
+		"sourcePage": "traces",
+		"limit":      "2",
+		"offset":     "2",
+	})
+	result, err := h.handleListViews(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler error: %v", result.Content)
+	}
+	body := renderContent(result.Content)
+	for _, want := range []string{`\"id\":\"v2\"`, `\"id\":\"v3\"`, `\"total\":5`, `\"hasMore\":true`, `\"nextOffset\":4`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("pagination response missing %q; got: %s", want, body)
+		}
+	}
+	for _, unwanted := range []string{`\"id\":\"v0\"`, `\"id\":\"v1\"`, `\"id\":\"v4\"`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("pagination response includes out-of-page item %q; got: %s", unwanted, body)
+		}
 	}
 }

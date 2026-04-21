@@ -468,12 +468,14 @@ Gets alert history timeline for a specific rule.
 
 #### `signoz_list_views`
 
-List SigNoz saved Explorer views for a given sourcePage.
+List SigNoz saved Explorer views for a given sourcePage. Supports pagination; response includes a `pagination` block with `total`, `hasMore`, and `nextOffset`.
 
 - **Parameters**:
   - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`
-  - `name` (optional) - Partial-match filter on view name
-  - `category` (optional) - Partial-match filter on view category
+  - `name` (optional) - Partial-match filter on view name (server-side)
+  - `category` (optional) - Partial-match filter on view category (server-side)
+  - `limit` (optional) - Page size (default: 50)
+  - `offset` (optional) - Number of results to skip (default: 0)
 
 #### `signoz_get_view`
 
@@ -494,8 +496,8 @@ Replace an existing saved view (full-body PUT).
 
 - **Parameters**:
   - `viewId` (required) - UUID of the view to replace
-  - Full `SavedView` body (all create fields required)
-- **Tip**: Call `signoz_get_view` first, modify the returned body, then pass the full result here. Partial bodies wipe unspecified fields.
+  - `view` (required) - Full `SavedView` object (`name`, `sourcePage`, `compositeQuery`, plus any of `category`, `tags`, `extraData`)
+- **Tip**: Call `signoz_get_view` first, pass its `data` object under `view` with whichever fields changed. Partial bodies wipe unspecified fields.
 
 #### `signoz_delete_view`
 

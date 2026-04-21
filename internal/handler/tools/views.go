@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/views"
 )
@@ -40,10 +41,13 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type). Returns the raw server response as JSON."),
+		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type). "+
+			"IMPORTANT: Supports pagination via 'limit' and 'offset'. The response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. When searching for a specific view, ALWAYS check 'pagination.hasMore' — if true, continue paging with 'nextOffset' until you find the item or 'hasMore' is false. Never conclude a view doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics".`)),
-		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name.")),
-		mcp.WithString("category", mcp.Description("Optional partial-match filter on view category.")),
+		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name (applied server-side).")),
+		mcp.WithString("category", mcp.Description("Optional partial-match filter on view category (applied server-side).")),
+		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Default: 50.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
 	)
 	s.AddTool(listTool, h.handleListViews)
 
@@ -76,12 +80,12 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Replace an existing SigNoz saved view (HTTP PUT — full body replace). "+
-				"ALWAYS call signoz_get_view first, modify the returned object, and pass the "+
-				"full result here. Partial bodies will wipe unspecified fields. "+
-				"See signoz://view/instructions for the schema.",
+				"Pass the view's UUID as viewId and the full SavedView body as view. "+
+				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
+				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
+				"See signoz://view/instructions for the SavedView schema.",
 		),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("UUID of the view to replace. Find via signoz_list_views or signoz_get_view.")),
-		mcp.WithInputSchema[types.SavedView](),
+		mcp.WithInputSchema[types.UpdateViewInput](),
 	)
 	s.AddTool(updateTool, h.handleUpdateView)
 
@@ -186,6 +190,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	}
 	name, _ := args["name"].(string)
 	category, _ := args["category"].(string)
+	limit, offset := paginate.ParseParams(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_views",
 		slog.String("sourcePage", sourcePage),
@@ -197,12 +202,30 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	data, err := client.ListViews(ctx, sourcePage, name, category)
+	result, err := client.ListViews(ctx, sourcePage, name, category)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list views", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	return mcp.NewToolResultText(string(data)), nil
+
+	var parsed map[string]any
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		h.logger.ErrorContext(ctx, "Failed to parse views response", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+	}
+	data, ok := parsed["data"].([]any)
+	if !ok {
+		h.logger.ErrorContext(ctx, "Invalid views response format", slog.String("data", logpkg.TruncAny(parsed["data"])))
+		return mcp.NewToolResultError("invalid response format: expected data array"), nil
+	}
+	total := len(data)
+	pagedData := paginate.Array(data, offset, limit)
+	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
 func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -279,32 +302,54 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	if !ok || len(args) == 0 {
 		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
 	}
-	unwrapViewEnvelope(args)
 
 	viewID, _ := args["viewId"].(string)
 	if viewID == "" {
 		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Use signoz_list_views to find the UUID.`), nil
 	}
-	name, _ := args["name"].(string)
-	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "name" is required. Call signoz_get_view first and pass the full body back.`), nil
+
+	// The canonical shape (per input schema) wraps the body under "view".
+	// Back-compat: also accept the SavedView fields flat at the top level
+	// (pre-wrapper call sites), and the wrapped get_view envelope shape
+	// ({status,data:{...}}) pasted straight under "view".
+	var view map[string]any
+	if v, ok := args["view"].(map[string]any); ok {
+		view = v
+		unwrapViewEnvelope(view)
+	} else {
+		view = map[string]any{}
+		for k, v := range args {
+			if k == "viewId" || k == "searchContext" || k == "view" {
+				continue
+			}
+			view[k] = v
+		}
+		unwrapViewEnvelope(view)
 	}
-	sourcePage, _ := args["sourcePage"].(string)
+	if len(view) == 0 {
+		return mcp.NewToolResultError(`Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
+	}
+
+	name, _ := view["name"].(string)
+	if name == "" {
+		return mcp.NewToolResultError(`Parameter validation failed: "view.name" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
+	}
+	sourcePage, _ := view["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if _, present := args["compositeQuery"]; !present {
-		return mcp.NewToolResultError(`Parameter validation failed: "compositeQuery" is required. Call signoz_get_view first and pass the full body back.`), nil
+	if _, present := view["compositeQuery"]; !present {
+		return mcp.NewToolResultError(`Parameter validation failed: "view.compositeQuery" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
 	}
-	if cq, ok := args["compositeQuery"].(string); ok {
+	if cq, ok := view["compositeQuery"].(string); ok {
 		var tmp any
 		if err := json.Unmarshal([]byte(cq), &tmp); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: "compositeQuery" is not valid JSON: %s`, err.Error())), nil
+			return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: "view.compositeQuery" is not valid JSON: %s`, err.Error())), nil
 		}
-		args["compositeQuery"] = tmp
+		view["compositeQuery"] = tmp
 	}
 
-	body, err := marshalViewBody(args)
+	body, err := json.Marshal(view)
 	if err != nil {
 		return mcp.NewToolResultError("failed to build request body: " + err.Error()), nil
 	}
