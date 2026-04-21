@@ -23,10 +23,10 @@ var validSourcePages = map[string]struct{}{
 
 func validateSourcePage(sp string) error {
 	if sp == "" {
-		return fmt.Errorf(`Parameter validation failed: "sourcePage" is required. Must be one of: "traces", "logs", "metrics"`)
+		return fmt.Errorf(`parameter validation failed: "sourcePage" is required. Must be one of: "traces", "logs", "metrics"`)
 	}
 	if _, ok := validSourcePages[sp]; !ok {
-		return fmt.Errorf(`Parameter validation failed: "sourcePage" must be one of: "traces", "logs", "metrics" (got %q)`, sp)
+		return fmt.Errorf(`parameter validation failed: "sourcePage" must be one of: "traces", "logs", "metrics" (got %q)`, sp)
 	}
 	return nil
 }
@@ -134,6 +134,46 @@ func marshalViewBody(args map[string]any) ([]byte, error) {
 	return json.Marshal(args)
 }
 
+// unwrapViewEnvelope handles callers who passed the full response of
+// signoz_get_view (shape: {"status":"success","data":{...}}) straight
+// into signoz_create_view / signoz_update_view. If the args look like
+// that envelope — a `data` field holding an object, and no top-level
+// `sourcePage` / `name` — replace args' contents with data's. The
+// tool descriptions explicitly instruct this flow, so supporting it
+// avoids a misleading "name is required" validation error.
+func unwrapViewEnvelope(args map[string]any) {
+	data, ok := args["data"].(map[string]any)
+	if !ok {
+		return
+	}
+	// Only unwrap when the outer object lacks the SavedView identity
+	// fields; otherwise the caller is legitimately sending a view that
+	// happens to have a `data` subfield (e.g. extraData).
+	if _, hasName := args["name"]; hasName {
+		return
+	}
+	if _, hasSourcePage := args["sourcePage"]; hasSourcePage {
+		return
+	}
+	// Preserve searchContext and viewId (MCP-level fields) across the swap.
+	preserved := map[string]any{}
+	if v, ok := args["searchContext"]; ok {
+		preserved["searchContext"] = v
+	}
+	if v, ok := args["viewId"]; ok {
+		preserved["viewId"] = v
+	}
+	for k := range args {
+		delete(args, k)
+	}
+	for k, v := range data {
+		args[k] = v
+	}
+	for k, v := range preserved {
+		args[k] = v
+	}
+}
+
 func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
@@ -192,8 +232,9 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(args) == 0 {
-		return mcp.NewToolResultError("Parameter validation failed: request body is empty or not an object"), nil
+		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
 	}
+	unwrapViewEnvelope(args)
 
 	name, _ := args["name"].(string)
 	if name == "" {
@@ -236,8 +277,9 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(args) == 0 {
-		return mcp.NewToolResultError("Parameter validation failed: request body is empty or not an object"), nil
+		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
 	}
+	unwrapViewEnvelope(args)
 
 	viewID, _ := args["viewId"].(string)
 	if viewID == "" {
