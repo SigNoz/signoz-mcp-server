@@ -137,6 +137,46 @@ var serverPopulatedViewFields = []string{
 	"id", "createdAt", "createdBy", "updatedAt", "updatedBy",
 }
 
+// validateBuilderSignal enforces the documented rule: every builder_query
+// spec's `signal` field must match the view's sourcePage. Upstream does not
+// enforce this, and a mismatch silently saves an unusable view. Ignores
+// non-builder queries (promql, clickhouse_sql) since they don't carry a
+// signal field. Returns nil if no mismatches are found.
+func validateBuilderSignal(compositeQuery any, sourcePage string) error {
+	cq, ok := compositeQuery.(map[string]any)
+	if !ok {
+		return nil
+	}
+	queries, ok := cq["queries"].([]any)
+	if !ok {
+		return nil
+	}
+	for i, q := range queries {
+		entry, ok := q.(map[string]any)
+		if !ok {
+			continue
+		}
+		if qt, _ := entry["type"].(string); qt != "builder_query" {
+			continue
+		}
+		spec, ok := entry["spec"].(map[string]any)
+		if !ok {
+			continue
+		}
+		signal, _ := spec["signal"].(string)
+		if signal == "" {
+			continue
+		}
+		if signal != sourcePage {
+			return fmt.Errorf(
+				`Parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q. They must match.`,
+				i, signal, sourcePage,
+			)
+		}
+	}
+	return nil
+}
+
 // stripNonBodyFields removes MCP-specific metadata (searchContext, viewId)
 // and server-populated SavedView fields from a map so what remains is a
 // clean request body.
@@ -291,15 +331,12 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	if err := validateSourcePage(sourcePage); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if _, present := args["compositeQuery"]; !present {
+	cq, present := args["compositeQuery"]
+	if !present {
 		return mcp.NewToolResultError(`Parameter validation failed: "compositeQuery" is required. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
 	}
-	if cq, ok := args["compositeQuery"].(string); ok {
-		var tmp any
-		if err := json.Unmarshal([]byte(cq), &tmp); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: "compositeQuery" is not valid JSON: %s`, err.Error())), nil
-		}
-		args["compositeQuery"] = tmp
+	if err := validateBuilderSignal(cq, sourcePage); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	body, err := marshalViewBody(args)
@@ -362,15 +399,12 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	if err := validateSourcePage(sourcePage); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if _, present := view["compositeQuery"]; !present {
+	cq, present := view["compositeQuery"]
+	if !present {
 		return mcp.NewToolResultError(`Parameter validation failed: "view.compositeQuery" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
 	}
-	if cq, ok := view["compositeQuery"].(string); ok {
-		var tmp any
-		if err := json.Unmarshal([]byte(cq), &tmp); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: "view.compositeQuery" is not valid JSON: %s`, err.Error())), nil
-		}
-		view["compositeQuery"] = tmp
+	if err := validateBuilderSignal(cq, sourcePage); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	stripNonBodyFields(view)

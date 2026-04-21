@@ -580,3 +580,114 @@ func TestHandleListViews_NonArrayDataIsEmpty(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleCreateView_RejectsSignalSourcePageMismatch(t *testing.T) {
+	// Documented rule: builder_query.spec.signal must equal sourcePage.
+	// Upstream doesn't enforce this; a mismatch silently saves a broken view.
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "bad",
+		"sourcePage": "logs",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "list",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "traces"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected validation error for signal/sourcePage mismatch")
+	}
+	body := renderContent(result.Content)
+	if !strings.Contains(body, "signal") || !strings.Contains(body, "sourcePage") {
+		t.Errorf("error should mention signal and sourcePage; got: %s", body)
+	}
+}
+
+func TestHandleCreateView_AllowsMatchingSignal(t *testing.T) {
+	called := false
+	mock := &client.MockClient{
+		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			called = true
+			return json.RawMessage(`{"status":"success","data":"ok"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "ok",
+		"sourcePage": "traces",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "list",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "traces"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if result.IsError {
+		t.Fatalf("expected success; got: %v", result.Content)
+	}
+	if !called {
+		t.Fatalf("CreateView should have been called")
+	}
+}
+
+func TestHandleCreateView_IgnoresSignalOnNonBuilderQuery(t *testing.T) {
+	// promql/clickhouse queries don't carry a `signal` field; validator
+	// should leave them alone.
+	called := false
+	mock := &client.MockClient{
+		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			called = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "p",
+		"sourcePage": "metrics",
+		"compositeQuery": map[string]any{
+			"queryType": "promql",
+			"panelType": "graph",
+			"queries": []any{map[string]any{
+				"type": "promql_query",
+				"spec": map[string]any{"name": "A", "query": "rate(x[5m])"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if result.IsError {
+		t.Fatalf("expected success for promql query; got: %v", result.Content)
+	}
+	if !called {
+		t.Fatalf("CreateView should have been called")
+	}
+}
+
+func TestHandleUpdateView_RejectsSignalMismatch(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId": "v1",
+		"view": map[string]any{
+			"name":       "x",
+			"sourcePage": "logs",
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "list",
+				"queries": []any{map[string]any{
+					"type": "builder_query",
+					"spec": map[string]any{"name": "A", "signal": "metrics"},
+				}},
+			},
+		},
+	})
+	result, _ := h.handleUpdateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected signal-mismatch rejection")
+	}
+}
