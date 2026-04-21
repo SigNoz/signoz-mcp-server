@@ -31,7 +31,7 @@ type SavedViewInput struct {
 	SourcePage     string         `json:"sourcePage" jsonschema:"required,enum=traces,enum=logs,enum=metrics" jsonschema_extras:"description=Which Explorer this view belongs to."`
 	Tags           []string       `json:"tags,omitempty" jsonschema_extras:"description=Free-form tags."`
 	CompositeQuery map[string]any `json:"compositeQuery" jsonschema:"required" jsonschema_extras:"description=The Query Builder payload as an object (not a string). Must contain queryType plus matching sub-query. See signoz://view/instructions and signoz://view/examples.,type=object,additionalProperties=true"`
-	ExtraData      string         `json:"extraData,omitempty" jsonschema_extras:"description=UI-controlled options, JSON string."`
+	ExtraData      string         `json:"extraData,omitempty" jsonschema_extras:"description=UI-controlled options as a JSON-encoded string (safe to leave empty)."`
 	SearchContext  string         `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question that triggered this tool call."`
 }
 
