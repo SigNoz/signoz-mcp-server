@@ -336,8 +336,11 @@ MCP_SERVER_PORT=8000 \
 | `signoz_delete_dashboard` | Delete a dashboard by UUID |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
-| `signoz_list_log_views` | List all saved log views |
-| `signoz_get_log_view` | Get details of a saved log view |
+| `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics) |
+| `signoz_get_view` | Get a saved view by UUID |
+| `signoz_create_view` | Create a new saved Explorer view |
+| `signoz_update_view` | Replace an existing saved view (full-body PUT) |
+| `signoz_delete_view` | Delete a saved view by UUID |
 | `signoz_aggregate_logs` | Aggregate logs (count, avg, p99, etc.) with grouping |
 | `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_traces` | Aggregate trace statistics with grouping |
@@ -463,15 +466,42 @@ Gets alert history timeline for a specific rule.
   - `limit` (optional) - Limit number of results (default: 20)
   - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
 
-#### `signoz_list_log_views`
+#### `signoz_list_views`
 
-Lists all saved log views from SigNoz.
+List SigNoz saved Explorer views for a given sourcePage.
 
-#### `signoz_get_log_view`
+- **Parameters**:
+  - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`
+  - `name` (optional) - Partial-match filter on view name
+  - `category` (optional) - Partial-match filter on view category
 
-Gets full details of a specific log view by ID.
+#### `signoz_get_view`
 
-- **Parameters**: `viewId` (required) - Log view ID
+Get a single saved view by UUID.
+
+- **Parameters**: `viewId` (required) - Saved view UUID
+
+#### `signoz_create_view`
+
+Create a new saved Explorer view.
+
+- **Parameters**: JSON payload matching the `SavedView` schema.
+- **Tip**: Read MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing payloads.
+
+#### `signoz_update_view`
+
+Replace an existing saved view (full-body PUT).
+
+- **Parameters**:
+  - `viewId` (required) - UUID of the view to replace
+  - Full `SavedView` body (all create fields required)
+- **Tip**: Call `signoz_get_view` first, modify the returned body, then pass the full result here. Partial bodies wipe unspecified fields.
+
+#### `signoz_delete_view`
+
+Delete a saved view by UUID.
+
+- **Parameters**: `viewId` (required) - Saved view UUID
 
 
 
