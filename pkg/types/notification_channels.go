@@ -6,14 +6,14 @@ import "encoding/json"
 // and /api/v1/testChannel endpoints. Only one of the *_configs fields
 // should be populated per receiver.
 type Receiver struct {
-	ID                int                 `json:"id,omitempty"`
-	Name              string              `json:"name"`
-	SlackConfigs      []SlackConfig       `json:"slack_configs,omitempty"`
-	WebhookConfigs    []WebhookConfig     `json:"webhook_configs,omitempty"`
-	PagerdutyConfigs  []PagerdutyConfig   `json:"pagerduty_configs,omitempty"`
-	EmailConfigs      []EmailConfig       `json:"email_configs,omitempty"`
-	OpsgenieConfigs   []OpsgenieConfig    `json:"opsgenie_configs,omitempty"`
-	MSTeamsV2Configs  []MSTeamsV2Config   `json:"msteamsv2_configs,omitempty"`
+	ID               int               `json:"id,omitempty"`
+	Name             string            `json:"name"`
+	SlackConfigs     []SlackConfig     `json:"slack_configs,omitempty"`
+	WebhookConfigs   []WebhookConfig   `json:"webhook_configs,omitempty"`
+	PagerdutyConfigs []PagerdutyConfig `json:"pagerduty_configs,omitempty"`
+	EmailConfigs     []EmailConfig     `json:"email_configs,omitempty"`
+	OpsgenieConfigs  []OpsgenieConfig  `json:"opsgenie_configs,omitempty"`
+	MSTeamsV2Configs []MSTeamsV2Config `json:"msteamsv2_configs,omitempty"`
 }
 
 // MarshalReceiver serialises a Receiver to JSON bytes suitable for the
@@ -33,8 +33,8 @@ type SlackConfig struct {
 
 // WebhookConfig mirrors the SigNoz/Alertmanager webhook_configs entry.
 type WebhookConfig struct {
-	SendResolved bool              `json:"send_resolved"`
-	URL          string            `json:"url"`
+	SendResolved bool               `json:"send_resolved"`
+	URL          string             `json:"url"`
 	HTTPConfig   *WebhookHTTPConfig `json:"http_config,omitempty"`
 }
 

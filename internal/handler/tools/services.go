@@ -3,11 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 )
@@ -45,26 +46,25 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args := req.Params.Arguments.(map[string]any)
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 	limit, offset := paginate.ParseParams(req.Params.Arguments)
 
-	log.Debug("Tool called: signoz_list_services", zap.String("start", start), zap.String("end", end), zap.Int("limit", limit), zap.Int("offset", offset))
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	result, err := client.ListServices(ctx, start, end)
 	if err != nil {
-		log.Error("Failed to list services", zap.String("start", start), zap.String("end", end), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to list services", slog.String("start", start), slog.String("end", end), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	var services []any
 	if err := json.Unmarshal(result, &services); err != nil {
-		log.Error("Failed to parse services response", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to parse services response", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
@@ -73,7 +73,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 
 	resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
 	if err != nil {
-		log.Error("Failed to wrap services with pagination", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to wrap services with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
@@ -81,16 +81,15 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args := req.Params.Arguments.(map[string]any)
 
 	service, ok := args["service"].(string)
 	if !ok {
-		log.Warn("Invalid service parameter type", zap.Any("type", args["service"]))
+		h.logger.WarnContext(ctx, "Invalid service parameter type", slog.Any("type", args["service"]))
 		return mcp.NewToolResultError(`Parameter validation failed: "service" must be a string. Example: {"service": "frontend-api", "timeRange": "1h"}`), nil
 	}
 	if service == "" {
-		log.Warn("Empty service parameter")
+		h.logger.WarnContext(ctx, "Empty service parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
 	}
 
@@ -103,10 +102,10 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 		tags = json.RawMessage("[]")
 	}
 
-	log.Debug("Tool called: signoz_get_service_top_operations",
-		zap.String("start", start),
-		zap.String("end", end),
-		zap.String("service", service))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_service_top_operations",
+		slog.String("start", start),
+		slog.String("end", end),
+		slog.String("service", service))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -114,11 +113,11 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 	}
 	result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 	if err != nil {
-		log.Error("Failed to get service top operations",
-			zap.String("start", start),
-			zap.String("end", end),
-			zap.String("service", service),
-			zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get service top operations",
+			slog.String("start", start),
+			slog.String("end", end),
+			slog.String("service", service),
+			logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

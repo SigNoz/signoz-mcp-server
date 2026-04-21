@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/alert"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -100,8 +101,7 @@ func parseBoolParam(args map[string]any, key string) *bool {
 }
 
 func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	log.Debug("Tool called: signoz_list_alerts")
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_alerts")
 	args := req.Params.Arguments.(map[string]any)
 	limit, offset := paginate.ParseParams(args)
 
@@ -127,13 +127,13 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	}
 	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
-		log.Error("Failed to list alerts", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to list alerts", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	var apiResponse types.APIAlertsResponse
 	if err := json.Unmarshal(alerts, &apiResponse); err != nil {
-		log.Error("Failed to parse alerts response", zap.Error(err), zap.String("response", string(alerts)))
+		h.logger.ErrorContext(ctx, "Failed to parse alerts response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(alerts)))
 		return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
 	}
 
@@ -159,7 +159,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 
 	resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 	if err != nil {
-		log.Error("Failed to wrap alerts with pagination", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to wrap alerts with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
@@ -167,25 +167,24 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	ruleID, ok := req.Params.Arguments.(map[string]any)["ruleId"].(string)
 	if !ok {
-		log.Warn("Invalid ruleId parameter type", zap.Any("type", req.Params.Arguments))
+		h.logger.WarnContext(ctx, "Invalid ruleId parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 	}
 	if ruleID == "" {
-		log.Warn("Empty ruleId parameter")
+		h.logger.WarnContext(ctx, "Empty ruleId parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID (UUID format)`), nil
 	}
 
-	log.Debug("Tool called: signoz_get_alert", zap.String("ruleId", ruleID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("ruleId", ruleID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
-		log.Error("Failed to get alert", zap.String("ruleId", ruleID), zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get alert", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -193,12 +192,11 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 }
 
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args := req.Params.Arguments.(map[string]any)
 
 	ruleID, ok := args["ruleId"].(string)
 	if !ok || ruleID == "" {
-		log.Warn("Invalid or empty ruleId parameter", zap.Any("ruleId", args["ruleId"]))
+		h.logger.WarnContext(ctx, "Invalid or empty ruleId parameter", slog.Any("ruleId", args["ruleId"]))
 		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a non-empty string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
@@ -206,11 +204,11 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	var start, end int64
 	if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
-		log.Warn("Invalid start timestamp format", zap.String("start", startStr), zap.Error(err))
+		h.logger.WarnContext(ctx, "Invalid start timestamp format", slog.String("start", startStr), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
 	}
 	if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
-		log.Warn("Invalid end timestamp format", zap.String("end", endStr), zap.Error(err))
+		h.logger.WarnContext(ctx, "Invalid end timestamp format", slog.String("end", endStr), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 	}
 
@@ -219,7 +217,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	limit := 20
 	if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
 		if limitInt, err := strconv.Atoi(limitStr); err != nil {
-			log.Warn("Invalid limit format", zap.String("limit", limitStr), zap.Error(err))
+			h.logger.WarnContext(ctx, "Invalid limit format", slog.String("limit", limitStr), logpkg.ErrAttr(err))
 			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "limit" value: "%s". Expected integer between 1-1000 (e.g., "20", "50", "100")`, limitStr)), nil
 		} else if limitInt > 0 {
 			limit = limitInt
@@ -231,7 +229,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		if orderStr == "asc" || orderStr == "desc" {
 			order = orderStr
 		} else {
-			log.Warn("Invalid order value", zap.String("order", orderStr))
+			h.logger.WarnContext(ctx, "Invalid order value", slog.String("order", orderStr))
 			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderStr)), nil
 		}
 	}
@@ -239,7 +237,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	var state string
 	if stateStr, ok := args["state"].(string); ok && stateStr != "" {
 		if stateStr != "firing" && stateStr != "inactive" {
-			log.Warn("Invalid state value", zap.String("state", stateStr))
+			h.logger.WarnContext(ctx, "Invalid state value", slog.String("state", stateStr))
 			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "state" value: "%s". Must be either "firing" or "inactive"`, stateStr)), nil
 		}
 		state = stateStr
@@ -258,13 +256,13 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		},
 	}
 
-	log.Debug("Tool called: signoz_get_alert_history",
-		zap.String("ruleId", ruleID),
-		zap.Int64("start", start),
-		zap.Int64("end", end),
-		zap.Int("offset", offset),
-		zap.Int("limit", limit),
-		zap.String("order", order))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert_history",
+		slog.String("ruleId", ruleID),
+		slog.Int64("start", start),
+		slog.Int64("end", end),
+		slog.Int("offset", offset),
+		slog.Int("limit", limit),
+		slog.String("order", order))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -272,20 +270,19 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	}
 	respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 	if err != nil {
-		log.Error("Failed to get alert history",
-			zap.String("ruleId", ruleID),
-			zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to get alert history",
+			slog.String("ruleId", ruleID),
+			logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(respJSON)), nil
 }
 
 func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	rawConfig, ok := req.Params.Arguments.(map[string]any)
 
 	if !ok || len(rawConfig) == 0 {
-		log.Warn("Received empty or invalid arguments map for create alert.")
+		h.logger.WarnContext(ctx, "Received empty or invalid arguments map for create alert.")
 		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
 	}
 
@@ -295,11 +292,11 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 	// Validate and normalize the alert payload.
 	cleanJSON, err := alert.ValidateFromMap(rawConfig)
 	if err != nil {
-		log.Warn("Alert validation failed", zap.Error(err))
+		h.logger.WarnContext(ctx, "Alert validation failed", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Alert validation error: %s", err.Error())), nil
 	}
 
-	log.Debug("Tool called: signoz_create_alert")
+	h.logger.DebugContext(ctx, "Tool called: signoz_create_alert")
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -308,7 +305,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 	// Fetch existing notification channels and validate channel references.
 	availableChannels, err := fetchChannelNames(ctx, client)
 	if err != nil {
-		log.Warn("Failed to fetch notification channels for validation", zap.Error(err))
+		h.logger.WarnContext(ctx, "Failed to fetch notification channels for validation", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch notification channels: %s", err.Error())), nil
 	}
 
@@ -325,7 +322,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	data, err := client.CreateAlertRule(ctx, cleanJSON)
 	if err != nil {
-		log.Error("Failed to create alert rule in SigNoz", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to create alert rule in SigNoz", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
 	}
 

@@ -2,23 +2,23 @@ package segmentanalytics
 
 import (
 	"fmt"
+	"log/slog"
 
 	segment "github.com/segmentio/analytics-go/v3"
-	"go.uber.org/zap"
 )
 
-type zapSegmentLogger struct {
-	logger *zap.Logger
+type slogSegmentLogger struct {
+	logger *slog.Logger
 }
 
-func newSegmentLogger(logger *zap.Logger) segment.Logger {
-	return &zapSegmentLogger{logger: logger.Named("segment")}
+func newSegmentLogger(logger *slog.Logger) segment.Logger {
+	return &slogSegmentLogger{logger: logger.With(slog.String("component", "segment"))}
 }
 
-func (l *zapSegmentLogger) Logf(format string, args ...interface{}) {
+func (l *slogSegmentLogger) Logf(format string, args ...interface{}) {
 	l.logger.Info(fmt.Sprintf(format, args...))
 }
 
-func (l *zapSegmentLogger) Errorf(format string, args ...interface{}) {
+func (l *slogSegmentLogger) Errorf(format string, args ...interface{}) {
 	l.logger.Error(fmt.Sprintf(format, args...))
 }

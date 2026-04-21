@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -45,13 +46,12 @@ func (h *Handler) handleAlertSummaryResource(ctx context.Context, req mcp.ReadRe
 		return nil, fmt.Errorf("missing ruleId in URI")
 	}
 
-	log := h.tenantLogger(ctx)
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Debug("Fetching alert summary resource", zap.String("ruleId", ruleID))
+	h.logger.DebugContext(ctx, "Fetching alert summary resource", slog.String("ruleId", ruleID))
 
 	alertData, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
@@ -68,7 +68,7 @@ func (h *Handler) handleAlertSummaryResource(ctx context.Context, req mcp.ReadRe
 	historyData, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 	if err != nil {
 		// History fetch is best-effort; include alert data even if history fails
-		log.Warn("Failed to get alert history", zap.String("ruleId", ruleID), zap.Error(err))
+		h.logger.WarnContext(ctx, "Failed to get alert history", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
 	}
 
 	summary := map[string]json.RawMessage{
@@ -98,13 +98,12 @@ func (h *Handler) handleDashboardSummaryResource(ctx context.Context, req mcp.Re
 		return nil, fmt.Errorf("missing uuid in URI")
 	}
 
-	log := h.tenantLogger(ctx)
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Debug("Fetching dashboard summary resource", zap.String("uuid", uuid))
+	h.logger.DebugContext(ctx, "Fetching dashboard summary resource", slog.String("uuid", uuid))
 
 	dashData, err := client.GetDashboard(ctx, uuid)
 	if err != nil {

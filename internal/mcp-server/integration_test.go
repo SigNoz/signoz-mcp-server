@@ -8,11 +8,12 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 )
 
 // buildTestServer creates a fully-wired MCPServer suitable for in-process
@@ -20,14 +21,14 @@ import (
 func buildTestServer(t *testing.T) *server.MCPServer {
 	t.Helper()
 
-	log := zap.NewNop()
+	log := logpkg.New("error")
 	cfg := &config.Config{
 		ClientCacheSize: 8,
 		ClientCacheTTL:  5 * time.Minute,
 	}
 	handler := tools.NewHandler(log, cfg)
 
-	s := server.NewMCPServer("SigNozMCP", "0.0.1",
+	s := server.NewMCPServer("SigNozMCP", version.Version,
 		server.WithLogging(),
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -62,7 +63,7 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
 			ClientInfo: mcp.Implementation{
 				Name:    "test-client",
-				Version: "0.0.1",
+				Version: version.Version,
 			},
 		},
 	})
@@ -104,7 +105,7 @@ func TestIntegration_ListPrompts(t *testing.T) {
 	_, err = c.Initialize(ctx, mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test", Version: "0.0.1"},
+			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
 		},
 	})
 	if err != nil {
@@ -137,7 +138,7 @@ func TestIntegration_ListResourceTemplates(t *testing.T) {
 	_, err = c.Initialize(ctx, mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test", Version: "0.0.1"},
+			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
 		},
 	})
 	if err != nil {

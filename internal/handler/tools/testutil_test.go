@@ -3,8 +3,8 @@ package tools
 import (
 	"context"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/mark3labs/mcp-go/mcp"
-	"go.uber.org/zap"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 )
@@ -13,7 +13,7 @@ import (
 // No real HTTP client or cache is created.
 func newTestHandler(mock signozclient.Client) *Handler {
 	return &Handler{
-		logger:         zap.NewNop(),
+		logger:         logpkg.New("error"),
 		clientOverride: mock,
 	}
 }

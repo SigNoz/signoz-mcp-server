@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,10 +15,11 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/telemetry"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -54,16 +56,17 @@ type SigNoz struct {
 	baseURL        string
 	apiKey         string
 	authHeaderName string
-	logger         *zap.Logger
+	logger         *slog.Logger
 	httpClient     *http.Client
 	customHeaders  map[string]string
 
 	identityMu       sync.Mutex
 	cachedIdentity   *AnalyticsIdentity
 	identityCachedAt time.Time
+	meters           *otelpkg.Meters
 }
 
-func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
+func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
 	return &SigNoz{
 		logger:         log,
 		baseURL:        baseURL,
@@ -71,33 +74,27 @@ func NewClient(log *zap.Logger, baseURL, apiKey, authHeaderName string, customHe
 		authHeaderName: authHeaderName,
 		customHeaders:  customHeaders,
 		httpClient: &http.Client{
+			// Default client span name is just the HTTP method (per OTel HTTP
+			// semconv — the client doesn't know a templated route). We keep
+			// the default rather than stamping the raw path because several
+			// SigNoz API paths embed IDs (/dashboards/{uuid}, /rules/{id},
+			// /channels/{id}, /explorer/views/{id}, /rules/{id}/history/...)
+			// which would blow up span-name cardinality in the backend. The
+			// full URL is still attached as a span attribute for drilling.
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
 }
 
-// requestLogger returns a logger enriched with session_id and search_context
-// from the request context, so every client-level log line can be correlated
-// back to the MCP session and user query.
-func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
-	l := s.logger
-	if s.baseURL != "" {
-		l = l.With(zap.String("mcp.tenant_url", s.baseURL))
+func (s *SigNoz) SetMeters(meters *otelpkg.Meters) {
+	s.meters = meters
+}
+
+func (s *SigNoz) ensureTenantContext(ctx context.Context) context.Context {
+	if _, ok := util.GetSigNozURL(ctx); !ok && s.baseURL != "" {
+		return util.SetSigNozURL(ctx, s.baseURL)
 	}
-	if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-		l = l.With(zap.String("mcp.session.id", sid))
-	}
-	if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-		l = l.With(zap.String("mcp.search_context", sc))
-	}
-	// Add trace context for log-trace correlation.
-	if spanCtx := trace.SpanContextFromContext(ctx); spanCtx.IsValid() {
-		l = l.With(
-			zap.String("trace_id", spanCtx.TraceID().String()),
-			zap.String("span_id", spanCtx.SpanID().String()),
-		)
-	}
-	return l
+	return ctx
 }
 
 // ValidateCredentials performs a lightweight authenticated request against the
@@ -109,29 +106,32 @@ func (s *SigNoz) requestLogger(ctx context.Context) *zap.Logger {
 // retries against /api/v1/service_accounts/me. Any other response from user/me
 // is returned directly.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
-	log := s.requestLogger(ctx)
+	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	userURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
 	status, body, err := s.doValidationRequest(ctx, userURL)
 	if err != nil {
-		log.Error("SigNoz credential validation request failed", zap.String("url", userURL), zap.Error(err))
+		s.logger.ErrorContext(ctx, "SigNoz credential validation request failed",
+			slog.String("url", userURL), logpkg.ErrAttr(err))
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 
 	// 404 means the key is a service-account key; validate via service account endpoint.
 	if status == http.StatusNotFound {
-		log.Debug("user/me returned non-user status, retrying with service_accounts/me", zap.Int("status", status))
+		s.logger.DebugContext(ctx, "user/me returned non-user status, retrying with service_accounts/me",
+			slog.Int("status", status))
 		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
 		status, body, err = s.doValidationRequest(ctx, saURL)
 		if err != nil {
-			log.Error("SigNoz credential validation request failed", zap.String("url", saURL), zap.Error(err))
+			s.logger.ErrorContext(ctx, "SigNoz credential validation request failed",
+				slog.String("url", saURL), logpkg.ErrAttr(err))
 			return fmt.Errorf("failed to reach SigNoz API: %w", err)
 		}
 	}
 
-	return s.evaluateValidationResponse(log, status, body)
+	return s.evaluateValidationResponse(ctx, status, body)
 }
 
 // GetAnalyticsIdentity returns the org + user identity for the current
@@ -141,11 +141,20 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 // Auth-token clients hit /api/v2/users/me (v2 is required — it returns
 // orgId, v1 doesn't). API-key clients hit /api/v1/service_accounts/me.
 func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+	ctx = s.ensureTenantContext(ctx)
 	s.identityMu.Lock()
 	defer s.identityMu.Unlock()
 
 	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
+		if s.meters != nil {
+			attrs := otelpkg.AppendTenantURL(ctx, nil)
+			s.meters.IdentityCacheHits.Add(ctx, 1, metric.WithAttributes(attrs...))
+		}
 		return s.cachedIdentity, nil
+	}
+	if s.meters != nil {
+		attrs := otelpkg.AppendTenantURL(ctx, nil)
+		s.meters.IdentityCacheMisses.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 
 	identity, err := s.fetchAnalyticsIdentity(ctx)
@@ -159,7 +168,7 @@ func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, 
 }
 
 func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
-	log := s.requestLogger(ctx)
+	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -173,11 +182,12 @@ func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity
 	reqURL := fmt.Sprintf("%s%s", s.baseURL, endpoint)
 	status, body, err := s.doValidationRequest(ctx, reqURL)
 	if err != nil {
-		log.Error("SigNoz analytics identity request failed", zap.String("url", reqURL), zap.Error(err))
+		s.logger.ErrorContext(ctx, "SigNoz analytics identity request failed",
+			slog.String("url", reqURL), logpkg.ErrAttr(err))
 		return nil, fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 	if status != http.StatusOK {
-		return nil, s.evaluateValidationResponse(log, status, body)
+		return nil, s.evaluateValidationResponse(ctx, status, body)
 	}
 
 	identity, err := parseAnalyticsIdentity(body, principal)
@@ -260,16 +270,19 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 }
 
 // evaluateValidationResponse maps the final HTTP status to a Go error.
-func (s *SigNoz) evaluateValidationResponse(log *zap.Logger, status int, body []byte) error {
+func (s *SigNoz) evaluateValidationResponse(ctx context.Context, status int, body []byte) error {
 	switch status {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		log.Warn("SigNoz credential validation failed", zap.Int("status", status))
+		s.logger.WarnContext(ctx, "SigNoz credential validation failed", slog.Int("status", status))
 		return fmt.Errorf("%w: status %d", ErrUnauthorized, status)
 	default:
-		log.Warn("SigNoz credential validation returned unexpected status", zap.Int("status", status), zap.String("response", string(body)))
-		return fmt.Errorf("unexpected status %d: %s", status, string(body))
+		truncatedBody := logpkg.TruncBody(body)
+		s.logger.WarnContext(ctx, "SigNoz credential validation returned unexpected status",
+			slog.Int("status", status),
+			slog.String("response", truncatedBody))
+		return fmt.Errorf("unexpected status %d: %s", status, truncatedBody)
 	}
 }
 
@@ -283,7 +296,7 @@ const (
 // checking, body reading, and retry with exponential backoff for transient
 // failures (429, 502, 503, 504, network errors).
 func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.Reader, timeout time.Duration) (json.RawMessage, error) {
-	log := s.requestLogger(ctx)
+	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -317,8 +330,8 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 
 		for k, v := range s.customHeaders {
 			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
-				log.Warn("Custom header overrides a reserved header",
-					zap.String("header", k), zap.String("value", v))
+				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
+					slog.String("header", k), slog.String("value", v))
 				continue
 			}
 			req.Header.Set(k, v)
@@ -331,15 +344,24 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				return nil, fmt.Errorf("request cancelled: %w", err)
 			}
 			lastErr = fmt.Errorf("failed to do request: %w", err)
-			log.Warn("Request failed, will retry",
-				zap.String("url", reqURL), zap.Int("attempt", attempt+1), zap.Error(err))
-			select {
-			case <-ctx.Done():
-				return nil, fmt.Errorf("retry aborted: %w", lastErr)
-			case <-time.After(wait):
+			if attempt < maxRetries-1 {
+				s.logger.DebugContext(ctx, "Request failed, will retry",
+					slog.String("url", reqURL),
+					slog.Int("attempt", attempt+1),
+					logpkg.ErrAttr(err))
+				select {
+				case <-ctx.Done():
+					return nil, fmt.Errorf("retry aborted: %w", lastErr)
+				case <-time.After(wait):
+				}
+				wait *= retryMultiply
+				continue
 			}
-			wait *= retryMultiply
-			continue
+			s.logger.WarnContext(ctx, "Request failed after retries exhausted",
+				slog.String("url", reqURL),
+				slog.Int("attempt", attempt+1),
+				logpkg.ErrAttr(err))
+			break
 		}
 
 		respBody, readErr := io.ReadAll(resp.Body)
@@ -355,9 +377,13 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 
 		// Retry on transient server errors.
 		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
-			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
-			log.Warn("Retryable status, will retry",
-				zap.String("url", reqURL), zap.Int("status", resp.StatusCode), zap.Int("attempt", attempt+1))
+			truncatedBody := logpkg.TruncBody(respBody)
+			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+			s.logger.DebugContext(ctx, "Retryable status, will retry",
+				slog.String("url", reqURL),
+				slog.Int("status", resp.StatusCode),
+				slog.Int("attempt", attempt+1),
+				slog.String("response", truncatedBody))
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("retry aborted: %w", lastErr)
@@ -367,7 +393,20 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			continue
 		}
 
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
+		retryable := isRetryableStatus(resp.StatusCode)
+		truncatedBody := logpkg.TruncBody(respBody)
+		attrs := []any{
+			slog.String("url", reqURL),
+			slog.Int("status", resp.StatusCode),
+			slog.Int("attempt", attempt+1),
+			slog.Bool("retryable", retryable),
+			slog.String("response", truncatedBody),
+		}
+		if retryable {
+			attrs = append(attrs, slog.Bool("retries_exhausted", true))
+		}
+		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status", attrs...)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
 	}
 
 	return nil, lastErr
@@ -396,13 +435,15 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v2/metrics?%s", s.baseURL, params.Encode())
-	s.requestLogger(ctx).Debug("Listing metrics", zap.String("searchText", searchText))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing metrics", slog.String("searchText", searchText))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/metrics/filters/keys", s.baseURL)
-	s.requestLogger(ctx).Debug("Making request to SigNoz API", zap.String("method", "GET"), zap.String("endpoint", "/api/v1/metrics/filters/keys"))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Making request to SigNoz API",
+		slog.String("method", "GET"),
+		slog.String("endpoint", "/api/v1/metrics/filters/keys"))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -411,13 +452,13 @@ func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) 
 	if qp := params.QueryParams(); len(qp) > 0 {
 		reqURL += "?" + qp.Encode()
 	}
-	s.requestLogger(ctx).Debug("Fetching alerts from SigNoz", zap.String("url", reqURL))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alerts from SigNoz", slog.String("url", reqURL))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/rules/%s", s.baseURL, url.PathEscape(ruleID))
-	s.requestLogger(ctx).Debug("Fetching alert rule details", zap.String("ruleID", ruleID))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rule details", slog.String("ruleID", ruleID))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -425,9 +466,9 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 // so we filter and only return required information which might help to get
 // detailed info of a dashboard.
 func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
-	log := s.requestLogger(ctx)
+	ctx = s.ensureTenantContext(ctx)
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
-	log.Debug("Fetching dashboards from SigNoz")
+	s.logger.DebugContext(ctx, "Fetching dashboards from SigNoz")
 
 	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 	if err != nil {
@@ -483,13 +524,13 @@ func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("failed to marshal simplified response: %w", err)
 	}
 
-	log.Debug("Successfully retrieved and simplified dashboards", zap.Int("count", len(simplifiedDashboards)))
+	s.logger.DebugContext(ctx, "Successfully retrieved and simplified dashboards", slog.Int("count", len(simplifiedDashboards)))
 	return simplifiedJSON, nil
 }
 
 func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(uuid))
-	s.requestLogger(ctx).Debug("Fetching dashboard details", zap.String("uuid", uuid))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching dashboard details", slog.String("uuid", uuid))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -498,7 +539,8 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 	payload := map[string]string{"start": start, "end": end}
 	bodyBytes, _ := json.Marshal(payload)
 
-	s.requestLogger(ctx).Debug("Fetching services from SigNoz", zap.String("start", start), zap.String("end", end))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching services from SigNoz",
+		slog.String("start", start), slog.String("end", end))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
 }
 
@@ -507,15 +549,18 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	payload := map[string]any{"start": start, "end": end, "service": service, "tags": tags}
 	bodyBytes, _ := json.Marshal(payload)
 
-	s.requestLogger(ctx).Debug("Fetching service top operations", zap.String("service", service))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service top operations", slog.String("service", service))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
+	ctx = s.ensureTenantContext(ctx)
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
-	s.requestLogger(ctx).Debug("sending request", zap.String("url", reqURL), zap.Any("body", json.RawMessage(body)))
+	s.logger.DebugContext(ctx, "sending request",
+		slog.String("url", reqURL),
+		slog.String("body", logpkg.TruncBody(body)))
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
-		span.SetAttributes(telemetry.MCPQueryPayloadKey.String(string(body)))
+		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }
@@ -527,25 +572,25 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	s.requestLogger(ctx).Debug("Fetching alert history", zap.String("ruleID", ruleID))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert history", slog.String("ruleID", ruleID))
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
 }
 
 func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/rules", s.baseURL)
-	s.requestLogger(ctx).Debug("Creating alert rule")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating alert rule")
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
 }
 
 func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
-	s.requestLogger(ctx).Debug("Fetching log views from SigNoz")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching log views from SigNoz")
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
-	s.requestLogger(ctx).Debug("Fetching log view details", zap.String("viewID", viewID))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching log view details", slog.String("viewID", viewID))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -569,7 +614,9 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v1/fields/keys?%s", s.baseURL, params.Encode())
-	s.requestLogger(ctx).Debug("Fetching field keys", zap.String("signal", signal), zap.String("searchText", searchText))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field keys",
+		slog.String("signal", signal),
+		slog.String("searchText", searchText))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -588,7 +635,9 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v1/fields/values?%s", s.baseURL, params.Encode())
-	s.requestLogger(ctx).Debug("Fetching field values", zap.String("signal", signal), zap.String("name", name))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching field values",
+		slog.String("signal", signal),
+		slog.String("name", name))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
@@ -616,7 +665,7 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 		return nil, fmt.Errorf("marshal dashboard: %w", err)
 	}
 
-	s.requestLogger(ctx).Debug("Creating dashboard")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard")
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 }
 
@@ -627,7 +676,7 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 		return fmt.Errorf("marshal dashboard: %w", err)
 	}
 
-	s.requestLogger(ctx).Debug("Updating dashboard", zap.String("id", id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard", slog.String("id", id))
 	_, err = s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 	return err
 }
@@ -636,7 +685,7 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 // avoiding a round-trip through types.Dashboard.
 func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
-	s.requestLogger(ctx).Debug("Creating dashboard (raw)")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard (raw)")
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 }
 
@@ -644,14 +693,14 @@ func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (
 // avoiding a round-trip through types.Dashboard.
 func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
-	s.requestLogger(ctx).Debug("Updating dashboard (raw)", zap.String("id", id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard (raw)", slog.String("id", id))
 	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 	return err
 }
 
 func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
-	s.requestLogger(ctx).Debug("Deleting dashboard", zap.String("id", id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting dashboard", slog.String("id", id))
 	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
 	return err
 }
@@ -661,25 +710,25 @@ const ChannelWriteTimeout = 30 * time.Second
 
 func (s *SigNoz) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
-	s.requestLogger(ctx).Debug("Fetching notification channels from SigNoz")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching notification channels from SigNoz")
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
-	s.requestLogger(ctx).Debug("Creating notification channel")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating notification channel")
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
 }
 
 func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
-	s.requestLogger(ctx).Debug("Updating notification channel", zap.String("id", id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating notification channel", slog.String("id", id))
 	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/testChannel", s.baseURL)
-	s.requestLogger(ctx).Debug("Testing notification channel")
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing notification channel")
 	_, err := s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
 	return err
 }

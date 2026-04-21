@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,11 +16,21 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
+
+func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
+	base := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: level})
+	return slog.New(logpkg.NewContextHandler(base))
+}
 
 func TestOAuthAuthorizationFlow(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +62,7 @@ func TestOAuthAuthorizationFlow(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", handler.HandleProtectedResourceMetadata)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", handler.HandleAuthorizationServerMetadata)
@@ -238,7 +249,7 @@ func TestOAuthAuthorizationFlowServiceAccountFallback(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
 	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
@@ -337,7 +348,7 @@ func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -410,7 +421,7 @@ func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://[::1]:4567/callback"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -429,7 +440,7 @@ func TestRegisterClientRejectsUnsupportedCustomRedirectScheme(t *testing.T) {
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/register", bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["javascript:alert(1)"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -472,7 +483,7 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(zap.NewNop(), cfg, nil)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -586,7 +597,7 @@ func TestOAuthEmitterFiresOnAuthorizeAndTokenIssue(t *testing.T) {
 	}
 
 	capture := &capturingEmitter{}
-	handler := NewHandler(zap.NewNop(), cfg, capture.emit)
+	handler := NewHandler(logpkg.New("error"), cfg, capture.emit, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
 	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
@@ -672,5 +683,202 @@ func TestOAuthEmitterFiresOnAuthorizeAndTokenIssue(t *testing.T) {
 	}
 	if issued.props[analytics.AttrGrantType] != "authorization_code" {
 		t.Fatalf("grantType attr = %v, want authorization_code", issued.props[analytics.AttrGrantType])
+	}
+}
+
+func TestWriteOAuthErrorRecordsFailureMetric(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString("grant_type=bogus"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	handler.HandleToken(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
+	if !found {
+		t.Fatal("mcp.oauth.failures metric not found")
+	}
+	if len(failures.DataPoints) != 1 {
+		t.Fatalf("mcp.oauth.failures datapoints = %d, want 1", len(failures.DataPoints))
+	}
+
+	dp := failures.DataPoints[0]
+	if dp.Value != 1 {
+		t.Fatalf("mcp.oauth.failures value = %d, want 1", dp.Value)
+	}
+	codeAttr, ok := dp.Attributes.Value(attribute.Key("oauth.error_code"))
+	if !ok || codeAttr.AsString() != "unsupported_grant_type" {
+		t.Fatalf("oauth.error_code = %v, want unsupported_grant_type", codeAttr)
+	}
+	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
+	if !ok || statusAttr.AsInt64() != http.StatusBadRequest {
+		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusBadRequest)
+	}
+}
+
+func TestAuthorizeSubmitUnauthorizedRecordsFailureMetric(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/user/me" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"status":"error","message":"Unauthorized"}`))
+	}))
+	defer signozServer.Close()
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+		AuthCodeTTL:      10 * time.Minute,
+	}
+
+	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("EncryptClientID() error = %v", err)
+	}
+
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
+			"&redirect_uri="+url.QueryEscape("http://127.0.0.1:4567/callback")+
+			"&state=state-123&code_challenge=challenge&code_challenge_method=S256",
+		nil,
+	)
+	authorizeRR := httptest.NewRecorder()
+	handler.HandleAuthorizePage(authorizeRR, authorizeReq)
+
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	matches := re.FindStringSubmatch(authorizeRR.Body.String())
+	if len(matches) != 2 {
+		t.Fatalf("csrf token not found in authorize page: %s", authorizeRR.Body.String())
+	}
+
+	form := url.Values{
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"state":                 {"state-123"},
+		"code_challenge":        {"challenge"},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {matches[1]},
+		"signoz_url":            {signozServer.URL},
+		"api_key":               {"bad-api-key"},
+	}
+
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(authorizeRR.Result().Cookies()[0])
+	submitRR := httptest.NewRecorder()
+	handler.HandleAuthorizeSubmit(submitRR, submitReq)
+
+	if submitRR.Code != http.StatusUnauthorized {
+		t.Fatalf("authorize POST status = %d, want %d", submitRR.Code, http.StatusUnauthorized)
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
+	if !found {
+		t.Fatal("mcp.oauth.failures metric not found")
+	}
+	if len(failures.DataPoints) != 1 {
+		t.Fatalf("mcp.oauth.failures datapoints = %d, want 1", len(failures.DataPoints))
+	}
+
+	dp := failures.DataPoints[0]
+	if dp.Value != 1 {
+		t.Fatalf("mcp.oauth.failures value = %d, want 1", dp.Value)
+	}
+	codeAttr, ok := dp.Attributes.Value(attribute.Key("oauth.error_code"))
+	if !ok || codeAttr.AsString() != "access_denied" {
+		t.Fatalf("oauth.error_code = %v, want access_denied", codeAttr)
+	}
+	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
+	if !ok || statusAttr.AsInt64() != http.StatusUnauthorized {
+		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusUnauthorized)
+	}
+}
+
+func TestWriteOAuthErrorLogsRequestMetadata(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+
+	handler := NewHandler(newBufferedLogger(&buf, slog.LevelDebug), cfg, nil, nil)
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString("grant_type=bogus"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	handler.HandleToken(rr, req)
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) == 0 {
+		t.Fatal("expected OAuth failure log line")
+	}
+
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
+		t.Fatalf("parse log line: %v", err)
+	}
+	if rec["msg"] != "OAuth request failed" {
+		t.Fatalf("msg = %v, want OAuth request failed", rec["msg"])
+	}
+	if rec["level"] != "WARN" {
+		t.Fatalf("level = %v, want WARN", rec["level"])
+	}
+	if rec["http.request.method"] != http.MethodPost {
+		t.Fatalf("http.request.method = %v, want POST", rec["http.request.method"])
+	}
+	if rec["url.path"] != "/oauth/token" {
+		t.Fatalf("url.path = %v, want /oauth/token", rec["url.path"])
 	}
 }

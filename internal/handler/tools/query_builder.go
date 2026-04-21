@@ -3,11 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -51,41 +52,40 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
-	log.Debug("Tool called: signoz_execute_builder_query")
+	h.logger.DebugContext(ctx, "Tool called: signoz_execute_builder_query")
 
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		log.Warn("Invalid arguments payload type", zap.Any("type", req.Params.Arguments))
+		h.logger.WarnContext(ctx, "Invalid arguments payload type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError("invalid arguments payload"), nil
 	}
 
 	queryObj, ok := args["query"].(map[string]any)
 	if !ok {
-		log.Warn("Invalid query parameter type", zap.Any("type", args["query"]))
+		h.logger.WarnContext(ctx, "Invalid query parameter type", slog.Any("type", args["query"]))
 		return mcp.NewToolResultError("query parameter must be a JSON object"), nil
 	}
 
 	queryJSON, err := json.Marshal(queryObj)
 	if err != nil {
-		log.Error("Failed to marshal query object", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to marshal query object", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal query object: " + err.Error()), nil
 	}
 
 	var queryPayload types.QueryPayload
 	if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
-		log.Error("Failed to unmarshal query payload", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to unmarshal query payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
 	}
 
 	if err := queryPayload.Validate(); err != nil {
-		log.Error("Query validation failed", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Query validation failed", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("query validation error: " + err.Error()), nil
 	}
 
 	finalQueryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
-		log.Error("Failed to marshal validated query payload", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to marshal validated query payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal validated query payload: " + err.Error()), nil
 	}
 
@@ -95,10 +95,10 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	}
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
-		log.Error("Failed to execute query builder v5", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Failed to execute query builder v5", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	log.Debug("Successfully executed query builder v5")
+	h.logger.DebugContext(ctx, "Successfully executed query builder v5")
 	return mcp.NewToolResultText(string(data)), nil
 }

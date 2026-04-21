@@ -2,21 +2,22 @@ package segmentanalytics
 
 import (
 	"context"
+	"log/slog"
 
 	segment "github.com/segmentio/analytics-go/v3"
-	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types/analyticstypes"
 )
 
 type provider struct {
 	client segment.Client
-	logger *zap.Logger
+	logger *slog.Logger
 	stopC  chan struct{}
 }
 
-func New(logger *zap.Logger, cfg analytics.Config) (analytics.Analytics, error) {
+func New(logger *slog.Logger, cfg analytics.Config) (analytics.Analytics, error) {
 	client, err := segment.NewWithConfig(cfg.Segment.Key, segment.Config{
 		Logger: newSegmentLogger(logger),
 	})
@@ -37,23 +38,23 @@ func (p *provider) Start(_ context.Context) error {
 	return nil
 }
 
-func (p *provider) Stop(_ context.Context) error {
+func (p *provider) Stop(ctx context.Context) error {
 	if err := p.client.Close(); err != nil {
-		p.logger.Error("failed to close segment client", zap.Error(err))
+		p.logger.ErrorContext(ctx, "failed to close segment client", logpkg.ErrAttr(err))
 	}
 	close(p.stopC)
 	return nil
 }
 
-func (p *provider) Send(_ context.Context, messages ...analyticstypes.Message) {
+func (p *provider) Send(ctx context.Context, messages ...analyticstypes.Message) {
 	for _, msg := range messages {
 		if err := p.client.Enqueue(msg); err != nil {
-			p.logger.Error("failed to enqueue segment message", zap.Error(err))
+			p.logger.ErrorContext(ctx, "failed to enqueue segment message", logpkg.ErrAttr(err))
 		}
 	}
 }
 
-func (p *provider) TrackUser(_ context.Context, group, user, event string, properties map[string]any) {
+func (p *provider) TrackUser(ctx context.Context, group, user, event string, properties map[string]any) {
 	if properties == nil {
 		return
 	}
@@ -67,11 +68,13 @@ func (p *provider) TrackUser(_ context.Context, group, user, event string, prope
 			},
 		},
 	}); err != nil {
-		p.logger.Error("failed to enqueue TrackUser", zap.String("event", event), zap.Error(err))
+		p.logger.ErrorContext(ctx, "failed to enqueue TrackUser",
+			slog.String("event", event),
+			logpkg.ErrAttr(err))
 	}
 }
 
-func (p *provider) IdentifyUser(_ context.Context, group, user string, traits map[string]any) {
+func (p *provider) IdentifyUser(ctx context.Context, group, user string, traits map[string]any) {
 	if traits == nil {
 		return
 	}
@@ -79,13 +82,13 @@ func (p *provider) IdentifyUser(_ context.Context, group, user string, traits ma
 		UserId: user,
 		Traits: analyticstypes.NewTraitsFromMap(traits),
 	}); err != nil {
-		p.logger.Error("failed to enqueue IdentifyUser Identify", zap.Error(err))
+		p.logger.ErrorContext(ctx, "failed to enqueue IdentifyUser Identify", logpkg.ErrAttr(err))
 	}
 	if err := p.client.Enqueue(analyticstypes.Group{
 		UserId:  user,
 		GroupId: group,
 		Traits:  analyticstypes.NewTraits().Set("id", group),
 	}); err != nil {
-		p.logger.Error("failed to enqueue IdentifyUser Group", zap.Error(err))
+		p.logger.ErrorContext(ctx, "failed to enqueue IdentifyUser Group", logpkg.ErrAttr(err))
 	}
 }

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"go.uber.org/zap"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -21,7 +22,6 @@ type metricMetadata struct {
 }
 
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log := h.tenantLogger(ctx)
 	args := req.Params.Arguments.(map[string]any)
 
 	mqr, err := parseMetricsQueryArgs(args)
@@ -29,9 +29,9 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	log.Debug("Tool called: signoz_query_metrics",
-		zap.String("metricName", mqr.MetricName),
-		zap.String("metricType", mqr.MetricType))
+	h.logger.DebugContext(ctx, "Tool called: signoz_query_metrics",
+		slog.String("metricName", mqr.MetricName),
+		slog.String("metricType", mqr.MetricType))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -166,11 +166,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to build query payload: %s", err.Error())), nil
 	}
 
-	log.Debug("Executing metrics query", zap.String("payload", string(queryJSON)))
+	h.logger.DebugContext(ctx, "Executing metrics query", slog.String("payload", logpkg.TruncBody(queryJSON)))
 
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		log.Error("Metrics query failed", zap.Error(err))
+		h.logger.ErrorContext(ctx, "Metrics query failed", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %s", err.Error())), nil
 	}
 
