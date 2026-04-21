@@ -169,7 +169,7 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 		}
 		if signal != sourcePage {
 			return fmt.Errorf(
-				`Parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q. They must match.`,
+				`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
 				i, signal, sourcePage,
 			)
 		}
