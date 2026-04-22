@@ -161,6 +161,64 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(updateChannelTool, h.handleUpdateNotificationChannel)
+
+	getChannelTool := mcp.NewTool("signoz_get_notification_channel",
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithDescription("Get a single notification channel by ID (GET /api/v1/channels/{id}). Returns the full channel configuration including the embedded receiver config (slack/webhook/pagerduty/email/opsgenie/msteams)."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel.")),
+	)
+	s.AddTool(getChannelTool, h.handleGetNotificationChannel)
+
+	deleteChannelTool := mcp.NewTool("signoz_delete_notification_channel",
+		mcp.WithDestructiveHintAnnotation(true),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithDescription("Delete a notification channel by ID (DELETE /api/v1/channels/{id}). Irreversible. Confirm with the user before calling, and warn if the channel is referenced by existing alert rules."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel to delete.")),
+	)
+	s.AddTool(deleteChannelTool, h.handleDeleteNotificationChannel)
+}
+
+func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := req.Params.Arguments.(map[string]any)
+	id, _ := args["id"].(string)
+	if id == "" {
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required.`), nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_notification_channel", slog.String("id", id))
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	resp, err := client.GetNotificationChannel(ctx, id)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to get notification channel", slog.String("id", id), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(resp)), nil
+}
+
+func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := req.Params.Arguments.(map[string]any)
+	id, _ := args["id"].(string)
+	if id == "" {
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required.`), nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_delete_notification_channel", slog.String("id", id))
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := client.DeleteNotificationChannel(ctx, id); err != nil {
+		h.logger.ErrorContext(ctx, "Failed to delete notification channel", slog.String("id", id), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","id":%q}`, id)), nil
 }
 
 func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -192,7 +250,8 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 
 	// Summarize each channel to essential fields only (id, name, type, timestamps).
 	// The raw "data" field contains the full config (webhook URLs, API keys, templates)
-	// which bloats the response beyond token limits. We parse it only to extract the name.
+	// which bloats the response beyond token limits. Name lives on the top-level
+	// Channel field; if absent (older SigNoz), fall back to the nested data.name.
 	summarized := make([]any, 0, len(data))
 	for _, item := range data {
 		ch, ok := item.(map[string]any)
@@ -205,7 +264,9 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 			"createdAt": ch["createdAt"],
 			"updatedAt": ch["updatedAt"],
 		}
-		if dataStr, ok := ch["data"].(string); ok && dataStr != "" {
+		if name, ok := ch["name"].(string); ok && name != "" {
+			summary["name"] = name
+		} else if dataStr, ok := ch["data"].(string); ok && dataStr != "" {
 			var parsed map[string]any
 			if err := json.Unmarshal([]byte(dataStr), &parsed); err == nil {
 				summary["name"] = parsed["name"]
@@ -368,21 +429,30 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Step 1: Update the channel
-	updateResp, err := client.UpdateNotificationChannel(ctx, id, receiverJSON)
-	if err != nil {
+	// Step 1: Update the channel (204 No Content on success)
+	if err := client.UpdateNotificationChannel(ctx, id, receiverJSON); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update notification channel", slog.String("type", channelType), slog.String("name", name), slog.String("id", id), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to update notification channel: %s", err.Error())), nil
 	}
 
 	h.logger.InfoContext(ctx, "Notification channel updated", slog.String("type", channelType), slog.String("name", name), slog.String("id", id))
 
+	// Follow up with a GET so the tool result carries the current channel state —
+	// the PUT returns 204 with no body in the new API.
+	channelResp, getErr := client.GetNotificationChannel(ctx, id)
+	if getErr != nil {
+		h.logger.WarnContext(ctx, "Channel updated but follow-up GET failed", slog.String("id", id), logpkg.ErrAttr(getErr))
+	}
+
 	// Step 2: Test the channel
 	testErr := client.TestNotificationChannel(ctx, receiverJSON)
 
 	// Build combined response
 	result := map[string]any{
-		"channel": json.RawMessage(updateResp),
+		"id": id,
+	}
+	if len(channelResp) > 0 {
+		result["channel"] = json.RawMessage(channelResp)
 	}
 
 	if testErr != nil {

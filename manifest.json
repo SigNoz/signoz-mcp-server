@@ -43,19 +43,27 @@
     },
     {
       "name": "signoz_list_alerts",
-      "description": "List alert rules with optional filtering by name, state, severity, or type"
+      "description": "List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) with optional matcher/receiver filtering"
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get details of a specific alert rule by ID"
+      "description": "Get an alert rule definition by ID via GET /api/v2/rules/{ruleId}. Response shape differs by server version (v2 Rule vs v1 GettableRule)"
     },
     {
       "name": "signoz_get_alert_history",
-      "description": "Get alert history timeline for a specific rule with optional state filter"
+      "description": "Get alert state history timeline for a specific rule with optional state filter"
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert rule using SigNoz v2alpha1 alert schema"
+      "description": "Create a new alert rule via POST /api/v2/rules. Threshold/PromQL rules use v2alpha1; anomaly rules use the v1 schema (top-level evalWindow/frequency, condition-level op/matchType/target/algorithm/seasonality)"
+    },
+    {
+      "name": "signoz_update_alert",
+      "description": "Update an existing alert rule by UUIDv7 via PUT /api/v2/rules/{ruleId}"
+    },
+    {
+      "name": "signoz_delete_alert",
+      "description": "Delete an alert rule by UUIDv7 via DELETE /api/v2/rules/{ruleId}"
     },
     {
       "name": "signoz_list_dashboards",
@@ -128,6 +136,14 @@
     {
       "name": "signoz_update_notification_channel",
       "description": "Update an existing notification channel and send a test notification"
+    },
+    {
+      "name": "signoz_get_notification_channel",
+      "description": "Get a single notification channel by ID"
+    },
+    {
+      "name": "signoz_delete_notification_channel",
+      "description": "Delete a notification channel by ID"
     }
   ],
   "compatibility": {

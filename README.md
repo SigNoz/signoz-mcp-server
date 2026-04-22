@@ -319,16 +319,20 @@ MCP_SERVER_PORT=8000 \
 
 ## Available Tools
 
+> **SigNoz compatibility:** alert-rule and notification-channel tools target the new convention: `/api/v2/rules/*` for rules and the render-envelope `/api/v1/channels/*` routes. These require a SigNoz release that includes SigNoz/signoz#10941, #10957, #10995, and #10997. Older deployments will see HTTP 404 from the affected tools.
+
 | Tool | Description |
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
-| `signoz_list_alerts` | List alerts with filtering and pagination |
-| `signoz_get_alert` | Get details of a specific alert rule |
-| `signoz_get_alert_history` | Get alert history timeline for a rule |
-| `signoz_create_alert` | Create an alert rule using v2 schema validation |
+| `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
+| `signoz_get_alert` | Get an alert rule definition by ID via GET /api/v2/rules/{ruleId} |
+| `signoz_get_alert_history` | Get alert state history timeline for a rule |
+| `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
+| `signoz_update_alert` | Update an alert rule by UUIDv7 via PUT /api/v2/rules/{ruleId} |
+| `signoz_delete_alert` | Delete an alert rule by UUIDv7 via DELETE /api/v2/rules/{ruleId} |
 | `signoz_list_dashboards` | List all dashboards with summaries |
 | `signoz_get_dashboard` | Get full dashboard configuration |
 | `signoz_create_dashboard` | Create a new dashboard |
@@ -345,8 +349,10 @@ MCP_SERVER_PORT=8000 \
 | `signoz_get_trace_details` | Get full trace with all spans |
 | `signoz_execute_builder_query` | Execute a raw Query Builder v5 query |
 | `signoz_list_notification_channels` | List notification channels |
+| `signoz_get_notification_channel` | Get a single notification channel by ID |
 | `signoz_create_notification_channel` | Create a notification channel and send a test notification |
 | `signoz_update_notification_channel` | Update a notification channel and send a test notification |
+| `signoz_delete_notification_channel` | Delete a notification channel by ID |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
@@ -387,13 +393,14 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 
 #### `signoz_list_alerts`
 
-Lists all active alerts from SigNoz.
+Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_get_alert` with a `ruleId` for rule definitions, or `signoz_get_alert_history` for the state timeline.
 
 #### `signoz_get_alert`
 
-Gets details of a specific alert rule.
+Gets the rule definition for an alert (`GET /api/v2/rules/{ruleId}`).
 
-- **Parameters**: `ruleId` (required) - Alert rule ID
+- **Parameters**: `ruleId` (required) - Alert rule ID (UUIDv7 on v2-capable servers).
+- **Note**: Response shape depends on the SigNoz server version. Post-#10997 servers return the canonical `Rule` type with `createdAt/updatedAt/createdBy/updatedBy`; older servers return `GettableRule` with `createAt/updateAt/createBy/updateBy` (no 'd').
 
 #### `signoz_list_dashboards`
 
@@ -561,10 +568,28 @@ Gets trace information including all spans and metadata.
 
 #### `signoz_create_alert`
 
-Create a new alert rule in SigNoz using the v2alpha1 schema.
+Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 
 - **Parameters**: JSON payload matching the SigNoz alert rule schema.
-- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` before composing payloads.
+- **Schema varies by `ruleType`**:
+  - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
+  - `anomaly_rule` → **v1** schema: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
+- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (mirrors the ten canonical SigNoz PR #11023 payloads) before composing payloads.
+
+#### `signoz_update_alert`
+
+Update an existing alert rule via `PUT /api/v2/rules/{ruleId}`. Replaces the full rule configuration — fetch the current rule with `signoz_get_alert` first and merge changes on top of it.
+
+- **Parameters**:
+  - `ruleId` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alerts` / `signoz_get_alert`).
+  - Plus all fields of the alert rule schema (same shape as `signoz_create_alert`).
+
+#### `signoz_delete_alert`
+
+Delete an alert rule via `DELETE /api/v2/rules/{ruleId}`. Irreversible — confirm with the user first.
+
+- **Parameters**:
+  - `ruleId` (required) - UUIDv7 of the rule to delete. The server rejects non-UUIDv7 values with `invalid_input`.
 
 #### `signoz_delete_dashboard`
 
@@ -598,6 +623,20 @@ Update an existing notification channel and send a test notification.
   - `type` (required) - Channel type
   - `name` (required) - Channel name
   - Full channel configuration fields for the selected channel type
+
+#### `signoz_get_notification_channel`
+
+Get a single notification channel by ID (`GET /api/v1/channels/{id}`).
+
+- **Parameters**:
+  - `id` (required) - Notification channel ID
+
+#### `signoz_delete_notification_channel`
+
+Delete a notification channel by ID (`DELETE /api/v1/channels/{id}`). Irreversible — warn if alert rules still reference this channel.
+
+- **Parameters**:
+  - `id` (required) - Notification channel ID
 
 #### `signoz_execute_builder_query`
 

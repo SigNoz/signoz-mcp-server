@@ -661,9 +661,12 @@ func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
 	var capturedID string
 	var capturedBody []byte
 	mock := &client.MockClient{
-		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) error {
 			capturedID = id
 			capturedBody = receiverJSON
+			return nil
+		},
+		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
 			return json.RawMessage(`{"data":{"id":"1","name":"my-slack","type":"slack"}}`), nil
 		},
 		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
@@ -736,8 +739,8 @@ func TestHandleUpdateNotificationChannel_MissingID(t *testing.T) {
 
 func TestHandleUpdateNotificationChannel_UpdateError(t *testing.T) {
 	mock := &client.MockClient{
-		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
-			return nil, fmt.Errorf("channel not found")
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) error {
+			return fmt.Errorf("channel not found")
 		},
 	}
 	h := newTestHandler(mock)
@@ -759,7 +762,10 @@ func TestHandleUpdateNotificationChannel_UpdateError(t *testing.T) {
 
 func TestHandleUpdateNotificationChannel_TestFails(t *testing.T) {
 	mock := &client.MockClient{
-		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) error {
+			return nil
+		},
+		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
 			return json.RawMessage(`{"data":{"id":"1","name":"bad-slack","type":"slack"}}`), nil
 		},
 		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
@@ -789,5 +795,114 @@ func TestHandleUpdateNotificationChannel_TestFails(t *testing.T) {
 	}
 	if !strings.Contains(text, "webhook returned 403 forbidden") {
 		t.Errorf("expected test error message in response, got: %s", text)
+	}
+}
+
+// --- Get / Delete notification channel tests ---
+
+func TestHandleGetNotificationChannel(t *testing.T) {
+	var capturedID string
+	mock := &client.MockClient{
+		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			capturedID = id
+			return json.RawMessage(`{"status":"success","data":{"id":"42","name":"primary","type":"slack","data":"{}"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "42"})
+
+	result, err := h.handleGetNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %v", result.Content)
+	}
+	if capturedID != "42" {
+		t.Errorf("expected id=42 forwarded to client, got %s", capturedID)
+	}
+}
+
+func TestHandleGetNotificationChannel_MissingID(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_notification_channel", map[string]any{})
+
+	result, err := h.handleGetNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for missing id")
+	}
+}
+
+func TestHandleDeleteNotificationChannel(t *testing.T) {
+	var capturedID string
+	mock := &client.MockClient{
+		DeleteNotificationChannelFn: func(ctx context.Context, id string) error {
+			capturedID = id
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "42"})
+
+	result, err := h.handleDeleteNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %v", result.Content)
+	}
+	if capturedID != "42" {
+		t.Errorf("expected id=42 forwarded to client, got %s", capturedID)
+	}
+}
+
+func TestHandleDeleteNotificationChannel_ClientError(t *testing.T) {
+	mock := &client.MockClient{
+		DeleteNotificationChannelFn: func(ctx context.Context, id string) error {
+			return fmt.Errorf("channel referenced by rule xyz")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "42"})
+
+	result, err := h.handleDeleteNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result from client error")
+	}
+}
+
+// Verify the list handler picks name from the top-level Channel field
+// (post-#10941 Channel type has Name at the top level, not just nested in data).
+func TestHandleListNotificationChannels_TopLevelName(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[{"id":"1","name":"ops-slack","type":"slack","data":"{}"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_notification_channels", map[string]any{})
+
+	result, err := h.handleListNotificationChannels(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %v", result.Content)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	data := resp["data"].([]any)
+	if got := data[0].(map[string]any)["name"]; got != "ops-slack" {
+		t.Errorf("expected name=ops-slack read from top-level field, got %v", got)
 	}
 }

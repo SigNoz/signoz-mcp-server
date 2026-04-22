@@ -863,3 +863,177 @@ func TestHandleCreateAlert_NoChannelsExist(t *testing.T) {
 		t.Error("expected error to suggest creating a new channel")
 	}
 }
+
+// --- Update alert tests ---
+
+const validRuleUUIDv7 = "0196634d-5d66-75c4-b778-e317f49dab7a"
+
+func TestHandleUpdateAlert(t *testing.T) {
+	var capturedID string
+	var capturedJSON []byte
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+		UpdateAlertRuleFn: func(ctx context.Context, ruleID string, alertJSON []byte) error {
+			capturedID = ruleID
+			capturedJSON = alertJSON
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_alert", map[string]any{
+		"ruleId":    validRuleUUIDv7,
+		"alert":     "Updated Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "critical",
+						"target":    float64(200),
+						"op":        "1",
+						"matchType": "1",
+						"channels":  []any{"slack-alerts"},
+					},
+				},
+			},
+		},
+	})
+
+	result, err := h.handleUpdateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if capturedID != validRuleUUIDv7 {
+		t.Errorf("expected ruleId=%s, got %s", validRuleUUIDv7, capturedID)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(capturedJSON, &parsed); err != nil {
+		t.Fatalf("failed to parse captured JSON: %v", err)
+	}
+	if _, present := parsed["ruleId"]; present {
+		t.Error("ruleId should be stripped from the rule body before sending")
+	}
+}
+
+func TestHandleUpdateAlert_RejectsNonUUIDv7(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_alert", map[string]any{
+		"ruleId": "not-a-uuid",
+		"alert":  "x",
+	})
+
+	result, err := h.handleUpdateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result for non-UUIDv7 ruleId")
+	}
+	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, "UUIDv7") {
+		t.Errorf("expected UUIDv7 error message, got: %s", result.Content[0].(mcp.TextContent).Text)
+	}
+}
+
+func TestHandleUpdateAlert_MissingRuleID(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_alert", map[string]any{
+		"alert": "x",
+	})
+
+	result, err := h.handleUpdateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result for missing ruleId")
+	}
+}
+
+// --- Delete alert tests ---
+
+func TestHandleDeleteAlert(t *testing.T) {
+	var capturedID string
+	mock := &client.MockClient{
+		DeleteAlertRuleFn: func(ctx context.Context, ruleID string) error {
+			capturedID = ruleID
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_delete_alert", map[string]any{
+		"ruleId": validRuleUUIDv7,
+	})
+
+	result, err := h.handleDeleteAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if capturedID != validRuleUUIDv7 {
+		t.Errorf("expected DELETE ruleId=%s, got %s", validRuleUUIDv7, capturedID)
+	}
+}
+
+func TestHandleDeleteAlert_RejectsNonUUIDv7(t *testing.T) {
+	mock := &client.MockClient{}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_delete_alert", map[string]any{
+		"ruleId": "abc123",
+	})
+
+	result, err := h.handleDeleteAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result for non-UUIDv7 ruleId")
+	}
+}
+
+func TestHandleDeleteAlert_ClientError(t *testing.T) {
+	mock := &client.MockClient{
+		DeleteAlertRuleFn: func(ctx context.Context, ruleID string) error {
+			return fmt.Errorf("rule not found")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_delete_alert", map[string]any{
+		"ruleId": validRuleUUIDv7,
+	})
+
+	result, err := h.handleDeleteAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result from client error")
+	}
+}

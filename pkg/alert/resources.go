@@ -5,13 +5,17 @@ const Instructions = `# SigNoz Alert Rule — Instructions
 
 ## Overview
 An alert rule monitors a signal (metrics, logs, traces, or exceptions) and fires when a condition is met.
-The alert is created via POST /api/v1/rules. All alerts use v2alpha1 schema with structured thresholds and evaluation.
+The alert is created via POST /api/v2/rules.
+
+Schemas supported:
+- **v2alpha1** for threshold_rule and promql_rule — structured thresholds + evaluation + notificationSettings. Applied automatically.
+- **v1** for anomaly_rule — top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
 ## CRITICAL: Before Creating an Alert
-1. ALWAYS read signoz://alert/examples for complete working payloads
-2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects
-3. Use signoz_get_field_keys to discover available attributes for filters and groupBy
-4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first
+1. ALWAYS read signoz://alert/examples for complete working payloads (mirrors the ten canonical examples from SigNoz PR #11023).
+2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects.
+3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
+4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first.
 
 ## Alert Types (alertType)
 | Value | Signal | Use When |
@@ -22,51 +26,75 @@ The alert is created via POST /api/v1/rules. All alerts use v2alpha1 schema with
 | EXCEPTIONS_BASED_ALERT | exceptions | Monitoring exception counts (typically uses clickhouse_sql) |
 
 ## Rule Types (ruleType)
-| Value | Description | Constraints |
-|-------|-------------|-------------|
-| threshold_rule | Compare metric against a static threshold | Works with all alert types |
-| promql_rule | Evaluate a PromQL expression | queryType must be "promql" |
-| anomaly_rule | Detect anomalies using seasonal decomposition | Only with METRIC_BASED_ALERT |
+| Value | Schema | Description | Constraints |
+|-------|--------|-------------|-------------|
+| threshold_rule | v2alpha1 | Compare series against a static threshold | Works with all alert types |
+| promql_rule | v2alpha1 | Evaluate a PromQL expression | queryType must be "promql" |
+| anomaly_rule | **v1** | Detect anomalies via an anomaly function (e.g. z-score) | Only with METRIC_BASED_ALERT; omit thresholds, set top-level evalWindow/frequency, set condition.op/matchType/target/algorithm/seasonality |
 
 ## Composite Query Structure
 
-### Query Format
-The condition.compositeQuery uses the v5 query format:
+condition.compositeQuery uses the v5 query format:
 - queryType: "builder" | "promql" | "clickhouse_sql"
 - panelType: always "graph" for alerts (auto-set)
+- unit: series unit (used for value formatting and target-unit conversion)
 - queries: array of query objects
 
-### Builder Query Format
-Each query in the queries array has:
-- type: "builder_query" (for data queries) or "builder_formula" (for formulas like A/B*100)
-- spec: query specification
+### Query envelope type (queries[].type)
+The envelope type must match compositeQuery.queryType:
+| queryType | Accepted envelope types |
+|-----------|-------------------------|
+| builder | builder_query, builder_formula, builder_trace_operator |
+| promql | promql (or builder_formula when composing with another promql query) |
+| clickhouse_sql | clickhouse_sql (or builder_formula) |
 
-For builder_query spec:
-- name: query identifier (A, B, C...)
+### Builder query spec (builder_query)
+- name: query identifier (A, B, C, …)
 - signal: "metrics" | "logs" | "traces" (must match alertType)
-- aggregations: [{expression: "count()"}, {expression: "avg(duration)"}]
+- stepInterval: interval in seconds (60 for most alerts)
+- aggregations: see "Aggregation shapes" below
 - filter: {expression: "service.name = 'frontend' AND http.status_code >= 500"}
-- groupBy: [{name: "service.name", fieldContext: "resource", fieldDataType: "string"}]
-- stepInterval: interval in seconds (use 60 for most alerts)
+- groupBy: [{name, fieldContext: "resource" | "attribute", fieldDataType}]
+- functions: post-query transforms. Required for anomaly_rule: [{name: "anomaly", args: [{name: "z_score_threshold", value: 2}]}]
+- disabled: true when the query is used only as an input to a formula
 
-For promql/clickhouse_sql queries:
+### PromQL / ClickHouse query spec (envelope type=promql or clickhouse_sql)
 - name: query identifier
-- query: the PromQL or SQL string
+- query: the PromQL or SQL string (required)
 - legend: legend template
 - disabled: false
 
-### Aggregation Expressions
-Common expressions for the aggregations field:
-- count() — count of items
-- avg(fieldName) — average of a field
-- sum(fieldName) — sum of a field
-- min(fieldName) / max(fieldName)
-- p50(fieldName) / p75(fieldName) / p90(fieldName) / p95(fieldName) / p99(fieldName)
-- count_distinct(fieldName) — count of unique values
-- rate(fieldName) — rate of change
+### Formula query spec (envelope type=builder_formula)
+- name: formula identifier (F1, F2, …)
+- expression: math expression referencing other query names (e.g. "(A / B) * 100"). Supports +, -, *, /, and functions like abs(), sqrt(), log(), exp()
+- legend: legend template
+- Set selectedQueryName to the formula name (e.g. "F1") so the alert triggers on the formula result
 
-### Filter Expressions
-The filter.expression field uses SigNoz query syntax:
+## Aggregation shapes
+
+### Metrics signal — object shape
+Use this shape when spec.signal = "metrics":
+
+` + "```" + `json
+"aggregations": [
+  {"metricName": "k8s.pod.cpu_request_utilization", "timeAggregation": "avg", "spaceAggregation": "max"}
+]
+` + "```" + `
+
+- metricName: the metric you're querying.
+- timeAggregation: per-series time aggregation. Common: avg, max, min, sum, rate, increase, count, count_distinct, latest. Default by metric type: gauge→avg, cumulative counter→rate, delta counter→sum.
+- spaceAggregation: cross-series aggregation. Common: sum, avg, min, max, count. For histograms: p50, p75, p90, p95, p99.
+
+### Logs / traces signal — expression shape
+Use this shape when spec.signal = "logs" or "traces":
+
+` + "```" + `json
+"aggregations": [{"expression": "count()"}]
+` + "```" + `
+
+Common expressions: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50/p75/p90/p95/p99(duration_nano).
+
+### Filter expressions
 - Equality: service.name = 'frontend'
 - Comparison: http.status_code >= 500
 - Pattern: body CONTAINS 'timeout'
@@ -75,37 +103,15 @@ The filter.expression field uses SigNoz query syntax:
 - IN: severity_text IN ('ERROR', 'WARN', 'FATAL')
 - EXISTS: trace_id EXISTS
 
-## Formulas (builder_formula)
-
-Formulas combine multiple queries using math expressions. Add a builder_formula entry in the queries array:
-
-` + "```" + `json
-{
-  "type": "builder_formula",
-  "spec": {
-    "name": "F1",
-    "expression": "A * 100 / B"
-  }
-}
-` + "```" + `
-
-- name: formula identifier (F1, F2, etc.)
-- expression: math expression referencing other query names (A, B, C). Supports +, -, *, /, and functions like abs(), sqrt(), log(), exp()
-- Set selectedQueryName to the formula name (e.g. "F1") so the alert triggers on the formula result
-
 ## Units
 
-Set compositeQuery.unit to specify the unit of the queried data (Y-axis). This is used for:
-- Value formatting in alert messages ({{$value}})
-- Unit conversion when targetUnit on a threshold differs from the query unit
+Set compositeQuery.unit to specify the unit of the queried data (Y-axis). This drives value formatting in alert messages ({{$value}}) and unit conversion when threshold targetUnit differs.
 
-Common units: percent, ms, s, ns, bytes, kbytes, mbytes, gbytes, reqps, ops, cps
+Common units: percent, percentunit, ms, s, ns, bytes, kbytes, mbytes, gbytes, reqps, ops, cps.
 
-When compositeQuery.unit and threshold targetUnit differ, SigNoz auto-converts during evaluation (e.g. query returns bytes but threshold is in gbytes).
+## Threshold Configuration (v2alpha1 — threshold_rule & promql_rule)
 
-## Threshold Configuration
-
-Use condition.thresholds to define alert thresholds. Each threshold level can route to different channels:
+condition.thresholds defines one or more routing tiers. Each tier can route to different channels:
 
 ` + "```" + `json
 "thresholds": {
@@ -114,92 +120,100 @@ Use condition.thresholds to define alert thresholds. Each threshold level can ro
     {
       "name": "critical",
       "target": 1000,
-      "targetUnit": "",
-      "recoveryTarget": null,
-      "matchType": "1",
-      "op": "1",
+      "op": "above",
+      "matchType": "all_the_times",
       "channels": ["pagerduty-oncall", "slack-alerts"]
     },
     {
       "name": "warning",
       "target": 100,
-      "targetUnit": "",
-      "recoveryTarget": null,
-      "matchType": "1",
-      "op": "1",
+      "op": "above",
+      "matchType": "at_least_once",
       "channels": ["slack-alerts"]
     }
   ]
 }
 ` + "```" + `
 
-### Threshold Fields
-- name: severity level (critical, warning, or info)
-- target: numeric threshold value
-- targetUnit: unit of the target value (e.g. ms, percent, bytes). Auto-converted to compositeQuery.unit during evaluation
-- recoveryTarget: value for recovery (null if not needed)
-- matchType: 1=at_least_once, 2=all_the_times, 3=on_average, 4=in_total, 5=last
-- op: 1=above, 2=below, 3=equal, 4=not_equal
-- channels: notification channel names for this threshold level (use signoz_list_notification_channels to discover available names)
+### Threshold fields
+- **name**: tier name — critical, error, warning, or info. Acts as the routing label: alerts carry threshold_name equal to this value. Set labels.severity to match your highest tier.
+- **target**: numeric threshold value (required).
+- **targetUnit**: unit of the target (e.g. ms, percent, s, bytes). Auto-converted to compositeQuery.unit during evaluation.
+- **recoveryTarget**: hysteresis value to avoid flapping (e.g. target=80%, recoveryTarget=75%). null uses the target itself as the recovery point.
+- **matchType**: canonical at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total).
+- **op**: canonical above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=.
+- **channels**: notification channel names for this tier. Discover via signoz_list_notification_channels. Ignored when notificationSettings.usePolicy is true.
 
-## Evaluation Configuration
+## Evaluation (v2alpha1)
 
-Use the evaluation field to control how often the alert is checked:
+evaluation controls how the rule is evaluated:
 
 ` + "```" + `json
 "evaluation": {
   "kind": "rolling",
-  "spec": {
-    "evalWindow": "5m0s",
-    "frequency": "1m0s"
-  }
+  "spec": {"evalWindow": "5m", "frequency": "1m"}
 }
 ` + "```" + `
 
-- evalWindow: how long the condition must persist (5m0s, 10m0s, 15m0s, 1h0m0s, 4h0m0s, 24h0m0s)
-- frequency: how often to evaluate (1m0s, 5m0s)
-- Auto-generated with defaults (5m0s window, 1m0s frequency) if omitted
+- evalWindow: how long the condition must persist (e.g. 5m, 15m, 30m, 1h, 4h, 24h).
+- frequency: how often to evaluate (e.g. 1m, 5m, 15m).
+- Auto-generated (5m window, 1m frequency) if omitted for threshold/promql rules.
 
-## Notification Settings
-
-Controls grouping and re-notification:
+## Notification Settings (v2alpha1)
 
 ` + "```" + `json
 "notificationSettings": {
-  "groupBy": ["service.name"],
+  "groupBy": ["service.name", "deployment.environment"],
+  "newGroupEvalDelay": "2m",
   "renotify": {
     "enabled": true,
-    "interval": "4h0m0s",
+    "interval": "30m",
     "alertStates": ["firing", "nodata"]
   },
-  "usePolicy": true
+  "usePolicy": false
 }
 ` + "```" + `
 
-- groupBy: fields to group notifications by (reduces noise)
-- renotify: re-send alerts at interval for specified states
-- usePolicy: enable routing policy matching based on labels
+- **groupBy**: fields to group notifications by (reduces noise).
+- **newGroupEvalDelay**: Go duration string. Grace period during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online.
+- **renotify.enabled**: whether to re-send alerts at interval.
+- **renotify.interval**: re-notify interval (e.g. 15m, 30m, 1h, 4h).
+- **renotify.alertStates**: accepted values are firing and nodata. Any other value is rejected.
+- **usePolicy**: routing mode. false (default) = deliver to the channels listed in each threshold entry. true = ignore per-threshold channels and route via the org-level notification policy matching on labels.
 
 ## Labels & Routing
-- labels.severity: MUST be set (info, warning, or critical) — auto-defaults to warning
-- Additional labels like team, service, environment enable routing policies
-- preferredChannels: fallback notification channel names (thresholds.channels takes priority). Use signoz_list_notification_channels to discover available names
-- Set usePolicy: true in notificationSettings to enable label-based routing
+
+- labels.severity: MUST be one of critical, error, warning, info. When thresholds is used, threshold.name is the routing tier — set labels.severity to the highest tier the rule carries.
+- Additional labels like team, service, environment enable routing policies.
+- preferredChannels: fallback notification channel names (thresholds.channels takes priority).
+- Set usePolicy: true in notificationSettings to delegate routing to org-level policies.
 
 ## Annotations
-- Use {{$value}} for the current metric value
-- Use {{$threshold}} for the threshold value
-- Use {{$labels.key}} for label values
-- Common annotations: description, summary, runbook
+- Use {{$value}} for the current metric value.
+- Use {{$threshold}} for the threshold value.
+- Use {{$labels.key}} for label values (e.g. {{$labels.k8s_pod_name}}).
+- Common annotations: description, summary, runbook.
 
-## Anomaly Alerts (ruleType: anomaly_rule)
-- Must use alertType: METRIC_BASED_ALERT
-- Set condition.algorithm: "zscore"
-- Set condition.seasonality: "hourly" | "daily" | "weekly"
-- target in thresholds is the Z-score threshold (e.g., 3 for 3 standard deviations)
-- op should be "1" (above) for standard anomaly detection
+## Anomaly Alerts (ruleType: anomaly_rule — v1 schema)
+Anomaly rules use the **v1 schema** today. Do NOT set thresholds, evaluation, notificationSettings, or schemaVersion.
 
-## Auto-Applied Defaults
+Required fields:
+- alertType: METRIC_BASED_ALERT
+- ruleType: anomaly_rule
+- **evalWindow** (top-level): e.g. 24h
+- **frequency** (top-level): e.g. 3h
+- condition.compositeQuery: normal builder query with spec.functions carrying an anomaly function, e.g. [{name: "anomaly", args: [{name: "z_score_threshold", value: 2}]}]
+- condition.op / condition.matchType / condition.target: same accepted values as threshold.op / matchType / target. Applied to the anomaly score.
+- condition.algorithm: e.g. "standard" (z-score based).
+- condition.seasonality: hourly, daily, or weekly.
+- condition.requireMinPoints + condition.requiredNumPoints are recommended to guard against noisy intervals.
+
+See signoz://alert/examples → "metric_anomaly" for a complete payload.
+
+## Absent-data alerting
+Set condition.alertOnAbsent=true to fire when no series is returned. condition.absentFor is in **minutes** (equivalent to consecutive evaluation cycles when frequency is 1m). Example: absentFor=15 fires after 15 minutes of no data.
+
+## Auto-Applied Defaults (threshold_rule / promql_rule only)
 - version → "v5"
 - schemaVersion → "v2alpha1"
 - evaluation → {kind: "rolling", spec: {evalWindow: "5m0s", frequency: "1m0s"}}
@@ -209,26 +223,36 @@ Controls grouping and re-notification:
 - source → "mcp"
 - labels.severity → "warning" (if not set)
 - annotations → default description and summary templates
+
+anomaly_rule: none of the above defaults are applied automatically — you must supply evalWindow, frequency, and the condition fields yourself.
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.
-const Examples = `# SigNoz Alert Rule — Examples
+// The ten examples below mirror the canonical payloads in SigNoz PR #11023
+// (pkg/apiserver/signozapiserver/ruler_examples.go). Keep this list in sync
+// with upstream when that file changes.
+const Examples = `# SigNoz Alert Rule — Examples (mirrors SigNoz PR #11023)
 
-All examples use v2alpha1 schema. Fields like schemaVersion, evaluation, and notificationSettings
-are auto-generated if omitted, but shown here for clarity.
+These examples mirror the canonical payloads in SigNoz PR #11023
+(pkg/apiserver/signozapiserver/ruler_examples.go). Threshold and PromQL rules
+use v2alpha1; the anomaly example uses the v1 shape.
 
-## Example 1: Metrics Threshold Alert
-Alert when average CPU usage exceeds 80%.
+## 1. metric_threshold_single — metric threshold, single builder query
+Fires when a pod consumes more than 80% of its requested CPU for the whole evaluation window.
 
 ` + "```" + `json
 {
-  "alert": "High CPU Usage",
+  "alert": "Pod CPU above 80% of request",
   "alertType": "METRIC_BASED_ALERT",
+  "description": "CPU usage for api-service pods exceeds 80% of the requested CPU",
   "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
   "condition": {
     "compositeQuery": {
       "queryType": "builder",
       "panelType": "graph",
+      "unit": "percentunit",
       "queries": [
         {
           "type": "builder_query",
@@ -236,18 +260,13 @@ Alert when average CPU usage exceeds 80%.
             "name": "A",
             "signal": "metrics",
             "stepInterval": 60,
-            "aggregations": [
-              {
-                "metricName": "system.cpu.utilization",
-                "timeAggregation": "avg",
-                "spaceAggregation": "avg"
-              }
-            ],
-            "filter": {"expression": ""},
+            "aggregations": [{"metricName": "k8s.pod.cpu_request_utilization", "timeAggregation": "avg", "spaceAggregation": "max"}],
+            "filter": {"expression": "k8s.deployment.name = 'api-service'"},
             "groupBy": [
-              {"name": "host.name", "fieldContext": "resource", "fieldDataType": "string"}
+              {"name": "k8s.pod.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}
             ],
-            "having": {"expression": ""}
+            "legend": "{{k8s.pod.name}} ({{deployment.environment}})"
           }
         }
       ]
@@ -256,386 +275,34 @@ Alert when average CPU usage exceeds 80%.
     "thresholds": {
       "kind": "basic",
       "spec": [
-        {
-          "name": "critical",
-          "target": 90,
-          "targetUnit": "percent",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1",
-          "channels": ["pagerduty-infra", "slack-infra"]
-        },
-        {
-          "name": "warning",
-          "target": 80,
-          "targetUnit": "percent",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1",
-          "channels": ["slack-infra"]
-        }
+        {"name": "critical", "op": "above", "matchType": "all_the_times", "target": 0.8, "channels": ["slack-platform", "pagerduty-oncall"]}
       ]
     }
   },
-  "labels": {
-    "severity": "critical",
-    "team": "infrastructure"
-  },
-  "annotations": {
-    "description": "CPU usage is {{$value}}% on host {{$labels.host_name}}, exceeding threshold of {{$threshold}}%",
-    "summary": "High CPU usage detected"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
-    }
-  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "15m", "frequency": "1m"}},
   "notificationSettings": {
-    "groupBy": ["host.name"],
-    "renotify": {
-      "enabled": true,
-      "interval": "4h0m0s",
-      "alertStates": ["firing"]
-    }
-  }
-}
-` + "```" + `
-
-## Example 2: Logs Alert with Multi-Threshold Routing
-Alert on high error log volume with different thresholds routing to different channels.
-
-` + "```" + `json
-{
-  "alert": "High Error Log Volume",
-  "alertType": "LOGS_BASED_ALERT",
-  "ruleType": "threshold_rule",
-  "condition": {
-    "compositeQuery": {
-      "queryType": "builder",
-      "panelType": "graph",
-      "queries": [
-        {
-          "type": "builder_query",
-          "spec": {
-            "name": "A",
-            "signal": "logs",
-            "aggregations": [
-              {"expression": "count()"}
-            ],
-            "filter": {"expression": "severity_text IN ('ERROR', 'FATAL')"},
-            "groupBy": [
-              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"}
-            ],
-            "having": {"expression": ""}
-          }
-        }
-      ]
-    },
-    "selectedQueryName": "A",
-    "thresholds": {
-      "kind": "basic",
-      "spec": [
-        {
-          "name": "critical",
-          "target": 1000,
-          "targetUnit": "",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1",
-          "channels": ["pagerduty-oncall", "slack-alerts"]
-        },
-        {
-          "name": "warning",
-          "target": 100,
-          "targetUnit": "",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1",
-          "channels": ["slack-alerts"]
-        }
-      ]
-    }
+    "groupBy": ["k8s.pod.name", "deployment.environment"],
+    "renotify": {"enabled": true, "interval": "4h", "alertStates": ["firing"]}
   },
-  "labels": {
-    "severity": "critical",
-    "team": "backend"
-  },
+  "labels": {"severity": "critical", "team": "platform"},
   "annotations": {
-    "description": "Error log count for {{$labels.service_name}} is {{$value}}, threshold: {{$threshold}}",
-    "summary": "High error log volume"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
-    }
-  },
-  "notificationSettings": {
-    "groupBy": ["service.name"],
-    "renotify": {
-      "enabled": true,
-      "interval": "4h0m0s",
-      "alertStates": ["firing"]
-    },
-    "usePolicy": true
+    "description": "Pod {{$k8s.pod.name}} CPU is at {{$value}} of request in {{$deployment.environment}}.",
+    "summary": "Pod CPU above {{$threshold}} of request"
   }
 }
 ` + "```" + `
 
-## Example 3: Traces Alert (Latency Monitoring)
-Alert when p99 latency exceeds 2 seconds for any service.
+## 2. metric_threshold_formula — metric threshold with a builder_formula
+Computes disk utilization as (1 - available/capacity) * 100 by combining two disabled base queries with a builder_formula. The formula emits 0-100, so compositeQuery.unit is set to "percent" and the target is a bare number.
 
 ` + "```" + `json
 {
-  "alert": "High P99 Latency",
-  "alertType": "TRACES_BASED_ALERT",
-  "ruleType": "threshold_rule",
-  "condition": {
-    "compositeQuery": {
-      "queryType": "builder",
-      "panelType": "graph",
-      "queries": [
-        {
-          "type": "builder_query",
-          "spec": {
-            "name": "A",
-            "signal": "traces",
-            "stepInterval": 60,
-            "aggregations": [
-              {"expression": "p99(durationNano)"}
-            ],
-            "filter": {"expression": ""},
-            "groupBy": [
-              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
-              {"name": "name", "fieldDataType": "string"}
-            ],
-            "having": {"expression": ""}
-          }
-        }
-      ]
-    },
-    "selectedQueryName": "A",
-    "thresholds": {
-      "kind": "basic",
-      "spec": [
-        {
-          "name": "warning",
-          "target": 2000000000,
-          "targetUnit": "ns",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1"
-        }
-      ]
-    }
-  },
-  "labels": {
-    "severity": "warning"
-  },
-  "annotations": {
-    "description": "P99 latency for {{$labels.service_name}} {{$labels.name}} is {{$value}}ns (threshold: {{$threshold}}ns)",
-    "summary": "High latency detected"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
-    }
-  }
-}
-` + "```" + `
-
-## Example 4: PromQL Alert
-Alert using a PromQL expression for request error rate.
-
-` + "```" + `json
-{
-  "alert": "High Error Rate",
+  "alert": "PersistentVolume above 80% utilization",
   "alertType": "METRIC_BASED_ALERT",
-  "ruleType": "promql_rule",
-  "condition": {
-    "compositeQuery": {
-      "queryType": "promql",
-      "panelType": "graph",
-      "queries": [
-        {
-          "type": "builder_query",
-          "spec": {
-            "name": "A",
-            "query": "sum(rate(signoz_calls_total{status_code='STATUS_CODE_ERROR'}[5m])) / sum(rate(signoz_calls_total[5m])) * 100",
-            "legend": "",
-            "disabled": false
-          }
-        }
-      ]
-    },
-    "selectedQueryName": "A",
-    "thresholds": {
-      "kind": "basic",
-      "spec": [
-        {
-          "name": "critical",
-          "target": 5,
-          "targetUnit": "percent",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1"
-        }
-      ]
-    }
-  },
-  "labels": {
-    "severity": "critical"
-  },
-  "annotations": {
-    "description": "Error rate is {{$value}}% (threshold: {{$threshold}}%)",
-    "summary": "High error rate detected"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
-    }
-  }
-}
-` + "```" + `
-
-## Example 5: ClickHouse SQL Alert (Exceptions)
-Alert on exception count using ClickHouse SQL.
-
-` + "```" + `json
-{
-  "alert": "High Exception Count",
-  "alertType": "EXCEPTIONS_BASED_ALERT",
+  "description": "Disk utilization for a persistent volume is above 80%",
   "ruleType": "threshold_rule",
-  "condition": {
-    "compositeQuery": {
-      "queryType": "clickhouse_sql",
-      "panelType": "graph",
-      "queries": [
-        {
-          "type": "builder_query",
-          "spec": {
-            "name": "A",
-            "query": "SELECT toStartOfInterval(timestamp, INTERVAL 1 MINUTE) AS ts, count() AS value FROM signoz_traces.distributed_signoz_error_index_v2 WHERE timestamp >= now() - INTERVAL 5 MINUTE AND exceptionType != '' GROUP BY ts ORDER BY ts",
-            "legend": "",
-            "disabled": false
-          }
-        }
-      ]
-    },
-    "selectedQueryName": "A",
-    "thresholds": {
-      "kind": "basic",
-      "spec": [
-        {
-          "name": "warning",
-          "target": 50,
-          "targetUnit": "",
-          "recoveryTarget": null,
-          "matchType": "4",
-          "op": "1"
-        }
-      ]
-    }
-  },
-  "labels": {
-    "severity": "warning"
-  },
-  "annotations": {
-    "description": "Exception count is {{$value}} (threshold: {{$threshold}})",
-    "summary": "High exception count"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
-    }
-  }
-}
-` + "```" + `
-
-## Example 6: Anomaly Detection Alert
-Detect anomalous metric behavior using seasonal decomposition.
-
-` + "```" + `json
-{
-  "alert": "Anomalous Request Rate",
-  "alertType": "METRIC_BASED_ALERT",
-  "ruleType": "anomaly_rule",
-  "condition": {
-    "compositeQuery": {
-      "queryType": "builder",
-      "panelType": "graph",
-      "queries": [
-        {
-          "type": "builder_query",
-          "spec": {
-            "name": "A",
-            "signal": "metrics",
-            "stepInterval": 60,
-            "aggregations": [
-              {
-                "metricName": "signoz_calls_total",
-                "timeAggregation": "rate",
-                "spaceAggregation": "sum"
-              }
-            ],
-            "filter": {"expression": ""},
-            "groupBy": [],
-            "having": {"expression": ""}
-          }
-        }
-      ]
-    },
-    "selectedQueryName": "A",
-    "algorithm": "zscore",
-    "seasonality": "daily",
-    "thresholds": {
-      "kind": "basic",
-      "spec": [
-        {
-          "name": "warning",
-          "target": 3,
-          "targetUnit": "",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1"
-        }
-      ]
-    }
-  },
-  "labels": {
-    "severity": "warning"
-  },
-  "annotations": {
-    "description": "Anomalous request rate detected: Z-score is {{$value}} (threshold: {{$threshold}})",
-    "summary": "Request rate anomaly"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
-    }
-  }
-}
-` + "```" + `
-
-## Example 7: Logs Alert with Formula (Error Rate %)
-Use two queries and a formula to calculate error rate percentage.
-
-` + "```" + `json
-{
-  "alert": "Log Error Rate High",
-  "alertType": "LOGS_BASED_ALERT",
-  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
   "condition": {
     "compositeQuery": {
       "queryType": "builder",
@@ -645,30 +312,33 @@ Use two queries and a formula to calculate error rate percentage.
         {
           "type": "builder_query",
           "spec": {
-            "name": "A",
-            "signal": "logs",
-            "aggregations": [{"expression": "count()"}],
-            "filter": {"expression": "severity_text IN ('ERROR', 'FATAL')"},
-            "groupBy": [],
-            "having": {"expression": ""}
+            "name": "A", "signal": "metrics", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"metricName": "k8s.volume.available", "timeAggregation": "max", "spaceAggregation": "max"}],
+            "filter": {"expression": "k8s.volume.type = 'persistentVolumeClaim'"},
+            "groupBy": [
+              {"name": "k8s.persistentvolumeclaim.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "k8s.namespace.name", "fieldContext": "resource", "fieldDataType": "string"}
+            ]
           }
         },
         {
           "type": "builder_query",
           "spec": {
-            "name": "B",
-            "signal": "logs",
-            "aggregations": [{"expression": "count()"}],
-            "filter": {"expression": ""},
-            "groupBy": [],
-            "having": {"expression": ""}
+            "name": "B", "signal": "metrics", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"metricName": "k8s.volume.capacity", "timeAggregation": "max", "spaceAggregation": "max"}],
+            "filter": {"expression": "k8s.volume.type = 'persistentVolumeClaim'"},
+            "groupBy": [
+              {"name": "k8s.persistentvolumeclaim.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "k8s.namespace.name", "fieldContext": "resource", "fieldDataType": "string"}
+            ]
           }
         },
         {
           "type": "builder_formula",
           "spec": {
             "name": "F1",
-            "expression": "A * 100 / B"
+            "expression": "(1 - A/B) * 100",
+            "legend": "{{k8s.persistentvolumeclaim.name}} ({{k8s.namespace.name}})"
           }
         }
       ]
@@ -677,39 +347,500 @@ Use two queries and a formula to calculate error rate percentage.
     "thresholds": {
       "kind": "basic",
       "spec": [
-        {
-          "name": "warning",
-          "target": 10,
-          "targetUnit": "percent",
-          "recoveryTarget": null,
-          "matchType": "1",
-          "op": "1"
-        }
+        {"name": "critical", "op": "above", "matchType": "at_least_once", "target": 80, "channels": ["slack-storage"]}
       ]
     }
   },
-  "labels": {
-    "severity": "warning"
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "30m", "frequency": "5m"}},
+  "notificationSettings": {
+    "groupBy": ["k8s.namespace.name", "k8s.persistentvolumeclaim.name"],
+    "renotify": {"enabled": true, "interval": "2h", "alertStates": ["firing"]}
   },
+  "labels": {"severity": "critical"},
   "annotations": {
-    "description": "Log error rate is {{$value}}% (threshold: {{$threshold}}%)",
-    "summary": "High log error rate"
-  },
-  "evaluation": {
-    "kind": "rolling",
-    "spec": {
-      "evalWindow": "5m0s",
-      "frequency": "1m0s"
+    "description": "Volume {{$k8s.persistentvolumeclaim.name}} in {{$k8s.namespace.name}} is {{$value}}% full.",
+    "summary": "Disk utilization above {{$threshold}}%"
+  }
+}
+` + "```" + `
+
+## 3. metric_promql — PromQL rule
+PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"). The envelope type is "promql" — not "builder_query".
+
+` + "```" + `json
+{
+  "alert": "Kafka consumer group lag above 1000",
+  "alertType": "METRIC_BASED_ALERT",
+  "description": "Consumer group lag computed via PromQL",
+  "ruleType": "promql_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "promql",
+      "panelType": "graph",
+      "queries": [
+        {
+          "type": "promql",
+          "spec": {
+            "name": "A",
+            "query": "(max by(topic, partition, \"deployment.environment\")(kafka_log_end_offset) - on(topic, partition, \"deployment.environment\") group_right max by(group, topic, partition, \"deployment.environment\")(kafka_consumer_committed_offset)) > 0",
+            "legend": "{{topic}}/{{partition}} ({{group}})"
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "op": "above", "matchType": "all_the_times", "target": 1000, "channels": ["slack-data-platform", "pagerduty-data"]}
+      ]
     }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "10m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["group", "topic"],
+    "renotify": {"enabled": true, "interval": "1h", "alertStates": ["firing"]}
+  },
+  "labels": {"severity": "critical"},
+  "annotations": {
+    "description": "Consumer group {{$group}} is {{$value}} messages behind on {{$topic}}/{{$partition}}.",
+    "summary": "Kafka consumer lag high"
+  }
+}
+` + "```" + `
+
+## 4. metric_anomaly — anomaly rule (v1 schema)
+Anomaly rules are not yet supported under schemaVersion v2alpha1, so this example uses the **v1 shape**: top-level evalWindow/frequency, condition.op/matchType/target/algorithm/seasonality at the condition level, and an anomaly function inside the builder-query spec. No thresholds block.
+
+` + "```" + `json
+{
+  "alert": "Anomalous drop in ingested spans",
+  "alertType": "METRIC_BASED_ALERT",
+  "description": "Detect an abrupt drop in span ingestion using a z-score anomaly function",
+  "ruleType": "anomaly_rule",
+  "version": "v5",
+  "evalWindow": "24h",
+  "frequency": "3h",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "metrics", "stepInterval": 21600,
+            "aggregations": [{"metricName": "otelcol_receiver_accepted_spans", "timeAggregation": "rate", "spaceAggregation": "sum"}],
+            "filter": {"expression": "tenant_tier = 'premium'"},
+            "groupBy": [{"name": "tenant_id", "fieldContext": "attribute", "fieldDataType": "string"}],
+            "functions": [
+              {"name": "anomaly", "args": [{"name": "z_score_threshold", "value": 2}]}
+            ],
+            "legend": "{{tenant_id}}"
+          }
+        }
+      ]
+    },
+    "op": "below",
+    "matchType": "all_the_times",
+    "target": 2,
+    "algorithm": "standard",
+    "seasonality": "daily",
+    "selectedQueryName": "A",
+    "requireMinPoints": true,
+    "requiredNumPoints": 3
+  },
+  "labels": {"severity": "warning"},
+  "preferredChannels": ["slack-ingestion"],
+  "annotations": {
+    "description": "Ingestion rate for tenant {{$tenant_id}} is anomalously low (z-score {{$value}}).",
+    "summary": "Span ingestion anomaly"
+  }
+}
+` + "```" + `
+
+## 5. logs_threshold — logs threshold count()
+Counts matching log records (ERROR severity + body contains) over a rolling window.
+
+` + "```" + `json
+{
+  "alert": "Payments service panic logs",
+  "alertType": "LOGS_BASED_ALERT",
+  "description": "Any panic log line emitted by the payments service",
+  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "logs", "stepInterval": 60,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name = 'payments-api' AND severity_text = 'ERROR' AND body CONTAINS 'panic'"},
+            "groupBy": [
+              {"name": "k8s.pod.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}
+            ],
+            "legend": "{{k8s.pod.name}} ({{deployment.environment}})"
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "op": "above", "matchType": "at_least_once", "target": 0, "channels": ["slack-payments", "pagerduty-payments"]}
+      ]
+    }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["k8s.pod.name", "deployment.environment"],
+    "renotify": {"enabled": true, "interval": "15m", "alertStates": ["firing"]}
+  },
+  "labels": {"severity": "critical", "team": "payments"},
+  "annotations": {
+    "description": "{{$k8s.pod.name}} emitted {{$value}} panic log(s) in {{$deployment.environment}}.",
+    "summary": "Payments service panic"
+  }
+}
+` + "```" + `
+
+## 6. logs_error_rate_formula — logs error rate (error count / total count × 100)
+Two disabled log count queries (A = errors, B = total) combined via a builder_formula.
+
+` + "```" + `json
+{
+  "alert": "Payments-api error log rate above 1%",
+  "alertType": "LOGS_BASED_ALERT",
+  "description": "Error log ratio as a percentage of total logs for payments-api",
+  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "unit": "percent",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "logs", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name = 'payments-api' AND severity_text IN ['ERROR', 'FATAL']"},
+            "groupBy": [{"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}]
+          }
+        },
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "B", "signal": "logs", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name = 'payments-api'"},
+            "groupBy": [{"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}]
+          }
+        },
+        {
+          "type": "builder_formula",
+          "spec": {"name": "F1", "expression": "(A / B) * 100", "legend": "{{deployment.environment}}"}
+        }
+      ]
+    },
+    "selectedQueryName": "F1",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "op": "above", "matchType": "at_least_once", "target": 1, "channels": ["slack-payments"]}
+      ]
+    }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["deployment.environment"],
+    "renotify": {"enabled": true, "interval": "30m", "alertStates": ["firing"]}
+  },
+  "labels": {"severity": "critical", "team": "payments"},
+  "annotations": {
+    "description": "Error log rate in {{$deployment.environment}} is {{$value}}%",
+    "summary": "Payments-api error rate above {{$threshold}}%"
+  }
+}
+` + "```" + `
+
+## 7. traces_threshold_latency — traces p99 with unit conversion (ns → s)
+Builder query against the traces signal with p99(duration_nano). The series unit is ns, but the threshold target is in seconds (targetUnit: "s") — SigNoz converts during evaluation.
+
+` + "```" + `json
+{
+  "alert": "Search API p99 latency above 5s",
+  "alertType": "TRACES_BASED_ALERT",
+  "description": "p99 duration of the search endpoint exceeds 5s",
+  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "unit": "ns",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "traces", "stepInterval": 60,
+            "aggregations": [{"expression": "p99(duration_nano)"}],
+            "filter": {"expression": "service.name = 'search-api' AND name = 'GET /api/v1/search'"},
+            "groupBy": [
+              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "http.route", "fieldContext": "attribute", "fieldDataType": "string"}
+            ],
+            "legend": "{{service.name}} {{http.route}}"
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "warning", "op": "above", "matchType": "at_least_once", "target": 5, "targetUnit": "s", "channels": ["slack-search"]}
+      ]
+    }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["service.name", "http.route"],
+    "renotify": {"enabled": true, "interval": "30m", "alertStates": ["firing"]}
+  },
+  "labels": {"severity": "warning", "team": "search"},
+  "annotations": {
+    "description": "p99 latency for {{$service.name}} on {{$http.route}} crossed {{$threshold}}s.",
+    "summary": "Search-api latency degraded"
+  }
+}
+` + "```" + `
+
+## 8. traces_error_rate_formula — traces error rate (error spans / total spans × 100)
+Two disabled trace count queries (A = error spans, B = total spans) combined via a builder_formula.
+
+` + "```" + `json
+{
+  "alert": "Search-api error rate above 5%",
+  "alertType": "TRACES_BASED_ALERT",
+  "description": "Request error rate for search-api, grouped by route",
+  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "unit": "percent",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "traces", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name = 'search-api' AND hasError = true"},
+            "groupBy": [
+              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "http.route", "fieldContext": "attribute", "fieldDataType": "string"}
+            ]
+          }
+        },
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "B", "signal": "traces", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name = 'search-api'"},
+            "groupBy": [
+              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "http.route", "fieldContext": "attribute", "fieldDataType": "string"}
+            ]
+          }
+        },
+        {
+          "type": "builder_formula",
+          "spec": {"name": "F1", "expression": "(A / B) * 100", "legend": "{{service.name}} {{http.route}}"}
+        }
+      ]
+    },
+    "selectedQueryName": "F1",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "op": "above", "matchType": "at_least_once", "target": 5, "channels": ["slack-search", "pagerduty-search"]}
+      ]
+    }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["service.name", "http.route"],
+    "renotify": {"enabled": true, "interval": "15m", "alertStates": ["firing"]}
+  },
+  "labels": {"severity": "critical", "team": "search"},
+  "annotations": {
+    "description": "Error rate on {{$service.name}} {{$http.route}} is {{$value}}%",
+    "summary": "Search-api error rate above {{$threshold}}%"
+  }
+}
+` + "```" + `
+
+## 9. tiered_thresholds — tiered thresholds with per-tier channels and alertOnAbsent
+Two tiers (warning and critical) in a single rule, each with its own target, op, matchType, and channels. alertOnAbsent + absentFor fires a no-data alert when the query returns no series for 15 consecutive evaluations (15 minutes when frequency=1m).
+
+` + "```" + `json
+{
+  "alert": "Kafka consumer lag warn / critical",
+  "alertType": "METRIC_BASED_ALERT",
+  "description": "Warn at lag >= 50 and page at >= 200, tiered via thresholds.spec.",
+  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "metrics", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"metricName": "kafka_log_end_offset", "timeAggregation": "max", "spaceAggregation": "max"}],
+            "filter": {"expression": "topic != '__consumer_offsets'"},
+            "groupBy": [
+              {"name": "topic", "fieldContext": "attribute", "fieldDataType": "string"},
+              {"name": "partition", "fieldContext": "attribute", "fieldDataType": "string"}
+            ]
+          }
+        },
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "B", "signal": "metrics", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"metricName": "kafka_consumer_committed_offset", "timeAggregation": "max", "spaceAggregation": "max"}],
+            "filter": {"expression": "topic != '__consumer_offsets'"},
+            "groupBy": [
+              {"name": "topic", "fieldContext": "attribute", "fieldDataType": "string"},
+              {"name": "partition", "fieldContext": "attribute", "fieldDataType": "string"}
+            ]
+          }
+        },
+        {
+          "type": "builder_formula",
+          "spec": {"name": "F1", "expression": "A - B", "legend": "{{topic}}/{{partition}}"}
+        }
+      ]
+    },
+    "alertOnAbsent": true,
+    "absentFor": 15,
+    "selectedQueryName": "F1",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "warning", "op": "above", "matchType": "all_the_times", "target": 50, "channels": ["slack-kafka-info"]},
+        {"name": "critical", "op": "above", "matchType": "all_the_times", "target": 200, "channels": ["slack-kafka-alerts", "pagerduty-kafka"]}
+      ]
+    }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["topic"],
+    "renotify": {"enabled": true, "interval": "15m", "alertStates": ["firing"]}
+  },
+  "labels": {"team": "data-platform"},
+  "annotations": {
+    "description": "Consumer lag for {{$topic}} partition {{$partition}} is {{$value}}.",
+    "summary": "Kafka consumer lag"
+  }
+}
+` + "```" + `
+
+## 10. notification_settings — full notificationSettings surface
+Demonstrates groupBy (noise control), newGroupEvalDelay (grace period for new series), renotify on both firing and nodata states, and usePolicy: false (per-threshold channels rather than org-level routing).
+
+` + "```" + `json
+{
+  "alert": "API 5xx error rate above 1%",
+  "alertType": "TRACES_BASED_ALERT",
+  "description": "Noise-controlled 5xx error rate alert with renotify on gaps",
+  "ruleType": "threshold_rule",
+  "version": "v5",
+  "schemaVersion": "v2alpha1",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "panelType": "graph",
+      "unit": "percent",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A", "signal": "traces", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name CONTAINS 'api' AND http.status_code >= 500"},
+            "groupBy": [
+              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}
+            ]
+          }
+        },
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "B", "signal": "traces", "stepInterval": 60, "disabled": true,
+            "aggregations": [{"expression": "count()"}],
+            "filter": {"expression": "service.name CONTAINS 'api'"},
+            "groupBy": [
+              {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
+              {"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}
+            ]
+          }
+        },
+        {
+          "type": "builder_formula",
+          "spec": {"name": "F1", "expression": "(A / B) * 100", "legend": "{{service.name}} ({{deployment.environment}})"}
+        }
+      ]
+    },
+    "selectedQueryName": "F1",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "op": "above", "matchType": "at_least_once", "target": 1, "channels": ["slack-api-alerts", "pagerduty-oncall"]}
+      ]
+    }
+  },
+  "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+  "notificationSettings": {
+    "groupBy": ["service.name", "deployment.environment"],
+    "newGroupEvalDelay": "2m",
+    "usePolicy": false,
+    "renotify": {"enabled": true, "interval": "30m", "alertStates": ["firing", "nodata"]}
+  },
+  "labels": {"team": "platform"},
+  "annotations": {
+    "description": "{{$service.name}} 5xx rate in {{$deployment.environment}} is {{$value}}%.",
+    "summary": "API service error rate elevated"
   }
 }
 ` + "```" + `
 
 ## Key Notes
-1. For metrics alerts, aggregations use the object format with metricName, timeAggregation, spaceAggregation
-2. For logs/traces alerts, aggregations use the expression format: {expression: "count()"} or {expression: "avg(duration)"}
-3. The selectedQueryName should reference the query or formula that determines the alert condition
-4. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects
-5. Channel names in thresholds.spec[].channels must match exactly the names from signoz_list_notification_channels
-6. schemaVersion, evaluation, and notificationSettings are auto-generated if omitted
+1. Metrics signal → object aggregation shape ({metricName, timeAggregation, spaceAggregation}). Logs/traces → expression shape ({expression: "count()"}).
+2. selectedQueryName should reference the query or formula that determines the alert.
+3. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects.
+4. Channel names in thresholds.spec[].channels must match exactly the names from signoz_list_notification_channels.
+5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency at the top level and op/matchType/target/algorithm/seasonality under condition — no thresholds block, no auto-generated evaluation.
+6. absentFor is in minutes (= consecutive evaluation cycles when frequency is 1m).
 `

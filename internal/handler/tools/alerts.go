@@ -17,6 +17,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
@@ -26,7 +27,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List alerts from SigNoz. Returns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
+		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_get_alert with a ruleId to fetch the rule definition itself, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Default: 50.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
 		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. Default: true.")),
@@ -41,8 +42,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get details of a specific alert rule by ruleId"),
-		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert ruleId")),
+		mcp.WithDescription("Get the rule definition for a specific alert rule by ruleId (GET /api/v2/rules/{ruleId}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID (UUIDv7 on v2 servers).")),
 	)
 	s.AddTool(getAlertTool, h.handleGetAlert)
 
@@ -67,10 +68,13 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
-			"Creates a new alert rule in SigNoz using v2alpha1 schema.\n\n"+
+			"Creates a new alert rule in SigNoz (POST /api/v2/rules).\n\n"+
+				"SCHEMA — pick based on ruleType:\n"+
+				"- threshold_rule / promql_rule → v2alpha1 with structured condition.thresholds (per-tier channel routing), evaluation block, notificationSettings.\n"+
+				"- anomaly_rule → **v1 schema**: top-level evalWindow and frequency; condition.op, condition.matchType, condition.target, condition.algorithm, condition.seasonality; compositeQuery.queries[].spec.functions carries the anomaly function. Omit thresholds, evaluation, schemaVersion.\n\n"+
 				"CRITICAL: You MUST read these resources BEFORE generating any alert payload:\n"+
 				"1. signoz://alert/instructions — REQUIRED: Alert structure, field descriptions, valid values\n"+
-				"2. signoz://alert/examples — REQUIRED: Complete working examples for each alert type\n\n"+
+				"2. signoz://alert/examples — REQUIRED: Ten canonical payloads (mirrored from SigNoz PR #11023) covering metric/logs/traces threshold, PromQL, anomaly (v1), tiered thresholds, formula, and full notificationSettings.\n\n"+
 				"RECOMMENDED: Use signoz_get_alert on an existing alert to study the exact structure.\n\n"+
 				"NOTIFICATION CHANNELS: At least one notification channel is required. "+
 				"If the user explicitly names a channel, use it directly. "+
@@ -78,13 +82,36 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				"present that list to the user, let them choose, then call again with their selection. "+
 				"If no suitable channel exists, use signoz_create_notification_channel first.\n\n"+
 				"Supports all alert types (metrics, logs, traces, exceptions) and rule types (threshold, promql, anomaly).\n"+
-				"Uses v2alpha1 schema with structured thresholds (multi-threshold with per-level channel routing), "+
-				"evaluation block, and notificationSettings.\n"+
-				"Labels enable routing policies — always include severity (info, warning, critical) and team/service labels for routing.",
+				"Labels enable routing policies — always set labels.severity (critical, error, warning, or info) to match your highest threshold tier, and add team/service labels for routing.",
 		),
 		mcp.WithInputSchema[types.AlertRule](),
 	)
 	s.AddTool(createAlertTool, h.handleCreateAlert)
+
+	updateAlertTool := mcp.NewTool(
+		"signoz_update_alert",
+		mcp.WithDestructiveHintAnnotation(true),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to update. Obtain it from signoz_get_alert or signoz_list_alerts.")),
+		mcp.WithDescription(
+			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{ruleId}). Replaces the full rule configuration.\n\n"+
+				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
+				"Always fetch the current rule with signoz_get_alert first and merge changes on top of it — PUT replaces the full rule.\n\n"+
+				"The rule payload is the same shape as signoz_create_alert. All the same validation rules apply, including "+
+				"the notification-channel presence check.",
+		),
+		mcp.WithInputSchema[types.AlertRule](),
+	)
+	s.AddTool(updateAlertTool, h.handleUpdateAlert)
+
+	deleteAlertTool := mcp.NewTool(
+		"signoz_delete_alert",
+		mcp.WithDestructiveHintAnnotation(true),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to delete. The server validates the UUID format and returns invalid_input on bad values.")),
+		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{ruleId}). Irreversible. Confirm with the user before calling."),
+	)
+	s.AddTool(deleteAlertTool, h.handleDeleteAlert)
 
 	// Register alert resources for create alert
 	h.registerAlertResources(s)
@@ -286,38 +313,15 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
 	}
 
-	// Remove MCP-specific metadata that is not part of the alert rule schema.
-	delete(rawConfig, "searchContext")
-
-	// Validate and normalize the alert payload.
-	cleanJSON, err := alert.ValidateFromMap(rawConfig)
-	if err != nil {
-		h.logger.WarnContext(ctx, "Alert validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Alert validation error: %s", err.Error())), nil
+	cleanJSON, errResult := h.validateAlertPayload(ctx, rawConfig)
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_alert")
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	// Fetch existing notification channels and validate channel references.
-	availableChannels, err := fetchChannelNames(ctx, client)
-	if err != nil {
-		h.logger.WarnContext(ctx, "Failed to fetch notification channels for validation", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch notification channels: %s", err.Error())), nil
-	}
-
-	referencedChannels := extractReferencedChannels(rawConfig)
-
-	if len(referencedChannels) == 0 {
-		return mcp.NewToolResultError(formatNoChannelsError(availableChannels)), nil
-	}
-
-	// Validate that all referenced channels exist.
-	if invalid := findInvalidChannels(referencedChannels, availableChannels); len(invalid) > 0 {
-		return mcp.NewToolResultError(formatInvalidChannelsError(invalid, availableChannels)), nil
 	}
 
 	data, err := client.CreateAlertRule(ctx, cleanJSON)
@@ -327,6 +331,105 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 	}
 
 	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rawConfig, ok := req.Params.Arguments.(map[string]any)
+	if !ok || len(rawConfig) == 0 {
+		h.logger.WarnContext(ctx, "Received empty or invalid arguments map for update alert.")
+		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
+	}
+
+	ruleID, _ := rawConfig["ruleId"].(string)
+	if ruleID == "" {
+		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" is required. Provide the UUIDv7 of the rule to update.`), nil
+	}
+	if !util.IsUUIDv7(ruleID) {
+		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "ruleId": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alerts or signoz_get_alert.`, ruleID)), nil
+	}
+	delete(rawConfig, "ruleId")
+
+	cleanJSON, errResult := h.validateAlertPayload(ctx, rawConfig)
+	if errResult != nil {
+		return errResult, nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_update_alert", slog.String("ruleId", ruleID))
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := client.UpdateAlertRule(ctx, ruleID, cleanJSON); err != nil {
+		h.logger.ErrorContext(ctx, "Failed to update alert rule in SigNoz", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID)), nil
+}
+
+func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, ok := req.Params.Arguments.(map[string]any)
+	if !ok {
+		return mcp.NewToolResultError(`Parameter validation failed: expected an arguments object with "ruleId".`), nil
+	}
+	ruleID, _ := args["ruleId"].(string)
+	if ruleID == "" {
+		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" is required.`), nil
+	}
+	if !util.IsUUIDv7(ruleID) {
+		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "ruleId": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_delete_alert", slog.String("ruleId", ruleID))
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := client.DeleteAlertRule(ctx, ruleID); err != nil {
+		h.logger.ErrorContext(ctx, "Failed to delete alert rule in SigNoz", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID)), nil
+}
+
+// validateAlertPayload runs the alert validation pipeline and the
+// notification-channel reference check shared by create and update. It returns
+// the cleaned JSON body, or a non-nil tool-result describing the validation
+// error to surface to the caller.
+func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string]any) ([]byte, *mcp.CallToolResult) {
+	delete(rawConfig, "searchContext")
+
+	cleanJSON, err := alert.ValidateFromMap(rawConfig)
+	if err != nil {
+		h.logger.WarnContext(ctx, "Alert validation failed", logpkg.ErrAttr(err))
+		return nil, mcp.NewToolResultError(fmt.Sprintf("Alert validation error: %s", err.Error()))
+	}
+
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return nil, mcp.NewToolResultError(err.Error())
+	}
+
+	availableChannels, err := fetchChannelNames(ctx, client)
+	if err != nil {
+		h.logger.WarnContext(ctx, "Failed to fetch notification channels for validation", logpkg.ErrAttr(err))
+		return nil, mcp.NewToolResultError(fmt.Sprintf("Failed to fetch notification channels: %s", err.Error()))
+	}
+
+	referencedChannels := extractReferencedChannels(rawConfig)
+
+	if len(referencedChannels) == 0 {
+		return nil, mcp.NewToolResultError(formatNoChannelsError(availableChannels))
+	}
+
+	if invalid := findInvalidChannels(referencedChannels, availableChannels); len(invalid) > 0 {
+		return nil, mcp.NewToolResultError(formatInvalidChannelsError(invalid, availableChannels))
+	}
+
+	return cleanJSON, nil
 }
 
 // fetchChannelNames retrieves all notification channel names from the SigNoz API.

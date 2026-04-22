@@ -674,3 +674,315 @@ func TestValidate_FormulaWithExpression(t *testing.T) {
 		t.Errorf("expected compositeQuery.unit=percent, got %v", parsedCQ["unit"])
 	}
 }
+
+// --- Anomaly rule (v1 schema) tests ---
+
+// minimalValidAnomalyRule returns a minimal anomaly rule using the v1 shape.
+func minimalValidAnomalyRule() map[string]any {
+	return map[string]any{
+		"alert":      "Anomalous ingest drop",
+		"alertType":  "METRIC_BASED_ALERT",
+		"ruleType":   "anomaly_rule",
+		"evalWindow": "24h",
+		"frequency":  "3h",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"metricName": "otelcol_receiver_accepted_spans", "timeAggregation": "rate", "spaceAggregation": "sum"},
+							},
+							"functions": []any{
+								map[string]any{"name": "anomaly", "args": []any{
+									map[string]any{"name": "z_score_threshold", "value": 2},
+								}},
+							},
+						},
+					},
+				},
+			},
+			"op":          "below",
+			"matchType":   "all_the_times",
+			"target":      float64(2),
+			"algorithm":   "standard",
+			"seasonality": "daily",
+		},
+	}
+}
+
+func TestValidate_AnomalyRule_Accepted(t *testing.T) {
+	out, err := ValidateFromMap(minimalValidAnomalyRule())
+	if err != nil {
+		t.Fatalf("expected anomaly rule to validate, got: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+	// v1 anomaly rule must not carry v2 schemaVersion or auto-evaluation.
+	if v, present := parsed["schemaVersion"]; present {
+		t.Errorf("schemaVersion must be absent for anomaly_rule (v1 shape); got %v", v)
+	}
+	if _, present := parsed["evaluation"]; present {
+		t.Errorf("evaluation block must be absent for anomaly_rule (v1 shape)")
+	}
+	// But top-level evalWindow/frequency are preserved verbatim.
+	if parsed["evalWindow"] != "24h" {
+		t.Errorf("expected evalWindow=24h, got %v", parsed["evalWindow"])
+	}
+	if parsed["frequency"] != "3h" {
+		t.Errorf("expected frequency=3h, got %v", parsed["frequency"])
+	}
+}
+
+func TestValidate_AnomalyRule_RejectsThresholds(t *testing.T) {
+	rule := minimalValidAnomalyRule()
+	rule["condition"].(map[string]any)["thresholds"] = map[string]any{
+		"kind": "basic",
+		"spec": []any{map[string]any{"name": "warning", "target": 2, "op": "above", "matchType": "at_least_once"}},
+	}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected rejection when anomaly_rule carries thresholds block")
+	}
+	if !strings.Contains(err.Error(), "thresholds") {
+		t.Errorf("expected error about thresholds, got: %v", err)
+	}
+}
+
+func TestValidate_AnomalyRule_RequiresEvalWindow(t *testing.T) {
+	rule := minimalValidAnomalyRule()
+	delete(rule, "evalWindow")
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected rejection when anomaly_rule omits evalWindow")
+	}
+	if !strings.Contains(err.Error(), "evalWindow") {
+		t.Errorf("expected error about evalWindow, got: %v", err)
+	}
+}
+
+func TestValidate_AnomalyRule_RequiresAlgorithmAndSeasonality(t *testing.T) {
+	rule := minimalValidAnomalyRule()
+	cond := rule["condition"].(map[string]any)
+	delete(cond, "algorithm")
+	delete(cond, "seasonality")
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected rejection when anomaly_rule omits algorithm/seasonality")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "algorithm") || !strings.Contains(msg, "seasonality") {
+		t.Errorf("expected errors about algorithm AND seasonality, got: %v", err)
+	}
+}
+
+// --- PromQL envelope tests ---
+
+func TestValidate_PromqlEnvelope_Accepted(t *testing.T) {
+	rule := map[string]any{
+		"alert":     "Consumer lag high",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "promql_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "promql",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "promql",
+						"spec": map[string]any{
+							"name":  "A",
+							"query": "up",
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{map[string]any{"name": "critical", "target": 1, "op": "above", "matchType": "all_the_times"}},
+			},
+		},
+	}
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Fatalf("expected promql envelope to validate, got: %v", err)
+	}
+}
+
+func TestValidate_PromqlEnvelope_RejectsBuilderQueryType(t *testing.T) {
+	rule := map[string]any{
+		"alert":     "Bad type",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "promql_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "promql",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{"name": "A", "query": "up"},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{map[string]any{"name": "critical", "target": 1, "op": "above", "matchType": "at_least_once"}},
+			},
+		},
+	}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected rejection when queryType=promql but envelope type=builder_query")
+	}
+}
+
+func TestValidate_PromqlEnvelope_RequiresQueryText(t *testing.T) {
+	rule := map[string]any{
+		"alert":     "Missing query",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "promql_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "promql",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "promql",
+						"spec": map[string]any{"name": "A"},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{map[string]any{"name": "critical", "target": 1, "op": "above", "matchType": "at_least_once"}},
+			},
+		},
+	}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected rejection when promql envelope is missing spec.query")
+	}
+	if !strings.Contains(err.Error(), "query") {
+		t.Errorf("expected error about missing query, got: %v", err)
+	}
+}
+
+// --- Metric aggregation shape test ---
+
+func TestValidate_MetricAggregationShape_Accepted(t *testing.T) {
+	rule := minimalValidAlert()
+	cond := rule["condition"].(map[string]any)
+	cq := cond["compositeQuery"].(map[string]any)
+	spec := cq["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	spec["aggregations"] = []any{
+		map[string]any{"metricName": "k8s.pod.cpu_request_utilization", "timeAggregation": "avg", "spaceAggregation": "max"},
+	}
+	out, err := ValidateFromMap(rule)
+	if err != nil {
+		t.Fatalf("expected metric aggregation shape to validate, got: %v", err)
+	}
+	if !strings.Contains(string(out), "metricName") {
+		t.Error("expected output to preserve metricName field")
+	}
+}
+
+// --- absentFor passes through unchanged ---
+
+func TestValidate_AbsentFor_PassesThrough(t *testing.T) {
+	rule := minimalValidAlert()
+	cond := rule["condition"].(map[string]any)
+	cond["alertOnAbsent"] = true
+	cond["absentFor"] = 15
+	delete(cond, "thresholds") // alertOnAbsent is enough to pass the v2 gate
+	out, err := ValidateFromMap(rule)
+	if err != nil {
+		t.Fatalf("expected alertOnAbsent+absentFor to validate, got: %v", err)
+	}
+	var parsed map[string]any
+	_ = json.Unmarshal(out, &parsed)
+	parsedCond := parsed["condition"].(map[string]any)
+	if parsedCond["absentFor"] != float64(15) {
+		t.Errorf("expected absentFor=15 to pass through, got %v", parsedCond["absentFor"])
+	}
+}
+
+// --- renotify.alertStates validation ---
+
+func TestValidate_RenotifyAlertStates_Accepted(t *testing.T) {
+	for _, state := range []string{"firing", "nodata"} {
+		rule := minimalValidAlert()
+		rule["notificationSettings"] = map[string]any{
+			"renotify": map[string]any{
+				"enabled":     true,
+				"interval":    "30m",
+				"alertStates": []any{state},
+			},
+		}
+		if _, err := ValidateFromMap(rule); err != nil {
+			t.Errorf("expected alertState=%q to validate, got: %v", state, err)
+		}
+	}
+}
+
+func TestValidate_RenotifyAlertStates_RejectsInvalid(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["notificationSettings"] = map[string]any{
+		"renotify": map[string]any{
+			"enabled":     true,
+			"interval":    "30m",
+			"alertStates": []any{"flapping"},
+		},
+	}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected rejection for alertStates=flapping")
+	}
+	if !strings.Contains(err.Error(), "flapping") {
+		t.Errorf("expected error to mention the invalid value, got: %v", err)
+	}
+}
+
+// --- Broadened CompareOp/MatchType enums ---
+
+func TestValidate_CompareOp_AboveOrEqual_Accepted(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["thresholds"].(map[string]any)["spec"].([]any)[0].(map[string]any)
+	spec["op"] = "above_or_equal"
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Errorf("expected op=above_or_equal to validate, got: %v", err)
+	}
+}
+
+func TestValidate_CompareOp_OutsideBounds_Accepted(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["thresholds"].(map[string]any)["spec"].([]any)[0].(map[string]any)
+	spec["op"] = "outside_bounds"
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Errorf("expected op=outside_bounds to validate, got: %v", err)
+	}
+}
+
+func TestValidate_MatchType_AvgAlias_Accepted(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["thresholds"].(map[string]any)["spec"].([]any)[0].(map[string]any)
+	spec["matchType"] = "avg"
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Errorf("expected matchType=avg to validate, got: %v", err)
+	}
+}
+
+func TestValidate_MatchType_SumAlias_Accepted(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["thresholds"].(map[string]any)["spec"].([]any)[0].(map[string]any)
+	spec["matchType"] = "sum"
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Errorf("expected matchType=sum to validate, got: %v", err)
+	}
+}

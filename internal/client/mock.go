@@ -32,9 +32,13 @@ type MockClient struct {
 	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
 	GetTraceDetailsFn           func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateAlertRuleFn           func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
+	UpdateAlertRuleFn           func(ctx context.Context, ruleID string, alertJSON []byte) error
+	DeleteAlertRuleFn           func(ctx context.Context, ruleID string) error
 	ListNotificationChannelsFn  func(ctx context.Context) (json.RawMessage, error)
+	GetNotificationChannelFn    func(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannelFn func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
-	UpdateNotificationChannelFn func(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error)
+	UpdateNotificationChannelFn func(ctx context.Context, id string, receiverJSON []byte) error
+	DeleteNotificationChannelFn func(ctx context.Context, id string) error
 	TestNotificationChannelFn   func(ctx context.Context, receiverJSON []byte) error
 }
 
@@ -188,9 +192,30 @@ func (m *MockClient) CreateAlertRule(ctx context.Context, alertJSON []byte) (jso
 	return json.RawMessage(`{}`), nil
 }
 
+func (m *MockClient) UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error {
+	if m.UpdateAlertRuleFn != nil {
+		return m.UpdateAlertRuleFn(ctx, ruleID, alertJSON)
+	}
+	return nil
+}
+
+func (m *MockClient) DeleteAlertRule(ctx context.Context, ruleID string) error {
+	if m.DeleteAlertRuleFn != nil {
+		return m.DeleteAlertRuleFn(ctx, ruleID)
+	}
+	return nil
+}
+
 func (m *MockClient) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
 	if m.ListNotificationChannelsFn != nil {
 		return m.ListNotificationChannelsFn(ctx)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error) {
+	if m.GetNotificationChannelFn != nil {
+		return m.GetNotificationChannelFn(ctx, id)
 	}
 	return json.RawMessage(`{}`), nil
 }
@@ -202,11 +227,18 @@ func (m *MockClient) CreateNotificationChannel(ctx context.Context, receiverJSON
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) (json.RawMessage, error) {
+func (m *MockClient) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error {
 	if m.UpdateNotificationChannelFn != nil {
 		return m.UpdateNotificationChannelFn(ctx, id, receiverJSON)
 	}
-	return json.RawMessage(`{}`), nil
+	return nil
+}
+
+func (m *MockClient) DeleteNotificationChannel(ctx context.Context, id string) error {
+	if m.DeleteNotificationChannelFn != nil {
+		return m.DeleteNotificationChannelFn(ctx, id)
+	}
+	return nil
 }
 
 func (m *MockClient) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
