@@ -881,10 +881,11 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			// Determine error status: either a Go error or an MCP tool result error.
 			isErr := err != nil || (result != nil && result.IsError)
 			span.SetAttributes(otelpkg.MCPToolIsErrorKey.Bool(isErr))
+			// Always emit the result size — even zero — so it matches the log
+			// field and downstream aggregations (avg, histogram) don't drop
+			// empty-result tool calls as nulls.
 			resultBytes := approxResultBytes(result)
-			if resultBytes > 0 {
-				span.SetAttributes(otelpkg.MCPToolResultBytesKey.Int64(resultBytes))
-			}
+			span.SetAttributes(otelpkg.MCPToolResultBytesKey.Int64(resultBytes))
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())

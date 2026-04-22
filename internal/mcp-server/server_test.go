@@ -2213,6 +2213,50 @@ func TestToolCallSpanHasResultBytes(t *testing.T) {
 	}
 }
 
+// TestToolCallSpanEmitsZeroResultBytes verifies that empty-result tool calls
+// still carry mcp.tool.result.size_bytes=0 on the span so size-based
+// aggregations (avg, histogram) don't silently drop them as nulls.
+func TestToolCallSpanEmitsZeroResultBytes(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	defer func() {
+		otel.SetTracerProvider(prevTracerProvider)
+	}()
+	defer func() {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	}()
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, noopanalytics.New(), nil)
+
+	middleware := mcpServer.loggingMiddleware()
+	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	})(context.Background(), mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Name: "signoz_list_services"},
+	})
+	if err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+
+	spans := traceExporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("span count = %d, want 1", len(spans))
+	}
+	size, ok := spanAttrValue(spans[0].Attributes, otelpkg.MCPToolResultBytesKey)
+	if !ok {
+		t.Fatalf("span missing %s on empty result", otelpkg.MCPToolResultBytesKey)
+	}
+	if size.AsInt64() != 0 {
+		t.Fatalf("%s = %d, want 0", otelpkg.MCPToolResultBytesKey, size.AsInt64())
+	}
+}
+
 func TestToolErrorType(t *testing.T) {
 	tests := []struct {
 		name   string
