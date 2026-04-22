@@ -32,6 +32,11 @@ const (
 	MCPTenantURLKey     = attribute.Key("mcp.tenant_url")
 	MCPToolIsErrorKey   = attribute.Key("mcp.tool.is_error")
 	MCPQueryPayloadKey  = attribute.Key("mcp.query.payload")
+	// MCPToolResultBytes approximates the size, in bytes, of the text content
+	// returned by a tool call — sum of `len(Text)` across TextContent entries.
+	// Non-standard (the registry has no equivalent today); scoped under the
+	// mcp.tool.* namespace used by this server's other tool-call attrs.
+	MCPToolResultBytesKey = attribute.Key("mcp.tool.result.size_bytes")
 )
 
 // TenantURLAttr returns mcp.tenant_url as an OTel attribute when the context
