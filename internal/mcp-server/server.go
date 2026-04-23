@@ -50,13 +50,6 @@ const (
 	// this timer is the safety net for the pathological case where finish
 	// never runs at all.
 	methodObsTombstoneTTL = time.Second
-	// streamableHTTPHeartbeatInterval is how often the server pings clients on
-	// the GET listen stream. Tuned to fire well inside the default idle timeout
-	// of common ingress/LB layers (AWS ALB 60s, nginx 60s, Cloudflare ~100s) so
-	// intermediate proxies don't close the stream and force clients to reopen
-	// with a fresh `initialize` handshake. Ping is the MCP-spec utility; see
-	// https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping.
-	streamableHTTPHeartbeatInterval = 20 * time.Second
 )
 
 type MCPServer struct {
@@ -1207,9 +1200,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
 	}
 
-	mcpHandler := server.NewStreamableHTTPServer(s,
-		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
-	)
+	mcpHandler := server.NewStreamableHTTPServer(s)
 	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
 
 	m.logger.Info("Listening for MCP clients",
