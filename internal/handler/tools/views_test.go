@@ -608,6 +608,32 @@ func TestHandleCreateView_RejectsSignalSourcePageMismatch(t *testing.T) {
 	}
 }
 
+func TestHandleCreateView_RejectsEmptyBuilderSignal(t *testing.T) {
+	// Upstream doesn't enforce signal presence on builder_query; an empty
+	// signal silently saves an unusable view. Reject at the MCP boundary.
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "missing-signal",
+		"sourcePage": "logs",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "list",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected validation error for empty signal")
+	}
+	body := renderContent(result.Content)
+	if !strings.Contains(body, "signal") {
+		t.Errorf("error should mention signal; got: %s", body)
+	}
+}
+
 func TestHandleCreateView_AllowsMatchingSignal(t *testing.T) {
 	called := false
 	mock := &client.MockClient{

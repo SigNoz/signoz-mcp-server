@@ -110,20 +110,9 @@ They work verbatim with signoz_create_view.
 
 ## Notes
 
+- Explorer saved views are **builder-query only**. Set "queryType" to "builder"
+  and use "builder_query" entries in "queries". PromQL / raw ClickHouse query
+  types are not supported for Explorer saved views.
 - "signal" inside each spec MUST match the view's sourcePage.
 - stepInterval is 0 for list panels, typically 60 for minute-resolution graphs.
-- For PromQL or raw ClickHouse views, set "queryType" accordingly and use
-  "promql_query" / "clickhouse_query" entries in "queries":
-
-      // promql
-      "queries": [{
-        "type": "promql_query",
-        "spec": { "name": "A", "query": "rate(http_requests_total[5m])", "legend": "", "disabled": false }
-      }]
-
-      // clickhouse_sql
-      "queries": [{
-        "type": "clickhouse_query",
-        "spec": { "name": "A", "query": "SELECT ...", "legend": "", "disabled": false }
-      }]
 `

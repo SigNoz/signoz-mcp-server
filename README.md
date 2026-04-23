@@ -497,7 +497,7 @@ Replace an existing saved view (full-body PUT).
 - **Parameters**:
   - `viewId` (required) - UUID of the view to replace
   - `view` (required) - Full `SavedView` object (`name`, `sourcePage`, `compositeQuery`, plus any of `category`, `tags`, `extraData`)
-- **Tip**: Call `signoz_get_view` first, pass its `data` object under `view` with whichever fields changed. Partial bodies wipe unspecified fields.
+- **Tip**: Read MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing payloads. Call `signoz_get_view` first, pass its `data` object under `view` with whichever fields changed. Partial bodies wipe unspecified fields.
 
 #### `signoz_delete_view`
 

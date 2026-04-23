@@ -41,7 +41,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type). "+
+		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type) — supported for the Logs, Traces, and Metrics Explorer pages. "+
 			"IMPORTANT: Supports pagination via 'limit' and 'offset'. The response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. When searching for a specific view, ALWAYS check 'pagination.hasMore' — if true, continue paging with 'nextOffset' until you find the item or 'hasMore' is false. Never conclude a view doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics".`)),
 		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name (applied server-side).")),
@@ -78,11 +78,13 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	updateTool := mcp.NewTool("signoz_update_view",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
-			"Replace an existing SigNoz saved view (HTTP PUT — full body replace). "+
+			"Replace an existing SigNoz saved view (HTTP PUT — full body replace).\n\n"+
+				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
+				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
+				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics\n\n"+
 				"Pass the view's UUID as viewId and the full SavedView body as view. "+
 				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
 				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
-				"See signoz://view/instructions for the SavedView schema. "+
 				"Do not send id/createdAt/createdBy/updatedAt/updatedBy — the server ignores them.",
 		),
 		mcp.WithInputSchema[types.UpdateViewInput](),
@@ -138,10 +140,10 @@ var serverPopulatedViewFields = []string{
 }
 
 // validateBuilderSignal enforces the documented rule: every builder_query
-// spec's `signal` field must match the view's sourcePage. Upstream does not
-// enforce this, and a mismatch silently saves an unusable view. Ignores
-// non-builder queries (promql, clickhouse_sql) since they don't carry a
-// signal field. Returns nil if no mismatches are found.
+// spec's `signal` field must be set and must match the view's sourcePage.
+// Upstream does not enforce this, so missing or mismatched signals silently
+// save unusable views. Non-builder queries (promql, clickhouse_sql) don't
+// carry a signal field and are skipped.
 func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 	cq, ok := compositeQuery.(map[string]any)
 	if !ok {
@@ -165,7 +167,10 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 		}
 		signal, _ := spec["signal"].(string)
 		if signal == "" {
-			continue
+			return fmt.Errorf(
+				`parameter validation failed: compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
+				i, sourcePage,
+			)
 		}
 		if signal != sourcePage {
 			return fmt.Errorf(

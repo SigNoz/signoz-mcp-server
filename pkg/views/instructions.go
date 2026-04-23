@@ -26,13 +26,18 @@ logs-explorer, metrics-explorer).
 
 ## compositeQuery (Query Builder v5 shape)
 
-CompositeQuery at the top level has exactly three fields:
+Explorer saved views are **builder-query only**. CompositeQuery at the top
+level has exactly three fields:
 
     {
-      "queryType": "builder" | "promql" | "clickhouse_sql",
+      "queryType": "builder",
       "panelType": "list" | "graph" | "table" | "value",
-      "queries":   [ { "type": "...", "spec": { ... } }, ... ]
+      "queries":   [ { "type": "builder_query", "spec": { ... } }, ... ]
     }
+
+PromQL and raw ClickHouse query types (queryType "promql" / "clickhouse_sql",
+entries with type "promql_query" / "clickhouse_query") are **not supported**
+for Explorer saved views — use them in dashboards instead.
 
 **Do not send** legacy v3/v4 fields like ` + "`builder`" + `,
 ` + "`promql`" + `, ` + "`clickhouse_sql`" + ` (as sub-objects at the top level),
@@ -41,28 +46,20 @@ The server rejects them with HTTP 400 "failed to validate request body".
 
 ### Each entry in queries[]
 
-    { "type": "builder_query" | "promql_query" | "clickhouse_query",
-      "spec": { ...type-specific fields... } }
+    { "type": "builder_query",
+      "spec": { ...builder_query fields... } }
 
-### builder_query spec fields (queryType: "builder")
+### builder_query spec fields
 
 | Field        | Type     | Notes |
 |--------------|----------|-------|
 | name         | string   | Reference name, e.g. "A" |
-| signal       | string   | MUST match sourcePage: "traces" / "logs" / "metrics" |
+| signal       | string   | Required. MUST match sourcePage: "traces" / "logs" / "metrics" |
 | source       | string   | Usually "" |
 | stepInterval | integer  | Seconds per bucket. 0 for list panels, e.g. 60 for graphs |
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |
 | aggregations | array    | Required for metrics graphs (see metrics example) |
-
-### promql_query spec (queryType: "promql")
-
-    { "name": "A", "query": "<PromQL>", "legend": "", "disabled": false }
-
-### clickhouse_query spec (queryType: "clickhouse_sql")
-
-    { "name": "A", "query": "<SQL>", "legend": "", "disabled": false }
 
 ## Rules
 
