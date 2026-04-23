@@ -606,7 +606,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1** schema: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
-- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (mirrors the ten canonical SigNoz PR #11023 payloads) before composing payloads.
+- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (mirrors the ten canonical SigNoz PR #11023 payloads) before composing payloads. For `promql_rule`, also read `signoz://promql/instructions` — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form.
 
 #### `signoz_update_alert`
 

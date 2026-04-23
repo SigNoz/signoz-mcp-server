@@ -75,6 +75,25 @@ The envelope type must match compositeQuery.queryType:
 - legend: legend template
 - disabled: false
 
+### PromQL for OTel dotted metric names
+Alerts with ruleType=promql_rule on OpenTelemetry metrics must use the Prometheus 3.x UTF-8 quoted-selector form for any name containing a dot. The forms that look natural but return no data in SigNoz:
+
+- Underscored conversion: rate(payment_latency_ms_bucket[5m]) — SigNoz does NOT rename dots to underscores.
+- __name__ selector: rate({__name__="payment_latency_ms.bucket"}[5m]) — dots are rejected inside that value.
+- Bare dotted name: rate(payment_latency_ms.bucket[5m]) — dot is not a legal identifier char.
+
+Correct form — quote the name inside braces:
+
+  histogram_quantile(0.9, sum(rate({"payment_latency_ms.bucket"}[5m])) by (le))
+
+The same rule applies to dotted label names in by(...) and in matchers:
+
+  sum by (le, "service.name") (
+    rate({"payment_latency_ms.bucket", "deployment.environment"="prod"}[5m])
+  )
+
+For the full guide (syntax, examples by metric type, anti-pattern table, pre-flight checklist for histogram alerts) read signoz://promql/instructions. Always read it before writing a promql_rule query.
+
 ### Formula query spec (envelope type=builder_formula)
 - name: formula identifier (F1, F2, …)
 - expression: math expression referencing other query names (e.g. "(A / B) * 100"). Supports +, -, *, /, and functions like abs(), sqrt(), log(), exp()
@@ -462,7 +481,7 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
 ` + "```" + `
 
 ## 3. metric_promql — PromQL rule
-PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"). The envelope type is "promql" — not "builder_query".
+PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"); non-dotted ones (topic, partition, group) stay bare. Useful for queries that combine series with group_right or other Prometheus operators. The envelope type is "promql" — not "builder_query". Read signoz://promql/instructions for the full dotted-name / vector-matching guide.
 
 ` + "```" + `json
 {

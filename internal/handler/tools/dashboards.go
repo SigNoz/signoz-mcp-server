@@ -12,6 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
+	"github.com/SigNoz/signoz-mcp-server/pkg/promql"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -50,7 +51,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules\n"+
 				"3. signoz://dashboard/widgets-examples - REQUIRED: Complete widget examples with all required fields\n\n"+
 				"QUERY-SPECIFIC RESOURCES (read based on query type used):\n"+
-				"- For PromQL queries: signoz://dashboard/promql-example\n"+
+				"- For PromQL queries: signoz://promql/instructions\n"+
 				"- For Query Builder queries: signoz://dashboard/query-builder-example\n"+
 				"- For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
 				"- For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
@@ -76,7 +77,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"2. signoz://dashboard/widgets-instructions\n"+
 				"3. signoz://dashboard/widgets-examples ← CRITICAL: Shows complete widget field structure\n\n"+
 				"CONDITIONAL RESOURCES (based on query type):\n"+
-				"• PromQL → signoz://dashboard/promql-example\n"+
+				"• PromQL → signoz://promql/instructions\n"+
 				"• Query Builder → signoz://dashboard/query-builder-example\n"+
 				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
 				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
@@ -366,9 +367,9 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	})
 
 	promqlExample := mcp.NewResource(
-		"signoz://dashboard/promql-example",
-		"Promql Examples",
-		mcp.WithResourceDescription("PromQL guide for SigNoz: critical syntax rules for OpenTelemetry metrics with dots, formatting patterns, examples by metric type, and error prevention."),
+		"signoz://promql/instructions",
+		"PromQL Instructions",
+		mcp.WithResourceDescription("SigNoz PromQL guide — used by promql_rule alerts and PromQL dashboard widgets. Covers OTel dotted metric names (Prometheus 3.x UTF-8 quoted selector form), the anti-pattern table of forms that return no data, dotted resource attributes in by() and label matchers, examples by metric type, and the pre-flight checklist for PromQL alerts."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -377,7 +378,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
 				MIMEType: "text/plain",
-				Text:     dashboard.PromqlQuery,
+				Text:     promql.Instructions,
 			},
 		}, nil
 	})

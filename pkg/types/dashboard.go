@@ -121,7 +121,7 @@ type WidgetQuery struct {
 }
 
 type PromQL struct {
-	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=PromQL query expression"`
+	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=PromQL query expression. For OTel metrics with dots in the name use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data in SigNoz. Read signoz://promql/instructions for the full guide."`
 	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
 	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the PromQL query is disabled or not"`
 	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend template for naming PromQL series. Use {{label_name}} placeholders matching labels returned by the query. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{instance}}. Without legend charts show generic series names."`

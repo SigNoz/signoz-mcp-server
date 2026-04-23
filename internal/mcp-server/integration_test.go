@@ -2,6 +2,7 @@ package mcp_server
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,53 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
 		for _, tool := range toolsResult.Tools {
 			t.Logf("  tool: %s", tool.Name)
+		}
+	}
+}
+
+func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	res, err := c.ReadResource(ctx, mcp.ReadResourceRequest{
+		Params: mcp.ReadResourceParams{URI: "signoz://promql/instructions"},
+	})
+	if err != nil {
+		t.Fatalf("ReadResource(signoz://promql/instructions) failed: %v", err)
+	}
+	if len(res.Contents) == 0 {
+		t.Fatal("expected resource contents, got none")
+	}
+	tc, ok := res.Contents[0].(mcp.TextResourceContents)
+	if !ok {
+		t.Fatalf("expected TextResourceContents, got %T", res.Contents[0])
+	}
+	if tc.URI != "signoz://promql/instructions" {
+		t.Errorf("URI = %q, want signoz://promql/instructions", tc.URI)
+	}
+	// Sanity check: the body must carry the OTel dotted-name guidance, the
+	// anti-pattern framing, and the PR #11023 consumer-group-lag example.
+	for _, want := range []string{
+		"Prometheus 3.x UTF-8 quoted selector",
+		"payment_latency_ms.bucket",
+		"group_right",
+	} {
+		if !strings.Contains(tc.Text, want) {
+			t.Errorf("resource body missing expected substring %q", want)
 		}
 	}
 }

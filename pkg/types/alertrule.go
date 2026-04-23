@@ -104,7 +104,7 @@ type AlertQuerySpec struct {
 	Functions    []AlertQueryFunction   `json:"functions,omitempty" jsonschema_extras:"description=Post-query functions applied to the series. Required for anomaly_rule: wrap with {name: anomaly, args: [{name: z_score_threshold, value: 2}]}."`
 
 	// For promql / clickhouse_sql query types
-	Query  string `json:"query,omitempty" jsonschema_extras:"description=PromQL or ClickHouse SQL query string. Used when queryType is promql or clickhouse_sql."`
+	Query  string `json:"query,omitempty" jsonschema_extras:"description=PromQL or ClickHouse SQL query string. Used when queryType is promql or clickhouse_sql. PromQL with OTel dotted metric names MUST use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data. Read signoz://promql/instructions for the full guide (histogram patterns dotted labels pre-flight checklist)."`
 	Legend string `json:"legend,omitempty" jsonschema_extras:"description=Legend template for the query."`
 
 	// For builder_formula type
