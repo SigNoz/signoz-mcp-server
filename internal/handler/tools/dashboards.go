@@ -12,6 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
+	"github.com/SigNoz/signoz-mcp-server/pkg/promql"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -377,7 +378,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
 				MIMEType: "text/plain",
-				Text:     dashboard.PromqlQuery,
+				Text:     promql.Instructions,
 			},
 		}, nil
 	})

@@ -49,6 +49,17 @@ Changes applied:
 - `pkg/dashboard/query.go::PromqlQuery` — new section "MIXING QUOTED AND UNQUOTED LABELS IN VECTOR MATCHING" that calls out `by()` / `without()` / `on()` / `ignoring()` mixing, `group_left` / `group_right` semantics, empty-tuple forms (`group_left ()`), and the backward-compat guarantee. Uses the PR #11023 consumer-group-lag query as the worked example.
 - `pkg/alert/resources.go::Examples` — example #3 (`metric_promql`) description now aligns with PR #11023's "Useful for queries that combine series with group_right or other Prom operators" phrasing while keeping the MCP-specific "envelope type is 'promql'" and `signoz://promql/instructions` pointers.
 
+### 2026-04-23 — Audit follow-ups
+- Codex PR review (#142 comment r3131348029) flagged `http.server.duration_bucket` as inconsistent with the guide's own histogram-suffix rule (base has dots ⇒ suffix must be `.bucket`, not `_bucket`). Fix: example corrected to `http.server.duration.bucket` during the package move.
+- Approved judgement calls from chat review:
+  - Package home: moved `PromqlQuery` out of `pkg/dashboard/query.go` into a new `pkg/promql` package as `promql.Instructions`. Only consumer (`internal/handler/tools/dashboards.go`) switched to the new import. Other dashboard ClickHouse constants (`ClickhouseSqlQueryForMetrics`, `ClickhouseSqlQueryForLogs`, `ClickhouseSqlQueryForTraces`, `Querybuilder`) stay in `pkg/dashboard/query.go` — they are dashboard-specific.
+  - Guide length: keeping redundancy between KEY EXAMPLES / COMMON PATTERNS / new PROMETHEUS 3.X sections — the duplication reinforces the rule for pattern-matching LLMs.
+  - Registration smoke test: added `TestIntegration_PromqlInstructionsResourceRegistered` in `internal/mcp-server/integration_test.go` — reads `signoz://promql/instructions` and asserts the body carries three load-bearing substrings ("Prometheus 3.x UTF-8 quoted selector", "payment_latency_ms.bucket", "group_right").
+  - PR strategy: held — do not open the PR yet; stacking more work on this branch.
+- Also filled small cross-link gaps spotted during the audit (commit `b7c5d22`):
+  - `signoz_execute_builder_query` now points at `signoz://promql/instructions` when `queryType=promql`.
+  - `pkg/dashboard/widgets.go` PromQL entry has a Reference: line.
+  - README's alert-tool tip names the PromQL resource.
+
 ## Open Questions
-- [ ] Should the constant move to `pkg/promql/instructions.go` for clarity? Deferred: current location works and the import graph stays simple. Revisit if a second non-dashboard resource needs the same content.
 - [ ] Should `signoz_query_metrics` get a direct PromQL passthrough? Deferred: today that tool maps to the v5 builder; PromQL only surfaces via alerts and dashboards. Users who want ad-hoc PromQL can use `signoz_execute_builder_query` with `queryType=promql`.
