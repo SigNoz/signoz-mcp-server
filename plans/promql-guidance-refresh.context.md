@@ -40,6 +40,15 @@
 - Verified `go build`, `go vet`, `go test -count=1 ./...` all green.
 - `rg -n 'signoz://dashboard/promql-example'` returns zero hits — rename complete.
 
+### 2026-04-23 — Align with upstream PR #11023 PromQL refs + SigNoz docs
+Pulled upstream references into the guide:
+- **SigNoz PR #11023** `metric_promql` example uses `by(topic, partition, "deployment.environment")` and `on(topic, partition, "deployment.environment") group_right` — demonstrating that non-dotted labels stay bare while dotted labels are quoted in the *same* `by()`/`on()` call. Upstream English description also frames the PromQL ruleType use case as "queries that combine series with group_right or other Prom operators."
+- **SigNoz docs** (https://signoz.io/docs/userguide/write-a-prom-query-with-new-format/) confirms: `sum by (le) (rate({"request.duration.bucket",...}[5m]))` — mixing a bare `le` with a quoted dotted metric selector. Backward compatibility is explicitly guaranteed for pre-existing non-dotted queries.
+
+Changes applied:
+- `pkg/dashboard/query.go::PromqlQuery` — new section "MIXING QUOTED AND UNQUOTED LABELS IN VECTOR MATCHING" that calls out `by()` / `without()` / `on()` / `ignoring()` mixing, `group_left` / `group_right` semantics, empty-tuple forms (`group_left ()`), and the backward-compat guarantee. Uses the PR #11023 consumer-group-lag query as the worked example.
+- `pkg/alert/resources.go::Examples` — example #3 (`metric_promql`) description now aligns with PR #11023's "Useful for queries that combine series with group_right or other Prom operators" phrasing while keeping the MCP-specific "envelope type is 'promql'" and `signoz://promql/instructions` pointers.
+
 ## Open Questions
 - [ ] Should the constant move to `pkg/promql/instructions.go` for clarity? Deferred: current location works and the import graph stays simple. Revisit if a second non-dashboard resource needs the same content.
 - [ ] Should `signoz_query_metrics` get a direct PromQL passthrough? Deferred: today that tool maps to the v5 builder; PromQL only surfaces via alerts and dashboards. Users who want ad-hoc PromQL can use `signoz_execute_builder_query` with `queryType=promql`.

@@ -133,6 +133,32 @@ quote them both in by(...) and in label matchers:
   )
 
 ================================================================================
+MIXING QUOTED AND UNQUOTED LABELS IN VECTOR MATCHING
+================================================================================
+Inside by(), without(), on(), and ignoring(), only labels containing dots or other
+non-identifier characters need quoting. Plain identifier labels stay bare. Mix them
+freely within the same call:
+
+  sum by (topic, partition, "deployment.environment") (rate({"kafka.log.end.offset"}[5m]))
+  sum without ("k8s.pod.name") (rate({"container.cpu.utilization"}[5m]))
+
+Vector matching operators follow the same rule:
+
+  # from SigNoz PR #11023 — consumer-group lag (max lag end offset - committed offset)
+  (
+    max by(topic, partition, "deployment.environment") (kafka_log_end_offset)
+    - on(topic, partition, "deployment.environment") group_right
+      max by(group, topic, partition, "deployment.environment") (kafka_consumer_committed_offset)
+  ) > 0
+
+Notes:
+  - on(...)     — join the two sides by the listed labels; quote dotted ones.
+  - group_left  — the LEFT side may have many rows per matched key.
+  - group_right — the RIGHT side may have many rows per matched key.
+  - Empty tuples are legal, e.g.  / ignoring ("instance") group_left () sum without ("pod") (rate(...)) .
+  - Backward compatibility: pre-existing queries that use only non-dotted names continue to work unchanged; the quoted form is additive, not a replacement.
+
+================================================================================
 PRE-FLIGHT CHECKLIST FOR A PROMQL HISTOGRAM ALERT
 ================================================================================
 Before creating a promql_rule alert on a histogram-derived query, run these checks so the rule

@@ -481,7 +481,7 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
 ` + "```" + `
 
 ## 3. metric_promql — PromQL rule
-PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"). The envelope type is "promql" — not "builder_query".
+PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"); non-dotted ones (topic, partition, group) stay bare. Useful for queries that combine series with group_right or other Prometheus operators. The envelope type is "promql" — not "builder_query". Read signoz://promql/instructions for the full dotted-name / vector-matching guide.
 
 ` + "```" + `json
 {
