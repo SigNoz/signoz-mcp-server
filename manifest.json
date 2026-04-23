@@ -86,12 +86,24 @@
       "description": "Get top operations for a service"
     },
     {
-      "name": "signoz_list_log_views",
-      "description": "List all saved log views"
+      "name": "signoz_list_views",
+      "description": "List SigNoz saved Explorer views for a given sourcePage (traces, logs, or metrics), with optional name/category filters"
     },
     {
-      "name": "signoz_get_log_view",
-      "description": "Get full details of a saved log view by ID"
+      "name": "signoz_get_view",
+      "description": "Get a single SigNoz saved view by UUID"
+    },
+    {
+      "name": "signoz_create_view",
+      "description": "Create a new SigNoz saved Explorer view"
+    },
+    {
+      "name": "signoz_update_view",
+      "description": "Replace an existing SigNoz saved view (full-body PUT)"
+    },
+    {
+      "name": "signoz_delete_view",
+      "description": "Delete a SigNoz saved view by UUID"
     },
     {
       "name": "signoz_aggregate_logs",
