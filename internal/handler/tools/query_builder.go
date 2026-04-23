@@ -26,6 +26,9 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
 				"It documents filter expression syntax, correct field names (camelCase vs dot notation), "+
 				"and complete working examples.\n\n"+
+				"When compositeQuery.queryType=\"promql\" ALSO read signoz://promql/instructions — "+
+				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
+				"Underscored / __name__ / bare-dotted forms silently return no data.\n\n"+
 				"See docs: https://signoz.io/docs/userguide/query-builder-v5/",
 		),
 		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables")),

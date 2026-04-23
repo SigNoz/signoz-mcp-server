@@ -26,6 +26,7 @@ Choose the appropriate query type based on your data source and requirements:
    - Supports: Metrics only
    - When to use: Prometheus migration, metric-specific operations, OpenTelemetry metrics with dots in names
    - Required: Must follow new format syntax (wrap metric names in curly braces, quote names with dots)
+   - Reference: Read signoz://promql/instructions — covers the Prometheus 3.x UTF-8 quoted-selector form for dotted OTel names, anti-pattern table, dotted labels in by()/on()/ignoring(), and common patterns by metric type.
 
 Selection Guidelines:
 - Start with Query Builder for simplicity and maintainability
