@@ -50,6 +50,15 @@ const (
 	// this timer is the safety net for the pathological case where finish
 	// never runs at all.
 	methodObsTombstoneTTL = time.Second
+	// streamableHTTPHeartbeatInterval is how often the server pings clients on
+	// the GET listen stream. Tuned to fire well inside the default idle timeout
+	// of common ingress/LB layers (AWS ALB 60s, nginx 60s, Cloudflare ~100s) so
+	// intermediate proxies don't close the stream and force clients to reopen
+	// with a fresh `initialize` handshake. Ping is the MCP-spec utility; see
+	// https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping.
+	// Requires mcp-go >= v0.44.1, which routes empty ping replies to HTTP 202
+	// instead of the sampling-response path (mark3labs/mcp-go#740).
+	streamableHTTPHeartbeatInterval = 20 * time.Second
 )
 
 type MCPServer struct {
@@ -316,6 +325,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.handler.RegisterServiceHandlers(s)
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
+	m.handler.RegisterViewHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
 	m.handler.RegisterNotificationChannelHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
@@ -766,6 +776,10 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			if sessionID != "" {
 				props[analytics.AttrSessionID] = sessionID
 			}
+			if message != nil && message.Params.ProtocolVersion != "" {
+				props[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
+				traits[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
+			}
 			m.attachClientInfo(traits, sessionID)
 			m.attachClientInfo(props, sessionID)
 			m.identifyAndTrackAsync(ctx, analytics.EventSessionRegistered, traits, props)
@@ -783,20 +797,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		}
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
-		sessionID := session.SessionID()
 		m.logger.InfoContext(ctx, "mcp session unregistered")
-
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			props := map[string]any{
-				analytics.AttrTenantURL: signozURL,
-				analytics.AttrSessionID: sessionID,
-			}
-			m.attachClientInfo(props, sessionID)
-			m.trackEventAsync(ctx, analytics.EventSessionUnregistered, props)
-		}
-
-		// Delete after dispatch — trackEventAsync has already snapshotted props.
-		m.forgetClientInfo(sessionID)
+		m.forgetClientInfo(session.SessionID())
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -877,6 +879,11 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			// Determine error status: either a Go error or an MCP tool result error.
 			isErr := err != nil || (result != nil && result.IsError)
 			span.SetAttributes(otelpkg.MCPToolIsErrorKey.Bool(isErr))
+			// Always emit the result size — even zero — so it matches the log
+			// field and downstream aggregations (avg, histogram) don't drop
+			// empty-result tool calls as nulls.
+			resultBytes := approxResultBytes(result)
+			span.SetAttributes(otelpkg.MCPToolResultBytesKey.Int64(resultBytes))
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
@@ -887,24 +894,28 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			}
 
 			duration := time.Since(start)
+			sizeAttr := slog.Int64("mcp.tool.result.size_bytes", resultBytes)
 			switch {
 			case err != nil:
 				m.logger.ErrorContext(ctx, "tool call failed",
 					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
+					sizeAttr,
 					logpkg.ErrAttr(err))
 			case result != nil && result.IsError:
 				m.logger.WarnContext(ctx, "tool call returned error result",
 					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
+					sizeAttr,
 					slog.String("error_message", extractToolErrorMessage(result)))
 			default:
 				m.logger.DebugContext(ctx, "tool call finished",
 					toolNameAttr,
 					slog.Duration("duration", duration),
-					slog.Bool("mcp.tool.is_error", isErr))
+					slog.Bool("mcp.tool.is_error", isErr),
+					sizeAttr)
 			}
 
 			if m.meters != nil {
@@ -933,6 +944,9 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
 					props[analytics.AttrSearchContext] = sc
 				}
+				if errorType := toolErrorType(err, result); errorType != "" {
+					props[analytics.AttrErrorType] = errorType
+				}
 				m.trackEventAsync(ctx, analytics.EventToolCalled, props)
 			}
 
@@ -952,6 +966,55 @@ func extractToolErrorMessage(result *mcp.CallToolResult) string {
 		return tc.Text
 	}
 	return "tool returned error result"
+}
+
+// toolErrorType classifies a tool-call failure into a small, bounded set of
+// categories so dashboards can split errors without exploding cardinality.
+// Returns "" when there is no error.
+func toolErrorType(err error, result *mcp.CallToolResult) string {
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "timeout"
+		}
+		if errors.Is(err, context.Canceled) {
+			return "cancelled"
+		}
+		return "internal"
+	}
+	if result == nil || !result.IsError {
+		return ""
+	}
+
+	msg := strings.ToLower(extractToolErrorMessage(result))
+	switch {
+	case strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(msg, "unauthorized") || strings.Contains(msg, "status 401") || strings.Contains(msg, "status 403"):
+		return "unauthorized"
+	case strings.Contains(msg, "status 4"):
+		return "upstream_4xx"
+	case strings.Contains(msg, "status 5"):
+		return "upstream_5xx"
+	default:
+		return "tool_error"
+	}
+}
+
+// approxResultBytes sums the length of text content entries in a tool result.
+// Binary blobs are ignored (we don't want to materialize them just to measure).
+func approxResultBytes(result *mcp.CallToolResult) int64 {
+	if result == nil {
+		return 0
+	}
+	var total int64
+	for _, c := range result.Content {
+		tc, ok := c.(mcp.TextContent)
+		if !ok {
+			continue
+		}
+		total += int64(len(tc.Text))
+	}
+	return total
 }
 
 func (m *MCPServer) runStdio(ctx context.Context, s *server.MCPServer) error {
@@ -1147,7 +1210,9 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
 	}
 
-	mcpHandler := server.NewStreamableHTTPServer(s)
+	mcpHandler := server.NewStreamableHTTPServer(s,
+		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
+	)
 	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
 
 	m.logger.Info("Listening for MCP clients",

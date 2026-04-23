@@ -1802,3 +1802,88 @@ func TestDeleteNotificationChannel(t *testing.T) {
 	assert.Equal(t, http.MethodDelete, gotMethod)
 }
 
+func TestListViews(t *testing.T) {
+	var gotPath, gotRawQuery, gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotRawQuery = r.URL.RawQuery
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.ListViews(context.Background(), "traces", "ak", "ops")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, gotMethod)
+	assert.Equal(t, "/api/v1/explorer/views", gotPath)
+	assert.Contains(t, gotRawQuery, "sourcePage=traces")
+	assert.Contains(t, gotRawQuery, "name=ak")
+	assert.Contains(t, gotRawQuery, "category=ops")
+}
+
+func TestGetView(t *testing.T) {
+	var gotPath, gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	}))
+	defer server.Close()
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.GetView(context.Background(), "view-uuid-1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, gotMethod)
+	assert.Equal(t, "/api/v1/explorer/views/view-uuid-1", gotPath)
+}
+
+func TestCreateView(t *testing.T) {
+	var gotBody []byte
+	var gotMethod, gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"new-id"}}`))
+	}))
+	defer server.Close()
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	body := []byte(`{"name":"x","sourcePage":"traces","compositeQuery":{}}`)
+	_, err := c.CreateView(context.Background(), body)
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, "/api/v1/explorer/views", gotPath)
+	assert.JSONEq(t, string(body), string(gotBody))
+}
+
+func TestUpdateView(t *testing.T) {
+	var gotMethod, gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	}))
+	defer server.Close()
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.UpdateView(context.Background(), "view-1", []byte(`{}`))
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPut, gotMethod)
+	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
+}
+
+func TestDeleteView(t *testing.T) {
+	var gotMethod, gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.DeleteView(context.Background(), "view-1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
+}

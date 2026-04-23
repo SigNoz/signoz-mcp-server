@@ -596,16 +596,42 @@ func (s *SigNoz) DeleteAlertRule(ctx context.Context, ruleID string) error {
 	return err
 }
 
-func (s *SigNoz) ListLogViews(ctx context.Context) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?sourcePage=logs", s.baseURL)
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching log views from SigNoz")
+func (s *SigNoz) ListViews(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+	params := url.Values{}
+	params.Set("sourcePage", sourcePage)
+	if name != "" {
+		params.Set("name", name)
+	}
+	if category != "" {
+		params.Set("category", category)
+	}
+	reqURL := fmt.Sprintf("%s/api/v1/explorer/views?%s", s.baseURL, params.Encode())
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing saved views", slog.String("sourcePage", sourcePage))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) GetLogView(ctx context.Context, viewID string) (json.RawMessage, error) {
+func (s *SigNoz) GetView(ctx context.Context, viewID string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching log view details", slog.String("viewID", viewID))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching saved view", slog.String("viewID", viewID))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+func (s *SigNoz) CreateView(ctx context.Context, body []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/explorer/views", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating saved view")
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DashboardWriteTimeout)
+}
+
+func (s *SigNoz) UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating saved view", slog.String("viewID", viewID))
+	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(body), DashboardWriteTimeout)
+}
+
+func (s *SigNoz) DeleteView(ctx context.Context, viewID string) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting saved view", slog.String("viewID", viewID))
+	return s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error) {

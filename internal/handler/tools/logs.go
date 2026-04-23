@@ -9,33 +9,11 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering logs handlers")
-
-	listLogViewsTool := mcp.NewTool("signoz_list_log_views",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List all saved log views from SigNoz (returns summary with name, ID, description, and query details). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific log view, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
-	)
-
-	s.AddTool(listLogViewsTool, h.handleListLogViews)
-
-	getLogViewTool := mcp.NewTool("signoz_get_log_view",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get full details of a specific log view by ID (returns complete log view configuration with query structure)"),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("Log view ID")),
-	)
-
-	s.AddTool(getLogViewTool, h.handleGetLogView)
 
 	// aggregate_logs: compute statistics over logs with GROUP BY
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
@@ -83,68 +61,6 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	)
 
 	s.AddTool(searchLogsTool, h.handleSearchLogs)
-}
-
-func (h *Handler) handleListLogViews(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	h.logger.DebugContext(ctx, "Tool called: signoz_list_log_views")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
-
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	result, err := client.ListLogViews(ctx)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list log views", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	var logViews map[string]any
-	if err := json.Unmarshal(result, &logViews); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to parse log views response", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
-	}
-
-	data, ok := logViews["data"].([]any)
-	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid log views response format", slog.String("data", logpkg.TruncAny(logViews["data"])))
-		return mcp.NewToolResultError("invalid response format: expected data array"), nil
-	}
-
-	total := len(data)
-	pagedData := paginate.Array(data, offset, limit)
-
-	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to wrap log views with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
-	}
-
-	return mcp.NewToolResultText(string(resultJSON)), nil
-}
-
-func (h *Handler) handleGetLogView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	viewID, ok := req.Params.Arguments.(map[string]any)["viewId"].(string)
-	if !ok {
-		h.logger.WarnContext(ctx, "Invalid viewId parameter type", slog.Any("type", req.Params.Arguments))
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" must be a string. Example: {"viewId": "error-logs-view-123"}`), nil
-	}
-	if viewID == "" {
-		h.logger.WarnContext(ctx, "Empty viewId parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid log view ID. Use signoz_list_log_views tool to see available log views.`), nil
-	}
-
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_log_view", slog.String("viewId", viewID))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	data, err := client.GetLogView(ctx, viewID)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get log view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcp.NewToolResultText(string(data)), nil
 }
 
 func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
