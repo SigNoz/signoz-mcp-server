@@ -17,6 +17,17 @@ Schemas supported:
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
 4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first.
 
+## Quick Workflow: From User Intent to Payload
+A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
+1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT.
+2. **Pick ruleType.** Default to threshold_rule. Use promql_rule only if the user provided a PromQL expression. Use anomaly_rule only for metric deviation detection — it uses a different (v1) schema; see the Anomaly Alerts section.
+3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
+4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
+5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*) — the backend indexes them.
+6. **Configure thresholds.** Tier name (critical | error | warning | info), op, matchType, target. Add channels only if the user named them — otherwise leave empty and let channel validation prompt the user.
+7. **Evaluation.** Leave defaults (evalWindow=5m, frequency=1m) unless the user asked for a different window.
+8. **Notification.** Always ask the user for channel names — never guess. Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
+
 ## Alert Types (alertType)
 | Value | Signal | Use When |
 |-------|--------|----------|
@@ -94,14 +105,37 @@ Use this shape when spec.signal = "logs" or "traces":
 
 Common expressions: count(), count_distinct(user_id), avg(duration), sum(bytes), min(x), max(x), p50/p75/p90/p95/p99(duration_nano).
 
-### Filter expressions
-- Equality: service.name = 'frontend'
-- Comparison: http.status_code >= 500
-- Pattern: body CONTAINS 'timeout'
-- Case-insensitive: body ILIKE '%error%'
-- Boolean: service.name = 'frontend' AND http.status_code >= 500
-- IN: severity_text IN ('ERROR', 'WARN', 'FATAL')
-- EXISTS: trace_id EXISTS
+## Filter & Having Expressions
+
+builder_query spec.filter.expression (pre-aggregation) and spec.having.expression (post-aggregation) use the same syntax. Prefer resource attributes in filters — they are the fastest path through the storage backend.
+
+### Operator reference
+| Intent | Operator | Example |
+|--------|----------|---------|
+| Field exists | EXISTS | trace_id EXISTS |
+| Field is absent | NOT EXISTS | k8s.pod.name NOT EXISTS |
+| Exact match | = | service.name = 'frontend' |
+| Not equal (field must exist) | EXISTS AND != | service.name EXISTS AND service.name != 'redis' |
+| One of several values | IN | severity_text IN ('ERROR', 'WARN', 'FATAL') |
+| Excluded from a set | NOT IN | deployment.environment NOT IN ('dev', 'staging') |
+| Substring / pattern | LIKE | name LIKE '%payment%' |
+| Case-insensitive pattern | ILIKE | body ILIKE '%timeout%' |
+| Simple containment | CONTAINS | body CONTAINS 'timeout' |
+| Regex | REGEXP | name REGEXP '^grpc\.' |
+| Numeric comparison | >, >=, <, <= | http.status_code >= 500 |
+
+### Data type guardrails
+- **bool**: =, !=, EXISTS, NOT EXISTS
+- **int / float**: =, !=, >, >=, <, <=, IN, EXISTS, NOT EXISTS
+- **string**: =, !=, LIKE, ILIKE, CONTAINS, REGEXP, IN, NOT IN, EXISTS, NOT EXISTS
+
+### Composition
+Combine with AND / OR and parentheses for grouping:
+- service.name = 'frontend' AND http.status_code >= 500
+- (severity_text = 'ERROR' AND service.name = 'payments-api') OR service.name = 'billing-api'
+
+Negative operators (!=, NOT IN, NOT LIKE) only match rows where the field is present. To also exclude rows that lack the field entirely, pair with EXISTS:
+- k8s.namespace.name EXISTS AND k8s.namespace.name != 'kube-system'
 
 ## Units
 
@@ -144,6 +178,15 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 - **op**: canonical above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=.
 - **channels**: notification channel names for this tier. Discover via signoz_list_notification_channels. Ignored when notificationSettings.usePolicy is true.
 
+### Choosing targetUnit
+- Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds" — set target=5, targetUnit="s". SigNoz converts during evaluation.
+- If compositeQuery.unit is empty and targetUnit is set, the validator propagates targetUnit onto compositeQuery.unit — you can therefore omit compositeQuery.unit on single-threshold rules.
+- Formulas that compute ratios (e.g. (A/B) * 100) already emit percent — set compositeQuery.unit="percent" and give the threshold a bare numeric target (no targetUnit).
+
+### Choosing recoveryTarget
+- **null / unset**: the alert recovers as soon as the series crosses back through target. Simplest but can flap when the value oscillates at the threshold boundary.
+- **non-null**: creates a dead-band between target and recoveryTarget. Example: fire at target=80, recover at recoveryTarget=70 — the series must drop below 70 before the alert clears. Recommended for signals that oscillate near the threshold.
+
 ## Evaluation (v2alpha1)
 
 evaluation controls how the rule is evaluated:
@@ -158,6 +201,8 @@ evaluation controls how the rule is evaluated:
 - evalWindow: how long the condition must persist (e.g. 5m, 15m, 30m, 1h, 4h, 24h).
 - frequency: how often to evaluate (e.g. 1m, 5m, 15m).
 - Auto-generated (5m window, 1m frequency) if omitted for threshold/promql rules.
+- **Format**: Go duration strings. Both "5m" and "5m0s" are accepted; stick to one style per payload. Common values: 1m, 5m, 15m, 30m, 1h, 4h, 24h, 1d.
+- **Sizing tips**: keep evalWindow ≥ frequency. Short windows (1-5m) catch spikes; long windows (30m-1h) smooth noise. For infrequent signals (hourly batch jobs) set frequency to 5-15m to reduce evaluation cost.
 
 ## Notification Settings (v2alpha1)
 
@@ -188,6 +233,31 @@ evaluation controls how the rule is evaluated:
 - preferredChannels: fallback notification channel names (thresholds.channels takes priority).
 - Set usePolicy: true in notificationSettings to delegate routing to org-level policies.
 
+### Label sources available to routing policies
+Routing policies evaluate expressions against three merged label sources:
+1. **User static labels** from the labels object on the rule (severity, team, service, environment, …).
+2. **Platform labels** auto-injected at fire time:
+   - alertname — the rule's alert field
+   - threshold.name — the tier that fired (critical | error | warning | info)
+   - ruleSource, ruleId — rule metadata
+3. **Dynamic labels** from groupBy fields in the query (service.name, k8s.pod.name, http.route, deployment.environment, topic, partition, …).
+
+### Routing-policy matcher operators
+Policy expressions use a reduced operator set (not identical to query filters):
+- Comparison: =, !=
+- Text matching: CONTAINS, REGEXP
+- Set membership: IN, NOT IN
+- Logical: AND, OR, parentheses
+
+Example: deployment.environment = "production" AND threshold.name = "critical"
+
+### Channel-routing modes
+| notificationSettings.usePolicy | thresholds[].channels | Effective routing |
+|--------------------------------|-----------------------|-------------------|
+| false (default) | present | Send to the listed channels directly |
+| false | absent | Fall back to rule-level preferredChannels |
+| true | (ignored) | Match alert labels against the org-level routing policy; send to policy-matched channels |
+
 ## Annotations
 - Use {{$value}} for the current metric value.
 - Use {{$threshold}} for the threshold value.
@@ -208,6 +278,21 @@ Required fields:
 - condition.seasonality: hourly, daily, or weekly.
 - condition.requireMinPoints + condition.requiredNumPoints are recommended to guard against noisy intervals.
 
+### Anomaly tuning
+- **algorithm**: only "standard" is supported today (z-score based prediction per seasonal bucket).
+- **seasonality**: "hourly" for short-period patterns, "daily" for business-hours / off-hours patterns, "weekly" for weekend-vs-weekday traffic.
+- **z_score_threshold** (in spec.functions args): controls the anomaly function's sensitivity.
+
+  | Value | Sensitivity | Use case |
+  |-------|-------------|----------|
+  | 4.0 | Conservative | Only the strongest anomalies — minimal false positives |
+  | 3.0 | Balanced (recommended) | Default choice for most series |
+  | 2.5 | Sensitive | Catch moderate deviations |
+  | 2.0 | Very sensitive | Noisy; reserve for low-volume or tightly-behaved series |
+
+- **Scoring**: anomaly_score = |actual_value − predicted_value| / stddev(current_season). The alert fires when this score satisfies the condition.op / condition.target comparison (e.g. op="above", target=3 ≈ "score above 3 standard deviations").
+- **evalWindow** should span at least one seasonal cycle so the predictor has enough history (≥24h for daily seasonality, ≥7d for weekly).
+
 See signoz://alert/examples → "metric_anomaly" for a complete payload.
 
 ## Absent-data alerting
@@ -225,6 +310,18 @@ Set condition.alertOnAbsent=true to fire when no series is returned. condition.a
 - annotations → default description and summary templates
 
 anomaly_rule: none of the above defaults are applied automatically — you must supply evalWindow, frequency, and the condition fields yourself.
+
+## Further Reading
+User-facing docs. Cite these back to the user when they want to understand a concept in depth:
+- Metrics alerts — https://signoz.io/docs/alerts-management/metrics-based-alerts
+- Log alerts — https://signoz.io/docs/alerts-management/log-based-alerts
+- Trace alerts — https://signoz.io/docs/alerts-management/trace-based-alerts
+- Exception alerts — https://signoz.io/docs/alerts-management/exceptions-based-alerts
+- Anomaly alerts — https://signoz.io/docs/alerts-management/anomaly-based-alerts
+- Routing policies — https://signoz.io/docs/alerts-management/routing-policy
+- Planned maintenance — https://signoz.io/docs/alerts-management/planned-maintenance
+- Notification channel setup — https://signoz.io/docs/setup-alerts-notification
+- Alerts history — https://signoz.io/docs/alerts-management/alerts-history
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.

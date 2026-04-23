@@ -43,6 +43,14 @@ Refresh everything to match upstream and mirror PR #11023's ten canonical exampl
 
 ### Resources (`pkg/alert/resources.go`)
 - Instructions: update endpoint to `/api/v2/rules`; replace anomaly section with v1-shape template; list broader operator/match-type sets; add severity=`error`; document `newGroupEvalDelay`; document `recoveryTarget`; change `evalWindow`/`frequency` to `5m`/`1m` style; note threshold.name↔severity mapping.
+- Instructions enrichment (2026-04-23, follow-up pass aligned with https://signoz.io/docs/alerts/ and `/api/v2/rules` openapi):
+  - Quick Workflow decision tree (signal → alertType → ruleType → envelope → aggregation shape → filter → thresholds → evaluation → notification).
+  - Filter & Having Expressions promoted to its own H2 with operator table, data-type guardrails, and composition rules (mirrors signoz MCP-server instructions).
+  - Evaluation section: Go duration format + defaults + window/frequency sizing tips.
+  - Threshold section: `targetUnit` selection subsection + `recoveryTarget` hysteresis subsection.
+  - Labels & Routing: label-source taxonomy (user / platform / dynamic), routing-policy matcher operators, channel-routing modes table.
+  - Anomaly Alerts: algorithm/seasonality notes + z_score_threshold tuning table + scoring formula + evalWindow sizing.
+  - Further Reading: canonical SigNoz docs URLs.
 - Examples: replace with the ten PR #11023 examples — `metric_threshold_single`, `metric_threshold_formula`, `metric_promql`, `metric_anomaly`, `logs_threshold`, `logs_error_rate_formula`, `traces_threshold_latency`, `traces_error_rate_formula`, `tiered_thresholds`, `notification_settings`.
 
 ### Tool descriptions (`internal/handler/tools/alerts.go`)
