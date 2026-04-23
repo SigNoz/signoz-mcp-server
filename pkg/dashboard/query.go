@@ -99,10 +99,61 @@ Correct Versions:
   RIGHT: rate({"http.requests.total"}[5m])                                // Double quotes
   RIGHT: rate({"http.requests.total", "service.name"="api"}[5m])         // Quoted labels with dots
 ================================================================================
+PROMETHEUS 3.X UTF-8 QUOTED SELECTOR (OTEL METRIC NAMES WITH DOTS)
+================================================================================
+OTel metrics in SigNoz are stored with their original dotted names (e.g. payment_latency_ms.bucket,
+http.server.duration_bucket). Standard Prometheus name forms do NOT resolve these in SigNoz's PromQL
+layer. The canonical way to reference dotted names is the Prometheus 3.x UTF-8 quoted selector
+inside curly braces: {"metric.name.with.dots"}.
+
+Use this:
+  histogram_quantile(0.9, sum(rate({"payment_latency_ms.bucket"}[5m])) by (le))
+
+The quoted-string-inside-braces form works everywhere a metric selector is valid (range vectors,
+instant vectors, rate(), sum(), histogram_quantile(), etc).
+
+Forms that DO NOT work for dotted OTel names:
+  Form                    | Example                                              | Result
+  ------------------------|------------------------------------------------------|-----------------------------------------------
+  Underscored conversion  | rate(payment_latency_ms_bucket[5m])                  | no data — SigNoz does not rename to underscores
+  __name__ selector       | rate({__name__="payment_latency_ms.bucket"}[5m])     | no data — dots rejected inside the value
+  Bare dotted name        | rate(payment_latency_ms.bucket[5m])                  | no data — dot is not a legal identifier char
+
+================================================================================
+COMBINING WITH DOTTED LABEL FILTERS
+================================================================================
+Dotted resource attributes (e.g. deployment.environment, service.name) follow the same rule —
+quote them both in by(...) and in label matchers:
+
+  histogram_quantile(
+    0.9,
+    sum by (le, "service.name") (
+      rate({"payment_latency_ms.bucket", "deployment.environment"="prod"}[5m])
+    )
+  )
+
+================================================================================
+PRE-FLIGHT CHECKLIST FOR A PROMQL HISTOGRAM ALERT
+================================================================================
+Before creating a promql_rule alert on a histogram-derived query, run these checks so the rule
+actually resolves against data:
+
+  1. Confirm the metric exists and has data via signoz_list_metrics + signoz_query_metrics
+     (a builder query on the same metric).
+  2. Use signoz_get_field_keys with metricName set, to verify the bucket-boundary label is named
+     le (it usually is, but custom pipelines can rename it).
+  3. Write the PromQL with the UTF-8 quoted selector form: {"metric.name.bucket"}.
+  4. After creating the alert, call signoz_get_alert and check state — inactive under a
+     metric that you know is breaching the threshold is a strong signal the query isn't resolving
+     (typically a name/selector-form mistake from the table above).
+
+================================================================================
 SUMMARY
 ================================================================================
 Always use the new format for consistency and OpenTelemetry compatibility.
 Key takeaway: Wrap everything in curly braces, quote anything with dots, metric name goes first.
+For dotted OTel names use the Prometheus 3.x UTF-8 quoted selector form {"metric.name.with.dots"} —
+no other form resolves in SigNoz's PromQL layer.
 `
 const ClickhouseSqlQueryForMetrics = `
 SigNoz Metrics ClickHouse Query Examples

@@ -74,7 +74,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				"- anomaly_rule → **v1 schema**: top-level evalWindow and frequency; condition.op, condition.matchType, condition.target, condition.algorithm, condition.seasonality; compositeQuery.queries[].spec.functions carries the anomaly function. Omit thresholds, evaluation, schemaVersion.\n\n"+
 				"CRITICAL: You MUST read these resources BEFORE generating any alert payload:\n"+
 				"1. signoz://alert/instructions — REQUIRED: Alert structure, field descriptions, valid values\n"+
-				"2. signoz://alert/examples — REQUIRED: Ten canonical payloads (mirrored from SigNoz PR #11023) covering metric/logs/traces threshold, PromQL, anomaly (v1), tiered thresholds, formula, and full notificationSettings.\n\n"+
+				"2. signoz://alert/examples — REQUIRED: Ten canonical payloads (mirrored from SigNoz PR #11023) covering metric/logs/traces threshold, PromQL, anomaly (v1), tiered thresholds, formula, and full notificationSettings.\n"+
+				"3. signoz://promql/instructions — REQUIRED when ruleType=promql_rule: SigNoz needs the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}) for OTel metric names. Underscored / __name__ / bare-dotted forms return no data.\n\n"+
 				"RECOMMENDED: Use signoz_get_alert on an existing alert to study the exact structure.\n\n"+
 				"NOTIFICATION CHANNELS: At least one notification channel is required. "+
 				"If the user explicitly names a channel, use it directly. "+
@@ -96,6 +97,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDescription(
 			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{ruleId}). Replaces the full rule configuration.\n\n"+
 				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
+				"When ruleType=promql_rule, also read signoz://promql/instructions — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form. "+
 				"Always fetch the current rule with signoz_get_alert first and merge changes on top of it — PUT replaces the full rule.\n\n"+
 				"The rule payload is the same shape as signoz_create_alert. All the same validation rules apply, including "+
 				"the notification-channel presence check.",
