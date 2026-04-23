@@ -86,7 +86,7 @@ func TestGetAlertByRuleID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				expectedPath := fmt.Sprintf("/api/v1/rules/%s", tt.ruleID)
+				expectedPath := fmt.Sprintf("/api/v2/rules/%s", tt.ruleID)
 				assert.Equal(t, expectedPath, r.URL.Path)
 
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -1709,6 +1709,97 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)
+}
+
+func TestCreateAlertRule_v2Returns201(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"rule-123"}}`))
+	}))
+	defer srv.Close()
+	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+
+	data, err := client.CreateAlertRule(context.Background(), []byte(`{"alert":"x"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v2/rules", gotPath)
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Contains(t, string(data), `"rule-123"`)
+}
+
+func TestUpdateAlertRule_v2Returns204(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+
+	err := client.UpdateAlertRule(context.Background(), "abc-123", []byte(`{"alert":"x"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v2/rules/abc-123", gotPath)
+	assert.Equal(t, http.MethodPut, gotMethod)
+}
+
+func TestDeleteAlertRule_v2Returns204(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+
+	err := client.DeleteAlertRule(context.Background(), "abc-123")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v2/rules/abc-123", gotPath)
+	assert.Equal(t, http.MethodDelete, gotMethod)
+}
+
+func TestTestNotificationChannel_UsesNewPath(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+
+	err := client.TestNotificationChannel(context.Background(), []byte(`{"name":"x"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v1/channels/test", gotPath)
+}
+
+func TestUpdateNotificationChannel_Returns204(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+
+	err := client.UpdateNotificationChannel(context.Background(), "42", []byte(`{"name":"x"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v1/channels/42", gotPath)
+	assert.Equal(t, http.MethodPut, gotMethod)
+}
+
+func TestDeleteNotificationChannel(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+
+	err := client.DeleteNotificationChannel(context.Background(), "42")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v1/channels/42", gotPath)
+	assert.Equal(t, http.MethodDelete, gotMethod)
 }
 
 func TestListViews(t *testing.T) {

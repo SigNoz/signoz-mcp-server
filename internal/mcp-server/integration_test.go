@@ -44,6 +44,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 	handler.RegisterLogsHandlers(s)
 	handler.RegisterViewHandlers(s)
 	handler.RegisterTracesHandlers(s)
+	handler.RegisterNotificationChannelHandlers(s)
 	handler.RegisterResourceTemplates(s)
 	prompts.RegisterPrompts(s.AddPrompt)
 
@@ -85,7 +86,7 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	const expectedToolCount = 26
+	const expectedToolCount = 33
 	if len(toolsResult.Tools) != expectedToolCount {
 		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
 		for _, tool := range toolsResult.Tools {

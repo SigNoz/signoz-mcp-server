@@ -29,20 +29,48 @@ var (
 		"clickhouse_sql": true,
 	}
 
+	// validCompareOps mirrors SigNoz pkg/types/ruletypes/compare.go.
+	// All numeric, literal, short, and symbolic aliases are accepted.
 	validCompareOps = map[string]bool{
-		"1": true, "2": true, "3": true, "4": true,
-		"above": true, "below": true, "equal": true, "not_equal": true,
+		// above
+		"1": true, "above": true, ">": true,
+		// below
+		"2": true, "below": true, "<": true,
+		// equal
+		"3": true, "equal": true, "eq": true, "=": true,
+		// not_equal
+		"4": true, "not_equal": true, "not_eq": true, "!=": true,
+		// above_or_equal
+		"5": true, "above_or_equal": true, "above_or_eq": true, ">=": true,
+		// below_or_equal
+		"6": true, "below_or_equal": true, "below_or_eq": true, "<=": true,
+		// outside_bounds
+		"7": true, "outside_bounds": true,
 	}
 
+	// validMatchTypes mirrors SigNoz pkg/types/ruletypes/match.go.
 	validMatchTypes = map[string]bool{
-		"1": true, "2": true, "3": true, "4": true, "5": true,
-		"at_least_once": true, "all_the_times": true,
-		"on_average": true, "in_total": true, "last": true,
+		"1": true, "at_least_once": true,
+		"2": true, "all_the_times": true,
+		"3": true, "on_average": true, "avg": true,
+		"4": true, "in_total": true, "sum": true,
+		"5": true, "last": true,
 	}
 
-	validBuilderQueryTypes = map[string]bool{
-		"builder_query":   true,
-		"builder_formula": true,
+	// validQueryEnvelopeTypes covers every composite-query envelope accepted
+	// by SigNoz qbtypes.QueryEnvelope.
+	validQueryEnvelopeTypes = map[string]bool{
+		"builder_query":          true,
+		"builder_formula":        true,
+		"builder_trace_operator": true,
+		"promql":                 true,
+		"clickhouse_sql":         true,
+	}
+
+	// validAlertStates is the accepted set for renotify.alertStates.
+	validAlertStates = map[string]bool{
+		"firing": true,
+		"nodata": true,
 	}
 
 	validSignals = map[string]bool{
@@ -105,6 +133,7 @@ func Validate(jsonBytes []byte) ([]byte, error) {
 	validateRequired(rule, errs)
 	validateEnums(rule, errs)
 	validateCondition(rule, errs)
+	validateNotificationSettings(rule, errs)
 	validateCrossConstraints(rule, errs)
 
 	if errs.HasErrors() {
@@ -112,7 +141,12 @@ func Validate(jsonBytes []byte) ([]byte, error) {
 	}
 
 	applyDefaults(rule)
-	applyV2Defaults(rule)
+	// Anomaly rules use the v1 schema (top-level evalWindow/frequency,
+	// condition.op/matchType/target). They must not carry a v2alpha1
+	// schemaVersion or an evaluation block.
+	if strVal(rule, "ruleType") != "anomaly_rule" {
+		applyV2Defaults(rule)
+	}
 
 	out, err := json.Marshal(rule)
 	if err != nil {
@@ -162,6 +196,9 @@ func validateEnums(rule map[string]any, errs *ValidationError) {
 }
 
 // validateCondition checks the condition and composite query structure.
+// Threshold/PromQL rules use the v2alpha1 thresholds block; anomaly rules use
+// the v1 shape (top-level evalWindow/frequency + condition.op/matchType/target/
+// algorithm/seasonality) which is enforced in a separate branch.
 func validateCondition(rule map[string]any, errs *ValidationError) {
 	cond := mapVal(rule, "condition")
 	if cond == nil {
@@ -184,11 +221,21 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 		return
 	}
 
-	// Require v2alpha1 thresholds (unless alertOnAbsent is set)
+	ruleType := strVal(rule, "ruleType")
+	isAnomaly := ruleType == "anomaly_rule"
+
+	// Anomaly rules use the v1 shape at the top level — no thresholds block.
+	// Threshold/PromQL rules must carry condition.thresholds unless they are
+	// using alertOnAbsent as the sole trigger.
 	hasThresholds := mapVal(cond, "thresholds") != nil
 	hasAlertOnAbsent := boolVal(cond, "alertOnAbsent")
 
-	if !hasThresholds && !hasAlertOnAbsent {
+	if isAnomaly {
+		if hasThresholds {
+			errs.Add("condition.thresholds", "must be omitted for anomaly_rule (v1 schema); use condition.op/matchType/target/algorithm/seasonality at the condition level instead")
+		}
+		validateAnomalyFields(rule, cond, errs)
+	} else if !hasThresholds && !hasAlertOnAbsent {
 		errs.Add("condition.thresholds", "is required (v2alpha1 schema); use condition.thresholds with kind and spec array")
 	}
 
@@ -204,12 +251,29 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 
 		qType := strVal(qm, "type")
 		if qType == "" {
-			errs.Add(prefix+".type", "is required (builder_query or builder_formula)")
+			errs.Add(prefix+".type", "is required (e.g. builder_query, builder_formula, promql, clickhouse_sql)")
 			continue
 		}
-		if !validBuilderQueryTypes[qType] {
-			errs.Addf(prefix+".type", "must be builder_query or builder_formula; got %q", qType)
+		if !validQueryEnvelopeTypes[qType] {
+			errs.Addf(prefix+".type", "must be one of builder_query, builder_formula, builder_trace_operator, promql, clickhouse_sql; got %q", qType)
 			continue
+		}
+
+		// Envelope type must align with compositeQuery.queryType.
+		switch queryType {
+		case "promql":
+			if qType != "promql" && qType != "builder_formula" {
+				errs.Addf(prefix+".type", "must be 'promql' (or 'builder_formula' for a formula) when compositeQuery.queryType=promql; got %q", qType)
+			}
+		case "clickhouse_sql":
+			if qType != "clickhouse_sql" && qType != "builder_formula" {
+				errs.Addf(prefix+".type", "must be 'clickhouse_sql' (or 'builder_formula' for a formula) when compositeQuery.queryType=clickhouse_sql; got %q", qType)
+			}
+		case "builder":
+			// 'builder' queries use builder_query / builder_formula / builder_trace_operator.
+			if qType != "builder_query" && qType != "builder_formula" && qType != "builder_trace_operator" {
+				errs.Addf(prefix+".type", "must be builder_query, builder_formula, or builder_trace_operator when compositeQuery.queryType=builder; got %q", qType)
+			}
 		}
 
 		spec := mapVal(qm, "spec")
@@ -232,10 +296,11 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			}
 		}
 
-		// For promql/clickhouse_sql queries, require the query text
-		if qType == "builder_query" && (queryType == "promql" || queryType == "clickhouse_sql") {
+		// For promql / clickhouse_sql envelopes, require the query text on the
+		// spec itself.
+		if qType == "promql" || qType == "clickhouse_sql" {
 			if strVal(spec, "query") == "" {
-				errs.Addf(prefix+".spec.query", "is required for %s queries", queryType)
+				errs.Addf(prefix+".spec.query", "is required for %s queries", qType)
 			}
 		}
 
@@ -247,7 +312,7 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 		}
 	}
 
-	// Validate v2alpha1 thresholds structure
+	// Validate v2alpha1 thresholds structure (skipped for anomaly).
 	if hasThresholds {
 		thresholds := mapVal(cond, "thresholds")
 		if strVal(thresholds, "kind") == "" {
@@ -265,14 +330,14 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 				continue
 			}
 			if strVal(sm, "name") == "" {
-				errs.Add(prefix+".name", "is required (critical, warning, or info)")
+				errs.Add(prefix+".name", "is required (critical, error, warning, or info)")
 			}
 			if sm["target"] == nil {
 				errs.Add(prefix+".target", "is required")
 			}
 			op := strVal(sm, "op")
 			if op == "" {
-				errs.Add(prefix+".op", "is required (e.g. above, below, equal, not_equal)")
+				errs.Add(prefix+".op", "is required (e.g. above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds)")
 			} else if !validCompareOps[op] {
 				errs.Addf(prefix+".op", "must be a valid operator; got %q", op)
 			}
@@ -282,6 +347,66 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			} else if !validMatchTypes[mt] {
 				errs.Addf(prefix+".matchType", "must be a valid match type; got %q", mt)
 			}
+		}
+	}
+}
+
+// validateAnomalyFields enforces the v1 anomaly-rule shape: top-level
+// evalWindow + frequency, and condition.op + matchType + target + algorithm +
+// seasonality. The compositeQuery.queries must carry an anomaly function spec.
+func validateAnomalyFields(rule, cond map[string]any, errs *ValidationError) {
+	if strVal(rule, "evalWindow") == "" {
+		errs.Add("evalWindow", "is required for anomaly_rule (v1 schema). Use a Go duration string, e.g. 24h")
+	}
+	if strVal(rule, "frequency") == "" {
+		errs.Add("frequency", "is required for anomaly_rule (v1 schema). Use a Go duration string, e.g. 3h")
+	}
+
+	op := strVal(cond, "op")
+	if op == "" {
+		errs.Add("condition.op", "is required for anomaly_rule")
+	} else if !validCompareOps[op] {
+		errs.Addf("condition.op", "must be a valid operator; got %q", op)
+	}
+
+	mt := strVal(cond, "matchType")
+	if mt == "" {
+		errs.Add("condition.matchType", "is required for anomaly_rule")
+	} else if !validMatchTypes[mt] {
+		errs.Addf("condition.matchType", "must be a valid match type; got %q", mt)
+	}
+
+	if cond["target"] == nil {
+		errs.Add("condition.target", "is required for anomaly_rule (z-score threshold)")
+	}
+
+	if strVal(cond, "algorithm") == "" {
+		errs.Add("condition.algorithm", "is required for anomaly_rule (e.g. standard)")
+	}
+	if strVal(cond, "seasonality") == "" {
+		errs.Add("condition.seasonality", "is required for anomaly_rule (hourly, daily, or weekly)")
+	}
+}
+
+// validateNotificationSettings enforces the accepted set for renotify.alertStates.
+func validateNotificationSettings(rule map[string]any, errs *ValidationError) {
+	ns := mapVal(rule, "notificationSettings")
+	if ns == nil {
+		return
+	}
+	renotify := mapVal(ns, "renotify")
+	if renotify == nil {
+		return
+	}
+	states := sliceVal(renotify, "alertStates")
+	for i, s := range states {
+		str, ok := s.(string)
+		if !ok {
+			errs.Addf(fmt.Sprintf("notificationSettings.renotify.alertStates[%d]", i), "must be a string; got %T", s)
+			continue
+		}
+		if !validAlertStates[str] {
+			errs.Addf(fmt.Sprintf("notificationSettings.renotify.alertStates[%d]", i), "must be 'firing' or 'nodata'; got %q", str)
 		}
 	}
 }
