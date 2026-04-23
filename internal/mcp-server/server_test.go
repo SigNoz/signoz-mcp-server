@@ -465,12 +465,16 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 
 	waitForCondition(t, time.Second, func() bool {
 		identifyCalls, trackCalls := spy.snapshot()
-		// Identity caching is exercised directly in the client package; here
-		// we only assert the hooks fire the right analytics events.
-		return requests.Load() >= 1 && len(identifyCalls) == 1 && len(trackCalls) == 1
+		// RegisterSession fires one Identify; UnregisterSession is a no-op
+		// for analytics so trackCalls stays empty.
+		return requests.Load() >= 1 && len(identifyCalls) == 1 && len(trackCalls) == 0
 	}, "timed out waiting for async API-key analytics")
 
 	identifyCalls, trackCalls := spy.snapshot()
+
+	if len(trackCalls) != 0 {
+		t.Fatalf("expected no track calls on UnregisterSession, got %d", len(trackCalls))
+	}
 
 	identify := identifyCalls[0]
 	if identify.groupID != "org-456" || identify.userID != "sa-123" {
@@ -481,20 +485,6 @@ func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	}
 	if identify.attrs[analytics.AttrName] != "ingest-bot" {
 		t.Fatalf("identify name = %v, want ingest-bot", identify.attrs[analytics.AttrName])
-	}
-
-	track := trackCalls[0]
-	if track.groupID != "org-456" || track.userID != "sa-123" || track.event != analytics.EventSessionUnregistered {
-		t.Fatalf("track call = (%q, %q, %q), want (%q, %q, %q)", track.groupID, track.userID, track.event, "org-456", "sa-123", analytics.EventSessionUnregistered)
-	}
-	if track.attrs[analytics.AttrSessionID] != "sess-api" {
-		t.Fatalf("session id attr = %v, want %q", track.attrs[analytics.AttrSessionID], "sess-api")
-	}
-	if track.attrs[analytics.AttrOrgID] != "org-456" || track.attrs[analytics.AttrPrincipal] != "service_account" || track.attrs[analytics.AttrEmail] != "service@example.com" {
-		t.Fatalf("track attrs = %#v, want orgId, principal, and email", track.attrs)
-	}
-	if track.attrs[analytics.AttrName] != "ingest-bot" {
-		t.Fatalf("track name = %v, want ingest-bot", track.attrs[analytics.AttrName])
 	}
 }
 

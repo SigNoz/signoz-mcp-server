@@ -794,20 +794,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		}
 	})
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
-		sessionID := session.SessionID()
 		m.logger.InfoContext(ctx, "mcp session unregistered")
-
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			props := map[string]any{
-				analytics.AttrTenantURL: signozURL,
-				analytics.AttrSessionID: sessionID,
-			}
-			m.attachClientInfo(props, sessionID)
-			m.trackEventAsync(ctx, analytics.EventSessionUnregistered, props)
-		}
-
-		// Delete after dispatch — trackEventAsync has already snapshotted props.
-		m.forgetClientInfo(sessionID)
+		m.forgetClientInfo(session.SessionID())
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {

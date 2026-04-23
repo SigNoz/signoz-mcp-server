@@ -5,7 +5,6 @@ package analytics
 // attributes, never in the event name — cardinality stays bounded.
 const (
 	EventSessionRegistered           = "MCP Session: Registered"
-	EventSessionUnregistered         = "MCP Session: Unregistered"
 	EventToolCalled                  = "MCP Tool: Called"
 	EventPromptFetched               = "MCP Prompt: Fetched"
 	EventResourceFetched             = "MCP Resource: Fetched"
