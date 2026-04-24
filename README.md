@@ -315,6 +315,7 @@ MCP_SERVER_PORT=8000 \
 "Search traces for the checkout service from the last hour"
 "Get details for trace ID abc123"
 "Create a dashboard with CPU and memory widgets"
+"How do I send Docker logs to SigNoz?"
 ```
 
 ## Available Tools
@@ -342,6 +343,8 @@ MCP_SERVER_PORT=8000 \
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics) |
 | `signoz_get_view` | Get a saved view by UUID |
+| `signoz_search_docs` | Search official SigNoz docs for product, setup, instrumentation, config, API, deployment, or troubleshooting questions |
+| `signoz_fetch_doc` | Fetch full markdown for one official SigNoz docs page or heading |
 | `signoz_create_view` | Create a new saved Explorer view |
 | `signoz_update_view` | Replace an existing saved view (full-body PUT) |
 | `signoz_delete_view` | Delete a saved view by UUID |
@@ -358,6 +361,10 @@ MCP_SERVER_PORT=8000 \
 | `signoz_delete_notification_channel` | Delete a notification channel by ID |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
+
+### Agent Routing Guidance
+
+Use `signoz_search_docs` for any SigNoz product question: how-to, feature usage, setup, configuration, API behavior, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Use live data tools for actual telemetry, alert state, dashboard contents, saved views, and tenant-specific resources. When a docs search result needs exact commands or a specific section, call `signoz_fetch_doc`.
 
 <details>
 <summary><strong>Parameter Reference</strong></summary>
@@ -489,6 +496,29 @@ List SigNoz saved Explorer views for a given sourcePage. Supports pagination; re
 Get a single saved view by UUID.
 
 - **Parameters**: `viewId` (required) - Saved view UUID
+
+#### `signoz_search_docs`
+
+Search official SigNoz documentation with BM25 over indexed markdown content.
+
+- **Parameters**:
+  - `query` (required) - Natural-language or keyword query
+  - `limit` (optional) - Maximum results to return (default: 10, max: 25)
+  - `section_slug` (optional) - Exact top-level docs section filter, such as `install`, `logs-management`, `traces`, or `dashboards`
+  - `searchContext` (optional) - User's original question
+
+#### `signoz_fetch_doc`
+
+Fetch full markdown for one official SigNoz docs page from the local index. Accepts only `https://signoz.io/docs/...` URLs or `/docs/...` paths.
+
+- **Parameters**:
+  - `url` (required) - Docs page URL or path
+  - `heading` (optional) - Heading anchor ID or heading text
+  - `searchContext` (optional) - User's original question
+
+#### `signoz://docs/sitemap`
+
+Read-only MCP resource containing the indexed docs sitemap used by the docs search and fetch tools.
 
 #### `signoz_create_view`
 
@@ -688,6 +718,11 @@ Executes a SigNoz Query Builder v5 query.
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
+| `SIGNOZ_MCP_MODE` | Set to `docs-only` to allow stdio startup without `SIGNOZ_URL` / `SIGNOZ_API_KEY` for public docs-only usage | No |
+| `SIGNOZ_DOCS_REFRESH_INTERVAL` | Runtime docs sitemap refresh interval (Go duration, default: `6h`) | No |
+| `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Runtime full docs refresh interval (Go duration, default: `24h`) | No |
+| `SIGNOZ_MCP_TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy CIDRs whose `X-Forwarded-For` header may identify public docs clients | No |
+| `SIGNOZ_MCP_PUBLIC_RATE_LIMIT_BYPASS_IPS` | Comma-separated client IPs that bypass public docs rate limits | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
 | `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |
 | `OAUTH_ISSUER_URL` | Public URL of this MCP server (used in OAuth metadata discovery)              | Yes when `OAUTH_ENABLED=true`       |

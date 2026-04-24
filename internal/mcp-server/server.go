@@ -17,6 +17,7 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/internal/oauth"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
@@ -76,6 +77,9 @@ type MCPServer struct {
 	// goroutine) when SIGTERM lands mid-startup.
 	httpServer  atomic.Pointer[http.Server]
 	analyticsWG sync.WaitGroup
+
+	publicSessions sync.Map
+	publicLimiter  *publicDocsRateLimiter
 }
 
 func (m *MCPServer) rememberClientInfo(sessionID string, info mcp.Implementation) {
@@ -317,6 +321,73 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		slog.String("server_name", "SigNozMCPServer"),
 		slog.String("transport_mode", m.config.TransportMode))
 
+	// Short-circuit if shutdown already signaled. The async docs-index build
+	// below would otherwise continue to run after Run() returns; tests rely
+	// on a 2 s exit bound.
+	if err := ctx.Err(); err != nil {
+		m.logger.InfoContext(ctx, "Shutdown signaled before startup; exiting early")
+		return nil
+	}
+
+	// Register a placeholder IndexRegistry up-front so the docs tool handlers
+	// have a non-nil *IndexRegistry to reference. Ready() reports false until
+	// the async corpus build below calls Swap() with a real snapshot, so docs
+	// handlers correctly return INDEX_NOT_READY in the window before the
+	// index is populated. This lets HTTP server publication (below) happen
+	// within the 1 s test bound instead of waiting on the 1-3 s bleve build.
+	placeholderRegistry, err := docsindex.NewPlaceholderRegistry(ctx)
+	if err != nil {
+		return fmt.Errorf("initialize placeholder docs registry: %w", err)
+	}
+	m.handler.SetDocsIndex(placeholderRegistry)
+
+	if m.publicLimiter == nil {
+		m.publicLimiter = newPublicDocsRateLimiter(m.config)
+	}
+	m.publicLimiter.start(ctx)
+
+	// Build the real corpus-backed index asynchronously; swap it in when ready.
+	// Always start the refresher even when the embedded corpus is unavailable
+	// (schema mismatch, decode failure, missing asset) so the server can
+	// recover via live fetch instead of remaining empty until the next
+	// process restart.
+	go func() {
+		var loaded bool
+		snapshot, loadErr := docsindex.LoadEmbeddedCorpus()
+		if loadErr != nil {
+			m.logger.WarnContext(ctx, "embedded docs corpus unavailable; refresher will attempt a live build", logpkg.ErrAttr(loadErr))
+		} else if swapErr := placeholderRegistry.Swap(ctx, snapshot); swapErr != nil {
+			m.logger.ErrorContext(ctx, "docs index initial build failed; refresher will retry", logpkg.ErrAttr(swapErr))
+		} else {
+			m.logger.InfoContext(ctx, "Docs index ready", slog.Int("pages", len(snapshot.Pages)))
+			loaded = true
+		}
+		refresher := docsindex.NewRefresher(m.logger, placeholderRegistry, docsindex.NewFetcher(docsindex.FetcherConfig{}), docsindex.RefreshConfig{
+			RefreshInterval:     m.config.DocsRefreshInterval,
+			FullRefreshInterval: m.config.DocsFullRefreshInterval,
+		})
+		refresher.SetMeters(m.meters)
+		refresher.Start(ctx)
+		// Only kick an immediate refresh when the embedded blob could not
+		// be loaded (schema mismatch, decode failure, missing asset) — in
+		// that case the index is empty and waiting on the 6 h scheduled
+		// tick would serve empty docs tools in the meantime. In the normal
+		// "blob loaded fine" case, we deliberately skip the on-boot refresh
+		// so startup doesn't pay a ~15 s CPU/memory spike against the live
+		// corpus; freshness is handled by the scheduled refresher
+		// (6 h incremental, 24 h forced) and by the manually-dispatched
+		// docs-index-refresh workflow that maintainers run ahead of a
+		// release (.github/workflows/docs-index-refresh.yml) to keep the
+		// committed blob reasonably fresh at cold-boot time.
+		if !loaded {
+			go func() {
+				if err := refresher.Trigger(ctx, true); err != nil {
+					m.logger.WarnContext(ctx, "initial docs live refresh failed", logpkg.ErrAttr(err))
+				}
+			}()
+		}
+	}()
+
 	// Register all handlers
 	m.handler.RegisterMetricsHandlers(s)
 	m.handler.RegisterFieldsHandlers(s)
@@ -326,6 +397,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.handler.RegisterQueryBuilderV5Handlers(s)
 	m.handler.RegisterLogsHandlers(s)
 	m.handler.RegisterViewHandlers(s)
+	m.handler.RegisterDocsHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
 	m.handler.RegisterNotificationChannelHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
@@ -799,6 +871,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
 		m.logger.InfoContext(ctx, "mcp session unregistered")
 		m.forgetClientInfo(session.SessionID())
+		m.forgetPublicSession(session.SessionID())
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -1042,6 +1115,10 @@ func isJWTToken(token string) bool {
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPublicDocsRequest(r.Context()) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ctx := r.Context()
 
 		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
@@ -1213,7 +1290,10 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	mcpHandler := server.NewStreamableHTTPServer(s,
 		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
 	)
-	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
+	if m.publicLimiter == nil {
+		m.publicLimiter = newPublicDocsRateLimiter(m.config)
+	}
+	mux.Handle("/mcp", m.authOrPublicMiddleware(m.publicDocsRateLimiter(m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),

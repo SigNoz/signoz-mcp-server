@@ -10,6 +10,7 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -20,6 +21,7 @@ type Handler struct {
 	configURL     string
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
+	docsIndex     *docsindex.IndexRegistry
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
@@ -29,6 +31,10 @@ type Handler struct {
 
 func (h *Handler) SetMeters(meters *otelpkg.Meters) {
 	h.meters = meters
+}
+
+func (h *Handler) SetDocsIndex(registry *docsindex.IndexRegistry) {
+	h.docsIndex = registry
 }
 
 func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {

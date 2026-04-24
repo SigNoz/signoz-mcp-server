@@ -1,0 +1,182 @@
+[
+  {
+    "query": "send logs to signoz",
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs-to-signoz/"]
+  },
+  {
+    "query": "collect docker container logs",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/collect_docker_logs/"]
+  },
+  {
+    "query": "collect kubernetes pod logs",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/collect_kubernetes_pod_logs/"]
+  },
+  {
+    "query": "send python logs opentelemetry",
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/python-logs/"]
+  },
+  {
+    "query": "send java logs opentelemetry",
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/java-logs/"]
+  },
+  {
+    "query": "send nodejs winston logs",
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/nodejs-winston-logs/"]
+  },
+  {
+    "query": "send aws lambda nodejs logs",
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/aws-lambda-nodejs/"]
+  },
+  {
+    "query": "send metrics from go application",
+    "expected_top_pages": ["https://signoz.io/docs/metrics-management/send-metrics/applications/golang/"]
+  },
+  {
+    "query": "send metrics from nodejs application",
+    "expected_top_pages": ["https://signoz.io/docs/metrics-management/send-metrics/applications/opentelemetry-nodejs/"]
+  },
+  {
+    "query": "send metrics from python application",
+    "expected_top_pages": ["https://signoz.io/docs/metrics-management/send-metrics/applications/opentelemetry-python/"]
+  },
+  {
+    "query": "prometheus metrics to signoz",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/prometheus-metrics/"]
+  },
+  {
+    "query": "opentelemetry collector configuration",
+    "expected_top_pages": ["https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/configuration/"]
+  },
+  {
+    "query": "switch direct export to opentelemetry collector",
+    "expected_top_pages": ["https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/switch-to-collector/"]
+  },
+  {
+    "query": "python opentelemetry instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/opentelemetry-python/"]
+  },
+  {
+    "query": "manual python instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/python/manual-instrumentation/"]
+  },
+  {
+    "query": "java spring boot opentelemetry instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/java/opentelemetry-java/"]
+  },
+  {
+    "query": "nodejs opentelemetry instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/"]
+  },
+  {
+    "query": "manual nodejs instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/javascript/nodejs-manual-instrumentation/"]
+  },
+  {
+    "query": "go opentelemetry instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/opentelemetry-golang/"]
+  },
+  {
+    "query": "cloudflare workers opentelemetry instrumentation",
+    "expected_top_pages": ["https://signoz.io/docs/instrumentation/opentelemetry-cloudflare/"]
+  },
+  {
+    "query": "install signoz with docker compose",
+    "expected_top_pages": ["https://signoz.io/docs/install/docker/"]
+  },
+  {
+    "query": "troubleshooting docker installation",
+    "expected_top_pages": ["https://signoz.io/docs/setup/docker/troubleshooting/faq/"]
+  },
+  {
+    "query": "install signoz kubernetes helm",
+    "expected_top_pages": ["https://signoz.io/docs/install/kubernetes/"]
+  },
+  {
+    "query": "deploy signoz on aws",
+    "expected_top_pages": ["https://signoz.io/docs/install/kubernetes/aws/"]
+  },
+  {
+    "query": "deploy signoz on gcp",
+    "expected_top_pages": ["https://signoz.io/docs/install/kubernetes/gcp/"]
+  },
+  {
+    "query": "deploy signoz digitalocean",
+    "expected_top_pages": ["https://signoz.io/docs/install/digital-ocean/"]
+  },
+  {
+    "query": "sigNoz cloud quickstart otel demo telemetry",
+    "expected_top_pages": ["https://signoz.io/docs/cloud/quickstart/"]
+  },
+  {
+    "query": "cloud vs self hosted ingestion",
+    "expected_top_pages": ["https://signoz.io/docs/ingestion/cloud-vs-self-hosted/"]
+  },
+  {
+    "query": "ingestion keys signoz cloud",
+    "expected_top_pages": ["https://signoz.io/docs/ingestion/signoz-cloud/keys/"]
+  },
+  {
+    "query": "manage dashboards in signoz",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/manage-dashboards/"]
+  },
+  {
+    "query": "dashboard panel types",
+    "expected_top_pages": ["https://signoz.io/docs/dashboards/panel-types/"]
+  },
+  {
+    "query": "dashboard query builder",
+    "expected_top_pages": ["https://signoz.io/docs/product-features/query-builder/"]
+  },
+  {
+    "query": "import dashboard in signoz",
+    "expected_top_pages": ["https://signoz.io/docs/dashboards/import-dashboard/"]
+  },
+  {
+    "query": "create alerts in signoz",
+    "expected_top_pages": ["https://signoz.io/docs/alerts/"]
+  },
+  {
+    "query": "setup alerts notification channel",
+    "expected_top_pages": ["https://signoz.io/docs/setup-alerts-notification/"]
+  },
+  {
+    "query": "configure slack notification channel",
+    "expected_top_pages": ["https://signoz.io/docs/alerts-management/notification-channel/slack/"]
+  },
+  {
+    "query": "metrics based alerts thresholds",
+    "expected_top_pages": ["https://signoz.io/docs/alerts-management/metrics-based-alerts/"]
+  },
+  {
+    "query": "logs query troubleshooting",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/logs-query-troubleshooting/"]
+  },
+  {
+    "query": "metrics troubleshooting missing data",
+    "expected_top_pages": ["https://signoz.io/docs/metrics-management/troubleshooting/troubleshooting/"]
+  },
+  {
+    "query": "traces troubleshooting missing spans",
+    "expected_top_pages": ["https://signoz.io/docs/traces-management/troubleshooting/troubleshooting/"]
+  },
+  {
+    "query": "otel demo sample application",
+    "expected_top_pages": ["https://signoz.io/docs/cloud/quickstart/"]
+  },
+  {
+    "query": "logs api auth header search logs",
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/logs-api/search-logs/"]
+  },
+  {
+    "query": "trace api search traces",
+    "expected_top_pages": ["https://signoz.io/docs/traces-management/trace-api/search-traces/"]
+  },
+  {
+    "query": "clickhouse query performance dashboard panels",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/clickhouse-faqs/"]
+  },
+  {
+    "query": "writing metrics clickhouse query",
+    "expected_top_pages": ["https://signoz.io/docs/userguide/write-a-metrics-clickhouse-query/"]
+  }
+]

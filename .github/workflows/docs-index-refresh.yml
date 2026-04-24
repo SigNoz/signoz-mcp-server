@@ -1,0 +1,78 @@
+name: docs-index-refresh
+
+# Dispatch-only, mirroring pre-release.yaml: GitHub does not fire `release`
+# events for draft releases, and hooking to `published` would only benefit
+# the NEXT release, not the one being cut. Instead, the maintainer runs
+# this manually ahead of a release (typically right before pre-release.yaml)
+# so the bundled PR carries a freshly-rebuilt corpus blob. Also usable
+# ad-hoc whenever signoz.io/docs has drifted enough that the committed blob
+# is worth refreshing outside a release cycle.
+#
+# Rebuilds internal/docs/assets/corpus.gob.gz and corpus.manifest.json and
+# opens a PR with the diff so a reviewer can eyeball the manifest.
+#
+# The running server also refreshes from signoz.io on its own
+# (6 h incremental, 24 h forced), so this CI is a cold-boot freshness
+# guarantee — not the hot path for keeping running fleets current.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Rebuild docs corpus blob
+        # Default (no -allow-fallback) fails loudly if the live sitemap
+        # fetch fails — we do NOT want CI silently shipping a stale or
+        # fallback blob.
+        run: go run ./cmd/build-docs-index
+
+      - name: Verify committed manifest matches rebuilt blob
+        run: go test ./internal/docs/ -run TestCorpusManifestMatches -count=1
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet -- internal/docs/assets; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/docs-index-refresh
+          commit-message: "chore(docs): refresh embedded docs corpus"
+          title: "chore(docs): refresh embedded docs corpus"
+          body: |
+            Scheduled refresh of the embedded `internal/docs/assets/corpus.gob.gz`
+            and `internal/docs/assets/corpus.manifest.json`.
+
+            Review the manifest diff for per-page URL and SHA-256 changes.
+            The running server also refreshes on its own (6 h / 24 h), so
+            this PR is a cold-boot freshness guarantee — not strictly
+            load-bearing for running fleets.
+          add-paths: |
+            internal/docs/assets/corpus.gob.gz
+            internal/docs/assets/corpus.manifest.json
+          delete-branch: true
+          labels: automated
