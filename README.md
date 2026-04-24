@@ -386,8 +386,8 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
   - `groupBy` (optional) - Comma-separated field names
   - `filter` (optional) - Filter expression
-  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h)
-  - `start`/`end` (optional) - Unix ms timestamps (override timeRange)
+  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - time_series (default) or scalar
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
@@ -445,7 +445,7 @@ Updates an existing dashboard.
 Lists all services within a time range.
 
 - **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
 
@@ -455,7 +455,7 @@ Gets top operations for a specific service.
 
 - **Parameters**:
   - `service` (required) - Service name
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
   - `tags` (optional) - JSON array of tags
@@ -466,7 +466,7 @@ Gets alert history timeline for a specific rule.
 
 - **Parameters**:
   - `ruleId` (required) - Alert rule ID
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
   - `end` (optional) - End timestamp in milliseconds (defaults to now)
   - `offset` (optional) - Offset for pagination (default: 0)
@@ -527,8 +527,8 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
 #### `signoz_search_logs`
 
@@ -539,8 +539,8 @@ Search logs with flexible filtering across all services.
   - `service` (optional) - Service name to filter by
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
   - `limit` (optional) - Maximum number of logs to return (default: 100)
   - `offset` (optional) - Offset for pagination (default: 0)
 
@@ -582,8 +582,8 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
 #### `signoz_get_trace_details`
 
@@ -591,7 +591,7 @@ Gets trace information including all spans and metadata.
 
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information (true/false, default: true)

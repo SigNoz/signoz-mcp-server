@@ -204,6 +204,37 @@ func TestHandleGetAlertHistory(t *testing.T) {
 	}
 }
 
+func TestHandleGetAlertHistory_ExplicitStartEndOverrideTimeRange(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-hist",
+		"timeRange": "1h",
+		"start":     "1711123200000",
+		"end":       "1711130400000",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if capturedReq.Start != 1711123200000 {
+		t.Fatalf("start = %d, want explicit start", capturedReq.Start)
+	}
+	if capturedReq.End != 1711130400000 {
+		t.Fatalf("end = %d, want explicit end", capturedReq.End)
+	}
+}
+
 func TestHandleGetAlertHistory_EmptyRuleId(t *testing.T) {
 	mock := &client.MockClient{}
 	h := newTestHandler(mock)
