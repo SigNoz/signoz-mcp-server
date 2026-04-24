@@ -9,6 +9,7 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -137,7 +138,7 @@ func (r *IndexRegistry) Close(ctx context.Context) {
 func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, limit int) (SearchResponse, error) {
 	entry, release, ok := r.acquire()
 	if !ok {
-		return SearchResponse{}, fmt.Errorf(CodeIndexNotReady)
+		return SearchResponse{}, errors.New(CodeIndexNotReady)
 	}
 	defer release()
 	if limit <= 0 {
@@ -146,12 +147,15 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	if limit > 25 {
 		limit = 25
 	}
-	q := boostedDocsQuery(query)
-	var finalQuery bleveQuery.Query = q
+	// boostedDocsQuery already returns the bleveQuery.Query interface, so
+	// finalQuery is typed as the interface — that's what allows the
+	// section_slug branch below to reassign it to a ConjunctionQuery
+	// without a type mismatch.
+	finalQuery := boostedDocsQuery(query)
 	if sectionSlug != "" {
 		sectionQuery := bleve.NewTermQuery(sectionSlug)
 		sectionQuery.SetField("section_slug")
-		finalQuery = bleve.NewConjunctionQuery(q, sectionQuery)
+		finalQuery = bleve.NewConjunctionQuery(finalQuery, sectionQuery)
 	}
 	req := bleve.NewSearchRequestOptions(finalQuery, limit, 0, false)
 	req.Fields = []string{"title", "url", "section_slug", "section_breadcrumb", "body_markdown"}
@@ -398,7 +402,7 @@ func DecodeCorpus(r io.Reader) (CorpusSnapshot, error) {
 	if err != nil {
 		return CorpusSnapshot{}, err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	var snapshot CorpusSnapshot
 	if err := gob.NewDecoder(gz).Decode(&snapshot); err != nil {
 		return CorpusSnapshot{}, err
@@ -463,10 +467,11 @@ func truncateContent(s string, maxBytes int) (string, string) {
 	if len(s) <= maxBytes {
 		return s, "none"
 	}
-	runes := []rune(s)
 	var bytesUsed int
 	var out []rune
-	for _, r := range runes {
+	// Range over the string directly — Go iterates by rune, avoiding a
+	// []rune(s) allocation the linter flags (staticcheck SA6003).
+	for _, r := range s {
 		runeLen := utf8.RuneLen(r)
 		if runeLen < 0 {
 			runeLen = 3

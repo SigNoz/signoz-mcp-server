@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -24,7 +23,6 @@ type Fetcher struct {
 	limiter    *rate.Limiter
 	concurrent chan struct{}
 	sleep      func(context.Context, time.Duration) error
-	mu         sync.Mutex
 }
 
 type FetcherConfig struct {
