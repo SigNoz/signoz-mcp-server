@@ -43,7 +43,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
 	)
 
-	s.AddTool(listChannelsTool, h.handleListNotificationChannels)
+	addTool(s, listChannelsTool, h.handleListNotificationChannels)
 
 	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -98,7 +98,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithString("msteams_text", mcp.Description("Message body template (Go template syntax supported)")),
 	)
 
-	s.AddTool(createChannelTool, h.handleCreateNotificationChannel)
+	addTool(s, createChannelTool, h.handleCreateNotificationChannel)
 
 	updateChannelTool := mcp.NewTool("signoz_update_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -160,7 +160,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithString("msteams_text", mcp.Description("Message body template (Go template syntax supported)")),
 	)
 
-	s.AddTool(updateChannelTool, h.handleUpdateNotificationChannel)
+	addTool(s, updateChannelTool, h.handleUpdateNotificationChannel)
 
 	getChannelTool := mcp.NewTool("signoz_get_notification_channel",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -169,7 +169,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Get a single notification channel by ID (GET /api/v1/channels/{id}). Returns the full channel configuration including the embedded receiver config (slack/webhook/pagerduty/email/opsgenie/msteams)."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel.")),
 	)
-	s.AddTool(getChannelTool, h.handleGetNotificationChannel)
+	addTool(s, getChannelTool, h.handleGetNotificationChannel)
 
 	deleteChannelTool := mcp.NewTool("signoz_delete_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -177,7 +177,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Delete a notification channel by ID (DELETE /api/v1/channels/{id}). Irreversible. Confirm with the user before calling, and warn if the channel is referenced by existing alert rules."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel to delete.")),
 	)
-	s.AddTool(deleteChannelTool, h.handleDeleteNotificationChannel)
+	addTool(s, deleteChannelTool, h.handleDeleteNotificationChannel)
 }
 
 func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

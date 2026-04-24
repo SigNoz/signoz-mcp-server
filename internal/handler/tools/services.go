@@ -28,7 +28,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
-	s.AddTool(listTool, h.handleListServices)
+	addTool(s, listTool, h.handleListServices)
 
 	getOpsTool := mcp.NewTool("signoz_get_service_top_operations",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -42,7 +42,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
 	)
 
-	s.AddTool(getOpsTool, h.handleGetServiceTopOperations)
+	addTool(s, getOpsTool, h.handleGetServiceTopOperations)
 }
 
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
