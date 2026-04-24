@@ -411,6 +411,201 @@ func TestValidate_InvalidLegendPosition(t *testing.T) {
 	assertHasFieldError(t, verr, "widgets[0].legendPosition")
 }
 
+// --- filter.expression / filters.items[] consistency ---
+
+func TestValidate_FilterExpressionMissingItemKey(t *testing.T) {
+	// The CPU Used bug pattern: filter.expression has two predicates but
+	// filters.items[] has three entries (namespace missing from expression).
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter": map[string]any{
+									"expression": "k8s.cluster.name IN $k8s.cluster.name AND k8s.node.name IN $k8s.node.name",
+								},
+								"filters": map[string]any{
+									"op": "AND",
+									"items": []any{
+										map[string]any{"key": map[string]any{"key": "k8s.cluster.name"}, "op": "IN", "value": "$k8s.cluster.name"},
+										map[string]any{"key": map[string]any{"key": "k8s.node.name"}, "op": "IN", "value": "$k8s.node.name"},
+										map[string]any{"key": map[string]any{"key": "k8s.namespace.name"}, "op": "IN", "value": "$k8s.namespace.name"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	verr := Validate(d)
+	if verr == nil {
+		t.Fatal("expected validation error for filter.expression missing item key")
+	}
+	assertHasFieldError(t, verr, "widgets[0].query.builder.queryData[0].filter.expression")
+	if !strings.Contains(verr.Error(), "k8s.namespace.name") {
+		t.Errorf("error should name the missing key, got: %v", verr)
+	}
+}
+
+func TestValidate_FilterExpressionConsistent(t *testing.T) {
+	// All three item keys appear in the expression — should pass.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter": map[string]any{
+									"expression": "k8s.cluster.name IN $k8s.cluster.name AND k8s.node.name IN $k8s.node.name AND k8s.namespace.name IN $k8s.namespace.name",
+								},
+								"filters": map[string]any{
+									"op": "AND",
+									"items": []any{
+										map[string]any{"key": map[string]any{"key": "k8s.cluster.name"}, "op": "IN", "value": "$k8s.cluster.name"},
+										map[string]any{"key": map[string]any{"key": "k8s.node.name"}, "op": "IN", "value": "$k8s.node.name"},
+										map[string]any{"key": map[string]any{"key": "k8s.namespace.name"}, "op": "IN", "value": "$k8s.namespace.name"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	if verr := Validate(d); verr != nil {
+		t.Fatalf("expected no errors for consistent expression/items, got: %v", verr)
+	}
+}
+
+func TestValidate_FilterExpressionEmptySkipped(t *testing.T) {
+	// Empty filter.expression: SigNoz builds from items, no consistency check needed.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter":     map[string]any{"expression": ""},
+								"filters": map[string]any{
+									"op":    "AND",
+									"items": []any{map[string]any{"key": map[string]any{"key": "service.name"}, "op": "IN", "value": "frontend"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	if verr := Validate(d); verr != nil {
+		t.Fatalf("expected no errors when filter.expression is empty, got: %v", verr)
+	}
+}
+
+func TestValidate_FilterItemsEmptySkipped(t *testing.T) {
+	// Expression-only filter (no items array): nothing to cross-check.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter":     map[string]any{"expression": "service.name = 'frontend'"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	if verr := Validate(d); verr != nil {
+		t.Fatalf("expected no errors when filters.items is empty, got: %v", verr)
+	}
+}
+
+func TestValidate_FilterExpressionMismatchOnFormulas(t *testing.T) {
+	// queryFormulas can also carry filters (rare); same consistency rule applies.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{"queryName": "A", "dataSource": "metrics", "expression": "A"},
+						},
+						QueryFormulas: []map[string]any{
+							{
+								"queryName":  "F1",
+								"expression": "A",
+								"filter":     map[string]any{"expression": "service.name = 'frontend'"},
+								"filters": map[string]any{
+									"op":    "AND",
+									"items": []any{map[string]any{"key": map[string]any{"key": "region"}, "op": "=", "value": "us-east"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	verr := Validate(d)
+	if verr == nil {
+		t.Fatal("expected error for formula filter mismatch")
+	}
+	assertHasFieldError(t, verr, "widgets[0].query.builder.queryFormulas[0].filter.expression")
+}
+
 // --- helpers ---
 
 func validBuilderQuery() *Query {

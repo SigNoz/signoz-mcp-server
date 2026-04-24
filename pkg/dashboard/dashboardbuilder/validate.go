@@ -174,6 +174,62 @@ func validateBuilderQuery(prefix string, q *Query, errs *ValidationError) {
 		if expr == "" {
 			errs.Add(qPrefix+".expression", "is required and must be a non-empty string")
 		}
+
+		validateFilterExpressionConsistency(qPrefix, qd, errs)
+	}
+
+	for i, qf := range q.Builder.QueryFormulas {
+		qPrefix := fmt.Sprintf("%s.builder.queryFormulas[%d]", prefix, i)
+		validateFilterExpressionConsistency(qPrefix, qf, errs)
+	}
+}
+
+// validateFilterExpressionConsistency rejects builder queries whose
+// `filter.expression` string omits any key present in `filters.items[]`. Both
+// the SigNoz list/graph renderer (which reads `filter.expression` directly)
+// and the edit-modal expression-reconstruction path (which walks
+// `filters.items[]`) must agree, or the two produce different query payloads:
+// the list view silently drops predicates, and the edit modal trips on an
+// item it cannot find a home for. The SigNoz backend tolerates this
+// inconsistency on write (it does not reject mismatched payloads), so we
+// enforce it here — permissive upstream does not mean correct.
+//
+// Only runs when both sides are non-empty: an empty `filter.expression` lets
+// SigNoz build from items, and an empty `filters.items[]` means
+// expression-only is intentional.
+func validateFilterExpressionConsistency(prefix string, qd map[string]any, errs *ValidationError) {
+	filterMap, _ := qd["filter"].(map[string]any)
+	expression, _ := filterMap["expression"].(string)
+	if strings.TrimSpace(expression) == "" {
+		return
+	}
+	filtersMap, _ := qd["filters"].(map[string]any)
+	itemsAny, _ := filtersMap["items"].([]any)
+	if len(itemsAny) == 0 {
+		return
+	}
+	var missing []string
+	for _, it := range itemsAny {
+		item, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		keyObj, ok := item["key"].(map[string]any)
+		if !ok {
+			continue
+		}
+		keyName, _ := keyObj["key"].(string)
+		if keyName == "" {
+			continue
+		}
+		if !strings.Contains(expression, keyName) {
+			missing = append(missing, keyName)
+		}
+	}
+	if len(missing) > 0 {
+		errs.Addf(prefix+".filter.expression",
+			"is inconsistent with filters.items[]: keys %v are present in items but missing from expression %q. Every filter item key must appear in filter.expression so the list view and edit modal render the same predicates.",
+			missing, expression)
 	}
 }
 

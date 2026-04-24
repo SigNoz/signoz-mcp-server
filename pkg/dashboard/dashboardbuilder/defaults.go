@@ -49,7 +49,7 @@ const (
 	DynamicSourceTraces     = "Traces"
 	DynamicSourceLogs       = "Logs"
 	DynamicSourceMetrics    = "Metrics"
-	DynamicSourceAllSources = "all sources"
+	DynamicSourceAllSources = "All telemetry"
 )
 
 // Legend positions.
@@ -227,6 +227,12 @@ func ApplyDefaults(d *DashboardData, multiSelectSet, showALLSet map[string]bool)
 			if w.Query.Builder.QueryFormulas == nil {
 				w.Query.Builder.QueryFormulas = []map[string]any{}
 			}
+			coerceHavingInQueryMaps(w.Query.Builder.QueryData)
+			coerceHavingInQueryMaps(w.Query.Builder.QueryFormulas)
+			uppercaseFilterOpsInQueryMaps(w.Query.Builder.QueryData)
+			uppercaseFilterOpsInQueryMaps(w.Query.Builder.QueryFormulas)
+			normalizeFilterItemsInQueryMaps(w.Query.Builder.QueryData)
+			normalizeFilterItemsInQueryMaps(w.Query.Builder.QueryFormulas)
 		}
 		// Ensure clickhouse_sql and promql are not nil.
 		if w.Query != nil {
@@ -330,6 +336,12 @@ func applyBuilderDefaults(d *DashboardData) {
 			if w.Query.Builder.QueryFormulas == nil {
 				w.Query.Builder.QueryFormulas = []map[string]any{}
 			}
+			coerceHavingInQueryMaps(w.Query.Builder.QueryData)
+			coerceHavingInQueryMaps(w.Query.Builder.QueryFormulas)
+			uppercaseFilterOpsInQueryMaps(w.Query.Builder.QueryData)
+			uppercaseFilterOpsInQueryMaps(w.Query.Builder.QueryFormulas)
+			normalizeFilterItemsInQueryMaps(w.Query.Builder.QueryData)
+			normalizeFilterItemsInQueryMaps(w.Query.Builder.QueryFormulas)
 		}
 		if w.Query != nil {
 			if w.Query.ClickhouseSQL == nil {

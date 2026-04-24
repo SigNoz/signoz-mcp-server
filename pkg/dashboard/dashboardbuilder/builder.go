@@ -151,7 +151,7 @@ func (b *DashboardBuilder) BuildMap() (map[string]any, error) {
 
 // NewDynamicVariable creates a DYNAMIC type variable.
 // attribute is the field to query (e.g., "service.name").
-// source is one of "Traces", "Logs", "Metrics", or "all sources".
+// source is one of "Traces", "Logs", "Metrics", or "All telemetry".
 func NewDynamicVariable(attribute, source string) *DashboardVariable {
 	return &DashboardVariable{
 		Type:                      VariableTypeDynamic,

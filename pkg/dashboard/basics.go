@@ -64,7 +64,7 @@ Variables [Critical]:
 
 Default to DYNAMIC Variables:
 - ALWAYS prefer DYNAMIC type variables. They auto-derive dropdown values from OpenTelemetry resource/tag attributes using DynamicVariablesAttribute and DynamicVariablesSource, require no manual SQL, and stay in sync with backend state automatically.
-- Set DynamicVariablesSource to one of: "Traces", "Logs", "Metrics", or "all sources".
+- Set DynamicVariablesSource to one of: "Traces", "Logs", "Metrics", or "All telemetry" (matches the values written by the SigNoz UI dropdown). Note: GET responses may return these in any casing (e.g. "metrics") and older SigNoz versions used the legacy alias "all sources" in place of "All telemetry"; the server normalizes case and aliases on write so echoing a GET payload back is safe.
 - Set DynamicVariablesAttribute to the attribute key (e.g., "service.name", "deployment.environment", "k8s.namespace.name").
 - When you know the attribute (e.g., the user says "filter by service" → use service.name, "filter by environment" → use deployment.environment), create the DYNAMIC variable directly without extra API calls.
 - When the right attribute is NOT obvious, call signoz_get_field_keys with the relevant signal and fieldContext=resource to discover available resource attributes, then pick the best match. Optionally call signoz_get_field_values to preview values and confirm the attribute is populated. Use the discovered attribute as DynamicVariablesAttribute.
@@ -83,6 +83,13 @@ Variable Configuration:
 - Interpret ALL in dynamic variables as no filter, not select everything.
 - Reference variables using $var syntax across Query Builder, ClickHouse SQL, and PromQL; use IN for multi-select inputs.
 - Chain variables by constraining one variable using another, but rely on dynamic variables for automatic dependency handling.
+
+Applying Variables to Panels [Critical — MUST prompt the user]:
+- Before wiring a new variable into panel queries, ALWAYS ask the user which panels it should apply to. Never silently inject a variable reference into every panel.
+- Present the current panels as a list (id + title, grouped by row if rows exist) and offer two choices: (a) apply to all panels, or (b) pick a subset. Wait for the user's selection before generating any queries that reference the variable.
+- Only inject $<var_name> into the filter expressions / queries of panels the user selected; leave the rest untouched.
+- Rationale: variables often apply to a subset of panels (e.g., a service.name filter belongs on RED panels but not on a global latency heatmap). Silent auto-injection produces dashboards that look valid syntactically but over-filter unrelated panels.
+- This applies to both signoz_create_dashboard (introducing a variable at creation time) and signoz_update_dashboard (adding a variable to an existing dashboard).
 
 Links:
 - Dashboard: https://signoz.io/docs/userguide/manage-dashboards/
