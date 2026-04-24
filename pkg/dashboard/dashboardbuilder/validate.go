@@ -204,7 +204,7 @@ func validateFilterExpressionConsistency(prefix string, qd map[string]any, errs 
 		return
 	}
 	filtersMap, _ := qd["filters"].(map[string]any)
-	itemsAny, _ := filtersMap["items"].([]any)
+	itemsAny := filterItemsSlice(filtersMap["items"])
 	if len(itemsAny) == 0 {
 		return
 	}

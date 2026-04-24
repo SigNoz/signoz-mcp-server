@@ -2,6 +2,32 @@ package dashboardbuilder
 
 import "strings"
 
+// filterItemsSlice returns the items array from a filters map as []any,
+// regardless of whether the caller constructed the slice as []any (the shape
+// Go's JSON decoder produces when unmarshalling into map[string]any) or as
+// []map[string]any (an idiomatic Go literal for a typed array of maps).
+// Returns nil for any other type — missing key, wrong concrete type, or non-
+// slice value — so callers that range over the result naturally no-op.
+//
+// This exists because filter-related helpers (normalizers and the expression
+// consistency check) need to walk filter items regardless of which code path
+// built the payload. Asserting on []any alone silently skips the whole items
+// array when the caller happens to use the typed-slice literal, defeating
+// the purpose of the helper.
+func filterItemsSlice(items any) []any {
+	switch v := items.(type) {
+	case []any:
+		return v
+	case []map[string]any:
+		out := make([]any, len(v))
+		for i, m := range v {
+			out[i] = m
+		}
+		return out
+	}
+	return nil
+}
+
 // canonicalDynamicSource maps an incoming dynamicVariablesSource value to the
 // canonical form written by the current SigNoz UI dropdown
 // (frontend AttributeSource enum): "Traces", "Logs", "Metrics", "All telemetry".
@@ -45,8 +71,8 @@ func uppercaseFilterOpsInQueryMaps(entries []map[string]any) {
 		if !ok {
 			continue
 		}
-		items, ok := filters["items"].([]any)
-		if !ok {
+		items := filterItemsSlice(filters["items"])
+		if items == nil {
 			continue
 		}
 		for _, it := range items {
@@ -95,8 +121,8 @@ func normalizeFilterItemsInQueryMaps(entries []map[string]any) {
 		if !ok {
 			continue
 		}
-		items, ok := filters["items"].([]any)
-		if !ok {
+		items := filterItemsSlice(filters["items"])
+		if items == nil {
 			continue
 		}
 		for _, it := range items {

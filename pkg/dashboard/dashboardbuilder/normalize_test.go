@@ -330,6 +330,89 @@ func TestNormalizeFilterItems_MissingOrNil(t *testing.T) {
 	normalizeFilterItemsInQueryMaps(entries)
 }
 
+func TestFilterItemsSlice(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want int // length; nil → 0
+		nilExpected bool
+	}{
+		{"nil input", nil, 0, true},
+		{"empty []any", []any{}, 0, false},
+		{"populated []any", []any{map[string]any{"op": "IN"}}, 1, false},
+		{"[]map[string]any", []map[string]any{{"op": "IN"}, {"op": "=" }}, 2, false},
+		{"wrong type string", "oops", 0, true},
+		{"wrong type map", map[string]any{"a": 1}, 0, true},
+		{"empty []map[string]any", []map[string]any{}, 0, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := filterItemsSlice(c.in)
+			if c.nilExpected && got != nil {
+				t.Errorf("expected nil, got %v", got)
+			}
+			if !c.nilExpected && got == nil {
+				t.Errorf("expected non-nil slice")
+			}
+			if len(got) != c.want {
+				t.Errorf("len = %d, want %d", len(got), c.want)
+			}
+		})
+	}
+}
+
+func TestUppercaseFilterOpsInQueryMaps_TypedSliceLiteral(t *testing.T) {
+	// Go-idiomatic []map[string]any literal (not []any). Must still be
+	// processed by the normalizer, same as the JSON-unmarshalled shape.
+	entries := []map[string]any{
+		{
+			"filters": map[string]any{
+				"op": "AND",
+				"items": []map[string]any{
+					{"op": "in", "value": "x"},
+					{"op": "not_in", "value": "y"},
+				},
+			},
+		},
+	}
+	uppercaseFilterOpsInQueryMaps(entries)
+	items := entries[0]["filters"].(map[string]any)["items"].([]map[string]any)
+	if items[0]["op"] != "IN" || items[1]["op"] != "NOT_IN" {
+		t.Errorf("expected uppercase, got %v / %v", items[0]["op"], items[1]["op"])
+	}
+}
+
+func TestNormalizeFilterItemsInQueryMaps_TypedSliceLiteral(t *testing.T) {
+	// Same Go-idiomatic shape — must heal the malformed key even though
+	// items is []map[string]any rather than []any.
+	entries := []map[string]any{
+		{
+			"filters": map[string]any{
+				"op": "AND",
+				"items": []map[string]any{
+					{
+						"key":   map[string]any{"id": "k8s.node.name", "key": "k8s.node.name", "type": ""},
+						"op":    "IN",
+						"value": []any{"$k8s.node.name"},
+					},
+				},
+			},
+		},
+	}
+	normalizeFilterItemsInQueryMaps(entries)
+	item := entries[0]["filters"].(map[string]any)["items"].([]map[string]any)[0]
+	key := item["key"].(map[string]any)
+	if key["dataType"] != "string" {
+		t.Errorf("dataType not filled: %v", key["dataType"])
+	}
+	if key["id"] != "k8s.node.name--string--" {
+		t.Errorf("id not rebuilt: %v", key["id"])
+	}
+	if item["value"] != "$k8s.node.name" {
+		t.Errorf("value not unwrapped: %v", item["value"])
+	}
+}
+
 func TestUppercaseFilterOpsInQueryMaps_MissingOrNil(t *testing.T) {
 	entries := []map[string]any{
 		nil,                               // nil entry
