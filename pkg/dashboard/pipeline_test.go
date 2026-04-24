@@ -175,6 +175,220 @@ func TestValidate_DynamicVariableExplicitFalse(t *testing.T) {
 	assert.Equal(t, false, svcVar["multiSelect"])
 }
 
+// --- GET-shape normalization (the two API asymmetries) ---
+
+func TestValidate_NormalizesGetShapePayload(t *testing.T) {
+	// Mirrors a real round-trip: fetch via GET (lowercase dynamicVariablesSource,
+	// object-form having, lowercase filter op, legacy "all sources" alias),
+	// mutate nothing, send back via PUT. Without normalization this would fail
+	// at panel unmarshal (strict []HavingClause), variable validation (strict
+	// canonical-form enum), and panel-validator filter operator check.
+	data := toJSON(t, map[string]any{
+		"title": "Round-trip",
+		"variables": map[string]any{
+			"service_name": map[string]any{
+				"type":                      "DYNAMIC",
+				"dynamicVariablesAttribute": "service.name",
+				"dynamicVariablesSource":    "metrics", // lowercase as returned by GET
+			},
+			"any_attr": map[string]any{
+				"type":                      "DYNAMIC",
+				"dynamicVariablesAttribute": "deployment.environment",
+				"dynamicVariablesSource":    "all sources", // legacy alias from older SigNoz versions
+			},
+		},
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "value", "title": "Requests",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "traces",
+								"expression": "A",
+								"having":     map[string]any{"expression": ""}, // object form as returned by GET
+								"filters": map[string]any{
+									"op": "AND",
+									"items": []any{
+										map[string]any{
+											"key":   map[string]any{"key": "service.name", "dataType": "string"},
+											"op":    "in", // lowercase as returned by GET
+											"value": "$service_name",
+										},
+									},
+								},
+							},
+						},
+						"queryFormulas": []map[string]any{
+							{"queryName": "F1", "expression": "A", "having": map[string]any{"expression": ""}},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	out, err := Validate(data)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(out, &result))
+
+	// Source normalized to Capitalized form.
+	svc := result["variables"].(map[string]any)["service_name"].(map[string]any)
+	assert.Equal(t, "Metrics", svc["dynamicVariablesSource"])
+
+	// Legacy "all sources" aliased to canonical "All telemetry".
+	anyAttr := result["variables"].(map[string]any)["any_attr"].(map[string]any)
+	assert.Equal(t, "All telemetry", anyAttr["dynamicVariablesSource"])
+
+	// having coerced to empty array on both queryData and queryFormulas.
+	widgets := result["widgets"].([]any)
+	builder := widgets[0].(map[string]any)["query"].(map[string]any)["builder"].(map[string]any)
+
+	qd := builder["queryData"].([]any)
+	qdHaving, ok := qd[0].(map[string]any)["having"].([]any)
+	require.True(t, ok, "queryData[0].having must be an array, got %T", qd[0].(map[string]any)["having"])
+	assert.Empty(t, qdHaving)
+
+	// filters.items[].op normalized to uppercase.
+	filters := qd[0].(map[string]any)["filters"].(map[string]any)
+	items := filters["items"].([]any)
+	assert.Equal(t, "IN", items[0].(map[string]any)["op"])
+
+	qf := builder["queryFormulas"].([]any)
+	qfHaving, ok := qf[0].(map[string]any)["having"].([]any)
+	require.True(t, ok, "queryFormulas[0].having must be an array, got %T", qf[0].(map[string]any)["having"])
+	assert.Empty(t, qfHaving)
+}
+
+func TestValidate_InvalidDynamicSourceStillRejected(t *testing.T) {
+	// Normalization must not silently accept garbage — truly invalid values
+	// should still produce a validation error.
+	data := toJSON(t, map[string]any{
+		"title": "Test",
+		"variables": map[string]any{
+			"svc": map[string]any{
+				"type":                      "DYNAMIC",
+				"dynamicVariablesAttribute": "service.name",
+				"dynamicVariablesSource":    "foobar",
+			},
+		},
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "value", "title": "T",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder":   map[string]any{"queryData": []map[string]any{{"queryName": "A", "dataSource": "traces", "expression": "A"}}},
+				},
+			},
+		},
+	})
+	_, err := Validate(data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dynamicVariablesSource")
+}
+
+func TestValidate_RejectsFilterExpressionMismatch(t *testing.T) {
+	// Payload with 3 items but a 2-clause expression must be rejected
+	// regardless of whether SigNoz would accept it — the list view and edit
+	// modal see different predicates otherwise.
+	data := toJSON(t, map[string]any{
+		"title": "Mismatch",
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "value", "title": "T",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter": map[string]any{
+									"expression": "k8s.cluster.name IN $k8s.cluster.name AND k8s.node.name IN $k8s.node.name",
+								},
+								"filters": map[string]any{
+									"op": "AND",
+									"items": []any{
+										map[string]any{"key": map[string]any{"key": "k8s.cluster.name", "dataType": "string", "id": "k8s.cluster.name--string--", "type": ""}, "op": "IN", "value": "$k8s.cluster.name"},
+										map[string]any{"key": map[string]any{"key": "k8s.node.name", "dataType": "string", "id": "k8s.node.name--string--", "type": ""}, "op": "IN", "value": "$k8s.node.name"},
+										map[string]any{"key": map[string]any{"key": "k8s.namespace.name", "dataType": "string", "id": "k8s.namespace.name--string--", "type": ""}, "op": "IN", "value": "$k8s.namespace.name"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	_, err := Validate(data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "k8s.namespace.name")
+	assert.Contains(t, err.Error(), "filter.expression")
+}
+
+func TestValidate_NormalizesMalformedFilterItem(t *testing.T) {
+	// Mirrors the "CPU Used" dashboard bug: the k8s.node.name filter item
+	// has a missing key.dataType, non-canonical key.id, and a value wrapped
+	// in a single-element $var array. List/render tolerates this (ClickHouse
+	// uses filter.expression) but the edit modal fails to hydrate. Our
+	// normalizer should heal all three deviations before the payload leaves
+	// Validate.
+	data := toJSON(t, map[string]any{
+		"title": "Fixture",
+		"widgets": []map[string]any{
+			{
+				"id": "w1", "panelTypes": "value", "title": "CPU Used",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filters": map[string]any{
+									"op": "AND",
+									"items": []any{
+										map[string]any{
+											"id":  "broken-item",
+											"key": map[string]any{
+												"id":   "k8s.node.name",
+												"key":  "k8s.node.name",
+												"type": "",
+											},
+											"op":    "IN",
+											"value": []any{"$k8s.node.name"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	out, err := Validate(data)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(out, &result))
+
+	item := result["widgets"].([]any)[0].(map[string]any)["query"].(map[string]any)["builder"].(map[string]any)["queryData"].([]any)[0].(map[string]any)["filters"].(map[string]any)["items"].([]any)[0].(map[string]any)
+	key := item["key"].(map[string]any)
+
+	assert.Equal(t, "string", key["dataType"], "dataType should be filled")
+	assert.Equal(t, "k8s.node.name--string--", key["id"], "id should be canonicalized")
+	assert.Equal(t, "$k8s.node.name", item["value"], "value should be unwrapped")
+}
+
 // --- Auto-layout ---
 
 func TestValidate_AutoLayoutGenerated(t *testing.T) {
