@@ -88,8 +88,8 @@ var (
 type Signer struct {
 	// activeKey is the key used for NEW tokens. Its fingerprint goes in
 	// the kid field.
-	activeKey   []byte
-	activeKID   string
+	activeKey []byte
+	activeKID string
 	// byKID indexes every ACCEPTED key (including activeKey) so Verify
 	// can rehash payload bytes with whichever key signed the token.
 	byKID map[string][]byte
@@ -271,7 +271,8 @@ func (s *Signer) ActiveKID() string {
 }
 
 // GenerateKey returns a cryptographically random 32-byte HMAC key.
-// Used at boot when SIGNOZ_MCP_PUBLIC_SESSION_KEYS is unset.
+// Used when SIGNOZ_MCP_PUBLIC_SESSION_KEYS is unset and ephemeral
+// public-session signing is allowed.
 func GenerateKey() ([]byte, error) {
 	k := make([]byte, 32)
 	if _, err := rand.Read(k); err != nil {

@@ -309,9 +309,8 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 
 // buildPublicSessionSigner returns a ready-to-use Signer. If the
 // operator supplied SIGNOZ_MCP_PUBLIC_SESSION_KEYS we use that; if not
-// and we're in HTTP mode we mint an ephemeral 32-byte key so local-dev
-// and single-replica deploys Just Work, but emit a WARN so a
-// multi-replica operator notices before hitting 401s in prod.
+// we mint an ephemeral 32-byte key so local-dev and single-replica
+// deploys keep working.
 //
 // Failure modes here are narrow: a configured-but-invalid key ring
 // would already have been rejected by LoadConfig before we got here.
@@ -337,8 +336,7 @@ func buildPublicSessionSigner(log *slog.Logger, cfg *config.Config) *session.Sig
 		if log != nil && cfg.TransportMode == "http" {
 			log.Warn(
 				"SIGNOZ_MCP_PUBLIC_SESSION_KEYS not set; minted ephemeral signing key. "+
-					"Public sessions will not survive pod restarts and multi-replica deployments will see 401s — "+
-					"set SIGNOZ_MCP_PUBLIC_SESSION_KEYS to a shared base64 secret to enable multi-pod support.",
+					"Public sessions will not survive pod restarts and multi-replica deployments will see 401s.",
 				slog.Bool("ephemeral", true),
 			)
 		}
@@ -417,6 +415,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		} else if swapErr := placeholderRegistry.Swap(ctx, snapshot); swapErr != nil {
 			m.logger.ErrorContext(ctx, "docs index initial build failed; refresher will retry", logpkg.ErrAttr(swapErr))
 		} else {
+			placeholderRegistry.RecordMetrics(ctx, m.meters)
 			m.logger.InfoContext(ctx, "Docs index ready", slog.Int("pages", len(snapshot.Pages)))
 			loaded = true
 		}

@@ -112,6 +112,12 @@ func TestForcedFullRefresh(t *testing.T) {
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)
 	require.Contains(t, snapshot.Pages[0].BodyMarkdown, "Docker Compose")
+
+	metrics := collectDocsMetrics(t, reader)
+	require.Equal(t, int64(1), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
+	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
+	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
+	require.Less(t, float64GaugeValue(t, metrics, "signoz_docs_index_age_seconds"), 10.0)
 }
 
 func TestSingleflightSerialization(t *testing.T) {
@@ -169,6 +175,26 @@ func TestRefreshFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
 	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "error"))
+}
+
+func TestRecordDocsIndexMetrics(t *testing.T) {
+	verifyNoDocsLeaks(t)
+	reg := newTestRegistry(t, testSnapshot())
+	reader, meters := newDocsTestMeters(t)
+
+	snapshot := testSnapshot()
+	snapshot.BuiltAt = time.Now().UTC().Add(-2 * time.Hour)
+	require.NoError(t, reg.Swap(context.Background(), snapshot))
+	require.True(t, reg.RecordMetrics(context.Background(), meters))
+
+	metrics := collectDocsMetrics(t, reader)
+	require.Equal(t, int64(len(snapshot.Pages)), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
+	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
+	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
+
+	age := float64GaugeValue(t, metrics, "signoz_docs_index_age_seconds")
+	require.GreaterOrEqual(t, age, 2*time.Hour.Seconds())
+	require.Less(t, age, 2*time.Hour.Seconds()+10)
 }
 
 func TestAtomicSwapRace(t *testing.T) {
@@ -371,8 +397,7 @@ func newDocsTestMeters(t *testing.T) (*sdkmetric.ManualReader, *otelpkg.Meters) 
 
 func docsRefreshMetricValue(t *testing.T, reader *sdkmetric.ManualReader, outcome string) int64 {
 	t.Helper()
-	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
+	rm := collectDocsMetrics(t, reader)
 	sum, ok := oteltest.FindInt64SumMetric(rm, "signoz_docs_refresh_total")
 	require.True(t, ok)
 	for _, dp := range sum.DataPoints {
@@ -381,6 +406,29 @@ func docsRefreshMetricValue(t *testing.T, reader *sdkmetric.ManualReader, outcom
 		}
 	}
 	return 0
+}
+
+func collectDocsMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMetrics {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	return rm
+}
+
+func int64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) int64 {
+	t.Helper()
+	gauge, ok := oteltest.FindInt64GaugeMetric(rm, name)
+	require.True(t, ok, "metric %s not found", name)
+	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
+	return gauge.DataPoints[0].Value
+}
+
+func float64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) float64 {
+	t.Helper()
+	gauge, ok := oteltest.FindFloat64GaugeMetric(rm, name)
+	require.True(t, ok, "metric %s not found", name)
+	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
+	return gauge.DataPoints[0].Value
 }
 
 func attrValue(set attribute.Set, key string) string {

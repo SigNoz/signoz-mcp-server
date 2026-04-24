@@ -120,6 +120,14 @@ func (m *MCPServer) authOrPublicMiddleware(next http.Handler) http.Handler {
 
 		switch r.Method {
 		case http.MethodPost:
+			// Tenant clients should hit authMiddleware before the
+			// public-docs JSON-RPC probe reads or classifies the body.
+			// Public docs is an unauthenticated fallback; it should not
+			// change parser/error behavior for credentialed traffic.
+			if hasTenantAuthHeaders(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			public, method, err := publicJSONRPCRequest(r)
 			if err != nil {
 				http.Error(w, "invalid JSON-RPC request", http.StatusBadRequest)
@@ -137,16 +145,6 @@ func (m *MCPServer) authOrPublicMiddleware(next http.Handler) http.Handler {
 			// request. Send these to authMiddleware instead — tenant
 			// credentials work, public path is off.
 			if m.sessionSigner == nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-			// Tenant clients that send credentials on a public-eligible
-			// method (typically `initialize`) must be routed to the
-			// authenticated path — otherwise their session ID gets
-			// wrapped in a public signed token and later GET/DELETE
-			// would bypass authMiddleware. Detect tenant intent via the
-			// standard auth headers and fall through to authMiddleware.
-			if hasTenantAuthHeaders(r) {
 				next.ServeHTTP(w, r)
 				return
 			}

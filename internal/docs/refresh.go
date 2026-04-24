@@ -203,6 +203,7 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 			attrs := metric.WithAttributes(attribute.String("outcome", outcome))
 			r.meters.DocsRefreshes.Add(ctx, 1, attrs)
 			r.meters.DocsRefreshDuration.Record(ctx, time.Since(start).Seconds(), attrs)
+			r.registry.RecordMetrics(ctx, r.meters)
 		}
 	}()
 	current, _ := r.registry.Snapshot()

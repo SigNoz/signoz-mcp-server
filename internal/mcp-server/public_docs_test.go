@@ -189,6 +189,34 @@ func TestAuthOrPublicBodyRestoration(t *testing.T) {
 	}
 }
 
+func TestAuthOrPublicTenantHeadersBypassPublicProbe(t *testing.T) {
+	m := &MCPServer{
+		config:        &config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		publicLimiter: newPublicDocsRateLimiter(&config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}}),
+		sessionSigner: testSessionSigner(t),
+	}
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":{"nested":"signoz_search_docs"}}}`
+	var received []byte
+	called := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		received, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+	wrapped := m.authOrPublicMiddleware(next)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("SIGNOZ-API-KEY", "tenant-key")
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.True(t, called, "credentialed requests must go straight to the authenticated path")
+	require.Equal(t, body, string(received), "public probe must not consume or reject tenant request bodies")
+}
+
 func TestAuthOrPublicOversizeBodyFallsToAuth(t *testing.T) {
 	m := &MCPServer{
 		config:        &config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}},
@@ -431,6 +459,7 @@ func newPublicDocsHTTPHandler(t *testing.T) (http.Handler, *MCPServer) {
 		ClientCacheSize:          8,
 		ClientCacheTTL:           time.Minute,
 		PublicRateLimitBypassIPs: map[string]struct{}{},
+		PublicSessionKeys:        [][]byte{bytes.Repeat([]byte{'k'}, 32)},
 	}
 	h := tools.NewHandler(logger, cfg)
 	ctx, cancel := context.WithCancel(context.Background())

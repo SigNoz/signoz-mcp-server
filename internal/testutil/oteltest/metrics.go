@@ -31,3 +31,33 @@ func FindFloat64HistogramMetric(rm metricdata.ResourceMetrics, name string) (met
 	}
 	return metricdata.Histogram[float64]{}, false
 }
+
+func FindInt64GaugeMetric(rm metricdata.ResourceMetrics, name string) (metricdata.Gauge[int64], bool) {
+	for _, scopeMetric := range rm.ScopeMetrics {
+		for _, metric := range scopeMetric.Metrics {
+			if metric.Name != name {
+				continue
+			}
+			gauge, ok := metric.Data.(metricdata.Gauge[int64])
+			if ok {
+				return gauge, true
+			}
+		}
+	}
+	return metricdata.Gauge[int64]{}, false
+}
+
+func FindFloat64GaugeMetric(rm metricdata.ResourceMetrics, name string) (metricdata.Gauge[float64], bool) {
+	for _, scopeMetric := range rm.ScopeMetrics {
+		for _, metric := range scopeMetric.Metrics {
+			if metric.Name != name {
+				continue
+			}
+			gauge, ok := metric.Data.(metricdata.Gauge[float64])
+			if ok {
+				return gauge, true
+			}
+		}
+	}
+	return metricdata.Gauge[float64]{}, false
+}

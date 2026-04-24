@@ -48,11 +48,9 @@ type Config struct {
 	// rolling key rotation is safe.
 	//
 	// Keys are provided via SIGNOZ_MCP_PUBLIC_SESSION_KEYS as a
-	// comma-separated list of base64 strings. If unset, the server mints
-	// an ephemeral 32-byte key per pod — fine for single-replica /
-	// local-dev, but public sessions will NOT survive pod restarts or
-	// round-robin across replicas. Multi-replica deployments must set
-	// the env var to a common value on every pod.
+	// comma-separated list of base64 strings. Multi-replica HTTP
+	// deployments must set this to a common value on every pod so public
+	// sessions survive pod restarts and round-robin across replicas.
 	PublicSessionKeys [][]byte
 
 	// PublicSessionTTL bounds how long a signed public-session token is

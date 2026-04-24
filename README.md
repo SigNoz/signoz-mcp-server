@@ -238,6 +238,7 @@ Start the server:
 ```bash
 TRANSPORT_MODE=http \
 MCP_SERVER_PORT=8000 \
+SIGNOZ_MCP_PUBLIC_SESSION_KEYS=$(openssl rand -base64 32) \
 OAUTH_ENABLED=true \
 OAUTH_TOKEN_SECRET=$(openssl rand -base64 32) \
 OAUTH_ISSUER_URL=https://your-public-mcp-url.com \
@@ -723,7 +724,7 @@ Executes a SigNoz Query Builder v5 query.
 | `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Runtime full docs refresh interval (Go duration, default: `24h`) | No |
 | `SIGNOZ_MCP_TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy CIDRs whose `X-Forwarded-For` header may identify public docs clients | No |
 | `SIGNOZ_MCP_PUBLIC_RATE_LIMIT_BYPASS_IPS` | Comma-separated client IPs that bypass public docs rate limits | No |
-| `SIGNOZ_MCP_PUBLIC_SESSION_KEYS` | Comma-separated base64 HMAC keys (each ≥16 bytes decoded) used to sign stateless public-docs session tokens on `initialize`. Index 0 is the active signer; all entries are accepted for verification so rolling rotation is safe. **Set to a shared value on every replica** for multi-pod HTTP deployments — otherwise a client can initialize on one pod and 401 on another. When unset, an ephemeral per-pod key is minted (fine for single-replica / local dev). Generate with `openssl rand -base64 32`. See the rotation runbook below. | No (required for multi-replica public-docs mode) |
+| `SIGNOZ_MCP_PUBLIC_SESSION_KEYS` | Comma-separated base64 HMAC keys (each ≥16 bytes decoded) used to sign stateless public-docs session tokens on `initialize`. Index 0 is the active signer; all entries are accepted for verification so rolling rotation is safe. **Set to a shared value on every replica** for multi-replica HTTP deployments — otherwise a client can initialize on one pod and 401 on another. When unset, an ephemeral per-process key is minted. Generate with `openssl rand -base64 32`. See the rotation runbook below. | No (required for multi-replica public-docs mode) |
 | `SIGNOZ_MCP_PUBLIC_SESSION_TTL` | Lifetime of a signed public-session token (Go duration, default: `1h`). After expiry the client must re-run `initialize`. | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
 | `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |

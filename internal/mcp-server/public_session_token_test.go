@@ -37,6 +37,21 @@ func newSessionTokenTestServer(signer *session.Signer) *MCPServer {
 	}
 }
 
+func TestBuildPublicSessionSigner_HTTPEphemeralWhenKeysAreUnset(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	ephemeralSigner := buildPublicSessionSigner(logger, &config.Config{
+		TransportMode: "http",
+	})
+	require.NotNil(t, ephemeralSigner)
+
+	sharedSigner := buildPublicSessionSigner(logger, &config.Config{
+		TransportMode:     "http",
+		PublicSessionKeys: [][]byte{bytes.Repeat([]byte{'s'}, 32)},
+	})
+	require.NotNil(t, sharedSigner)
+}
+
 // sentinelNext records what the downstream handler saw so we can
 // assert on per-request state (public flag, rewritten session ID).
 type sentinelNext struct {

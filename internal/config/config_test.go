@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,4 +80,33 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 			assert.Equal(t, tt.expectedHeaders, cfg.CustomHeaders)
 		})
 	}
+}
+
+func TestValidateConfig_HTTPAllowsEphemeralPublicSessionKeysByDefault(t *testing.T) {
+	cfg := &Config{
+		TransportMode: "http",
+		Port:          "8000",
+	}
+
+	require.NoError(t, cfg.ValidateConfig())
+}
+
+func TestValidateConfig_HTTPAllowsSharedPublicSessionKeys(t *testing.T) {
+	cfg := &Config{
+		TransportMode:     "http",
+		Port:              "8000",
+		PublicSessionKeys: [][]byte{bytes.Repeat([]byte{'k'}, 32)},
+	}
+
+	require.NoError(t, cfg.ValidateConfig())
+}
+
+func TestLoadConfig_PublicSessionKeys(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{'s'}, 32))
+	t.Setenv(PublicSessionKeysEnv, key)
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Len(t, cfg.PublicSessionKeys, 1)
+	require.Equal(t, bytes.Repeat([]byte{'s'}, 32), cfg.PublicSessionKeys[0])
 }
