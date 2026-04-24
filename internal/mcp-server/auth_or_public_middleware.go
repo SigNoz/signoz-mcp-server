@@ -62,7 +62,7 @@ func (w *peekedResponseWriter) WriteHeader(status int) {
 	w.wroteHeader = true
 	w.status = status
 	if w.transformHeader != nil {
-		w.transformHeader(w.ResponseWriter.Header())
+		w.transformHeader(w.Header())
 	}
 	w.ResponseWriter.WriteHeader(status)
 }

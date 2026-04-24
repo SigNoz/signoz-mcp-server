@@ -112,17 +112,6 @@ func (l *publicDocsRateLimiter) allow(key, method string) (bool, int) {
 	return false, max(1, int(time.Minute/time.Duration(limit)/time.Second))
 }
 
-func (l *publicDocsRateLimiter) unregister(sessionID string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	prefix := sessionID + "|"
-	for key := range l.entries {
-		if strings.HasPrefix(key, prefix) {
-			delete(l.entries, key)
-		}
-	}
-}
-
 func (l *publicDocsRateLimiter) sweep() {
 	cutoff := l.now().Add(-publicLimiterIdleTTL)
 	l.mu.Lock()
