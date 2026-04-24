@@ -155,5 +155,8 @@ PR review surfaced one remaining transport-safety regression: `pkg/log.New` was 
 
 Fix: move the default slog JSON sink from stdout to stderr. This preserves structured log collection in containerized deployments while keeping stdout protocol-safe for stdio transport. Added a regression test that temporarily redirects both file descriptors and asserts `log.New(...).InfoContext(...)` writes only to stderr.
 
+### 2026-04-24 — Issue #136: opt-in internal OTLP export
+GitHub issue #136 showed the "OTLP always on" decision was too sharp for self-hosted Docker stdio users. With no OTLP env configured, the Go OTLP gRPC exporters default to `https://localhost:4317`; SigNoz Docker exposes plaintext OTLP on `localhost:4317`, so the server repeatedly logged `tls: first record does not look like a TLS handshake` even though `SIGNOZ_URL=http://localhost:8080` was healthy. Decision: internal traces/metrics are still OTel-native, but network export is opt-in by `OTEL_EXPORTER_OTLP_ENDPOINT` or signal-specific endpoints. Also honor `OTEL_TRACES_EXPORTER=none` and `OTEL_METRICS_EXPORTER=none`; `OTEL_LOGS_EXPORTER` remains irrelevant because logs are JSON on stderr, not OTLP logs.
+
 ## Open Questions
 _(none — plan approved by Codex after 3 rounds; post-ship review findings addressed)_
