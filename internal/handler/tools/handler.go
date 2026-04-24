@@ -37,6 +37,10 @@ func (h *Handler) SetDocsIndex(registry *docsindex.IndexRegistry) {
 	h.docsIndex = registry
 }
 
+func (h *Handler) DocsIndexReady() bool {
+	return h != nil && h.docsIndex != nil && h.docsIndex.Ready()
+}
+
 func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 	// Normalize the configured URL so that the URL comparison in GetClient
 	// works reliably (e.g. https://example.com:443 == https://example.com).

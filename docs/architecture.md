@@ -26,12 +26,13 @@ subgraph StdioPath["Stdio Transport — Single Tenant"]
 end
 
 subgraph HTTPPath["HTTP Transport — Multi Tenant"]
-    MODE -->|http| HTTP["HTTP Server<br/>/mcp + /healthz + /oauth/* + /.well-known/*"]
+    MODE -->|http| HTTP["HTTP Server<br/>/mcp + /healthz + /readyz + /oauth/* + /.well-known/*"]
     HTTP --> OTELWRAP["otelhttp.NewHandler<br/>(wraps entire mux)"]
     OTELWRAP --> REQ["Incoming HTTP Request"]
     REQ --> HEALTHCHECK{"Path?"}
 
     HEALTHCHECK -->|/healthz| HC200["200 OK — no auth"]
+    HEALTHCHECK -->|/readyz| READY["200 when docs index is ready<br/>503 while docs index is warming"]
     HEALTHCHECK -->|/.well-known/*<br/>/oauth/*| OAUTHFLOW["OAuth 2.1 Endpoints<br/>(no auth required)"]
     HEALTHCHECK -->|/mcp| AUTH["authMiddleware"]
 
