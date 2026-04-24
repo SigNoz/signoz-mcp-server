@@ -196,4 +196,3 @@ func TestHandleAggregateLogs_WithGroupBy(t *testing.T) {
 		t.Fatal("QueryBuilderV5 was not called")
 	}
 }
-

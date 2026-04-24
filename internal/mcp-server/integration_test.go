@@ -2,6 +2,8 @@ package mcp_server
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +98,47 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 	}
 }
 
+func TestIntegration_ListToolsInputSchemasAreOpenAPICompatible(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	for _, tool := range toolsResult.Tools {
+		b, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("marshal input schema for %s: %v", tool.Name, err)
+		}
+		var schema any
+		if err := json.Unmarshal(b, &schema); err != nil {
+			t.Fatalf("unmarshal input schema for %s: %v", tool.Name, err)
+		}
+		if paths := booleanSubschemaPaths(schema, nil); len(paths) > 0 {
+			t.Errorf("%s inputSchema has OpenAPI-incompatible boolean subschemas: %s", tool.Name, strings.Join(paths, ", "))
+		}
+	}
+}
+
 func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
@@ -141,6 +184,44 @@ func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 			t.Errorf("resource body missing expected substring %q", want)
 		}
 	}
+}
+
+func booleanSubschemaPaths(schema any, path []string) []string {
+	switch typed := schema.(type) {
+	case bool:
+		return []string{strings.Join(path, ".")}
+	case map[string]any:
+		var paths []string
+		for _, field := range []string{"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"} {
+			if schemas, ok := typed[field].(map[string]any); ok {
+				for name, child := range schemas {
+					paths = append(paths, booleanSubschemaPaths(child, appendPath(path, field, name))...)
+				}
+			}
+		}
+		for _, field := range []string{"additionalItems", "contains", "else", "if", "items", "not", "propertyNames", "then", "unevaluatedItems", "unevaluatedProperties"} {
+			if child, ok := typed[field]; ok {
+				paths = append(paths, booleanSubschemaPaths(child, appendPath(path, field))...)
+			}
+		}
+		for _, field := range []string{"allOf", "anyOf", "oneOf", "prefixItems"} {
+			if schemas, ok := typed[field].([]any); ok {
+				for i, child := range schemas {
+					paths = append(paths, booleanSubschemaPaths(child, appendPath(path, field, strconv.Itoa(i)))...)
+				}
+			}
+		}
+		return paths
+	default:
+		return nil
+	}
+}
+
+func appendPath(path []string, parts ...string) []string {
+	next := make([]string, 0, len(path)+len(parts))
+	next = append(next, path...)
+	next = append(next, parts...)
+	return next
 }
 
 func TestIntegration_ListPrompts(t *testing.T) {

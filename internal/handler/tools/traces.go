@@ -44,7 +44,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("stepInterval", mcp.Description("Time bucket size in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval. Only set this if the user explicitly requests a specific granularity. Examples: \"60\" (1 min), \"3600\" (1 hour), \"86400\" (1 day).")),
 	)
 
-	s.AddTool(aggregateTracesTool, h.handleAggregateTraces)
+	addTool(s, aggregateTracesTool, h.handleAggregateTraces)
 
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -66,7 +66,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
-	s.AddTool(searchTracesTool, h.handleSearchTraces)
+	addTool(s, searchTracesTool, h.handleSearchTraces)
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -80,7 +80,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
 	)
 
-	s.AddTool(getTraceDetailsTool, h.handleGetTraceDetails)
+	addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)
 }
 
 func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

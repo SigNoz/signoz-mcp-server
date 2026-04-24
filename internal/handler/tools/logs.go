@@ -38,7 +38,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("stepInterval", mcp.Description("Time bucket size in seconds for time_series mode (optional). When omitted, the backend auto-selects an appropriate interval. Only set this if the user explicitly requests a specific granularity. Examples: \"60\" (1 min), \"3600\" (1 hour), \"86400\" (1 day).")),
 	)
 
-	s.AddTool(aggregateLogsTool, h.handleAggregateLogs)
+	addTool(s, aggregateLogsTool, h.handleAggregateLogs)
 
 	// search_logs: log search with optional filters
 	// ToDo: use this function for error logs or logs by service
@@ -60,7 +60,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
-	s.AddTool(searchLogsTool, h.handleSearchLogs)
+	addTool(s, searchLogsTool, h.handleSearchLogs)
 }
 
 func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

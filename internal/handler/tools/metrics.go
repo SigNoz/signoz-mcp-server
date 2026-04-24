@@ -27,7 +27,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("source", mcp.Description("Filter by source (optional).")),
 	)
 
-	s.AddTool(listMetricsTool, h.handleListMetrics)
+	addTool(s, listMetricsTool, h.handleListMetrics)
 
 	// signoz_query_metrics — smart metrics query tool with aggregation validation and defaults
 	queryMetricsTool := mcp.NewTool("signoz_query_metrics",
@@ -59,7 +59,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("formulaQueries", mcp.Description("JSON array of additional named metric queries for formula. Each object: {\"name\":\"B\", \"metricName\":\"...\", \"metricType\":\"...\", \"isMonotonic\":true, \"temporality\":\"...\", \"timeAggregation\":\"...\", \"spaceAggregation\":\"...\", \"groupBy\":[\"...\"], \"filter\":\"...\"}. All fields except name and metricName are optional.")),
 	)
 
-	s.AddTool(queryMetricsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(s, queryMetricsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return h.handleQueryMetrics(ctx, req)
 	})
 

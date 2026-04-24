@@ -49,7 +49,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Default: 50.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
 	)
-	s.AddTool(listTool, h.handleListViews)
+	addTool(s, listTool, h.handleListViews)
 
 	getTool := mcp.NewTool("signoz_get_view",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -58,7 +58,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Fetch a single SigNoz saved view by UUID. Use the returned object as the base for signoz_update_view — the update is a full-body replace."),
 		mcp.WithString("viewId", mcp.Required(), mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs.")),
 	)
-	s.AddTool(getTool, h.handleGetView)
+	addTool(s, getTool, h.handleGetView)
 
 	createTool := mcp.NewTool("signoz_create_view",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -73,7 +73,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		),
 		mcp.WithInputSchema[types.SavedViewInput](),
 	)
-	s.AddTool(createTool, h.handleCreateView)
+	addTool(s, createTool, h.handleCreateView)
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -89,7 +89,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		),
 		mcp.WithInputSchema[types.UpdateViewInput](),
 	)
-	s.AddTool(updateTool, h.handleUpdateView)
+	addTool(s, updateTool, h.handleUpdateView)
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -97,7 +97,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
 		mcp.WithString("viewId", mcp.Required(), mcp.Description("UUID of the view to delete.")),
 	)
-	s.AddTool(deleteTool, h.handleDeleteView)
+	addTool(s, deleteTool, h.handleDeleteView)
 
 	viewInstructions := mcp.NewResource(
 		"signoz://view/instructions",

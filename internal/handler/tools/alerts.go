@@ -36,7 +36,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
-	s.AddTool(alertsTool, h.handleListAlerts)
+	addTool(s, alertsTool, h.handleListAlerts)
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -45,7 +45,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Get the rule definition for a specific alert rule by ruleId (GET /api/v2/rules/{ruleId}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID (UUIDv7 on v2 servers).")),
 	)
-	s.AddTool(getAlertTool, h.handleGetAlert)
+	addTool(s, getAlertTool, h.handleGetAlert)
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -61,7 +61,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
 		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
-	s.AddTool(alertHistoryTool, h.handleGetAlertHistory)
+	addTool(s, alertHistoryTool, h.handleGetAlertHistory)
 
 	createAlertTool := mcp.NewTool(
 		"signoz_create_alert",
@@ -87,7 +87,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		),
 		mcp.WithInputSchema[types.AlertRule](),
 	)
-	s.AddTool(createAlertTool, h.handleCreateAlert)
+	addTool(s, createAlertTool, h.handleCreateAlert)
 
 	updateAlertTool := mcp.NewTool(
 		"signoz_update_alert",
@@ -104,7 +104,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		),
 		mcp.WithInputSchema[types.AlertRule](),
 	)
-	s.AddTool(updateAlertTool, h.handleUpdateAlert)
+	addTool(s, updateAlertTool, h.handleUpdateAlert)
 
 	deleteAlertTool := mcp.NewTool(
 		"signoz_delete_alert",
@@ -113,7 +113,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to delete. The server validates the UUID format and returns invalid_input on bad values.")),
 		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{ruleId}). Irreversible. Confirm with the user before calling."),
 	)
-	s.AddTool(deleteAlertTool, h.handleDeleteAlert)
+	addTool(s, deleteAlertTool, h.handleDeleteAlert)
 
 	// Register alert resources for create alert
 	h.registerAlertResources(s)
