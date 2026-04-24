@@ -222,7 +222,7 @@ func validateFilterExpressionConsistency(prefix string, qd map[string]any, errs 
 		if keyName == "" {
 			continue
 		}
-		if !strings.Contains(expression, keyName) {
+		if !containsKeyAsIdentifier(expression, keyName) {
 			missing = append(missing, keyName)
 		}
 	}
@@ -231,6 +231,53 @@ func validateFilterExpressionConsistency(prefix string, qd map[string]any, errs 
 			"is inconsistent with filters.items[]: keys %v are present in items but missing from expression %q. Every filter item key must appear in filter.expression so the list view and edit modal render the same predicates.",
 			missing, expression)
 	}
+}
+
+// containsKeyAsIdentifier reports whether `key` appears in `expression` as a
+// standalone identifier — that is, flanked by characters that cannot be part
+// of a SigNoz attribute name, or by the start/end of the expression. This
+// avoids false positives where a shorter key substring-matches inside a
+// longer identifier (e.g. key "service.name" appearing in "service.name_v2",
+// or key "k8s.namespace" appearing in "k8s.namespace.name").
+//
+// Attribute names are ASCII and may contain [a-zA-Z0-9_.] — the dot is part
+// of the identifier because OpenTelemetry semantic convention names like
+// "k8s.namespace.name" are a single attribute, not three. Anything outside
+// that set (whitespace, operators, variable prefixes, quotes, parentheses)
+// is a valid boundary.
+func containsKeyAsIdentifier(expression, key string) bool {
+	if key == "" {
+		return false
+	}
+	for idx := 0; idx <= len(expression)-len(key); {
+		i := strings.Index(expression[idx:], key)
+		if i < 0 {
+			return false
+		}
+		pos := idx + i
+		endPos := pos + len(key)
+		beforeOK := pos == 0 || !isAttributeNameByte(expression[pos-1])
+		afterOK := endPos == len(expression) || !isAttributeNameByte(expression[endPos])
+		if beforeOK && afterOK {
+			return true
+		}
+		idx = pos + 1
+	}
+	return false
+}
+
+func isAttributeNameByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z':
+		return true
+	case b >= 'A' && b <= 'Z':
+		return true
+	case b >= '0' && b <= '9':
+		return true
+	case b == '_' || b == '.':
+		return true
+	}
+	return false
 }
 
 func validateClickHouseQueries(prefix string, q *Query, errs *ValidationError) {

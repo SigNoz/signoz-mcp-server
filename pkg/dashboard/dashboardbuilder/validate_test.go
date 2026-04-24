@@ -606,6 +606,145 @@ func TestValidate_FilterExpressionMismatchOnFormulas(t *testing.T) {
 	assertHasFieldError(t, verr, "widgets[0].query.builder.queryFormulas[0].filter.expression")
 }
 
+func TestValidate_FilterExpressionRejectsSubstringMatch(t *testing.T) {
+	// key "service.name" should NOT match substring inside "service.name_v2".
+	// The consistency guard must flag the key as missing.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter":     map[string]any{"expression": "service.name_v2 = 'x'"},
+								"filters": map[string]any{
+									"op":    "AND",
+									"items": []any{map[string]any{"key": map[string]any{"key": "service.name"}, "op": "=", "value": "frontend"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	verr := Validate(d)
+	if verr == nil {
+		t.Fatal("expected rejection: service.name should not match substring of service.name_v2")
+	}
+	assertHasFieldError(t, verr, "filter.expression")
+}
+
+func TestValidate_FilterExpressionRejectsShorterKeyPrefix(t *testing.T) {
+	// key "k8s.namespace" should NOT match inside "k8s.namespace.name"
+	// because the following "." is a valid identifier char, not a boundary.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter":     map[string]any{"expression": "k8s.namespace.name IN $k8s.namespace.name"},
+								"filters": map[string]any{
+									"op":    "AND",
+									"items": []any{map[string]any{"key": map[string]any{"key": "k8s.namespace"}, "op": "IN", "value": "$k8s.namespace"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	verr := Validate(d)
+	if verr == nil {
+		t.Fatal("expected rejection: k8s.namespace is not a valid identifier inside k8s.namespace.name")
+	}
+	assertHasFieldError(t, verr, "filter.expression")
+}
+
+func TestValidate_FilterExpressionAcceptsStandaloneVarReference(t *testing.T) {
+	// key "name" should match the `$name` reference (preceded by `$` which
+	// is a non-attribute char, followed by end-of-string). This verifies
+	// legitimate standalone references aren't over-rejected by the boundary
+	// check.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter":     map[string]any{"expression": "name IN $name"},
+								"filters": map[string]any{
+									"op":    "AND",
+									"items": []any{map[string]any{"key": map[string]any{"key": "name"}, "op": "IN", "value": "$name"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	if verr := Validate(d); verr != nil {
+		t.Fatalf("expected no errors for standalone identifier match, got: %v", verr)
+	}
+}
+
+func TestContainsKeyAsIdentifier(t *testing.T) {
+	// Direct unit coverage of the boundary logic for clarity.
+	cases := []struct {
+		expression, key string
+		want            bool
+	}{
+		{"", "name", false},
+		{"name", "", false},
+		{"name", "name", true},
+		{"service.name IN $service_name", "service.name", true},
+		{"service.name_v2 = 'x'", "service.name", false},
+		{"k8s.namespace.name IN $k8s.namespace.name", "k8s.namespace", false},
+		{"k8s.namespace.name IN $k8s.namespace.name", "k8s.namespace.name", true},
+		{"(service.name = 'x')", "service.name", true},
+		{"xservice.name = 'x'", "service.name", false},
+		{"service.names = 'x'", "service.name", false},
+	}
+	for _, c := range cases {
+		got := containsKeyAsIdentifier(c.expression, c.key)
+		if got != c.want {
+			t.Errorf("containsKeyAsIdentifier(%q, %q) = %v, want %v", c.expression, c.key, got, c.want)
+		}
+	}
+}
+
 // --- helpers ---
 
 func validBuilderQuery() *Query {

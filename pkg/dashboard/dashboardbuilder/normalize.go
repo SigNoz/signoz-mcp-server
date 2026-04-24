@@ -147,10 +147,12 @@ func normalizeFilterItem(item map[string]any) {
 
 // coerceHavingInQueryMaps rewrites the `having` field of each query or formula
 // entry from the GET-shape object `{expression: ""}` to the POST/PUT-shape
-// empty array `[]`. An empty/whitespace expression is treated as "no HAVING"
-// and normalized to an empty array. Any other shape (non-empty expression,
-// already-array form, nil, absent) is left untouched so downstream strict
-// unmarshalling and validation can surface a clear error.
+// empty array `[]`. Coercion is strictly scoped: the object must have an
+// `expression` key that is a string and is empty/whitespace after trim. Any
+// other shape — `expression` missing, `expression` non-string, non-empty
+// expression, already-array form, nil, absent — is left untouched so
+// downstream strict unmarshalling and validation can surface a clear error
+// rather than silently dropping the HAVING clause.
 func coerceHavingInQueryMaps(entries []map[string]any) {
 	for _, entry := range entries {
 		if entry == nil {
@@ -164,8 +166,15 @@ func coerceHavingInQueryMaps(entries []map[string]any) {
 		if !isObj {
 			continue
 		}
-		expr, _ := obj["expression"].(string)
-		if strings.TrimSpace(expr) == "" {
+		rawExpr, hasExpr := obj["expression"]
+		if !hasExpr {
+			continue
+		}
+		exprStr, isStr := rawExpr.(string)
+		if !isStr {
+			continue
+		}
+		if strings.TrimSpace(exprStr) == "" {
 			entry["having"] = []any{}
 		}
 	}

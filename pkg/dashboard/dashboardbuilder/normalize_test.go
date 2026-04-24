@@ -81,6 +81,34 @@ func TestCoerceHavingInQueryMaps_NonEmptyExpressionUntouched(t *testing.T) {
 	}
 }
 
+func TestCoerceHavingInQueryMaps_MalformedObjectUntouched(t *testing.T) {
+	// Out-of-contract shapes must NOT be silently coerced to []; they should
+	// be left as-is so downstream strict unmarshal can surface an error.
+	cases := []struct {
+		name string
+		obj  map[string]any
+	}{
+		{"no expression key", map[string]any{"foo": "bar"}},
+		{"expression is int", map[string]any{"expression": 123}},
+		{"expression is nil", map[string]any{"expression": nil}},
+		{"expression is array", map[string]any{"expression": []any{"count() > 10"}}},
+		{"expression is map", map[string]any{"expression": map[string]any{"k": "v"}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			entries := []map[string]any{{"queryName": "A", "having": c.obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if !reflect.DeepEqual(got, c.obj) {
+				t.Errorf("having should be preserved unchanged, got %#v", got)
+			}
+		})
+	}
+}
+
 func TestCoerceHavingInQueryMaps_MissingOrNil(t *testing.T) {
 	entries := []map[string]any{
 		{"queryName": "A"},                    // no having key
