@@ -89,12 +89,22 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	const expectedToolCount = 33
+	const expectedToolCount = 34
 	if len(toolsResult.Tools) != expectedToolCount {
 		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
 		for _, tool := range toolsResult.Tools {
 			t.Logf("  tool: %s", tool.Name)
 		}
+	}
+	foundAlertRulesTool := false
+	for _, tool := range toolsResult.Tools {
+		if tool.Name == "signoz_list_alert_rules" {
+			foundAlertRulesTool = true
+			break
+		}
+	}
+	if !foundAlertRulesTool {
+		t.Error("expected signoz_list_alert_rules tool to be registered")
 	}
 }
 

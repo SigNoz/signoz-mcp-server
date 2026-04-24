@@ -128,6 +128,27 @@ func TestGetAlertByRuleID(t *testing.T) {
 	}
 }
 
+func TestListAlertRules(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v2/rules", r.URL.Path)
+		assert.Equal(t, "", r.URL.RawQuery)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
+	}))
+	defer server.Close()
+
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	result, err := client.ListAlertRules(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, string(result), `"id":"rule-1"`)
+}
+
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
 		name            string

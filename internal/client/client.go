@@ -456,6 +456,12 @@ func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) 
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
+func (s *SigNoz) ListAlertRules(ctx context.Context) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v2/rules", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rules from SigNoz", slog.String("url", reqURL))
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
 func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v2/rules/%s", s.baseURL, url.PathEscape(ruleID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert rule details", slog.String("ruleID", ruleID))

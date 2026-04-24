@@ -27,7 +27,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_get_alert with a ruleId to fetch the rule definition itself, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
+		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with a ruleId for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Default: 50.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
 		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. Default: true.")),
@@ -37,6 +37,16 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
 	addTool(s, alertsTool, h.handleListAlerts)
+
+	alertRulesTool := mcp.NewTool("signoz_list_alert_rules",
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithDescription("Lists configured alert rules from GET /api/v2/rules, including inactive/OK and disabled rules. Use signoz_list_alerts for current Alertmanager alert instances.\n\nReturns ruleId, alert, alertType, ruleType, state, disabled, severity, labels, createdAt, and updatedAt. Use signoz_get_alert for the full rule definition.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Default: limit=50, offset=0."),
+		mcp.WithString("limit", mcp.Description("Maximum number of alert rules to return per page. Default: 50.")),
+		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
+	)
+	addTool(s, alertRulesTool, h.handleListAlertRules)
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -93,7 +103,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_update_alert",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to update. Obtain it from signoz_get_alert or signoz_list_alerts.")),
+		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert.")),
 		mcp.WithDescription(
 			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{ruleId}). Replaces the full rule configuration.\n\n"+
 				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
@@ -189,6 +199,68 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap alerts with pagination", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_alert_rules")
+	limit, offset := paginate.ParseParams(req.Params.Arguments)
+
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	rules, err := client.ListAlertRules(ctx)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to list alert rules", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var apiResponse types.APIAlertRulesResponse
+	if err := json.Unmarshal(rules, &apiResponse); err != nil {
+		h.logger.ErrorContext(ctx, "Failed to parse alert rules response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(rules)))
+		return mcp.NewToolResultError("failed to parse alert rules response: " + err.Error()), nil
+	}
+
+	ruleSummaries := make([]types.AlertRuleSummary, 0, len(apiResponse.Data))
+	for _, apiRule := range apiResponse.Data {
+		createdAt := apiRule.CreatedAt
+		if createdAt == "" {
+			createdAt = apiRule.CreateAt
+		}
+		updatedAt := apiRule.UpdatedAt
+		if updatedAt == "" {
+			updatedAt = apiRule.UpdateAt
+		}
+
+		ruleSummaries = append(ruleSummaries, types.AlertRuleSummary{
+			RuleID:      apiRule.ID,
+			Alert:       apiRule.Alert,
+			AlertType:   apiRule.AlertType,
+			RuleType:    apiRule.RuleType,
+			State:       apiRule.State,
+			Disabled:    apiRule.Disabled,
+			Severity:    apiRule.Labels["severity"],
+			Description: apiRule.Description,
+			Labels:      apiRule.Labels,
+			CreatedAt:   createdAt,
+			UpdatedAt:   updatedAt,
+		})
+	}
+
+	total := len(ruleSummaries)
+	rulesArray := make([]any, len(ruleSummaries))
+	for i, v := range ruleSummaries {
+		rulesArray[i] = v
+	}
+	pagedRules := paginate.Array(rulesArray, offset, limit)
+
+	resultJSON, err := paginate.Wrap(pagedRules, total, offset, limit)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to wrap alert rules with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
@@ -347,7 +419,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" is required. Provide the UUIDv7 of the rule to update.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "ruleId": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alerts or signoz_get_alert.`, ruleID)), nil
+		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "ruleId": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
 	}
 	delete(rawConfig, "ruleId")
 

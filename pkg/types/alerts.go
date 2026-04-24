@@ -54,6 +54,42 @@ type APIAlertsResponse struct {
 	Data   []APIAlert `json:"data"`
 }
 
+// AlertRuleSummary contains the fields needed to discover configured rules.
+type AlertRuleSummary struct {
+	RuleID      string            `json:"ruleId"`
+	Alert       string            `json:"alert"`
+	AlertType   string            `json:"alertType"`
+	RuleType    string            `json:"ruleType"`
+	State       string            `json:"state"`
+	Disabled    bool              `json:"disabled"`
+	Severity    string            `json:"severity,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	CreatedAt   string            `json:"createdAt,omitempty"`
+	UpdatedAt   string            `json:"updatedAt,omitempty"`
+}
+
+// APIAlertRule mirrors the compact fields used from GET /api/v2/rules.
+type APIAlertRule struct {
+	ID          string            `json:"id"`
+	Alert       string            `json:"alert"`
+	AlertType   string            `json:"alertType"`
+	RuleType    string            `json:"ruleType"`
+	State       string            `json:"state"`
+	Disabled    bool              `json:"disabled"`
+	Description string            `json:"description"`
+	Labels      map[string]string `json:"labels"`
+	CreatedAt   string            `json:"createdAt"`
+	UpdatedAt   string            `json:"updatedAt"`
+	CreateAt    string            `json:"createAt"`
+	UpdateAt    string            `json:"updateAt"`
+}
+
+type APIAlertRulesResponse struct {
+	Status string         `json:"status"`
+	Data   []APIAlertRule `json:"data"`
+}
+
 // ListAlertsParams contains query parameters for the GET /api/v1/alerts endpoint.
 type ListAlertsParams struct {
 	Active    *bool

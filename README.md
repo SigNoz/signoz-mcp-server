@@ -328,6 +328,7 @@ MCP_SERVER_PORT=8000 \
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
+| `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get an alert rule definition by ID via GET /api/v2/rules/{ruleId} |
 | `signoz_get_alert_history` | Get alert state history timeline for a rule |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
@@ -396,7 +397,15 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 
 #### `signoz_list_alerts`
 
-Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_get_alert` with a `ruleId` for rule definitions, or `signoz_get_alert_history` for the state timeline.
+Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with a `ruleId` for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+
+#### `signoz_list_alert_rules`
+
+Lists configured alert rules from `GET /api/v2/rules`, including inactive/OK and disabled rules. Returns compact summaries with `ruleId`, `alert`, `alertType`, `ruleType`, `state`, `disabled`, `severity`, `labels`, `createdAt`, and `updatedAt`.
+
+- **Parameters**:
+  - `limit` (optional) - Maximum number of rules to return (default: 50)
+  - `offset` (optional) - Number of rules to skip for pagination (default: 0)
 
 #### `signoz_get_alert`
 
@@ -613,7 +622,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 Update an existing alert rule via `PUT /api/v2/rules/{ruleId}`. Replaces the full rule configuration — fetch the current rule with `signoz_get_alert` first and merge changes on top of it.
 
 - **Parameters**:
-  - `ruleId` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alerts` / `signoz_get_alert`).
+  - `ruleId` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
   - Plus all fields of the alert rule schema (same shape as `signoz_create_alert`).
 
 #### `signoz_delete_alert`

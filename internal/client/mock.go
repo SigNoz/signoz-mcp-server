@@ -14,6 +14,7 @@ type MockClient struct {
 	GetAnalyticsIdentityFn      func(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetricsFn               func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	ListAlertsFn                func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
+	ListAlertRulesFn            func(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleIDFn          func(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistoryFn           func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
 	ListDashboardsFn            func(ctx context.Context) (json.RawMessage, error)
@@ -65,6 +66,13 @@ func (m *MockClient) ListMetrics(ctx context.Context, start, end int64, limit in
 func (m *MockClient) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 	if m.ListAlertsFn != nil {
 		return m.ListAlertsFn(ctx, params)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) ListAlertRules(ctx context.Context) (json.RawMessage, error) {
+	if m.ListAlertRulesFn != nil {
+		return m.ListAlertRulesFn(ctx)
 	}
 	return json.RawMessage(`{}`), nil
 }
