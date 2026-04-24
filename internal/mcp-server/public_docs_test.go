@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,11 +17,25 @@ import (
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/session"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
 )
+
+// testSessionSigner constructs a deterministic signer so middleware
+// tests can mint and verify tokens without relying on the real env var
+// parsing. 32 bytes of 'k' is sufficient for HMAC-SHA256 and avoids
+// accidental collisions with the per-pod ephemeral key that
+// NewMCPServer would generate.
+func testSessionSigner(t *testing.T) *session.Signer {
+	t.Helper()
+	key := bytes.Repeat([]byte{'k'}, 32)
+	s, err := session.NewSigner(session.SignerConfig{Keys: [][]byte{key}})
+	require.NoError(t, err)
+	return s
+}
 
 func TestAuthOrPublicLifecycle(t *testing.T) {
 	handler, m := newPublicDocsHTTPHandler(t)
@@ -31,8 +44,13 @@ func TestAuthOrPublicLifecycle(t *testing.T) {
 	require.Equal(t, http.StatusOK, initResp.Code)
 	sessionID := initResp.Header().Get(server.HeaderKeySessionID)
 	require.NotEmpty(t, sessionID)
-	_, ok := m.publicSessions.Load(sessionID)
-	require.True(t, ok)
+	// The middleware rewrites the Mcp-Session-Id response header to a
+	// signed token for public initialize — the v1. prefix lets later
+	// GET/DELETE on any pod verify statelessly without a shared map.
+	require.True(t, strings.HasPrefix(sessionID, session.TokenPrefix),
+		"public initialize must return a signed session token; got %q", sessionID)
+	_, verifyErr := m.sessionSigner.Verify(sessionID)
+	require.NoError(t, verifyErr, "returned token must be verifiable by the same signer")
 
 	initialized := serveJSONRPC(t, handler, sessionID, `{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`)
 	require.Less(t, initialized.Code, http.StatusBadRequest)
@@ -86,16 +104,61 @@ func TestAuthOrPublicLifecycle(t *testing.T) {
 	delResp := httptest.NewRecorder()
 	handler.ServeHTTP(delResp, delReq)
 	require.Less(t, delResp.Code, http.StatusBadRequest)
-	_, ok = m.publicSessions.Load(sessionID)
-	require.False(t, ok)
+	// Stateless tokens: there's nothing on the server side to scrub on
+	// DELETE beyond the rate-limit bucket (handled by mcp-go's
+	// OnUnregisterSession hook). The token itself remains syntactically
+	// valid until its embedded exp; replay protection is the client's
+	// responsibility. Not asserting a "session gone" property here
+	// because there's no longer one to check.
+	_ = m
+}
+
+func TestReadinessEndpointTracksDocsIndex(t *testing.T) {
+	t.Run("ready when docs index is ready", func(t *testing.T) {
+		handler, _ := newPublicDocsHTTPHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Equal(t, "ok", rr.Body.String())
+	})
+
+	t.Run("not ready while docs index is placeholder", func(t *testing.T) {
+		logger := logpkg.New("error")
+		cfg := &config.Config{
+			TransportMode:            "http",
+			Port:                     "0",
+			ClientCacheSize:          8,
+			ClientCacheTTL:           time.Minute,
+			PublicRateLimitBypassIPs: map[string]struct{}{},
+		}
+		h := tools.NewHandler(logger, cfg)
+		ctx, cancel := context.WithCancel(context.Background())
+		reg, err := docsindex.NewPlaceholderRegistry(ctx)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			cancel()
+			reg.Close(context.Background())
+		})
+		h.SetDocsIndex(reg)
+		m := NewMCPServer(logger, h, cfg, nil, nil)
+		s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+		h.RegisterDocsHandlers(s)
+
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		rr := httptest.NewRecorder()
+		m.buildHTTP(s).Handler.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusServiceUnavailable, rr.Code)
+		require.Contains(t, rr.Body.String(), "docs index not ready")
+	})
 }
 
 func TestAuthOrPublicBodyRestoration(t *testing.T) {
 	m := &MCPServer{
-		config:         &config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}},
-		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-		publicLimiter:  newPublicDocsRateLimiter(&config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}}),
-		publicSessions: sync.Map{},
+		config:        &config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		publicLimiter: newPublicDocsRateLimiter(&config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}}),
+		sessionSigner: testSessionSigner(t),
 	}
 	var received []byte
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -128,10 +191,10 @@ func TestAuthOrPublicBodyRestoration(t *testing.T) {
 
 func TestAuthOrPublicOversizeBodyFallsToAuth(t *testing.T) {
 	m := &MCPServer{
-		config:         &config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}},
-		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-		publicLimiter:  newPublicDocsRateLimiter(&config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}}),
-		publicSessions: sync.Map{},
+		config:        &config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}},
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		publicLimiter: newPublicDocsRateLimiter(&config.Config{PublicRateLimitBypassIPs: map[string]struct{}{}}),
+		sessionSigner: testSessionSigner(t),
 	}
 	var receivedLen int
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -179,8 +242,8 @@ func TestAuthOrPublicTenantInitializedThenUnauthGETRejected(t *testing.T) {
 	handler, m := newPublicDocsHTTPHandler(t)
 	// POST initialize WITH tenant creds: authOrPublicMiddleware must see the
 	// Authorization/SIGNOZ-API-KEY header and defer to authMiddleware instead
-	// of marking the session public. Otherwise a later GET without creds
-	// would be accepted via the publicSessions shortcut.
+	// of wrapping the session in a public signed token. Otherwise a later
+	// unauthenticated GET with that token would bypass authMiddleware.
 	initBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"` + mcp.LATEST_PROTOCOL_VERSION + `","capabilities":{},"clientInfo":{"name":"tenant","version":"1"}}}`
 	initReq := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(initBody))
 	initReq.Header.Set("Content-Type", "application/json")
@@ -191,8 +254,15 @@ func TestAuthOrPublicTenantInitializedThenUnauthGETRejected(t *testing.T) {
 	require.Equal(t, http.StatusOK, initRR.Code)
 	sessionID := initRR.Header().Get(server.HeaderKeySessionID)
 	require.NotEmpty(t, sessionID)
-	_, present := m.publicSessions.Load(sessionID)
-	require.False(t, present, "tenant-authed session must NOT be stored in publicSessions")
+	// The emitted session ID must be the raw mcp-go UUID — NOT a signed
+	// token. If it were a token, the middleware's GET path would later
+	// let an unauthenticated request through on the public branch.
+	require.False(t, strings.HasPrefix(sessionID, session.TokenPrefix),
+		"tenant-authed session must NOT be wrapped as a public token; got %q", sessionID)
+	// And our signer must refuse to verify it — otherwise an attacker
+	// could cross-contaminate the two paths.
+	_, verifyErr := m.sessionSigner.Verify(sessionID)
+	require.Error(t, verifyErr, "tenant session ID must not be a valid public token")
 
 	// GET on that session without creds → authMiddleware path → 401.
 	getReq := httptest.NewRequest(http.MethodGet, "/mcp", nil)

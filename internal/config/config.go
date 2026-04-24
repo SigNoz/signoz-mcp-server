@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/session"
 )
 
 type Config struct {
@@ -39,6 +41,25 @@ type Config struct {
 	DocsFullRefreshInterval  time.Duration
 	TrustedProxyCIDRs        []*net.IPNet
 	PublicRateLimitBypassIPs map[string]struct{}
+
+	// PublicSessionKeys is the HMAC key ring used to sign the stateless
+	// tokens issued to public (docs-only) MCP clients on `initialize`.
+	// Index 0 is the active signer; every entry is accepted on verify so
+	// rolling key rotation is safe.
+	//
+	// Keys are provided via SIGNOZ_MCP_PUBLIC_SESSION_KEYS as a
+	// comma-separated list of base64 strings. If unset, the server mints
+	// an ephemeral 32-byte key per pod — fine for single-replica /
+	// local-dev, but public sessions will NOT survive pod restarts or
+	// round-robin across replicas. Multi-replica deployments must set
+	// the env var to a common value on every pod.
+	PublicSessionKeys [][]byte
+
+	// PublicSessionTTL bounds how long a signed public-session token is
+	// valid. Shorter TTLs reduce replay-window exposure if a pod's
+	// traffic gets mirrored somewhere it shouldn't; longer TTLs reduce
+	// the frequency of forced client re-initialization.
+	PublicSessionTTL time.Duration
 }
 
 const (
@@ -67,6 +88,8 @@ const (
 	DocsFullRefreshIntervalEnv  = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 	TrustedProxyCIDRsEnv        = "SIGNOZ_MCP_TRUSTED_PROXY_CIDRS"
 	PublicRateLimitBypassIPsEnv = "SIGNOZ_MCP_PUBLIC_RATE_LIMIT_BYPASS_IPS"
+	PublicSessionKeysEnv        = "SIGNOZ_MCP_PUBLIC_SESSION_KEYS"
+	PublicSessionTTLEnv         = "SIGNOZ_MCP_PUBLIC_SESSION_TTL"
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
@@ -75,6 +98,7 @@ const (
 	defaultAuthCodeTTLSeconds    = 600
 	defaultDocsRefreshInterval   = 6 * time.Hour
 	defaultDocsFullRefreshPeriod = 24 * time.Hour
+	defaultPublicSessionTTL      = time.Hour
 )
 
 func LoadConfig() (*Config, error) {
@@ -88,6 +112,15 @@ func LoadConfig() (*Config, error) {
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
 	docsRefreshInterval := getEnvDuration(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
 	docsFullRefreshInterval := getEnvDuration(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
+	publicSessionTTL := getEnvDuration(PublicSessionTTLEnv, defaultPublicSessionTTL)
+	// Parse the public-session HMAC key ring. We fail LoadConfig on a
+	// malformed env var rather than silently falling back to ephemeral
+	// keys — operators asked for a specific ring, so quietly ignoring
+	// typos would be a multi-pod-correctness footgun.
+	publicSessionKeys, err := session.ParseKeysFromEnv(getEnv(PublicSessionKeysEnv, ""))
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", PublicSessionKeysEnv, err)
+	}
 	if docsFullRefreshInterval < docsRefreshInterval {
 		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
 			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
@@ -134,6 +167,8 @@ func LoadConfig() (*Config, error) {
 		DocsFullRefreshInterval:  docsFullRefreshInterval,
 		TrustedProxyCIDRs:        parseCIDRs(getEnv(TrustedProxyCIDRsEnv, "")),
 		PublicRateLimitBypassIPs: parseIPs(getEnv(PublicRateLimitBypassIPsEnv, "")),
+		PublicSessionKeys:        publicSessionKeys,
+		PublicSessionTTL:         publicSessionTTL,
 	}, nil
 }
 

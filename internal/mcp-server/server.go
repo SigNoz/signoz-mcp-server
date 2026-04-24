@@ -25,6 +25,7 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
+	"github.com/SigNoz/signoz-mcp-server/pkg/session"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
@@ -78,8 +79,12 @@ type MCPServer struct {
 	httpServer  atomic.Pointer[http.Server]
 	analyticsWG sync.WaitGroup
 
-	publicSessions sync.Map
-	publicLimiter  *publicDocsRateLimiter
+	// sessionSigner stateless-signs the mcp-go session ID emitted on a
+	// public `initialize` and verifies it on subsequent GET/DELETE. This
+	// replaces a process-local sync.Map that broke under multi-replica
+	// deployments — see pkg/session for the threat model and token layout.
+	sessionSigner *session.Signer
+	publicLimiter *publicDocsRateLimiter
 }
 
 func (m *MCPServer) rememberClientInfo(sessionID string, info mcp.Implementation) {
@@ -298,7 +303,60 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		sessionClients:         expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
 		maxMethodSpanBodyBytes: defaultMethodSpanBodyMaxSize,
 		methodObsTombstoneTTL:  methodObsTombstoneTTL,
+		sessionSigner:          buildPublicSessionSigner(log, cfg),
 	}
+}
+
+// buildPublicSessionSigner returns a ready-to-use Signer. If the
+// operator supplied SIGNOZ_MCP_PUBLIC_SESSION_KEYS we use that; if not
+// and we're in HTTP mode we mint an ephemeral 32-byte key so local-dev
+// and single-replica deploys Just Work, but emit a WARN so a
+// multi-replica operator notices before hitting 401s in prod.
+//
+// Failure modes here are narrow: a configured-but-invalid key ring
+// would already have been rejected by LoadConfig before we got here.
+// The only paths that still error are crypto/rand exhaustion and
+// session.NewSigner's defensive checks, both of which we log and then
+// fall through to an unset signer — the middleware treats a nil signer
+// as "no public path available" rather than crashing the process.
+func buildPublicSessionSigner(log *slog.Logger, cfg *config.Config) *session.Signer {
+	if cfg == nil {
+		return nil
+	}
+	keys := cfg.PublicSessionKeys
+	ephemeral := len(keys) == 0
+	if ephemeral {
+		k, err := session.GenerateKey()
+		if err != nil {
+			if log != nil {
+				log.Warn("failed to generate ephemeral public-session key; public docs path disabled", logpkg.ErrAttr(err))
+			}
+			return nil
+		}
+		keys = [][]byte{k}
+		if log != nil && cfg.TransportMode == "http" {
+			log.Warn(
+				"SIGNOZ_MCP_PUBLIC_SESSION_KEYS not set; minted ephemeral signing key. "+
+					"Public sessions will not survive pod restarts and multi-replica deployments will see 401s — "+
+					"set SIGNOZ_MCP_PUBLIC_SESSION_KEYS to a shared base64 secret to enable multi-pod support.",
+				slog.Bool("ephemeral", true),
+			)
+		}
+	}
+	signer, err := session.NewSigner(session.SignerConfig{
+		Keys: keys,
+		TTL:  cfg.PublicSessionTTL,
+	})
+	if err != nil {
+		if log != nil {
+			log.Warn("failed to build public-session signer; public docs path disabled", logpkg.ErrAttr(err))
+		}
+		return nil
+	}
+	if log != nil && !ephemeral {
+		log.Info("public-session signer initialized", slog.String("active_kid", signer.ActiveKID()))
+	}
+	return signer
 }
 
 func (m *MCPServer) Run(ctx context.Context) error {
@@ -868,10 +926,17 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			m.identifyAsync(ctx, traits)
 		}
 	})
-	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
+	hooks.AddOnUnregisterSession(func(ctx context.Context, sess server.ClientSession) {
 		m.logger.InfoContext(ctx, "mcp session unregistered")
-		m.forgetClientInfo(session.SessionID())
-		m.forgetPublicSession(session.SessionID())
+		m.forgetClientInfo(sess.SessionID())
+		// NOTE: we deliberately do NOT clear rate-limit buckets here.
+		// mcp-go's session lifecycle (this hook fires on DELETE or GET
+		// stream close) is INDEPENDENT of the stateless public-session
+		// token lifetime — the token remains valid until its embedded
+		// exp. Scrubbing buckets on mcp-go's close would let a client
+		// reset quota by cycling streams with the same still-valid
+		// token. The idle sweeper reclaims buckets after
+		// publicLimiterIdleTTL, which is the correct bound.
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -1273,6 +1338,17 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	// Health check endpoint — no auth required so that Kubernetes
 	// probes and load balancers can reach it.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "ok")
+	})
+
+	// Readiness is stricter than liveness: Kubernetes should only route
+	// traffic to pods that can serve docs tools without INDEX_NOT_READY.
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if m.handler == nil || !m.handler.DocsIndexReady() {
+			http.Error(w, "docs index not ready", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, "ok")
 	})
