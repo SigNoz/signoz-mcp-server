@@ -188,7 +188,7 @@ func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
 		}
 		for _, field := range schemaRequiredFields(schema) {
 			if field == "searchContext" {
-				t.Errorf("%s searchContext must be optional, but appears in required", tool.Name)
+				t.Errorf("%s searchContext should not be marked required", tool.Name)
 			}
 		}
 	}

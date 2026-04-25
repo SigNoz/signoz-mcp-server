@@ -90,6 +90,10 @@ func TestWriteToolInputSchemasExposeSearchContext(t *testing.T) {
 					t.Fatalf("input schema properties missing %q: %#v", field, props)
 				}
 			}
+			required := inputSchemaRequiredFields(t, tt.tool)
+			if containsString(required, "searchContext") {
+				t.Fatalf("input schema required fields should not include searchContext: %#v", required)
+			}
 		})
 	}
 }
@@ -117,4 +121,46 @@ func inputSchemaProperties(t *testing.T, tool mcp.Tool) map[string]any {
 		t.Fatalf("inputSchema.properties = %#v, want object", inputSchema["properties"])
 	}
 	return props
+}
+
+func inputSchemaRequiredFields(t *testing.T, tool mcp.Tool) []string {
+	t.Helper()
+
+	normalizeToolSchemas(&tool)
+	b, err := json.Marshal(tool)
+	if err != nil {
+		t.Fatalf("marshal tool: %v", err)
+	}
+
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal tool JSON: %v", err)
+	}
+
+	inputSchema, ok := doc["inputSchema"].(map[string]any)
+	if !ok {
+		t.Fatalf("inputSchema = %#v, want object", doc["inputSchema"])
+	}
+
+	rawRequired, ok := inputSchema["required"].([]any)
+	if !ok {
+		return nil
+	}
+
+	required := make([]string, 0, len(rawRequired))
+	for _, field := range rawRequired {
+		if fieldName, ok := field.(string); ok {
+			required = append(required, fieldName)
+		}
+	}
+	return required
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

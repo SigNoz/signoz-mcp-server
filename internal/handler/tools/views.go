@@ -98,9 +98,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 			mcp.Required(),
 			mcp.Properties(savedViewSchemaProperties()),
 			mcp.AdditionalProperties(true),
-			func(schema map[string]any) {
-				schema["required"] = []string{"name", "sourcePage", "compositeQuery"}
-			},
+			withRequiredFields("name", "sourcePage", "compositeQuery"),
 			mcp.Description("Full SavedView body representing the complete post-update state. Call signoz_get_view first and pass its data field back here."),
 		),
 	)
@@ -179,6 +177,12 @@ func savedViewSchemaProperties() map[string]any {
 			"type":        "string",
 			"description": "Optional UI-controlled options as a JSON-encoded string (safe to leave empty).",
 		},
+	}
+}
+
+func withRequiredFields(fields ...string) mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["required"] = fields
 	}
 }
 

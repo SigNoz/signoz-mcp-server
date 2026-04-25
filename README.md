@@ -321,6 +321,8 @@ MCP_SERVER_PORT=8000 \
 
 > **SigNoz compatibility:** alert-rule and notification-channel tools target the new convention: `/api/v2/rules/*` for rules and the render-envelope `/api/v1/channels/*` routes. These require a SigNoz release that includes SigNoz/signoz#10941, #10957, #10995, and #10997. Older deployments will see HTTP 404 from the affected tools.
 
+> **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
+
 | Tool | Description |
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |

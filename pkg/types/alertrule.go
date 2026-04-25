@@ -21,13 +21,13 @@ const (
 
 type CreateAlertInput struct {
 	AlertRule
-	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
 
 type UpdateAlertInput struct {
 	RuleID string `json:"ruleId" jsonschema:"required" jsonschema_extras:"description=UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
 	AlertRule
-	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
 
 // AlertRule is the payload for creating an alert rule via POST /api/v2/rules.

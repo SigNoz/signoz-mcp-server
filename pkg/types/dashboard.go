@@ -3,12 +3,12 @@ package types
 type UpdateDashboardInput struct {
 	UUID          string    `json:"uuid" jsonschema:"required" jsonschema_extras:"description=Dashboard UUID to update."`
 	Dashboard     Dashboard `json:"dashboard" jsonschema:"required" jsonschema_extras:"description=Full dashboard configuration representing the complete post-update state."`
-	SearchContext string    `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string    `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
 
 type CreateDashboardInput struct {
 	Dashboard
-	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
 
 type Dashboard struct {
