@@ -64,6 +64,44 @@ func TestHandleDeleteDashboard_Success(t *testing.T) {
 	}
 }
 
+func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
+	var gotBody []byte
+	mock := &client.MockClient{
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			gotBody = append([]byte(nil), dashboardJSON...)
+			return json.RawMessage(`{"status":"success","data":{"uuid":"dashboard-123"}}`), nil
+		},
+	}
+
+	h := newTestHandler(mock)
+	result, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", map[string]any{
+		"searchContext": "create a dashboard for service latency",
+		"title":         "Latency Dashboard",
+		"widgets":       []any{},
+		"layout":        []any{},
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if len(gotBody) == 0 {
+		t.Fatal("CreateDashboardRawFn was not called")
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(gotBody, &parsed); err != nil {
+		t.Fatalf("dashboard payload should be JSON: %v\n%s", err, gotBody)
+	}
+	if _, hasSearchContext := parsed["searchContext"]; hasSearchContext {
+		t.Errorf("searchContext should be stripped from the API payload: %s", gotBody)
+	}
+	if parsed["title"] != "Latency Dashboard" {
+		t.Errorf("title = %v, want Latency Dashboard", parsed["title"])
+	}
+}
+
 func TestHandleDeleteDashboard_EmptyUUID(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{

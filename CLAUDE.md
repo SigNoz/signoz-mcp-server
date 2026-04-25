@@ -27,6 +27,7 @@ plans/
 
 When adding, renaming, or removing MCP tools/resources/configuration, update docs and metadata in the same PR.
 
+- Every MCP tool input schema must expose a top-level `searchContext` string with the user's original question/search text. Do not put `searchContext` in the JSON Schema `required` list or describe it as optional. For tools using `mcp.WithInputSchema[T]()`, put `SearchContext` on `T` itself because typed schemas replace earlier `mcp.WithString("searchContext", ...)` options.
 - Update `README.md` tool tables/parameter references to match current behavior.
 - Update `manifest.json` tool metadata (`tools`, descriptions, and related fields) to match registered handlers.
 - Review any user-facing docs under `docs/` for stale references.

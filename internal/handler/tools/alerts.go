@@ -76,7 +76,6 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	createAlertTool := mcp.NewTool(
 		"signoz_create_alert",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Creates a new alert rule in SigNoz (POST /api/v2/rules).\n\n"+
 				"SCHEMA — pick based on ruleType:\n"+
@@ -95,15 +94,13 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				"Supports all alert types (metrics, logs, traces, exceptions) and rule types (threshold, promql, anomaly).\n"+
 				"Labels enable routing policies — always set labels.severity (critical, error, warning, or info) to match your highest threshold tier, and add team/service labels for routing.",
 		),
-		mcp.WithInputSchema[types.AlertRule](),
+		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
 	addTool(s, createAlertTool, h.handleCreateAlert)
 
 	updateAlertTool := mcp.NewTool(
 		"signoz_update_alert",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert.")),
 		mcp.WithDescription(
 			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{ruleId}). Replaces the full rule configuration.\n\n"+
 				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
@@ -112,7 +109,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 				"The rule payload is the same shape as signoz_create_alert. All the same validation rules apply, including "+
 				"the notification-channel presence check.",
 		),
-		mcp.WithInputSchema[types.AlertRule](),
+		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
 	addTool(s, updateAlertTool, h.handleUpdateAlert)
 

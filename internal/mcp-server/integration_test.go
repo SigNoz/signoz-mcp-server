@@ -149,6 +149,51 @@ func TestIntegration_ListToolsInputSchemasAreOpenAPICompatible(t *testing.T) {
 	}
 }
 
+func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	for _, tool := range toolsResult.Tools {
+		schema := inputSchema(t, tool)
+		properties := schemaProperties(t, tool.Name, schema)
+		searchContext, ok := properties["searchContext"].(map[string]any)
+		if !ok {
+			t.Errorf("%s inputSchema is missing top-level searchContext", tool.Name)
+			continue
+		}
+		if searchContext["type"] != "string" {
+			t.Errorf("%s searchContext type = %v, want string", tool.Name, searchContext["type"])
+		}
+		for _, field := range schemaRequiredFields(schema) {
+			if field == "searchContext" {
+				t.Errorf("%s searchContext should not be marked required", tool.Name)
+			}
+		}
+	}
+}
+
 func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
@@ -194,6 +239,41 @@ func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 			t.Errorf("resource body missing expected substring %q", want)
 		}
 	}
+}
+
+func inputSchema(t *testing.T, tool mcp.Tool) map[string]any {
+	t.Helper()
+
+	b, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		t.Fatalf("marshal input schema for %s: %v", tool.Name, err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(b, &schema); err != nil {
+		t.Fatalf("unmarshal input schema for %s: %v", tool.Name, err)
+	}
+	return schema
+}
+
+func schemaProperties(t *testing.T, toolName string, schema map[string]any) map[string]any {
+	t.Helper()
+
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s inputSchema.properties = %#v, want object", toolName, schema["properties"])
+	}
+	return properties
+}
+
+func schemaRequiredFields(schema map[string]any) []string {
+	rawRequired, _ := schema["required"].([]any)
+	required := make([]string, 0, len(rawRequired))
+	for _, field := range rawRequired {
+		if s, ok := field.(string); ok {
+			required = append(required, s)
+		}
+	}
+	return required
 }
 
 func booleanSubschemaPaths(schema any, path []string) []string {

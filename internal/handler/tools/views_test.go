@@ -225,7 +225,7 @@ func TestHandleUpdateView_MissingID(t *testing.T) {
 }
 
 // Back-compat: callers that send SavedView fields flat at the top level
-// (pre-UpdateViewInput schema) should still work.
+// (pre-wrapper schema) should still work.
 func TestHandleUpdateView_FlatFieldsBackCompat(t *testing.T) {
 	var gotBody []byte
 	mock := &client.MockClient{

@@ -321,6 +321,8 @@ MCP_SERVER_PORT=8000 \
 
 > **SigNoz compatibility:** alert-rule and notification-channel tools target the new convention: `/api/v2/rules/*` for rules and the render-envelope `/api/v1/channels/*` routes. These require a SigNoz release that includes SigNoz/signoz#10941, #10957, #10995, and #10997. Older deployments will see HTTP 404 from the affected tools.
 
+> **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
+
 | Tool | Description |
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
@@ -442,12 +444,13 @@ Updates an existing dashboard.
 
 - **Parameters:**
   - `uuid` (required) – Unique identifier of the dashboard to update
-  - `title` (required) – Dashboard name
-  - `description` (optional) – Short summary of what the dashboard shows
-  - `tags` (optional) – List of tags applied to the dashboard
-  - `layout` (required) – Full widget positioning grid
-  - `variables` (optional) – Map of variables available for use in queries
-  - `widgets` (required) – Complete set of widgets defining the updated dashboard
+  - `dashboard` (required) – Complete dashboard object representing the post-update state
+    - `title` (required) – Dashboard name
+    - `description` (optional) – Short summary of what the dashboard shows
+    - `tags` (optional) – List of tags applied to the dashboard
+    - `layout` (required) – Full widget positioning grid
+    - `variables` (optional) – Map of variables available for use in queries
+    - `widgets` (required) – Complete set of widgets defining the updated dashboard
 
 #### `signoz_list_services`
 
