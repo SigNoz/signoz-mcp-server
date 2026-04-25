@@ -16,15 +16,24 @@ type CreateDowntimeScheduleInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"RuletypesPostablePlannedMaintenance"`
 }
 
-//go:embed tools/zz_generated_signoz_create_downtime_schedule.json
+//go:embed tools/zz_generated_signoz_create_downtime_schedule.input.json
 var rawSchemaCreateDowntimeSchedule []byte
 
 // SchemaCreateDowntimeSchedule is the self-contained JSON Schema for signoz_create_downtime_schedule,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_downtime_schedule.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_downtime_schedule.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateDowntimeSchedule = ComposeSchema(rawSchemaCreateDowntimeSchedule)
+
+//go:embed tools/zz_generated_signoz_create_downtime_schedule.output.json
+var rawOutputSchemaCreateDowntimeSchedule []byte
+
+// OutputSchemaCreateDowntimeSchedule is the self-contained JSON Schema describing
+// the response body of signoz_create_downtime_schedule (POST /api/v1/downtime_schedules's success
+// status). Composed at init from tools/zz_generated_signoz_create_downtime_schedule.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateDowntimeSchedule = ComposeSchema(rawOutputSchemaCreateDowntimeSchedule)
 
 // DeleteDowntimeScheduleByIDInput is the MCP tool input for DELETE /api/v1/downtime_schedules/{id} (DeleteDowntimeScheduleByID).
 // Tool name: signoz_delete_downtime_schedule_by_id.
@@ -32,14 +41,14 @@ type DeleteDowntimeScheduleByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_downtime_schedule_by_id.json
+//go:embed tools/zz_generated_signoz_delete_downtime_schedule_by_id.input.json
 var rawSchemaDeleteDowntimeScheduleByID []byte
 
 // SchemaDeleteDowntimeScheduleByID is the self-contained JSON Schema for signoz_delete_downtime_schedule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_downtime_schedule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_downtime_schedule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteDowntimeScheduleByID = ComposeSchema(rawSchemaDeleteDowntimeScheduleByID)
 
 // GetDowntimeScheduleByIDInput is the MCP tool input for GET /api/v1/downtime_schedules/{id} (GetDowntimeScheduleByID).
@@ -48,15 +57,24 @@ type GetDowntimeScheduleByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_downtime_schedule_by_id.json
+//go:embed tools/zz_generated_signoz_get_downtime_schedule_by_id.input.json
 var rawSchemaGetDowntimeScheduleByID []byte
 
 // SchemaGetDowntimeScheduleByID is the self-contained JSON Schema for signoz_get_downtime_schedule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_downtime_schedule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_downtime_schedule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetDowntimeScheduleByID = ComposeSchema(rawSchemaGetDowntimeScheduleByID)
+
+//go:embed tools/zz_generated_signoz_get_downtime_schedule_by_id.output.json
+var rawOutputSchemaGetDowntimeScheduleByID []byte
+
+// OutputSchemaGetDowntimeScheduleByID is the self-contained JSON Schema describing
+// the response body of signoz_get_downtime_schedule_by_id (GET /api/v1/downtime_schedules/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_downtime_schedule_by_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetDowntimeScheduleByID = ComposeSchema(rawOutputSchemaGetDowntimeScheduleByID)
 
 // ListDowntimeSchedulesInput is the MCP tool input for GET /api/v1/downtime_schedules (ListDowntimeSchedules).
 // Tool name: signoz_list_downtime_schedules.
@@ -65,15 +83,24 @@ type ListDowntimeSchedulesInput struct {
 	Recurring bool `json:"recurring,omitempty" jsonschema:"query parameter recurring"`
 }
 
-//go:embed tools/zz_generated_signoz_list_downtime_schedules.json
+//go:embed tools/zz_generated_signoz_list_downtime_schedules.input.json
 var rawSchemaListDowntimeSchedules []byte
 
 // SchemaListDowntimeSchedules is the self-contained JSON Schema for signoz_list_downtime_schedules,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_downtime_schedules.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_downtime_schedules.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListDowntimeSchedules = ComposeSchema(rawSchemaListDowntimeSchedules)
+
+//go:embed tools/zz_generated_signoz_list_downtime_schedules.output.json
+var rawOutputSchemaListDowntimeSchedules []byte
+
+// OutputSchemaListDowntimeSchedules is the self-contained JSON Schema describing
+// the response body of signoz_list_downtime_schedules (GET /api/v1/downtime_schedules's success
+// status). Composed at init from tools/zz_generated_signoz_list_downtime_schedules.output.json
+// against the same components/ catalogue.
+var OutputSchemaListDowntimeSchedules = ComposeSchema(rawOutputSchemaListDowntimeSchedules)
 
 // UpdateDowntimeScheduleByIDInput is the MCP tool input for PUT /api/v1/downtime_schedules/{id} (UpdateDowntimeScheduleByID).
 // Tool name: signoz_update_downtime_schedule_by_id.
@@ -82,12 +109,12 @@ type UpdateDowntimeScheduleByIDInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"RuletypesPostablePlannedMaintenance"`
 }
 
-//go:embed tools/zz_generated_signoz_update_downtime_schedule_by_id.json
+//go:embed tools/zz_generated_signoz_update_downtime_schedule_by_id.input.json
 var rawSchemaUpdateDowntimeScheduleByID []byte
 
 // SchemaUpdateDowntimeScheduleByID is the self-contained JSON Schema for signoz_update_downtime_schedule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_downtime_schedule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_downtime_schedule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateDowntimeScheduleByID = ComposeSchema(rawSchemaUpdateDowntimeScheduleByID)

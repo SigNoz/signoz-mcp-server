@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "data": {
+      "additionalProperties": {},
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "timestampMillis": {
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "data",
+    "timestampMillis"
+  ],
+  "type": [
+    "object",
+    "null"
+  ]
+}

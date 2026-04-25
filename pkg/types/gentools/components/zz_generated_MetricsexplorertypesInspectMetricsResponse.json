@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "series": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "series"
+  ],
+  "type": "object"
+}

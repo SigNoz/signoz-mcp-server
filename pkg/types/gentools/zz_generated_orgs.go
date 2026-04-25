@@ -15,15 +15,24 @@ var _ = json.RawMessage(nil)
 type GetMyOrganizationInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_my_organization.json
+//go:embed tools/zz_generated_signoz_get_my_organization.input.json
 var rawSchemaGetMyOrganization []byte
 
 // SchemaGetMyOrganization is the self-contained JSON Schema for signoz_get_my_organization,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_my_organization.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_my_organization.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMyOrganization = ComposeSchema(rawSchemaGetMyOrganization)
+
+//go:embed tools/zz_generated_signoz_get_my_organization.output.json
+var rawOutputSchemaGetMyOrganization []byte
+
+// OutputSchemaGetMyOrganization is the self-contained JSON Schema describing
+// the response body of signoz_get_my_organization (GET /api/v2/orgs/me's success
+// status). Composed at init from tools/zz_generated_signoz_get_my_organization.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMyOrganization = ComposeSchema(rawOutputSchemaGetMyOrganization)
 
 // UpdateMyOrganizationInput is the MCP tool input for PUT /api/v2/orgs/me (UpdateMyOrganization).
 // Tool name: signoz_update_my_organization.
@@ -31,12 +40,12 @@ type UpdateMyOrganizationInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesOrganization"`
 }
 
-//go:embed tools/zz_generated_signoz_update_my_organization.json
+//go:embed tools/zz_generated_signoz_update_my_organization.input.json
 var rawSchemaUpdateMyOrganization []byte
 
 // SchemaUpdateMyOrganization is the self-contained JSON Schema for signoz_update_my_organization,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_my_organization.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_my_organization.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateMyOrganization = ComposeSchema(rawSchemaUpdateMyOrganization)

@@ -1,0 +1,19 @@
+{
+  "properties": {
+    "authorized": {
+      "type": "boolean"
+    },
+    "object": {
+      "$ref": "#/$defs/AuthtypesObject"
+    },
+    "relation": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "authorized",
+    "object",
+    "relation"
+  ],
+  "type": "object"
+}

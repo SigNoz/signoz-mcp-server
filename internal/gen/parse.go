@@ -33,6 +33,14 @@ type Operation struct {
 	BodyDesc     string
 	BodySchema   *openapi3.Schema
 
+	// HasResponse is true when the operation declares an
+	// application/json response body on the success status (200 or 201).
+	// ResponseSchema / ResponseSchemaRef mirror the body fields and feed
+	// the output-schema emitter.
+	HasResponse       bool
+	ResponseSchemaRef string
+	ResponseSchema    *openapi3.Schema
+
 	// Derived identifiers.
 	ToolName    string // "signoz_get_channel_by_id"
 	HandlerFunc string // "handleSignozGetChannelByID"
@@ -160,7 +168,39 @@ func normalize(path, method string, op *openapi3.Operation, item *openapi3.PathI
 		}
 	}
 
+	// Pull the success response's JSON schema. Prefer 200, fall back to
+	// 201 (creates). 204 (no content) and other status codes are skipped.
+	for _, status := range []string{"200", "201"} {
+		respRef := op.Responses.Status(parseStatus(status))
+		if respRef == nil || respRef.Value == nil {
+			continue
+		}
+		mt, ok := respRef.Value.Content["application/json"]
+		if !ok || mt.Schema == nil {
+			continue
+		}
+		out.HasResponse = true
+		if mt.Schema.Ref != "" {
+			out.ResponseSchemaRef = schemaRefName(mt.Schema.Ref)
+		}
+		out.ResponseSchema = mt.Schema.Value
+		break
+	}
+
 	return out, true, nil
+}
+
+// parseStatus turns "200"/"201" into the int form openapi3.Responses.Status
+// expects. Returns 0 on failure (caller treats nil ref as "no response").
+func parseStatus(s string) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 func addParam(out *Operation, p *openapi3.Parameter) error {

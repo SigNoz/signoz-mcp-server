@@ -46,6 +46,7 @@ func (h *Handler) genRegisterCreateDowntimeSchedule(s *server.MCPServer) {
 		"This endpoint creates a new planned maintenance / downtime schedule",
 		gentypes.SchemaCreateDowntimeSchedule,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateDowntimeSchedule
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateDowntimeSchedule))
 }
 
@@ -102,6 +103,7 @@ func (h *Handler) genRegisterGetDowntimeScheduleByID(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetDowntimeScheduleByID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetDowntimeScheduleByID))
 }
 
@@ -132,6 +134,7 @@ func (h *Handler) genRegisterListDowntimeSchedules(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListDowntimeSchedules
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListDowntimeSchedules))
 }
 

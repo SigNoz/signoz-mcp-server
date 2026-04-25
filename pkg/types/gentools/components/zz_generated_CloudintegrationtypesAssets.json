@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "dashboards": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesDashboard"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

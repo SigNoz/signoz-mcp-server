@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "labels": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5Label"
+      },
+      "type": "array"
+    },
+    "values": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeriesValue"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

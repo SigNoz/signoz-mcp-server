@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "streamFilters": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesAWSCloudWatchMetricStreamFilter"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "streamFilters"
+  ],
+  "type": "object"
+}

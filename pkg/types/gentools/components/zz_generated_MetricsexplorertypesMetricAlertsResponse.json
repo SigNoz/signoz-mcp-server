@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "alerts": {
+      "items": {
+        "$ref": "#/$defs/MetricsexplorertypesMetricAlert"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "alerts"
+  ],
+  "type": "object"
+}

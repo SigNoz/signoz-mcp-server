@@ -16,29 +16,38 @@ type CreateSessionByEmailPasswordInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesPostableEmailPasswordSession"`
 }
 
-//go:embed tools/zz_generated_signoz_create_session_by_email_password.json
+//go:embed tools/zz_generated_signoz_create_session_by_email_password.input.json
 var rawSchemaCreateSessionByEmailPassword []byte
 
 // SchemaCreateSessionByEmailPassword is the self-contained JSON Schema for signoz_create_session_by_email_password,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_session_by_email_password.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_session_by_email_password.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateSessionByEmailPassword = ComposeSchema(rawSchemaCreateSessionByEmailPassword)
+
+//go:embed tools/zz_generated_signoz_create_session_by_email_password.output.json
+var rawOutputSchemaCreateSessionByEmailPassword []byte
+
+// OutputSchemaCreateSessionByEmailPassword is the self-contained JSON Schema describing
+// the response body of signoz_create_session_by_email_password (POST /api/v2/sessions/email_password's success
+// status). Composed at init from tools/zz_generated_signoz_create_session_by_email_password.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateSessionByEmailPassword = ComposeSchema(rawOutputSchemaCreateSessionByEmailPassword)
 
 // CreateSessionByGoogleCallbackInput is the MCP tool input for GET /api/v1/complete/google (CreateSessionByGoogleCallback).
 // Tool name: signoz_create_session_by_google_callback.
 type CreateSessionByGoogleCallbackInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_create_session_by_google_callback.json
+//go:embed tools/zz_generated_signoz_create_session_by_google_callback.input.json
 var rawSchemaCreateSessionByGoogleCallback []byte
 
 // SchemaCreateSessionByGoogleCallback is the self-contained JSON Schema for signoz_create_session_by_google_callback,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_session_by_google_callback.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_session_by_google_callback.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateSessionByGoogleCallback = ComposeSchema(rawSchemaCreateSessionByGoogleCallback)
 
 // CreateSessionByOIDCCallbackInput is the MCP tool input for GET /api/v1/complete/oidc (CreateSessionByOIDCCallback).
@@ -46,14 +55,14 @@ var SchemaCreateSessionByGoogleCallback = ComposeSchema(rawSchemaCreateSessionBy
 type CreateSessionByOIDCCallbackInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_create_session_by_oidc_callback.json
+//go:embed tools/zz_generated_signoz_create_session_by_oidc_callback.input.json
 var rawSchemaCreateSessionByOIDCCallback []byte
 
 // SchemaCreateSessionByOIDCCallback is the self-contained JSON Schema for signoz_create_session_by_oidc_callback,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_session_by_oidc_callback.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_session_by_oidc_callback.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateSessionByOIDCCallback = ComposeSchema(rawSchemaCreateSessionByOIDCCallback)
 
 // DeleteSessionInput is the MCP tool input for DELETE /api/v2/sessions (DeleteSession).
@@ -61,14 +70,14 @@ var SchemaCreateSessionByOIDCCallback = ComposeSchema(rawSchemaCreateSessionByOI
 type DeleteSessionInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_delete_session.json
+//go:embed tools/zz_generated_signoz_delete_session.input.json
 var rawSchemaDeleteSession []byte
 
 // SchemaDeleteSession is the self-contained JSON Schema for signoz_delete_session,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_session.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_session.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteSession = ComposeSchema(rawSchemaDeleteSession)
 
 // GetSessionContextInput is the MCP tool input for GET /api/v2/sessions/context (GetSessionContext).
@@ -76,15 +85,24 @@ var SchemaDeleteSession = ComposeSchema(rawSchemaDeleteSession)
 type GetSessionContextInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_session_context.json
+//go:embed tools/zz_generated_signoz_get_session_context.input.json
 var rawSchemaGetSessionContext []byte
 
 // SchemaGetSessionContext is the self-contained JSON Schema for signoz_get_session_context,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_session_context.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_session_context.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetSessionContext = ComposeSchema(rawSchemaGetSessionContext)
+
+//go:embed tools/zz_generated_signoz_get_session_context.output.json
+var rawOutputSchemaGetSessionContext []byte
+
+// OutputSchemaGetSessionContext is the self-contained JSON Schema describing
+// the response body of signoz_get_session_context (GET /api/v2/sessions/context's success
+// status). Composed at init from tools/zz_generated_signoz_get_session_context.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetSessionContext = ComposeSchema(rawOutputSchemaGetSessionContext)
 
 // RotateSessionInput is the MCP tool input for POST /api/v2/sessions/rotate (RotateSession).
 // Tool name: signoz_rotate_session.
@@ -92,12 +110,21 @@ type RotateSessionInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesPostableRotateToken"`
 }
 
-//go:embed tools/zz_generated_signoz_rotate_session.json
+//go:embed tools/zz_generated_signoz_rotate_session.input.json
 var rawSchemaRotateSession []byte
 
 // SchemaRotateSession is the self-contained JSON Schema for signoz_rotate_session,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_rotate_session.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_rotate_session.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaRotateSession = ComposeSchema(rawSchemaRotateSession)
+
+//go:embed tools/zz_generated_signoz_rotate_session.output.json
+var rawOutputSchemaRotateSession []byte
+
+// OutputSchemaRotateSession is the self-contained JSON Schema describing
+// the response body of signoz_rotate_session (POST /api/v2/sessions/rotate's success
+// status). Composed at init from tools/zz_generated_signoz_rotate_session.output.json
+// against the same components/ catalogue.
+var OutputSchemaRotateSession = ComposeSchema(rawOutputSchemaRotateSession)

@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "filterPattern": {
+      "type": "string"
+    },
+    "logGroupNamePrefix": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "filterPattern",
+    "logGroupNamePrefix"
+  ],
+  "type": "object"
+}

@@ -47,6 +47,7 @@ func (h *Handler) genRegisterCreateSessionByEmailPassword(s *server.MCPServer) {
 		"This endpoint creates a session for a user using email and password.",
 		gentypes.SchemaCreateSessionByEmailPassword,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateSessionByEmailPassword
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateSessionByEmailPassword))
 }
 
@@ -151,6 +152,7 @@ func (h *Handler) genRegisterGetSessionContext(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetSessionContext
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetSessionContext))
 }
 
@@ -175,6 +177,7 @@ func (h *Handler) genRegisterRotateSession(s *server.MCPServer) {
 		"This endpoint rotates the session",
 		gentypes.SchemaRotateSession,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaRotateSession
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleRotateSession))
 }
 

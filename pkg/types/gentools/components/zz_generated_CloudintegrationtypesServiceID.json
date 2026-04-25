@@ -1,0 +1,20 @@
+{
+  "enum": [
+    "alb",
+    "api-gateway",
+    "dynamodb",
+    "ec2",
+    "ecs",
+    "eks",
+    "elasticache",
+    "lambda",
+    "msk",
+    "rds",
+    "s3sync",
+    "sns",
+    "sqs",
+    "storageaccountsblob",
+    "cdnprofile"
+  ],
+  "type": "string"
+}

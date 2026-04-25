@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "connectionArtifact": {
+      "$ref": "#/$defs/CloudintegrationtypesConnectionArtifact"
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "connectionArtifact",
+    "id"
+  ],
+  "type": "object"
+}

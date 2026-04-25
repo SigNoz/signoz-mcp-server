@@ -16,15 +16,24 @@ type CreateAuthDomainInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesPostableAuthDomain"`
 }
 
-//go:embed tools/zz_generated_signoz_create_auth_domain.json
+//go:embed tools/zz_generated_signoz_create_auth_domain.input.json
 var rawSchemaCreateAuthDomain []byte
 
 // SchemaCreateAuthDomain is the self-contained JSON Schema for signoz_create_auth_domain,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_auth_domain.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_auth_domain.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateAuthDomain = ComposeSchema(rawSchemaCreateAuthDomain)
+
+//go:embed tools/zz_generated_signoz_create_auth_domain.output.json
+var rawOutputSchemaCreateAuthDomain []byte
+
+// OutputSchemaCreateAuthDomain is the self-contained JSON Schema describing
+// the response body of signoz_create_auth_domain (POST /api/v1/domains's success
+// status). Composed at init from tools/zz_generated_signoz_create_auth_domain.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateAuthDomain = ComposeSchema(rawOutputSchemaCreateAuthDomain)
 
 // DeleteAuthDomainInput is the MCP tool input for DELETE /api/v1/domains/{id} (DeleteAuthDomain).
 // Tool name: signoz_delete_auth_domain.
@@ -32,14 +41,14 @@ type DeleteAuthDomainInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_auth_domain.json
+//go:embed tools/zz_generated_signoz_delete_auth_domain.input.json
 var rawSchemaDeleteAuthDomain []byte
 
 // SchemaDeleteAuthDomain is the self-contained JSON Schema for signoz_delete_auth_domain,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_auth_domain.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_auth_domain.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteAuthDomain = ComposeSchema(rawSchemaDeleteAuthDomain)
 
 // ListAuthDomainsInput is the MCP tool input for GET /api/v1/domains (ListAuthDomains).
@@ -47,15 +56,24 @@ var SchemaDeleteAuthDomain = ComposeSchema(rawSchemaDeleteAuthDomain)
 type ListAuthDomainsInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_auth_domains.json
+//go:embed tools/zz_generated_signoz_list_auth_domains.input.json
 var rawSchemaListAuthDomains []byte
 
 // SchemaListAuthDomains is the self-contained JSON Schema for signoz_list_auth_domains,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_auth_domains.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_auth_domains.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListAuthDomains = ComposeSchema(rawSchemaListAuthDomains)
+
+//go:embed tools/zz_generated_signoz_list_auth_domains.output.json
+var rawOutputSchemaListAuthDomains []byte
+
+// OutputSchemaListAuthDomains is the self-contained JSON Schema describing
+// the response body of signoz_list_auth_domains (GET /api/v1/domains's success
+// status). Composed at init from tools/zz_generated_signoz_list_auth_domains.output.json
+// against the same components/ catalogue.
+var OutputSchemaListAuthDomains = ComposeSchema(rawOutputSchemaListAuthDomains)
 
 // UpdateAuthDomainInput is the MCP tool input for PUT /api/v1/domains/{id} (UpdateAuthDomain).
 // Tool name: signoz_update_auth_domain.
@@ -64,12 +82,12 @@ type UpdateAuthDomainInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesUpdateableAuthDomain"`
 }
 
-//go:embed tools/zz_generated_signoz_update_auth_domain.json
+//go:embed tools/zz_generated_signoz_update_auth_domain.input.json
 var rawSchemaUpdateAuthDomain []byte
 
 // SchemaUpdateAuthDomain is the self-contained JSON Schema for signoz_update_auth_domain,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_auth_domain.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_auth_domain.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateAuthDomain = ComposeSchema(rawSchemaUpdateAuthDomain)

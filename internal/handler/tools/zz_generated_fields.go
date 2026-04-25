@@ -45,6 +45,7 @@ func (h *Handler) genRegisterGetFieldsKeys(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetFieldsKeys
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetFieldsKeys))
 }
 
@@ -106,6 +107,7 @@ func (h *Handler) genRegisterGetFieldsValues(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetFieldsValues
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetFieldsValues))
 }
 

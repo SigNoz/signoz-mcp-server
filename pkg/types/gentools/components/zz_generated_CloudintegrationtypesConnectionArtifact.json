@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "aws": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSConnectionArtifact"
+    },
+    "azure": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureConnectionArtifact"
+    }
+  },
+  "type": "object"
+}

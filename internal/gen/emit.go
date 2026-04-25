@@ -189,6 +189,7 @@ func (h *Handler) genRegister{{.OperationID}}(s *server.MCPServer) {
 	tool.Annotations.ReadOnlyHint = &readOnly
 {{end}}{{if .Destructive}}	destructive := true
 	tool.Annotations.DestructiveHint = &destructive
+{{end}}{{if .HasResponse}}	tool.RawOutputSchema = gentypes.OutputSchema{{.OperationID}}
 {{end}}	s.AddTool(tool, mcp.NewTypedToolHandler(h.{{.HandlerFunc}}))
 }
 
@@ -267,16 +268,25 @@ type {{.InputType}} struct {
 {{end}}{{if .HasBody}}	Body json.RawMessage ` + "`" + `json:{{goEscape (printf "body%s" (ifOmit .BodyRequired))}} jsonschema:{{goEscape (firstNonEmpty .BodyDesc "JSON request body")}}` + "`" + `
 {{end}}}
 
-//go:embed tools/zz_generated_{{.ToolName}}.json
+//go:embed tools/zz_generated_{{.ToolName}}.input.json
 var rawSchema{{.OperationID}} []byte
 
 // Schema{{.OperationID}} is the self-contained JSON Schema for {{.ToolName}},
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_{{.ToolName}}.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_{{.ToolName}}.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var Schema{{.OperationID}} = ComposeSchema(rawSchema{{.OperationID}})
-{{end}}
+
+{{if .HasResponse}}//go:embed tools/zz_generated_{{.ToolName}}.output.json
+var rawOutputSchema{{.OperationID}} []byte
+
+// OutputSchema{{.OperationID}} is the self-contained JSON Schema describing
+// the response body of {{.ToolName}} ({{.Method}} {{.Path}}'s success
+// status). Composed at init from tools/zz_generated_{{.ToolName}}.output.json
+// against the same components/ catalogue.
+var OutputSchema{{.OperationID}} = ComposeSchema(rawOutputSchema{{.OperationID}})
+{{end}}{{end}}
 `))
 
 func writeTypesFile(dir, tag string, ops []Operation) error {

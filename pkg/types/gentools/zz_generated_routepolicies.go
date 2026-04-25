@@ -16,15 +16,24 @@ type CreateRoutePolicyInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AlertmanagertypesPostableRoutePolicy"`
 }
 
-//go:embed tools/zz_generated_signoz_create_route_policy.json
+//go:embed tools/zz_generated_signoz_create_route_policy.input.json
 var rawSchemaCreateRoutePolicy []byte
 
 // SchemaCreateRoutePolicy is the self-contained JSON Schema for signoz_create_route_policy,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_route_policy.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_route_policy.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateRoutePolicy = ComposeSchema(rawSchemaCreateRoutePolicy)
+
+//go:embed tools/zz_generated_signoz_create_route_policy.output.json
+var rawOutputSchemaCreateRoutePolicy []byte
+
+// OutputSchemaCreateRoutePolicy is the self-contained JSON Schema describing
+// the response body of signoz_create_route_policy (POST /api/v1/route_policies's success
+// status). Composed at init from tools/zz_generated_signoz_create_route_policy.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateRoutePolicy = ComposeSchema(rawOutputSchemaCreateRoutePolicy)
 
 // DeleteRoutePolicyByIDInput is the MCP tool input for DELETE /api/v1/route_policies/{id} (DeleteRoutePolicyByID).
 // Tool name: signoz_delete_route_policy_by_id.
@@ -32,14 +41,14 @@ type DeleteRoutePolicyByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_route_policy_by_id.json
+//go:embed tools/zz_generated_signoz_delete_route_policy_by_id.input.json
 var rawSchemaDeleteRoutePolicyByID []byte
 
 // SchemaDeleteRoutePolicyByID is the self-contained JSON Schema for signoz_delete_route_policy_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_route_policy_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_route_policy_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteRoutePolicyByID = ComposeSchema(rawSchemaDeleteRoutePolicyByID)
 
 // GetAllRoutePoliciesInput is the MCP tool input for GET /api/v1/route_policies (GetAllRoutePolicies).
@@ -47,15 +56,24 @@ var SchemaDeleteRoutePolicyByID = ComposeSchema(rawSchemaDeleteRoutePolicyByID)
 type GetAllRoutePoliciesInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_all_route_policies.json
+//go:embed tools/zz_generated_signoz_get_all_route_policies.input.json
 var rawSchemaGetAllRoutePolicies []byte
 
 // SchemaGetAllRoutePolicies is the self-contained JSON Schema for signoz_get_all_route_policies,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_all_route_policies.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_all_route_policies.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetAllRoutePolicies = ComposeSchema(rawSchemaGetAllRoutePolicies)
+
+//go:embed tools/zz_generated_signoz_get_all_route_policies.output.json
+var rawOutputSchemaGetAllRoutePolicies []byte
+
+// OutputSchemaGetAllRoutePolicies is the self-contained JSON Schema describing
+// the response body of signoz_get_all_route_policies (GET /api/v1/route_policies's success
+// status). Composed at init from tools/zz_generated_signoz_get_all_route_policies.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetAllRoutePolicies = ComposeSchema(rawOutputSchemaGetAllRoutePolicies)
 
 // GetRoutePolicyByIDInput is the MCP tool input for GET /api/v1/route_policies/{id} (GetRoutePolicyByID).
 // Tool name: signoz_get_route_policy_by_id.
@@ -63,15 +81,24 @@ type GetRoutePolicyByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_route_policy_by_id.json
+//go:embed tools/zz_generated_signoz_get_route_policy_by_id.input.json
 var rawSchemaGetRoutePolicyByID []byte
 
 // SchemaGetRoutePolicyByID is the self-contained JSON Schema for signoz_get_route_policy_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_route_policy_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_route_policy_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRoutePolicyByID = ComposeSchema(rawSchemaGetRoutePolicyByID)
+
+//go:embed tools/zz_generated_signoz_get_route_policy_by_id.output.json
+var rawOutputSchemaGetRoutePolicyByID []byte
+
+// OutputSchemaGetRoutePolicyByID is the self-contained JSON Schema describing
+// the response body of signoz_get_route_policy_by_id (GET /api/v1/route_policies/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_route_policy_by_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRoutePolicyByID = ComposeSchema(rawOutputSchemaGetRoutePolicyByID)
 
 // UpdateRoutePolicyInput is the MCP tool input for PUT /api/v1/route_policies/{id} (UpdateRoutePolicy).
 // Tool name: signoz_update_route_policy.
@@ -80,12 +107,21 @@ type UpdateRoutePolicyInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AlertmanagertypesPostableRoutePolicy"`
 }
 
-//go:embed tools/zz_generated_signoz_update_route_policy.json
+//go:embed tools/zz_generated_signoz_update_route_policy.input.json
 var rawSchemaUpdateRoutePolicy []byte
 
 // SchemaUpdateRoutePolicy is the self-contained JSON Schema for signoz_update_route_policy,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_route_policy.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_route_policy.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateRoutePolicy = ComposeSchema(rawSchemaUpdateRoutePolicy)
+
+//go:embed tools/zz_generated_signoz_update_route_policy.output.json
+var rawOutputSchemaUpdateRoutePolicy []byte
+
+// OutputSchemaUpdateRoutePolicy is the self-contained JSON Schema describing
+// the response body of signoz_update_route_policy (PUT /api/v1/route_policies/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_update_route_policy.output.json
+// against the same components/ catalogue.
+var OutputSchemaUpdateRoutePolicy = ComposeSchema(rawOutputSchemaUpdateRoutePolicy)

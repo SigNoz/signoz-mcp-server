@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "code": {
+      "type": "string"
+    },
+    "errors": {
+      "items": {
+        "$ref": "#/$defs/ErrorsResponseerroradditional"
+      },
+      "type": "array"
+    },
+    "message": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "type": "object"
+}

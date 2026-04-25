@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "inviteLink": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "orgId": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "token": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "type": "object"
+}

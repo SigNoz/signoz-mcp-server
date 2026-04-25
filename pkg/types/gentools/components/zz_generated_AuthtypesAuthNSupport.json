@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "callback": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesCallbackAuthNSupport"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "password": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesPasswordAuthNSupport"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

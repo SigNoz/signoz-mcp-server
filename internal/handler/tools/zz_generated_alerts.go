@@ -44,6 +44,7 @@ func (h *Handler) genRegisterGetAlerts(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetAlerts
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetAlerts))
 }
 

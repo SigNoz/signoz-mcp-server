@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "samples": {
+      "items": {
+        "$ref": "#/$defs/MetricsexplorertypesTreemapEntry"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "timeseries": {
+      "items": {
+        "$ref": "#/$defs/MetricsexplorertypesTreemapEntry"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "samples",
+    "timeseries"
+  ],
+  "type": "object"
+}

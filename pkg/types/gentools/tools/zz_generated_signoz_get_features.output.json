@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "data": {
+      "items": {
+        "$ref": "#/$defs/FeaturetypesGettableFeature"
+      },
+      "type": "array"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "status"
+  ],
+  "type": "object"
+}

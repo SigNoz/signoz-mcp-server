@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "logs": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSLogsCollectionStrategy"
+    },
+    "metrics": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSMetricsCollectionStrategy"
+    },
+    "s3Buckets": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

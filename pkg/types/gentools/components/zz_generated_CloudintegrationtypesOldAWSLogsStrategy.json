@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "cloudwatch_logs_subscriptions": {
+      "items": {
+        "properties": {
+          "filter_pattern": {
+            "type": "string"
+          },
+          "log_group_name_prefix": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

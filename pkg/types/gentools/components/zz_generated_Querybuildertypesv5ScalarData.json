@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "columns": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5ColumnDescriptor"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "data": {
+      "items": {
+        "items": {},
+        "type": "array"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "queryName": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

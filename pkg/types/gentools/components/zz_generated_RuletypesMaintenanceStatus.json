@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "active",
+    "upcoming",
+    "expired"
+  ],
+  "type": "string"
+}

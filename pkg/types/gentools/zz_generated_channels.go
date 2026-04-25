@@ -16,15 +16,24 @@ type CreateChannelInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ConfigReceiver"`
 }
 
-//go:embed tools/zz_generated_signoz_create_channel.json
+//go:embed tools/zz_generated_signoz_create_channel.input.json
 var rawSchemaCreateChannel []byte
 
 // SchemaCreateChannel is the self-contained JSON Schema for signoz_create_channel,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_channel.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_channel.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateChannel = ComposeSchema(rawSchemaCreateChannel)
+
+//go:embed tools/zz_generated_signoz_create_channel.output.json
+var rawOutputSchemaCreateChannel []byte
+
+// OutputSchemaCreateChannel is the self-contained JSON Schema describing
+// the response body of signoz_create_channel (POST /api/v1/channels's success
+// status). Composed at init from tools/zz_generated_signoz_create_channel.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateChannel = ComposeSchema(rawOutputSchemaCreateChannel)
 
 // DeleteChannelByIDInput is the MCP tool input for DELETE /api/v1/channels/{id} (DeleteChannelByID).
 // Tool name: signoz_delete_channel_by_id.
@@ -32,14 +41,14 @@ type DeleteChannelByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_channel_by_id.json
+//go:embed tools/zz_generated_signoz_delete_channel_by_id.input.json
 var rawSchemaDeleteChannelByID []byte
 
 // SchemaDeleteChannelByID is the self-contained JSON Schema for signoz_delete_channel_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_channel_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_channel_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteChannelByID = ComposeSchema(rawSchemaDeleteChannelByID)
 
 // GetChannelByIDInput is the MCP tool input for GET /api/v1/channels/{id} (GetChannelByID).
@@ -48,30 +57,48 @@ type GetChannelByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_channel_by_id.json
+//go:embed tools/zz_generated_signoz_get_channel_by_id.input.json
 var rawSchemaGetChannelByID []byte
 
 // SchemaGetChannelByID is the self-contained JSON Schema for signoz_get_channel_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_channel_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_channel_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetChannelByID = ComposeSchema(rawSchemaGetChannelByID)
+
+//go:embed tools/zz_generated_signoz_get_channel_by_id.output.json
+var rawOutputSchemaGetChannelByID []byte
+
+// OutputSchemaGetChannelByID is the self-contained JSON Schema describing
+// the response body of signoz_get_channel_by_id (GET /api/v1/channels/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_channel_by_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetChannelByID = ComposeSchema(rawOutputSchemaGetChannelByID)
 
 // ListChannelsInput is the MCP tool input for GET /api/v1/channels (ListChannels).
 // Tool name: signoz_list_channels.
 type ListChannelsInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_channels.json
+//go:embed tools/zz_generated_signoz_list_channels.input.json
 var rawSchemaListChannels []byte
 
 // SchemaListChannels is the self-contained JSON Schema for signoz_list_channels,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_channels.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_channels.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListChannels = ComposeSchema(rawSchemaListChannels)
+
+//go:embed tools/zz_generated_signoz_list_channels.output.json
+var rawOutputSchemaListChannels []byte
+
+// OutputSchemaListChannels is the self-contained JSON Schema describing
+// the response body of signoz_list_channels (GET /api/v1/channels's success
+// status). Composed at init from tools/zz_generated_signoz_list_channels.output.json
+// against the same components/ catalogue.
+var OutputSchemaListChannels = ComposeSchema(rawOutputSchemaListChannels)
 
 // TestChannelInput is the MCP tool input for POST /api/v1/channels/test (TestChannel).
 // Tool name: signoz_test_channel.
@@ -79,14 +106,14 @@ type TestChannelInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ConfigReceiver"`
 }
 
-//go:embed tools/zz_generated_signoz_test_channel.json
+//go:embed tools/zz_generated_signoz_test_channel.input.json
 var rawSchemaTestChannel []byte
 
 // SchemaTestChannel is the self-contained JSON Schema for signoz_test_channel,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_test_channel.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_test_channel.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaTestChannel = ComposeSchema(rawSchemaTestChannel)
 
 // UpdateChannelByIDInput is the MCP tool input for PUT /api/v1/channels/{id} (UpdateChannelByID).
@@ -96,12 +123,12 @@ type UpdateChannelByIDInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ConfigReceiver"`
 }
 
-//go:embed tools/zz_generated_signoz_update_channel_by_id.json
+//go:embed tools/zz_generated_signoz_update_channel_by_id.input.json
 var rawSchemaUpdateChannelByID []byte
 
 // SchemaUpdateChannelByID is the self-contained JSON Schema for signoz_update_channel_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_channel_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_channel_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateChannelByID = ComposeSchema(rawSchemaUpdateChannelByID)

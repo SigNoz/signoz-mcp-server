@@ -16,15 +16,24 @@ type GetOrgPreferenceInput struct {
 	Name string `json:"name" jsonschema:"path parameter name"`
 }
 
-//go:embed tools/zz_generated_signoz_get_org_preference.json
+//go:embed tools/zz_generated_signoz_get_org_preference.input.json
 var rawSchemaGetOrgPreference []byte
 
 // SchemaGetOrgPreference is the self-contained JSON Schema for signoz_get_org_preference,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_org_preference.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_org_preference.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetOrgPreference = ComposeSchema(rawSchemaGetOrgPreference)
+
+//go:embed tools/zz_generated_signoz_get_org_preference.output.json
+var rawOutputSchemaGetOrgPreference []byte
+
+// OutputSchemaGetOrgPreference is the self-contained JSON Schema describing
+// the response body of signoz_get_org_preference (GET /api/v1/org/preferences/{name}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_org_preference.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetOrgPreference = ComposeSchema(rawOutputSchemaGetOrgPreference)
 
 // GetUserPreferenceInput is the MCP tool input for GET /api/v1/user/preferences/{name} (GetUserPreference).
 // Tool name: signoz_get_user_preference.
@@ -32,45 +41,72 @@ type GetUserPreferenceInput struct {
 	Name string `json:"name" jsonschema:"path parameter name"`
 }
 
-//go:embed tools/zz_generated_signoz_get_user_preference.json
+//go:embed tools/zz_generated_signoz_get_user_preference.input.json
 var rawSchemaGetUserPreference []byte
 
 // SchemaGetUserPreference is the self-contained JSON Schema for signoz_get_user_preference,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_user_preference.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_user_preference.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetUserPreference = ComposeSchema(rawSchemaGetUserPreference)
+
+//go:embed tools/zz_generated_signoz_get_user_preference.output.json
+var rawOutputSchemaGetUserPreference []byte
+
+// OutputSchemaGetUserPreference is the self-contained JSON Schema describing
+// the response body of signoz_get_user_preference (GET /api/v1/user/preferences/{name}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_user_preference.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetUserPreference = ComposeSchema(rawOutputSchemaGetUserPreference)
 
 // ListOrgPreferencesInput is the MCP tool input for GET /api/v1/org/preferences (ListOrgPreferences).
 // Tool name: signoz_list_org_preferences.
 type ListOrgPreferencesInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_org_preferences.json
+//go:embed tools/zz_generated_signoz_list_org_preferences.input.json
 var rawSchemaListOrgPreferences []byte
 
 // SchemaListOrgPreferences is the self-contained JSON Schema for signoz_list_org_preferences,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_org_preferences.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_org_preferences.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListOrgPreferences = ComposeSchema(rawSchemaListOrgPreferences)
+
+//go:embed tools/zz_generated_signoz_list_org_preferences.output.json
+var rawOutputSchemaListOrgPreferences []byte
+
+// OutputSchemaListOrgPreferences is the self-contained JSON Schema describing
+// the response body of signoz_list_org_preferences (GET /api/v1/org/preferences's success
+// status). Composed at init from tools/zz_generated_signoz_list_org_preferences.output.json
+// against the same components/ catalogue.
+var OutputSchemaListOrgPreferences = ComposeSchema(rawOutputSchemaListOrgPreferences)
 
 // ListUserPreferencesInput is the MCP tool input for GET /api/v1/user/preferences (ListUserPreferences).
 // Tool name: signoz_list_user_preferences.
 type ListUserPreferencesInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_user_preferences.json
+//go:embed tools/zz_generated_signoz_list_user_preferences.input.json
 var rawSchemaListUserPreferences []byte
 
 // SchemaListUserPreferences is the self-contained JSON Schema for signoz_list_user_preferences,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_user_preferences.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_user_preferences.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListUserPreferences = ComposeSchema(rawSchemaListUserPreferences)
+
+//go:embed tools/zz_generated_signoz_list_user_preferences.output.json
+var rawOutputSchemaListUserPreferences []byte
+
+// OutputSchemaListUserPreferences is the self-contained JSON Schema describing
+// the response body of signoz_list_user_preferences (GET /api/v1/user/preferences's success
+// status). Composed at init from tools/zz_generated_signoz_list_user_preferences.output.json
+// against the same components/ catalogue.
+var OutputSchemaListUserPreferences = ComposeSchema(rawOutputSchemaListUserPreferences)
 
 // UpdateOrgPreferenceInput is the MCP tool input for PUT /api/v1/org/preferences/{name} (UpdateOrgPreference).
 // Tool name: signoz_update_org_preference.
@@ -79,14 +115,14 @@ type UpdateOrgPreferenceInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"PreferencetypesUpdatablePreference"`
 }
 
-//go:embed tools/zz_generated_signoz_update_org_preference.json
+//go:embed tools/zz_generated_signoz_update_org_preference.input.json
 var rawSchemaUpdateOrgPreference []byte
 
 // SchemaUpdateOrgPreference is the self-contained JSON Schema for signoz_update_org_preference,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_org_preference.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_org_preference.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateOrgPreference = ComposeSchema(rawSchemaUpdateOrgPreference)
 
 // UpdateUserPreferenceInput is the MCP tool input for PUT /api/v1/user/preferences/{name} (UpdateUserPreference).
@@ -96,12 +132,12 @@ type UpdateUserPreferenceInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"PreferencetypesUpdatablePreference"`
 }
 
-//go:embed tools/zz_generated_signoz_update_user_preference.json
+//go:embed tools/zz_generated_signoz_update_user_preference.input.json
 var rawSchemaUpdateUserPreference []byte
 
 // SchemaUpdateUserPreference is the self-contained JSON Schema for signoz_update_user_preference,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_user_preference.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_user_preference.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateUserPreference = ComposeSchema(rawSchemaUpdateUserPreference)

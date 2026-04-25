@@ -49,6 +49,7 @@ func (h *Handler) genRegisterCreateIngestionKey(s *server.MCPServer) {
 		"This endpoint creates an ingestion key for the workspace",
 		gentypes.SchemaCreateIngestionKey,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateIngestionKey
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateIngestionKey))
 }
 
@@ -73,6 +74,7 @@ func (h *Handler) genRegisterCreateIngestionKeyLimit(s *server.MCPServer) {
 		"This endpoint creates an ingestion key limit",
 		gentypes.SchemaCreateIngestionKeyLimit,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateIngestionKeyLimit
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateIngestionKeyLimit))
 }
 
@@ -163,6 +165,7 @@ func (h *Handler) genRegisterGetIngestionKeys(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetIngestionKeys
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetIngestionKeys))
 }
 
@@ -200,6 +203,7 @@ func (h *Handler) genRegisterSearchIngestionKeys(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaSearchIngestionKeys
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleSearchIngestionKeys))
 }
 

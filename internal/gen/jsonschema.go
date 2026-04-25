@@ -71,6 +71,47 @@ func BuildToolSchemaSkeleton(doc *openapi3.T, op Operation) (json.RawMessage, []
 	return raw, closure, nil
 }
 
+// BuildOutputSchemaSkeleton walks an Operation's response schema and
+// returns the JSON Schema for the tool's output (with $refs into
+// components preserved). Returns nil if the op has no JSON response — the
+// caller treats that as "no output schema". The returned defs slice is
+// the transitive closure of components the schema references; callers add
+// it to the global component closure so the embed picks them up.
+func BuildOutputSchemaSkeleton(doc *openapi3.T, op Operation) (json.RawMessage, []string, error) {
+	if !op.HasResponse {
+		return nil, nil, nil
+	}
+	c := &converter{doc: doc, preserveRefs: true, seen: map[string]bool{}}
+
+	// If the response is a $ref to a component, emit it as a $ref and
+	// rely on the central composer to inject the def. Otherwise walk the
+	// inline schema (the SigNoz spec uses inline {status, data} envelopes).
+	var schema map[string]any
+	if op.ResponseSchemaRef != "" && op.ResponseSchema != nil {
+		c.recordRef(op.ResponseSchemaRef)
+		schema = map[string]any{"$ref": "#/$defs/" + op.ResponseSchemaRef}
+	} else if op.ResponseSchema != nil {
+		out, err := c.convert(op.ResponseSchema)
+		if err != nil {
+			return nil, nil, fmt.Errorf("response schema: %w", err)
+		}
+		schema = out
+	} else {
+		return nil, nil, nil
+	}
+
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	closure, err := ClosureOf(doc, c.refs())
+	if err != nil {
+		return nil, nil, err
+	}
+	return raw, closure, nil
+}
+
 // BuildDefSchema returns the JSON Schema for a single OpenAPI component,
 // keeping internal $refs to other components. Runtime compose then pulls
 // matching defs side-by-side into a tool's $defs block.

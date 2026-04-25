@@ -54,6 +54,7 @@ func (h *Handler) genRegisterCreateRule(s *server.MCPServer) {
 		"This endpoint creates a new alert rule",
 		gentypes.SchemaCreateRule,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateRule
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateRule))
 }
 
@@ -110,6 +111,7 @@ func (h *Handler) genRegisterGetRuleByID(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleByID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleByID))
 }
 
@@ -140,6 +142,7 @@ func (h *Handler) genRegisterGetRuleHistoryFilterKeys(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleHistoryFilterKeys
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryFilterKeys))
 }
 
@@ -205,6 +208,7 @@ func (h *Handler) genRegisterGetRuleHistoryFilterValues(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleHistoryFilterValues
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryFilterValues))
 }
 
@@ -276,6 +280,7 @@ func (h *Handler) genRegisterGetRuleHistoryOverallStatus(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleHistoryOverallStatus
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryOverallStatus))
 }
 
@@ -317,6 +322,7 @@ func (h *Handler) genRegisterGetRuleHistoryStats(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleHistoryStats
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryStats))
 }
 
@@ -358,6 +364,7 @@ func (h *Handler) genRegisterGetRuleHistoryTimeline(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleHistoryTimeline
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryTimeline))
 }
 
@@ -414,6 +421,7 @@ func (h *Handler) genRegisterGetRuleHistoryTopContributors(s *server.MCPServer) 
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRuleHistoryTopContributors
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryTopContributors))
 }
 
@@ -455,6 +463,7 @@ func (h *Handler) genRegisterListRules(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListRules
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListRules))
 }
 
@@ -479,6 +488,7 @@ func (h *Handler) genRegisterPatchRuleByID(s *server.MCPServer) {
 		"This endpoint applies a partial update to an alert rule by ID",
 		gentypes.SchemaPatchRuleByID,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaPatchRuleByID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandlePatchRuleByID))
 }
 
@@ -507,6 +517,7 @@ func (h *Handler) genRegisterTestRule(s *server.MCPServer) {
 		"This endpoint fires a test notification for the given rule definition",
 		gentypes.SchemaTestRule,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaTestRule
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleTestRule))
 }
 

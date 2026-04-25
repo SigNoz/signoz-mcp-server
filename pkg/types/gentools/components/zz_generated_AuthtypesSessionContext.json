@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "exists": {
+      "type": "boolean"
+    },
+    "orgs": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesOrgSessionContext"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

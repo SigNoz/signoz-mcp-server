@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "healthy": {
+      "type": "boolean"
+    },
+    "services": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

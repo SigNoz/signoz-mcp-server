@@ -45,6 +45,7 @@ func (h *Handler) genRegisterGetMyOrganization(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMyOrganization
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMyOrganization))
 }
 

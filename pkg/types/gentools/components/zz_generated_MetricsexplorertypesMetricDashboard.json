@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "dashboardId": {
+      "type": "string"
+    },
+    "dashboardName": {
+      "type": "string"
+    },
+    "widgetId": {
+      "type": "string"
+    },
+    "widgetName": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "dashboardId",
+    "dashboardName",
+    "widgetId",
+    "widgetName"
+  ],
+  "type": "object"
+}

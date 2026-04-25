@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "dashboards": {
+      "items": {
+        "$ref": "#/$defs/MetricsexplorertypesMetricDashboard"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "dashboards"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,50 @@
+{
+  "properties": {
+    "agentReport": {
+      "$ref": "#/$defs/CloudintegrationtypesAgentReport"
+    },
+    "config": {
+      "$ref": "#/$defs/CloudintegrationtypesAccountConfig"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "orgId": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "providerAccountId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "removedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agentReport",
+    "config",
+    "id",
+    "orgId",
+    "provider",
+    "providerAccountId",
+    "removedAt"
+  ],
+  "type": "object"
+}

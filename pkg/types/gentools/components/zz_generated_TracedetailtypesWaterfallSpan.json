@@ -1,0 +1,106 @@
+{
+  "properties": {
+    "attributes": {
+      "additionalProperties": {},
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "db_name": {
+      "type": "string"
+    },
+    "db_operation": {
+      "type": "string"
+    },
+    "duration_nano": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/TracedetailtypesEvent"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "external_http_method": {
+      "type": "string"
+    },
+    "external_http_url": {
+      "type": "string"
+    },
+    "flags": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "has_children": {
+      "type": "boolean"
+    },
+    "has_error": {
+      "type": "boolean"
+    },
+    "http_host": {
+      "type": "string"
+    },
+    "http_method": {
+      "type": "string"
+    },
+    "http_url": {
+      "type": "string"
+    },
+    "is_remote": {
+      "type": "string"
+    },
+    "kind_string": {
+      "type": "string"
+    },
+    "level": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "parent_span_id": {
+      "type": "string"
+    },
+    "resource": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "response_status_code": {
+      "type": "string"
+    },
+    "span_id": {
+      "type": "string"
+    },
+    "status_code": {
+      "type": "integer"
+    },
+    "status_code_string": {
+      "type": "string"
+    },
+    "status_message": {
+      "type": "string"
+    },
+    "sub_tree_node_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "trace_state": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

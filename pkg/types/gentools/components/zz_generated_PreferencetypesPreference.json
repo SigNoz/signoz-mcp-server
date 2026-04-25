@@ -1,0 +1,38 @@
+{
+  "properties": {
+    "allowedScopes": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "allowedValues": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "defaultValue": {
+      "$ref": "#/$defs/PreferencetypesValue"
+    },
+    "description": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "value": {
+      "$ref": "#/$defs/PreferencetypesValue"
+    },
+    "valueType": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

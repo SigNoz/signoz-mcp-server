@@ -17,15 +17,24 @@ type HandleExportRawDataPOSTInput struct {
 	Body   json.RawMessage `json:"body,omitempty" jsonschema:"Querybuildertypesv5QueryRangeRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_handle_export_raw_data_post.json
+//go:embed tools/zz_generated_signoz_handle_export_raw_data_post.input.json
 var rawSchemaHandleExportRawDataPOST []byte
 
 // SchemaHandleExportRawDataPOST is the self-contained JSON Schema for signoz_handle_export_raw_data_post,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_handle_export_raw_data_post.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_handle_export_raw_data_post.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaHandleExportRawDataPOST = ComposeSchema(rawSchemaHandleExportRawDataPOST)
+
+//go:embed tools/zz_generated_signoz_handle_export_raw_data_post.output.json
+var rawOutputSchemaHandleExportRawDataPOST []byte
+
+// OutputSchemaHandleExportRawDataPOST is the self-contained JSON Schema describing
+// the response body of signoz_handle_export_raw_data_post (POST /api/v1/export_raw_data's success
+// status). Composed at init from tools/zz_generated_signoz_handle_export_raw_data_post.output.json
+// against the same components/ catalogue.
+var OutputSchemaHandleExportRawDataPOST = ComposeSchema(rawOutputSchemaHandleExportRawDataPOST)
 
 // HandlePromoteAndIndexPathsInput is the MCP tool input for POST /api/v1/logs/promote_paths (HandlePromoteAndIndexPaths).
 // Tool name: signoz_handle_promote_and_index_paths.
@@ -33,14 +42,14 @@ type HandlePromoteAndIndexPathsInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"JSON request body"`
 }
 
-//go:embed tools/zz_generated_signoz_handle_promote_and_index_paths.json
+//go:embed tools/zz_generated_signoz_handle_promote_and_index_paths.input.json
 var rawSchemaHandlePromoteAndIndexPaths []byte
 
 // SchemaHandlePromoteAndIndexPaths is the self-contained JSON Schema for signoz_handle_promote_and_index_paths,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_handle_promote_and_index_paths.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_handle_promote_and_index_paths.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaHandlePromoteAndIndexPaths = ComposeSchema(rawSchemaHandlePromoteAndIndexPaths)
 
 // ListPromotedAndIndexedPathsInput is the MCP tool input for GET /api/v1/logs/promote_paths (ListPromotedAndIndexedPaths).
@@ -48,12 +57,21 @@ var SchemaHandlePromoteAndIndexPaths = ComposeSchema(rawSchemaHandlePromoteAndIn
 type ListPromotedAndIndexedPathsInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_promoted_and_indexed_paths.json
+//go:embed tools/zz_generated_signoz_list_promoted_and_indexed_paths.input.json
 var rawSchemaListPromotedAndIndexedPaths []byte
 
 // SchemaListPromotedAndIndexedPaths is the self-contained JSON Schema for signoz_list_promoted_and_indexed_paths,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_promoted_and_indexed_paths.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_promoted_and_indexed_paths.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListPromotedAndIndexedPaths = ComposeSchema(rawSchemaListPromotedAndIndexedPaths)
+
+//go:embed tools/zz_generated_signoz_list_promoted_and_indexed_paths.output.json
+var rawOutputSchemaListPromotedAndIndexedPaths []byte
+
+// OutputSchemaListPromotedAndIndexedPaths is the self-contained JSON Schema describing
+// the response body of signoz_list_promoted_and_indexed_paths (GET /api/v1/logs/promote_paths's success
+// status). Composed at init from tools/zz_generated_signoz_list_promoted_and_indexed_paths.output.json
+// against the same components/ catalogue.
+var OutputSchemaListPromotedAndIndexedPaths = ComposeSchema(rawOutputSchemaListPromotedAndIndexedPaths)

@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "count": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "size": {
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}

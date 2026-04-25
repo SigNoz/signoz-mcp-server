@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "accessToken": {
+      "type": "string"
+    },
+    "expiresIn": {
+      "type": "integer"
+    },
+    "refreshToken": {
+      "type": "string"
+    },
+    "tokenType": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "connectionUrl": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "connectionUrl"
+  ],
+  "type": "object"
+}

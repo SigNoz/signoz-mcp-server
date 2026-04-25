@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "icon": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "enabled",
+    "icon",
+    "id",
+    "title"
+  ],
+  "type": "object"
+}

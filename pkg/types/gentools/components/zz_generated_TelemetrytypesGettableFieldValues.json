@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "complete": {
+      "type": "boolean"
+    },
+    "values": {
+      "$ref": "#/$defs/TelemetrytypesTelemetryFieldValues"
+    }
+  },
+  "required": [
+    "complete",
+    "values"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "attributes": {
+      "items": {
+        "$ref": "#/$defs/MetricsexplorertypesMetricAttribute"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "totalKeys": {
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "attributes",
+    "totalKeys"
+  ],
+  "type": "object"
+}

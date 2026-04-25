@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "alertId": {
+      "type": "string"
+    },
+    "alertName": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "alertId",
+    "alertName"
+  ],
+  "type": "object"
+}

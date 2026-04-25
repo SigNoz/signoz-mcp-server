@@ -44,6 +44,7 @@ func (h *Handler) genRegisterGetFeatures(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetFeatures
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetFeatures))
 }
 

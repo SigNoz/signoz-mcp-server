@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "data": {
+      "additionalProperties": {},
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

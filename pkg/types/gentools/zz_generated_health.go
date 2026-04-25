@@ -15,42 +15,69 @@ var _ = json.RawMessage(nil)
 type HealthzInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_healthz.json
+//go:embed tools/zz_generated_signoz_healthz.input.json
 var rawSchemaHealthz []byte
 
 // SchemaHealthz is the self-contained JSON Schema for signoz_healthz,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_healthz.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_healthz.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaHealthz = ComposeSchema(rawSchemaHealthz)
+
+//go:embed tools/zz_generated_signoz_healthz.output.json
+var rawOutputSchemaHealthz []byte
+
+// OutputSchemaHealthz is the self-contained JSON Schema describing
+// the response body of signoz_healthz (GET /api/v2/healthz's success
+// status). Composed at init from tools/zz_generated_signoz_healthz.output.json
+// against the same components/ catalogue.
+var OutputSchemaHealthz = ComposeSchema(rawOutputSchemaHealthz)
 
 // LivezInput is the MCP tool input for GET /api/v2/livez (Livez).
 // Tool name: signoz_livez.
 type LivezInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_livez.json
+//go:embed tools/zz_generated_signoz_livez.input.json
 var rawSchemaLivez []byte
 
 // SchemaLivez is the self-contained JSON Schema for signoz_livez,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_livez.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_livez.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaLivez = ComposeSchema(rawSchemaLivez)
+
+//go:embed tools/zz_generated_signoz_livez.output.json
+var rawOutputSchemaLivez []byte
+
+// OutputSchemaLivez is the self-contained JSON Schema describing
+// the response body of signoz_livez (GET /api/v2/livez's success
+// status). Composed at init from tools/zz_generated_signoz_livez.output.json
+// against the same components/ catalogue.
+var OutputSchemaLivez = ComposeSchema(rawOutputSchemaLivez)
 
 // ReadyzInput is the MCP tool input for GET /api/v2/readyz (Readyz).
 // Tool name: signoz_readyz.
 type ReadyzInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_readyz.json
+//go:embed tools/zz_generated_signoz_readyz.input.json
 var rawSchemaReadyz []byte
 
 // SchemaReadyz is the self-contained JSON Schema for signoz_readyz,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_readyz.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_readyz.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaReadyz = ComposeSchema(rawSchemaReadyz)
+
+//go:embed tools/zz_generated_signoz_readyz.output.json
+var rawOutputSchemaReadyz []byte
+
+// OutputSchemaReadyz is the self-contained JSON Schema describing
+// the response body of signoz_readyz (GET /api/v2/readyz's success
+// status). Composed at init from tools/zz_generated_signoz_readyz.output.json
+// against the same components/ catalogue.
+var OutputSchemaReadyz = ComposeSchema(rawOutputSchemaReadyz)

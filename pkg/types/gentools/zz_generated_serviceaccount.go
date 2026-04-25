@@ -16,15 +16,24 @@ type CreateServiceAccountInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ServiceaccounttypesPostableServiceAccount"`
 }
 
-//go:embed tools/zz_generated_signoz_create_service_account.json
+//go:embed tools/zz_generated_signoz_create_service_account.input.json
 var rawSchemaCreateServiceAccount []byte
 
 // SchemaCreateServiceAccount is the self-contained JSON Schema for signoz_create_service_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_service_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_service_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateServiceAccount = ComposeSchema(rawSchemaCreateServiceAccount)
+
+//go:embed tools/zz_generated_signoz_create_service_account.output.json
+var rawOutputSchemaCreateServiceAccount []byte
+
+// OutputSchemaCreateServiceAccount is the self-contained JSON Schema describing
+// the response body of signoz_create_service_account (POST /api/v1/service_accounts's success
+// status). Composed at init from tools/zz_generated_signoz_create_service_account.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateServiceAccount = ComposeSchema(rawOutputSchemaCreateServiceAccount)
 
 // CreateServiceAccountKeyInput is the MCP tool input for POST /api/v1/service_accounts/{id}/keys (CreateServiceAccountKey).
 // Tool name: signoz_create_service_account_key.
@@ -33,15 +42,24 @@ type CreateServiceAccountKeyInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ServiceaccounttypesPostableFactorAPIKey"`
 }
 
-//go:embed tools/zz_generated_signoz_create_service_account_key.json
+//go:embed tools/zz_generated_signoz_create_service_account_key.input.json
 var rawSchemaCreateServiceAccountKey []byte
 
 // SchemaCreateServiceAccountKey is the self-contained JSON Schema for signoz_create_service_account_key,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_service_account_key.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_service_account_key.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateServiceAccountKey = ComposeSchema(rawSchemaCreateServiceAccountKey)
+
+//go:embed tools/zz_generated_signoz_create_service_account_key.output.json
+var rawOutputSchemaCreateServiceAccountKey []byte
+
+// OutputSchemaCreateServiceAccountKey is the self-contained JSON Schema describing
+// the response body of signoz_create_service_account_key (POST /api/v1/service_accounts/{id}/keys's success
+// status). Composed at init from tools/zz_generated_signoz_create_service_account_key.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateServiceAccountKey = ComposeSchema(rawOutputSchemaCreateServiceAccountKey)
 
 // CreateServiceAccountRoleInput is the MCP tool input for POST /api/v1/service_accounts/{id}/roles (CreateServiceAccountRole).
 // Tool name: signoz_create_service_account_role.
@@ -50,15 +68,24 @@ type CreateServiceAccountRoleInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ServiceaccounttypesPostableServiceAccountRole"`
 }
 
-//go:embed tools/zz_generated_signoz_create_service_account_role.json
+//go:embed tools/zz_generated_signoz_create_service_account_role.input.json
 var rawSchemaCreateServiceAccountRole []byte
 
 // SchemaCreateServiceAccountRole is the self-contained JSON Schema for signoz_create_service_account_role,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_service_account_role.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_service_account_role.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateServiceAccountRole = ComposeSchema(rawSchemaCreateServiceAccountRole)
+
+//go:embed tools/zz_generated_signoz_create_service_account_role.output.json
+var rawOutputSchemaCreateServiceAccountRole []byte
+
+// OutputSchemaCreateServiceAccountRole is the self-contained JSON Schema describing
+// the response body of signoz_create_service_account_role (POST /api/v1/service_accounts/{id}/roles's success
+// status). Composed at init from tools/zz_generated_signoz_create_service_account_role.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateServiceAccountRole = ComposeSchema(rawOutputSchemaCreateServiceAccountRole)
 
 // DeleteServiceAccountInput is the MCP tool input for DELETE /api/v1/service_accounts/{id} (DeleteServiceAccount).
 // Tool name: signoz_delete_service_account.
@@ -66,14 +93,14 @@ type DeleteServiceAccountInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_service_account.json
+//go:embed tools/zz_generated_signoz_delete_service_account.input.json
 var rawSchemaDeleteServiceAccount []byte
 
 // SchemaDeleteServiceAccount is the self-contained JSON Schema for signoz_delete_service_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_service_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_service_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteServiceAccount = ComposeSchema(rawSchemaDeleteServiceAccount)
 
 // DeleteServiceAccountRoleInput is the MCP tool input for DELETE /api/v1/service_accounts/{id}/roles/{rid} (DeleteServiceAccountRole).
@@ -83,14 +110,14 @@ type DeleteServiceAccountRoleInput struct {
 	Rid string `json:"rid" jsonschema:"path parameter rid"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_service_account_role.json
+//go:embed tools/zz_generated_signoz_delete_service_account_role.input.json
 var rawSchemaDeleteServiceAccountRole []byte
 
 // SchemaDeleteServiceAccountRole is the self-contained JSON Schema for signoz_delete_service_account_role,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_service_account_role.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_service_account_role.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteServiceAccountRole = ComposeSchema(rawSchemaDeleteServiceAccountRole)
 
 // GetMyServiceAccountInput is the MCP tool input for GET /api/v1/service_accounts/me (GetMyServiceAccount).
@@ -98,15 +125,24 @@ var SchemaDeleteServiceAccountRole = ComposeSchema(rawSchemaDeleteServiceAccount
 type GetMyServiceAccountInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_my_service_account.json
+//go:embed tools/zz_generated_signoz_get_my_service_account.input.json
 var rawSchemaGetMyServiceAccount []byte
 
 // SchemaGetMyServiceAccount is the self-contained JSON Schema for signoz_get_my_service_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_my_service_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_my_service_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMyServiceAccount = ComposeSchema(rawSchemaGetMyServiceAccount)
+
+//go:embed tools/zz_generated_signoz_get_my_service_account.output.json
+var rawOutputSchemaGetMyServiceAccount []byte
+
+// OutputSchemaGetMyServiceAccount is the self-contained JSON Schema describing
+// the response body of signoz_get_my_service_account (GET /api/v1/service_accounts/me's success
+// status). Composed at init from tools/zz_generated_signoz_get_my_service_account.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMyServiceAccount = ComposeSchema(rawOutputSchemaGetMyServiceAccount)
 
 // GetServiceAccountInput is the MCP tool input for GET /api/v1/service_accounts/{id} (GetServiceAccount).
 // Tool name: signoz_get_service_account.
@@ -114,15 +150,24 @@ type GetServiceAccountInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_service_account.json
+//go:embed tools/zz_generated_signoz_get_service_account.input.json
 var rawSchemaGetServiceAccount []byte
 
 // SchemaGetServiceAccount is the self-contained JSON Schema for signoz_get_service_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_service_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_service_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetServiceAccount = ComposeSchema(rawSchemaGetServiceAccount)
+
+//go:embed tools/zz_generated_signoz_get_service_account.output.json
+var rawOutputSchemaGetServiceAccount []byte
+
+// OutputSchemaGetServiceAccount is the self-contained JSON Schema describing
+// the response body of signoz_get_service_account (GET /api/v1/service_accounts/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_service_account.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetServiceAccount = ComposeSchema(rawOutputSchemaGetServiceAccount)
 
 // GetServiceAccountRolesInput is the MCP tool input for GET /api/v1/service_accounts/{id}/roles (GetServiceAccountRoles).
 // Tool name: signoz_get_service_account_roles.
@@ -130,15 +175,24 @@ type GetServiceAccountRolesInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_service_account_roles.json
+//go:embed tools/zz_generated_signoz_get_service_account_roles.input.json
 var rawSchemaGetServiceAccountRoles []byte
 
 // SchemaGetServiceAccountRoles is the self-contained JSON Schema for signoz_get_service_account_roles,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_service_account_roles.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_service_account_roles.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetServiceAccountRoles = ComposeSchema(rawSchemaGetServiceAccountRoles)
+
+//go:embed tools/zz_generated_signoz_get_service_account_roles.output.json
+var rawOutputSchemaGetServiceAccountRoles []byte
+
+// OutputSchemaGetServiceAccountRoles is the self-contained JSON Schema describing
+// the response body of signoz_get_service_account_roles (GET /api/v1/service_accounts/{id}/roles's success
+// status). Composed at init from tools/zz_generated_signoz_get_service_account_roles.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetServiceAccountRoles = ComposeSchema(rawOutputSchemaGetServiceAccountRoles)
 
 // ListServiceAccountKeysInput is the MCP tool input for GET /api/v1/service_accounts/{id}/keys (ListServiceAccountKeys).
 // Tool name: signoz_list_service_account_keys.
@@ -146,30 +200,48 @@ type ListServiceAccountKeysInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_list_service_account_keys.json
+//go:embed tools/zz_generated_signoz_list_service_account_keys.input.json
 var rawSchemaListServiceAccountKeys []byte
 
 // SchemaListServiceAccountKeys is the self-contained JSON Schema for signoz_list_service_account_keys,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_service_account_keys.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_service_account_keys.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListServiceAccountKeys = ComposeSchema(rawSchemaListServiceAccountKeys)
+
+//go:embed tools/zz_generated_signoz_list_service_account_keys.output.json
+var rawOutputSchemaListServiceAccountKeys []byte
+
+// OutputSchemaListServiceAccountKeys is the self-contained JSON Schema describing
+// the response body of signoz_list_service_account_keys (GET /api/v1/service_accounts/{id}/keys's success
+// status). Composed at init from tools/zz_generated_signoz_list_service_account_keys.output.json
+// against the same components/ catalogue.
+var OutputSchemaListServiceAccountKeys = ComposeSchema(rawOutputSchemaListServiceAccountKeys)
 
 // ListServiceAccountsInput is the MCP tool input for GET /api/v1/service_accounts (ListServiceAccounts).
 // Tool name: signoz_list_service_accounts.
 type ListServiceAccountsInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_service_accounts.json
+//go:embed tools/zz_generated_signoz_list_service_accounts.input.json
 var rawSchemaListServiceAccounts []byte
 
 // SchemaListServiceAccounts is the self-contained JSON Schema for signoz_list_service_accounts,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_service_accounts.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_service_accounts.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListServiceAccounts = ComposeSchema(rawSchemaListServiceAccounts)
+
+//go:embed tools/zz_generated_signoz_list_service_accounts.output.json
+var rawOutputSchemaListServiceAccounts []byte
+
+// OutputSchemaListServiceAccounts is the self-contained JSON Schema describing
+// the response body of signoz_list_service_accounts (GET /api/v1/service_accounts's success
+// status). Composed at init from tools/zz_generated_signoz_list_service_accounts.output.json
+// against the same components/ catalogue.
+var OutputSchemaListServiceAccounts = ComposeSchema(rawOutputSchemaListServiceAccounts)
 
 // RevokeServiceAccountKeyInput is the MCP tool input for DELETE /api/v1/service_accounts/{id}/keys/{fid} (RevokeServiceAccountKey).
 // Tool name: signoz_revoke_service_account_key.
@@ -178,14 +250,14 @@ type RevokeServiceAccountKeyInput struct {
 	Fid string `json:"fid" jsonschema:"path parameter fid"`
 }
 
-//go:embed tools/zz_generated_signoz_revoke_service_account_key.json
+//go:embed tools/zz_generated_signoz_revoke_service_account_key.input.json
 var rawSchemaRevokeServiceAccountKey []byte
 
 // SchemaRevokeServiceAccountKey is the self-contained JSON Schema for signoz_revoke_service_account_key,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_revoke_service_account_key.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_revoke_service_account_key.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaRevokeServiceAccountKey = ComposeSchema(rawSchemaRevokeServiceAccountKey)
 
 // UpdateMyServiceAccountInput is the MCP tool input for PUT /api/v1/service_accounts/me (UpdateMyServiceAccount).
@@ -194,14 +266,14 @@ type UpdateMyServiceAccountInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ServiceaccounttypesPostableServiceAccount"`
 }
 
-//go:embed tools/zz_generated_signoz_update_my_service_account.json
+//go:embed tools/zz_generated_signoz_update_my_service_account.input.json
 var rawSchemaUpdateMyServiceAccount []byte
 
 // SchemaUpdateMyServiceAccount is the self-contained JSON Schema for signoz_update_my_service_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_my_service_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_my_service_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateMyServiceAccount = ComposeSchema(rawSchemaUpdateMyServiceAccount)
 
 // UpdateServiceAccountInput is the MCP tool input for PUT /api/v1/service_accounts/{id} (UpdateServiceAccount).
@@ -211,14 +283,14 @@ type UpdateServiceAccountInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ServiceaccounttypesPostableServiceAccount"`
 }
 
-//go:embed tools/zz_generated_signoz_update_service_account.json
+//go:embed tools/zz_generated_signoz_update_service_account.input.json
 var rawSchemaUpdateServiceAccount []byte
 
 // SchemaUpdateServiceAccount is the self-contained JSON Schema for signoz_update_service_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_service_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_service_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateServiceAccount = ComposeSchema(rawSchemaUpdateServiceAccount)
 
 // UpdateServiceAccountKeyInput is the MCP tool input for PUT /api/v1/service_accounts/{id}/keys/{fid} (UpdateServiceAccountKey).
@@ -229,12 +301,12 @@ type UpdateServiceAccountKeyInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ServiceaccounttypesUpdatableFactorAPIKey"`
 }
 
-//go:embed tools/zz_generated_signoz_update_service_account_key.json
+//go:embed tools/zz_generated_signoz_update_service_account_key.input.json
 var rawSchemaUpdateServiceAccountKey []byte
 
 // SchemaUpdateServiceAccountKey is the self-contained JSON Schema for signoz_update_service_account_key,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_service_account_key.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_service_account_key.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateServiceAccountKey = ComposeSchema(rawSchemaUpdateServiceAccountKey)

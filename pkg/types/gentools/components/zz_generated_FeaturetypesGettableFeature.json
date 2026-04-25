@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "defaultVariant": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "resolvedValue": {},
+    "stage": {
+      "type": "string"
+    },
+    "variants": {
+      "additionalProperties": {},
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

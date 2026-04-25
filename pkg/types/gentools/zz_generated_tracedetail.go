@@ -17,12 +17,21 @@ type GetWaterfallInput struct {
 	Body    json.RawMessage `json:"body,omitempty" jsonschema:"TracedetailtypesPostableWaterfall"`
 }
 
-//go:embed tools/zz_generated_signoz_get_waterfall.json
+//go:embed tools/zz_generated_signoz_get_waterfall.input.json
 var rawSchemaGetWaterfall []byte
 
 // SchemaGetWaterfall is the self-contained JSON Schema for signoz_get_waterfall,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_waterfall.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_waterfall.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetWaterfall = ComposeSchema(rawSchemaGetWaterfall)
+
+//go:embed tools/zz_generated_signoz_get_waterfall.output.json
+var rawOutputSchemaGetWaterfall []byte
+
+// OutputSchemaGetWaterfall is the self-contained JSON Schema describing
+// the response body of signoz_get_waterfall (POST /api/v3/traces/{traceID}/waterfall's success
+// status). Composed at init from tools/zz_generated_signoz_get_waterfall.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetWaterfall = ComposeSchema(rawOutputSchemaGetWaterfall)

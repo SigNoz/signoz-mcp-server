@@ -1,0 +1,25 @@
+{
+  "description": "Execution statistics for the query, including rows scanned, bytes scanned, and duration.",
+  "properties": {
+    "bytesScanned": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "durationMs": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "rowsScanned": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "stepIntervals": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

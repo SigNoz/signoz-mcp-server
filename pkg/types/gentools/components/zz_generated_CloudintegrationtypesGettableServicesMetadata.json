@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "services": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesServiceMetadata"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "services"
+  ],
+  "type": "object"
+}

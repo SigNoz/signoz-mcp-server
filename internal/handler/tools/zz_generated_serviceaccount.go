@@ -55,6 +55,7 @@ func (h *Handler) genRegisterCreateServiceAccount(s *server.MCPServer) {
 		"This endpoint creates a service account",
 		gentypes.SchemaCreateServiceAccount,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateServiceAccount
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateServiceAccount))
 }
 
@@ -79,6 +80,7 @@ func (h *Handler) genRegisterCreateServiceAccountKey(s *server.MCPServer) {
 		"This endpoint creates a service account key",
 		gentypes.SchemaCreateServiceAccountKey,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateServiceAccountKey
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateServiceAccountKey))
 }
 
@@ -107,6 +109,7 @@ func (h *Handler) genRegisterCreateServiceAccountRole(s *server.MCPServer) {
 		"This endpoint assigns a role to a service account",
 		gentypes.SchemaCreateServiceAccountRole,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateServiceAccountRole
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateServiceAccountRole))
 }
 
@@ -201,6 +204,7 @@ func (h *Handler) genRegisterGetMyServiceAccount(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMyServiceAccount
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMyServiceAccount))
 }
 
@@ -227,6 +231,7 @@ func (h *Handler) genRegisterGetServiceAccount(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetServiceAccount
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetServiceAccount))
 }
 
@@ -257,6 +262,7 @@ func (h *Handler) genRegisterGetServiceAccountRoles(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetServiceAccountRoles
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetServiceAccountRoles))
 }
 
@@ -287,6 +293,7 @@ func (h *Handler) genRegisterListServiceAccountKeys(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListServiceAccountKeys
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListServiceAccountKeys))
 }
 
@@ -317,6 +324,7 @@ func (h *Handler) genRegisterListServiceAccounts(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListServiceAccounts
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListServiceAccounts))
 }
 

@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "nextCursor": {
+      "type": "string"
+    },
+    "queryName": {
+      "type": "string"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5RawRow"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

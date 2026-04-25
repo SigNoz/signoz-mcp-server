@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "enabledRegions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "telemetryCollectionStrategy": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSTelemetryCollectionStrategy"
+    }
+  },
+  "required": [
+    "enabledRegions",
+    "telemetryCollectionStrategy"
+  ],
+  "type": "object"
+}

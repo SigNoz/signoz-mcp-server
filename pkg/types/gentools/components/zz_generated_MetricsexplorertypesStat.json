@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "metricName": {
+      "type": "string"
+    },
+    "samples": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "timeseries": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "type": {
+      "$ref": "#/$defs/MetrictypesType"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "description",
+    "metricName",
+    "samples",
+    "timeseries",
+    "type",
+    "unit"
+  ],
+  "type": "object"
+}

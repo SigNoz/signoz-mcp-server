@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "aws_logs": {
+      "$ref": "#/$defs/CloudintegrationtypesOldAWSLogsStrategy"
+    },
+    "aws_metrics": {
+      "$ref": "#/$defs/CloudintegrationtypesOldAWSMetricsStrategy"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "s3_buckets": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

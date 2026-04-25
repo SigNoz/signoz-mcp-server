@@ -53,6 +53,7 @@ func (h *Handler) genRegisterGetMetricAlerts(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricAlerts
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricAlerts))
 }
 
@@ -83,6 +84,7 @@ func (h *Handler) genRegisterGetMetricAttributes(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricAttributes
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricAttributes))
 }
 
@@ -124,6 +126,7 @@ func (h *Handler) genRegisterGetMetricDashboards(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricDashboards
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricDashboards))
 }
 
@@ -154,6 +157,7 @@ func (h *Handler) genRegisterGetMetricHighlights(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricHighlights
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricHighlights))
 }
 
@@ -184,6 +188,7 @@ func (h *Handler) genRegisterGetMetricMetadata(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricMetadata
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricMetadata))
 }
 
@@ -214,6 +219,7 @@ func (h *Handler) genRegisterGetMetricsOnboardingStatus(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricsOnboardingStatus
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricsOnboardingStatus))
 }
 
@@ -238,6 +244,7 @@ func (h *Handler) genRegisterGetMetricsStats(s *server.MCPServer) {
 		"This endpoint provides list of metrics with their number of samples and timeseries for the given time range",
 		gentypes.SchemaGetMetricsStats,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricsStats
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricsStats))
 }
 
@@ -262,6 +269,7 @@ func (h *Handler) genRegisterGetMetricsTreemap(s *server.MCPServer) {
 		"This endpoint returns a treemap visualization showing the proportional distribution of metrics by sample count or time series count",
 		gentypes.SchemaGetMetricsTreemap,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMetricsTreemap
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricsTreemap))
 }
 
@@ -286,6 +294,7 @@ func (h *Handler) genRegisterInspectMetrics(s *server.MCPServer) {
 		"Returns raw time series data points for a metric within a time range (max 30 minutes). Each series includes labels and timestamp/value pairs.",
 		gentypes.SchemaInspectMetrics,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaInspectMetrics
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleInspectMetrics))
 }
 
@@ -310,6 +319,7 @@ func (h *Handler) genRegisterUpdateMetricMetadata(s *server.MCPServer) {
 		"This endpoint helps to update metadata information like metric description, unit, type, temporality, monotonicity for a specified metric",
 		gentypes.SchemaUpdateMetricMetadata,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaUpdateMetricMetadata
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateMetricMetadata))
 }
 

@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "hasMetrics": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "hasMetrics"
+  ],
+  "type": "object"
+}

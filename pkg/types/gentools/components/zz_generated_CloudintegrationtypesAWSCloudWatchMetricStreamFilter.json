@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "metricNames": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "namespace": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "namespace"
+  ],
+  "type": "object"
+}

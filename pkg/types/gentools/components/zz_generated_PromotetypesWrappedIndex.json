@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "column_type": {
+      "type": "string"
+    },
+    "granularity": {
+      "type": "integer"
+    },
+    "type": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

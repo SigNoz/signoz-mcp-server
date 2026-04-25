@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "bucket": {
+      "$ref": "#/$defs/Querybuildertypesv5Bucket"
+    },
+    "partial": {
+      "type": "boolean"
+    },
+    "timestamp": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "value": {
+      "format": "double",
+      "type": "number"
+    },
+    "values": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

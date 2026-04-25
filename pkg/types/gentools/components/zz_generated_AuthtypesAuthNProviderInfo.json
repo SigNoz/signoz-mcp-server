@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "relayStatePath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

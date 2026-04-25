@@ -44,6 +44,7 @@ func (h *Handler) genRegisterGetGlobalConfig(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetGlobalConfig
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetGlobalConfig))
 }
 

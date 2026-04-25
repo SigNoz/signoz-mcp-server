@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "end": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "start": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "state": {
+      "$ref": "#/$defs/RuletypesAlertState"
+    }
+  },
+  "required": [
+    "end",
+    "start",
+    "state"
+  ],
+  "type": "object"
+}

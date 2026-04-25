@@ -1,0 +1,31 @@
+{
+  "properties": {
+    "cloudIntegrationId": {
+      "type": "string"
+    },
+    "config": {
+      "$ref": "#/$defs/CloudintegrationtypesServiceConfig"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "type": {
+      "$ref": "#/$defs/CloudintegrationtypesServiceID"
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "type": [
+    "object",
+    "null"
+  ]
+}

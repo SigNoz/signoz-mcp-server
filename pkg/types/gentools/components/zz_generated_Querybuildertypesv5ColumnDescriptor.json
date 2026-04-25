@@ -1,0 +1,44 @@
+{
+  "properties": {
+    "aggregationIndex": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "columnType": {
+      "$ref": "#/$defs/Querybuildertypesv5ColumnType"
+    },
+    "description": {
+      "type": "string"
+    },
+    "fieldContext": {
+      "$ref": "#/$defs/TelemetrytypesFieldContext"
+    },
+    "fieldDataType": {
+      "$ref": "#/$defs/TelemetrytypesFieldDataType"
+    },
+    "meta": {
+      "properties": {
+        "unit": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": {
+      "type": "string"
+    },
+    "queryName": {
+      "type": "string"
+    },
+    "signal": {
+      "$ref": "#/$defs/TelemetrytypesSignal"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}

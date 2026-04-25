@@ -1,0 +1,52 @@
+{
+  "properties": {
+    "alias": {
+      "type": "string"
+    },
+    "anomalyScores": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+      },
+      "type": "array"
+    },
+    "index": {
+      "type": "integer"
+    },
+    "lowerBoundSeries": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+      },
+      "type": "array"
+    },
+    "meta": {
+      "properties": {
+        "unit": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "predictedSeries": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+      },
+      "type": "array"
+    },
+    "series": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "upperBoundSeries": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

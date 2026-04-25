@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "day": {
+      "$ref": "#/$defs/GatewaytypesLimitMetricValue"
+    },
+    "second": {
+      "$ref": "#/$defs/GatewaytypesLimitMetricValue"
+    }
+  },
+  "type": "object"
+}

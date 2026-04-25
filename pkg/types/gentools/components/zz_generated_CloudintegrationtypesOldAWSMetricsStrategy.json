@@ -1,0 +1,25 @@
+{
+  "properties": {
+    "cloudwatch_metric_stream_filters": {
+      "items": {
+        "properties": {
+          "MetricNames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "Namespace": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

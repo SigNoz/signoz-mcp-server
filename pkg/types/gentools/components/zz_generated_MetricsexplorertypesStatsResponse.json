@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/MetricsexplorertypesStat"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "total": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "metrics",
+    "total"
+  ],
+  "type": "object"
+}

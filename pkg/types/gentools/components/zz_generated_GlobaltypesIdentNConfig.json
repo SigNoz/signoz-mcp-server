@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "apikey": {
+      "$ref": "#/$defs/GlobaltypesAPIKeyConfig"
+    },
+    "impersonation": {
+      "$ref": "#/$defs/GlobaltypesImpersonationConfig"
+    },
+    "tokenizer": {
+      "$ref": "#/$defs/GlobaltypesTokenizerConfig"
+    }
+  },
+  "type": "object"
+}

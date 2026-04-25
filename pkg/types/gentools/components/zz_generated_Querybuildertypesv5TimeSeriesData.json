@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "aggregations": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5AggregationBucket"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "queryName": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

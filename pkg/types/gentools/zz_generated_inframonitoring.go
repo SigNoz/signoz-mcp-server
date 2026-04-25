@@ -16,12 +16,21 @@ type ListHostsInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"InframonitoringtypesPostableHosts"`
 }
 
-//go:embed tools/zz_generated_signoz_list_hosts.json
+//go:embed tools/zz_generated_signoz_list_hosts.input.json
 var rawSchemaListHosts []byte
 
 // SchemaListHosts is the self-contained JSON Schema for signoz_list_hosts,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_hosts.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_hosts.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListHosts = ComposeSchema(rawSchemaListHosts)
+
+//go:embed tools/zz_generated_signoz_list_hosts.output.json
+var rawOutputSchemaListHosts []byte
+
+// OutputSchemaListHosts is the self-contained JSON Schema describing
+// the response body of signoz_list_hosts (POST /api/v2/infra_monitoring/hosts's success
+// status). Composed at init from tools/zz_generated_signoz_list_hosts.output.json
+// against the same components/ catalogue.
+var OutputSchemaListHosts = ComposeSchema(rawOutputSchemaListHosts)

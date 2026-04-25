@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "categoryGroups": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "categoryGroups"
+  ],
+  "type": "object"
+}

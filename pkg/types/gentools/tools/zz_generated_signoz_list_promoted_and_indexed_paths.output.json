@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "data": {
+      "items": {
+        "$ref": "#/$defs/PromotetypesPromotePath"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "status"
+  ],
+  "type": "object"
+}

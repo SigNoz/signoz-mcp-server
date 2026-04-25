@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "logs": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesCollectedLogAttribute"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesCollectedMetric"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

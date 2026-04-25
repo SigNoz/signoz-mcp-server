@@ -1,0 +1,19 @@
+{
+  "properties": {
+    "attributeMap": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "isError": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    },
+    "timeUnixNano": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}

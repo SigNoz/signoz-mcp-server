@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/AuthtypesRole"
+    },
+    "roleId": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "userId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "createdAt",
+    "id",
+    "role",
+    "roleId",
+    "updatedAt",
+    "userId"
+  ],
+  "type": "object"
+}

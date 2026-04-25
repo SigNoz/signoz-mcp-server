@@ -17,15 +17,24 @@ type AgentCheckInInput struct {
 	Body          json.RawMessage `json:"body,omitempty" jsonschema:"CloudintegrationtypesPostableAgentCheckIn"`
 }
 
-//go:embed tools/zz_generated_signoz_agent_check_in.json
+//go:embed tools/zz_generated_signoz_agent_check_in.input.json
 var rawSchemaAgentCheckIn []byte
 
 // SchemaAgentCheckIn is the self-contained JSON Schema for signoz_agent_check_in,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_agent_check_in.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_agent_check_in.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaAgentCheckIn = ComposeSchema(rawSchemaAgentCheckIn)
+
+//go:embed tools/zz_generated_signoz_agent_check_in.output.json
+var rawOutputSchemaAgentCheckIn []byte
+
+// OutputSchemaAgentCheckIn is the self-contained JSON Schema describing
+// the response body of signoz_agent_check_in (POST /api/v1/cloud_integrations/{cloud_provider}/accounts/check_in's success
+// status). Composed at init from tools/zz_generated_signoz_agent_check_in.output.json
+// against the same components/ catalogue.
+var OutputSchemaAgentCheckIn = ComposeSchema(rawOutputSchemaAgentCheckIn)
 
 // CreateAccountInput is the MCP tool input for POST /api/v1/cloud_integrations/{cloud_provider}/accounts (CreateAccount).
 // Tool name: signoz_create_account.
@@ -34,15 +43,24 @@ type CreateAccountInput struct {
 	Body          json.RawMessage `json:"body,omitempty" jsonschema:"CloudintegrationtypesPostableAccount"`
 }
 
-//go:embed tools/zz_generated_signoz_create_account.json
+//go:embed tools/zz_generated_signoz_create_account.input.json
 var rawSchemaCreateAccount []byte
 
 // SchemaCreateAccount is the self-contained JSON Schema for signoz_create_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateAccount = ComposeSchema(rawSchemaCreateAccount)
+
+//go:embed tools/zz_generated_signoz_create_account.output.json
+var rawOutputSchemaCreateAccount []byte
+
+// OutputSchemaCreateAccount is the self-contained JSON Schema describing
+// the response body of signoz_create_account (POST /api/v1/cloud_integrations/{cloud_provider}/accounts's success
+// status). Composed at init from tools/zz_generated_signoz_create_account.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateAccount = ComposeSchema(rawOutputSchemaCreateAccount)
 
 // DisconnectAccountInput is the MCP tool input for DELETE /api/v1/cloud_integrations/{cloud_provider}/accounts/{id} (DisconnectAccount).
 // Tool name: signoz_disconnect_account.
@@ -51,14 +69,14 @@ type DisconnectAccountInput struct {
 	Id            string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_disconnect_account.json
+//go:embed tools/zz_generated_signoz_disconnect_account.input.json
 var rawSchemaDisconnectAccount []byte
 
 // SchemaDisconnectAccount is the self-contained JSON Schema for signoz_disconnect_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_disconnect_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_disconnect_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDisconnectAccount = ComposeSchema(rawSchemaDisconnectAccount)
 
 // GetAccountInput is the MCP tool input for GET /api/v1/cloud_integrations/{cloud_provider}/accounts/{id} (GetAccount).
@@ -68,15 +86,24 @@ type GetAccountInput struct {
 	Id            string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_account.json
+//go:embed tools/zz_generated_signoz_get_account.input.json
 var rawSchemaGetAccount []byte
 
 // SchemaGetAccount is the self-contained JSON Schema for signoz_get_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetAccount = ComposeSchema(rawSchemaGetAccount)
+
+//go:embed tools/zz_generated_signoz_get_account.output.json
+var rawOutputSchemaGetAccount []byte
+
+// OutputSchemaGetAccount is the self-contained JSON Schema describing
+// the response body of signoz_get_account (GET /api/v1/cloud_integrations/{cloud_provider}/accounts/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_account.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetAccount = ComposeSchema(rawOutputSchemaGetAccount)
 
 // GetConnectionCredentialsInput is the MCP tool input for GET /api/v1/cloud_integrations/{cloud_provider}/credentials (GetConnectionCredentials).
 // Tool name: signoz_get_connection_credentials.
@@ -84,15 +111,24 @@ type GetConnectionCredentialsInput struct {
 	CloudProvider string `json:"cloud_provider" jsonschema:"path parameter cloud_provider"`
 }
 
-//go:embed tools/zz_generated_signoz_get_connection_credentials.json
+//go:embed tools/zz_generated_signoz_get_connection_credentials.input.json
 var rawSchemaGetConnectionCredentials []byte
 
 // SchemaGetConnectionCredentials is the self-contained JSON Schema for signoz_get_connection_credentials,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_connection_credentials.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_connection_credentials.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetConnectionCredentials = ComposeSchema(rawSchemaGetConnectionCredentials)
+
+//go:embed tools/zz_generated_signoz_get_connection_credentials.output.json
+var rawOutputSchemaGetConnectionCredentials []byte
+
+// OutputSchemaGetConnectionCredentials is the self-contained JSON Schema describing
+// the response body of signoz_get_connection_credentials (GET /api/v1/cloud_integrations/{cloud_provider}/credentials's success
+// status). Composed at init from tools/zz_generated_signoz_get_connection_credentials.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetConnectionCredentials = ComposeSchema(rawOutputSchemaGetConnectionCredentials)
 
 // GetServiceInput is the MCP tool input for GET /api/v1/cloud_integrations/{cloud_provider}/services/{service_id} (GetService).
 // Tool name: signoz_get_service.
@@ -102,15 +138,24 @@ type GetServiceInput struct {
 	CloudIntegrationId string `json:"cloud_integration_id,omitempty" jsonschema:"query parameter cloud_integration_id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_service.json
+//go:embed tools/zz_generated_signoz_get_service.input.json
 var rawSchemaGetService []byte
 
 // SchemaGetService is the self-contained JSON Schema for signoz_get_service,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_service.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_service.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetService = ComposeSchema(rawSchemaGetService)
+
+//go:embed tools/zz_generated_signoz_get_service.output.json
+var rawOutputSchemaGetService []byte
+
+// OutputSchemaGetService is the self-contained JSON Schema describing
+// the response body of signoz_get_service (GET /api/v1/cloud_integrations/{cloud_provider}/services/{service_id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_service.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetService = ComposeSchema(rawOutputSchemaGetService)
 
 // ListAccountsInput is the MCP tool input for GET /api/v1/cloud_integrations/{cloud_provider}/accounts (ListAccounts).
 // Tool name: signoz_list_accounts.
@@ -118,15 +163,24 @@ type ListAccountsInput struct {
 	CloudProvider string `json:"cloud_provider" jsonschema:"path parameter cloud_provider"`
 }
 
-//go:embed tools/zz_generated_signoz_list_accounts.json
+//go:embed tools/zz_generated_signoz_list_accounts.input.json
 var rawSchemaListAccounts []byte
 
 // SchemaListAccounts is the self-contained JSON Schema for signoz_list_accounts,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_accounts.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_accounts.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListAccounts = ComposeSchema(rawSchemaListAccounts)
+
+//go:embed tools/zz_generated_signoz_list_accounts.output.json
+var rawOutputSchemaListAccounts []byte
+
+// OutputSchemaListAccounts is the self-contained JSON Schema describing
+// the response body of signoz_list_accounts (GET /api/v1/cloud_integrations/{cloud_provider}/accounts's success
+// status). Composed at init from tools/zz_generated_signoz_list_accounts.output.json
+// against the same components/ catalogue.
+var OutputSchemaListAccounts = ComposeSchema(rawOutputSchemaListAccounts)
 
 // ListServicesMetadataInput is the MCP tool input for GET /api/v1/cloud_integrations/{cloud_provider}/services (ListServicesMetadata).
 // Tool name: signoz_list_services_metadata.
@@ -135,15 +189,24 @@ type ListServicesMetadataInput struct {
 	CloudIntegrationId string `json:"cloud_integration_id,omitempty" jsonschema:"query parameter cloud_integration_id"`
 }
 
-//go:embed tools/zz_generated_signoz_list_services_metadata.json
+//go:embed tools/zz_generated_signoz_list_services_metadata.input.json
 var rawSchemaListServicesMetadata []byte
 
 // SchemaListServicesMetadata is the self-contained JSON Schema for signoz_list_services_metadata,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_services_metadata.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_services_metadata.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListServicesMetadata = ComposeSchema(rawSchemaListServicesMetadata)
+
+//go:embed tools/zz_generated_signoz_list_services_metadata.output.json
+var rawOutputSchemaListServicesMetadata []byte
+
+// OutputSchemaListServicesMetadata is the self-contained JSON Schema describing
+// the response body of signoz_list_services_metadata (GET /api/v1/cloud_integrations/{cloud_provider}/services's success
+// status). Composed at init from tools/zz_generated_signoz_list_services_metadata.output.json
+// against the same components/ catalogue.
+var OutputSchemaListServicesMetadata = ComposeSchema(rawOutputSchemaListServicesMetadata)
 
 // UpdateAccountInput is the MCP tool input for PUT /api/v1/cloud_integrations/{cloud_provider}/accounts/{id} (UpdateAccount).
 // Tool name: signoz_update_account.
@@ -153,14 +216,14 @@ type UpdateAccountInput struct {
 	Body          json.RawMessage `json:"body,omitempty" jsonschema:"CloudintegrationtypesUpdatableAccount"`
 }
 
-//go:embed tools/zz_generated_signoz_update_account.json
+//go:embed tools/zz_generated_signoz_update_account.input.json
 var rawSchemaUpdateAccount []byte
 
 // SchemaUpdateAccount is the self-contained JSON Schema for signoz_update_account,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_account.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_account.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateAccount = ComposeSchema(rawSchemaUpdateAccount)
 
 // UpdateServiceInput is the MCP tool input for PUT /api/v1/cloud_integrations/{cloud_provider}/accounts/{id}/services/{service_id} (UpdateService).
@@ -172,12 +235,12 @@ type UpdateServiceInput struct {
 	Body          json.RawMessage `json:"body,omitempty" jsonschema:"CloudintegrationtypesUpdatableService"`
 }
 
-//go:embed tools/zz_generated_signoz_update_service.json
+//go:embed tools/zz_generated_signoz_update_service.input.json
 var rawSchemaUpdateService []byte
 
 // SchemaUpdateService is the self-contained JSON Schema for signoz_update_service,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_service.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_service.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateService = ComposeSchema(rawSchemaUpdateService)

@@ -81,6 +81,7 @@ func (h *Handler) genRegisterCreateInvite(s *server.MCPServer) {
 		"This endpoint creates an invite for a user",
 		gentypes.SchemaCreateInvite,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateInvite
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateInvite))
 }
 
@@ -105,6 +106,7 @@ func (h *Handler) genRegisterCreateResetPasswordToken(s *server.MCPServer) {
 		"This endpoint creates or regenerates a reset password token for a user. If a valid token exists, it is returned. If expired, a new one is created.",
 		gentypes.SchemaCreateResetPasswordToken,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateResetPasswordToken
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateResetPasswordToken))
 }
 
@@ -189,6 +191,7 @@ func (h *Handler) genRegisterGetMyUser(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetMyUser
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMyUser))
 }
 
@@ -215,6 +218,7 @@ func (h *Handler) genRegisterGetResetPasswordToken(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetResetPasswordToken
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetResetPasswordToken))
 }
 
@@ -245,6 +249,7 @@ func (h *Handler) genRegisterGetRolesByUserID(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRolesByUserID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRolesByUserID))
 }
 
@@ -275,6 +280,7 @@ func (h *Handler) genRegisterGetUser(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetUser
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetUser))
 }
 
@@ -305,6 +311,7 @@ func (h *Handler) genRegisterGetUsersByRoleID(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetUsersByRoleID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetUsersByRoleID))
 }
 
@@ -335,6 +342,7 @@ func (h *Handler) genRegisterListUsers(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListUsers
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListUsers))
 }
 

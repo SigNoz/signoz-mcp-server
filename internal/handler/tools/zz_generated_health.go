@@ -46,6 +46,7 @@ func (h *Handler) genRegisterHealthz(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaHealthz
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleHealthz))
 }
 
@@ -72,6 +73,7 @@ func (h *Handler) genRegisterLivez(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaLivez
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleLivez))
 }
 
@@ -98,6 +100,7 @@ func (h *Handler) genRegisterReadyz(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaReadyz
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleReadyz))
 }
 

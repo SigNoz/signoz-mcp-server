@@ -1,0 +1,25 @@
+{
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/RulestatehistorytypesGettableRuleStateHistory"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "nextCursor": {
+      "type": "string"
+    },
+    "total": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "items",
+    "total"
+  ],
+  "type": "object"
+}

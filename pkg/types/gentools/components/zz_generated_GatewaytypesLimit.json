@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/GatewaytypesLimitConfig"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "metric": {
+      "$ref": "#/$defs/GatewaytypesLimitMetric"
+    },
+    "signal": {
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

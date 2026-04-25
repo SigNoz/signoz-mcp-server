@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "activeTimeSeries": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "dataPoints": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lastReceived": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "totalTimeSeries": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "activeTimeSeries",
+    "dataPoints",
+    "lastReceived",
+    "totalTimeSeries"
+  ],
+  "type": "object"
+}

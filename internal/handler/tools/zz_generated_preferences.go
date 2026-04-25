@@ -49,6 +49,7 @@ func (h *Handler) genRegisterGetOrgPreference(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetOrgPreference
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetOrgPreference))
 }
 
@@ -79,6 +80,7 @@ func (h *Handler) genRegisterGetUserPreference(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetUserPreference
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetUserPreference))
 }
 
@@ -109,6 +111,7 @@ func (h *Handler) genRegisterListOrgPreferences(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListOrgPreferences
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListOrgPreferences))
 }
 
@@ -135,6 +138,7 @@ func (h *Handler) genRegisterListUserPreferences(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListUserPreferences
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListUserPreferences))
 }
 

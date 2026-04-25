@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "aws": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSTelemetryCollectionStrategy"
+    },
+    "azure": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureTelemetryCollectionStrategy"
+    }
+  },
+  "type": "object"
+}

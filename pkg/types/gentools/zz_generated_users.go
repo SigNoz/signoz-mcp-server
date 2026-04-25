@@ -16,14 +16,14 @@ type CreateBulkInviteInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesPostableBulkInviteRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_create_bulk_invite.json
+//go:embed tools/zz_generated_signoz_create_bulk_invite.input.json
 var rawSchemaCreateBulkInvite []byte
 
 // SchemaCreateBulkInvite is the self-contained JSON Schema for signoz_create_bulk_invite,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_bulk_invite.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_bulk_invite.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateBulkInvite = ComposeSchema(rawSchemaCreateBulkInvite)
 
 // CreateInviteInput is the MCP tool input for POST /api/v1/invite (CreateInvite).
@@ -32,15 +32,24 @@ type CreateInviteInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesPostableInvite"`
 }
 
-//go:embed tools/zz_generated_signoz_create_invite.json
+//go:embed tools/zz_generated_signoz_create_invite.input.json
 var rawSchemaCreateInvite []byte
 
 // SchemaCreateInvite is the self-contained JSON Schema for signoz_create_invite,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_invite.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_invite.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateInvite = ComposeSchema(rawSchemaCreateInvite)
+
+//go:embed tools/zz_generated_signoz_create_invite.output.json
+var rawOutputSchemaCreateInvite []byte
+
+// OutputSchemaCreateInvite is the self-contained JSON Schema describing
+// the response body of signoz_create_invite (POST /api/v1/invite's success
+// status). Composed at init from tools/zz_generated_signoz_create_invite.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateInvite = ComposeSchema(rawOutputSchemaCreateInvite)
 
 // CreateResetPasswordTokenInput is the MCP tool input for PUT /api/v2/users/{id}/reset_password_tokens (CreateResetPasswordToken).
 // Tool name: signoz_create_reset_password_token.
@@ -48,15 +57,24 @@ type CreateResetPasswordTokenInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_create_reset_password_token.json
+//go:embed tools/zz_generated_signoz_create_reset_password_token.input.json
 var rawSchemaCreateResetPasswordToken []byte
 
 // SchemaCreateResetPasswordToken is the self-contained JSON Schema for signoz_create_reset_password_token,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_reset_password_token.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_reset_password_token.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateResetPasswordToken = ComposeSchema(rawSchemaCreateResetPasswordToken)
+
+//go:embed tools/zz_generated_signoz_create_reset_password_token.output.json
+var rawOutputSchemaCreateResetPasswordToken []byte
+
+// OutputSchemaCreateResetPasswordToken is the self-contained JSON Schema describing
+// the response body of signoz_create_reset_password_token (PUT /api/v2/users/{id}/reset_password_tokens's success
+// status). Composed at init from tools/zz_generated_signoz_create_reset_password_token.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateResetPasswordToken = ComposeSchema(rawOutputSchemaCreateResetPasswordToken)
 
 // DeleteUserInput is the MCP tool input for DELETE /api/v1/user/{id} (DeleteUser).
 // Tool name: signoz_delete_user.
@@ -64,14 +82,14 @@ type DeleteUserInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_user.json
+//go:embed tools/zz_generated_signoz_delete_user.input.json
 var rawSchemaDeleteUser []byte
 
 // SchemaDeleteUser is the self-contained JSON Schema for signoz_delete_user,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_user.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_user.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteUser = ComposeSchema(rawSchemaDeleteUser)
 
 // ForgotPasswordInput is the MCP tool input for POST /api/v2/factor_password/forgot (ForgotPassword).
@@ -80,14 +98,14 @@ type ForgotPasswordInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesPostableForgotPassword"`
 }
 
-//go:embed tools/zz_generated_signoz_forgot_password.json
+//go:embed tools/zz_generated_signoz_forgot_password.input.json
 var rawSchemaForgotPassword []byte
 
 // SchemaForgotPassword is the self-contained JSON Schema for signoz_forgot_password,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_forgot_password.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_forgot_password.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaForgotPassword = ComposeSchema(rawSchemaForgotPassword)
 
 // GetMyUserInput is the MCP tool input for GET /api/v2/users/me (GetMyUser).
@@ -95,15 +113,24 @@ var SchemaForgotPassword = ComposeSchema(rawSchemaForgotPassword)
 type GetMyUserInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_my_user.json
+//go:embed tools/zz_generated_signoz_get_my_user.input.json
 var rawSchemaGetMyUser []byte
 
 // SchemaGetMyUser is the self-contained JSON Schema for signoz_get_my_user,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_my_user.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_my_user.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMyUser = ComposeSchema(rawSchemaGetMyUser)
+
+//go:embed tools/zz_generated_signoz_get_my_user.output.json
+var rawOutputSchemaGetMyUser []byte
+
+// OutputSchemaGetMyUser is the self-contained JSON Schema describing
+// the response body of signoz_get_my_user (GET /api/v2/users/me's success
+// status). Composed at init from tools/zz_generated_signoz_get_my_user.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMyUser = ComposeSchema(rawOutputSchemaGetMyUser)
 
 // GetResetPasswordTokenInput is the MCP tool input for GET /api/v2/users/{id}/reset_password_tokens (GetResetPasswordToken).
 // Tool name: signoz_get_reset_password_token.
@@ -111,15 +138,24 @@ type GetResetPasswordTokenInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_reset_password_token.json
+//go:embed tools/zz_generated_signoz_get_reset_password_token.input.json
 var rawSchemaGetResetPasswordToken []byte
 
 // SchemaGetResetPasswordToken is the self-contained JSON Schema for signoz_get_reset_password_token,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_reset_password_token.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_reset_password_token.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetResetPasswordToken = ComposeSchema(rawSchemaGetResetPasswordToken)
+
+//go:embed tools/zz_generated_signoz_get_reset_password_token.output.json
+var rawOutputSchemaGetResetPasswordToken []byte
+
+// OutputSchemaGetResetPasswordToken is the self-contained JSON Schema describing
+// the response body of signoz_get_reset_password_token (GET /api/v2/users/{id}/reset_password_tokens's success
+// status). Composed at init from tools/zz_generated_signoz_get_reset_password_token.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetResetPasswordToken = ComposeSchema(rawOutputSchemaGetResetPasswordToken)
 
 // GetRolesByUserIDInput is the MCP tool input for GET /api/v2/users/{id}/roles (GetRolesByUserID).
 // Tool name: signoz_get_roles_by_user_id.
@@ -127,15 +163,24 @@ type GetRolesByUserIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_roles_by_user_id.json
+//go:embed tools/zz_generated_signoz_get_roles_by_user_id.input.json
 var rawSchemaGetRolesByUserID []byte
 
 // SchemaGetRolesByUserID is the self-contained JSON Schema for signoz_get_roles_by_user_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_roles_by_user_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_roles_by_user_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRolesByUserID = ComposeSchema(rawSchemaGetRolesByUserID)
+
+//go:embed tools/zz_generated_signoz_get_roles_by_user_id.output.json
+var rawOutputSchemaGetRolesByUserID []byte
+
+// OutputSchemaGetRolesByUserID is the self-contained JSON Schema describing
+// the response body of signoz_get_roles_by_user_id (GET /api/v2/users/{id}/roles's success
+// status). Composed at init from tools/zz_generated_signoz_get_roles_by_user_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRolesByUserID = ComposeSchema(rawOutputSchemaGetRolesByUserID)
 
 // GetUserInput is the MCP tool input for GET /api/v2/users/{id} (GetUser).
 // Tool name: signoz_get_user.
@@ -143,15 +188,24 @@ type GetUserInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_user.json
+//go:embed tools/zz_generated_signoz_get_user.input.json
 var rawSchemaGetUser []byte
 
 // SchemaGetUser is the self-contained JSON Schema for signoz_get_user,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_user.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_user.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetUser = ComposeSchema(rawSchemaGetUser)
+
+//go:embed tools/zz_generated_signoz_get_user.output.json
+var rawOutputSchemaGetUser []byte
+
+// OutputSchemaGetUser is the self-contained JSON Schema describing
+// the response body of signoz_get_user (GET /api/v2/users/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_user.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetUser = ComposeSchema(rawOutputSchemaGetUser)
 
 // GetUsersByRoleIDInput is the MCP tool input for GET /api/v2/roles/{id}/users (GetUsersByRoleID).
 // Tool name: signoz_get_users_by_role_id.
@@ -159,30 +213,48 @@ type GetUsersByRoleIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_users_by_role_id.json
+//go:embed tools/zz_generated_signoz_get_users_by_role_id.input.json
 var rawSchemaGetUsersByRoleID []byte
 
 // SchemaGetUsersByRoleID is the self-contained JSON Schema for signoz_get_users_by_role_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_users_by_role_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_users_by_role_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetUsersByRoleID = ComposeSchema(rawSchemaGetUsersByRoleID)
+
+//go:embed tools/zz_generated_signoz_get_users_by_role_id.output.json
+var rawOutputSchemaGetUsersByRoleID []byte
+
+// OutputSchemaGetUsersByRoleID is the self-contained JSON Schema describing
+// the response body of signoz_get_users_by_role_id (GET /api/v2/roles/{id}/users's success
+// status). Composed at init from tools/zz_generated_signoz_get_users_by_role_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetUsersByRoleID = ComposeSchema(rawOutputSchemaGetUsersByRoleID)
 
 // ListUsersInput is the MCP tool input for GET /api/v2/users (ListUsers).
 // Tool name: signoz_list_users.
 type ListUsersInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_users.json
+//go:embed tools/zz_generated_signoz_list_users.input.json
 var rawSchemaListUsers []byte
 
 // SchemaListUsers is the self-contained JSON Schema for signoz_list_users,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_users.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_users.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListUsers = ComposeSchema(rawSchemaListUsers)
+
+//go:embed tools/zz_generated_signoz_list_users.output.json
+var rawOutputSchemaListUsers []byte
+
+// OutputSchemaListUsers is the self-contained JSON Schema describing
+// the response body of signoz_list_users (GET /api/v2/users's success
+// status). Composed at init from tools/zz_generated_signoz_list_users.output.json
+// against the same components/ catalogue.
+var OutputSchemaListUsers = ComposeSchema(rawOutputSchemaListUsers)
 
 // RemoveUserRoleByUserIDAndRoleIDInput is the MCP tool input for DELETE /api/v2/users/{id}/roles/{roleId} (RemoveUserRoleByUserIDAndRoleID).
 // Tool name: signoz_remove_user_role_by_user_id_and_role_id.
@@ -191,14 +263,14 @@ type RemoveUserRoleByUserIDAndRoleIDInput struct {
 	RoleId string `json:"roleId" jsonschema:"path parameter roleId"`
 }
 
-//go:embed tools/zz_generated_signoz_remove_user_role_by_user_id_and_role_id.json
+//go:embed tools/zz_generated_signoz_remove_user_role_by_user_id_and_role_id.input.json
 var rawSchemaRemoveUserRoleByUserIDAndRoleID []byte
 
 // SchemaRemoveUserRoleByUserIDAndRoleID is the self-contained JSON Schema for signoz_remove_user_role_by_user_id_and_role_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_remove_user_role_by_user_id_and_role_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_remove_user_role_by_user_id_and_role_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaRemoveUserRoleByUserIDAndRoleID = ComposeSchema(rawSchemaRemoveUserRoleByUserIDAndRoleID)
 
 // SetRoleByUserIDInput is the MCP tool input for POST /api/v2/users/{id}/roles (SetRoleByUserID).
@@ -208,14 +280,14 @@ type SetRoleByUserIDInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesPostableRole"`
 }
 
-//go:embed tools/zz_generated_signoz_set_role_by_user_id.json
+//go:embed tools/zz_generated_signoz_set_role_by_user_id.input.json
 var rawSchemaSetRoleByUserID []byte
 
 // SchemaSetRoleByUserID is the self-contained JSON Schema for signoz_set_role_by_user_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_set_role_by_user_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_set_role_by_user_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaSetRoleByUserID = ComposeSchema(rawSchemaSetRoleByUserID)
 
 // UpdateMyPasswordInput is the MCP tool input for PUT /api/v2/users/me/factor_password (UpdateMyPassword).
@@ -224,14 +296,14 @@ type UpdateMyPasswordInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesChangePasswordRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_update_my_password.json
+//go:embed tools/zz_generated_signoz_update_my_password.input.json
 var rawSchemaUpdateMyPassword []byte
 
 // SchemaUpdateMyPassword is the self-contained JSON Schema for signoz_update_my_password,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_my_password.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_my_password.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateMyPassword = ComposeSchema(rawSchemaUpdateMyPassword)
 
 // UpdateMyUserV2Input is the MCP tool input for PUT /api/v2/users/me (UpdateMyUserV2).
@@ -240,14 +312,14 @@ type UpdateMyUserV2Input struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesUpdatableUser"`
 }
 
-//go:embed tools/zz_generated_signoz_update_my_user_v2.json
+//go:embed tools/zz_generated_signoz_update_my_user_v2.input.json
 var rawSchemaUpdateMyUserV2 []byte
 
 // SchemaUpdateMyUserV2 is the self-contained JSON Schema for signoz_update_my_user_v2,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_my_user_v2.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_my_user_v2.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateMyUserV2 = ComposeSchema(rawSchemaUpdateMyUserV2)
 
 // UpdateUserInput is the MCP tool input for PUT /api/v2/users/{id} (UpdateUser).
@@ -257,12 +329,12 @@ type UpdateUserInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"TypesUpdatableUser"`
 }
 
-//go:embed tools/zz_generated_signoz_update_user.json
+//go:embed tools/zz_generated_signoz_update_user.input.json
 var rawSchemaUpdateUser []byte
 
 // SchemaUpdateUser is the self-contained JSON Schema for signoz_update_user,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_user.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_user.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateUser = ComposeSchema(rawSchemaUpdateUser)

@@ -1,0 +1,9 @@
+{
+  "properties": {
+    "step": {
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "type": "object"
+}

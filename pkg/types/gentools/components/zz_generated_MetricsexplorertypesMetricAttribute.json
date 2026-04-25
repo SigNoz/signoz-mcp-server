@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "valueCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "values": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "key",
+    "valueCount",
+    "values"
+  ],
+  "type": "object"
+}

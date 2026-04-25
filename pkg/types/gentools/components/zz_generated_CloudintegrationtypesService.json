@@ -1,0 +1,43 @@
+{
+  "properties": {
+    "assets": {
+      "$ref": "#/$defs/CloudintegrationtypesAssets"
+    },
+    "cloudIntegrationService": {
+      "$ref": "#/$defs/CloudintegrationtypesCloudIntegrationService"
+    },
+    "dataCollected": {
+      "$ref": "#/$defs/CloudintegrationtypesDataCollected"
+    },
+    "icon": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "overview": {
+      "type": "string"
+    },
+    "supportedSignals": {
+      "$ref": "#/$defs/CloudintegrationtypesSupportedSignals"
+    },
+    "telemetryCollectionStrategy": {
+      "$ref": "#/$defs/CloudintegrationtypesTelemetryCollectionStrategy"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "assets",
+    "cloudIntegrationService",
+    "dataCollected",
+    "icon",
+    "id",
+    "overview",
+    "supportedSignals",
+    "telemetryCollectionStrategy",
+    "title"
+  ],
+  "type": "object"
+}

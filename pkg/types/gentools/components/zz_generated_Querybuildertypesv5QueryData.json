@@ -1,0 +1,23 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Querybuildertypesv5TimeSeriesData"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5ScalarData"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5RawData"
+    }
+  ],
+  "properties": {
+    "results": {
+      "items": {},
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

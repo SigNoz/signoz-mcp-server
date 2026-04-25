@@ -16,15 +16,24 @@ type CreateRoleInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesPostableRole"`
 }
 
-//go:embed tools/zz_generated_signoz_create_role.json
+//go:embed tools/zz_generated_signoz_create_role.input.json
 var rawSchemaCreateRole []byte
 
 // SchemaCreateRole is the self-contained JSON Schema for signoz_create_role,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_role.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_role.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateRole = ComposeSchema(rawSchemaCreateRole)
+
+//go:embed tools/zz_generated_signoz_create_role.output.json
+var rawOutputSchemaCreateRole []byte
+
+// OutputSchemaCreateRole is the self-contained JSON Schema describing
+// the response body of signoz_create_role (POST /api/v1/roles's success
+// status). Composed at init from tools/zz_generated_signoz_create_role.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateRole = ComposeSchema(rawOutputSchemaCreateRole)
 
 // DeleteRoleInput is the MCP tool input for DELETE /api/v1/roles/{id} (DeleteRole).
 // Tool name: signoz_delete_role.
@@ -32,14 +41,14 @@ type DeleteRoleInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_role.json
+//go:embed tools/zz_generated_signoz_delete_role.input.json
 var rawSchemaDeleteRole []byte
 
 // SchemaDeleteRole is the self-contained JSON Schema for signoz_delete_role,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_role.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_role.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteRole = ComposeSchema(rawSchemaDeleteRole)
 
 // GetObjectsInput is the MCP tool input for GET /api/v1/roles/{id}/relations/{relation}/objects (GetObjects).
@@ -49,15 +58,24 @@ type GetObjectsInput struct {
 	Relation string `json:"relation" jsonschema:"path parameter relation"`
 }
 
-//go:embed tools/zz_generated_signoz_get_objects.json
+//go:embed tools/zz_generated_signoz_get_objects.input.json
 var rawSchemaGetObjects []byte
 
 // SchemaGetObjects is the self-contained JSON Schema for signoz_get_objects,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_objects.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_objects.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetObjects = ComposeSchema(rawSchemaGetObjects)
+
+//go:embed tools/zz_generated_signoz_get_objects.output.json
+var rawOutputSchemaGetObjects []byte
+
+// OutputSchemaGetObjects is the self-contained JSON Schema describing
+// the response body of signoz_get_objects (GET /api/v1/roles/{id}/relations/{relation}/objects's success
+// status). Composed at init from tools/zz_generated_signoz_get_objects.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetObjects = ComposeSchema(rawOutputSchemaGetObjects)
 
 // GetRoleInput is the MCP tool input for GET /api/v1/roles/{id} (GetRole).
 // Tool name: signoz_get_role.
@@ -65,30 +83,48 @@ type GetRoleInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_role.json
+//go:embed tools/zz_generated_signoz_get_role.input.json
 var rawSchemaGetRole []byte
 
 // SchemaGetRole is the self-contained JSON Schema for signoz_get_role,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_role.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_role.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRole = ComposeSchema(rawSchemaGetRole)
+
+//go:embed tools/zz_generated_signoz_get_role.output.json
+var rawOutputSchemaGetRole []byte
+
+// OutputSchemaGetRole is the self-contained JSON Schema describing
+// the response body of signoz_get_role (GET /api/v1/roles/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_role.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRole = ComposeSchema(rawOutputSchemaGetRole)
 
 // ListRolesInput is the MCP tool input for GET /api/v1/roles (ListRoles).
 // Tool name: signoz_list_roles.
 type ListRolesInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_roles.json
+//go:embed tools/zz_generated_signoz_list_roles.input.json
 var rawSchemaListRoles []byte
 
 // SchemaListRoles is the self-contained JSON Schema for signoz_list_roles,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_roles.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_roles.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListRoles = ComposeSchema(rawSchemaListRoles)
+
+//go:embed tools/zz_generated_signoz_list_roles.output.json
+var rawOutputSchemaListRoles []byte
+
+// OutputSchemaListRoles is the self-contained JSON Schema describing
+// the response body of signoz_list_roles (GET /api/v1/roles's success
+// status). Composed at init from tools/zz_generated_signoz_list_roles.output.json
+// against the same components/ catalogue.
+var OutputSchemaListRoles = ComposeSchema(rawOutputSchemaListRoles)
 
 // PatchObjectsInput is the MCP tool input for PATCH /api/v1/roles/{id}/relations/{relation}/objects (PatchObjects).
 // Tool name: signoz_patch_objects.
@@ -98,14 +134,14 @@ type PatchObjectsInput struct {
 	Body     json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesPatchableObjects"`
 }
 
-//go:embed tools/zz_generated_signoz_patch_objects.json
+//go:embed tools/zz_generated_signoz_patch_objects.input.json
 var rawSchemaPatchObjects []byte
 
 // SchemaPatchObjects is the self-contained JSON Schema for signoz_patch_objects,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_patch_objects.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_patch_objects.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaPatchObjects = ComposeSchema(rawSchemaPatchObjects)
 
 // PatchRoleInput is the MCP tool input for PATCH /api/v1/roles/{id} (PatchRole).
@@ -115,12 +151,12 @@ type PatchRoleInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"AuthtypesPatchableRole"`
 }
 
-//go:embed tools/zz_generated_signoz_patch_role.json
+//go:embed tools/zz_generated_signoz_patch_role.input.json
 var rawSchemaPatchRole []byte
 
 // SchemaPatchRole is the self-contained JSON Schema for signoz_patch_role,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_patch_role.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_patch_role.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaPatchRole = ComposeSchema(rawSchemaPatchRole)

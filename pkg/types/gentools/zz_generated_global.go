@@ -15,12 +15,21 @@ var _ = json.RawMessage(nil)
 type GetGlobalConfigInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_global_config.json
+//go:embed tools/zz_generated_signoz_get_global_config.input.json
 var rawSchemaGetGlobalConfig []byte
 
 // SchemaGetGlobalConfig is the self-contained JSON Schema for signoz_get_global_config,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_global_config.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_global_config.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetGlobalConfig = ComposeSchema(rawSchemaGetGlobalConfig)
+
+//go:embed tools/zz_generated_signoz_get_global_config.output.json
+var rawOutputSchemaGetGlobalConfig []byte
+
+// OutputSchemaGetGlobalConfig is the self-contained JSON Schema describing
+// the response body of signoz_get_global_config (GET /api/v1/global/config's success
+// status). Composed at init from tools/zz_generated_signoz_get_global_config.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetGlobalConfig = ComposeSchema(rawOutputSchemaGetGlobalConfig)

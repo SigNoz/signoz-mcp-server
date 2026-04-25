@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/TypesOrganization"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "status"
+  ],
+  "type": "object"
+}

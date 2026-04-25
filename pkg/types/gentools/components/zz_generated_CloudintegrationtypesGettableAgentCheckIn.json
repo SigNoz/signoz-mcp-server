@@ -1,0 +1,47 @@
+{
+  "properties": {
+    "account_id": {
+      "type": "string"
+    },
+    "cloudIntegrationId": {
+      "type": "string"
+    },
+    "cloud_account_id": {
+      "type": "string"
+    },
+    "integrationConfig": {
+      "$ref": "#/$defs/CloudintegrationtypesProviderIntegrationConfig"
+    },
+    "integration_config": {
+      "$ref": "#/$defs/CloudintegrationtypesIntegrationConfig"
+    },
+    "providerAccountId": {
+      "type": "string"
+    },
+    "removedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "removed_at": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "account_id",
+    "cloudIntegrationId",
+    "cloud_account_id",
+    "integrationConfig",
+    "integration_config",
+    "providerAccountId",
+    "removedAt",
+    "removed_at"
+  ],
+  "type": "object"
+}

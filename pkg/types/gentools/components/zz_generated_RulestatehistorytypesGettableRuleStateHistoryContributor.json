@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "fingerprint": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "labels": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5Label"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "relatedLogsLink": {
+      "type": "string"
+    },
+    "relatedTracesLink": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "count",
+    "fingerprint",
+    "labels"
+  ],
+  "type": "object"
+}

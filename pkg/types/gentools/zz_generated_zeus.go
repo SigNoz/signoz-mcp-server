@@ -15,15 +15,24 @@ var _ = json.RawMessage(nil)
 type GetHostsInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_hosts.json
+//go:embed tools/zz_generated_signoz_get_hosts.input.json
 var rawSchemaGetHosts []byte
 
 // SchemaGetHosts is the self-contained JSON Schema for signoz_get_hosts,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_hosts.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_hosts.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetHosts = ComposeSchema(rawSchemaGetHosts)
+
+//go:embed tools/zz_generated_signoz_get_hosts.output.json
+var rawOutputSchemaGetHosts []byte
+
+// OutputSchemaGetHosts is the self-contained JSON Schema describing
+// the response body of signoz_get_hosts (GET /api/v2/zeus/hosts's success
+// status). Composed at init from tools/zz_generated_signoz_get_hosts.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetHosts = ComposeSchema(rawOutputSchemaGetHosts)
 
 // PutHostInput is the MCP tool input for PUT /api/v2/zeus/hosts (PutHost).
 // Tool name: signoz_put_host.
@@ -31,14 +40,14 @@ type PutHostInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ZeustypesPostableHost"`
 }
 
-//go:embed tools/zz_generated_signoz_put_host.json
+//go:embed tools/zz_generated_signoz_put_host.input.json
 var rawSchemaPutHost []byte
 
 // SchemaPutHost is the self-contained JSON Schema for signoz_put_host,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_put_host.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_put_host.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaPutHost = ComposeSchema(rawSchemaPutHost)
 
 // PutProfileInput is the MCP tool input for PUT /api/v2/zeus/profiles (PutProfile).
@@ -47,12 +56,12 @@ type PutProfileInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"ZeustypesPostableProfile"`
 }
 
-//go:embed tools/zz_generated_signoz_put_profile.json
+//go:embed tools/zz_generated_signoz_put_profile.input.json
 var rawSchemaPutProfile []byte
 
 // SchemaPutProfile is the self-contained JSON Schema for signoz_put_profile,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_put_profile.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_put_profile.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaPutProfile = ComposeSchema(rawSchemaPutProfile)

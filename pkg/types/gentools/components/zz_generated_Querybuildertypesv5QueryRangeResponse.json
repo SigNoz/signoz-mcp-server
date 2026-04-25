@@ -1,0 +1,18 @@
+{
+  "description": "Response from the v5 query range endpoint. The data.results array contains typed results depending on the requestType: TimeSeriesData for time_series, ScalarData for scalar, or RawData for raw requests.",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryData"
+    },
+    "meta": {
+      "$ref": "#/$defs/Querybuildertypesv5ExecStats"
+    },
+    "type": {
+      "$ref": "#/$defs/Querybuildertypesv5RequestType"
+    },
+    "warning": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryWarnData"
+    }
+  },
+  "type": "object"
+}

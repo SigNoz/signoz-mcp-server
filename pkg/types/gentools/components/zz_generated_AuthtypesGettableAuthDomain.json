@@ -1,0 +1,46 @@
+{
+  "properties": {
+    "authNProviderInfo": {
+      "$ref": "#/$defs/AuthtypesAuthNProviderInfo"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "googleAuthConfig": {
+      "$ref": "#/$defs/AuthtypesGoogleConfig"
+    },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "oidcConfig": {
+      "$ref": "#/$defs/AuthtypesOIDCConfig"
+    },
+    "orgId": {
+      "type": "string"
+    },
+    "roleMapping": {
+      "$ref": "#/$defs/AuthtypesRoleMapping"
+    },
+    "samlConfig": {
+      "$ref": "#/$defs/AuthtypesSamlConfig"
+    },
+    "ssoEnabled": {
+      "type": "boolean"
+    },
+    "ssoType": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "type": "object"
+}

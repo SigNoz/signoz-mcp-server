@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "resource": {
+      "$ref": "#/$defs/AuthtypesResource"
+    },
+    "selector": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "resource",
+    "selector"
+  ],
+  "type": "object"
+}

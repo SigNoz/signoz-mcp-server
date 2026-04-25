@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "hosts": {
+      "items": {
+        "$ref": "#/$defs/ZeustypesHost"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "tier": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "hosts",
+    "name",
+    "state",
+    "tier"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "enabled_regions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "telemetry": {
+      "$ref": "#/$defs/CloudintegrationtypesOldAWSCollectionStrategy"
+    }
+  },
+  "required": [
+    "enabled_regions",
+    "telemetry"
+  ],
+  "type": [
+    "object",
+    "null"
+  ]
+}

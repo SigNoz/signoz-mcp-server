@@ -17,15 +17,24 @@ type CreatePublicDashboardInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"DashboardtypesPostablePublicDashboard"`
 }
 
-//go:embed tools/zz_generated_signoz_create_public_dashboard.json
+//go:embed tools/zz_generated_signoz_create_public_dashboard.input.json
 var rawSchemaCreatePublicDashboard []byte
 
 // SchemaCreatePublicDashboard is the self-contained JSON Schema for signoz_create_public_dashboard,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_public_dashboard.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_public_dashboard.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreatePublicDashboard = ComposeSchema(rawSchemaCreatePublicDashboard)
+
+//go:embed tools/zz_generated_signoz_create_public_dashboard.output.json
+var rawOutputSchemaCreatePublicDashboard []byte
+
+// OutputSchemaCreatePublicDashboard is the self-contained JSON Schema describing
+// the response body of signoz_create_public_dashboard (POST /api/v1/dashboards/{id}/public's success
+// status). Composed at init from tools/zz_generated_signoz_create_public_dashboard.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreatePublicDashboard = ComposeSchema(rawOutputSchemaCreatePublicDashboard)
 
 // DeletePublicDashboardInput is the MCP tool input for DELETE /api/v1/dashboards/{id}/public (DeletePublicDashboard).
 // Tool name: signoz_delete_public_dashboard.
@@ -33,14 +42,14 @@ type DeletePublicDashboardInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_public_dashboard.json
+//go:embed tools/zz_generated_signoz_delete_public_dashboard.input.json
 var rawSchemaDeletePublicDashboard []byte
 
 // SchemaDeletePublicDashboard is the self-contained JSON Schema for signoz_delete_public_dashboard,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_public_dashboard.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_public_dashboard.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeletePublicDashboard = ComposeSchema(rawSchemaDeletePublicDashboard)
 
 // GetPublicDashboardWidgetQueryRangeInput is the MCP tool input for GET /api/v1/public/dashboards/{id}/widgets/{idx}/query_range (GetPublicDashboardWidgetQueryRange).
@@ -50,15 +59,24 @@ type GetPublicDashboardWidgetQueryRangeInput struct {
 	Idx string `json:"idx" jsonschema:"path parameter idx"`
 }
 
-//go:embed tools/zz_generated_signoz_get_public_dashboard_widget_query_range.json
+//go:embed tools/zz_generated_signoz_get_public_dashboard_widget_query_range.input.json
 var rawSchemaGetPublicDashboardWidgetQueryRange []byte
 
 // SchemaGetPublicDashboardWidgetQueryRange is the self-contained JSON Schema for signoz_get_public_dashboard_widget_query_range,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_public_dashboard_widget_query_range.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_public_dashboard_widget_query_range.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetPublicDashboardWidgetQueryRange = ComposeSchema(rawSchemaGetPublicDashboardWidgetQueryRange)
+
+//go:embed tools/zz_generated_signoz_get_public_dashboard_widget_query_range.output.json
+var rawOutputSchemaGetPublicDashboardWidgetQueryRange []byte
+
+// OutputSchemaGetPublicDashboardWidgetQueryRange is the self-contained JSON Schema describing
+// the response body of signoz_get_public_dashboard_widget_query_range (GET /api/v1/public/dashboards/{id}/widgets/{idx}/query_range's success
+// status). Composed at init from tools/zz_generated_signoz_get_public_dashboard_widget_query_range.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetPublicDashboardWidgetQueryRange = ComposeSchema(rawOutputSchemaGetPublicDashboardWidgetQueryRange)
 
 // UpdatePublicDashboardInput is the MCP tool input for PUT /api/v1/dashboards/{id}/public (UpdatePublicDashboard).
 // Tool name: signoz_update_public_dashboard.
@@ -67,12 +85,12 @@ type UpdatePublicDashboardInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"DashboardtypesUpdatablePublicDashboard"`
 }
 
-//go:embed tools/zz_generated_signoz_update_public_dashboard.json
+//go:embed tools/zz_generated_signoz_update_public_dashboard.input.json
 var rawSchemaUpdatePublicDashboard []byte
 
 // SchemaUpdatePublicDashboard is the self-contained JSON Schema for signoz_update_public_dashboard,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_public_dashboard.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_public_dashboard.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdatePublicDashboard = ComposeSchema(rawSchemaUpdatePublicDashboard)

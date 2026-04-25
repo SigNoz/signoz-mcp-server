@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "logs": {
+      "type": "boolean"
+    },
+    "metrics": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

@@ -44,6 +44,7 @@ func (h *Handler) genRegisterHandleExportRawDataPOST(s *server.MCPServer) {
 		"This endpoints allows complex query exporting raw data for traces and logs",
 		gentypes.SchemaHandleExportRawDataPOST,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaHandleExportRawDataPOST
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleHandleExportRawDataPOST))
 }
 
@@ -102,6 +103,7 @@ func (h *Handler) genRegisterListPromotedAndIndexedPaths(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListPromotedAndIndexedPaths
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListPromotedAndIndexedPaths))
 }
 

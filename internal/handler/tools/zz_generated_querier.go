@@ -43,6 +43,7 @@ func (h *Handler) genRegisterQueryRangeV5(s *server.MCPServer) {
 		"Execute a composite query over a time range. Supports builder queries (traces, logs, metrics), formulas, trace operators, PromQL, and ClickHouse SQL.",
 		gentypes.SchemaQueryRangeV5,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaQueryRangeV5
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleQueryRangeV5))
 }
 
@@ -67,6 +68,7 @@ func (h *Handler) genRegisterReplaceVariables(s *server.MCPServer) {
 		"Replace variables in a query",
 		gentypes.SchemaReplaceVariables,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaReplaceVariables
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleReplaceVariables))
 }
 

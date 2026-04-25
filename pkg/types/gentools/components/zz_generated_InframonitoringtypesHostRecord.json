@@ -1,0 +1,56 @@
+{
+  "properties": {
+    "activeHostCount": {
+      "type": "integer"
+    },
+    "cpu": {
+      "format": "double",
+      "type": "number"
+    },
+    "diskUsage": {
+      "format": "double",
+      "type": "number"
+    },
+    "hostName": {
+      "type": "string"
+    },
+    "inactiveHostCount": {
+      "type": "integer"
+    },
+    "load15": {
+      "format": "double",
+      "type": "number"
+    },
+    "memory": {
+      "format": "double",
+      "type": "number"
+    },
+    "meta": {
+      "additionalProperties": {},
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "status": {
+      "$ref": "#/$defs/InframonitoringtypesHostStatus"
+    },
+    "wait": {
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "activeHostCount",
+    "cpu",
+    "diskUsage",
+    "hostName",
+    "inactiveHostCount",
+    "load15",
+    "memory",
+    "meta",
+    "status",
+    "wait"
+  ],
+  "type": "object"
+}

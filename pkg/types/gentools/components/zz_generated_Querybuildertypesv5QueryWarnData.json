@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "message": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5QueryWarnDataAdditional"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

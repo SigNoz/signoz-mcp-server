@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "accounts": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesAccount"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "accounts"
+  ],
+  "type": "object"
+}

@@ -16,15 +16,24 @@ type CreateRuleInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"RuletypesPostableRule"`
 }
 
-//go:embed tools/zz_generated_signoz_create_rule.json
+//go:embed tools/zz_generated_signoz_create_rule.input.json
 var rawSchemaCreateRule []byte
 
 // SchemaCreateRule is the self-contained JSON Schema for signoz_create_rule,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_rule.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_rule.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateRule = ComposeSchema(rawSchemaCreateRule)
+
+//go:embed tools/zz_generated_signoz_create_rule.output.json
+var rawOutputSchemaCreateRule []byte
+
+// OutputSchemaCreateRule is the self-contained JSON Schema describing
+// the response body of signoz_create_rule (POST /api/v2/rules's success
+// status). Composed at init from tools/zz_generated_signoz_create_rule.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateRule = ComposeSchema(rawOutputSchemaCreateRule)
 
 // DeleteRuleByIDInput is the MCP tool input for DELETE /api/v2/rules/{id} (DeleteRuleByID).
 // Tool name: signoz_delete_rule_by_id.
@@ -32,14 +41,14 @@ type DeleteRuleByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_rule_by_id.json
+//go:embed tools/zz_generated_signoz_delete_rule_by_id.input.json
 var rawSchemaDeleteRuleByID []byte
 
 // SchemaDeleteRuleByID is the self-contained JSON Schema for signoz_delete_rule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_rule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_rule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteRuleByID = ComposeSchema(rawSchemaDeleteRuleByID)
 
 // GetRuleByIDInput is the MCP tool input for GET /api/v2/rules/{id} (GetRuleByID).
@@ -48,15 +57,24 @@ type GetRuleByIDInput struct {
 	Id string `json:"id" jsonschema:"path parameter id"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_by_id.json
+//go:embed tools/zz_generated_signoz_get_rule_by_id.input.json
 var rawSchemaGetRuleByID []byte
 
 // SchemaGetRuleByID is the self-contained JSON Schema for signoz_get_rule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleByID = ComposeSchema(rawSchemaGetRuleByID)
+
+//go:embed tools/zz_generated_signoz_get_rule_by_id.output.json
+var rawOutputSchemaGetRuleByID []byte
+
+// OutputSchemaGetRuleByID is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_by_id (GET /api/v2/rules/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_by_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleByID = ComposeSchema(rawOutputSchemaGetRuleByID)
 
 // GetRuleHistoryFilterKeysInput is the MCP tool input for GET /api/v2/rules/{id}/history/filter_keys (GetRuleHistoryFilterKeys).
 // Tool name: signoz_get_rule_history_filter_keys.
@@ -74,15 +92,24 @@ type GetRuleHistoryFilterKeysInput struct {
 	SearchText      string `json:"searchText,omitempty" jsonschema:"query parameter searchText"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_history_filter_keys.json
+//go:embed tools/zz_generated_signoz_get_rule_history_filter_keys.input.json
 var rawSchemaGetRuleHistoryFilterKeys []byte
 
 // SchemaGetRuleHistoryFilterKeys is the self-contained JSON Schema for signoz_get_rule_history_filter_keys,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_history_filter_keys.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_history_filter_keys.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleHistoryFilterKeys = ComposeSchema(rawSchemaGetRuleHistoryFilterKeys)
+
+//go:embed tools/zz_generated_signoz_get_rule_history_filter_keys.output.json
+var rawOutputSchemaGetRuleHistoryFilterKeys []byte
+
+// OutputSchemaGetRuleHistoryFilterKeys is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_history_filter_keys (GET /api/v2/rules/{id}/history/filter_keys's success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_history_filter_keys.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleHistoryFilterKeys = ComposeSchema(rawOutputSchemaGetRuleHistoryFilterKeys)
 
 // GetRuleHistoryFilterValuesInput is the MCP tool input for GET /api/v2/rules/{id}/history/filter_values (GetRuleHistoryFilterValues).
 // Tool name: signoz_get_rule_history_filter_values.
@@ -102,15 +129,24 @@ type GetRuleHistoryFilterValuesInput struct {
 	ExistingQuery   string `json:"existingQuery,omitempty" jsonschema:"query parameter existingQuery"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_history_filter_values.json
+//go:embed tools/zz_generated_signoz_get_rule_history_filter_values.input.json
 var rawSchemaGetRuleHistoryFilterValues []byte
 
 // SchemaGetRuleHistoryFilterValues is the self-contained JSON Schema for signoz_get_rule_history_filter_values,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_history_filter_values.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_history_filter_values.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleHistoryFilterValues = ComposeSchema(rawSchemaGetRuleHistoryFilterValues)
+
+//go:embed tools/zz_generated_signoz_get_rule_history_filter_values.output.json
+var rawOutputSchemaGetRuleHistoryFilterValues []byte
+
+// OutputSchemaGetRuleHistoryFilterValues is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_history_filter_values (GET /api/v2/rules/{id}/history/filter_values's success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_history_filter_values.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleHistoryFilterValues = ComposeSchema(rawOutputSchemaGetRuleHistoryFilterValues)
 
 // GetRuleHistoryOverallStatusInput is the MCP tool input for GET /api/v2/rules/{id}/history/overall_status (GetRuleHistoryOverallStatus).
 // Tool name: signoz_get_rule_history_overall_status.
@@ -120,15 +156,24 @@ type GetRuleHistoryOverallStatusInput struct {
 	End   int64  `json:"end" jsonschema:"query parameter end"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_history_overall_status.json
+//go:embed tools/zz_generated_signoz_get_rule_history_overall_status.input.json
 var rawSchemaGetRuleHistoryOverallStatus []byte
 
 // SchemaGetRuleHistoryOverallStatus is the self-contained JSON Schema for signoz_get_rule_history_overall_status,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_history_overall_status.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_history_overall_status.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleHistoryOverallStatus = ComposeSchema(rawSchemaGetRuleHistoryOverallStatus)
+
+//go:embed tools/zz_generated_signoz_get_rule_history_overall_status.output.json
+var rawOutputSchemaGetRuleHistoryOverallStatus []byte
+
+// OutputSchemaGetRuleHistoryOverallStatus is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_history_overall_status (GET /api/v2/rules/{id}/history/overall_status's success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_history_overall_status.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleHistoryOverallStatus = ComposeSchema(rawOutputSchemaGetRuleHistoryOverallStatus)
 
 // GetRuleHistoryStatsInput is the MCP tool input for GET /api/v2/rules/{id}/history/stats (GetRuleHistoryStats).
 // Tool name: signoz_get_rule_history_stats.
@@ -138,15 +183,24 @@ type GetRuleHistoryStatsInput struct {
 	End   int64  `json:"end" jsonschema:"query parameter end"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_history_stats.json
+//go:embed tools/zz_generated_signoz_get_rule_history_stats.input.json
 var rawSchemaGetRuleHistoryStats []byte
 
 // SchemaGetRuleHistoryStats is the self-contained JSON Schema for signoz_get_rule_history_stats,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_history_stats.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_history_stats.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleHistoryStats = ComposeSchema(rawSchemaGetRuleHistoryStats)
+
+//go:embed tools/zz_generated_signoz_get_rule_history_stats.output.json
+var rawOutputSchemaGetRuleHistoryStats []byte
+
+// OutputSchemaGetRuleHistoryStats is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_history_stats (GET /api/v2/rules/{id}/history/stats's success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_history_stats.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleHistoryStats = ComposeSchema(rawOutputSchemaGetRuleHistoryStats)
 
 // GetRuleHistoryTimelineInput is the MCP tool input for GET /api/v2/rules/{id}/history/timeline (GetRuleHistoryTimeline).
 // Tool name: signoz_get_rule_history_timeline.
@@ -161,15 +215,24 @@ type GetRuleHistoryTimelineInput struct {
 	Cursor           string `json:"cursor,omitempty" jsonschema:"query parameter cursor"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_history_timeline.json
+//go:embed tools/zz_generated_signoz_get_rule_history_timeline.input.json
 var rawSchemaGetRuleHistoryTimeline []byte
 
 // SchemaGetRuleHistoryTimeline is the self-contained JSON Schema for signoz_get_rule_history_timeline,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_history_timeline.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_history_timeline.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleHistoryTimeline = ComposeSchema(rawSchemaGetRuleHistoryTimeline)
+
+//go:embed tools/zz_generated_signoz_get_rule_history_timeline.output.json
+var rawOutputSchemaGetRuleHistoryTimeline []byte
+
+// OutputSchemaGetRuleHistoryTimeline is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_history_timeline (GET /api/v2/rules/{id}/history/timeline's success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_history_timeline.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleHistoryTimeline = ComposeSchema(rawOutputSchemaGetRuleHistoryTimeline)
 
 // GetRuleHistoryTopContributorsInput is the MCP tool input for GET /api/v2/rules/{id}/history/top_contributors (GetRuleHistoryTopContributors).
 // Tool name: signoz_get_rule_history_top_contributors.
@@ -179,30 +242,48 @@ type GetRuleHistoryTopContributorsInput struct {
 	End   int64  `json:"end" jsonschema:"query parameter end"`
 }
 
-//go:embed tools/zz_generated_signoz_get_rule_history_top_contributors.json
+//go:embed tools/zz_generated_signoz_get_rule_history_top_contributors.input.json
 var rawSchemaGetRuleHistoryTopContributors []byte
 
 // SchemaGetRuleHistoryTopContributors is the self-contained JSON Schema for signoz_get_rule_history_top_contributors,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_rule_history_top_contributors.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_rule_history_top_contributors.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetRuleHistoryTopContributors = ComposeSchema(rawSchemaGetRuleHistoryTopContributors)
+
+//go:embed tools/zz_generated_signoz_get_rule_history_top_contributors.output.json
+var rawOutputSchemaGetRuleHistoryTopContributors []byte
+
+// OutputSchemaGetRuleHistoryTopContributors is the self-contained JSON Schema describing
+// the response body of signoz_get_rule_history_top_contributors (GET /api/v2/rules/{id}/history/top_contributors's success
+// status). Composed at init from tools/zz_generated_signoz_get_rule_history_top_contributors.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetRuleHistoryTopContributors = ComposeSchema(rawOutputSchemaGetRuleHistoryTopContributors)
 
 // ListRulesInput is the MCP tool input for GET /api/v2/rules (ListRules).
 // Tool name: signoz_list_rules.
 type ListRulesInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_list_rules.json
+//go:embed tools/zz_generated_signoz_list_rules.input.json
 var rawSchemaListRules []byte
 
 // SchemaListRules is the self-contained JSON Schema for signoz_list_rules,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_list_rules.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_list_rules.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaListRules = ComposeSchema(rawSchemaListRules)
+
+//go:embed tools/zz_generated_signoz_list_rules.output.json
+var rawOutputSchemaListRules []byte
+
+// OutputSchemaListRules is the self-contained JSON Schema describing
+// the response body of signoz_list_rules (GET /api/v2/rules's success
+// status). Composed at init from tools/zz_generated_signoz_list_rules.output.json
+// against the same components/ catalogue.
+var OutputSchemaListRules = ComposeSchema(rawOutputSchemaListRules)
 
 // PatchRuleByIDInput is the MCP tool input for PATCH /api/v2/rules/{id} (PatchRuleByID).
 // Tool name: signoz_patch_rule_by_id.
@@ -211,15 +292,24 @@ type PatchRuleByIDInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"RuletypesPostableRule"`
 }
 
-//go:embed tools/zz_generated_signoz_patch_rule_by_id.json
+//go:embed tools/zz_generated_signoz_patch_rule_by_id.input.json
 var rawSchemaPatchRuleByID []byte
 
 // SchemaPatchRuleByID is the self-contained JSON Schema for signoz_patch_rule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_patch_rule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_patch_rule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaPatchRuleByID = ComposeSchema(rawSchemaPatchRuleByID)
+
+//go:embed tools/zz_generated_signoz_patch_rule_by_id.output.json
+var rawOutputSchemaPatchRuleByID []byte
+
+// OutputSchemaPatchRuleByID is the self-contained JSON Schema describing
+// the response body of signoz_patch_rule_by_id (PATCH /api/v2/rules/{id}'s success
+// status). Composed at init from tools/zz_generated_signoz_patch_rule_by_id.output.json
+// against the same components/ catalogue.
+var OutputSchemaPatchRuleByID = ComposeSchema(rawOutputSchemaPatchRuleByID)
 
 // TestRuleInput is the MCP tool input for POST /api/v2/rules/test (TestRule).
 // Tool name: signoz_test_rule.
@@ -227,15 +317,24 @@ type TestRuleInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"RuletypesPostableRule"`
 }
 
-//go:embed tools/zz_generated_signoz_test_rule.json
+//go:embed tools/zz_generated_signoz_test_rule.input.json
 var rawSchemaTestRule []byte
 
 // SchemaTestRule is the self-contained JSON Schema for signoz_test_rule,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_test_rule.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_test_rule.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaTestRule = ComposeSchema(rawSchemaTestRule)
+
+//go:embed tools/zz_generated_signoz_test_rule.output.json
+var rawOutputSchemaTestRule []byte
+
+// OutputSchemaTestRule is the self-contained JSON Schema describing
+// the response body of signoz_test_rule (POST /api/v2/rules/test's success
+// status). Composed at init from tools/zz_generated_signoz_test_rule.output.json
+// against the same components/ catalogue.
+var OutputSchemaTestRule = ComposeSchema(rawOutputSchemaTestRule)
 
 // UpdateRuleByIDInput is the MCP tool input for PUT /api/v2/rules/{id} (UpdateRuleByID).
 // Tool name: signoz_update_rule_by_id.
@@ -244,12 +343,12 @@ type UpdateRuleByIDInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"RuletypesPostableRule"`
 }
 
-//go:embed tools/zz_generated_signoz_update_rule_by_id.json
+//go:embed tools/zz_generated_signoz_update_rule_by_id.input.json
 var rawSchemaUpdateRuleByID []byte
 
 // SchemaUpdateRuleByID is the self-contained JSON Schema for signoz_update_rule_by_id,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_rule_by_id.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_rule_by_id.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateRuleByID = ComposeSchema(rawSchemaUpdateRuleByID)

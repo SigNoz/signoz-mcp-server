@@ -42,6 +42,7 @@ func (h *Handler) genRegisterGetWaterfall(s *server.MCPServer) {
 		"Returns the waterfall view of spans for a given trace ID with tree structure, metadata, and windowed pagination",
 		gentypes.SchemaGetWaterfall,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaGetWaterfall
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetWaterfall))
 }
 

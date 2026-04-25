@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "aws": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSIntegrationConfig"
+    },
+    "azure": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureIntegrationConfig"
+    }
+  },
+  "type": "object"
+}

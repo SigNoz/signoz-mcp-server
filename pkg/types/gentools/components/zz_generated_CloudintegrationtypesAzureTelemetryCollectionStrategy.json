@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "logs": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureLogsCollectionStrategy"
+    },
+    "metrics": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureMetricsCollectionStrategy"
+    },
+    "resourceProvider": {
+      "type": "string"
+    },
+    "resourceType": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "resourceProvider",
+    "resourceType"
+  ],
+  "type": "object"
+}

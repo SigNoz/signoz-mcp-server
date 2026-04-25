@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "page": {
+      "type": "integer"
+    },
+    "pages": {
+      "type": "integer"
+    },
+    "per_page": {
+      "type": "integer"
+    },
+    "total": {
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}

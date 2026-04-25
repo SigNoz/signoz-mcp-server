@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "_pagination": {
+      "$ref": "#/$defs/GatewaytypesPagination"
+    },
+    "keys": {
+      "items": {
+        "$ref": "#/$defs/GatewaytypesIngestionKey"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

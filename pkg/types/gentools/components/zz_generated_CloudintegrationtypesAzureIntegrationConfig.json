@@ -1,0 +1,25 @@
+{
+  "properties": {
+    "deploymentRegion": {
+      "type": "string"
+    },
+    "resourceGroups": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "telemetryCollectionStrategy": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesAzureTelemetryCollectionStrategy"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "deploymentRegion",
+    "resourceGroups",
+    "telemetryCollectionStrategy"
+  ],
+  "type": "object"
+}

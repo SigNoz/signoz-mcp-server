@@ -16,15 +16,24 @@ type GetMetricAlertsInput struct {
 	MetricName string `json:"metric_name" jsonschema:"path parameter metric_name"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metric_alerts.json
+//go:embed tools/zz_generated_signoz_get_metric_alerts.input.json
 var rawSchemaGetMetricAlerts []byte
 
 // SchemaGetMetricAlerts is the self-contained JSON Schema for signoz_get_metric_alerts,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metric_alerts.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metric_alerts.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricAlerts = ComposeSchema(rawSchemaGetMetricAlerts)
+
+//go:embed tools/zz_generated_signoz_get_metric_alerts.output.json
+var rawOutputSchemaGetMetricAlerts []byte
+
+// OutputSchemaGetMetricAlerts is the self-contained JSON Schema describing
+// the response body of signoz_get_metric_alerts (GET /api/v2/metrics/{metric_name}/alerts's success
+// status). Composed at init from tools/zz_generated_signoz_get_metric_alerts.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricAlerts = ComposeSchema(rawOutputSchemaGetMetricAlerts)
 
 // GetMetricAttributesInput is the MCP tool input for GET /api/v2/metrics/{metric_name}/attributes (GetMetricAttributes).
 // Tool name: signoz_get_metric_attributes.
@@ -34,15 +43,24 @@ type GetMetricAttributesInput struct {
 	End        int64  `json:"end,omitempty" jsonschema:"query parameter end"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metric_attributes.json
+//go:embed tools/zz_generated_signoz_get_metric_attributes.input.json
 var rawSchemaGetMetricAttributes []byte
 
 // SchemaGetMetricAttributes is the self-contained JSON Schema for signoz_get_metric_attributes,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metric_attributes.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metric_attributes.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricAttributes = ComposeSchema(rawSchemaGetMetricAttributes)
+
+//go:embed tools/zz_generated_signoz_get_metric_attributes.output.json
+var rawOutputSchemaGetMetricAttributes []byte
+
+// OutputSchemaGetMetricAttributes is the self-contained JSON Schema describing
+// the response body of signoz_get_metric_attributes (GET /api/v2/metrics/{metric_name}/attributes's success
+// status). Composed at init from tools/zz_generated_signoz_get_metric_attributes.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricAttributes = ComposeSchema(rawOutputSchemaGetMetricAttributes)
 
 // GetMetricDashboardsInput is the MCP tool input for GET /api/v2/metrics/{metric_name}/dashboards (GetMetricDashboards).
 // Tool name: signoz_get_metric_dashboards.
@@ -50,15 +68,24 @@ type GetMetricDashboardsInput struct {
 	MetricName string `json:"metric_name" jsonschema:"path parameter metric_name"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metric_dashboards.json
+//go:embed tools/zz_generated_signoz_get_metric_dashboards.input.json
 var rawSchemaGetMetricDashboards []byte
 
 // SchemaGetMetricDashboards is the self-contained JSON Schema for signoz_get_metric_dashboards,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metric_dashboards.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metric_dashboards.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricDashboards = ComposeSchema(rawSchemaGetMetricDashboards)
+
+//go:embed tools/zz_generated_signoz_get_metric_dashboards.output.json
+var rawOutputSchemaGetMetricDashboards []byte
+
+// OutputSchemaGetMetricDashboards is the self-contained JSON Schema describing
+// the response body of signoz_get_metric_dashboards (GET /api/v2/metrics/{metric_name}/dashboards's success
+// status). Composed at init from tools/zz_generated_signoz_get_metric_dashboards.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricDashboards = ComposeSchema(rawOutputSchemaGetMetricDashboards)
 
 // GetMetricHighlightsInput is the MCP tool input for GET /api/v2/metrics/{metric_name}/highlights (GetMetricHighlights).
 // Tool name: signoz_get_metric_highlights.
@@ -66,15 +93,24 @@ type GetMetricHighlightsInput struct {
 	MetricName string `json:"metric_name" jsonschema:"path parameter metric_name"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metric_highlights.json
+//go:embed tools/zz_generated_signoz_get_metric_highlights.input.json
 var rawSchemaGetMetricHighlights []byte
 
 // SchemaGetMetricHighlights is the self-contained JSON Schema for signoz_get_metric_highlights,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metric_highlights.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metric_highlights.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricHighlights = ComposeSchema(rawSchemaGetMetricHighlights)
+
+//go:embed tools/zz_generated_signoz_get_metric_highlights.output.json
+var rawOutputSchemaGetMetricHighlights []byte
+
+// OutputSchemaGetMetricHighlights is the self-contained JSON Schema describing
+// the response body of signoz_get_metric_highlights (GET /api/v2/metrics/{metric_name}/highlights's success
+// status). Composed at init from tools/zz_generated_signoz_get_metric_highlights.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricHighlights = ComposeSchema(rawOutputSchemaGetMetricHighlights)
 
 // GetMetricMetadataInput is the MCP tool input for GET /api/v2/metrics/{metric_name}/metadata (GetMetricMetadata).
 // Tool name: signoz_get_metric_metadata.
@@ -82,30 +118,48 @@ type GetMetricMetadataInput struct {
 	MetricName string `json:"metric_name" jsonschema:"path parameter metric_name"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metric_metadata.json
+//go:embed tools/zz_generated_signoz_get_metric_metadata.input.json
 var rawSchemaGetMetricMetadata []byte
 
 // SchemaGetMetricMetadata is the self-contained JSON Schema for signoz_get_metric_metadata,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metric_metadata.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metric_metadata.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricMetadata = ComposeSchema(rawSchemaGetMetricMetadata)
+
+//go:embed tools/zz_generated_signoz_get_metric_metadata.output.json
+var rawOutputSchemaGetMetricMetadata []byte
+
+// OutputSchemaGetMetricMetadata is the self-contained JSON Schema describing
+// the response body of signoz_get_metric_metadata (GET /api/v2/metrics/{metric_name}/metadata's success
+// status). Composed at init from tools/zz_generated_signoz_get_metric_metadata.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricMetadata = ComposeSchema(rawOutputSchemaGetMetricMetadata)
 
 // GetMetricsOnboardingStatusInput is the MCP tool input for GET /api/v2/metrics/onboarding (GetMetricsOnboardingStatus).
 // Tool name: signoz_get_metrics_onboarding_status.
 type GetMetricsOnboardingStatusInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_metrics_onboarding_status.json
+//go:embed tools/zz_generated_signoz_get_metrics_onboarding_status.input.json
 var rawSchemaGetMetricsOnboardingStatus []byte
 
 // SchemaGetMetricsOnboardingStatus is the self-contained JSON Schema for signoz_get_metrics_onboarding_status,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metrics_onboarding_status.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metrics_onboarding_status.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricsOnboardingStatus = ComposeSchema(rawSchemaGetMetricsOnboardingStatus)
+
+//go:embed tools/zz_generated_signoz_get_metrics_onboarding_status.output.json
+var rawOutputSchemaGetMetricsOnboardingStatus []byte
+
+// OutputSchemaGetMetricsOnboardingStatus is the self-contained JSON Schema describing
+// the response body of signoz_get_metrics_onboarding_status (GET /api/v2/metrics/onboarding's success
+// status). Composed at init from tools/zz_generated_signoz_get_metrics_onboarding_status.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricsOnboardingStatus = ComposeSchema(rawOutputSchemaGetMetricsOnboardingStatus)
 
 // GetMetricsStatsInput is the MCP tool input for POST /api/v2/metrics/stats (GetMetricsStats).
 // Tool name: signoz_get_metrics_stats.
@@ -113,15 +167,24 @@ type GetMetricsStatsInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"MetricsexplorertypesStatsRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metrics_stats.json
+//go:embed tools/zz_generated_signoz_get_metrics_stats.input.json
 var rawSchemaGetMetricsStats []byte
 
 // SchemaGetMetricsStats is the self-contained JSON Schema for signoz_get_metrics_stats,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metrics_stats.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metrics_stats.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricsStats = ComposeSchema(rawSchemaGetMetricsStats)
+
+//go:embed tools/zz_generated_signoz_get_metrics_stats.output.json
+var rawOutputSchemaGetMetricsStats []byte
+
+// OutputSchemaGetMetricsStats is the self-contained JSON Schema describing
+// the response body of signoz_get_metrics_stats (POST /api/v2/metrics/stats's success
+// status). Composed at init from tools/zz_generated_signoz_get_metrics_stats.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricsStats = ComposeSchema(rawOutputSchemaGetMetricsStats)
 
 // GetMetricsTreemapInput is the MCP tool input for POST /api/v2/metrics/treemap (GetMetricsTreemap).
 // Tool name: signoz_get_metrics_treemap.
@@ -129,15 +192,24 @@ type GetMetricsTreemapInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"MetricsexplorertypesTreemapRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_get_metrics_treemap.json
+//go:embed tools/zz_generated_signoz_get_metrics_treemap.input.json
 var rawSchemaGetMetricsTreemap []byte
 
 // SchemaGetMetricsTreemap is the self-contained JSON Schema for signoz_get_metrics_treemap,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_metrics_treemap.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_metrics_treemap.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetMetricsTreemap = ComposeSchema(rawSchemaGetMetricsTreemap)
+
+//go:embed tools/zz_generated_signoz_get_metrics_treemap.output.json
+var rawOutputSchemaGetMetricsTreemap []byte
+
+// OutputSchemaGetMetricsTreemap is the self-contained JSON Schema describing
+// the response body of signoz_get_metrics_treemap (POST /api/v2/metrics/treemap's success
+// status). Composed at init from tools/zz_generated_signoz_get_metrics_treemap.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetMetricsTreemap = ComposeSchema(rawOutputSchemaGetMetricsTreemap)
 
 // InspectMetricsInput is the MCP tool input for POST /api/v2/metrics/inspect (InspectMetrics).
 // Tool name: signoz_inspect_metrics.
@@ -145,15 +217,24 @@ type InspectMetricsInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"MetricsexplorertypesInspectMetricsRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_inspect_metrics.json
+//go:embed tools/zz_generated_signoz_inspect_metrics.input.json
 var rawSchemaInspectMetrics []byte
 
 // SchemaInspectMetrics is the self-contained JSON Schema for signoz_inspect_metrics,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_inspect_metrics.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_inspect_metrics.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaInspectMetrics = ComposeSchema(rawSchemaInspectMetrics)
+
+//go:embed tools/zz_generated_signoz_inspect_metrics.output.json
+var rawOutputSchemaInspectMetrics []byte
+
+// OutputSchemaInspectMetrics is the self-contained JSON Schema describing
+// the response body of signoz_inspect_metrics (POST /api/v2/metrics/inspect's success
+// status). Composed at init from tools/zz_generated_signoz_inspect_metrics.output.json
+// against the same components/ catalogue.
+var OutputSchemaInspectMetrics = ComposeSchema(rawOutputSchemaInspectMetrics)
 
 // UpdateMetricMetadataInput is the MCP tool input for POST /api/v2/metrics/{metric_name}/metadata (UpdateMetricMetadata).
 // Tool name: signoz_update_metric_metadata.
@@ -162,12 +243,21 @@ type UpdateMetricMetadataInput struct {
 	Body       json.RawMessage `json:"body,omitempty" jsonschema:"MetricsexplorertypesUpdateMetricMetadataRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_update_metric_metadata.json
+//go:embed tools/zz_generated_signoz_update_metric_metadata.input.json
 var rawSchemaUpdateMetricMetadata []byte
 
 // SchemaUpdateMetricMetadata is the self-contained JSON Schema for signoz_update_metric_metadata,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_metric_metadata.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_metric_metadata.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateMetricMetadata = ComposeSchema(rawSchemaUpdateMetricMetadata)
+
+//go:embed tools/zz_generated_signoz_update_metric_metadata.output.json
+var rawOutputSchemaUpdateMetricMetadata []byte
+
+// OutputSchemaUpdateMetricMetadata is the self-contained JSON Schema describing
+// the response body of signoz_update_metric_metadata (POST /api/v2/metrics/{metric_name}/metadata's success
+// status). Composed at init from tools/zz_generated_signoz_update_metric_metadata.output.json
+// against the same components/ catalogue.
+var OutputSchemaUpdateMetricMetadata = ComposeSchema(rawOutputSchemaUpdateMetricMetadata)

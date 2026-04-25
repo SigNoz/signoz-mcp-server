@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "indexes": {
+      "items": {
+        "$ref": "#/$defs/PromotetypesWrappedIndex"
+      },
+      "type": "array"
+    },
+    "path": {
+      "type": "string"
+    },
+    "promote": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

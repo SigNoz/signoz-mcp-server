@@ -16,15 +16,24 @@ type CreateIngestionKeyInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"GatewaytypesPostableIngestionKey"`
 }
 
-//go:embed tools/zz_generated_signoz_create_ingestion_key.json
+//go:embed tools/zz_generated_signoz_create_ingestion_key.input.json
 var rawSchemaCreateIngestionKey []byte
 
 // SchemaCreateIngestionKey is the self-contained JSON Schema for signoz_create_ingestion_key,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_ingestion_key.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_ingestion_key.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateIngestionKey = ComposeSchema(rawSchemaCreateIngestionKey)
+
+//go:embed tools/zz_generated_signoz_create_ingestion_key.output.json
+var rawOutputSchemaCreateIngestionKey []byte
+
+// OutputSchemaCreateIngestionKey is the self-contained JSON Schema describing
+// the response body of signoz_create_ingestion_key (POST /api/v2/gateway/ingestion_keys's success
+// status). Composed at init from tools/zz_generated_signoz_create_ingestion_key.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateIngestionKey = ComposeSchema(rawOutputSchemaCreateIngestionKey)
 
 // CreateIngestionKeyLimitInput is the MCP tool input for POST /api/v2/gateway/ingestion_keys/{keyId}/limits (CreateIngestionKeyLimit).
 // Tool name: signoz_create_ingestion_key_limit.
@@ -33,15 +42,24 @@ type CreateIngestionKeyLimitInput struct {
 	Body  json.RawMessage `json:"body,omitempty" jsonschema:"GatewaytypesPostableIngestionKeyLimit"`
 }
 
-//go:embed tools/zz_generated_signoz_create_ingestion_key_limit.json
+//go:embed tools/zz_generated_signoz_create_ingestion_key_limit.input.json
 var rawSchemaCreateIngestionKeyLimit []byte
 
 // SchemaCreateIngestionKeyLimit is the self-contained JSON Schema for signoz_create_ingestion_key_limit,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_create_ingestion_key_limit.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_create_ingestion_key_limit.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaCreateIngestionKeyLimit = ComposeSchema(rawSchemaCreateIngestionKeyLimit)
+
+//go:embed tools/zz_generated_signoz_create_ingestion_key_limit.output.json
+var rawOutputSchemaCreateIngestionKeyLimit []byte
+
+// OutputSchemaCreateIngestionKeyLimit is the self-contained JSON Schema describing
+// the response body of signoz_create_ingestion_key_limit (POST /api/v2/gateway/ingestion_keys/{keyId}/limits's success
+// status). Composed at init from tools/zz_generated_signoz_create_ingestion_key_limit.output.json
+// against the same components/ catalogue.
+var OutputSchemaCreateIngestionKeyLimit = ComposeSchema(rawOutputSchemaCreateIngestionKeyLimit)
 
 // DeleteIngestionKeyInput is the MCP tool input for DELETE /api/v2/gateway/ingestion_keys/{keyId} (DeleteIngestionKey).
 // Tool name: signoz_delete_ingestion_key.
@@ -49,14 +67,14 @@ type DeleteIngestionKeyInput struct {
 	KeyId string `json:"keyId" jsonschema:"path parameter keyId"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_ingestion_key.json
+//go:embed tools/zz_generated_signoz_delete_ingestion_key.input.json
 var rawSchemaDeleteIngestionKey []byte
 
 // SchemaDeleteIngestionKey is the self-contained JSON Schema for signoz_delete_ingestion_key,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_ingestion_key.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_ingestion_key.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteIngestionKey = ComposeSchema(rawSchemaDeleteIngestionKey)
 
 // DeleteIngestionKeyLimitInput is the MCP tool input for DELETE /api/v2/gateway/ingestion_keys/limits/{limitId} (DeleteIngestionKeyLimit).
@@ -65,14 +83,14 @@ type DeleteIngestionKeyLimitInput struct {
 	LimitId string `json:"limitId" jsonschema:"path parameter limitId"`
 }
 
-//go:embed tools/zz_generated_signoz_delete_ingestion_key_limit.json
+//go:embed tools/zz_generated_signoz_delete_ingestion_key_limit.input.json
 var rawSchemaDeleteIngestionKeyLimit []byte
 
 // SchemaDeleteIngestionKeyLimit is the self-contained JSON Schema for signoz_delete_ingestion_key_limit,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_delete_ingestion_key_limit.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_delete_ingestion_key_limit.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaDeleteIngestionKeyLimit = ComposeSchema(rawSchemaDeleteIngestionKeyLimit)
 
 // GetIngestionKeysInput is the MCP tool input for GET /api/v2/gateway/ingestion_keys (GetIngestionKeys).
@@ -82,15 +100,24 @@ type GetIngestionKeysInput struct {
 	PerPage int64 `json:"per_page,omitempty" jsonschema:"query parameter per_page"`
 }
 
-//go:embed tools/zz_generated_signoz_get_ingestion_keys.json
+//go:embed tools/zz_generated_signoz_get_ingestion_keys.input.json
 var rawSchemaGetIngestionKeys []byte
 
 // SchemaGetIngestionKeys is the self-contained JSON Schema for signoz_get_ingestion_keys,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_ingestion_keys.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_ingestion_keys.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetIngestionKeys = ComposeSchema(rawSchemaGetIngestionKeys)
+
+//go:embed tools/zz_generated_signoz_get_ingestion_keys.output.json
+var rawOutputSchemaGetIngestionKeys []byte
+
+// OutputSchemaGetIngestionKeys is the self-contained JSON Schema describing
+// the response body of signoz_get_ingestion_keys (GET /api/v2/gateway/ingestion_keys's success
+// status). Composed at init from tools/zz_generated_signoz_get_ingestion_keys.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetIngestionKeys = ComposeSchema(rawOutputSchemaGetIngestionKeys)
 
 // SearchIngestionKeysInput is the MCP tool input for GET /api/v2/gateway/ingestion_keys/search (SearchIngestionKeys).
 // Tool name: signoz_search_ingestion_keys.
@@ -100,15 +127,24 @@ type SearchIngestionKeysInput struct {
 	PerPage int64  `json:"per_page,omitempty" jsonschema:"query parameter per_page"`
 }
 
-//go:embed tools/zz_generated_signoz_search_ingestion_keys.json
+//go:embed tools/zz_generated_signoz_search_ingestion_keys.input.json
 var rawSchemaSearchIngestionKeys []byte
 
 // SchemaSearchIngestionKeys is the self-contained JSON Schema for signoz_search_ingestion_keys,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_search_ingestion_keys.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_search_ingestion_keys.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaSearchIngestionKeys = ComposeSchema(rawSchemaSearchIngestionKeys)
+
+//go:embed tools/zz_generated_signoz_search_ingestion_keys.output.json
+var rawOutputSchemaSearchIngestionKeys []byte
+
+// OutputSchemaSearchIngestionKeys is the self-contained JSON Schema describing
+// the response body of signoz_search_ingestion_keys (GET /api/v2/gateway/ingestion_keys/search's success
+// status). Composed at init from tools/zz_generated_signoz_search_ingestion_keys.output.json
+// against the same components/ catalogue.
+var OutputSchemaSearchIngestionKeys = ComposeSchema(rawOutputSchemaSearchIngestionKeys)
 
 // UpdateIngestionKeyInput is the MCP tool input for PATCH /api/v2/gateway/ingestion_keys/{keyId} (UpdateIngestionKey).
 // Tool name: signoz_update_ingestion_key.
@@ -117,14 +153,14 @@ type UpdateIngestionKeyInput struct {
 	Body  json.RawMessage `json:"body,omitempty" jsonschema:"GatewaytypesPostableIngestionKey"`
 }
 
-//go:embed tools/zz_generated_signoz_update_ingestion_key.json
+//go:embed tools/zz_generated_signoz_update_ingestion_key.input.json
 var rawSchemaUpdateIngestionKey []byte
 
 // SchemaUpdateIngestionKey is the self-contained JSON Schema for signoz_update_ingestion_key,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_ingestion_key.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_ingestion_key.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateIngestionKey = ComposeSchema(rawSchemaUpdateIngestionKey)
 
 // UpdateIngestionKeyLimitInput is the MCP tool input for PATCH /api/v2/gateway/ingestion_keys/limits/{limitId} (UpdateIngestionKeyLimit).
@@ -134,12 +170,12 @@ type UpdateIngestionKeyLimitInput struct {
 	Body    json.RawMessage `json:"body,omitempty" jsonschema:"GatewaytypesUpdatableIngestionKeyLimit"`
 }
 
-//go:embed tools/zz_generated_signoz_update_ingestion_key_limit.json
+//go:embed tools/zz_generated_signoz_update_ingestion_key_limit.input.json
 var rawSchemaUpdateIngestionKeyLimit []byte
 
 // SchemaUpdateIngestionKeyLimit is the self-contained JSON Schema for signoz_update_ingestion_key_limit,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_update_ingestion_key_limit.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_update_ingestion_key_limit.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaUpdateIngestionKeyLimit = ComposeSchema(rawSchemaUpdateIngestionKeyLimit)

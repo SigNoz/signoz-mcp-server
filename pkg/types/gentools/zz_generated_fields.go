@@ -25,15 +25,24 @@ type GetFieldsKeysInput struct {
 	SearchText      string `json:"searchText,omitempty" jsonschema:"query parameter searchText"`
 }
 
-//go:embed tools/zz_generated_signoz_get_fields_keys.json
+//go:embed tools/zz_generated_signoz_get_fields_keys.input.json
 var rawSchemaGetFieldsKeys []byte
 
 // SchemaGetFieldsKeys is the self-contained JSON Schema for signoz_get_fields_keys,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_fields_keys.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_fields_keys.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetFieldsKeys = ComposeSchema(rawSchemaGetFieldsKeys)
+
+//go:embed tools/zz_generated_signoz_get_fields_keys.output.json
+var rawOutputSchemaGetFieldsKeys []byte
+
+// OutputSchemaGetFieldsKeys is the self-contained JSON Schema describing
+// the response body of signoz_get_fields_keys (GET /api/v1/fields/keys's success
+// status). Composed at init from tools/zz_generated_signoz_get_fields_keys.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetFieldsKeys = ComposeSchema(rawOutputSchemaGetFieldsKeys)
 
 // GetFieldsValuesInput is the MCP tool input for GET /api/v1/fields/values (GetFieldsValues).
 // Tool name: signoz_get_fields_values.
@@ -52,12 +61,21 @@ type GetFieldsValuesInput struct {
 	ExistingQuery   string `json:"existingQuery,omitempty" jsonschema:"query parameter existingQuery"`
 }
 
-//go:embed tools/zz_generated_signoz_get_fields_values.json
+//go:embed tools/zz_generated_signoz_get_fields_values.input.json
 var rawSchemaGetFieldsValues []byte
 
 // SchemaGetFieldsValues is the self-contained JSON Schema for signoz_get_fields_values,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_fields_values.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_fields_values.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetFieldsValues = ComposeSchema(rawSchemaGetFieldsValues)
+
+//go:embed tools/zz_generated_signoz_get_fields_values.output.json
+var rawOutputSchemaGetFieldsValues []byte
+
+// OutputSchemaGetFieldsValues is the self-contained JSON Schema describing
+// the response body of signoz_get_fields_values (GET /api/v1/fields/values's success
+// status). Composed at init from tools/zz_generated_signoz_get_fields_values.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetFieldsValues = ComposeSchema(rawOutputSchemaGetFieldsValues)

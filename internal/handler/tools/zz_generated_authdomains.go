@@ -45,6 +45,7 @@ func (h *Handler) genRegisterCreateAuthDomain(s *server.MCPServer) {
 		"This endpoint creates an auth domain",
 		gentypes.SchemaCreateAuthDomain,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateAuthDomain
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateAuthDomain))
 }
 
@@ -101,6 +102,7 @@ func (h *Handler) genRegisterListAuthDomains(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListAuthDomains
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListAuthDomains))
 }
 

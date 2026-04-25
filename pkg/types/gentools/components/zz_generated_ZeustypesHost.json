@@ -1,0 +1,19 @@
+{
+  "properties": {
+    "is_default": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "is_default",
+    "name",
+    "url"
+  ],
+  "type": "object"
+}

@@ -43,6 +43,7 @@ func (h *Handler) genRegisterAuthzCheck(s *server.MCPServer) {
 		"Checks if the authenticated user has permissions for given transactions",
 		gentypes.SchemaAuthzCheck,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaAuthzCheck
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleAuthzCheck))
 }
 
@@ -69,6 +70,7 @@ func (h *Handler) genRegisterAuthzResources(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaAuthzResources
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleAuthzResources))
 }
 

@@ -1,0 +1,30 @@
+{
+  "properties": {
+    "boolValues": {
+      "items": {
+        "type": "boolean"
+      },
+      "type": "array"
+    },
+    "numberValues": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "relatedValues": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "stringValues": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

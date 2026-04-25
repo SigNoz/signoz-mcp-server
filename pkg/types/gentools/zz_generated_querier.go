@@ -16,15 +16,24 @@ type QueryRangeV5Input struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"Querybuildertypesv5QueryRangeRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_query_range_v5.json
+//go:embed tools/zz_generated_signoz_query_range_v5.input.json
 var rawSchemaQueryRangeV5 []byte
 
 // SchemaQueryRangeV5 is the self-contained JSON Schema for signoz_query_range_v5,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_query_range_v5.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_query_range_v5.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaQueryRangeV5 = ComposeSchema(rawSchemaQueryRangeV5)
+
+//go:embed tools/zz_generated_signoz_query_range_v5.output.json
+var rawOutputSchemaQueryRangeV5 []byte
+
+// OutputSchemaQueryRangeV5 is the self-contained JSON Schema describing
+// the response body of signoz_query_range_v5 (POST /api/v5/query_range's success
+// status). Composed at init from tools/zz_generated_signoz_query_range_v5.output.json
+// against the same components/ catalogue.
+var OutputSchemaQueryRangeV5 = ComposeSchema(rawOutputSchemaQueryRangeV5)
 
 // ReplaceVariablesInput is the MCP tool input for POST /api/v5/substitute_vars (ReplaceVariables).
 // Tool name: signoz_replace_variables.
@@ -32,12 +41,21 @@ type ReplaceVariablesInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"Querybuildertypesv5QueryRangeRequest"`
 }
 
-//go:embed tools/zz_generated_signoz_replace_variables.json
+//go:embed tools/zz_generated_signoz_replace_variables.input.json
 var rawSchemaReplaceVariables []byte
 
 // SchemaReplaceVariables is the self-contained JSON Schema for signoz_replace_variables,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_replace_variables.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_replace_variables.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaReplaceVariables = ComposeSchema(rawSchemaReplaceVariables)
+
+//go:embed tools/zz_generated_signoz_replace_variables.output.json
+var rawOutputSchemaReplaceVariables []byte
+
+// OutputSchemaReplaceVariables is the self-contained JSON Schema describing
+// the response body of signoz_replace_variables (POST /api/v5/substitute_vars's success
+// status). Composed at init from tools/zz_generated_signoz_replace_variables.output.json
+// against the same components/ catalogue.
+var OutputSchemaReplaceVariables = ComposeSchema(rawOutputSchemaReplaceVariables)

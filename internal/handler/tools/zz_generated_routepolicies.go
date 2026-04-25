@@ -46,6 +46,7 @@ func (h *Handler) genRegisterCreateRoutePolicy(s *server.MCPServer) {
 		"This endpoint creates a route policy",
 		gentypes.SchemaCreateRoutePolicy,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateRoutePolicy
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateRoutePolicy))
 }
 
@@ -102,6 +103,7 @@ func (h *Handler) genRegisterGetAllRoutePolicies(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetAllRoutePolicies
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetAllRoutePolicies))
 }
 
@@ -128,6 +130,7 @@ func (h *Handler) genRegisterGetRoutePolicyByID(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRoutePolicyByID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRoutePolicyByID))
 }
 
@@ -156,6 +159,7 @@ func (h *Handler) genRegisterUpdateRoutePolicy(s *server.MCPServer) {
 		"This endpoint updates a route policy by ID",
 		gentypes.SchemaUpdateRoutePolicy,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaUpdateRoutePolicy
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateRoutePolicy))
 }
 

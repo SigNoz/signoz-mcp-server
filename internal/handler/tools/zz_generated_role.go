@@ -48,6 +48,7 @@ func (h *Handler) genRegisterCreateRole(s *server.MCPServer) {
 		"This endpoint creates a role",
 		gentypes.SchemaCreateRole,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateRole
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateRole))
 }
 
@@ -104,6 +105,7 @@ func (h *Handler) genRegisterGetObjects(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetObjects
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetObjects))
 }
 
@@ -138,6 +140,7 @@ func (h *Handler) genRegisterGetRole(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetRole
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRole))
 }
 
@@ -168,6 +171,7 @@ func (h *Handler) genRegisterListRoles(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListRoles
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListRoles))
 }
 

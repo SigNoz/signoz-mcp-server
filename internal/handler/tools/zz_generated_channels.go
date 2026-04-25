@@ -47,6 +47,7 @@ func (h *Handler) genRegisterCreateChannel(s *server.MCPServer) {
 		"This endpoint creates a notification channel",
 		gentypes.SchemaCreateChannel,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateChannel
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateChannel))
 }
 
@@ -103,6 +104,7 @@ func (h *Handler) genRegisterGetChannelByID(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetChannelByID
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetChannelByID))
 }
 
@@ -133,6 +135,7 @@ func (h *Handler) genRegisterListChannels(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListChannels
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListChannels))
 }
 

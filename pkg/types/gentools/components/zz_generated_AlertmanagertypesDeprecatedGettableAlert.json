@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "annotations": {
+      "$ref": "#/$defs/ModelLabelSet"
+    },
+    "endsAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "fingerprint": {
+      "type": "string"
+    },
+    "generatorURL": {
+      "type": "string"
+    },
+    "labels": {
+      "$ref": "#/$defs/ModelLabelSet"
+    },
+    "receivers": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "startsAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TypesAlertStatus"
+    }
+  },
+  "type": "object"
+}

@@ -58,3 +58,37 @@ func TestGeneratedSchema_NestedBodyFields(t *testing.T) {
 		}
 	}
 }
+
+// TestGeneratedSchema_OutputSchemaEnvelope asserts that output schemas are
+// emitted with the SigNoz {status, data} envelope and that the data field's
+// $ref is resolved through ComposeSchema's $defs injection. ListChannels
+// returns AlertmanagertypesChannel objects in data[]; the composed output
+// schema should contain that component's fields.
+func TestGeneratedSchema_OutputSchemaEnvelope(t *testing.T) {
+	raw := gentools.OutputSchemaListChannels
+	if len(raw) == 0 {
+		t.Fatal("OutputSchemaListChannels is empty")
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("output schema is not valid JSON: %v", err)
+	}
+	props, _ := decoded["properties"].(map[string]any)
+	if _, ok := props["status"]; !ok {
+		t.Error("output envelope missing status field")
+	}
+	data, ok := props["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("output envelope data field missing or wrong type: %v", props["data"])
+	}
+	if data["type"] != "array" {
+		t.Errorf("data field type = %v, want array", data["type"])
+	}
+	// AlertmanagertypesChannel exposes fields like id, name, type, orgId.
+	// They appear inside the $defs section after composition.
+	for _, want := range []string{"AlertmanagertypesChannel", `"orgId"`, `"createdAt"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("expected output schema to mention %q", want)
+		}
+	}
+}

@@ -16,27 +16,45 @@ type AuthzCheckInput struct {
 	Body json.RawMessage `json:"body,omitempty" jsonschema:"JSON request body"`
 }
 
-//go:embed tools/zz_generated_signoz_authz_check.json
+//go:embed tools/zz_generated_signoz_authz_check.input.json
 var rawSchemaAuthzCheck []byte
 
 // SchemaAuthzCheck is the self-contained JSON Schema for signoz_authz_check,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_authz_check.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_authz_check.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaAuthzCheck = ComposeSchema(rawSchemaAuthzCheck)
+
+//go:embed tools/zz_generated_signoz_authz_check.output.json
+var rawOutputSchemaAuthzCheck []byte
+
+// OutputSchemaAuthzCheck is the self-contained JSON Schema describing
+// the response body of signoz_authz_check (POST /api/v1/authz/check's success
+// status). Composed at init from tools/zz_generated_signoz_authz_check.output.json
+// against the same components/ catalogue.
+var OutputSchemaAuthzCheck = ComposeSchema(rawOutputSchemaAuthzCheck)
 
 // AuthzResourcesInput is the MCP tool input for GET /api/v1/authz/resources (AuthzResources).
 // Tool name: signoz_authz_resources.
 type AuthzResourcesInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_authz_resources.json
+//go:embed tools/zz_generated_signoz_authz_resources.input.json
 var rawSchemaAuthzResources []byte
 
 // SchemaAuthzResources is the self-contained JSON Schema for signoz_authz_resources,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_authz_resources.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_authz_resources.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaAuthzResources = ComposeSchema(rawSchemaAuthzResources)
+
+//go:embed tools/zz_generated_signoz_authz_resources.output.json
+var rawOutputSchemaAuthzResources []byte
+
+// OutputSchemaAuthzResources is the self-contained JSON Schema describing
+// the response body of signoz_authz_resources (GET /api/v1/authz/resources's success
+// status). Composed at init from tools/zz_generated_signoz_authz_resources.output.json
+// against the same components/ catalogue.
+var OutputSchemaAuthzResources = ComposeSchema(rawOutputSchemaAuthzResources)

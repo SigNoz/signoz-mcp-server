@@ -1,0 +1,43 @@
+{
+  "properties": {
+    "currentAvgResolutionTime": {
+      "format": "double",
+      "type": "number"
+    },
+    "currentAvgResolutionTimeSeries": {
+      "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+    },
+    "currentTriggersSeries": {
+      "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+    },
+    "pastAvgResolutionTime": {
+      "format": "double",
+      "type": "number"
+    },
+    "pastAvgResolutionTimeSeries": {
+      "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+    },
+    "pastTriggersSeries": {
+      "$ref": "#/$defs/Querybuildertypesv5TimeSeries"
+    },
+    "totalCurrentTriggers": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "totalPastTriggers": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "currentAvgResolutionTime",
+    "currentAvgResolutionTimeSeries",
+    "currentTriggersSeries",
+    "pastAvgResolutionTime",
+    "pastAvgResolutionTimeSeries",
+    "pastTriggersSeries",
+    "totalCurrentTriggers",
+    "totalPastTriggers"
+  ],
+  "type": "object"
+}

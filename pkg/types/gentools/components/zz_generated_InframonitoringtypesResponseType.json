@@ -1,0 +1,7 @@
+{
+  "enum": [
+    "list",
+    "grouped_list"
+  ],
+  "type": "string"
+}

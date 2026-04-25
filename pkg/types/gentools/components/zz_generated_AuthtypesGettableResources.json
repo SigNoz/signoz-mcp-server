@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "relations": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "resources": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesResource"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "relations",
+    "resources"
+  ],
+  "type": "object"
+}

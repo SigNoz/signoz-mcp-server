@@ -1,0 +1,7 @@
+{
+  "enum": [
+    "group",
+    "aggregation"
+  ],
+  "type": "string"
+}

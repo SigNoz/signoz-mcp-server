@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "subscriptions": {
+      "items": {
+        "$ref": "#/$defs/CloudintegrationtypesAWSCloudWatchLogsSubscription"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "subscriptions"
+  ],
+  "type": "object"
+}

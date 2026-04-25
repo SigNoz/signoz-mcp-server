@@ -46,6 +46,7 @@ func (h *Handler) genRegisterGetHosts(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetHosts
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetHosts))
 }
 

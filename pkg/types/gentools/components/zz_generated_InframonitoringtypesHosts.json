@@ -1,0 +1,36 @@
+{
+  "properties": {
+    "endTimeBeforeRetention": {
+      "type": "boolean"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/InframonitoringtypesHostRecord"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "requiredMetricsCheck": {
+      "$ref": "#/$defs/InframonitoringtypesRequiredMetricsCheck"
+    },
+    "total": {
+      "type": "integer"
+    },
+    "type": {
+      "$ref": "#/$defs/InframonitoringtypesResponseType"
+    },
+    "warning": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryWarnData"
+    }
+  },
+  "required": [
+    "endTimeBeforeRetention",
+    "records",
+    "requiredMetricsCheck",
+    "total",
+    "type"
+  ],
+  "type": "object"
+}

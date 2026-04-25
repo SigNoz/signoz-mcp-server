@@ -1,0 +1,25 @@
+{
+  "properties": {
+    "external_url": {
+      "type": "string"
+    },
+    "identN": {
+      "$ref": "#/$defs/GlobaltypesIdentNConfig"
+    },
+    "ingestion_url": {
+      "type": "string"
+    },
+    "mcp_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "external_url",
+    "ingestion_url",
+    "mcp_url"
+  ],
+  "type": "object"
+}

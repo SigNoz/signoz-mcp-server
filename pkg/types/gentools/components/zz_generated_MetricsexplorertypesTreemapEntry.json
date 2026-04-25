@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "metricName": {
+      "type": "string"
+    },
+    "percentage": {
+      "format": "double",
+      "type": "number"
+    },
+    "totalValue": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "metricName",
+    "percentage",
+    "totalValue"
+  ],
+  "type": "object"
+}

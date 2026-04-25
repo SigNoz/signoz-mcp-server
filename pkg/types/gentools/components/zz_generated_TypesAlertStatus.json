@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "inhibitedBy": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "silencedBy": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

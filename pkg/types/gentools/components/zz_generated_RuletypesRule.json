@@ -1,0 +1,90 @@
+{
+  "properties": {
+    "alert": {
+      "type": "string"
+    },
+    "alertType": {
+      "$ref": "#/$defs/RuletypesAlertType"
+    },
+    "annotations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "condition": {
+      "$ref": "#/$defs/RuletypesRuleCondition"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "disabled": {
+      "type": "boolean"
+    },
+    "evalWindow": {
+      "type": "string"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/RuletypesEvaluationEnvelope"
+    },
+    "frequency": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "notificationSettings": {
+      "$ref": "#/$defs/RuletypesNotificationSettings"
+    },
+    "preferredChannels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ruleType": {
+      "$ref": "#/$defs/RuletypesRuleType"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/RuletypesAlertState"
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "updatedBy": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "alert",
+    "alertType",
+    "condition",
+    "id",
+    "ruleType",
+    "state"
+  ],
+  "type": "object"
+}

@@ -51,6 +51,7 @@ func (h *Handler) genRegisterAgentCheckIn(s *server.MCPServer) {
 		"This endpoint is called by the deployed agent to check in",
 		gentypes.SchemaAgentCheckIn,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaAgentCheckIn
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleAgentCheckIn))
 }
 
@@ -79,6 +80,7 @@ func (h *Handler) genRegisterCreateAccount(s *server.MCPServer) {
 		"This endpoint creates a new cloud integration account for the specified cloud provider",
 		gentypes.SchemaCreateAccount,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreateAccount
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateAccount))
 }
 
@@ -143,6 +145,7 @@ func (h *Handler) genRegisterGetAccount(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetAccount
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetAccount))
 }
 
@@ -177,6 +180,7 @@ func (h *Handler) genRegisterGetConnectionCredentials(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetConnectionCredentials
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetConnectionCredentials))
 }
 
@@ -207,6 +211,7 @@ func (h *Handler) genRegisterGetService(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetService
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetService))
 }
 
@@ -249,6 +254,7 @@ func (h *Handler) genRegisterListAccounts(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListAccounts
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListAccounts))
 }
 
@@ -279,6 +285,7 @@ func (h *Handler) genRegisterListServicesMetadata(s *server.MCPServer) {
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaListServicesMetadata
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListServicesMetadata))
 }
 

@@ -45,6 +45,7 @@ func (h *Handler) genRegisterCreatePublicDashboard(s *server.MCPServer) {
 		"This endpoint creates public sharing config and enables public sharing of the dashboard",
 		gentypes.SchemaCreatePublicDashboard,
 	)
+	tool.RawOutputSchema = gentypes.OutputSchemaCreatePublicDashboard
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreatePublicDashboard))
 }
 
@@ -105,6 +106,7 @@ func (h *Handler) genRegisterGetPublicDashboardWidgetQueryRange(s *server.MCPSer
 	)
 	readOnly := true
 	tool.Annotations.ReadOnlyHint = &readOnly
+	tool.RawOutputSchema = gentypes.OutputSchemaGetPublicDashboardWidgetQueryRange
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetPublicDashboardWidgetQueryRange))
 }
 

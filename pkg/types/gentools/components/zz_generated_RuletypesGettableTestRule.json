@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "alertCount": {
+      "type": "integer"
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

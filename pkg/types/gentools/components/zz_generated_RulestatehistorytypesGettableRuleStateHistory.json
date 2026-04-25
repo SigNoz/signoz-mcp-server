@@ -1,0 +1,56 @@
+{
+  "properties": {
+    "fingerprint": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "labels": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5Label"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "overallState": {
+      "$ref": "#/$defs/RuletypesAlertState"
+    },
+    "overallStateChanged": {
+      "type": "boolean"
+    },
+    "ruleId": {
+      "type": "string"
+    },
+    "ruleName": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/RuletypesAlertState"
+    },
+    "stateChanged": {
+      "type": "boolean"
+    },
+    "unixMilli": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "value": {
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "fingerprint",
+    "labels",
+    "overallState",
+    "overallStateChanged",
+    "ruleId",
+    "ruleName",
+    "state",
+    "stateChanged",
+    "unixMilli",
+    "value"
+  ],
+  "type": "object"
+}

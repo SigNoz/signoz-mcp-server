@@ -1,0 +1,61 @@
+{
+  "properties": {
+    "endTimestampMillis": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "hasMissingSpans": {
+      "type": "boolean"
+    },
+    "hasMore": {
+      "type": "boolean"
+    },
+    "rootServiceEntryPoint": {
+      "type": "string"
+    },
+    "rootServiceName": {
+      "type": "string"
+    },
+    "serviceNameToTotalDurationMap": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "spans": {
+      "items": {
+        "$ref": "#/$defs/TracedetailtypesWaterfallSpan"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "startTimestampMillis": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "totalErrorSpansCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "totalSpansCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "uncollapsedSpans": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "authNSupport": {
+      "$ref": "#/$defs/AuthtypesAuthNSupport"
+    },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "warning": {
+      "$ref": "#/$defs/ErrorsJSON"
+    }
+  },
+  "type": "object"
+}

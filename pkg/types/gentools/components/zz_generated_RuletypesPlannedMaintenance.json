@@ -1,0 +1,53 @@
+{
+  "properties": {
+    "alertIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/RuletypesMaintenanceKind"
+    },
+    "name": {
+      "type": "string"
+    },
+    "schedule": {
+      "$ref": "#/$defs/RuletypesSchedule"
+    },
+    "status": {
+      "$ref": "#/$defs/RuletypesMaintenanceStatus"
+    },
+    "updatedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "updatedBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "schedule",
+    "status"
+  ],
+  "type": "object"
+}

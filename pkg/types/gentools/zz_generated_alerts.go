@@ -15,12 +15,21 @@ var _ = json.RawMessage(nil)
 type GetAlertsInput struct {
 }
 
-//go:embed tools/zz_generated_signoz_get_alerts.json
+//go:embed tools/zz_generated_signoz_get_alerts.input.json
 var rawSchemaGetAlerts []byte
 
 // SchemaGetAlerts is the self-contained JSON Schema for signoz_get_alerts,
 // composed at package init by injecting the transitive closure of $refs from
 // the components/ catalogue into the skeleton loaded from
-// tools/zz_generated_signoz_get_alerts.json. Hand it to mcp.WithRawInputSchema
-// directly.
+// tools/zz_generated_signoz_get_alerts.input.json. Hand it to
+// mcp.WithRawInputSchema directly.
 var SchemaGetAlerts = ComposeSchema(rawSchemaGetAlerts)
+
+//go:embed tools/zz_generated_signoz_get_alerts.output.json
+var rawOutputSchemaGetAlerts []byte
+
+// OutputSchemaGetAlerts is the self-contained JSON Schema describing
+// the response body of signoz_get_alerts (GET /api/v1/alerts's success
+// status). Composed at init from tools/zz_generated_signoz_get_alerts.output.json
+// against the same components/ catalogue.
+var OutputSchemaGetAlerts = ComposeSchema(rawOutputSchemaGetAlerts)

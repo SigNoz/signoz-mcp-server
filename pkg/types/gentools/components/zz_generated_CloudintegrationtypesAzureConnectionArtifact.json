@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "cliCommand": {
+      "type": "string"
+    },
+    "cloudPowerShellCommand": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cliCommand",
+    "cloudPowerShellCommand"
+  ],
+  "type": "object"
+}

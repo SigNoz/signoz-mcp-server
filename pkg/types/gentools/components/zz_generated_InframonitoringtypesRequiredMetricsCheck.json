@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "missingMetrics": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "missingMetrics"
+  ],
+  "type": "object"
+}
