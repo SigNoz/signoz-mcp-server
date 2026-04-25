@@ -15,7 +15,7 @@ Goal: match Zeus's shape — slog + ContextHandler + `pkg/otel` — so the MCP s
 ## Cross-Cutting Decisions (apply to all commits)
 
 - **Logs ship as JSON on stderr**. No direct OTLP log exporter. This keeps stdout reserved for MCP stdio protocol frames while remaining compatible with container log collection.
-- **OTLP always on** for traces + metrics — no `deployment.environment` noop gating. Exporters fail gracefully at connect time with a single warning log. (Simpler than Zeus; acceptable because a missing OTLP endpoint just means no data, not crashes.)
+- **OTLP export is opt-in by endpoint/exporter env** for traces + metrics. If no `OTEL_EXPORTER_OTLP_ENDPOINT` / signal-specific endpoint / explicit `OTEL_*_EXPORTER` is configured, the server installs no-op providers and does not attempt network export. `OTEL_TRACES_EXPORTER=none` and `OTEL_METRICS_EXPORTER=none` hard-disable their signals even when an endpoint is set.
 - **Metrics container**: a typed `*otel.Meters` struct instantiated in `main` and injected into `MCPServer`. No package-level globals — simpler to test, explicit dependencies.
 - **Redaction / size caps**: any log field that carries a request body, response body, or error payload is capped at 4 KiB and truncated with a `...(truncated)` suffix. Existing "log detailed errors for LLM" behavior stays (per `feedback_security_scope`), but unbounded bodies don't.
 - **Stacktraces on Error**: `ContextHandler` captures stacktraces, but depth is capped at 64 frames (matches Zeus). Configurable via `LOG_STACKTRACE=false` env to disable entirely for hot error paths.
@@ -30,8 +30,8 @@ Introduce `pkg/otel`, `pkg/version`, and refactor the server for graceful shutdo
 
 **New packages:**
 - `pkg/otel/resource.go` — `NewResource(ctx, serviceVersion)` with `WithFromEnv/Host/Process/Container/TelemetrySDK` + `semconv.ServiceVersion(version.Version)`.
-- `pkg/otel/tracer.go` — `InitTracerProvider(ctx, res)` — OTLP gRPC batched.
-- `pkg/otel/meter.go` — `InitMeterProvider(ctx, res)` — OTLP periodic reader. Runtime metrics polling (`go.opentelemetry.io/contrib/instrumentation/runtime`) is started from `cmd/server/main.go` after the meter provider is installed, so it records against the global provider.
+- `pkg/otel/tracer.go` — `InitTracerProvider(ctx, res)` — OTLP gRPC batched when trace export is configured; otherwise installs a no-op tracer provider while keeping W3C propagation.
+- `pkg/otel/meter.go` — `InitMeterProvider(ctx, res)` — OTLP periodic reader when metrics export is configured; otherwise installs a no-op meter provider. Runtime metrics polling (`go.opentelemetry.io/contrib/instrumentation/runtime`) is started from `cmd/server/main.go` only after a real meter provider is installed, so local stdio runs do not attempt network export.
 - `pkg/otel/attr.go` — moved from `internal/telemetry/genai.go`. Same constants (`GenAISystemKey`, `MCPMethodKey`, …).
 - `pkg/version/version.go` — `var Version = "dev"`. Overridable via `-ldflags "-X github.com/SigNoz/signoz-mcp-server/pkg/version.Version=$VERSION"`.
 
@@ -179,7 +179,7 @@ Specifically:
 - Zeus-style HTTP request/response body logger plugin (adds redaction burden, we already have `otelhttp` traces).
 - Zeus-style separate status server on a second port — `/healthz` already exists.
 - Direct OTLP log exporter (`otelslog`) — stdout JSON is the deliberate Zeus-aligned choice.
-- Noop providers gated on `deployment.environment` — OTLP fails gracefully anyway.
+- Deployment-environment-based noop providers — replaced by endpoint/exporter-env-based opt-in export.
 - `mcp.sessions.active` gauge — see commit 3.
 
 ## Verification

@@ -142,7 +142,8 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 
 func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
 	if _, ok := args["timeRange"]; !ok {
-		if _, ok := args["start"]; !ok {
+		_, hasStart := args["start"]
+		if !hasStart {
 			args["timeRange"] = defaultRange
 		}
 	}

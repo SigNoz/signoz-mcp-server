@@ -27,7 +27,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("source", mcp.Description("Filter by source (optional).")),
 	)
 
-	s.AddTool(listMetricsTool, h.handleListMetrics)
+	addTool(s, listMetricsTool, h.handleListMetrics)
 
 	// signoz_query_metrics — smart metrics query tool with aggregation validation and defaults
 	queryMetricsTool := mcp.NewTool("signoz_query_metrics",
@@ -49,9 +49,9 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("spaceAggregation", mcp.Description("Aggregation across series/dimensions. Auto-defaulted based on metricType. Valid: sum, avg, min, max, count, p50, p75, p90, p95, p99 (type-dependent).")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated field names to group by. fieldContext is auto-detected (k8s.*, container.*, host.* → resource; others → attribute). Example: 'k8s.namespace.name,k8s.pod.name'.")),
 		mcp.WithString("filter", mcp.Description("Filter expression. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\".")),
-		mcp.WithString("timeRange", mcp.Description("Relative time range: 30m, 1h, 6h, 24h, 7d. Default: 1h. Ignored if start/end are provided.")),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. Overrides timeRange.")),
-		mcp.WithString("end", mcp.Description("End time in unix milliseconds. Overrides timeRange.")),
+		mcp.WithString("timeRange", mcp.Description("Relative time range: 30m, 1h, 6h, 24h, 7d. Default: 1h. Ignored when both start and end are provided.")),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 		mcp.WithString("stepInterval", mcp.Description("Step interval in seconds. Auto-calculated (~300 data points, min 60s) if not provided.")),
 		mcp.WithString("requestType", mcp.Description("Response format: time_series (default) or scalar.")),
 		mcp.WithString("reduceTo", mcp.Description("For requestType=scalar only. Reduces time series to a single value: sum, count, avg, min, max, last, median. Auto-defaulted by metricType.")),
@@ -59,7 +59,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("formulaQueries", mcp.Description("JSON array of additional named metric queries for formula. Each object: {\"name\":\"B\", \"metricName\":\"...\", \"metricType\":\"...\", \"isMonotonic\":true, \"temporality\":\"...\", \"timeAggregation\":\"...\", \"spaceAggregation\":\"...\", \"groupBy\":[\"...\"], \"filter\":\"...\"}. All fields except name and metricName are optional.")),
 	)
 
-	s.AddTool(queryMetricsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(s, queryMetricsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return h.handleQueryMetrics(ctx, req)
 	})
 

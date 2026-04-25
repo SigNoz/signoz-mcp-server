@@ -28,7 +28,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
-	s.AddTool(tool, h.handleListDashboards)
+	addTool(s, tool, h.handleListDashboards)
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -38,7 +38,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID")),
 	)
 
-	s.AddTool(getDashboardTool, h.handleGetDashboard)
+	addTool(s, getDashboardTool, h.handleGetDashboard)
 
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
@@ -62,7 +62,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithInputSchema[types.Dashboard](),
 	)
 
-	s.AddTool(createDashboardTool, h.handleCreateDashboard)
+	addTool(s, createDashboardTool, h.handleCreateDashboard)
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
@@ -88,7 +88,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithInputSchema[types.UpdateDashboardInput](),
 	)
 
-	s.AddTool(updateDashboardTool, h.handleUpdateDashboard)
+	addTool(s, updateDashboardTool, h.handleUpdateDashboard)
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -97,7 +97,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID to delete")),
 	)
 
-	s.AddTool(deleteDashboardTool, h.handleDeleteDashboard)
+	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
 
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)

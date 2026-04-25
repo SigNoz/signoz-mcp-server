@@ -242,6 +242,40 @@ func TestHandleGetTraceDetails(t *testing.T) {
 	}
 }
 
+func TestHandleGetTraceDetails_ExplicitStartEndOverrideTimeRange(t *testing.T) {
+	var capturedStart int64
+	var capturedEnd int64
+	mock := &client.MockClient{
+		GetTraceDetailsFn: func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+			capturedStart = startTime
+			capturedEnd = endTime
+			return json.RawMessage(`{"traceId":"abc123","spans":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_trace_details", map[string]any{
+		"traceId":      "abc123",
+		"includeSpans": "true",
+		"timeRange":    "1h",
+		"start":        "1711123200000",
+		"end":          "1711130400000",
+	})
+
+	result, err := h.handleGetTraceDetails(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if capturedStart != 1711123200000 {
+		t.Fatalf("start = %d, want explicit start", capturedStart)
+	}
+	if capturedEnd != 1711130400000 {
+		t.Fatalf("end = %d, want explicit end", capturedEnd)
+	}
+}
+
 func TestHandleGetTraceDetails_EmptyTraceId(t *testing.T) {
 	mock := &client.MockClient{}
 	h := newTestHandler(mock)
