@@ -46,9 +46,10 @@ func (h *Handler) registerCloudintegrationGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterAgentCheckIn(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_agent_check_in",
-		mcp.WithDescription("POST /api/v1/cloud_integrations/{cloud_provider}/accounts/check_in — Agent check-in"),
-		withRawSchema(gentypes.SchemaAgentCheckIn),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_agent_check_in",
+		"This endpoint is called by the deployed agent to check in",
+		gentypes.SchemaAgentCheckIn,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleAgentCheckIn))
 }
@@ -73,9 +74,10 @@ func (h *Handler) genHandleAgentCheckIn(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) genRegisterCreateAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_account",
-		mcp.WithDescription("POST /api/v1/cloud_integrations/{cloud_provider}/accounts — Create account"),
-		withRawSchema(gentypes.SchemaCreateAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_account",
+		"This endpoint creates a new cloud integration account for the specified cloud provider",
+		gentypes.SchemaCreateAccount,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateAccount))
 }
@@ -100,11 +102,13 @@ func (h *Handler) genHandleCreateAccount(ctx context.Context, req mcp.CallToolRe
 }
 
 func (h *Handler) genRegisterDisconnectAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_disconnect_account",
-		mcp.WithDescription("DELETE /api/v1/cloud_integrations/{cloud_provider}/accounts/{id} — Disconnect account"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDisconnectAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_disconnect_account",
+		"This endpoint disconnects an account for the specified cloud provider",
+		gentypes.SchemaDisconnectAccount,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDisconnectAccount))
 }
 
@@ -132,11 +136,13 @@ func (h *Handler) genHandleDisconnectAccount(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterGetAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_account",
-		mcp.WithDescription("GET /api/v1/cloud_integrations/{cloud_provider}/accounts/{id} — Get account"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_account",
+		"This endpoint gets an account for the specified cloud provider",
+		gentypes.SchemaGetAccount,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetAccount))
 }
 
@@ -164,11 +170,13 @@ func (h *Handler) genHandleGetAccount(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterGetConnectionCredentials(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_connection_credentials",
-		mcp.WithDescription("GET /api/v1/cloud_integrations/{cloud_provider}/credentials — Get connection credentials"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetConnectionCredentials),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_connection_credentials",
+		"This endpoint retrieves the connection credentials required for integration",
+		gentypes.SchemaGetConnectionCredentials,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetConnectionCredentials))
 }
 
@@ -192,11 +200,13 @@ func (h *Handler) genHandleGetConnectionCredentials(ctx context.Context, req mcp
 }
 
 func (h *Handler) genRegisterGetService(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_service",
-		mcp.WithDescription("GET /api/v1/cloud_integrations/{cloud_provider}/services/{service_id} — Get service"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetService),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_service",
+		"This endpoint gets a service for the specified cloud provider",
+		gentypes.SchemaGetService,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetService))
 }
 
@@ -232,11 +242,13 @@ func (h *Handler) genHandleGetService(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterListAccounts(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_accounts",
-		mcp.WithDescription("GET /api/v1/cloud_integrations/{cloud_provider}/accounts — List accounts"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListAccounts),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_accounts",
+		"This endpoint lists the accounts for the specified cloud provider",
+		gentypes.SchemaListAccounts,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListAccounts))
 }
 
@@ -260,11 +272,13 @@ func (h *Handler) genHandleListAccounts(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) genRegisterListServicesMetadata(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_services_metadata",
-		mcp.WithDescription("GET /api/v1/cloud_integrations/{cloud_provider}/services — List services metadata"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListServicesMetadata),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_services_metadata",
+		"This endpoint lists the services metadata for the specified cloud provider",
+		gentypes.SchemaListServicesMetadata,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListServicesMetadata))
 }
 
@@ -296,9 +310,10 @@ func (h *Handler) genHandleListServicesMetadata(ctx context.Context, req mcp.Cal
 }
 
 func (h *Handler) genRegisterUpdateAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_account",
-		mcp.WithDescription("PUT /api/v1/cloud_integrations/{cloud_provider}/accounts/{id} — Update account"),
-		withRawSchema(gentypes.SchemaUpdateAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_account",
+		"This endpoint updates an account for the specified cloud provider",
+		gentypes.SchemaUpdateAccount,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateAccount))
 }
@@ -327,9 +342,10 @@ func (h *Handler) genHandleUpdateAccount(ctx context.Context, req mcp.CallToolRe
 }
 
 func (h *Handler) genRegisterUpdateService(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_service",
-		mcp.WithDescription("PUT /api/v1/cloud_integrations/{cloud_provider}/accounts/{id}/services/{service_id} — Update service"),
-		withRawSchema(gentypes.SchemaUpdateService),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_service",
+		"This endpoint updates a service for the specified cloud provider",
+		gentypes.SchemaUpdateService,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateService))
 }

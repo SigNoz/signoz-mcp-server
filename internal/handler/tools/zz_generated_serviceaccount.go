@@ -50,9 +50,10 @@ func (h *Handler) registerServiceaccountGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateServiceAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_service_account",
-		mcp.WithDescription("POST /api/v1/service_accounts — Create service account"),
-		withRawSchema(gentypes.SchemaCreateServiceAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_service_account",
+		"This endpoint creates a service account",
+		gentypes.SchemaCreateServiceAccount,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateServiceAccount))
 }
@@ -73,9 +74,10 @@ func (h *Handler) genHandleCreateServiceAccount(ctx context.Context, req mcp.Cal
 }
 
 func (h *Handler) genRegisterCreateServiceAccountKey(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_service_account_key",
-		mcp.WithDescription("POST /api/v1/service_accounts/{id}/keys — Create a service account key"),
-		withRawSchema(gentypes.SchemaCreateServiceAccountKey),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_service_account_key",
+		"This endpoint creates a service account key",
+		gentypes.SchemaCreateServiceAccountKey,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateServiceAccountKey))
 }
@@ -100,9 +102,10 @@ func (h *Handler) genHandleCreateServiceAccountKey(ctx context.Context, req mcp.
 }
 
 func (h *Handler) genRegisterCreateServiceAccountRole(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_service_account_role",
-		mcp.WithDescription("POST /api/v1/service_accounts/{id}/roles — Create service account role"),
-		withRawSchema(gentypes.SchemaCreateServiceAccountRole),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_service_account_role",
+		"This endpoint assigns a role to a service account",
+		gentypes.SchemaCreateServiceAccountRole,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateServiceAccountRole))
 }
@@ -127,11 +130,13 @@ func (h *Handler) genHandleCreateServiceAccountRole(ctx context.Context, req mcp
 }
 
 func (h *Handler) genRegisterDeleteServiceAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_service_account",
-		mcp.WithDescription("DELETE /api/v1/service_accounts/{id} — Deletes a service account"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteServiceAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_service_account",
+		"This endpoint deletes an existing service account",
+		gentypes.SchemaDeleteServiceAccount,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteServiceAccount))
 }
 
@@ -155,11 +160,13 @@ func (h *Handler) genHandleDeleteServiceAccount(ctx context.Context, req mcp.Cal
 }
 
 func (h *Handler) genRegisterDeleteServiceAccountRole(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_service_account_role",
-		mcp.WithDescription("DELETE /api/v1/service_accounts/{id}/roles/{rid} — Delete service account role"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteServiceAccountRole),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_service_account_role",
+		"This endpoint revokes a role from service account",
+		gentypes.SchemaDeleteServiceAccountRole,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteServiceAccountRole))
 }
 
@@ -187,11 +194,13 @@ func (h *Handler) genHandleDeleteServiceAccountRole(ctx context.Context, req mcp
 }
 
 func (h *Handler) genRegisterGetMyServiceAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_my_service_account",
-		mcp.WithDescription("GET /api/v1/service_accounts/me — Gets my service account"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMyServiceAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_my_service_account",
+		"This endpoint gets my service account",
+		gentypes.SchemaGetMyServiceAccount,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMyServiceAccount))
 }
 
@@ -211,11 +220,13 @@ func (h *Handler) genHandleGetMyServiceAccount(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterGetServiceAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_service_account",
-		mcp.WithDescription("GET /api/v1/service_accounts/{id} — Gets a service account"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetServiceAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_service_account",
+		"This endpoint gets an existing service account",
+		gentypes.SchemaGetServiceAccount,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetServiceAccount))
 }
 
@@ -239,11 +250,13 @@ func (h *Handler) genHandleGetServiceAccount(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterGetServiceAccountRoles(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_service_account_roles",
-		mcp.WithDescription("GET /api/v1/service_accounts/{id}/roles — Gets service account roles"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetServiceAccountRoles),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_service_account_roles",
+		"This endpoint gets all the roles for the existing service account",
+		gentypes.SchemaGetServiceAccountRoles,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetServiceAccountRoles))
 }
 
@@ -267,11 +280,13 @@ func (h *Handler) genHandleGetServiceAccountRoles(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) genRegisterListServiceAccountKeys(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_service_account_keys",
-		mcp.WithDescription("GET /api/v1/service_accounts/{id}/keys — List service account keys"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListServiceAccountKeys),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_service_account_keys",
+		"This endpoint lists the service account keys",
+		gentypes.SchemaListServiceAccountKeys,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListServiceAccountKeys))
 }
 
@@ -295,11 +310,13 @@ func (h *Handler) genHandleListServiceAccountKeys(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) genRegisterListServiceAccounts(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_service_accounts",
-		mcp.WithDescription("GET /api/v1/service_accounts — List service accounts"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListServiceAccounts),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_service_accounts",
+		"This endpoint lists the service accounts for an organisation",
+		gentypes.SchemaListServiceAccounts,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListServiceAccounts))
 }
 
@@ -319,11 +336,13 @@ func (h *Handler) genHandleListServiceAccounts(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterRevokeServiceAccountKey(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_revoke_service_account_key",
-		mcp.WithDescription("DELETE /api/v1/service_accounts/{id}/keys/{fid} — Revoke a service account key"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaRevokeServiceAccountKey),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_revoke_service_account_key",
+		"This endpoint revokes an existing service account key",
+		gentypes.SchemaRevokeServiceAccountKey,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleRevokeServiceAccountKey))
 }
 
@@ -351,9 +370,10 @@ func (h *Handler) genHandleRevokeServiceAccountKey(ctx context.Context, req mcp.
 }
 
 func (h *Handler) genRegisterUpdateMyServiceAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_my_service_account",
-		mcp.WithDescription("PUT /api/v1/service_accounts/me — Updates my service account"),
-		withRawSchema(gentypes.SchemaUpdateMyServiceAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_my_service_account",
+		"This endpoint gets my service account",
+		gentypes.SchemaUpdateMyServiceAccount,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateMyServiceAccount))
 }
@@ -374,9 +394,10 @@ func (h *Handler) genHandleUpdateMyServiceAccount(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) genRegisterUpdateServiceAccount(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_service_account",
-		mcp.WithDescription("PUT /api/v1/service_accounts/{id} — Updates a service account"),
-		withRawSchema(gentypes.SchemaUpdateServiceAccount),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_service_account",
+		"This endpoint updates an existing service account",
+		gentypes.SchemaUpdateServiceAccount,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateServiceAccount))
 }
@@ -401,9 +422,10 @@ func (h *Handler) genHandleUpdateServiceAccount(ctx context.Context, req mcp.Cal
 }
 
 func (h *Handler) genRegisterUpdateServiceAccountKey(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_service_account_key",
-		mcp.WithDescription("PUT /api/v1/service_accounts/{id}/keys/{fid} — Updates a service account key"),
-		withRawSchema(gentypes.SchemaUpdateServiceAccountKey),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_service_account_key",
+		"This endpoint updates an existing service account key",
+		gentypes.SchemaUpdateServiceAccountKey,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateServiceAccountKey))
 }

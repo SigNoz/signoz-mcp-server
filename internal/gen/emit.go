@@ -180,13 +180,16 @@ func (h *Handler) register{{.RegisterSuffix}}Generated(s *server.MCPServer) {
 
 {{range .Ops}}
 func (h *Handler) genRegister{{.OperationID}}(s *server.MCPServer) {
-	tool := mcp.NewTool({{goEscape .ToolName}},
-		mcp.WithDescription({{goEscape (printf "%s %s — %s" .Method .Path (firstNonEmpty .Summary .Description))}}),
-{{if .ReadOnly}}		mcp.WithReadOnlyHintAnnotation(true),
-{{end}}{{if .Destructive}}		mcp.WithDestructiveHintAnnotation(true),
-{{end}}		withRawSchema(gentypes.Schema{{.OperationID}}),
+	tool := mcp.NewToolWithRawSchema(
+		{{goEscape .ToolName}},
+		{{goEscape (firstNonEmpty .Description (firstNonEmpty .Summary (printf "%s %s" .Method .Path)))}},
+		gentypes.Schema{{.OperationID}},
 	)
-	s.AddTool(tool, mcp.NewTypedToolHandler(h.{{.HandlerFunc}}))
+{{if .ReadOnly}}	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
+{{end}}{{if .Destructive}}	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
+{{end}}	s.AddTool(tool, mcp.NewTypedToolHandler(h.{{.HandlerFunc}}))
 }
 
 func (h *Handler) {{.HandlerFunc}}(ctx context.Context, req mcp.CallToolRequest, in gentypes.{{.InputType}}) (*mcp.CallToolResult, error) {

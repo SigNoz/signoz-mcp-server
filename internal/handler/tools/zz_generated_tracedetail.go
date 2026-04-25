@@ -37,9 +37,10 @@ func (h *Handler) registerTracedetailGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetWaterfall(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_waterfall",
-		mcp.WithDescription("POST /api/v3/traces/{traceID}/waterfall — Get waterfall view for a trace"),
-		withRawSchema(gentypes.SchemaGetWaterfall),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_waterfall",
+		"Returns the waterfall view of spans for a given trace ID with tree structure, metadata, and windowed pagination",
+		gentypes.SchemaGetWaterfall,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetWaterfall))
 }

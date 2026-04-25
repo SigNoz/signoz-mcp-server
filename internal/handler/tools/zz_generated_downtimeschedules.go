@@ -41,9 +41,10 @@ func (h *Handler) registerDowntimeschedulesGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateDowntimeSchedule(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_downtime_schedule",
-		mcp.WithDescription("POST /api/v1/downtime_schedules — Create downtime schedule"),
-		withRawSchema(gentypes.SchemaCreateDowntimeSchedule),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_downtime_schedule",
+		"This endpoint creates a new planned maintenance / downtime schedule",
+		gentypes.SchemaCreateDowntimeSchedule,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateDowntimeSchedule))
 }
@@ -64,11 +65,13 @@ func (h *Handler) genHandleCreateDowntimeSchedule(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) genRegisterDeleteDowntimeScheduleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_downtime_schedule_by_id",
-		mcp.WithDescription("DELETE /api/v1/downtime_schedules/{id} — Delete downtime schedule"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteDowntimeScheduleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_downtime_schedule_by_id",
+		"This endpoint deletes a downtime schedule by ID",
+		gentypes.SchemaDeleteDowntimeScheduleByID,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteDowntimeScheduleByID))
 }
 
@@ -92,11 +95,13 @@ func (h *Handler) genHandleDeleteDowntimeScheduleByID(ctx context.Context, req m
 }
 
 func (h *Handler) genRegisterGetDowntimeScheduleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_downtime_schedule_by_id",
-		mcp.WithDescription("GET /api/v1/downtime_schedules/{id} — Get downtime schedule by ID"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetDowntimeScheduleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_downtime_schedule_by_id",
+		"This endpoint returns a downtime schedule by ID",
+		gentypes.SchemaGetDowntimeScheduleByID,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetDowntimeScheduleByID))
 }
 
@@ -120,11 +125,13 @@ func (h *Handler) genHandleGetDowntimeScheduleByID(ctx context.Context, req mcp.
 }
 
 func (h *Handler) genRegisterListDowntimeSchedules(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_downtime_schedules",
-		mcp.WithDescription("GET /api/v1/downtime_schedules — List downtime schedules"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListDowntimeSchedules),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_downtime_schedules",
+		"This endpoint lists all planned maintenance / downtime schedules",
+		gentypes.SchemaListDowntimeSchedules,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListDowntimeSchedules))
 }
 
@@ -155,9 +162,10 @@ func (h *Handler) genHandleListDowntimeSchedules(ctx context.Context, req mcp.Ca
 }
 
 func (h *Handler) genRegisterUpdateDowntimeScheduleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_downtime_schedule_by_id",
-		mcp.WithDescription("PUT /api/v1/downtime_schedules/{id} — Update downtime schedule"),
-		withRawSchema(gentypes.SchemaUpdateDowntimeScheduleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_downtime_schedule_by_id",
+		"This endpoint updates a downtime schedule by ID",
+		gentypes.SchemaUpdateDowntimeScheduleByID,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateDowntimeScheduleByID))
 }

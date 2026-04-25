@@ -49,9 +49,10 @@ func (h *Handler) registerRulesGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateRule(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_rule",
-		mcp.WithDescription("POST /api/v2/rules — Create alert rule"),
-		withRawSchema(gentypes.SchemaCreateRule),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_rule",
+		"This endpoint creates a new alert rule",
+		gentypes.SchemaCreateRule,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateRule))
 }
@@ -72,11 +73,13 @@ func (h *Handler) genHandleCreateRule(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterDeleteRuleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_rule_by_id",
-		mcp.WithDescription("DELETE /api/v2/rules/{id} — Delete alert rule"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteRuleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_rule_by_id",
+		"This endpoint deletes an alert rule by ID",
+		gentypes.SchemaDeleteRuleByID,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteRuleByID))
 }
 
@@ -100,11 +103,13 @@ func (h *Handler) genHandleDeleteRuleByID(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *Handler) genRegisterGetRuleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_by_id",
-		mcp.WithDescription("GET /api/v2/rules/{id} — Get alert rule by ID"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_by_id",
+		"This endpoint returns an alert rule by ID",
+		gentypes.SchemaGetRuleByID,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleByID))
 }
 
@@ -128,11 +133,13 @@ func (h *Handler) genHandleGetRuleByID(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) genRegisterGetRuleHistoryFilterKeys(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_history_filter_keys",
-		mcp.WithDescription("GET /api/v2/rules/{id}/history/filter_keys — Get rule history filter keys"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleHistoryFilterKeys),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_history_filter_keys",
+		"Returns distinct label keys from rule history entries for the selected range.",
+		gentypes.SchemaGetRuleHistoryFilterKeys,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryFilterKeys))
 }
 
@@ -191,11 +198,13 @@ func (h *Handler) genHandleGetRuleHistoryFilterKeys(ctx context.Context, req mcp
 }
 
 func (h *Handler) genRegisterGetRuleHistoryFilterValues(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_history_filter_values",
-		mcp.WithDescription("GET /api/v2/rules/{id}/history/filter_values — Get rule history filter values"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleHistoryFilterValues),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_history_filter_values",
+		"Returns distinct label values for a given key from rule history entries.",
+		gentypes.SchemaGetRuleHistoryFilterValues,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryFilterValues))
 }
 
@@ -260,11 +269,13 @@ func (h *Handler) genHandleGetRuleHistoryFilterValues(ctx context.Context, req m
 }
 
 func (h *Handler) genRegisterGetRuleHistoryOverallStatus(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_history_overall_status",
-		mcp.WithDescription("GET /api/v2/rules/{id}/history/overall_status — Get rule overall status timeline"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleHistoryOverallStatus),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_history_overall_status",
+		"Returns overall firing/inactive intervals for a rule in the selected time range.",
+		gentypes.SchemaGetRuleHistoryOverallStatus,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryOverallStatus))
 }
 
@@ -299,11 +310,13 @@ func (h *Handler) genHandleGetRuleHistoryOverallStatus(ctx context.Context, req 
 }
 
 func (h *Handler) genRegisterGetRuleHistoryStats(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_history_stats",
-		mcp.WithDescription("GET /api/v2/rules/{id}/history/stats — Get rule history stats"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleHistoryStats),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_history_stats",
+		"Returns trigger and resolution statistics for a rule in the selected time range.",
+		gentypes.SchemaGetRuleHistoryStats,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryStats))
 }
 
@@ -338,11 +351,13 @@ func (h *Handler) genHandleGetRuleHistoryStats(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterGetRuleHistoryTimeline(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_history_timeline",
-		mcp.WithDescription("GET /api/v2/rules/{id}/history/timeline — Get rule history timeline"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleHistoryTimeline),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_history_timeline",
+		"Returns paginated timeline entries for rule state transitions.",
+		gentypes.SchemaGetRuleHistoryTimeline,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryTimeline))
 }
 
@@ -392,11 +407,13 @@ func (h *Handler) genHandleGetRuleHistoryTimeline(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) genRegisterGetRuleHistoryTopContributors(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_rule_history_top_contributors",
-		mcp.WithDescription("GET /api/v2/rules/{id}/history/top_contributors — Get top contributors to rule firing"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRuleHistoryTopContributors),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_rule_history_top_contributors",
+		"Returns top label combinations contributing to rule firing in the selected time range.",
+		gentypes.SchemaGetRuleHistoryTopContributors,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRuleHistoryTopContributors))
 }
 
@@ -431,11 +448,13 @@ func (h *Handler) genHandleGetRuleHistoryTopContributors(ctx context.Context, re
 }
 
 func (h *Handler) genRegisterListRules(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_rules",
-		mcp.WithDescription("GET /api/v2/rules — List alert rules"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListRules),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_rules",
+		"This endpoint lists all alert rules with their current evaluation state",
+		gentypes.SchemaListRules,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListRules))
 }
 
@@ -455,9 +474,10 @@ func (h *Handler) genHandleListRules(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) genRegisterPatchRuleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_patch_rule_by_id",
-		mcp.WithDescription("PATCH /api/v2/rules/{id} — Patch alert rule"),
-		withRawSchema(gentypes.SchemaPatchRuleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_patch_rule_by_id",
+		"This endpoint applies a partial update to an alert rule by ID",
+		gentypes.SchemaPatchRuleByID,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandlePatchRuleByID))
 }
@@ -482,9 +502,10 @@ func (h *Handler) genHandlePatchRuleByID(ctx context.Context, req mcp.CallToolRe
 }
 
 func (h *Handler) genRegisterTestRule(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_test_rule",
-		mcp.WithDescription("POST /api/v2/rules/test — Test alert rule"),
-		withRawSchema(gentypes.SchemaTestRule),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_test_rule",
+		"This endpoint fires a test notification for the given rule definition",
+		gentypes.SchemaTestRule,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleTestRule))
 }
@@ -505,9 +526,10 @@ func (h *Handler) genHandleTestRule(ctx context.Context, req mcp.CallToolRequest
 }
 
 func (h *Handler) genRegisterUpdateRuleByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_rule_by_id",
-		mcp.WithDescription("PUT /api/v2/rules/{id} — Update alert rule"),
-		withRawSchema(gentypes.SchemaUpdateRuleByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_rule_by_id",
+		"This endpoint updates an alert rule by ID",
+		gentypes.SchemaUpdateRuleByID,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateRuleByID))
 }

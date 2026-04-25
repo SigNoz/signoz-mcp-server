@@ -42,9 +42,10 @@ func (h *Handler) registerSessionsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateSessionByEmailPassword(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_session_by_email_password",
-		mcp.WithDescription("POST /api/v2/sessions/email_password — Create session by email and password"),
-		withRawSchema(gentypes.SchemaCreateSessionByEmailPassword),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_session_by_email_password",
+		"This endpoint creates a session for a user using email and password.",
+		gentypes.SchemaCreateSessionByEmailPassword,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateSessionByEmailPassword))
 }
@@ -65,11 +66,13 @@ func (h *Handler) genHandleCreateSessionByEmailPassword(ctx context.Context, req
 }
 
 func (h *Handler) genRegisterCreateSessionByGoogleCallback(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_session_by_google_callback",
-		mcp.WithDescription("GET /api/v1/complete/google — Create session by google callback"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaCreateSessionByGoogleCallback),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_session_by_google_callback",
+		"This endpoint creates a session for a user using google callback",
+		gentypes.SchemaCreateSessionByGoogleCallback,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateSessionByGoogleCallback))
 }
 
@@ -89,11 +92,13 @@ func (h *Handler) genHandleCreateSessionByGoogleCallback(ctx context.Context, re
 }
 
 func (h *Handler) genRegisterCreateSessionByOIDCCallback(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_session_by_oidc_callback",
-		mcp.WithDescription("GET /api/v1/complete/oidc — Create session by oidc callback"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaCreateSessionByOIDCCallback),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_session_by_oidc_callback",
+		"This endpoint creates a session for a user using oidc callback",
+		gentypes.SchemaCreateSessionByOIDCCallback,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateSessionByOIDCCallback))
 }
 
@@ -113,11 +118,13 @@ func (h *Handler) genHandleCreateSessionByOIDCCallback(ctx context.Context, req 
 }
 
 func (h *Handler) genRegisterDeleteSession(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_session",
-		mcp.WithDescription("DELETE /api/v2/sessions — Delete session"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteSession),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_session",
+		"This endpoint deletes the session",
+		gentypes.SchemaDeleteSession,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteSession))
 }
 
@@ -137,11 +144,13 @@ func (h *Handler) genHandleDeleteSession(ctx context.Context, req mcp.CallToolRe
 }
 
 func (h *Handler) genRegisterGetSessionContext(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_session_context",
-		mcp.WithDescription("GET /api/v2/sessions/context — Get session context"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetSessionContext),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_session_context",
+		"This endpoint returns the context for the session",
+		gentypes.SchemaGetSessionContext,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetSessionContext))
 }
 
@@ -161,9 +170,10 @@ func (h *Handler) genHandleGetSessionContext(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterRotateSession(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_rotate_session",
-		mcp.WithDescription("POST /api/v2/sessions/rotate — Rotate session"),
-		withRawSchema(gentypes.SchemaRotateSession),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_rotate_session",
+		"This endpoint rotates the session",
+		gentypes.SchemaRotateSession,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleRotateSession))
 }

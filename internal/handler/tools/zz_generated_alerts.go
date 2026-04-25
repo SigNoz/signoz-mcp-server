@@ -37,11 +37,13 @@ func (h *Handler) registerAlertsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetAlerts(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_alerts",
-		mcp.WithDescription("GET /api/v1/alerts — Get alerts"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetAlerts),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_alerts",
+		"This endpoint returns alerts for the organization",
+		gentypes.SchemaGetAlerts,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetAlerts))
 }
 

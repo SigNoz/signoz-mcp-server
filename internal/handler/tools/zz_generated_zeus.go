@@ -39,11 +39,13 @@ func (h *Handler) registerZeusGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetHosts(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_hosts",
-		mcp.WithDescription("GET /api/v2/zeus/hosts — Get host info from Zeus."),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetHosts),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_hosts",
+		"This endpoint gets the host info from zeus.",
+		gentypes.SchemaGetHosts,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetHosts))
 }
 
@@ -63,9 +65,10 @@ func (h *Handler) genHandleGetHosts(ctx context.Context, req mcp.CallToolRequest
 }
 
 func (h *Handler) genRegisterPutHost(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_put_host",
-		mcp.WithDescription("PUT /api/v2/zeus/hosts — Put host in Zeus for a deployment."),
-		withRawSchema(gentypes.SchemaPutHost),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_put_host",
+		"This endpoint saves the host of a deployment to zeus.",
+		gentypes.SchemaPutHost,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandlePutHost))
 }
@@ -86,9 +89,10 @@ func (h *Handler) genHandlePutHost(ctx context.Context, req mcp.CallToolRequest,
 }
 
 func (h *Handler) genRegisterPutProfile(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_put_profile",
-		mcp.WithDescription("PUT /api/v2/zeus/profiles — Put profile in Zeus for a deployment."),
-		withRawSchema(gentypes.SchemaPutProfile),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_put_profile",
+		"This endpoint saves the profile of a deployment to zeus.",
+		gentypes.SchemaPutProfile,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandlePutProfile))
 }

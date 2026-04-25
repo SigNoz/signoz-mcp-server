@@ -52,9 +52,10 @@ func (h *Handler) registerUsersGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateBulkInvite(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_bulk_invite",
-		mcp.WithDescription("POST /api/v1/invite/bulk — Create bulk invite"),
-		withRawSchema(gentypes.SchemaCreateBulkInvite),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_bulk_invite",
+		"This endpoint creates a bulk invite for a user",
+		gentypes.SchemaCreateBulkInvite,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateBulkInvite))
 }
@@ -75,9 +76,10 @@ func (h *Handler) genHandleCreateBulkInvite(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterCreateInvite(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_invite",
-		mcp.WithDescription("POST /api/v1/invite — Create invite"),
-		withRawSchema(gentypes.SchemaCreateInvite),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_invite",
+		"This endpoint creates an invite for a user",
+		gentypes.SchemaCreateInvite,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateInvite))
 }
@@ -98,9 +100,10 @@ func (h *Handler) genHandleCreateInvite(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) genRegisterCreateResetPasswordToken(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_reset_password_token",
-		mcp.WithDescription("PUT /api/v2/users/{id}/reset_password_tokens — Create or regenerate reset password token for a user"),
-		withRawSchema(gentypes.SchemaCreateResetPasswordToken),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_reset_password_token",
+		"This endpoint creates or regenerates a reset password token for a user. If a valid token exists, it is returned. If expired, a new one is created.",
+		gentypes.SchemaCreateResetPasswordToken,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateResetPasswordToken))
 }
@@ -125,11 +128,13 @@ func (h *Handler) genHandleCreateResetPasswordToken(ctx context.Context, req mcp
 }
 
 func (h *Handler) genRegisterDeleteUser(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_user",
-		mcp.WithDescription("DELETE /api/v1/user/{id} — Delete user"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteUser),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_user",
+		"This endpoint deletes the user by id",
+		gentypes.SchemaDeleteUser,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteUser))
 }
 
@@ -153,9 +158,10 @@ func (h *Handler) genHandleDeleteUser(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterForgotPassword(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_forgot_password",
-		mcp.WithDescription("POST /api/v2/factor_password/forgot — Forgot password"),
-		withRawSchema(gentypes.SchemaForgotPassword),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_forgot_password",
+		"This endpoint initiates the forgot password flow by sending a reset password email",
+		gentypes.SchemaForgotPassword,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleForgotPassword))
 }
@@ -176,11 +182,13 @@ func (h *Handler) genHandleForgotPassword(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *Handler) genRegisterGetMyUser(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_my_user",
-		mcp.WithDescription("GET /api/v2/users/me — Get my user v2"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMyUser),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_my_user",
+		"This endpoint returns the user I belong to",
+		gentypes.SchemaGetMyUser,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMyUser))
 }
 
@@ -200,11 +208,13 @@ func (h *Handler) genHandleGetMyUser(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) genRegisterGetResetPasswordToken(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_reset_password_token",
-		mcp.WithDescription("GET /api/v2/users/{id}/reset_password_tokens — Get reset password token for a user"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetResetPasswordToken),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_reset_password_token",
+		"This endpoint returns the existing reset password token for a user.",
+		gentypes.SchemaGetResetPasswordToken,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetResetPasswordToken))
 }
 
@@ -228,11 +238,13 @@ func (h *Handler) genHandleGetResetPasswordToken(ctx context.Context, req mcp.Ca
 }
 
 func (h *Handler) genRegisterGetRolesByUserID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_roles_by_user_id",
-		mcp.WithDescription("GET /api/v2/users/{id}/roles — Get user roles"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRolesByUserID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_roles_by_user_id",
+		"This endpoint returns the user roles by user id",
+		gentypes.SchemaGetRolesByUserID,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRolesByUserID))
 }
 
@@ -256,11 +268,13 @@ func (h *Handler) genHandleGetRolesByUserID(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterGetUser(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_user",
-		mcp.WithDescription("GET /api/v2/users/{id} — Get user by user id"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetUser),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_user",
+		"This endpoint returns the user by id",
+		gentypes.SchemaGetUser,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetUser))
 }
 
@@ -284,11 +298,13 @@ func (h *Handler) genHandleGetUser(ctx context.Context, req mcp.CallToolRequest,
 }
 
 func (h *Handler) genRegisterGetUsersByRoleID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_users_by_role_id",
-		mcp.WithDescription("GET /api/v2/roles/{id}/users — Get users by role id"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetUsersByRoleID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_users_by_role_id",
+		"This endpoint returns the users having the role by role id",
+		gentypes.SchemaGetUsersByRoleID,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetUsersByRoleID))
 }
 
@@ -312,11 +328,13 @@ func (h *Handler) genHandleGetUsersByRoleID(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterListUsers(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_users",
-		mcp.WithDescription("GET /api/v2/users — List users v2"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListUsers),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_users",
+		"This endpoint lists all users for the organization",
+		gentypes.SchemaListUsers,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListUsers))
 }
 
@@ -336,11 +354,13 @@ func (h *Handler) genHandleListUsers(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) genRegisterRemoveUserRoleByUserIDAndRoleID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_remove_user_role_by_user_id_and_role_id",
-		mcp.WithDescription("DELETE /api/v2/users/{id}/roles/{roleId} — Remove a role from user"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaRemoveUserRoleByUserIDAndRoleID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_remove_user_role_by_user_id_and_role_id",
+		"This endpoint removes a role from the user by user id and role id",
+		gentypes.SchemaRemoveUserRoleByUserIDAndRoleID,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleRemoveUserRoleByUserIDAndRoleID))
 }
 
@@ -368,9 +388,10 @@ func (h *Handler) genHandleRemoveUserRoleByUserIDAndRoleID(ctx context.Context, 
 }
 
 func (h *Handler) genRegisterSetRoleByUserID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_set_role_by_user_id",
-		mcp.WithDescription("POST /api/v2/users/{id}/roles — Set user roles"),
-		withRawSchema(gentypes.SchemaSetRoleByUserID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_set_role_by_user_id",
+		"This endpoint assigns the role to the user roles by user id",
+		gentypes.SchemaSetRoleByUserID,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleSetRoleByUserID))
 }
@@ -395,9 +416,10 @@ func (h *Handler) genHandleSetRoleByUserID(ctx context.Context, req mcp.CallTool
 }
 
 func (h *Handler) genRegisterUpdateMyPassword(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_my_password",
-		mcp.WithDescription("PUT /api/v2/users/me/factor_password — Updates my password"),
-		withRawSchema(gentypes.SchemaUpdateMyPassword),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_my_password",
+		"This endpoint updates the password of the user I belong to",
+		gentypes.SchemaUpdateMyPassword,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateMyPassword))
 }
@@ -418,9 +440,10 @@ func (h *Handler) genHandleUpdateMyPassword(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterUpdateMyUserV2(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_my_user_v2",
-		mcp.WithDescription("PUT /api/v2/users/me — Update my user v2"),
-		withRawSchema(gentypes.SchemaUpdateMyUserV2),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_my_user_v2",
+		"This endpoint updates the user I belong to",
+		gentypes.SchemaUpdateMyUserV2,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateMyUserV2))
 }
@@ -441,9 +464,10 @@ func (h *Handler) genHandleUpdateMyUserV2(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *Handler) genRegisterUpdateUser(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_user",
-		mcp.WithDescription("PUT /api/v2/users/{id} — Update user v2"),
-		withRawSchema(gentypes.SchemaUpdateUser),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_user",
+		"This endpoint updates the user by id",
+		gentypes.SchemaUpdateUser,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateUser))
 }

@@ -41,9 +41,10 @@ func (h *Handler) registerRoutepoliciesGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateRoutePolicy(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_route_policy",
-		mcp.WithDescription("POST /api/v1/route_policies — Create route policy"),
-		withRawSchema(gentypes.SchemaCreateRoutePolicy),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_route_policy",
+		"This endpoint creates a route policy",
+		gentypes.SchemaCreateRoutePolicy,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateRoutePolicy))
 }
@@ -64,11 +65,13 @@ func (h *Handler) genHandleCreateRoutePolicy(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterDeleteRoutePolicyByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_route_policy_by_id",
-		mcp.WithDescription("DELETE /api/v1/route_policies/{id} — Delete route policy"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteRoutePolicyByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_route_policy_by_id",
+		"This endpoint deletes a route policy by ID",
+		gentypes.SchemaDeleteRoutePolicyByID,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteRoutePolicyByID))
 }
 
@@ -92,11 +95,13 @@ func (h *Handler) genHandleDeleteRoutePolicyByID(ctx context.Context, req mcp.Ca
 }
 
 func (h *Handler) genRegisterGetAllRoutePolicies(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_all_route_policies",
-		mcp.WithDescription("GET /api/v1/route_policies — List route policies"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetAllRoutePolicies),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_all_route_policies",
+		"This endpoint lists all route policies for the organization",
+		gentypes.SchemaGetAllRoutePolicies,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetAllRoutePolicies))
 }
 
@@ -116,11 +121,13 @@ func (h *Handler) genHandleGetAllRoutePolicies(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterGetRoutePolicyByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_route_policy_by_id",
-		mcp.WithDescription("GET /api/v1/route_policies/{id} — Get route policy by ID"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRoutePolicyByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_route_policy_by_id",
+		"This endpoint returns a route policy by ID",
+		gentypes.SchemaGetRoutePolicyByID,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRoutePolicyByID))
 }
 
@@ -144,9 +151,10 @@ func (h *Handler) genHandleGetRoutePolicyByID(ctx context.Context, req mcp.CallT
 }
 
 func (h *Handler) genRegisterUpdateRoutePolicy(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_route_policy",
-		mcp.WithDescription("PUT /api/v1/route_policies/{id} — Update route policy"),
-		withRawSchema(gentypes.SchemaUpdateRoutePolicy),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_route_policy",
+		"This endpoint updates a route policy by ID",
+		gentypes.SchemaUpdateRoutePolicy,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateRoutePolicy))
 }

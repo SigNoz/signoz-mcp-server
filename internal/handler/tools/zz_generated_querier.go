@@ -38,9 +38,10 @@ func (h *Handler) registerQuerierGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterQueryRangeV5(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_query_range_v5",
-		mcp.WithDescription("POST /api/v5/query_range — Query range"),
-		withRawSchema(gentypes.SchemaQueryRangeV5),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_query_range_v5",
+		"Execute a composite query over a time range. Supports builder queries (traces, logs, metrics), formulas, trace operators, PromQL, and ClickHouse SQL.",
+		gentypes.SchemaQueryRangeV5,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleQueryRangeV5))
 }
@@ -61,9 +62,10 @@ func (h *Handler) genHandleQueryRangeV5(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) genRegisterReplaceVariables(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_replace_variables",
-		mcp.WithDescription("POST /api/v5/substitute_vars — Replace variables"),
-		withRawSchema(gentypes.SchemaReplaceVariables),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_replace_variables",
+		"Replace variables in a query",
+		gentypes.SchemaReplaceVariables,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleReplaceVariables))
 }

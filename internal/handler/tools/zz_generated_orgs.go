@@ -38,11 +38,13 @@ func (h *Handler) registerOrgsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetMyOrganization(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_my_organization",
-		mcp.WithDescription("GET /api/v2/orgs/me — Get my organization"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMyOrganization),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_my_organization",
+		"This endpoint returns the organization I belong to",
+		gentypes.SchemaGetMyOrganization,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMyOrganization))
 }
 
@@ -62,9 +64,10 @@ func (h *Handler) genHandleGetMyOrganization(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterUpdateMyOrganization(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_my_organization",
-		mcp.WithDescription("PUT /api/v2/orgs/me — Update my organization"),
-		withRawSchema(gentypes.SchemaUpdateMyOrganization),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_my_organization",
+		"This endpoint updates the organization I belong to",
+		gentypes.SchemaUpdateMyOrganization,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateMyOrganization))
 }

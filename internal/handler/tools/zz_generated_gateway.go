@@ -44,9 +44,10 @@ func (h *Handler) registerGatewayGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateIngestionKey(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_ingestion_key",
-		mcp.WithDescription("POST /api/v2/gateway/ingestion_keys — Create ingestion key for workspace"),
-		withRawSchema(gentypes.SchemaCreateIngestionKey),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_ingestion_key",
+		"This endpoint creates an ingestion key for the workspace",
+		gentypes.SchemaCreateIngestionKey,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateIngestionKey))
 }
@@ -67,9 +68,10 @@ func (h *Handler) genHandleCreateIngestionKey(ctx context.Context, req mcp.CallT
 }
 
 func (h *Handler) genRegisterCreateIngestionKeyLimit(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_ingestion_key_limit",
-		mcp.WithDescription("POST /api/v2/gateway/ingestion_keys/{keyId}/limits — Create limit for the ingestion key"),
-		withRawSchema(gentypes.SchemaCreateIngestionKeyLimit),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_ingestion_key_limit",
+		"This endpoint creates an ingestion key limit",
+		gentypes.SchemaCreateIngestionKeyLimit,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateIngestionKeyLimit))
 }
@@ -94,11 +96,13 @@ func (h *Handler) genHandleCreateIngestionKeyLimit(ctx context.Context, req mcp.
 }
 
 func (h *Handler) genRegisterDeleteIngestionKey(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_ingestion_key",
-		mcp.WithDescription("DELETE /api/v2/gateway/ingestion_keys/{keyId} — Delete ingestion key for workspace"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteIngestionKey),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_ingestion_key",
+		"This endpoint deletes an ingestion key for the workspace",
+		gentypes.SchemaDeleteIngestionKey,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteIngestionKey))
 }
 
@@ -122,11 +126,13 @@ func (h *Handler) genHandleDeleteIngestionKey(ctx context.Context, req mcp.CallT
 }
 
 func (h *Handler) genRegisterDeleteIngestionKeyLimit(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_ingestion_key_limit",
-		mcp.WithDescription("DELETE /api/v2/gateway/ingestion_keys/limits/{limitId} — Delete limit for the ingestion key"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteIngestionKeyLimit),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_ingestion_key_limit",
+		"This endpoint deletes an ingestion key limit",
+		gentypes.SchemaDeleteIngestionKeyLimit,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteIngestionKeyLimit))
 }
 
@@ -150,11 +156,13 @@ func (h *Handler) genHandleDeleteIngestionKeyLimit(ctx context.Context, req mcp.
 }
 
 func (h *Handler) genRegisterGetIngestionKeys(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_ingestion_keys",
-		mcp.WithDescription("GET /api/v2/gateway/ingestion_keys — Get ingestion keys for workspace"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetIngestionKeys),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_ingestion_keys",
+		"This endpoint returns the ingestion keys for a workspace",
+		gentypes.SchemaGetIngestionKeys,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetIngestionKeys))
 }
 
@@ -185,11 +193,13 @@ func (h *Handler) genHandleGetIngestionKeys(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterSearchIngestionKeys(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_search_ingestion_keys",
-		mcp.WithDescription("GET /api/v2/gateway/ingestion_keys/search — Search ingestion keys for workspace"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaSearchIngestionKeys),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_search_ingestion_keys",
+		"This endpoint returns the ingestion keys for a workspace",
+		gentypes.SchemaSearchIngestionKeys,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleSearchIngestionKeys))
 }
 
@@ -223,9 +233,10 @@ func (h *Handler) genHandleSearchIngestionKeys(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterUpdateIngestionKey(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_ingestion_key",
-		mcp.WithDescription("PATCH /api/v2/gateway/ingestion_keys/{keyId} — Update ingestion key for workspace"),
-		withRawSchema(gentypes.SchemaUpdateIngestionKey),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_ingestion_key",
+		"This endpoint updates an ingestion key for the workspace",
+		gentypes.SchemaUpdateIngestionKey,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateIngestionKey))
 }
@@ -250,9 +261,10 @@ func (h *Handler) genHandleUpdateIngestionKey(ctx context.Context, req mcp.CallT
 }
 
 func (h *Handler) genRegisterUpdateIngestionKeyLimit(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_ingestion_key_limit",
-		mcp.WithDescription("PATCH /api/v2/gateway/ingestion_keys/limits/{limitId} — Update limit for the ingestion key"),
-		withRawSchema(gentypes.SchemaUpdateIngestionKeyLimit),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_ingestion_key_limit",
+		"This endpoint updates an ingestion key limit",
+		gentypes.SchemaUpdateIngestionKeyLimit,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateIngestionKeyLimit))
 }

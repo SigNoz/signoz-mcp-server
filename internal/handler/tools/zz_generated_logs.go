@@ -39,9 +39,10 @@ func (h *Handler) registerLogsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterHandleExportRawDataPOST(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_handle_export_raw_data_post",
-		mcp.WithDescription("POST /api/v1/export_raw_data — Export raw data"),
-		withRawSchema(gentypes.SchemaHandleExportRawDataPOST),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_handle_export_raw_data_post",
+		"This endpoints allows complex query exporting raw data for traces and logs",
+		gentypes.SchemaHandleExportRawDataPOST,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleHandleExportRawDataPOST))
 }
@@ -70,9 +71,10 @@ func (h *Handler) genHandleHandleExportRawDataPOST(ctx context.Context, req mcp.
 }
 
 func (h *Handler) genRegisterHandlePromoteAndIndexPaths(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_handle_promote_and_index_paths",
-		mcp.WithDescription("POST /api/v1/logs/promote_paths — Promote and index paths"),
-		withRawSchema(gentypes.SchemaHandlePromoteAndIndexPaths),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_handle_promote_and_index_paths",
+		"This endpoints promotes and indexes paths",
+		gentypes.SchemaHandlePromoteAndIndexPaths,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleHandlePromoteAndIndexPaths))
 }
@@ -93,11 +95,13 @@ func (h *Handler) genHandleHandlePromoteAndIndexPaths(ctx context.Context, req m
 }
 
 func (h *Handler) genRegisterListPromotedAndIndexedPaths(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_promoted_and_indexed_paths",
-		mcp.WithDescription("GET /api/v1/logs/promote_paths — Promote and index paths"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListPromotedAndIndexedPaths),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_promoted_and_indexed_paths",
+		"This endpoints promotes and indexes paths",
+		gentypes.SchemaListPromotedAndIndexedPaths,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListPromotedAndIndexedPaths))
 }
 

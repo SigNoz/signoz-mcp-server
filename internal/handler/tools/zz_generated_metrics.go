@@ -46,11 +46,13 @@ func (h *Handler) registerMetricsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetMetricAlerts(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metric_alerts",
-		mcp.WithDescription("GET /api/v2/metrics/{metric_name}/alerts — Get metric alerts"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMetricAlerts),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metric_alerts",
+		"This endpoint returns associated alerts for a specified metric",
+		gentypes.SchemaGetMetricAlerts,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricAlerts))
 }
 
@@ -74,11 +76,13 @@ func (h *Handler) genHandleGetMetricAlerts(ctx context.Context, req mcp.CallTool
 }
 
 func (h *Handler) genRegisterGetMetricAttributes(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metric_attributes",
-		mcp.WithDescription("GET /api/v2/metrics/{metric_name}/attributes — Get metric attributes"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMetricAttributes),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metric_attributes",
+		"This endpoint returns attribute keys and their unique values for a specified metric",
+		gentypes.SchemaGetMetricAttributes,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricAttributes))
 }
 
@@ -113,11 +117,13 @@ func (h *Handler) genHandleGetMetricAttributes(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterGetMetricDashboards(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metric_dashboards",
-		mcp.WithDescription("GET /api/v2/metrics/{metric_name}/dashboards — Get metric dashboards"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMetricDashboards),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metric_dashboards",
+		"This endpoint returns associated dashboards for a specified metric",
+		gentypes.SchemaGetMetricDashboards,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricDashboards))
 }
 
@@ -141,11 +147,13 @@ func (h *Handler) genHandleGetMetricDashboards(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterGetMetricHighlights(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metric_highlights",
-		mcp.WithDescription("GET /api/v2/metrics/{metric_name}/highlights — Get metric highlights"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMetricHighlights),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metric_highlights",
+		"This endpoint returns highlights like number of datapoints, totaltimeseries, active time series, last received time for a specified metric",
+		gentypes.SchemaGetMetricHighlights,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricHighlights))
 }
 
@@ -169,11 +177,13 @@ func (h *Handler) genHandleGetMetricHighlights(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterGetMetricMetadata(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metric_metadata",
-		mcp.WithDescription("GET /api/v2/metrics/{metric_name}/metadata — Get metric metadata"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMetricMetadata),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metric_metadata",
+		"This endpoint returns metadata information like metric description, unit, type, temporality, monotonicity for a specified metric",
+		gentypes.SchemaGetMetricMetadata,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricMetadata))
 }
 
@@ -197,11 +207,13 @@ func (h *Handler) genHandleGetMetricMetadata(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterGetMetricsOnboardingStatus(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metrics_onboarding_status",
-		mcp.WithDescription("GET /api/v2/metrics/onboarding — Check if non-SigNoz metrics have been received"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetMetricsOnboardingStatus),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metrics_onboarding_status",
+		"Lightweight endpoint that checks if any non-SigNoz metrics have been ingested, used for onboarding status detection",
+		gentypes.SchemaGetMetricsOnboardingStatus,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricsOnboardingStatus))
 }
 
@@ -221,9 +233,10 @@ func (h *Handler) genHandleGetMetricsOnboardingStatus(ctx context.Context, req m
 }
 
 func (h *Handler) genRegisterGetMetricsStats(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metrics_stats",
-		mcp.WithDescription("POST /api/v2/metrics/stats — Get metrics statistics"),
-		withRawSchema(gentypes.SchemaGetMetricsStats),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metrics_stats",
+		"This endpoint provides list of metrics with their number of samples and timeseries for the given time range",
+		gentypes.SchemaGetMetricsStats,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricsStats))
 }
@@ -244,9 +257,10 @@ func (h *Handler) genHandleGetMetricsStats(ctx context.Context, req mcp.CallTool
 }
 
 func (h *Handler) genRegisterGetMetricsTreemap(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_metrics_treemap",
-		mcp.WithDescription("POST /api/v2/metrics/treemap — Get metrics treemap"),
-		withRawSchema(gentypes.SchemaGetMetricsTreemap),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_metrics_treemap",
+		"This endpoint returns a treemap visualization showing the proportional distribution of metrics by sample count or time series count",
+		gentypes.SchemaGetMetricsTreemap,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetMetricsTreemap))
 }
@@ -267,9 +281,10 @@ func (h *Handler) genHandleGetMetricsTreemap(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterInspectMetrics(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_inspect_metrics",
-		mcp.WithDescription("POST /api/v2/metrics/inspect — Inspect raw metric data points"),
-		withRawSchema(gentypes.SchemaInspectMetrics),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_inspect_metrics",
+		"Returns raw time series data points for a metric within a time range (max 30 minutes). Each series includes labels and timestamp/value pairs.",
+		gentypes.SchemaInspectMetrics,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleInspectMetrics))
 }
@@ -290,9 +305,10 @@ func (h *Handler) genHandleInspectMetrics(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *Handler) genRegisterUpdateMetricMetadata(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_metric_metadata",
-		mcp.WithDescription("POST /api/v2/metrics/{metric_name}/metadata — Update metric metadata"),
-		withRawSchema(gentypes.SchemaUpdateMetricMetadata),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_metric_metadata",
+		"This endpoint helps to update metadata information like metric description, unit, type, temporality, monotonicity for a specified metric",
+		gentypes.SchemaUpdateMetricMetadata,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateMetricMetadata))
 }

@@ -42,9 +42,10 @@ func (h *Handler) registerChannelsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateChannel(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_channel",
-		mcp.WithDescription("POST /api/v1/channels — Create notification channel"),
-		withRawSchema(gentypes.SchemaCreateChannel),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_channel",
+		"This endpoint creates a notification channel",
+		gentypes.SchemaCreateChannel,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateChannel))
 }
@@ -65,11 +66,13 @@ func (h *Handler) genHandleCreateChannel(ctx context.Context, req mcp.CallToolRe
 }
 
 func (h *Handler) genRegisterDeleteChannelByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_channel_by_id",
-		mcp.WithDescription("DELETE /api/v1/channels/{id} — Delete notification channel"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteChannelByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_channel_by_id",
+		"This endpoint deletes a notification channel by ID",
+		gentypes.SchemaDeleteChannelByID,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteChannelByID))
 }
 
@@ -93,11 +96,13 @@ func (h *Handler) genHandleDeleteChannelByID(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterGetChannelByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_channel_by_id",
-		mcp.WithDescription("GET /api/v1/channels/{id} — Get notification channel by ID"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetChannelByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_channel_by_id",
+		"This endpoint returns a notification channel by ID",
+		gentypes.SchemaGetChannelByID,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetChannelByID))
 }
 
@@ -121,11 +126,13 @@ func (h *Handler) genHandleGetChannelByID(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *Handler) genRegisterListChannels(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_channels",
-		mcp.WithDescription("GET /api/v1/channels — List notification channels"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListChannels),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_channels",
+		"This endpoint lists all notification channels for the organization",
+		gentypes.SchemaListChannels,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListChannels))
 }
 
@@ -145,9 +152,10 @@ func (h *Handler) genHandleListChannels(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) genRegisterTestChannel(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_test_channel",
-		mcp.WithDescription("POST /api/v1/channels/test — Test notification channel"),
-		withRawSchema(gentypes.SchemaTestChannel),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_test_channel",
+		"This endpoint tests a notification channel by sending a test notification",
+		gentypes.SchemaTestChannel,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleTestChannel))
 }
@@ -168,9 +176,10 @@ func (h *Handler) genHandleTestChannel(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) genRegisterUpdateChannelByID(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_channel_by_id",
-		mcp.WithDescription("PUT /api/v1/channels/{id} — Update notification channel"),
-		withRawSchema(gentypes.SchemaUpdateChannelByID),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_channel_by_id",
+		"This endpoint updates a notification channel by ID",
+		gentypes.SchemaUpdateChannelByID,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateChannelByID))
 }

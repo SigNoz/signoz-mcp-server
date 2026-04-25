@@ -40,9 +40,10 @@ func (h *Handler) registerAuthdomainsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateAuthDomain(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_auth_domain",
-		mcp.WithDescription("POST /api/v1/domains — Create auth domain"),
-		withRawSchema(gentypes.SchemaCreateAuthDomain),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_auth_domain",
+		"This endpoint creates an auth domain",
+		gentypes.SchemaCreateAuthDomain,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateAuthDomain))
 }
@@ -63,11 +64,13 @@ func (h *Handler) genHandleCreateAuthDomain(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterDeleteAuthDomain(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_auth_domain",
-		mcp.WithDescription("DELETE /api/v1/domains/{id} — Delete auth domain"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteAuthDomain),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_auth_domain",
+		"This endpoint deletes an auth domain",
+		gentypes.SchemaDeleteAuthDomain,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteAuthDomain))
 }
 
@@ -91,11 +94,13 @@ func (h *Handler) genHandleDeleteAuthDomain(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterListAuthDomains(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_auth_domains",
-		mcp.WithDescription("GET /api/v1/domains — List all auth domains"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListAuthDomains),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_auth_domains",
+		"This endpoint lists all auth domains",
+		gentypes.SchemaListAuthDomains,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListAuthDomains))
 }
 
@@ -115,9 +120,10 @@ func (h *Handler) genHandleListAuthDomains(ctx context.Context, req mcp.CallTool
 }
 
 func (h *Handler) genRegisterUpdateAuthDomain(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_auth_domain",
-		mcp.WithDescription("PUT /api/v1/domains/{id} — Update auth domain"),
-		withRawSchema(gentypes.SchemaUpdateAuthDomain),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_auth_domain",
+		"This endpoint updates an auth domain",
+		gentypes.SchemaUpdateAuthDomain,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateAuthDomain))
 }

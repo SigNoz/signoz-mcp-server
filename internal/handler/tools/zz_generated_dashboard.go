@@ -40,9 +40,10 @@ func (h *Handler) registerDashboardGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreatePublicDashboard(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_public_dashboard",
-		mcp.WithDescription("POST /api/v1/dashboards/{id}/public — Create public dashboard"),
-		withRawSchema(gentypes.SchemaCreatePublicDashboard),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_public_dashboard",
+		"This endpoint creates public sharing config and enables public sharing of the dashboard",
+		gentypes.SchemaCreatePublicDashboard,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreatePublicDashboard))
 }
@@ -67,11 +68,13 @@ func (h *Handler) genHandleCreatePublicDashboard(ctx context.Context, req mcp.Ca
 }
 
 func (h *Handler) genRegisterDeletePublicDashboard(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_public_dashboard",
-		mcp.WithDescription("DELETE /api/v1/dashboards/{id}/public — Delete public dashboard"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeletePublicDashboard),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_public_dashboard",
+		"This endpoint deletes the public sharing config and disables the public sharing of a dashboard",
+		gentypes.SchemaDeletePublicDashboard,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeletePublicDashboard))
 }
 
@@ -95,11 +98,13 @@ func (h *Handler) genHandleDeletePublicDashboard(ctx context.Context, req mcp.Ca
 }
 
 func (h *Handler) genRegisterGetPublicDashboardWidgetQueryRange(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_public_dashboard_widget_query_range",
-		mcp.WithDescription("GET /api/v1/public/dashboards/{id}/widgets/{idx}/query_range — Get query range result"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetPublicDashboardWidgetQueryRange),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_public_dashboard_widget_query_range",
+		"This endpoint return query range results for a widget of public dashboard",
+		gentypes.SchemaGetPublicDashboardWidgetQueryRange,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetPublicDashboardWidgetQueryRange))
 }
 
@@ -127,9 +132,10 @@ func (h *Handler) genHandleGetPublicDashboardWidgetQueryRange(ctx context.Contex
 }
 
 func (h *Handler) genRegisterUpdatePublicDashboard(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_public_dashboard",
-		mcp.WithDescription("PUT /api/v1/dashboards/{id}/public — Update public dashboard"),
-		withRawSchema(gentypes.SchemaUpdatePublicDashboard),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_public_dashboard",
+		"This endpoint updates the public sharing config for a dashboard",
+		gentypes.SchemaUpdatePublicDashboard,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdatePublicDashboard))
 }

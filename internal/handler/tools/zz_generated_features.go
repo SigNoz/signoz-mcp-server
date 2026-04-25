@@ -37,11 +37,13 @@ func (h *Handler) registerFeaturesGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetFeatures(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_features",
-		mcp.WithDescription("GET /api/v2/features — Get features"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetFeatures),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_features",
+		"This endpoint returns the supported features and their details",
+		gentypes.SchemaGetFeatures,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetFeatures))
 }
 

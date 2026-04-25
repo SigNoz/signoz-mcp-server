@@ -43,9 +43,10 @@ func (h *Handler) registerRoleGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterCreateRole(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_create_role",
-		mcp.WithDescription("POST /api/v1/roles — Create role"),
-		withRawSchema(gentypes.SchemaCreateRole),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_create_role",
+		"This endpoint creates a role",
+		gentypes.SchemaCreateRole,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleCreateRole))
 }
@@ -66,11 +67,13 @@ func (h *Handler) genHandleCreateRole(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterDeleteRole(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_delete_role",
-		mcp.WithDescription("DELETE /api/v1/roles/{id} — Delete role"),
-		mcp.WithDestructiveHintAnnotation(true),
-		withRawSchema(gentypes.SchemaDeleteRole),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_delete_role",
+		"This endpoint deletes a role",
+		gentypes.SchemaDeleteRole,
 	)
+	destructive := true
+	tool.Annotations.DestructiveHint = &destructive
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleDeleteRole))
 }
 
@@ -94,11 +97,13 @@ func (h *Handler) genHandleDeleteRole(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterGetObjects(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_objects",
-		mcp.WithDescription("GET /api/v1/roles/{id}/relations/{relation}/objects — Get objects for a role by relation"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetObjects),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_objects",
+		"Gets all objects connected to the specified role via a given relation type",
+		gentypes.SchemaGetObjects,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetObjects))
 }
 
@@ -126,11 +131,13 @@ func (h *Handler) genHandleGetObjects(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterGetRole(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_role",
-		mcp.WithDescription("GET /api/v1/roles/{id} — Get role"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetRole),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_role",
+		"This endpoint gets a role",
+		gentypes.SchemaGetRole,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetRole))
 }
 
@@ -154,11 +161,13 @@ func (h *Handler) genHandleGetRole(ctx context.Context, req mcp.CallToolRequest,
 }
 
 func (h *Handler) genRegisterListRoles(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_roles",
-		mcp.WithDescription("GET /api/v1/roles — List roles"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListRoles),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_roles",
+		"This endpoint lists all roles",
+		gentypes.SchemaListRoles,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListRoles))
 }
 
@@ -178,9 +187,10 @@ func (h *Handler) genHandleListRoles(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) genRegisterPatchObjects(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_patch_objects",
-		mcp.WithDescription("PATCH /api/v1/roles/{id}/relations/{relation}/objects — Patch objects for a role by relation"),
-		withRawSchema(gentypes.SchemaPatchObjects),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_patch_objects",
+		"Patches the objects connected to the specified role via a given relation type",
+		gentypes.SchemaPatchObjects,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandlePatchObjects))
 }
@@ -209,9 +219,10 @@ func (h *Handler) genHandlePatchObjects(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) genRegisterPatchRole(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_patch_role",
-		mcp.WithDescription("PATCH /api/v1/roles/{id} — Patch role"),
-		withRawSchema(gentypes.SchemaPatchRole),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_patch_role",
+		"This endpoint patches a role",
+		gentypes.SchemaPatchRole,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandlePatchRole))
 }

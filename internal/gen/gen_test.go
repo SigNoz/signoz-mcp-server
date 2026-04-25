@@ -59,10 +59,11 @@ func TestGenerate_MinimalSpec(t *testing.T) {
 	got := string(body)
 
 	mustContain := []string{
-		`mcp.NewTool("signoz_list_widgets"`,
-		`mcp.NewTool("signoz_get_widget_by_id"`,
-		`mcp.WithReadOnlyHintAnnotation(true)`,
-		`mcp.WithDestructiveHintAnnotation(true)`,
+		`mcp.NewToolWithRawSchema(`,
+		`"signoz_list_widgets"`,
+		`"signoz_get_widget_by_id"`,
+		`tool.Annotations.ReadOnlyHint`,
+		`tool.Annotations.DestructiveHint`,
 		`http.MethodDelete`,
 		`gentypes.GetWidgetByIDInput`,
 	}

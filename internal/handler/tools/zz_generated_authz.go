@@ -38,9 +38,10 @@ func (h *Handler) registerAuthzGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterAuthzCheck(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_authz_check",
-		mcp.WithDescription("POST /api/v1/authz/check — Check permissions"),
-		withRawSchema(gentypes.SchemaAuthzCheck),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_authz_check",
+		"Checks if the authenticated user has permissions for given transactions",
+		gentypes.SchemaAuthzCheck,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleAuthzCheck))
 }
@@ -61,11 +62,13 @@ func (h *Handler) genHandleAuthzCheck(ctx context.Context, req mcp.CallToolReque
 }
 
 func (h *Handler) genRegisterAuthzResources(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_authz_resources",
-		mcp.WithDescription("GET /api/v1/authz/resources — Get resources"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaAuthzResources),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_authz_resources",
+		"Gets all the available resources",
+		gentypes.SchemaAuthzResources,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleAuthzResources))
 }
 

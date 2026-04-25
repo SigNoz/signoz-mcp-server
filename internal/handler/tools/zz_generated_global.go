@@ -37,11 +37,13 @@ func (h *Handler) registerGlobalGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetGlobalConfig(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_global_config",
-		mcp.WithDescription("GET /api/v1/global/config — Get global config"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetGlobalConfig),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_global_config",
+		"This endpoint returns global config",
+		gentypes.SchemaGetGlobalConfig,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetGlobalConfig))
 }
 

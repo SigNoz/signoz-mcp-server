@@ -38,11 +38,13 @@ func (h *Handler) registerFieldsGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetFieldsKeys(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_fields_keys",
-		mcp.WithDescription("GET /api/v1/fields/keys — Get field keys"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetFieldsKeys),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_fields_keys",
+		"This endpoint returns field keys",
+		gentypes.SchemaGetFieldsKeys,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetFieldsKeys))
 }
 
@@ -97,11 +99,13 @@ func (h *Handler) genHandleGetFieldsKeys(ctx context.Context, req mcp.CallToolRe
 }
 
 func (h *Handler) genRegisterGetFieldsValues(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_fields_values",
-		mcp.WithDescription("GET /api/v1/fields/values — Get field values"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetFieldsValues),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_fields_values",
+		"This endpoint returns field values",
+		gentypes.SchemaGetFieldsValues,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetFieldsValues))
 }
 

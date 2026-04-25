@@ -39,11 +39,13 @@ func (h *Handler) registerHealthGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterHealthz(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_healthz",
-		mcp.WithDescription("GET /api/v2/healthz — Health check"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaHealthz),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_healthz",
+		"Health check",
+		gentypes.SchemaHealthz,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleHealthz))
 }
 
@@ -63,11 +65,13 @@ func (h *Handler) genHandleHealthz(ctx context.Context, req mcp.CallToolRequest,
 }
 
 func (h *Handler) genRegisterLivez(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_livez",
-		mcp.WithDescription("GET /api/v2/livez — Liveness check"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaLivez),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_livez",
+		"Liveness check",
+		gentypes.SchemaLivez,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleLivez))
 }
 
@@ -87,11 +91,13 @@ func (h *Handler) genHandleLivez(ctx context.Context, req mcp.CallToolRequest, i
 }
 
 func (h *Handler) genRegisterReadyz(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_readyz",
-		mcp.WithDescription("GET /api/v2/readyz — Readiness check"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaReadyz),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_readyz",
+		"Readiness check",
+		gentypes.SchemaReadyz,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleReadyz))
 }
 

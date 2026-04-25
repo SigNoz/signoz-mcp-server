@@ -42,11 +42,13 @@ func (h *Handler) registerPreferencesGenerated(s *server.MCPServer) {
 }
 
 func (h *Handler) genRegisterGetOrgPreference(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_org_preference",
-		mcp.WithDescription("GET /api/v1/org/preferences/{name} — Get org preference"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetOrgPreference),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_org_preference",
+		"This endpoint returns the org preference by name",
+		gentypes.SchemaGetOrgPreference,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetOrgPreference))
 }
 
@@ -70,11 +72,13 @@ func (h *Handler) genHandleGetOrgPreference(ctx context.Context, req mcp.CallToo
 }
 
 func (h *Handler) genRegisterGetUserPreference(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_get_user_preference",
-		mcp.WithDescription("GET /api/v1/user/preferences/{name} — Get user preference"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaGetUserPreference),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_get_user_preference",
+		"This endpoint returns the user preference by name",
+		gentypes.SchemaGetUserPreference,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleGetUserPreference))
 }
 
@@ -98,11 +102,13 @@ func (h *Handler) genHandleGetUserPreference(ctx context.Context, req mcp.CallTo
 }
 
 func (h *Handler) genRegisterListOrgPreferences(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_org_preferences",
-		mcp.WithDescription("GET /api/v1/org/preferences — List org preferences"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListOrgPreferences),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_org_preferences",
+		"This endpoint lists all org preferences",
+		gentypes.SchemaListOrgPreferences,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListOrgPreferences))
 }
 
@@ -122,11 +128,13 @@ func (h *Handler) genHandleListOrgPreferences(ctx context.Context, req mcp.CallT
 }
 
 func (h *Handler) genRegisterListUserPreferences(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_list_user_preferences",
-		mcp.WithDescription("GET /api/v1/user/preferences — List user preferences"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		withRawSchema(gentypes.SchemaListUserPreferences),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_list_user_preferences",
+		"This endpoint lists all user preferences",
+		gentypes.SchemaListUserPreferences,
 	)
+	readOnly := true
+	tool.Annotations.ReadOnlyHint = &readOnly
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleListUserPreferences))
 }
 
@@ -146,9 +154,10 @@ func (h *Handler) genHandleListUserPreferences(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterUpdateOrgPreference(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_org_preference",
-		mcp.WithDescription("PUT /api/v1/org/preferences/{name} — Update org preference"),
-		withRawSchema(gentypes.SchemaUpdateOrgPreference),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_org_preference",
+		"This endpoint updates the org preference by name",
+		gentypes.SchemaUpdateOrgPreference,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateOrgPreference))
 }
@@ -173,9 +182,10 @@ func (h *Handler) genHandleUpdateOrgPreference(ctx context.Context, req mcp.Call
 }
 
 func (h *Handler) genRegisterUpdateUserPreference(s *server.MCPServer) {
-	tool := mcp.NewTool("signoz_update_user_preference",
-		mcp.WithDescription("PUT /api/v1/user/preferences/{name} — Update user preference"),
-		withRawSchema(gentypes.SchemaUpdateUserPreference),
+	tool := mcp.NewToolWithRawSchema(
+		"signoz_update_user_preference",
+		"This endpoint updates the user preference by name",
+		gentypes.SchemaUpdateUserPreference,
 	)
 	s.AddTool(tool, mcp.NewTypedToolHandler(h.genHandleUpdateUserPreference))
 }
