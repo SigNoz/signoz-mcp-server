@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "items": {
+        "$ref": "#/$defs/PromotetypesPromotePath"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

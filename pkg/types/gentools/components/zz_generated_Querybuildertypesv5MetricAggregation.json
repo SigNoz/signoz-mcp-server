@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "comparisonSpaceAggregationParam": {
+      "$ref": "#/$defs/MetrictypesComparisonSpaceAggregationParam"
+    },
+    "metricName": {
+      "type": "string"
+    },
+    "reduceTo": {
+      "$ref": "#/$defs/Querybuildertypesv5ReduceTo"
+    },
+    "spaceAggregation": {
+      "$ref": "#/$defs/MetrictypesSpaceAggregation"
+    },
+    "temporality": {
+      "$ref": "#/$defs/MetrictypesTemporality"
+    },
+    "timeAggregation": {
+      "$ref": "#/$defs/MetrictypesTimeAggregation"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "direction": {
+      "$ref": "#/$defs/Querybuildertypesv5OrderDirection"
+    },
+    "key": {
+      "$ref": "#/$defs/Querybuildertypesv5OrderByKey"
+    }
+  },
+  "type": "object"
+}

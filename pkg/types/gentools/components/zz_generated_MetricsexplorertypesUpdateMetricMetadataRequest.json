@@ -1,0 +1,31 @@
+{
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "isMonotonic": {
+      "type": "boolean"
+    },
+    "metricName": {
+      "type": "string"
+    },
+    "temporality": {
+      "$ref": "#/$defs/MetrictypesTemporality"
+    },
+    "type": {
+      "$ref": "#/$defs/MetrictypesType"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "description",
+    "isMonotonic",
+    "metricName",
+    "temporality",
+    "type",
+    "unit"
+  ],
+  "type": "object"
+}

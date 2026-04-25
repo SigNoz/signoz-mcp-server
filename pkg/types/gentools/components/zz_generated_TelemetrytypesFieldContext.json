@@ -1,0 +1,11 @@
+{
+  "enum": [
+    "metric",
+    "log",
+    "span",
+    "resource",
+    "attribute",
+    "body"
+  ],
+  "type": "string"
+}

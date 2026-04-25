@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "alertIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "schedule": {
+      "$ref": "#/$defs/RuletypesSchedule"
+    }
+  },
+  "required": [
+    "name",
+    "schedule"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "args": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5FunctionArg"
+      },
+      "type": "array"
+    },
+    "name": {
+      "$ref": "#/$defs/Querybuildertypesv5FunctionName"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,7 @@
+{
+  "enum": [
+    "timeseries",
+    "samples"
+  ],
+  "type": "string"
+}

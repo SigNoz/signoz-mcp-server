@@ -1,0 +1,14 @@
+{
+  "enum": [
+    "latest",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "count",
+    "count_distinct",
+    "rate",
+    "increase"
+  ],
+  "type": "string"
+}

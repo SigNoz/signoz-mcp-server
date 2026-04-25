@@ -1,0 +1,52 @@
+{
+  "properties": {
+    "existing_observability_tool": {
+      "type": "string"
+    },
+    "has_existing_observability_tool": {
+      "type": "boolean"
+    },
+    "logs_scale_per_day_in_gb": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "number_of_hosts": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "number_of_services": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "reasons_for_interest_in_signoz": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "timeline_for_migrating_to_signoz": {
+      "type": "string"
+    },
+    "uses_otel": {
+      "type": "boolean"
+    },
+    "where_did_you_discover_signoz": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "existing_observability_tool",
+    "has_existing_observability_tool",
+    "logs_scale_per_day_in_gb",
+    "number_of_hosts",
+    "number_of_services",
+    "reasons_for_interest_in_signoz",
+    "timeline_for_migrating_to_signoz",
+    "uses_otel",
+    "where_did_you_discover_signoz"
+  ],
+  "type": "object"
+}

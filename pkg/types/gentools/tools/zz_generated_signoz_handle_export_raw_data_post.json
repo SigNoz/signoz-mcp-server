@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryRangeRequest"
+    },
+    "format": {
+      "default": "csv",
+      "description": "The output format for the export.",
+      "enum": [
+        "csv",
+        "jsonl"
+      ],
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

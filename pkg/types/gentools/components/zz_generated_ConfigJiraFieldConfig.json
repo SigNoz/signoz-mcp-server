@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "enable_update": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "template": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

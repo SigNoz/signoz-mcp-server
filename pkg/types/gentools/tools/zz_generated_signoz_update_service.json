@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/CloudintegrationtypesUpdatableService"
+    },
+    "cloud_provider": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "service_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cloud_provider",
+    "id",
+    "service_id"
+  ],
+  "type": "object"
+}

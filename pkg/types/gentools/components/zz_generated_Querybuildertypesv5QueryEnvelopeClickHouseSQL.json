@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "spec": {
+      "$ref": "#/$defs/Querybuildertypesv5ClickHouseQuery"
+    },
+    "type": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryType"
+    }
+  },
+  "type": "object"
+}

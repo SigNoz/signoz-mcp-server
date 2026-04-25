@@ -47,6 +47,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 	handler.RegisterTracesHandlers(s)
 	handler.RegisterNotificationChannelHandlers(s)
 	handler.RegisterResourceTemplates(s)
+	handler.RegisterGeneratedHandlers(s)
 	prompts.RegisterPrompts(s.AddPrompt)
 
 	return s
@@ -87,9 +88,18 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	const expectedToolCount = 33
+	// 33 curated tools (see server.go registration block) plus the tools
+	// emitted by cmd/gen-tools from the OpenAPI spec. The generated count
+	// shifts whenever the spec changes; when `make gen` lands a new tool,
+	// bump expectedGeneratedToolCount accordingly.
+	const (
+		expectedCuratedToolCount   = 33
+		expectedGeneratedToolCount = 136
+		expectedToolCount          = expectedCuratedToolCount + expectedGeneratedToolCount
+	)
 	if len(toolsResult.Tools) != expectedToolCount {
-		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
+		t.Errorf("expected %d tools (%d curated + %d generated), got %d",
+			expectedToolCount, expectedCuratedToolCount, expectedGeneratedToolCount, len(toolsResult.Tools))
 		for _, tool := range toolsResult.Tools {
 			t.Logf("  tool: %s", tool.Name)
 		}

@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/RuletypesPostableRule"
+    }
+  },
+  "type": "object"
+}

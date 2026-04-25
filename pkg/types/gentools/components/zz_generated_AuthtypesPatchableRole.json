@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "description"
+  ],
+  "type": "object"
+}

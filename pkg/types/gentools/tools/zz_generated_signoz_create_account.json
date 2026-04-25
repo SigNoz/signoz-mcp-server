@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/CloudintegrationtypesPostableAccount"
+    },
+    "cloud_provider": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cloud_provider"
+  ],
+  "type": "object"
+}

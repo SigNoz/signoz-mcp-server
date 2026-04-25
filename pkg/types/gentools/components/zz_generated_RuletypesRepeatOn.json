@@ -1,0 +1,12 @@
+{
+  "enum": [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday"
+  ],
+  "type": "string"
+}

@@ -717,6 +717,31 @@ make bundle
 
 For a detailed overview of request flow, component interactions, and design decisions, see [docs/architecture.md](docs/architecture.md).
 
+## Generated Tools
+
+Tools listed in the table above are **curated** — they have hand-written handlers and descriptions tuned for LLM use. In addition, a second layer of tools is **auto-generated** from the SigNoz OpenAPI spec at `docs/api/openapi.yml` in the main SigNoz repo. Generated tools cover the long tail of the SigNoz API (service accounts, role policies, downtime schedules, cloud integrations, etc.) and are emitted into `internal/handler/tools/zz_generated_*.go` and `pkg/types/gentools/`.
+
+Regenerate after the spec changes:
+
+```bash
+SIGNOZ_SPEC=../signoz/docs/api/openapi.yml make gen
+```
+
+`make gen-check` runs the same command and fails if the working tree is dirty — wire it into CI to catch drift.
+
+Rules the generator follows:
+
+- Tool name: `signoz_<snake_case(operationId)>`. If a generated name collides with a curated tool, the generator skips emission and curated wins.
+- Excluded: OAuth/SAML callbacks, password-reset flows, deprecated endpoints, public-dashboard ops with undefined security.
+- Each tool's JSON Schema is translated directly from the OpenAPI spec (validators, enums, formats, nested bodies — all preserved). Output mirrors the OpenAPI structure:
+  - `pkg/types/gentools/components/zz_generated_<Name>.json` — one file per OpenAPI component schema.
+  - `pkg/types/gentools/tools/zz_generated_<tool_name>.json` — one file per MCP tool, with `$ref`s into components.
+  - `pkg/types/gentools/tools/zz_generated_<tag>.go` — typed `*Input` structs (package `gentoolstypes`), co-located with the tool JSON files.
+  - `pkg/types/gentools/zz_generated_schemas.go` — `//go:embed`s both directories and at init walks each tool's `$ref`s against the components map, injecting only the transitive closure as `$defs`. Result is exposed as `gentools.Schemas[toolName]`.
+- Request bodies are passed through handlers as `json.RawMessage` — the LLM sees the full typed shape via the JSON Schema, and Go code forwards the bytes unchanged to SigNoz.
+
+To hand-override an auto-generated tool, add a curated tool with the same name in `internal/handler/tools/` and include it in `curatedToolNames` in `internal/gen/exclude.go`.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, required docs/manifest sync for MCP changes, and PR checklist.

@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "panelType": {
+      "$ref": "#/$defs/RuletypesPanelType"
+    },
+    "queries": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5QueryEnvelope"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "queryType": {
+      "$ref": "#/$defs/RuletypesQueryType"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "panelType",
+    "queries",
+    "queryType"
+  ],
+  "type": "object"
+}

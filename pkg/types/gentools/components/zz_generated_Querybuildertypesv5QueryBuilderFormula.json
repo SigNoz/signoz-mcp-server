@@ -1,0 +1,35 @@
+{
+  "properties": {
+    "disabled": {
+      "type": "boolean"
+    },
+    "expression": {
+      "type": "string"
+    },
+    "functions": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5Function"
+      },
+      "type": "array"
+    },
+    "having": {
+      "$ref": "#/$defs/Querybuildertypesv5Having"
+    },
+    "legend": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "order": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5OrderBy"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "dismiss_text": {
+      "type": "string"
+    },
+    "ok_text": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

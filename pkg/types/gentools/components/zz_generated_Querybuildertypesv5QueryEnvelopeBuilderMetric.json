@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "spec": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5MetricAggregation"
+    },
+    "type": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryType"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "resource": {
+      "$ref": "#/$defs/AuthtypesResource"
+    },
+    "selectors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "resource",
+    "selectors"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "s3Buckets": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

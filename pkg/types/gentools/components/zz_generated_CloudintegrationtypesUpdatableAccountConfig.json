@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "aws": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSAccountConfig"
+    },
+    "azure": {
+      "$ref": "#/$defs/CloudintegrationtypesUpdatableAzureAccountConfig"
+    }
+  },
+  "type": "object"
+}

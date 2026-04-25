@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "at_least_once",
+    "all_the_times",
+    "on_average",
+    "in_total",
+    "last"
+  ],
+  "type": "string"
+}

@@ -1,0 +1,38 @@
+{
+  "properties": {
+    "api_url": {
+      "type": "string"
+    },
+    "attributes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message": {
+      "type": "string"
+    },
+    "phone_number": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "sigv4": {
+      "$ref": "#/$defs/Sigv4SigV4Config"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "target_arn": {
+      "type": "string"
+    },
+    "topic_arn": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

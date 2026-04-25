@@ -1,0 +1,15 @@
+{
+  "description": "Composite query containing one or more query envelopes. Each query envelope specifies its type and corresponding spec.",
+  "properties": {
+    "queries": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5QueryEnvelope"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

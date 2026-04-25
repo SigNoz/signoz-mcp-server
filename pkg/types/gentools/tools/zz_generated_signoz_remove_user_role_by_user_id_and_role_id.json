@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "roleId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "roleId"
+  ],
+  "type": "object"
+}

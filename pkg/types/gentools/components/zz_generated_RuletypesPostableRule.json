@@ -1,0 +1,68 @@
+{
+  "properties": {
+    "alert": {
+      "type": "string"
+    },
+    "alertType": {
+      "$ref": "#/$defs/RuletypesAlertType"
+    },
+    "annotations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "condition": {
+      "$ref": "#/$defs/RuletypesRuleCondition"
+    },
+    "description": {
+      "type": "string"
+    },
+    "disabled": {
+      "type": "boolean"
+    },
+    "evalWindow": {
+      "type": "string"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/RuletypesEvaluationEnvelope"
+    },
+    "frequency": {
+      "type": "string"
+    },
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "notificationSettings": {
+      "$ref": "#/$defs/RuletypesNotificationSettings"
+    },
+    "preferredChannels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ruleType": {
+      "$ref": "#/$defs/RuletypesRuleType"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "alert",
+    "alertType",
+    "condition",
+    "ruleType"
+  ],
+  "type": "object"
+}

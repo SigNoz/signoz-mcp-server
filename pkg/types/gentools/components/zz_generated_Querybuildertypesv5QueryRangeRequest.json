@@ -1,0 +1,35 @@
+{
+  "description": "Request body for the v5 query range endpoint. Supports builder queries (traces, logs, metrics), formulas, joins, trace operators, PromQL, and ClickHouse SQL queries.",
+  "properties": {
+    "compositeQuery": {
+      "$ref": "#/$defs/Querybuildertypesv5CompositeQuery"
+    },
+    "end": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "formatOptions": {
+      "$ref": "#/$defs/Querybuildertypesv5FormatOptions"
+    },
+    "noCache": {
+      "type": "boolean"
+    },
+    "requestType": {
+      "$ref": "#/$defs/Querybuildertypesv5RequestType"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "start": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "variables": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Querybuildertypesv5VariableItem"
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

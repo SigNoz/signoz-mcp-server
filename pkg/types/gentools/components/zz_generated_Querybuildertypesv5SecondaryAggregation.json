@@ -1,0 +1,32 @@
+{
+  "properties": {
+    "alias": {
+      "type": "string"
+    },
+    "expression": {
+      "type": "string"
+    },
+    "groupBy": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
+      },
+      "type": "array"
+    },
+    "limit": {
+      "type": "integer"
+    },
+    "limitBy": {
+      "$ref": "#/$defs/Querybuildertypesv5LimitBy"
+    },
+    "order": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5OrderBy"
+      },
+      "type": "array"
+    },
+    "stepInterval": {
+      "$ref": "#/$defs/Querybuildertypesv5Step"
+    }
+  },
+  "type": "object"
+}

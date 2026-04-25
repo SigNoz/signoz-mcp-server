@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "credentials": {
+      "type": "string"
+    },
+    "credentials_file": {
+      "type": "string"
+    },
+    "credentials_ref": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

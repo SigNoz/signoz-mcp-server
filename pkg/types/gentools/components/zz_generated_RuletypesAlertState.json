@@ -1,0 +1,11 @@
+{
+  "enum": [
+    "inactive",
+    "pending",
+    "recovering",
+    "firing",
+    "nodata",
+    "disabled"
+  ],
+  "type": "string"
+}

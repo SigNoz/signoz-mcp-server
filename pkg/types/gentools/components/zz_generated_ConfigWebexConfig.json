@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "api_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message": {
+      "type": "string"
+    },
+    "room_id": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

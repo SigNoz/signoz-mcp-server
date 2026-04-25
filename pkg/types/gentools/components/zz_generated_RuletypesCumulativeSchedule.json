@@ -1,0 +1,35 @@
+{
+  "properties": {
+    "day": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "hour": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "minute": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "type": {
+      "$ref": "#/$defs/RuletypesScheduleType"
+    },
+    "weekday": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "type": "object"
+}

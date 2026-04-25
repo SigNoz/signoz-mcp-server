@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "disabled": {
+      "type": "boolean"
+    },
+    "legend": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

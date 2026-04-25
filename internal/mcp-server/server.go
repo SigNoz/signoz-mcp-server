@@ -330,6 +330,12 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.handler.RegisterNotificationChannelHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
 
+	// Register tools generated from the SigNoz OpenAPI spec last, so that any
+	// collision with a curated tool name is resolved in favor of the curated
+	// tool. The generator also filters curated names at emit time — this is a
+	// belt-and-braces safeguard.
+	m.handler.RegisterGeneratedHandlers(s)
+
 	// Register prompts
 	prompts.RegisterPrompts(s.AddPrompt)
 

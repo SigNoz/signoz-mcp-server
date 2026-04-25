@@ -1,0 +1,21 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RuletypesEvaluationRolling"
+    },
+    {
+      "$ref": "#/$defs/RuletypesEvaluationCumulative"
+    }
+  ],
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/RuletypesEvaluationKind"
+    },
+    "spec": {}
+  },
+  "required": [
+    "kind",
+    "spec"
+  ],
+  "type": "object"
+}

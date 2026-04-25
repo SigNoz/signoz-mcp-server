@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/RuletypesEvaluationKind"
+    },
+    "spec": {
+      "$ref": "#/$defs/RuletypesRollingWindow"
+    }
+  },
+  "type": "object"
+}

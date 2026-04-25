@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "attributeMapping": {
+      "$ref": "#/$defs/AuthtypesAttributeMapping"
+    },
+    "insecureSkipAuthNRequestsSigned": {
+      "type": "boolean"
+    },
+    "samlCert": {
+      "type": "string"
+    },
+    "samlEntity": {
+      "type": "string"
+    },
+    "samlIdp": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

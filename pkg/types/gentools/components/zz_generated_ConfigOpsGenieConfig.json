@@ -1,0 +1,59 @@
+{
+  "properties": {
+    "actions": {
+      "type": "string"
+    },
+    "api_key": {
+      "type": "string"
+    },
+    "api_key_file": {
+      "type": "string"
+    },
+    "api_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "description": {
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "entity": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string"
+    },
+    "responders": {
+      "items": {
+        "$ref": "#/$defs/ConfigOpsGenieConfigResponder"
+      },
+      "type": "array"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "source": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "string"
+    },
+    "update_alerts": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

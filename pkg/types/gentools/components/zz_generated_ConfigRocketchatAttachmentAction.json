@@ -1,0 +1,32 @@
+{
+  "properties": {
+    "image_url": {
+      "type": "string"
+    },
+    "is_webview": {
+      "type": "boolean"
+    },
+    "msg": {
+      "type": "string"
+    },
+    "msg_in_chat_window": {
+      "type": "boolean"
+    },
+    "msg_processing_type": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "webview_height_ratio": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

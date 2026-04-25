@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "displayName": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "displayName"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/RuletypesThresholdKind"
+    },
+    "spec": {
+      "$ref": "#/$defs/RuletypesBasicRuleThresholds"
+    }
+  },
+  "type": "object"
+}

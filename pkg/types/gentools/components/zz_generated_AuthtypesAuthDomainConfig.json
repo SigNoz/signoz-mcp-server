@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "googleAuthConfig": {
+      "$ref": "#/$defs/AuthtypesGoogleConfig"
+    },
+    "oidcConfig": {
+      "$ref": "#/$defs/AuthtypesOIDCConfig"
+    },
+    "roleMapping": {
+      "$ref": "#/$defs/AuthtypesRoleMapping"
+    },
+    "samlConfig": {
+      "$ref": "#/$defs/AuthtypesSamlConfig"
+    },
+    "ssoEnabled": {
+      "type": "boolean"
+    },
+    "ssoType": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

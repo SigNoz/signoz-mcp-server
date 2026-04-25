@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "limitId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "limitId"
+  ],
+  "type": "object"
+}

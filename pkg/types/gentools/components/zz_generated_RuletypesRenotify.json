@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "alertStates": {
+      "items": {
+        "$ref": "#/$defs/RuletypesAlertState"
+      },
+      "type": "array"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "interval": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

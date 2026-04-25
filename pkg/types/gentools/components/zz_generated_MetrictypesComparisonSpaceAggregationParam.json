@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "operator": {
+      "type": "string"
+    },
+    "threshold": {
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "operator",
+    "threshold"
+  ],
+  "type": "object"
+}

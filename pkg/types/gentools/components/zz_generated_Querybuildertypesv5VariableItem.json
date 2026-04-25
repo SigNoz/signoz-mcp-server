@@ -1,0 +1,9 @@
+{
+  "properties": {
+    "type": {
+      "$ref": "#/$defs/Querybuildertypesv5VariableType"
+    },
+    "value": {}
+  },
+  "type": "object"
+}

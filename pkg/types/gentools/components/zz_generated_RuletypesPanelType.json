@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "value",
+    "table",
+    "graph"
+  ],
+  "type": "string"
+}

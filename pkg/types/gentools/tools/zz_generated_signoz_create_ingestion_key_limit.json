@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/GatewaytypesPostableIngestionKeyLimit"
+    },
+    "keyId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "keyId"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "confirm": {
+      "$ref": "#/$defs/ConfigSlackConfirmationField"
+    },
+    "name": {
+      "type": "string"
+    },
+    "style": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,7 @@
+{
+  "enum": [
+    "rolling",
+    "cumulative"
+  ],
+  "type": "string"
+}

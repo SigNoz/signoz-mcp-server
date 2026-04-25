@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "refreshToken": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

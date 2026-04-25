@@ -1,0 +1,32 @@
+{
+  "properties": {
+    "avatar_url": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "title": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    },
+    "webhook_url": {
+      "$ref": "#/$defs/ConfigSecretURL"
+    },
+    "webhook_url_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

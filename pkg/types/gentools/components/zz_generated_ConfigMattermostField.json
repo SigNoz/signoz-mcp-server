@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "short": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

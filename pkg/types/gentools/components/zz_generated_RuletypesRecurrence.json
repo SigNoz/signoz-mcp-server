@@ -1,0 +1,36 @@
+{
+  "properties": {
+    "duration": {
+      "type": "string"
+    },
+    "endTime": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "repeatOn": {
+      "items": {
+        "$ref": "#/$defs/RuletypesRepeatOn"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "repeatType": {
+      "$ref": "#/$defs/RuletypesRepeatType"
+    },
+    "startTime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "duration",
+    "repeatType",
+    "startTime"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "string",
+    "bool",
+    "float64",
+    "int64",
+    "number"
+  ],
+  "type": "string"
+}

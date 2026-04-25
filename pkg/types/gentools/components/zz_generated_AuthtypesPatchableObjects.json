@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "additions": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesGettableObjects"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "deletions": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesGettableObjects"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "additions",
+    "deletions"
+  ],
+  "type": "object"
+}

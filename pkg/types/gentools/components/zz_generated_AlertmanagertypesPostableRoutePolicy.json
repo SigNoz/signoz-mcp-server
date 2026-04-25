@@ -1,0 +1,40 @@
+{
+  "properties": {
+    "channels": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "expression": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/AlertmanagertypesExpressionKind"
+    },
+    "name": {
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "channels",
+    "expression",
+    "name"
+  ],
+  "type": "object"
+}

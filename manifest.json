@@ -156,6 +156,550 @@
     {
       "name": "signoz_delete_notification_channel",
       "description": "Delete a notification channel by ID"
+    },
+    {
+      "name": "signoz_agent_check_in",
+      "description": "Agent check-in"
+    },
+    {
+      "name": "signoz_authz_check",
+      "description": "Check permissions"
+    },
+    {
+      "name": "signoz_authz_resources",
+      "description": "Get resources"
+    },
+    {
+      "name": "signoz_create_account",
+      "description": "Create account"
+    },
+    {
+      "name": "signoz_create_auth_domain",
+      "description": "Create auth domain"
+    },
+    {
+      "name": "signoz_create_bulk_invite",
+      "description": "Create bulk invite"
+    },
+    {
+      "name": "signoz_create_channel",
+      "description": "Create notification channel"
+    },
+    {
+      "name": "signoz_create_downtime_schedule",
+      "description": "Create downtime schedule"
+    },
+    {
+      "name": "signoz_create_ingestion_key",
+      "description": "Create ingestion key for workspace"
+    },
+    {
+      "name": "signoz_create_ingestion_key_limit",
+      "description": "Create limit for the ingestion key"
+    },
+    {
+      "name": "signoz_create_invite",
+      "description": "Create invite"
+    },
+    {
+      "name": "signoz_create_public_dashboard",
+      "description": "Create public dashboard"
+    },
+    {
+      "name": "signoz_create_reset_password_token",
+      "description": "Create or regenerate reset password token for a user"
+    },
+    {
+      "name": "signoz_create_role",
+      "description": "Create role"
+    },
+    {
+      "name": "signoz_create_route_policy",
+      "description": "Create route policy"
+    },
+    {
+      "name": "signoz_create_rule",
+      "description": "Create alert rule"
+    },
+    {
+      "name": "signoz_create_service_account",
+      "description": "Create service account"
+    },
+    {
+      "name": "signoz_create_service_account_key",
+      "description": "Create a service account key"
+    },
+    {
+      "name": "signoz_create_service_account_role",
+      "description": "Create service account role"
+    },
+    {
+      "name": "signoz_create_session_by_email_password",
+      "description": "Create session by email and password"
+    },
+    {
+      "name": "signoz_create_session_by_google_callback",
+      "description": "Create session by google callback"
+    },
+    {
+      "name": "signoz_create_session_by_oidc_callback",
+      "description": "Create session by oidc callback"
+    },
+    {
+      "name": "signoz_delete_auth_domain",
+      "description": "Delete auth domain"
+    },
+    {
+      "name": "signoz_delete_channel_by_id",
+      "description": "Delete notification channel"
+    },
+    {
+      "name": "signoz_delete_downtime_schedule_by_id",
+      "description": "Delete downtime schedule"
+    },
+    {
+      "name": "signoz_delete_ingestion_key",
+      "description": "Delete ingestion key for workspace"
+    },
+    {
+      "name": "signoz_delete_ingestion_key_limit",
+      "description": "Delete limit for the ingestion key"
+    },
+    {
+      "name": "signoz_delete_public_dashboard",
+      "description": "Delete public dashboard"
+    },
+    {
+      "name": "signoz_delete_role",
+      "description": "Delete role"
+    },
+    {
+      "name": "signoz_delete_route_policy_by_id",
+      "description": "Delete route policy"
+    },
+    {
+      "name": "signoz_delete_rule_by_id",
+      "description": "Delete alert rule"
+    },
+    {
+      "name": "signoz_delete_service_account",
+      "description": "Deletes a service account"
+    },
+    {
+      "name": "signoz_delete_service_account_role",
+      "description": "Delete service account role"
+    },
+    {
+      "name": "signoz_delete_session",
+      "description": "Delete session"
+    },
+    {
+      "name": "signoz_delete_user",
+      "description": "Delete user"
+    },
+    {
+      "name": "signoz_disconnect_account",
+      "description": "Disconnect account"
+    },
+    {
+      "name": "signoz_forgot_password",
+      "description": "Forgot password"
+    },
+    {
+      "name": "signoz_get_account",
+      "description": "Get account"
+    },
+    {
+      "name": "signoz_get_alerts",
+      "description": "Get alerts"
+    },
+    {
+      "name": "signoz_get_all_route_policies",
+      "description": "List route policies"
+    },
+    {
+      "name": "signoz_get_channel_by_id",
+      "description": "Get notification channel by ID"
+    },
+    {
+      "name": "signoz_get_connection_credentials",
+      "description": "Get connection credentials"
+    },
+    {
+      "name": "signoz_get_downtime_schedule_by_id",
+      "description": "Get downtime schedule by ID"
+    },
+    {
+      "name": "signoz_get_features",
+      "description": "Get features"
+    },
+    {
+      "name": "signoz_get_fields_keys",
+      "description": "Get field keys"
+    },
+    {
+      "name": "signoz_get_fields_values",
+      "description": "Get field values"
+    },
+    {
+      "name": "signoz_get_global_config",
+      "description": "Get global config"
+    },
+    {
+      "name": "signoz_get_hosts",
+      "description": "Get host info from Zeus."
+    },
+    {
+      "name": "signoz_get_ingestion_keys",
+      "description": "Get ingestion keys for workspace"
+    },
+    {
+      "name": "signoz_get_metric_alerts",
+      "description": "Get metric alerts"
+    },
+    {
+      "name": "signoz_get_metric_attributes",
+      "description": "Get metric attributes"
+    },
+    {
+      "name": "signoz_get_metric_dashboards",
+      "description": "Get metric dashboards"
+    },
+    {
+      "name": "signoz_get_metric_highlights",
+      "description": "Get metric highlights"
+    },
+    {
+      "name": "signoz_get_metric_metadata",
+      "description": "Get metric metadata"
+    },
+    {
+      "name": "signoz_get_metrics_onboarding_status",
+      "description": "Check if non-SigNoz metrics have been received"
+    },
+    {
+      "name": "signoz_get_metrics_stats",
+      "description": "Get metrics statistics"
+    },
+    {
+      "name": "signoz_get_metrics_treemap",
+      "description": "Get metrics treemap"
+    },
+    {
+      "name": "signoz_get_my_organization",
+      "description": "Get my organization"
+    },
+    {
+      "name": "signoz_get_my_service_account",
+      "description": "Gets my service account"
+    },
+    {
+      "name": "signoz_get_my_user",
+      "description": "Get my user v2"
+    },
+    {
+      "name": "signoz_get_objects",
+      "description": "Get objects for a role by relation"
+    },
+    {
+      "name": "signoz_get_org_preference",
+      "description": "Get org preference"
+    },
+    {
+      "name": "signoz_get_public_dashboard_widget_query_range",
+      "description": "Get query range result"
+    },
+    {
+      "name": "signoz_get_reset_password_token",
+      "description": "Get reset password token for a user"
+    },
+    {
+      "name": "signoz_get_role",
+      "description": "Get role"
+    },
+    {
+      "name": "signoz_get_roles_by_user_id",
+      "description": "Get user roles"
+    },
+    {
+      "name": "signoz_get_route_policy_by_id",
+      "description": "Get route policy by ID"
+    },
+    {
+      "name": "signoz_get_rule_by_id",
+      "description": "Get alert rule by ID"
+    },
+    {
+      "name": "signoz_get_rule_history_filter_keys",
+      "description": "Get rule history filter keys"
+    },
+    {
+      "name": "signoz_get_rule_history_filter_values",
+      "description": "Get rule history filter values"
+    },
+    {
+      "name": "signoz_get_rule_history_overall_status",
+      "description": "Get rule overall status timeline"
+    },
+    {
+      "name": "signoz_get_rule_history_stats",
+      "description": "Get rule history stats"
+    },
+    {
+      "name": "signoz_get_rule_history_timeline",
+      "description": "Get rule history timeline"
+    },
+    {
+      "name": "signoz_get_rule_history_top_contributors",
+      "description": "Get top contributors to rule firing"
+    },
+    {
+      "name": "signoz_get_service",
+      "description": "Get service"
+    },
+    {
+      "name": "signoz_get_service_account",
+      "description": "Gets a service account"
+    },
+    {
+      "name": "signoz_get_service_account_roles",
+      "description": "Gets service account roles"
+    },
+    {
+      "name": "signoz_get_session_context",
+      "description": "Get session context"
+    },
+    {
+      "name": "signoz_get_user",
+      "description": "Get user by user id"
+    },
+    {
+      "name": "signoz_get_user_preference",
+      "description": "Get user preference"
+    },
+    {
+      "name": "signoz_get_users_by_role_id",
+      "description": "Get users by role id"
+    },
+    {
+      "name": "signoz_get_waterfall",
+      "description": "Get waterfall view for a trace"
+    },
+    {
+      "name": "signoz_handle_export_raw_data_post",
+      "description": "Export raw data"
+    },
+    {
+      "name": "signoz_handle_promote_and_index_paths",
+      "description": "Promote and index paths"
+    },
+    {
+      "name": "signoz_healthz",
+      "description": "Health check"
+    },
+    {
+      "name": "signoz_inspect_metrics",
+      "description": "Inspect raw metric data points"
+    },
+    {
+      "name": "signoz_list_accounts",
+      "description": "List accounts"
+    },
+    {
+      "name": "signoz_list_auth_domains",
+      "description": "List all auth domains"
+    },
+    {
+      "name": "signoz_list_channels",
+      "description": "List notification channels"
+    },
+    {
+      "name": "signoz_list_downtime_schedules",
+      "description": "List downtime schedules"
+    },
+    {
+      "name": "signoz_list_hosts",
+      "description": "List Hosts for Infra Monitoring"
+    },
+    {
+      "name": "signoz_list_org_preferences",
+      "description": "List org preferences"
+    },
+    {
+      "name": "signoz_list_promoted_and_indexed_paths",
+      "description": "Promote and index paths"
+    },
+    {
+      "name": "signoz_list_roles",
+      "description": "List roles"
+    },
+    {
+      "name": "signoz_list_rules",
+      "description": "List alert rules"
+    },
+    {
+      "name": "signoz_list_service_account_keys",
+      "description": "List service account keys"
+    },
+    {
+      "name": "signoz_list_service_accounts",
+      "description": "List service accounts"
+    },
+    {
+      "name": "signoz_list_services_metadata",
+      "description": "List services metadata"
+    },
+    {
+      "name": "signoz_list_user_preferences",
+      "description": "List user preferences"
+    },
+    {
+      "name": "signoz_list_users",
+      "description": "List users v2"
+    },
+    {
+      "name": "signoz_livez",
+      "description": "Liveness check"
+    },
+    {
+      "name": "signoz_patch_objects",
+      "description": "Patch objects for a role by relation"
+    },
+    {
+      "name": "signoz_patch_role",
+      "description": "Patch role"
+    },
+    {
+      "name": "signoz_patch_rule_by_id",
+      "description": "Patch alert rule"
+    },
+    {
+      "name": "signoz_put_host",
+      "description": "Put host in Zeus for a deployment."
+    },
+    {
+      "name": "signoz_put_profile",
+      "description": "Put profile in Zeus for a deployment."
+    },
+    {
+      "name": "signoz_query_range_v5",
+      "description": "Query range"
+    },
+    {
+      "name": "signoz_readyz",
+      "description": "Readiness check"
+    },
+    {
+      "name": "signoz_remove_user_role_by_user_id_and_role_id",
+      "description": "Remove a role from user"
+    },
+    {
+      "name": "signoz_replace_variables",
+      "description": "Replace variables"
+    },
+    {
+      "name": "signoz_revoke_service_account_key",
+      "description": "Revoke a service account key"
+    },
+    {
+      "name": "signoz_rotate_session",
+      "description": "Rotate session"
+    },
+    {
+      "name": "signoz_search_ingestion_keys",
+      "description": "Search ingestion keys for workspace"
+    },
+    {
+      "name": "signoz_set_role_by_user_id",
+      "description": "Set user roles"
+    },
+    {
+      "name": "signoz_test_channel",
+      "description": "Test notification channel"
+    },
+    {
+      "name": "signoz_test_rule",
+      "description": "Test alert rule"
+    },
+    {
+      "name": "signoz_update_account",
+      "description": "Update account"
+    },
+    {
+      "name": "signoz_update_auth_domain",
+      "description": "Update auth domain"
+    },
+    {
+      "name": "signoz_update_channel_by_id",
+      "description": "Update notification channel"
+    },
+    {
+      "name": "signoz_update_downtime_schedule_by_id",
+      "description": "Update downtime schedule"
+    },
+    {
+      "name": "signoz_update_ingestion_key",
+      "description": "Update ingestion key for workspace"
+    },
+    {
+      "name": "signoz_update_ingestion_key_limit",
+      "description": "Update limit for the ingestion key"
+    },
+    {
+      "name": "signoz_update_metric_metadata",
+      "description": "Update metric metadata"
+    },
+    {
+      "name": "signoz_update_my_organization",
+      "description": "Update my organization"
+    },
+    {
+      "name": "signoz_update_my_password",
+      "description": "Updates my password"
+    },
+    {
+      "name": "signoz_update_my_service_account",
+      "description": "Updates my service account"
+    },
+    {
+      "name": "signoz_update_my_user_v2",
+      "description": "Update my user v2"
+    },
+    {
+      "name": "signoz_update_org_preference",
+      "description": "Update org preference"
+    },
+    {
+      "name": "signoz_update_public_dashboard",
+      "description": "Update public dashboard"
+    },
+    {
+      "name": "signoz_update_route_policy",
+      "description": "Update route policy"
+    },
+    {
+      "name": "signoz_update_rule_by_id",
+      "description": "Update alert rule"
+    },
+    {
+      "name": "signoz_update_service",
+      "description": "Update service"
+    },
+    {
+      "name": "signoz_update_service_account",
+      "description": "Updates a service account"
+    },
+    {
+      "name": "signoz_update_service_account_key",
+      "description": "Updates a service account key"
+    },
+    {
+      "name": "signoz_update_user",
+      "description": "Update user v2"
+    },
+    {
+      "name": "signoz_update_user_preference",
+      "description": "Update user preference"
     }
   ],
   "compatibility": {

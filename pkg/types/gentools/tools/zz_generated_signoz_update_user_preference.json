@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/PreferencetypesUpdatablePreference"
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}

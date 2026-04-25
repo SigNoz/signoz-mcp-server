@@ -1,0 +1,7 @@
+{
+  "enum": [
+    "rule",
+    "policy"
+  ],
+  "type": "string"
+}

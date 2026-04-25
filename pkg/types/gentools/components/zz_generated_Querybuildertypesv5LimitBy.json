@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "keys": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/AuthtypesAuthDomainConfig"
+    }
+  },
+  "type": "object"
+}

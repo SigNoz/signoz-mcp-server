@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "logs": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSServiceLogsConfig"
+    },
+    "metrics": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSServiceMetricsConfig"
+    }
+  },
+  "type": "object"
+}

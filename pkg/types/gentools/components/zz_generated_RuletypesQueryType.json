@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "builder",
+    "clickhouse_sql",
+    "promql"
+  ],
+  "type": "string"
+}

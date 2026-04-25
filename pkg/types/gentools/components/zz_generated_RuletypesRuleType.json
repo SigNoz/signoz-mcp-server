@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "threshold_rule",
+    "promql_rule",
+    "anomaly_rule"
+  ],
+  "type": "string"
+}

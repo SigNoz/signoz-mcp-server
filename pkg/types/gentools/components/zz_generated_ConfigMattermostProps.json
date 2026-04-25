@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "card": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

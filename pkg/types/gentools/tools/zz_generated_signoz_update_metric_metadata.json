@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/MetricsexplorertypesUpdateMetricMetadataRequest"
+    },
+    "metric_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "metric_name"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,54 @@
+{
+  "properties": {
+    "api_type": {
+      "type": "string"
+    },
+    "api_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "custom_fields": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "description": {
+      "$ref": "#/$defs/ConfigJiraFieldConfig"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "issue_type": {
+      "type": "string"
+    },
+    "labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "priority": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "reopen_duration": {
+      "$ref": "#/$defs/ModelDuration"
+    },
+    "reopen_transition": {
+      "type": "string"
+    },
+    "resolve_transition": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "summary": {
+      "$ref": "#/$defs/ConfigJiraFieldConfig"
+    },
+    "wont_fix_resolution": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

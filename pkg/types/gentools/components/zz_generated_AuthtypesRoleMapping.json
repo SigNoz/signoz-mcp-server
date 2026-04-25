@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "defaultRole": {
+      "type": "string"
+    },
+    "groupMappings": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "useRoleAttribute": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

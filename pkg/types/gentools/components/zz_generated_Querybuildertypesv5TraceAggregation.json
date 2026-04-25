@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "alias": {
+      "type": "string"
+    },
+    "expression": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

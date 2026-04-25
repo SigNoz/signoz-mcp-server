@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "delta",
+    "cumulative",
+    "unspecified"
+  ],
+  "type": "string"
+}

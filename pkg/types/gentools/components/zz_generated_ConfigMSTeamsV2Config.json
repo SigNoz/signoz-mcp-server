@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "text": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "webhook_url": {
+      "$ref": "#/$defs/ConfigSecretURL"
+    },
+    "webhook_url_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

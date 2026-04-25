@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "end": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "metric_name": {
+      "type": "string"
+    },
+    "start": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "metric_name"
+  ],
+  "type": "object"
+}

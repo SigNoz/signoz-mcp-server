@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "cloud_provider": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cloud_provider",
+    "id"
+  ],
+  "type": "object"
+}

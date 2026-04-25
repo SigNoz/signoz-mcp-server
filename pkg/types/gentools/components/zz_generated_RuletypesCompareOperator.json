@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "above",
+    "below",
+    "equal",
+    "not_equal",
+    "outside_bounds"
+  ],
+  "type": "string"
+}

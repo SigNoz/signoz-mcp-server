@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "email": {
+      "type": "string"
+    },
+    "frontendBaseUrl": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

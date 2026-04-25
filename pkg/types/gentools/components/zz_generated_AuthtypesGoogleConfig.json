@@ -1,0 +1,38 @@
+{
+  "properties": {
+    "allowedGroups": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "clientId": {
+      "type": "string"
+    },
+    "clientSecret": {
+      "type": "string"
+    },
+    "domainToAdminEmail": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "fetchGroups": {
+      "type": "boolean"
+    },
+    "fetchTransitiveGroupMembership": {
+      "type": "boolean"
+    },
+    "insecureSkipEmailVerified": {
+      "type": "boolean"
+    },
+    "redirectURI": {
+      "type": "string"
+    },
+    "serviceAccountJson": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

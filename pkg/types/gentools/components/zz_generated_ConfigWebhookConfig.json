@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "max_alerts": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "timeout": {
+      "$ref": "#/$defs/TimeDuration"
+    },
+    "url": {
+      "type": "string"
+    },
+    "url_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

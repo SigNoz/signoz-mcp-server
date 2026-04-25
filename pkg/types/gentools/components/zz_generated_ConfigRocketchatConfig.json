@@ -1,0 +1,71 @@
+{
+  "properties": {
+    "actions": {
+      "items": {
+        "$ref": "#/$defs/ConfigRocketchatAttachmentAction"
+      },
+      "type": "array"
+    },
+    "api_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string"
+    },
+    "emoji": {
+      "type": "string"
+    },
+    "fields": {
+      "items": {
+        "$ref": "#/$defs/ConfigRocketchatAttachmentField"
+      },
+      "type": "array"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "icon_url": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "link_names": {
+      "type": "boolean"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "short_fields": {
+      "type": "boolean"
+    },
+    "text": {
+      "type": "string"
+    },
+    "thumb_url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "title_link": {
+      "type": "string"
+    },
+    "token": {
+      "type": "string"
+    },
+    "token_file": {
+      "type": "string"
+    },
+    "token_id": {
+      "type": "string"
+    },
+    "token_id_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

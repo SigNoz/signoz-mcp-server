@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "spec": {
+      "$ref": "#/$defs/Querybuildertypesv5PromQuery"
+    },
+    "type": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryType"
+    }
+  },
+  "type": "object"
+}

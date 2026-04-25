@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/CloudintegrationtypesServiceConfig"
+    }
+  },
+  "required": [
+    "config"
+  ],
+  "type": "object"
+}

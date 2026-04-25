@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "resourceGroups": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "resourceGroups"
+  ],
+  "type": "object"
+}

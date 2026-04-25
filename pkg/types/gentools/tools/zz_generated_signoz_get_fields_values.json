@@ -1,0 +1,66 @@
+{
+  "properties": {
+    "endUnixMilli": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "existingQuery": {
+      "type": "string"
+    },
+    "fieldContext": {
+      "enum": [
+        "metric",
+        "log",
+        "span",
+        "resource",
+        "attribute",
+        "body"
+      ],
+      "type": "string"
+    },
+    "fieldDataType": {
+      "enum": [
+        "string",
+        "bool",
+        "float64",
+        "int64",
+        "number"
+      ],
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer"
+    },
+    "metricName": {
+      "type": "string"
+    },
+    "metricNamespace": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "searchText": {
+      "type": "string"
+    },
+    "signal": {
+      "enum": [
+        "traces",
+        "logs",
+        "metrics"
+      ],
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "meter"
+      ],
+      "type": "string"
+    },
+    "startUnixMilli": {
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}

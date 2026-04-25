@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "invites": {
+      "items": {
+        "$ref": "#/$defs/TypesPostableInvite"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "invites"
+  ],
+  "type": "object"
+}

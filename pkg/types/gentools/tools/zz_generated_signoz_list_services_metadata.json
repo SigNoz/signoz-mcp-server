@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "cloud_integration_id": {
+      "type": "string"
+    },
+    "cloud_provider": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cloud_provider"
+  ],
+  "type": "object"
+}

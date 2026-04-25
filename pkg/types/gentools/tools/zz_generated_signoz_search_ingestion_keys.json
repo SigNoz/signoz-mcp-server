@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "page": {
+      "type": "integer"
+    },
+    "per_page": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}

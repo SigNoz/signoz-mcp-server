@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "daily",
+    "weekly",
+    "monthly"
+  ],
+  "type": "string"
+}

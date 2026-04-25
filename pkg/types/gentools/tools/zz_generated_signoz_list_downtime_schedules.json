@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "active": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "recurring": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

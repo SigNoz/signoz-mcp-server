@@ -1,0 +1,27 @@
+{
+  "properties": {
+    "account_id": {
+      "type": "string"
+    },
+    "cloudIntegrationId": {
+      "type": "string"
+    },
+    "cloud_account_id": {
+      "type": "string"
+    },
+    "data": {
+      "additionalProperties": {},
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "providerAccountId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data"
+  ],
+  "type": "object"
+}

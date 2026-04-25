@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "alt": {
+      "type": "string"
+    },
+    "href": {
+      "type": "string"
+    },
+    "src": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

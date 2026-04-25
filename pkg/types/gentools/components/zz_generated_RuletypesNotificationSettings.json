@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "groupBy": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "newGroupEvalDelay": {
+      "type": "string"
+    },
+    "renotify": {
+      "$ref": "#/$defs/RuletypesRenotify"
+    },
+    "usePolicy": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

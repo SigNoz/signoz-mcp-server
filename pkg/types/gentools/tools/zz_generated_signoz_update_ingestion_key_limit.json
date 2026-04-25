@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/GatewaytypesUpdatableIngestionKeyLimit"
+    },
+    "limitId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "limitId"
+  ],
+  "type": "object"
+}

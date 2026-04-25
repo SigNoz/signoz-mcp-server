@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "deploymentRegion": {
+      "type": "string"
+    },
+    "regions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "deploymentRegion",
+    "regions"
+  ],
+  "type": "object"
+}

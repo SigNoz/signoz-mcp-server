@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/GatewaytypesLimitConfig"
+    },
+    "signal": {
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

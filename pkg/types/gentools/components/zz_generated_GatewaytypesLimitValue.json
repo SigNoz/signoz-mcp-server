@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "size": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

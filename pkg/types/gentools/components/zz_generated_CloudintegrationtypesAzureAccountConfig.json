@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "deploymentRegion": {
+      "type": "string"
+    },
+    "resourceGroups": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "deploymentRegion",
+    "resourceGroups"
+  ],
+  "type": "object"
+}

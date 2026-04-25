@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "regions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "regions"
+  ],
+  "type": "object"
+}

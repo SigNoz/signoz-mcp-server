@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "evalWindow": {
+      "type": "string"
+    },
+    "frequency": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "evalWindow",
+    "frequency"
+  ],
+  "type": "object"
+}

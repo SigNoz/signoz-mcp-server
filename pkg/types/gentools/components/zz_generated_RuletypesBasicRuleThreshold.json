@@ -1,0 +1,44 @@
+{
+  "properties": {
+    "channels": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "matchType": {
+      "$ref": "#/$defs/RuletypesMatchType"
+    },
+    "name": {
+      "type": "string"
+    },
+    "op": {
+      "$ref": "#/$defs/RuletypesCompareOperator"
+    },
+    "recoveryTarget": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "target": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "targetUnit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "matchType",
+    "name",
+    "op",
+    "target"
+  ],
+  "type": "object"
+}

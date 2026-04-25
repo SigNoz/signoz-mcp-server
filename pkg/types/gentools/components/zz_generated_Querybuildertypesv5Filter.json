@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "expression": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,32 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderTrace"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderLog"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderMetric"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeTraceOperator"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopePromQL"
+    },
+    {
+      "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeClickHouseSQL"
+    }
+  ],
+  "properties": {
+    "spec": {},
+    "type": {
+      "$ref": "#/$defs/Querybuildertypesv5QueryType"
+    }
+  },
+  "type": "object"
+}

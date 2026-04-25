@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "active",
+    "inactive",
+    ""
+  ],
+  "type": "string"
+}

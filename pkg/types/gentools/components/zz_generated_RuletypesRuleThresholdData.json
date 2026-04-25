@@ -1,0 +1,18 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RuletypesThresholdBasic"
+    }
+  ],
+  "properties": {
+    "kind": {
+      "$ref": "#/$defs/RuletypesThresholdKind"
+    },
+    "spec": {}
+  },
+  "required": [
+    "kind",
+    "spec"
+  ],
+  "type": "object"
+}

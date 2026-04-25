@@ -1,0 +1,98 @@
+{
+  "properties": {
+    "actions": {
+      "items": {
+        "$ref": "#/$defs/ConfigSlackAction"
+      },
+      "type": "array"
+    },
+    "api_url": {
+      "$ref": "#/$defs/ConfigSecretURL"
+    },
+    "api_url_file": {
+      "type": "string"
+    },
+    "app_token": {
+      "type": "string"
+    },
+    "app_token_file": {
+      "type": "string"
+    },
+    "app_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "callback_id": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string"
+    },
+    "fallback": {
+      "type": "string"
+    },
+    "fields": {
+      "items": {
+        "$ref": "#/$defs/ConfigSlackField"
+      },
+      "type": "array"
+    },
+    "footer": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "icon_emoji": {
+      "type": "string"
+    },
+    "icon_url": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "link_names": {
+      "type": "boolean"
+    },
+    "message_text": {
+      "type": "string"
+    },
+    "mrkdwn_in": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "pretext": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "short_fields": {
+      "type": "boolean"
+    },
+    "text": {
+      "type": "string"
+    },
+    "thumb_url": {
+      "type": "string"
+    },
+    "timeout": {
+      "$ref": "#/$defs/TimeDuration"
+    },
+    "title": {
+      "type": "string"
+    },
+    "title_link": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

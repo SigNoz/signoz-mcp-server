@@ -1,0 +1,72 @@
+{
+  "properties": {
+    "audience": {
+      "type": "string"
+    },
+    "claims": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "client_certificate_key": {
+      "type": "string"
+    },
+    "client_certificate_key_file": {
+      "type": "string"
+    },
+    "client_certificate_key_id": {
+      "type": "string"
+    },
+    "client_certificate_key_ref": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_secret": {
+      "type": "string"
+    },
+    "client_secret_file": {
+      "type": "string"
+    },
+    "client_secret_ref": {
+      "type": "string"
+    },
+    "endpoint_params": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "grant_type": {
+      "type": "string"
+    },
+    "iss": {
+      "type": "string"
+    },
+    "no_proxy": {
+      "type": "string"
+    },
+    "proxy_connect_header": {
+      "$ref": "#/$defs/ConfigProxyHeader"
+    },
+    "proxy_from_environment": {
+      "type": "boolean"
+    },
+    "proxy_url": {
+      "$ref": "#/$defs/ConfigURL"
+    },
+    "scopes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "signature_algorithm": {
+      "type": "string"
+    },
+    "token_url": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

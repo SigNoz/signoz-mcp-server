@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "endTime": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "recurrence": {
+      "$ref": "#/$defs/RuletypesRecurrence"
+    },
+    "startTime": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "timezone"
+  ],
+  "type": "object"
+}

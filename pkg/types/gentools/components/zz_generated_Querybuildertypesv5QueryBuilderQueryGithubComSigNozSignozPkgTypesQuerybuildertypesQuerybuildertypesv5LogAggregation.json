@@ -1,0 +1,77 @@
+{
+  "properties": {
+    "aggregations": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5LogAggregation"
+      },
+      "type": "array"
+    },
+    "cursor": {
+      "type": "string"
+    },
+    "disabled": {
+      "type": "boolean"
+    },
+    "filter": {
+      "$ref": "#/$defs/Querybuildertypesv5Filter"
+    },
+    "functions": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5Function"
+      },
+      "type": "array"
+    },
+    "groupBy": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
+      },
+      "type": "array"
+    },
+    "having": {
+      "$ref": "#/$defs/Querybuildertypesv5Having"
+    },
+    "legend": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer"
+    },
+    "limitBy": {
+      "$ref": "#/$defs/Querybuildertypesv5LimitBy"
+    },
+    "name": {
+      "type": "string"
+    },
+    "offset": {
+      "type": "integer"
+    },
+    "order": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5OrderBy"
+      },
+      "type": "array"
+    },
+    "secondaryAggregations": {
+      "items": {
+        "$ref": "#/$defs/Querybuildertypesv5SecondaryAggregation"
+      },
+      "type": "array"
+    },
+    "selectFields": {
+      "items": {
+        "$ref": "#/$defs/TelemetrytypesTelemetryFieldKey"
+      },
+      "type": "array"
+    },
+    "signal": {
+      "$ref": "#/$defs/TelemetrytypesSignal"
+    },
+    "source": {
+      "$ref": "#/$defs/TelemetrytypesSource"
+    },
+    "stepInterval": {
+      "$ref": "#/$defs/Querybuildertypesv5Step"
+    }
+  },
+  "type": "object"
+}

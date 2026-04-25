@@ -416,6 +416,27 @@ func isRetryableStatus(code int) bool {
 	return code == 429 || code == 502 || code == 503 || code == 504
 }
 
+// Do performs an authenticated JSON request against an arbitrary SigNoz API
+// path, reusing the standard retry/timeout/auth plumbing in doRequest.
+// path must start with "/"; it is joined to the client's baseURL without any
+// further escaping, so callers are responsible for URL-encoding path params
+// and appending any query string.
+func (s *SigNoz) Do(ctx context.Context, method, path string, body []byte, timeout time.Duration) (json.RawMessage, error) {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	reqURL := s.baseURL + path
+
+	var reader io.Reader
+	if len(body) > 0 {
+		reader = bytes.NewReader(body)
+	}
+	if timeout <= 0 {
+		timeout = DefaultQueryTimeout
+	}
+	return s.doRequest(ctx, method, reqURL, reader, timeout)
+}
+
 func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
 	params := url.Values{}
 	if start > 0 {

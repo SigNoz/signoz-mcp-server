@@ -1,0 +1,41 @@
+{
+  "properties": {
+    "agent_id": {
+      "type": "string"
+    },
+    "api_secret": {
+      "type": "string"
+    },
+    "api_secret_file": {
+      "type": "string"
+    },
+    "api_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "corp_id": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message": {
+      "type": "string"
+    },
+    "message_type": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "to_party": {
+      "type": "string"
+    },
+    "to_tag": {
+      "type": "string"
+    },
+    "to_user": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,68 @@
+{
+  "properties": {
+    "auth_identity": {
+      "type": "string"
+    },
+    "auth_password": {
+      "type": "string"
+    },
+    "auth_password_file": {
+      "type": "string"
+    },
+    "auth_secret": {
+      "type": "string"
+    },
+    "auth_secret_file": {
+      "type": "string"
+    },
+    "auth_username": {
+      "type": "string"
+    },
+    "force_implicit_tls": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "from": {
+      "type": "string"
+    },
+    "headers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "hello": {
+      "type": "string"
+    },
+    "html": {
+      "type": "string"
+    },
+    "require_tls": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "smarthost": {
+      "$ref": "#/$defs/ConfigHostPort"
+    },
+    "text": {
+      "type": "string"
+    },
+    "threading": {
+      "$ref": "#/$defs/ConfigThreadingConfig"
+    },
+    "tls_config": {
+      "$ref": "#/$defs/ConfigTLSConfig"
+    },
+    "to": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

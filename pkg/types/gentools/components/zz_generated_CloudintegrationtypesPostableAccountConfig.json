@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "aws": {
+      "$ref": "#/$defs/CloudintegrationtypesAWSPostableAccountConfig"
+    },
+    "azure": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureAccountConfig"
+    }
+  },
+  "type": "object"
+}

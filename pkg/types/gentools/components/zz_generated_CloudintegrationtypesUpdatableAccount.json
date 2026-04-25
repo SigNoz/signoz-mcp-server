@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/CloudintegrationtypesUpdatableAccountConfig"
+    }
+  },
+  "required": [
+    "config"
+  ],
+  "type": "object"
+}

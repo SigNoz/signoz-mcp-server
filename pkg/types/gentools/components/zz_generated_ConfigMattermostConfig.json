@@ -1,0 +1,47 @@
+{
+  "properties": {
+    "attachments": {
+      "items": {
+        "$ref": "#/$defs/ConfigMattermostAttachment"
+      },
+      "type": "array"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "icon_emoji": {
+      "type": "string"
+    },
+    "icon_url": {
+      "type": "string"
+    },
+    "priority": {
+      "$ref": "#/$defs/ConfigMattermostPriority"
+    },
+    "props": {
+      "$ref": "#/$defs/ConfigMattermostProps"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "text": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    },
+    "webhook_url": {
+      "$ref": "#/$defs/ConfigSecretURL"
+    },
+    "webhook_url_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

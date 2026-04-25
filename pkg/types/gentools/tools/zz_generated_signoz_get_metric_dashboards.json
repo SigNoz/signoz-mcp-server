@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "metric_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "metric_name"
+  ],
+  "type": "object"
+}

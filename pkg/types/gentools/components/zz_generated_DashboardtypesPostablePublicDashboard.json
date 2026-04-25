@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "defaultTimeRange": {
+      "type": "string"
+    },
+    "timeRangeEnabled": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

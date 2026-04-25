@@ -1,0 +1,49 @@
+{
+  "properties": {
+    "cursor": {
+      "type": "string"
+    },
+    "end": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "filterExpression": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "limit": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "order": {
+      "enum": [
+        "asc",
+        "desc"
+      ],
+      "type": "string"
+    },
+    "start": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "inactive",
+        "pending",
+        "recovering",
+        "firing",
+        "nodata",
+        "disabled"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "end",
+    "id",
+    "start"
+  ],
+  "type": "object"
+}

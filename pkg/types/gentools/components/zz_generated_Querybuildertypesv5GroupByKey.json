@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "fieldContext": {
+      "$ref": "#/$defs/TelemetrytypesFieldContext"
+    },
+    "fieldDataType": {
+      "$ref": "#/$defs/TelemetrytypesFieldDataType"
+    },
+    "name": {
+      "type": "string"
+    },
+    "signal": {
+      "$ref": "#/$defs/TelemetrytypesSignal"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}

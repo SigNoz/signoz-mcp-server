@@ -1,0 +1,69 @@
+{
+  "properties": {
+    "class": {
+      "type": "string"
+    },
+    "client": {
+      "type": "string"
+    },
+    "client_url": {
+      "type": "string"
+    },
+    "component": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "group": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "images": {
+      "items": {
+        "$ref": "#/$defs/ConfigPagerdutyImage"
+      },
+      "type": "array"
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/ConfigPagerdutyLink"
+      },
+      "type": "array"
+    },
+    "routing_key": {
+      "type": "string"
+    },
+    "routing_key_file": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "service_key": {
+      "type": "string"
+    },
+    "service_key_file": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "timeout": {
+      "$ref": "#/$defs/TimeDuration"
+    },
+    "url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    }
+  },
+  "type": "object"
+}

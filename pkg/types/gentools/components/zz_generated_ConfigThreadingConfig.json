@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "thread_by_date": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

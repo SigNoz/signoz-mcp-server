@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "password": {
+      "type": "string"
+    },
+    "password_file": {
+      "type": "string"
+    },
+    "password_ref": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    },
+    "username_file": {
+      "type": "string"
+    },
+    "username_ref": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

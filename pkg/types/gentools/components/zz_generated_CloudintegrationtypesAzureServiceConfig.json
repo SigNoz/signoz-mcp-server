@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "logs": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureServiceLogsConfig"
+    },
+    "metrics": {
+      "$ref": "#/$defs/CloudintegrationtypesAzureServiceMetricsConfig"
+    }
+  },
+  "required": [
+    "logs",
+    "metrics"
+  ],
+  "type": "object"
+}

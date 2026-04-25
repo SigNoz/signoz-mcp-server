@@ -1,0 +1,50 @@
+{
+  "properties": {
+    "author_icon": {
+      "type": "string"
+    },
+    "author_link": {
+      "type": "string"
+    },
+    "author_name": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string"
+    },
+    "fallback": {
+      "type": "string"
+    },
+    "fields": {
+      "items": {
+        "$ref": "#/$defs/ConfigMattermostField"
+      },
+      "type": "array"
+    },
+    "footer": {
+      "type": "string"
+    },
+    "footer_icon": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "pretext": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "thumb_url": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "title_link": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

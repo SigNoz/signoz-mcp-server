@@ -1,0 +1,51 @@
+{
+  "properties": {
+    "absentFor": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "alertOnAbsent": {
+      "type": "boolean"
+    },
+    "algorithm": {
+      "type": "string"
+    },
+    "compositeQuery": {
+      "$ref": "#/$defs/RuletypesAlertCompositeQuery"
+    },
+    "matchType": {
+      "$ref": "#/$defs/RuletypesMatchType"
+    },
+    "op": {
+      "$ref": "#/$defs/RuletypesCompareOperator"
+    },
+    "requireMinPoints": {
+      "type": "boolean"
+    },
+    "requiredNumPoints": {
+      "type": "integer"
+    },
+    "seasonality": {
+      "$ref": "#/$defs/RuletypesSeasonality"
+    },
+    "selectedQueryName": {
+      "type": "string"
+    },
+    "target": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "targetUnit": {
+      "type": "string"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/RuletypesRuleThresholdData"
+    }
+  },
+  "required": [
+    "compositeQuery"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "body": {
+      "items": {
+        "$ref": "#/$defs/AuthtypesTransaction"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

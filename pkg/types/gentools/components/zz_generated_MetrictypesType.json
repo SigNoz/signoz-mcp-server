@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "gauge",
+    "sum",
+    "histogram",
+    "summary",
+    "exponentialhistogram"
+  ],
+  "type": "string"
+}

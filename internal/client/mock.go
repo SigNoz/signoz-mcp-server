@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -11,6 +12,7 @@ import (
 // Each method delegates to the corresponding function field when non-nil,
 // otherwise returns a default empty JSON object and nil error.
 type MockClient struct {
+	DoFn                        func(ctx context.Context, method, path string, body []byte, timeout time.Duration) (json.RawMessage, error)
 	GetAnalyticsIdentityFn      func(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetricsFn               func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	ListAlertsFn                func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
@@ -47,6 +49,13 @@ type MockClient struct {
 
 // Compile-time check that MockClient satisfies Client.
 var _ Client = (*MockClient)(nil)
+
+func (m *MockClient) Do(ctx context.Context, method, path string, body []byte, timeout time.Duration) (json.RawMessage, error) {
+	if m.DoFn != nil {
+		return m.DoFn(ctx, method, path, body, timeout)
+	}
+	return json.RawMessage(`{}`), nil
+}
 
 func (m *MockClient) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
 	if m.GetAnalyticsIdentityFn != nil {

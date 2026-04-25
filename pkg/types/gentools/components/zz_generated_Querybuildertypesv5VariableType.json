@@ -1,0 +1,9 @@
+{
+  "enum": [
+    "query",
+    "dynamic",
+    "custom",
+    "text"
+  ],
+  "type": "string"
+}

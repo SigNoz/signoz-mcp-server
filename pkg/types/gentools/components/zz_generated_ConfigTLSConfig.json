@@ -1,0 +1,46 @@
+{
+  "properties": {
+    "ca": {
+      "type": "string"
+    },
+    "ca_file": {
+      "type": "string"
+    },
+    "ca_ref": {
+      "type": "string"
+    },
+    "cert": {
+      "type": "string"
+    },
+    "cert_file": {
+      "type": "string"
+    },
+    "cert_ref": {
+      "type": "string"
+    },
+    "insecure_skip_verify": {
+      "type": "boolean"
+    },
+    "key": {
+      "type": "string"
+    },
+    "key_file": {
+      "type": "string"
+    },
+    "key_ref": {
+      "type": "string"
+    },
+    "max_version": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "min_version": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "server_name": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

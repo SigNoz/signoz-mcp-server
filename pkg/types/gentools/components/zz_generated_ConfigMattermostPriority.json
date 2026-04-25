@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "persistent_notifications": {
+      "type": "boolean"
+    },
+    "priority": {
+      "type": "string"
+    },
+    "requested_ack": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

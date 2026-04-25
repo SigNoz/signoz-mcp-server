@@ -1,0 +1,19 @@
+{
+  "properties": {
+    "frequency": {
+      "type": "string"
+    },
+    "schedule": {
+      "$ref": "#/$defs/RuletypesCumulativeSchedule"
+    },
+    "timezone": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "frequency",
+    "schedule",
+    "timezone"
+  ],
+  "type": "object"
+}

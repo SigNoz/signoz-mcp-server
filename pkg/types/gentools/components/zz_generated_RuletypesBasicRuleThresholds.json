@@ -1,0 +1,9 @@
+{
+  "items": {
+    "$ref": "#/$defs/RuletypesBasicRuleThreshold"
+  },
+  "type": [
+    "array",
+    "null"
+  ]
+}

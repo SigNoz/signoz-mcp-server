@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "disabled": {
+      "type": "boolean"
+    },
+    "legend": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    },
+    "stats": {
+      "type": "boolean"
+    },
+    "step": {
+      "$ref": "#/$defs/Querybuildertypesv5Step"
+    }
+  },
+  "type": "object"
+}

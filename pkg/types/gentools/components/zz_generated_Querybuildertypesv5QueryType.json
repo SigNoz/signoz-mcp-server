@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "builder_query",
+    "builder_formula",
+    "builder_trace_operator",
+    "clickhouse_sql",
+    "promql"
+  ],
+  "type": "string"
+}

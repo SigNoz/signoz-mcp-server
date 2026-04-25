@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/TracedetailtypesPostableWaterfall"
+    },
+    "traceID": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "traceID"
+  ],
+  "type": "object"
+}

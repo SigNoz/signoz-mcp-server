@@ -1,0 +1,116 @@
+{
+  "properties": {
+    "discord_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigDiscordConfig"
+      },
+      "type": "array"
+    },
+    "email_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigEmailConfig"
+      },
+      "type": "array"
+    },
+    "incidentio_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigIncidentioConfig"
+      },
+      "type": "array"
+    },
+    "jira_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigJiraConfig"
+      },
+      "type": "array"
+    },
+    "mattermost_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigMattermostConfig"
+      },
+      "type": "array"
+    },
+    "msteams_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigMSTeamsConfig"
+      },
+      "type": "array"
+    },
+    "msteamsv2_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigMSTeamsV2Config"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "opsgenie_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigOpsGenieConfig"
+      },
+      "type": "array"
+    },
+    "pagerduty_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigPagerdutyConfig"
+      },
+      "type": "array"
+    },
+    "pushover_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigPushoverConfig"
+      },
+      "type": "array"
+    },
+    "rocketchat_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigRocketchatConfig"
+      },
+      "type": "array"
+    },
+    "slack_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigSlackConfig"
+      },
+      "type": "array"
+    },
+    "sns_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigSNSConfig"
+      },
+      "type": "array"
+    },
+    "telegram_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigTelegramConfig"
+      },
+      "type": "array"
+    },
+    "victorops_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigVictorOpsConfig"
+      },
+      "type": "array"
+    },
+    "webex_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigWebexConfig"
+      },
+      "type": "array"
+    },
+    "webhook_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigWebhookConfig"
+      },
+      "type": "array"
+    },
+    "wechat_configs": {
+      "items": {
+        "$ref": "#/$defs/ConfigWechatConfig"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

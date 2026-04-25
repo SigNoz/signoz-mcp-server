@@ -1,0 +1,59 @@
+{
+  "properties": {
+    "device": {
+      "type": "string"
+    },
+    "expire": {
+      "$ref": "#/$defs/ConfigDuration"
+    },
+    "html": {
+      "type": "boolean"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message": {
+      "type": "string"
+    },
+    "monospace": {
+      "type": "boolean"
+    },
+    "priority": {
+      "type": "string"
+    },
+    "retry": {
+      "$ref": "#/$defs/ConfigDuration"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "sound": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "token": {
+      "type": "string"
+    },
+    "token_file": {
+      "type": "string"
+    },
+    "ttl": {
+      "$ref": "#/$defs/ConfigDuration"
+    },
+    "url": {
+      "type": "string"
+    },
+    "url_title": {
+      "type": "string"
+    },
+    "user_key": {
+      "type": "string"
+    },
+    "user_key_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,23 @@
+{
+  "enum": [
+    "cutoffmin",
+    "cutoffmax",
+    "clampmin",
+    "clampmax",
+    "absolute",
+    "runningdiff",
+    "log2",
+    "log10",
+    "cumulativesum",
+    "ewma3",
+    "ewma5",
+    "ewma7",
+    "median3",
+    "median5",
+    "median7",
+    "timeshift",
+    "anomaly",
+    "fillzero"
+  ],
+  "type": "string"
+}

@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "fillGaps": {
+      "type": "boolean"
+    },
+    "formatTableResultForUI": {
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

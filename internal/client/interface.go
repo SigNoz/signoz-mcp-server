@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -10,6 +11,12 @@ import (
 // Client defines the interface for interacting with the SigNoz API.
 // Handler code depends on this interface, enabling mock-based unit testing.
 type Client interface {
+	// Do performs an authenticated JSON request against an arbitrary SigNoz
+	// API path. It is the entry point used by generated tool handlers
+	// (see internal/handler/tools/generated); curated handlers should prefer
+	// the typed methods below so call sites stay grep-able.
+	Do(ctx context.Context, method, path string, body []byte, timeout time.Duration) (json.RawMessage, error)
+
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)

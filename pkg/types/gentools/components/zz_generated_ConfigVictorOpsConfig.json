@@ -1,0 +1,41 @@
+{
+  "properties": {
+    "api_key": {
+      "type": "string"
+    },
+    "api_key_file": {
+      "type": "string"
+    },
+    "api_url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "custom_fields": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "entity_display_name": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "message_type": {
+      "type": "string"
+    },
+    "monitoring_tool": {
+      "type": "string"
+    },
+    "routing_key": {
+      "type": "string"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "state_message": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

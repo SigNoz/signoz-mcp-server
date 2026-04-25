@@ -1,0 +1,8 @@
+{
+  "enum": [
+    "traces",
+    "logs",
+    "metrics"
+  ],
+  "type": "string"
+}

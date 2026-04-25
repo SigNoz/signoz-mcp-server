@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "page": {
+      "type": "integer"
+    },
+    "per_page": {
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}

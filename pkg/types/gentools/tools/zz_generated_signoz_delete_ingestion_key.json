@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "keyId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "keyId"
+  ],
+  "type": "object"
+}

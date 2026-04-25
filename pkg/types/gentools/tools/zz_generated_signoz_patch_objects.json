@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/AuthtypesPatchableObjects"
+    },
+    "id": {
+      "type": "string"
+    },
+    "relation": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "relation"
+  ],
+  "type": "object"
+}

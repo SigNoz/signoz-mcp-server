@@ -1,0 +1,30 @@
+{
+  "properties": {
+    "alert_source_token": {
+      "type": "string"
+    },
+    "alert_source_token_file": {
+      "type": "string"
+    },
+    "http_config": {
+      "$ref": "#/$defs/ConfigHTTPClientConfig"
+    },
+    "max_alerts": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "send_resolved": {
+      "type": "boolean"
+    },
+    "timeout": {
+      "$ref": "#/$defs/TimeDuration"
+    },
+    "url": {
+      "$ref": "#/$defs/ConfigURLType2"
+    },
+    "url_file": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/ZeustypesPostableHost"
+    }
+  },
+  "type": "object"
+}

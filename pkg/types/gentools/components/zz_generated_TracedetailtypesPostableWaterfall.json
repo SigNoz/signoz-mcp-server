@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "limit": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "selectedSpanId": {
+      "type": "string"
+    },
+    "uncollapsedSpans": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

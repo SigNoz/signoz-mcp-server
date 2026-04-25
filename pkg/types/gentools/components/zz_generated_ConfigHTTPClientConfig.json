@@ -1,0 +1,44 @@
+{
+  "properties": {
+    "authorization": {
+      "$ref": "#/$defs/ConfigAuthorization"
+    },
+    "basic_auth": {
+      "$ref": "#/$defs/ConfigBasicAuth"
+    },
+    "bearer_token": {
+      "type": "string"
+    },
+    "bearer_token_file": {
+      "type": "string"
+    },
+    "enable_http2": {
+      "type": "boolean"
+    },
+    "follow_redirects": {
+      "type": "boolean"
+    },
+    "http_headers": {
+      "$ref": "#/$defs/ConfigHeaders"
+    },
+    "no_proxy": {
+      "type": "string"
+    },
+    "oauth2": {
+      "$ref": "#/$defs/ConfigOAuth2"
+    },
+    "proxy_connect_header": {
+      "$ref": "#/$defs/ConfigProxyHeader"
+    },
+    "proxy_from_environment": {
+      "type": "boolean"
+    },
+    "proxy_url": {
+      "$ref": "#/$defs/ConfigURL"
+    },
+    "tls_config": {
+      "$ref": "#/$defs/ConfigTLSConfig"
+    }
+  },
+  "type": "object"
+}

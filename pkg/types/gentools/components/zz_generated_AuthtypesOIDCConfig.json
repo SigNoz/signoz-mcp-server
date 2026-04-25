@@ -1,0 +1,26 @@
+{
+  "properties": {
+    "claimMapping": {
+      "$ref": "#/$defs/AuthtypesAttributeMapping"
+    },
+    "clientId": {
+      "type": "string"
+    },
+    "clientSecret": {
+      "type": "string"
+    },
+    "getUserInfo": {
+      "type": "boolean"
+    },
+    "insecureSkipEmailVerified": {
+      "type": "boolean"
+    },
+    "issuer": {
+      "type": "string"
+    },
+    "issuerAlias": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

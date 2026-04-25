@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/CloudintegrationtypesPostableAccountConfig"
+    },
+    "credentials": {
+      "$ref": "#/$defs/CloudintegrationtypesCredentials"
+    }
+  },
+  "required": [
+    "config",
+    "credentials"
+  ],
+  "type": "object"
+}
