@@ -720,6 +720,54 @@ func TestValidate_FilterExpressionAcceptsStandaloneVarReference(t *testing.T) {
 	}
 }
 
+func TestValidate_FilterExpressionConsistencyHandlesTypedSliceLiteral(t *testing.T) {
+	// Go-native []map[string]any literal (not []any). Consistency guard must
+	// still detect the missing key and reject, matching the behavior on the
+	// JSON-unmarshalled []any path.
+	d := &DashboardData{
+		Title:     "Test",
+		Version:   DashboardVersion,
+		Variables: map[string]*DashboardVariable{},
+		Widgets: []WidgetOrRow{
+			{
+				ID: "w1", PanelTypes: PanelTypeGraph, Title: "W1",
+				Query: &Query{
+					QueryType: QueryTypeBuilder,
+					Builder: &BuilderData{
+						QueryData: []map[string]any{
+							{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"filter": map[string]any{
+									"expression": "service.name IN $service_name",
+								},
+								"filters": map[string]any{
+									"op": "AND",
+									// Typed slice literal, not []any.
+									"items": []map[string]any{
+										{"key": map[string]any{"key": "service.name"}, "op": "IN", "value": "$service_name"},
+										{"key": map[string]any{"key": "region"}, "op": "=", "value": "us-east"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Layout: []LayoutItem{{I: "w1", X: 0, Y: 0, W: 6, H: 6}},
+	}
+	verr := Validate(d)
+	if verr == nil {
+		t.Fatal("expected rejection: region item missing from expression, regardless of slice concrete type")
+	}
+	assertHasFieldError(t, verr, "filter.expression")
+	if !strings.Contains(verr.Error(), "region") {
+		t.Errorf("error should name the missing key, got: %v", verr)
+	}
+}
+
 func TestContainsKeyAsIdentifier(t *testing.T) {
 	// Direct unit coverage of the boundary logic for clarity.
 	cases := []struct {
