@@ -43,7 +43,6 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
 				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
@@ -59,7 +58,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
 				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
 		),
-		mcp.WithInputSchema[types.Dashboard](),
+		mcp.WithInputSchema[types.CreateDashboardInput](),
 	)
 
 	addTool(s, createDashboardTool, h.handleCreateDashboard)
@@ -67,7 +66,6 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
 				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
@@ -172,6 +170,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "Received empty or invalid arguments map.")
 		return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
 	}
+	delete(rawConfig, "searchContext")
 
 	// Validate and normalize via the dashboardbuilder + panelbuilder pipeline.
 	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)

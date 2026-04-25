@@ -19,6 +19,17 @@ const (
 	RuleTypeAnomaly   RuleType = "anomaly_rule"
 )
 
+type CreateAlertInput struct {
+	AlertRule
+	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+}
+
+type UpdateAlertInput struct {
+	RuleID string `json:"ruleId" jsonschema:"required" jsonschema_extras:"description=UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
+	AlertRule
+	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=Optional. The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+}
+
 // AlertRule is the payload for creating an alert rule via POST /api/v2/rules.
 // It matches the SigNoz PostableRule structure. Threshold and PromQL rules use
 // the v2alpha1 schema (structured thresholds + evaluation + notificationSettings).
@@ -91,17 +102,17 @@ type AlertQuery struct {
 // For builder_query type this uses the v5 query builder format.
 // For promql/clickhouse_sql types only name query legend and disabled are used.
 type AlertQuerySpec struct {
-	Name         string              `json:"name" jsonschema:"required" jsonschema_extras:"description=Query name (e.g. A or B or C). Used as reference in formulas and selectedQueryName."`
-	Signal       string              `json:"signal,omitempty" jsonschema_extras:"description=Signal type for builder queries: metrics or logs or traces. Required for builder_query type."`
-	StepInterval *int64              `json:"stepInterval,omitempty" jsonschema_extras:"description=Step interval in seconds for time aggregation. Use 60 for metrics alerts."`
-	Disabled     bool                `json:"disabled,omitempty" jsonschema_extras:"description=Whether this query is disabled."`
-	Source       string              `json:"source,omitempty"`
-	Aggregations []AlertAggregation     `json:"aggregations,omitempty" jsonschema_extras:"description=Aggregation expressions for builder queries. For metrics signal use the object shape: [{metricName: k8s.pod.cpu_request_utilization, timeAggregation: avg, spaceAggregation: max}]. For logs/traces use the expression shape: [{expression: count()}] or [{expression: p99(duration_nano)}]."`
-	Filter       *AlertQueryFilter      `json:"filter,omitempty" jsonschema_extras:"description=Filter expression for builder queries. Example: {expression: service.name = frontend AND http.status_code >= 500}."`
-	GroupBy      []AlertGroupByField    `json:"groupBy,omitempty" jsonschema_extras:"description=Fields to group by. Grouped dimensions appear as labels in alert notifications."`
-	Order        []AlertOrderField      `json:"order,omitempty" jsonschema_extras:"description=Order by specification."`
-	Having       *AlertQueryFilter      `json:"having,omitempty" jsonschema_extras:"description=Having clause to filter aggregation results."`
-	Functions    []AlertQueryFunction   `json:"functions,omitempty" jsonschema_extras:"description=Post-query functions applied to the series. Required for anomaly_rule: wrap with {name: anomaly, args: [{name: z_score_threshold, value: 2}]}."`
+	Name         string               `json:"name" jsonschema:"required" jsonschema_extras:"description=Query name (e.g. A or B or C). Used as reference in formulas and selectedQueryName."`
+	Signal       string               `json:"signal,omitempty" jsonschema_extras:"description=Signal type for builder queries: metrics or logs or traces. Required for builder_query type."`
+	StepInterval *int64               `json:"stepInterval,omitempty" jsonschema_extras:"description=Step interval in seconds for time aggregation. Use 60 for metrics alerts."`
+	Disabled     bool                 `json:"disabled,omitempty" jsonschema_extras:"description=Whether this query is disabled."`
+	Source       string               `json:"source,omitempty"`
+	Aggregations []AlertAggregation   `json:"aggregations,omitempty" jsonschema_extras:"description=Aggregation expressions for builder queries. For metrics signal use the object shape: [{metricName: k8s.pod.cpu_request_utilization, timeAggregation: avg, spaceAggregation: max}]. For logs/traces use the expression shape: [{expression: count()}] or [{expression: p99(duration_nano)}]."`
+	Filter       *AlertQueryFilter    `json:"filter,omitempty" jsonschema_extras:"description=Filter expression for builder queries. Example: {expression: service.name = frontend AND http.status_code >= 500}."`
+	GroupBy      []AlertGroupByField  `json:"groupBy,omitempty" jsonschema_extras:"description=Fields to group by. Grouped dimensions appear as labels in alert notifications."`
+	Order        []AlertOrderField    `json:"order,omitempty" jsonschema_extras:"description=Order by specification."`
+	Having       *AlertQueryFilter    `json:"having,omitempty" jsonschema_extras:"description=Having clause to filter aggregation results."`
+	Functions    []AlertQueryFunction `json:"functions,omitempty" jsonschema_extras:"description=Post-query functions applied to the series. Required for anomaly_rule: wrap with {name: anomaly, args: [{name: z_score_threshold, value: 2}]}."`
 
 	// For promql / clickhouse_sql query types
 	Query  string `json:"query,omitempty" jsonschema_extras:"description=PromQL or ClickHouse SQL query string. Used when queryType is promql or clickhouse_sql. PromQL with OTel dotted metric names MUST use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data. Read signoz://promql/instructions for the full guide (histogram patterns dotted labels pre-flight checklist)."`

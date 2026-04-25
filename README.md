@@ -442,12 +442,13 @@ Updates an existing dashboard.
 
 - **Parameters:**
   - `uuid` (required) – Unique identifier of the dashboard to update
-  - `title` (required) – Dashboard name
-  - `description` (optional) – Short summary of what the dashboard shows
-  - `tags` (optional) – List of tags applied to the dashboard
-  - `layout` (required) – Full widget positioning grid
-  - `variables` (optional) – Map of variables available for use in queries
-  - `widgets` (required) – Complete set of widgets defining the updated dashboard
+  - `dashboard` (required) – Complete dashboard object representing the post-update state
+    - `title` (required) – Dashboard name
+    - `description` (optional) – Short summary of what the dashboard shows
+    - `tags` (optional) – List of tags applied to the dashboard
+    - `layout` (required) – Full widget positioning grid
+    - `variables` (optional) – Map of variables available for use in queries
+    - `widgets` (required) – Complete set of widgets defining the updated dashboard
 
 #### `signoz_list_services`
 
