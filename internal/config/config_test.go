@@ -1,8 +1,6 @@
 package config
 
 import (
-	"bytes"
-	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,7 +80,7 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 	}
 }
 
-func TestValidateConfig_HTTPAllowsEphemeralPublicSessionKeysByDefault(t *testing.T) {
+func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
 	cfg := &Config{
 		TransportMode: "http",
 		Port:          "8000",
@@ -91,22 +89,10 @@ func TestValidateConfig_HTTPAllowsEphemeralPublicSessionKeysByDefault(t *testing
 	require.NoError(t, cfg.ValidateConfig())
 }
 
-func TestValidateConfig_HTTPAllowsSharedPublicSessionKeys(t *testing.T) {
+func TestValidateConfig_StdioRequiresConfiguredCredentials(t *testing.T) {
 	cfg := &Config{
-		TransportMode:     "http",
-		Port:              "8000",
-		PublicSessionKeys: [][]byte{bytes.Repeat([]byte{'k'}, 32)},
+		TransportMode: "stdio",
 	}
 
-	require.NoError(t, cfg.ValidateConfig())
-}
-
-func TestLoadConfig_PublicSessionKeys(t *testing.T) {
-	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{'s'}, 32))
-	t.Setenv(PublicSessionKeysEnv, key)
-
-	cfg, err := LoadConfig()
-	require.NoError(t, err)
-	require.Len(t, cfg.PublicSessionKeys, 1)
-	require.Equal(t, bytes.Repeat([]byte{'s'}, 32), cfg.PublicSessionKeys[0])
+	require.ErrorContains(t, cfg.ValidateConfig(), "SIGNOZ_API_KEY is required")
 }

@@ -199,3 +199,15 @@ would have a free "reset-my-quota" mechanism. The idle sweeper
 actually stops, which is the correct bound: the bucket lives as
 long as the session is actively making requests, regardless of
 DELETE/reconnect cycles.
+
+### 2026-04-28 - Superseded by auth-only docs decision
+
+Decision changed: docs tools now sit behind the normal MCP auth path,
+same as other tools. That removes the need for public docs sessions
+entirely, so the stateless public-session token implementation is
+removed rather than carried forward.
+
+The multi-pod problem this plan solved was real only for unauthenticated
+public docs traffic. With auth required, `/mcp` can use the existing
+auth middleware and mcp-go session behavior without public token wrapping,
+public rate-limit buckets, or public-session key rotation.

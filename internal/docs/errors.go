@@ -7,7 +7,6 @@ const (
 	CodeDocNotFound    = "DOC_NOT_FOUND"
 	CodeHeadingMissing = "HEADING_NOT_FOUND"
 	CodeIndexNotReady  = "INDEX_NOT_READY"
-	CodeRateLimited    = "RATE_LIMITED"
 )
 
 func ToolError(code, message string, extra map[string]any) *mcp.CallToolResult {
@@ -41,11 +40,5 @@ func HeadingNotFoundError(heading string, headings []Heading) *mcp.CallToolResul
 func IndexNotReadyError() *mcp.CallToolResult {
 	return ToolError(CodeIndexNotReady, "Docs index is not ready yet; retry shortly.", map[string]any{
 		"retry_after_seconds": 5,
-	})
-}
-
-func RateLimitedError(retryAfterSeconds int) *mcp.CallToolResult {
-	return ToolError(CodeRateLimited, "Public docs rate limit exceeded; retry later.", map[string]any{
-		"retry_after_seconds": retryAfterSeconds,
 	})
 }

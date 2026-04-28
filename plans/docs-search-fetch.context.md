@@ -17,5 +17,10 @@
 - Confirmed current `/mcp` HTTP route is wrapped by `authMiddleware` before mcp-go sees JSON-RPC methods, matching the plan's Auth posture section.
 - Attempted to create branch `feat/docs-search-fetch`, but the sandbox could not create `.git/refs/heads/feat/docs-search-fetch.lock` due to filesystem permissions. Continuing without commit/push and documenting this blocker.
 
+### 2026-04-28 - Docs tools moved under normal auth
+- Decision: `signoz_search_docs`, `signoz_fetch_doc`, and `signoz://docs/sitemap` should require the same MCP auth as other tools/resources.
+- Remove the public docs auth bypass, public rate limiter, public-session token signer, and docs-only unauthenticated stdio mode from this feature.
+- Keep the embedded docs index, refresh workflow, docs tools/resource, and `/readyz` readiness behavior.
+
 ## Open Questions
 - [x] Branch creation failed in the sandbox. Chosen interpretation: continue implementation on the current checkout without commit/push, since the user explicitly said not to commit/push and source edits remain reviewable.

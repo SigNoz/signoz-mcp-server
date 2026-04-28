@@ -3,13 +3,10 @@ package config
 import (
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/SigNoz/signoz-mcp-server/pkg/session"
 )
 
 type Config struct {
@@ -18,8 +15,6 @@ type Config struct {
 	LogLevel      string
 	TransportMode string
 	Port          string
-	MCPMode       string
-	DocsOnlyMode  bool
 
 	OAuthEnabled     bool
 	OAuthTokenSecret string
@@ -37,27 +32,8 @@ type Config struct {
 	AnalyticsEnabled bool
 	SegmentKey       string
 
-	DocsRefreshInterval      time.Duration
-	DocsFullRefreshInterval  time.Duration
-	TrustedProxyCIDRs        []*net.IPNet
-	PublicRateLimitBypassIPs map[string]struct{}
-
-	// PublicSessionKeys is the HMAC key ring used to sign the stateless
-	// tokens issued to public (docs-only) MCP clients on `initialize`.
-	// Index 0 is the active signer; every entry is accepted on verify so
-	// rolling key rotation is safe.
-	//
-	// Keys are provided via SIGNOZ_MCP_PUBLIC_SESSION_KEYS as a
-	// comma-separated list of base64 strings. Multi-replica HTTP
-	// deployments must set this to a common value on every pod so public
-	// sessions survive pod restarts and round-robin across replicas.
-	PublicSessionKeys [][]byte
-
-	// PublicSessionTTL bounds how long a signed public-session token is
-	// valid. Shorter TTLs reduce replay-window exposure if a pod's
-	// traffic gets mirrored somewhere it shouldn't; longer TTLs reduce
-	// the frequency of forced client re-initialization.
-	PublicSessionTTL time.Duration
+	DocsRefreshInterval     time.Duration
+	DocsFullRefreshInterval time.Duration
 }
 
 const (
@@ -66,7 +42,6 @@ const (
 	LogLevel      = "LOG_LEVEL"
 	TransportMode = "TRANSPORT_MODE"
 	MCPPort       = "MCP_SERVER_PORT"
-	MCPMode       = "SIGNOZ_MCP_MODE"
 
 	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
 	ClientCacheSize     = "CLIENT_CACHE_SIZE"
@@ -82,12 +57,8 @@ const (
 	OAuthRefreshTTLMinutes  = "OAUTH_REFRESH_TOKEN_TTL_MINUTES"
 	OAuthAuthCodeTTLSeconds = "OAUTH_AUTH_CODE_TTL_SECONDS"
 
-	DocsRefreshIntervalEnv      = "SIGNOZ_DOCS_REFRESH_INTERVAL"
-	DocsFullRefreshIntervalEnv  = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
-	TrustedProxyCIDRsEnv        = "SIGNOZ_MCP_TRUSTED_PROXY_CIDRS"
-	PublicRateLimitBypassIPsEnv = "SIGNOZ_MCP_PUBLIC_RATE_LIMIT_BYPASS_IPS"
-	PublicSessionKeysEnv        = "SIGNOZ_MCP_PUBLIC_SESSION_KEYS"
-	PublicSessionTTLEnv         = "SIGNOZ_MCP_PUBLIC_SESSION_TTL"
+	DocsRefreshIntervalEnv     = "SIGNOZ_DOCS_REFRESH_INTERVAL"
+	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
@@ -96,7 +67,6 @@ const (
 	defaultAuthCodeTTLSeconds    = 600
 	defaultDocsRefreshInterval   = 6 * time.Hour
 	defaultDocsFullRefreshPeriod = 24 * time.Hour
-	defaultPublicSessionTTL      = time.Hour
 )
 
 func LoadConfig() (*Config, error) {
@@ -110,22 +80,12 @@ func LoadConfig() (*Config, error) {
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
 	docsRefreshInterval := getEnvDuration(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
 	docsFullRefreshInterval := getEnvDuration(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
-	publicSessionTTL := getEnvDuration(PublicSessionTTLEnv, defaultPublicSessionTTL)
-	// Parse the public-session HMAC key ring. We fail LoadConfig on a
-	// malformed env var rather than silently falling back to ephemeral
-	// keys — operators asked for a specific ring, so quietly ignoring
-	// typos would be a multi-pod-correctness footgun.
-	publicSessionKeys, err := session.ParseKeysFromEnv(getEnv(PublicSessionKeysEnv, ""))
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", PublicSessionKeysEnv, err)
-	}
 	if docsFullRefreshInterval < docsRefreshInterval {
 		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
 			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
 		docsRefreshInterval = defaultDocsRefreshInterval
 		docsFullRefreshInterval = defaultDocsFullRefreshPeriod
 	}
-	mode := getEnv(MCPMode, "")
 
 	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
 	customHeaders := make(map[string]string)
@@ -143,30 +103,24 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		URL:                      url,
-		APIKey:                   getEnv(SignozApiKey, ""),
-		LogLevel:                 getEnv(LogLevel, "info"),
-		TransportMode:            getEnv(TransportMode, "stdio"),
-		Port:                     getEnv(MCPPort, "8000"),
-		MCPMode:                  mode,
-		DocsOnlyMode:             mode == "docs-only",
-		OAuthEnabled:             getEnvBool(OAuthEnabledEnv, false),
-		OAuthTokenSecret:         getEnv(OAuthTokenSecretEnv, ""),
-		OAuthIssuerURL:           strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
-		AccessTokenTTL:           time.Duration(accessTTLMinutes) * time.Minute,
-		RefreshTokenTTL:          time.Duration(refreshTTLMinutes) * time.Minute,
-		AuthCodeTTL:              time.Duration(authCodeTTLSeconds) * time.Second,
-		ClientCacheSize:          cacheSize,
-		ClientCacheTTL:           time.Duration(cacheTTLMinutes) * time.Minute,
-		CustomHeaders:            customHeaders,
-		AnalyticsEnabled:         getEnvBool(AnalyticsEnabledEnv, false),
-		SegmentKey:               getEnv(SegmentKeyEnv, ""),
-		DocsRefreshInterval:      docsRefreshInterval,
-		DocsFullRefreshInterval:  docsFullRefreshInterval,
-		TrustedProxyCIDRs:        parseCIDRs(getEnv(TrustedProxyCIDRsEnv, "")),
-		PublicRateLimitBypassIPs: parseIPs(getEnv(PublicRateLimitBypassIPsEnv, "")),
-		PublicSessionKeys:        publicSessionKeys,
-		PublicSessionTTL:         publicSessionTTL,
+		URL:                     url,
+		APIKey:                  getEnv(SignozApiKey, ""),
+		LogLevel:                getEnv(LogLevel, "info"),
+		TransportMode:           getEnv(TransportMode, "stdio"),
+		Port:                    getEnv(MCPPort, "8000"),
+		OAuthEnabled:            getEnvBool(OAuthEnabledEnv, false),
+		OAuthTokenSecret:        getEnv(OAuthTokenSecretEnv, ""),
+		OAuthIssuerURL:          strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
+		AccessTokenTTL:          time.Duration(accessTTLMinutes) * time.Minute,
+		RefreshTokenTTL:         time.Duration(refreshTTLMinutes) * time.Minute,
+		AuthCodeTTL:             time.Duration(authCodeTTLSeconds) * time.Second,
+		ClientCacheSize:         cacheSize,
+		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
+		CustomHeaders:           customHeaders,
+		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:              getEnv(SegmentKeyEnv, ""),
+		DocsRefreshInterval:     docsRefreshInterval,
+		DocsFullRefreshInterval: docsFullRefreshInterval,
 	}, nil
 }
 
@@ -205,55 +159,15 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
-func parseCIDRs(raw string) []*net.IPNet {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var out []*net.IPNet
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		if _, cidr, err := net.ParseCIDR(item); err == nil {
-			out = append(out, cidr)
-		} else {
-			log.Printf("WARN: skipping invalid CIDR in %s: %q", TrustedProxyCIDRsEnv, item)
-		}
-	}
-	return out
-}
-
-func parseIPs(raw string) map[string]struct{} {
-	out := map[string]struct{}{}
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		ip := net.ParseIP(item)
-		if ip == nil {
-			log.Printf("WARN: skipping invalid IP in %s: %q", PublicRateLimitBypassIPsEnv, item)
-			continue
-		}
-		out[ip.String()] = struct{}{}
-	}
-	return out
-}
-
 func (c *Config) ValidateConfig() error {
 	// In HTTP mode, API key can come from Authorization header, so it's optional.
 	// In stdio mode, API key must be provided via environment variable.
-	if c.TransportMode == "stdio" && !c.DocsOnlyMode && c.APIKey == "" {
+	if c.TransportMode == "stdio" && c.APIKey == "" {
 		return fmt.Errorf("SIGNOZ_API_KEY is required for stdio mode")
 	}
 
-	if c.TransportMode == "stdio" && !c.DocsOnlyMode && c.URL == "" {
+	if c.TransportMode == "stdio" && c.URL == "" {
 		return fmt.Errorf("SIGNOZ_URL is required for stdio mode")
-	}
-
-	if c.TransportMode == "stdio" && c.DocsOnlyMode {
-		log.Printf("WARN: SIGNOZ_MCP_MODE=docs-only enabled; SIGNOZ_URL and SIGNOZ_API_KEY are optional")
 	}
 
 	if c.TransportMode == "http" {

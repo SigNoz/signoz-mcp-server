@@ -4,7 +4,7 @@
 In Progress
 
 ## Context
-Add public SigNoz documentation search and fetch capabilities to the MCP server so agents can answer product, setup, deployment, instrumentation, API, and troubleshooting questions from the indexed `signoz.io/docs` markdown corpus.
+Add SigNoz documentation search and fetch capabilities to the MCP server so authenticated agents can answer product, setup, deployment, instrumentation, API, and troubleshooting questions from the indexed `signoz.io/docs` markdown corpus.
 
 ## Approach
 Implement the approved `/tmp/signoz-docs-impl-plan.md` literally:
@@ -12,18 +12,15 @@ Implement the approved `/tmp/signoz-docs-impl-plan.md` literally:
 - Register `signoz_search_docs`, `signoz_fetch_doc`, and the `signoz://docs/sitemap` MCP resource.
 - Use an `IndexRegistry` with RWMutex, atomic refcounts, generation tracking, and deferred close for atomic swaps.
 - Add refresh logic with singleflight, success thresholds, transient-404 grace, and context-bound shutdown.
-- Add JSON-RPC-aware public auth gating and public docs rate limiting for the documented methods.
-- Add docs-only stdio mode via `SIGNOZ_MCP_MODE=docs-only`.
+- Keep docs tools behind the same auth middleware as all other MCP tools; there is no public docs bypass, public rate limiter, public session token, or docs-only unauthenticated mode.
 - Add tests and documentation/manifest updates required by the Verification and Documentation & Metadata Sync sections.
 
 ## Files to Modify
 - `cmd/build-docs-index/main.go` - corpus builder.
 - `internal/docs/*` - corpus schema, fetcher, parser, index, refresh, normalization, error helpers, tests, and assets.
 - `internal/handler/tools/docs.go` - MCP tool and resource handlers.
-- `internal/mcp-server/server.go` - docs index boot, handler registration, refresh, auth/rate-limit middleware wiring.
-- `internal/mcp-server/auth_or_public_middleware.go` - public docs pre-auth gate.
-- `internal/mcp-server/public_rate_limiter.go` - public token-bucket limiter.
-- `internal/config/config.go` - docs-only stdio mode and docs refresh configuration.
+- `internal/mcp-server/server.go` - docs index boot, handler registration, refresh, normal auth middleware wiring.
+- `internal/config/config.go` - docs refresh configuration.
 - `pkg/otel/metrics.go` - docs telemetry meters.
 - `manifest.json`, `README.md`, `.github/workflows/docs-index-refresh.yml`, `go.mod`, `go.sum` - docs and metadata sync.
 

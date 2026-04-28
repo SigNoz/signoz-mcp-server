@@ -25,7 +25,6 @@ type Meters struct {
 	DocsIndexGeneration metric.Int64Gauge
 	DocsFetcherRetries  metric.Int64Counter
 	DocsSitemapFailures metric.Int64Counter
-	DocsRateLimited     metric.Int64Counter
 }
 
 func NewMeters(mp metric.MeterProvider) (*Meters, error) {
@@ -149,11 +148,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
-	docsRateLimited, err := meter.Int64Counter("signoz_docs_rate_limited_total", metric.WithDescription("Count of public docs requests rejected by rate limiting"))
-	if err != nil {
-		return nil, err
-	}
-
 	return &Meters{
 		ToolCalls:           toolCalls,
 		ToolCallDuration:    toolCallDuration,
@@ -175,6 +169,5 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		DocsIndexGeneration: docsIndexGeneration,
 		DocsFetcherRetries:  docsFetcherRetries,
 		DocsSitemapFailures: docsSitemapFailures,
-		DocsRateLimited:     docsRateLimited,
 	}, nil
 }

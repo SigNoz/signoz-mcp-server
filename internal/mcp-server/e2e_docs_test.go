@@ -10,24 +10,28 @@ import (
 
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/require"
 )
 
 // TestE2EDocsAgentFlow drives the SigNoz MCP docs feature with a real
 // mcp-go Streamable HTTP client against an in-process httptest.Server.
-// Unlike the ServeHTTP-level lifecycle test (TestAuthOrPublicLifecycle),
-// this exercises the full client round-trip: Initialize handshake →
+// Unlike the ServeHTTP-level auth/readiness tests, this exercises the full
+// client round-trip: Initialize handshake →
 // ListTools discovery → CallTool for both docs tools → ReadResource for
 // the sitemap → structured error code on an out-of-scope URL. It is the
 // closest thing to a "remote agent calling our server" without actually
 // spinning up a second process.
 func TestE2EDocsAgentFlow(t *testing.T) {
-	handler, _ := newPublicDocsHTTPHandler(t)
+	handler, _ := newDocsHTTPHandler(t)
 	testSrv := httptest.NewServer(handler)
 	t.Cleanup(testSrv.Close)
 
-	mcpClient, err := client.NewStreamableHttpClient(testSrv.URL + "/mcp")
+	mcpClient, err := client.NewStreamableHttpClient(testSrv.URL+"/mcp", transport.WithHTTPHeaders(map[string]string{
+		"SIGNOZ-API-KEY": "test-key",
+		"X-SigNoz-URL":   "https://example.signoz.cloud",
+	}))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = mcpClient.Close() })
 
@@ -44,8 +48,7 @@ func TestE2EDocsAgentFlow(t *testing.T) {
 	require.NotEmpty(t, initResult.ServerInfo.Name)
 
 	// 1. Discovery via tools/list — both docs tools must appear to the
-	//    client (plan §Tools). No credentials were provided, so this
-	//    proves the public discovery path.
+	//    authenticated client (plan §Tools).
 	toolsResp, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 	require.NoError(t, err)
 	toolNames := make(map[string]struct{}, len(toolsResp.Tools))
@@ -56,7 +59,7 @@ func TestE2EDocsAgentFlow(t *testing.T) {
 	require.Contains(t, toolNames, "signoz_fetch_doc")
 
 	// 2. signoz_search_docs happy path — the snapshot seeded by
-	//    publicDocsSnapshot() contains a "docker" page, so a body-term
+	//    docsSnapshot() contains a "docker" page, so a body-term
 	//    query must return a non-empty result set.
 	searchReq := mcp.CallToolRequest{}
 	searchReq.Params.Name = "signoz_search_docs"
@@ -83,10 +86,10 @@ func TestE2EDocsAgentFlow(t *testing.T) {
 	require.False(t, fetchRes.IsError)
 	fetchJSON := firstTextContent(t, fetchRes.Content)
 	var fetchPayload struct {
-		URL               string              `json:"url"`
-		Content           string              `json:"content"`
-		TruncationReason  string              `json:"truncation_reason"`
-		AvailableHeadings []map[string]any    `json:"available_headings"`
+		URL               string           `json:"url"`
+		Content           string           `json:"content"`
+		TruncationReason  string           `json:"truncation_reason"`
+		AvailableHeadings []map[string]any `json:"available_headings"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(fetchJSON), &fetchPayload))
 	require.Equal(t, "https://signoz.io/docs/install/docker/", fetchPayload.URL)
@@ -110,7 +113,7 @@ func TestE2EDocsAgentFlow(t *testing.T) {
 
 	// 5. sitemap MCP resource — plan §MCP resource: the resource is a
 	//    pass-through of the indexed sitemap (not a live fetch), so the
-	//    body must contain the seed pages from publicDocsSnapshot().
+	//    body must contain the seed pages from docsSnapshot().
 	sitemapReq := mcp.ReadResourceRequest{}
 	sitemapReq.Params.URI = docsindex.DocsSitemapURI
 	sitemapRes, err := mcpClient.ReadResource(ctx, sitemapReq)

@@ -238,7 +238,6 @@ Start the server:
 ```bash
 TRANSPORT_MODE=http \
 MCP_SERVER_PORT=8000 \
-SIGNOZ_MCP_PUBLIC_SESSION_KEYS=$(openssl rand -base64 32) \
 OAUTH_ENABLED=true \
 OAUTH_TOKEN_SECRET=$(openssl rand -base64 32) \
 OAUTH_ISSUER_URL=https://your-public-mcp-url.com \
@@ -305,6 +304,16 @@ MCP_SERVER_PORT=8000 \
 }
 ```
 
+### HTTP Probe Endpoints
+
+HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments should use `/livez` for `livenessProbe` and `/readyz` for `readinessProbe`.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/livez` | Shallow liveness probe. Returns `200 OK` when the server process can answer HTTP requests. It does not check dependencies. |
+| `/readyz` | Readiness probe. Returns `200 OK` only after the pod is ready to receive traffic; currently this requires the docs index to be ready. Otherwise returns `503`. |
+| `/healthz` | Legacy/generic health check kept for backward compatibility. It follows the same strict status as `/readyz`; use `/livez` for shallow liveness. |
+
 ## What Can You Do With It?
 
 ```
@@ -366,6 +375,8 @@ For detailed usage and examples, see the [full documentation](https://signoz.io/
 ### Agent Routing Guidance
 
 Use `signoz_search_docs` for any SigNoz product question: how-to, feature usage, setup, configuration, API behavior, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Use live data tools for actual telemetry, alert state, dashboard contents, saved views, and tenant-specific resources. When a docs search result needs exact commands or a specific section, call `signoz_fetch_doc`.
+
+Docs tools use the same authentication path as other MCP tools.
 
 <details>
 <summary><strong>Parameter Reference</strong></summary>
@@ -719,13 +730,8 @@ Executes a SigNoz Query Builder v5 query.
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
-| `SIGNOZ_MCP_MODE` | Set to `docs-only` to allow stdio startup without `SIGNOZ_URL` / `SIGNOZ_API_KEY` for public docs-only usage | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Runtime docs sitemap refresh interval (Go duration, default: `6h`) | No |
 | `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Runtime full docs refresh interval (Go duration, default: `24h`) | No |
-| `SIGNOZ_MCP_TRUSTED_PROXY_CIDRS` | Comma-separated trusted proxy CIDRs whose `X-Forwarded-For` header may identify public docs clients | No |
-| `SIGNOZ_MCP_PUBLIC_RATE_LIMIT_BYPASS_IPS` | Comma-separated client IPs that bypass public docs rate limits | No |
-| `SIGNOZ_MCP_PUBLIC_SESSION_KEYS` | Comma-separated base64 HMAC keys (each ≥16 bytes decoded) used to sign stateless public-docs session tokens on `initialize`. Index 0 is the active signer; all entries are accepted for verification so rolling rotation is safe. **Set to a shared value on every replica** for multi-replica HTTP deployments — otherwise a client can initialize on one pod and 401 on another. When unset, an ephemeral per-process key is minted. Generate with `openssl rand -base64 32`. See the rotation runbook below. | No (required for multi-replica public-docs mode) |
-| `SIGNOZ_MCP_PUBLIC_SESSION_TTL` | Lifetime of a signed public-session token (Go duration, default: `1h`). After expiry the client must re-run `initialize`. | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
 | `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |
 | `OAUTH_ISSUER_URL` | Public URL of this MCP server (used in OAuth metadata discovery)              | Yes when `OAUTH_ENABLED=true`       |
@@ -733,31 +739,6 @@ Executes a SigNoz Query Builder v5 query.
 | `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 1440 / 24h)       | No                                  |
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 | `SIGNOZ_CUSTOM_HEADERS` | Extra HTTP headers added to every API request, useful when SigNoz is behind a reverse proxy requiring auth (e.g. `CF-Access-Client-Id:id.access,CF-Access-Client-Secret:secret`). Format: `Key1:Value1,Key2:Value2` | No |
-
-### Public-session key rotation runbook
-
-To rotate `SIGNOZ_MCP_PUBLIC_SESSION_KEYS` without downtime:
-
-1. **Generate a new key** — `openssl rand -base64 32`.
-2. **Deploy once** with the new key *prepended*:
-   `SIGNOZ_MCP_PUBLIC_SESSION_KEYS=<new>,<old>`. Every replica now
-   signs new tokens with `<new>` but still accepts tokens minted
-   against `<old>`. Existing public-docs clients on pre-rotation
-   tokens continue to work.
-3. **Wait** at least `SIGNOZ_MCP_PUBLIC_SESSION_TTL` (default 1h) so
-   every outstanding token has either expired or been re-issued under
-   `<new>`. During this window the key ring verifies both.
-4. **Deploy again** with only the new key:
-   `SIGNOZ_MCP_PUBLIC_SESSION_KEYS=<new>`. Any tokens still minted
-   under `<old>` now 401 with `WWW-Authenticate: Session
-   error="invalid_token"` — well-behaved MCP clients treat this as a
-   signal to re-run `initialize`, which is the intended revocation
-   behavior.
-
-If a key is suspected to be compromised, collapse the wait in step 3
-and drop it immediately. Any in-flight sessions minted against the
-compromised key will see a 401 and re-initialize, but no further
-access is possible under that key.
 
 ## Claude Desktop Extension
 

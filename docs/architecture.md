@@ -6,7 +6,7 @@
 flowchart TB
 
 subgraph Startup["Server Initialization"]
-    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>OAUTH_ENABLED, OAUTH_TOKEN_SECRET, OAUTH_ISSUER_URL,<br/>SIGNOZ_MCP_PUBLIC_SESSION_KEYS"]
+    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>OAUTH_ENABLED, OAUTH_TOKEN_SECRET, OAUTH_ISSUER_URL"]
     ENV --> CFG["config.LoadConfig"]
     CFG --> VALIDATE["config.ValidateConfig"]
     VALIDATE --> LOG["telemetry.NewLogger"]
@@ -14,7 +14,7 @@ subgraph Startup["Server Initialization"]
     OTEL --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
     CHSCHEMA --> MCPSRV["NewMCPServer"]
-    MCPSRV --> REGISTER["Register all tool handlers<br/>(Metrics, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Traces)"]
+    MCPSRV --> REGISTER["Register all tool handlers<br/>(Metrics, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Docs, Traces)"]
     REGISTER --> MODE{"TransportMode?"}
 end
 
@@ -26,12 +26,13 @@ subgraph StdioPath["Stdio Transport — Single Tenant"]
 end
 
 subgraph HTTPPath["HTTP Transport — Multi Tenant"]
-    MODE -->|http| HTTP["HTTP Server<br/>/mcp + /healthz + /readyz + /oauth/* + /.well-known/*"]
+    MODE -->|http| HTTP["HTTP Server<br/>/mcp + /healthz + /livez + /readyz + /oauth/* + /.well-known/*"]
     HTTP --> OTELWRAP["otelhttp.NewHandler<br/>(wraps entire mux)"]
     OTELWRAP --> REQ["Incoming HTTP Request"]
     REQ --> HEALTHCHECK{"Path?"}
 
-    HEALTHCHECK -->|/healthz| HC200["200 OK — no auth"]
+    HEALTHCHECK -->|/livez| LIVE["200 OK — liveness only, no dependency checks"]
+    HEALTHCHECK -->|/healthz| HC200["Legacy health check<br/>same strict status as /readyz"]
     HEALTHCHECK -->|/readyz| READY["200 when docs index is ready<br/>503 while docs index is warming"]
     HEALTHCHECK -->|/.well-known/*<br/>/oauth/*| OAUTHFLOW["OAuth 2.1 Endpoints<br/>(no auth required)"]
     HEALTHCHECK -->|/mcp| AUTH["authMiddleware"]
