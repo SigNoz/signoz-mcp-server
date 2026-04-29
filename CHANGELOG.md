@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - migrate to v2 rules API and refresh schema per SigNoz P… ([#140](https://github.com/SigNoz/signoz-mcp-server/pull/140))
 - add CRUD MCP tools for saved explorer views ([#138](https://github.com/SigNoz/signoz-mcp-server/pull/138))
 
+### Changed
+- Self-hosted SigNoz users must run SigNoz v0.120.0 or newer for alert rule tools that use the `/api/v2/rules` APIs.
+
 ### Fixed
 - accept typed-slice filter items in normalizers and co… ([#148](https://github.com/SigNoz/signoz-mcp-server/pull/148))
 
