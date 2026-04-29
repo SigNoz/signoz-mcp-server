@@ -206,6 +206,7 @@ The binary is at `./bin/signoz-mcp-server`.
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
+- SigNoz v0.120.0 or newer for alert rule tools that use the `/api/v2/rules` APIs
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
 
@@ -330,7 +331,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** alert-rule and notification-channel tools target the new convention: `/api/v2/rules/*` for rules and the render-envelope `/api/v1/channels/*` routes. These require a SigNoz release that includes SigNoz/signoz#10941, #10957, #10995, and #10997. Older deployments will see HTTP 404 from the affected tools.
+> **SigNoz compatibility:** alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected alert-rule tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
 
