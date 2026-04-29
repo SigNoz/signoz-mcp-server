@@ -300,6 +300,22 @@ func TestFetcherRetryAndRedirect(t *testing.T) {
 	require.Contains(t, got.FinalURL, "example.com")
 }
 
+func TestFetcherAllowsFractionalRequestsPerSecond(t *testing.T) {
+	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("# Slow Docs\n"))
+	}))
+	defer srv.Close()
+
+	fetcher := NewFetcher(FetcherConfig{
+		RequestsPerSec: 0.5,
+		Transport:      rewriteTransport{handler: srv.handler},
+	})
+	got := fetcher.Fetch(context.Background(), "https://signoz.io/docs/slow/")
+
+	require.Equal(t, FetchStatusOK, got.Status)
+	require.Equal(t, "# Slow Docs\n", got.Body)
+}
+
 func TestConfigPrecedence(t *testing.T) {
 	t.Setenv(config.SignozURL, "http://localhost:8080")
 	t.Setenv(config.SignozApiKey, "test-key")
@@ -329,6 +345,27 @@ func TestRefreshThreshold(t *testing.T) {
 	allowedFetches[entries[0].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[0].URL}
 	refresher.fetcher = mapFetcher(allowedFetches)
 	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "newer", entries, previous)
+	require.NoError(t, err)
+	require.False(t, blocked)
+	require.Len(t, next.Pages, len(entries))
+}
+
+func TestRefreshThresholdPersistsNotFoundHistoryWhenBlocked(t *testing.T) {
+	entries := manyEntries(20)
+	previous := snapshotForEntries(entries, bodiesForEntries(entries))
+	refresher := NewRefresher(slog.Default(), newTestRegistry(t, previous), nil, RefreshConfig{})
+
+	fetches := fetchMapForEntries(entries)
+	for i := 0; i < 2; i++ {
+		fetches[entries[i].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[i].URL}
+	}
+	refresher.fetcher = mapFetcher(fetches)
+
+	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "first-blocked", entries, previous)
+	require.NoError(t, err)
+	require.True(t, blocked)
+
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "second-allowed", entries, previous)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))

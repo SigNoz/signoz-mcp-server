@@ -277,6 +277,7 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 	for _, result := range results {
 		switch result.fetch.Status {
 		case FetchStatusOK:
+			r.notFoundCounts[result.entry.URL] = 0
 		case FetchStatusNotFound:
 			notFound++
 			// "New" = this URL has not been 404ing in previous cycles. The
@@ -285,6 +286,7 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 			if r.notFoundCounts[result.entry.URL] == 0 {
 				newNotFound++
 			}
+			r.notFoundCounts[result.entry.URL]++
 		default:
 			failures++
 		}
@@ -309,7 +311,6 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		entry := result.entry
 		switch result.fetch.Status {
 		case FetchStatusOK:
-			r.notFoundCounts[entry.URL] = 0
 			body := result.fetch.Body
 			headings := ExtractHeadings(body)
 			title := FirstHeadingTitle(body, entry.Title)
@@ -324,7 +325,6 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 				SourceETag:        result.fetch.ETag,
 			})
 		case FetchStatusNotFound:
-			r.notFoundCounts[entry.URL]++
 			if r.notFoundCounts[entry.URL] <= 3 {
 				if page, ok := prior[entry.URL]; ok {
 					pages = append(pages, page)

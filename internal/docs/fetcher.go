@@ -47,6 +47,10 @@ func NewFetcher(cfg FetcherConfig) *Fetcher {
 	if cfg.RequestsPerSec <= 0 {
 		cfg.RequestsPerSec = 50
 	}
+	burst := int(cfg.RequestsPerSec)
+	if burst < 1 {
+		burst = 1
+	}
 	maxRedirects := cfg.FollowRedirects
 	if maxRedirects <= 0 {
 		maxRedirects = 5
@@ -65,7 +69,7 @@ func NewFetcher(cfg FetcherConfig) *Fetcher {
 		client:     client,
 		userAgent:  cfg.UserAgent,
 		timeout:    cfg.Timeout,
-		limiter:    rate.NewLimiter(rate.Limit(cfg.RequestsPerSec), int(cfg.RequestsPerSec)),
+		limiter:    rate.NewLimiter(rate.Limit(cfg.RequestsPerSec), burst),
 		concurrent: make(chan struct{}, cfg.MaxConcurrency),
 		sleep: func(ctx context.Context, d time.Duration) error {
 			timer := time.NewTimer(d)
