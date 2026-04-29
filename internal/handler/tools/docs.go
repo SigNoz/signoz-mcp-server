@@ -26,7 +26,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Search official SigNoz documentation with BM25 over full markdown content. Use this for ANY SigNoz product question: how-to, feature usage, setup, config, API, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Call before data tools for ambiguous how-to questions, and after data tools when live telemetry results are confusing. Do not use for fetching actual telemetry, live alert state, or dashboard contents."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Natural-language or keyword query to search in official SigNoz docs.")),
 		mcp.WithNumber("limit", mcp.Description("Maximum results to return. Default 10, max 25.")),
-		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "install", "logs-management", "traces", "metrics", "alerts-management", or "dashboards".`)),
+		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents".`)),
 	)
 	s.AddTool(searchTool, h.handleSearchDocs)
 

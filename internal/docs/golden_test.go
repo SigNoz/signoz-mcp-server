@@ -61,3 +61,64 @@ func TestGoldenSet(t *testing.T) {
 	require.GreaterOrEqual(t, recallAt3, 0.9)
 	require.GreaterOrEqual(t, precisionAt1, 0.7)
 }
+
+func TestEmbeddedCorpusSectionFilters(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreTopFunction("github.com/blevesearch/bleve_index_api.AnalysisWorker"),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	snapshot, err := LoadEmbeddedCorpus()
+	require.NoError(t, err)
+	reg, err := NewIndexRegistry(ctx, snapshot)
+	require.NoError(t, err)
+	defer reg.Close(context.Background())
+
+	tests := []struct {
+		name    string
+		query   string
+		section string
+		wantURL string
+	}{
+		{
+			name:    "setup install docs",
+			query:   "docker",
+			section: "setup",
+			wantURL: "https://signoz.io/docs/install/docker/",
+		},
+		{
+			name:    "traces docs",
+			query:   "missing spans troubleshooting",
+			section: "apm-distributed-tracing",
+			wantURL: "https://signoz.io/docs/traces-management/troubleshooting/troubleshooting/",
+		},
+		{
+			name:    "alerts docs",
+			query:   "slack notification channel",
+			section: "alerts",
+			wantURL: "https://signoz.io/docs/alerts-management/notification-channel/slack/",
+		},
+		{
+			name:    "api docs",
+			query:   "search logs api",
+			section: "signoz-apis",
+			wantURL: "https://signoz.io/docs/logs-management/logs-api/search-logs/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := reg.Search(ctx, tt.query, tt.section, 5)
+			require.NoError(t, err)
+			require.NotEmpty(t, res.Results)
+			for _, hit := range res.Results {
+				require.Equal(t, tt.section, hit.SectionSlug)
+			}
+			var urls []string
+			for _, hit := range res.Results {
+				urls = append(urls, hit.URL)
+			}
+			require.Contains(t, urls, tt.wantURL)
+		})
+	}
+}

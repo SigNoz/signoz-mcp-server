@@ -528,8 +528,8 @@ Search official SigNoz documentation with BM25 over indexed markdown content.
 - **Parameters**:
   - `query` (required) - Natural-language or keyword query
   - `limit` (optional) - Maximum results to return (default: 10, max: 25)
-  - `section_slug` (optional) - Exact top-level docs section filter, such as `install`, `logs-management`, `traces`, or `dashboards`
-  - `searchContext` (optional) - User's original question
+  - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
+  - `searchContext` - User's original question
 
 #### `signoz_fetch_doc`
 
@@ -538,7 +538,7 @@ Fetch full markdown for one official SigNoz docs page from the local index. Acce
 - **Parameters**:
   - `url` (required) - Docs page URL or path
   - `heading` (optional) - Heading anchor ID or heading text
-  - `searchContext` (optional) - User's original question
+  - `searchContext` - User's original question
 
 #### `signoz://docs/sitemap`
 
