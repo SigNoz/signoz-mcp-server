@@ -402,6 +402,48 @@ func TestTransient404Grace(t *testing.T) {
 	require.Len(t, next.Pages, len(entries))
 }
 
+func TestRefreshFallbackPreservesDuplicateURLSections(t *testing.T) {
+	entries := manyEntries(18)
+	duplicateLogs := SitemapEntry{
+		URL:               "https://signoz.io/docs/duplicate-deno/",
+		Title:             "Deno Logs",
+		SectionSlug:       "logs-management",
+		SectionBreadcrumb: "Logs Management > Deno",
+	}
+	duplicateMetrics := SitemapEntry{
+		URL:               "https://signoz.io/docs/duplicate-deno/",
+		Title:             "Deno Metrics",
+		SectionSlug:       "metrics",
+		SectionBreadcrumb: "Metrics > Deno",
+	}
+	entries = append(entries, duplicateLogs, duplicateMetrics)
+	previous := snapshotForEntries(entries, bodiesForEntries(entries))
+	refresher := NewRefresher(slog.Default(), newTestRegistry(t, previous), nil, RefreshConfig{})
+	fetches := fetchMapForEntries(entries)
+	fetches[duplicateLogs.URL] = PageFetch{Status: FetchStatusError, URL: duplicateLogs.URL, Err: fmt.Errorf("temporary fetch failure")}
+	refresher.fetcher = mapFetcher(fetches)
+
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "fallback-sections", entries, previous)
+	require.NoError(t, err)
+	require.False(t, blocked)
+
+	var duplicatePages []PageRecord
+	for _, page := range next.Pages {
+		if page.URL == duplicateLogs.URL {
+			duplicatePages = append(duplicatePages, page)
+		}
+	}
+	require.Len(t, duplicatePages, 2)
+	sections := map[string]string{}
+	for _, page := range duplicatePages {
+		sections[page.SectionSlug] = page.SectionBreadcrumb
+	}
+	require.Equal(t, map[string]string{
+		"logs-management": "Logs Management > Deno",
+		"metrics":         "Metrics > Deno",
+	}, sections)
+}
+
 func verifyNoDocsLeaks(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
