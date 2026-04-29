@@ -93,6 +93,129 @@ func TestHandleListAlerts_ClientError(t *testing.T) {
 	}
 }
 
+func TestHandleListAlertRules(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{
+				"status": "success",
+				"data": [
+					{
+						"id": "rule-1",
+						"alert": "HighCPU",
+						"alertType": "METRIC_BASED_ALERT",
+						"ruleType": "threshold_rule",
+						"state": "firing",
+						"disabled": false,
+						"labels": {"severity": "critical", "team": "infra"},
+						"createdAt": "2026-04-01T00:00:00Z",
+						"updatedAt": "2026-04-02T00:00:00Z"
+					},
+					{
+						"id": "rule-2",
+						"alert": "HighMemory",
+						"alertType": "METRIC_BASED_ALERT",
+						"ruleType": "threshold_rule",
+						"state": "inactive",
+						"disabled": false,
+						"labels": {"severity": "warning"},
+						"createAt": "2026-03-01T00:00:00Z",
+						"updateAt": "2026-03-02T00:00:00Z"
+					},
+					{
+						"id": "rule-3",
+						"alert": "DisabledRule",
+						"alertType": "LOGS_BASED_ALERT",
+						"ruleType": "threshold_rule",
+						"state": "disabled",
+						"disabled": true
+					}
+				]
+			}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alert_rules", map[string]any{
+		"limit":  "2",
+		"offset": "1",
+	})
+
+	result, err := h.handleListAlertRules(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var resp struct {
+		Data       []types.AlertRuleSummary `json:"data"`
+		Pagination struct {
+			Total      int  `json:"total"`
+			Offset     int  `json:"offset"`
+			Limit      int  `json:"limit"`
+			HasMore    bool `json:"hasMore"`
+			NextOffset int  `json:"nextOffset"`
+		} `json:"pagination"`
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if err := json.Unmarshal([]byte(text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp.Pagination.Total != 3 {
+		t.Fatalf("total = %d, want 3", resp.Pagination.Total)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("len(data) = %d, want 2", len(resp.Data))
+	}
+	if resp.Data[0].RuleID != "rule-2" || resp.Data[0].State != "inactive" || resp.Data[0].Severity != "warning" {
+		t.Fatalf("unexpected first rule summary: %+v", resp.Data[0])
+	}
+	if resp.Data[0].CreatedAt != "2026-03-01T00:00:00Z" || resp.Data[0].UpdatedAt != "2026-03-02T00:00:00Z" {
+		t.Fatalf("legacy timestamps were not preserved: %+v", resp.Data[0])
+	}
+	if !resp.Data[1].Disabled || resp.Data[1].RuleID != "rule-3" {
+		t.Fatalf("unexpected second rule summary: %+v", resp.Data[1])
+	}
+}
+
+func TestHandleListAlertRules_NoArguments(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Name: "signoz_list_alert_rules"},
+	}
+
+	result, err := h.handleListAlertRules(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+}
+
+func TestHandleListAlertRules_ClientError(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
+			return nil, fmt.Errorf("connection refused")
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alert_rules", map[string]any{})
+
+	result, err := h.handleListAlertRules(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result when client returns error")
+	}
+}
+
 func TestHandleGetAlert(t *testing.T) {
 	var capturedRuleID string
 	mock := &client.MockClient{
@@ -201,6 +324,37 @@ func TestHandleGetAlertHistory(t *testing.T) {
 	}
 	if capturedReq.Order != "desc" {
 		t.Errorf("expected order=desc, got %q", capturedReq.Order)
+	}
+}
+
+func TestHandleGetAlertHistory_ExplicitStartEndOverrideTimeRange(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":    "rule-hist",
+		"timeRange": "1h",
+		"start":     "1711123200000",
+		"end":       "1711130400000",
+	})
+
+	result, err := h.handleGetAlertHistory(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if capturedReq.Start != 1711123200000 {
+		t.Fatalf("start = %d, want explicit start", capturedReq.Start)
+	}
+	if capturedReq.End != 1711130400000 {
+		t.Fatalf("end = %d, want explicit end", capturedReq.End)
 	}
 }
 

@@ -174,7 +174,110 @@ func validateBuilderQuery(prefix string, q *Query, errs *ValidationError) {
 		if expr == "" {
 			errs.Add(qPrefix+".expression", "is required and must be a non-empty string")
 		}
+
+		validateFilterExpressionConsistency(qPrefix, qd, errs)
 	}
+
+	for i, qf := range q.Builder.QueryFormulas {
+		qPrefix := fmt.Sprintf("%s.builder.queryFormulas[%d]", prefix, i)
+		validateFilterExpressionConsistency(qPrefix, qf, errs)
+	}
+}
+
+// validateFilterExpressionConsistency rejects builder queries whose
+// `filter.expression` string omits any key present in `filters.items[]`. Both
+// the SigNoz list/graph renderer (which reads `filter.expression` directly)
+// and the edit-modal expression-reconstruction path (which walks
+// `filters.items[]`) must agree, or the two produce different query payloads:
+// the list view silently drops predicates, and the edit modal trips on an
+// item it cannot find a home for. The SigNoz backend tolerates this
+// inconsistency on write (it does not reject mismatched payloads), so we
+// enforce it here — permissive upstream does not mean correct.
+//
+// Only runs when both sides are non-empty: an empty `filter.expression` lets
+// SigNoz build from items, and an empty `filters.items[]` means
+// expression-only is intentional.
+func validateFilterExpressionConsistency(prefix string, qd map[string]any, errs *ValidationError) {
+	filterMap, _ := qd["filter"].(map[string]any)
+	expression, _ := filterMap["expression"].(string)
+	if strings.TrimSpace(expression) == "" {
+		return
+	}
+	filtersMap, _ := qd["filters"].(map[string]any)
+	itemsAny := filterItemsSlice(filtersMap["items"])
+	if len(itemsAny) == 0 {
+		return
+	}
+	var missing []string
+	for _, it := range itemsAny {
+		item, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		keyObj, ok := item["key"].(map[string]any)
+		if !ok {
+			continue
+		}
+		keyName, _ := keyObj["key"].(string)
+		if keyName == "" {
+			continue
+		}
+		if !containsKeyAsIdentifier(expression, keyName) {
+			missing = append(missing, keyName)
+		}
+	}
+	if len(missing) > 0 {
+		errs.Addf(prefix+".filter.expression",
+			"is inconsistent with filters.items[]: keys %v are present in items but missing from expression %q. Every filter item key must appear in filter.expression so the list view and edit modal render the same predicates.",
+			missing, expression)
+	}
+}
+
+// containsKeyAsIdentifier reports whether `key` appears in `expression` as a
+// standalone identifier — that is, flanked by characters that cannot be part
+// of a SigNoz attribute name, or by the start/end of the expression. This
+// avoids false positives where a shorter key substring-matches inside a
+// longer identifier (e.g. key "service.name" appearing in "service.name_v2",
+// or key "k8s.namespace" appearing in "k8s.namespace.name").
+//
+// Attribute names are ASCII and may contain [a-zA-Z0-9_.] — the dot is part
+// of the identifier because OpenTelemetry semantic convention names like
+// "k8s.namespace.name" are a single attribute, not three. Anything outside
+// that set (whitespace, operators, variable prefixes, quotes, parentheses)
+// is a valid boundary.
+func containsKeyAsIdentifier(expression, key string) bool {
+	if key == "" {
+		return false
+	}
+	for idx := 0; idx <= len(expression)-len(key); {
+		i := strings.Index(expression[idx:], key)
+		if i < 0 {
+			return false
+		}
+		pos := idx + i
+		endPos := pos + len(key)
+		beforeOK := pos == 0 || !isAttributeNameByte(expression[pos-1])
+		afterOK := endPos == len(expression) || !isAttributeNameByte(expression[endPos])
+		if beforeOK && afterOK {
+			return true
+		}
+		idx = pos + 1
+	}
+	return false
+}
+
+func isAttributeNameByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z':
+		return true
+	case b >= 'A' && b <= 'Z':
+		return true
+	case b >= '0' && b <= '9':
+		return true
+	case b == '_' || b == '.':
+		return true
+	}
+	return false
 }
 
 func validateClickHouseQueries(prefix string, q *Query, errs *ValidationError) {

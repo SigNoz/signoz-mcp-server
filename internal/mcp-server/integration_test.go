@@ -2,6 +2,8 @@ package mcp_server
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -87,11 +89,107 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	const expectedToolCount = 33
+	const expectedToolCount = 34
 	if len(toolsResult.Tools) != expectedToolCount {
 		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
 		for _, tool := range toolsResult.Tools {
 			t.Logf("  tool: %s", tool.Name)
+		}
+	}
+	foundAlertRulesTool := false
+	for _, tool := range toolsResult.Tools {
+		if tool.Name == "signoz_list_alert_rules" {
+			foundAlertRulesTool = true
+			break
+		}
+	}
+	if !foundAlertRulesTool {
+		t.Error("expected signoz_list_alert_rules tool to be registered")
+	}
+}
+
+func TestIntegration_ListToolsInputSchemasAreOpenAPICompatible(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	for _, tool := range toolsResult.Tools {
+		b, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("marshal input schema for %s: %v", tool.Name, err)
+		}
+		var schema any
+		if err := json.Unmarshal(b, &schema); err != nil {
+			t.Fatalf("unmarshal input schema for %s: %v", tool.Name, err)
+		}
+		if paths := booleanSubschemaPaths(schema, nil); len(paths) > 0 {
+			t.Errorf("%s inputSchema has OpenAPI-incompatible boolean subschemas: %s", tool.Name, strings.Join(paths, ", "))
+		}
+	}
+}
+
+func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	for _, tool := range toolsResult.Tools {
+		schema := inputSchema(t, tool)
+		properties := schemaProperties(t, tool.Name, schema)
+		searchContext, ok := properties["searchContext"].(map[string]any)
+		if !ok {
+			t.Errorf("%s inputSchema is missing top-level searchContext", tool.Name)
+			continue
+		}
+		if searchContext["type"] != "string" {
+			t.Errorf("%s searchContext type = %v, want string", tool.Name, searchContext["type"])
+		}
+		for _, field := range schemaRequiredFields(schema) {
+			if field == "searchContext" {
+				t.Errorf("%s searchContext should not be marked required", tool.Name)
+			}
 		}
 	}
 }
@@ -141,6 +239,79 @@ func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 			t.Errorf("resource body missing expected substring %q", want)
 		}
 	}
+}
+
+func inputSchema(t *testing.T, tool mcp.Tool) map[string]any {
+	t.Helper()
+
+	b, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		t.Fatalf("marshal input schema for %s: %v", tool.Name, err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(b, &schema); err != nil {
+		t.Fatalf("unmarshal input schema for %s: %v", tool.Name, err)
+	}
+	return schema
+}
+
+func schemaProperties(t *testing.T, toolName string, schema map[string]any) map[string]any {
+	t.Helper()
+
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s inputSchema.properties = %#v, want object", toolName, schema["properties"])
+	}
+	return properties
+}
+
+func schemaRequiredFields(schema map[string]any) []string {
+	rawRequired, _ := schema["required"].([]any)
+	required := make([]string, 0, len(rawRequired))
+	for _, field := range rawRequired {
+		if s, ok := field.(string); ok {
+			required = append(required, s)
+		}
+	}
+	return required
+}
+
+func booleanSubschemaPaths(schema any, path []string) []string {
+	switch typed := schema.(type) {
+	case bool:
+		return []string{strings.Join(path, ".")}
+	case map[string]any:
+		var paths []string
+		for _, field := range []string{"$defs", "definitions", "dependentSchemas", "patternProperties", "properties"} {
+			if schemas, ok := typed[field].(map[string]any); ok {
+				for name, child := range schemas {
+					paths = append(paths, booleanSubschemaPaths(child, appendPath(path, field, name))...)
+				}
+			}
+		}
+		for _, field := range []string{"additionalItems", "contains", "else", "if", "items", "not", "propertyNames", "then", "unevaluatedItems", "unevaluatedProperties"} {
+			if child, ok := typed[field]; ok {
+				paths = append(paths, booleanSubschemaPaths(child, appendPath(path, field))...)
+			}
+		}
+		for _, field := range []string{"allOf", "anyOf", "oneOf", "prefixItems"} {
+			if schemas, ok := typed[field].([]any); ok {
+				for i, child := range schemas {
+					paths = append(paths, booleanSubschemaPaths(child, appendPath(path, field, strconv.Itoa(i)))...)
+				}
+			}
+		}
+		return paths
+	default:
+		return nil
+	}
+}
+
+func appendPath(path []string, parts ...string) []string {
+	next := make([]string, 0, len(path)+len(parts))
+	next = append(next, path...)
+	next = append(next, parts...)
+	return next
 }
 
 func TestIntegration_ListPrompts(t *testing.T) {

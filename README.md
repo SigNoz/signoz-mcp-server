@@ -332,6 +332,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **SigNoz compatibility:** alert-rule and notification-channel tools target the new convention: `/api/v2/rules/*` for rules and the render-envelope `/api/v1/channels/*` routes. These require a SigNoz release that includes SigNoz/signoz#10941, #10957, #10995, and #10997. Older deployments will see HTTP 404 from the affected tools.
 
+> **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
+
 | Tool | Description |
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
@@ -339,6 +341,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
+| `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get an alert rule definition by ID via GET /api/v2/rules/{ruleId} |
 | `signoz_get_alert_history` | Get alert state history timeline for a rule |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
@@ -405,8 +408,8 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
   - `groupBy` (optional) - Comma-separated field names
   - `filter` (optional) - Filter expression
-  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h)
-  - `start`/`end` (optional) - Unix ms timestamps (override timeRange)
+  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - time_series (default) or scalar
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
@@ -415,7 +418,15 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 
 #### `signoz_list_alerts`
 
-Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_get_alert` with a `ruleId` for rule definitions, or `signoz_get_alert_history` for the state timeline.
+Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with a `ruleId` for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+
+#### `signoz_list_alert_rules`
+
+Lists configured alert rules from `GET /api/v2/rules`, including inactive/OK and disabled rules. Returns compact summaries with `ruleId`, `alert`, `alertType`, `ruleType`, `state`, `disabled`, `severity`, `labels`, `createdAt`, and `updatedAt`.
+
+- **Parameters**:
+  - `limit` (optional) - Maximum number of rules to return (default: 50)
+  - `offset` (optional) - Number of rules to skip for pagination (default: 0)
 
 #### `signoz_get_alert`
 
@@ -452,19 +463,20 @@ Updates an existing dashboard.
 
 - **Parameters:**
   - `uuid` (required) – Unique identifier of the dashboard to update
-  - `title` (required) – Dashboard name
-  - `description` (optional) – Short summary of what the dashboard shows
-  - `tags` (optional) – List of tags applied to the dashboard
-  - `layout` (required) – Full widget positioning grid
-  - `variables` (optional) – Map of variables available for use in queries
-  - `widgets` (required) – Complete set of widgets defining the updated dashboard
+  - `dashboard` (required) – Complete dashboard object representing the post-update state
+    - `title` (required) – Dashboard name
+    - `description` (optional) – Short summary of what the dashboard shows
+    - `tags` (optional) – List of tags applied to the dashboard
+    - `layout` (required) – Full widget positioning grid
+    - `variables` (optional) – Map of variables available for use in queries
+    - `widgets` (required) – Complete set of widgets defining the updated dashboard
 
 #### `signoz_list_services`
 
 Lists all services within a time range.
 
 - **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
 
@@ -474,7 +486,7 @@ Gets top operations for a specific service.
 
 - **Parameters**:
   - `service` (required) - Service name
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
   - `tags` (optional) - JSON array of tags
@@ -485,7 +497,7 @@ Gets alert history timeline for a specific rule.
 
 - **Parameters**:
   - `ruleId` (required) - Alert rule ID
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
   - `end` (optional) - End timestamp in milliseconds (defaults to now)
   - `offset` (optional) - Offset for pagination (default: 0)
@@ -569,8 +581,8 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
 #### `signoz_search_logs`
 
@@ -581,8 +593,8 @@ Search logs with flexible filtering across all services.
   - `service` (optional) - Service name to filter by
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
   - `limit` (optional) - Maximum number of logs to return (default: 100)
   - `offset` (optional) - Offset for pagination (default: 0)
 
@@ -624,8 +636,8 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h')
-  - `start` / `end` (optional) - Start/end time in milliseconds
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
 #### `signoz_get_trace_details`
 
@@ -633,7 +645,7 @@ Gets trace information including all spans and metadata.
 
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d'
+  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
@@ -655,7 +667,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 Update an existing alert rule via `PUT /api/v2/rules/{ruleId}`. Replaces the full rule configuration — fetch the current rule with `signoz_get_alert` first and merge changes on top of it.
 
 - **Parameters**:
-  - `ruleId` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alerts` / `signoz_get_alert`).
+  - `ruleId` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
   - Plus all fields of the alert rule schema (same shape as `signoz_create_alert`).
 
 #### `signoz_delete_alert`
@@ -739,6 +751,13 @@ Executes a SigNoz Query Builder v5 query.
 | `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 1440 / 24h)       | No                                  |
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 | `SIGNOZ_CUSTOM_HEADERS` | Extra HTTP headers added to every API request, useful when SigNoz is behind a reverse proxy requiring auth (e.g. `CF-Access-Client-Id:id.access,CF-Access-Client-Secret:secret`). Format: `Key1:Value1,Key2:Value2` | No |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for the MCP server's own traces and metrics. Internal telemetry export is disabled when no OTLP endpoint/exporter is configured. For plaintext collectors, use an `http://` endpoint such as `http://localhost:4317`. | No |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for traces. | No |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics. | No |
+| `OTEL_TRACES_EXPORTER` | Set to `none` to disable internal trace export even when an OTLP endpoint is configured. | No |
+| `OTEL_METRICS_EXPORTER` | Set to `none` to disable internal metrics export and runtime metrics even when an OTLP endpoint is configured. | No |
+
+The MCP server does not run an OTLP log exporter; logs are emitted as JSON to stderr. `OTEL_LOGS_EXPORTER` is therefore not used.
 
 ## Claude Desktop Extension
 

@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
@@ -44,6 +44,10 @@
     {
       "name": "signoz_list_alerts",
       "description": "List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) with optional matcher/receiver filtering"
+    },
+    {
+      "name": "signoz_list_alert_rules",
+      "description": "List configured alert rules via GET /api/v2/rules, including inactive/OK and disabled rules"
     },
     {
       "name": "signoz_get_alert",

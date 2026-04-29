@@ -40,6 +40,14 @@ INCORRECT: groupBy: - name: llm.model_name # ERROR: Should be 'key' dataType: st
 
 ERROR: Using 'name' instead of 'key' in groupBy causes query errors. SOLUTION: Always use 'key' field in groupBy.
 
+--- having (write-shape) ---
+
+CORRECT (write): having: []  OR  having: [{columnName: count, op: '>', value: 10}]
+
+INCORRECT (write): having: {expression: ""}  # this is the GET-response shape; sending it back on write fails.
+
+ERROR: Sending the object form {expression: ""} to POST/PUT is rejected. SOLUTION: Use the array form. The server auto-coerces the empty object form to [] when round-tripping a GET payload, but prefer sending [] directly.
+
 --- filters.items (structured filters) ---
 
 CORRECT: filters: op: AND items: - key: key: service.name # Use 'key' not 'name' dataType: string op: IN value: $service_name
@@ -47,6 +55,31 @@ CORRECT: filters: op: AND items: - key: key: service.name # Use 'key' not 'name'
 INCORRECT: filters: items: - key: name: service.name # ERROR: Should be 'key' op: IN value: $service_name
 
 ERROR: Using 'name' in filter items causes filter parsing errors. SOLUTION: Always use 'key' field in filters.items[].key.
+
+--- filters.items[].key (write-shape for edit-modal hydration) ---
+
+CORRECT (write):
+  filters.items[0].key = {key: k8s.node.name, dataType: string, type: "", id: "k8s.node.name--string--"}
+
+INCORRECT (write):
+  filters.items[0].key = {key: k8s.node.name, type: ""}                              # missing dataType, malformed id
+  filters.items[0].key = {key: k8s.node.name, dataType: string, id: "k8s.node.name"}  # id missing --<dataType>--<type> suffix
+
+Canonical id form is <key>--<dataType>--<type> (trailing "--" is correct when type is empty). The SigNoz edit modal reverse-maps the key back to the autocomplete dropdown by this id; a malformed id makes the filter row fail to hydrate even though the list/graph renders fine (it uses the top-level filter.expression string).
+
+For variable references on IN filters, always send value as a plain string like "$var", not a single-element array like ["$var"]. The array form causes the form row to misrender.
+
+The server auto-heals all three cases (fills dataType, rebuilds malformed id, unwraps single-$var arrays) so a GET-echoed payload round-trips cleanly — but prefer sending the canonical shape directly.
+
+--- filters.items[].op (write-shape casing) ---
+
+CORRECT (write): op: IN  OR  op: NOT_IN  OR  op: LIKE  OR  op: EXISTS  OR  op: =  OR  op: !=
+
+INCORRECT (write): op: in  OR  op: Not_In  OR  op: like  # lowercase/mixed-case as returned by some GET responses
+
+Canonical operators (uppercase word ops; symbol ops unaffected by case): IN, NOT_IN, LIKE, NOT_LIKE, ILIKE, NOT_ILIKE, REGEX, NOT_REGEX, EXISTS, NOT_EXISTS, CONTAINS, NOT_CONTAINS, HAS, NHAS, =, !=, >=, >, <=, <.
+
+ERROR: Sending lowercase or mixed-case word operators to POST/PUT is rejected by panel validation. SOLUTION: Use uppercase. The server trims + uppercases filter operators when round-tripping a GET payload, but prefer sending uppercase directly.
 
 === PANEL TYPE REQUIREMENTS ===
 
@@ -162,7 +195,7 @@ Existence Check: filter: expression: llm.model_name EXISTS
 
 filters: op: AND items: - key: key: service.name dataType: string op: IN value: $service_name - key: key: has_error op: = value: true
 
-NOTE: You can use BOTH filter.expression AND filters.items together for compatibility.
+NOTE: You can use BOTH filter.expression AND filters.items together for compatibility. When you do, they MUST stay consistent: every key.key in filters.items must appear in filter.expression. The MCP server REJECTS dashboards where a filter item's key is missing from the expression — even though the SigNoz backend would accept the payload. Rationale: the list/graph renderer reads filter.expression directly, while the edit-modal's expression-reconstruction path walks filters.items[]. A mismatch causes the two to execute different queries, silently dropping predicates in the list view and breaking edit-modal hydration. If the two must differ intentionally, send only one side (leave filter.expression empty OR leave filters.items unset).
 
 ERROR: Invalid operators cause filter errors. ERROR: Missing $ prefix for variables causes literal string matching. ERROR: Typo in field names causes no data.
 

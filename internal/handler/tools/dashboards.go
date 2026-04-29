@@ -28,7 +28,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
-	s.AddTool(tool, h.handleListDashboards)
+	addTool(s, tool, h.handleListDashboards)
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -38,12 +38,11 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID")),
 	)
 
-	s.AddTool(getDashboardTool, h.handleGetDashboard)
+	addTool(s, getDashboardTool, h.handleGetDashboard)
 
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
 				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
@@ -59,15 +58,14 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
 				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
 		),
-		mcp.WithInputSchema[types.Dashboard](),
+		mcp.WithInputSchema[types.CreateDashboardInput](),
 	)
 
-	s.AddTool(createDashboardTool, h.handleCreateDashboard)
+	addTool(s, createDashboardTool, h.handleCreateDashboard)
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
 				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
@@ -88,7 +86,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithInputSchema[types.UpdateDashboardInput](),
 	)
 
-	s.AddTool(updateDashboardTool, h.handleUpdateDashboard)
+	addTool(s, updateDashboardTool, h.handleUpdateDashboard)
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -97,7 +95,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID to delete")),
 	)
 
-	s.AddTool(deleteDashboardTool, h.handleDeleteDashboard)
+	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
 
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)
@@ -172,6 +170,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "Received empty or invalid arguments map.")
 		return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
 	}
+	delete(rawConfig, "searchContext")
 
 	// Validate and normalize via the dashboardbuilder + panelbuilder pipeline.
 	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)

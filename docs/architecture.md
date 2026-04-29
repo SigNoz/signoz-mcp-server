@@ -6,11 +6,11 @@
 flowchart TB
 
 subgraph Startup["Server Initialization"]
-    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>OAUTH_ENABLED, OAUTH_TOKEN_SECRET, OAUTH_ISSUER_URL"]
+    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>OAUTH_ENABLED, OAUTH_TOKEN_SECRET, OAUTH_ISSUER_URL,<br/>OTEL_EXPORTER_OTLP_*"]
     ENV --> CFG["config.LoadConfig"]
     CFG --> VALIDATE["config.ValidateConfig"]
-    VALIDATE --> LOG["telemetry.NewLogger"]
-    LOG --> OTEL["Init OpenTelemetry<br/>(Tracer, Meter, Log Provider)"]
+    VALIDATE --> LOG["log.New"]
+    LOG --> OTEL["Init OpenTelemetry<br/>(Tracer, Meter; OTLP export only when configured)"]
     OTEL --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
     CHSCHEMA --> MCPSRV["NewMCPServer"]

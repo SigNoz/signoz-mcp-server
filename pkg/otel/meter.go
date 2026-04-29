@@ -5,14 +5,21 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-func InitMeterProvider(ctx context.Context, res *resource.Resource) (func(context.Context) error, error) {
+func InitMeterProvider(ctx context.Context, res *resource.Resource) (func(context.Context) error, ExporterStatus, error) {
+	status := MetricExporterStatus()
+	if status != ExporterStatusEnabled {
+		otel.SetMeterProvider(metricnoop.NewMeterProvider())
+		return nil, status, nil
+	}
+
 	metricExporter, err := otlpmetricgrpc.New(ctx)
 	if err != nil {
-		return nil, err
+		return nil, status, err
 	}
 
 	mp := sdkmetric.NewMeterProvider(
@@ -22,5 +29,5 @@ func InitMeterProvider(ctx context.Context, res *resource.Resource) (func(contex
 
 	otel.SetMeterProvider(mp)
 
-	return mp.Shutdown, nil
+	return mp.Shutdown, status, nil
 }

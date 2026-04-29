@@ -67,7 +67,7 @@ func ParseFromJSON(data []byte) (*DashboardData, error) {
 			SelectedValue:             rv.SelectedValue,
 			DefaultValue:              rv.DefaultValue,
 			DynamicVariablesAttribute: rv.DynamicVariablesAttribute,
-			DynamicVariablesSource:    rv.DynamicVariablesSource,
+			DynamicVariablesSource:    canonicalDynamicSource(rv.DynamicVariablesSource),
 			Order:                     rv.Order,
 		}
 		if rv.MultiSelect != nil {

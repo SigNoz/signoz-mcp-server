@@ -55,22 +55,33 @@ func main() {
 		logger.WarnContext(ctx, "OpenTelemetry resource detection partially failed; continuing with available attributes", logpkg.ErrAttr(err))
 	}
 
-	shutdownTracer, err := otelpkg.InitTracerProvider(ctx, res)
+	shutdownTracer, traceStatus, err := otelpkg.InitTracerProvider(ctx, res)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to initialize OpenTelemetry tracer, continuing without tracing", logpkg.ErrAttr(err))
+	} else if traceStatus == otelpkg.ExporterStatusDisabled {
+		logger.InfoContext(ctx, "OpenTelemetry tracer export disabled", slog.String("env", otelpkg.EnvTracesExporter))
+	} else if traceStatus == otelpkg.ExporterStatusNotConfigured {
+		logger.InfoContext(ctx, "OpenTelemetry tracer export not configured; continuing without tracing export")
 	} else {
 		logger.InfoContext(ctx, "OpenTelemetry tracer initialized successfully")
 	}
 
-	shutdownMeter, err := otelpkg.InitMeterProvider(ctx, res)
+	shutdownMeter, metricStatus, err := otelpkg.InitMeterProvider(ctx, res)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to initialize OpenTelemetry meter provider, continuing without metrics export", logpkg.ErrAttr(err))
+	} else if metricStatus == otelpkg.ExporterStatusDisabled {
+		logger.InfoContext(ctx, "OpenTelemetry metrics export disabled", slog.String("env", otelpkg.EnvMetricsExporter))
+	} else if metricStatus == otelpkg.ExporterStatusNotConfigured {
+		logger.InfoContext(ctx, "OpenTelemetry metrics export not configured; continuing without metrics export")
 	} else {
 		logger.InfoContext(ctx, "OpenTelemetry meter provider initialized successfully")
 	}
 
-	if err := otelruntime.Start(); err != nil {
-		logger.WarnContext(ctx, "Failed to initialize OpenTelemetry runtime metrics", logpkg.ErrAttr(err))
+	metricsExportEnabled := err == nil && metricStatus == otelpkg.ExporterStatusEnabled
+	if metricsExportEnabled {
+		if err := otelruntime.Start(); err != nil {
+			logger.WarnContext(ctx, "Failed to initialize OpenTelemetry runtime metrics", logpkg.ErrAttr(err))
+		}
 	}
 
 	meters, err := otelpkg.NewMeters(otel.GetMeterProvider())
