@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -154,11 +155,11 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	finalQuery := boostedDocsQuery(query)
 	if sectionSlug != "" {
 		sectionQuery := bleve.NewTermQuery(sectionSlug)
-		sectionQuery.SetField("section_slug")
+		sectionQuery.SetField("section_slugs")
 		finalQuery = bleve.NewConjunctionQuery(finalQuery, sectionQuery)
 	}
 	req := bleve.NewSearchRequestOptions(finalQuery, limit, 0, false)
-	req.Fields = []string{"title", "url", "section_slug", "section_breadcrumb", "body_markdown"}
+	req.Fields = []string{"title", "url", "section_slug", "section_breadcrumb", "section_map", "body_markdown"}
 	// Use bleve's built-in highlighter + default fragmenter so snippets are
 	// anchored on the matched terms rather than picked by manual substring
 	// scan. We rune-trim afterwards to honor the snippetRuneLimit contract.
@@ -171,16 +172,37 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	out := SearchResponse{Query: query, TotalMatches: res.Total}
 	for _, hit := range res.Hits {
 		body := stringField(hit.Fields, "body_markdown")
+		resultSectionSlug := stringField(hit.Fields, "section_slug")
+		resultSectionBreadcrumb := stringField(hit.Fields, "section_breadcrumb")
+		if sectionSlug != "" {
+			if breadcrumb, ok := sectionBreadcrumbForFilter(hit.Fields, sectionSlug); ok {
+				resultSectionSlug = sectionSlug
+				resultSectionBreadcrumb = breadcrumb
+			}
+		}
 		out.Results = append(out.Results, SearchResult{
 			Title:             stringField(hit.Fields, "title"),
 			URL:               stringField(hit.Fields, "url"),
-			SectionSlug:       stringField(hit.Fields, "section_slug"),
-			SectionBreadcrumb: stringField(hit.Fields, "section_breadcrumb"),
+			SectionSlug:       resultSectionSlug,
+			SectionBreadcrumb: resultSectionBreadcrumb,
 			Snippet:           chooseSnippet(hit.Fragments["body"], body, query, snippetRuneLimit),
 			Score:             hit.Score,
 		})
 	}
 	return out, nil
+}
+
+func sectionBreadcrumbForFilter(fields map[string]any, sectionSlug string) (string, bool) {
+	raw := stringField(fields, "section_map")
+	if raw == "" {
+		return "", false
+	}
+	sectionMap := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &sectionMap); err != nil {
+		return "", false
+	}
+	breadcrumb, ok := sectionMap[sectionSlug]
+	return breadcrumb, ok
 }
 
 func boostedDocsQuery(raw string) bleveQuery.Query {
@@ -300,11 +322,8 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 		return nil, err
 	}
 	batch := idx.NewBatch()
-	for _, page := range snapshot.Pages {
-		canonical, ok := CanonicalDocURL(page.URL)
-		if !ok {
-			continue
-		}
+	for _, page := range mergeDuplicatePages(snapshot.Pages) {
+		canonical := page.CanonicalURL
 		body := page.BodyMarkdown
 		headingsJSON := page.HeadingsJSON
 		if headingsJSON == "" {
@@ -316,6 +335,8 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 			"body":               body,
 			"section_slug":       page.SectionSlug,
 			"section_breadcrumb": page.SectionBreadcrumb,
+			"section_slugs":      page.SectionSlugs,
+			"section_map":        mustJSON(page.SectionMap),
 			"url":                canonical,
 			"body_markdown":      body,
 			"available_headings": headingsJSON,
@@ -331,6 +352,58 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 		return nil, err
 	}
 	return idx, nil
+}
+
+type indexedPage struct {
+	PageRecord
+	CanonicalURL string
+	SectionSlugs []string
+	SectionMap   map[string]string
+}
+
+func mergeDuplicatePages(pages []PageRecord) []indexedPage {
+	type accumulator struct {
+		page         indexedPage
+		seenSections map[string]struct{}
+	}
+	byURL := make(map[string]*accumulator, len(pages))
+	order := make([]string, 0, len(pages))
+
+	for _, page := range pages {
+		canonical, ok := CanonicalDocURL(page.URL)
+		if !ok {
+			continue
+		}
+		current, ok := byURL[canonical]
+		if !ok {
+			current = &accumulator{
+				page: indexedPage{
+					PageRecord:   page,
+					CanonicalURL: canonical,
+					SectionMap:   map[string]string{},
+				},
+				seenSections: map[string]struct{}{},
+			}
+			current.page.URL = canonical
+			byURL[canonical] = current
+			order = append(order, canonical)
+		}
+		if page.SectionSlug == "" {
+			continue
+		}
+		if _, ok := current.seenSections[page.SectionSlug]; ok {
+			continue
+		}
+		current.seenSections[page.SectionSlug] = struct{}{}
+		current.page.SectionSlugs = append(current.page.SectionSlugs, page.SectionSlug)
+		current.page.SectionMap[page.SectionSlug] = page.SectionBreadcrumb
+	}
+
+	merged := make([]indexedPage, 0, len(order))
+	for _, canonical := range order {
+		merged = append(merged, byURL[canonical].page)
+	}
+	return merged
 }
 
 func newIndexMapping() *mapping.IndexMappingImpl {
@@ -358,6 +431,7 @@ func newIndexMapping() *mapping.IndexMappingImpl {
 		return m
 	}
 	docMapping.AddFieldMappingsAt("section_slug", keyword())
+	docMapping.AddFieldMappingsAt("section_slugs", keyword())
 	docMapping.AddFieldMappingsAt("url", keyword())
 
 	storedText := func() *mapping.FieldMapping {
@@ -367,6 +441,7 @@ func newIndexMapping() *mapping.IndexMappingImpl {
 		return m
 	}
 	docMapping.AddFieldMappingsAt("section_breadcrumb", storedText())
+	docMapping.AddFieldMappingsAt("section_map", storedText())
 	docMapping.AddFieldMappingsAt("body_markdown", storedText())
 	docMapping.AddFieldMappingsAt("available_headings", storedText())
 	docMapping.AddFieldMappingsAt("last_fetched_at", storedText())
@@ -512,14 +587,13 @@ func makeSnippet(body, query string, maxRunes int) string {
 	if len(bodyRunes) <= maxRunes {
 		return string(bodyRunes)
 	}
-	lowerBody := strings.ToLower(body)
 	center := 0
 	for _, term := range strings.Fields(strings.ToLower(query)) {
 		term = strings.Trim(term, "\"'`.,:;!?()[]{}")
 		if len(term) < 3 {
 			continue
 		}
-		if byteIdx := strings.Index(lowerBody, term); byteIdx >= 0 {
+		if byteIdx := caseInsensitiveByteIndex(body, term); byteIdx >= 0 {
 			center = utf8.RuneCountInString(body[:byteIdx])
 			break
 		}
@@ -539,6 +613,18 @@ func makeSnippet(body, query string, maxRunes int) string {
 		snippet += "..."
 	}
 	return snippet
+}
+
+func caseInsensitiveByteIndex(s, term string) int {
+	pattern, err := regexp.Compile(`(?i)` + regexp.QuoteMeta(term))
+	if err != nil {
+		return -1
+	}
+	loc := pattern.FindStringIndex(s)
+	if loc == nil {
+		return -1
+	}
+	return loc[0]
 }
 
 func extractHeadingSection(body, requested string, headings []Heading) (string, string, bool) {

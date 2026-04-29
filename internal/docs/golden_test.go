@@ -104,6 +104,12 @@ func TestEmbeddedCorpusSectionFilters(t *testing.T) {
 			section: "signoz-apis",
 			wantURL: "https://signoz.io/docs/logs-management/logs-api/search-logs/",
 		},
+		{
+			name:    "duplicate page alternate section",
+			query:   "deno",
+			section: "logs-management",
+			wantURL: "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
+		},
 	}
 
 	for _, tt := range tests {

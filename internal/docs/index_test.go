@@ -53,6 +53,73 @@ func TestTruncateContentIsUTF8Safe(t *testing.T) {
 	require.True(t, strings.HasPrefix(content, truncated))
 }
 
+func TestIndexMergesDuplicateURLSectionsForFiltering(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreTopFunction("github.com/blevesearch/bleve_index_api.AnalysisWorker"),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := time.Now().UTC()
+	body := "# Deno OpenTelemetry Instrumentation\n\nSend Deno traces, logs, and metrics to SigNoz.\n"
+	snapshot := CorpusSnapshot{
+		SchemaVersion: CorpusSchemaVersion,
+		BuiltAt:       now,
+		Pages: []PageRecord{
+			{
+				URL:               "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
+				Title:             "Deno OpenTelemetry Instrumentation",
+				SectionSlug:       "apm-distributed-tracing",
+				SectionBreadcrumb: "APM & Distributed Tracing > Instrument Application > Deno",
+				HeadingsJSON:      mustJSON(ExtractHeadings(body)),
+				BodyMarkdown:      body,
+				FetchedAt:         now,
+			},
+			{
+				URL:               "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
+				Title:             "Deno OpenTelemetry Instrumentation",
+				SectionSlug:       "logs-management",
+				SectionBreadcrumb: "Logs Management > Send Logs to SigNoz > Application Logs > Deno",
+				HeadingsJSON:      mustJSON(ExtractHeadings(body)),
+				BodyMarkdown:      body,
+				FetchedAt:         now,
+			},
+			{
+				URL:               "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
+				Title:             "Deno OpenTelemetry Instrumentation",
+				SectionSlug:       "metrics",
+				SectionBreadcrumb: "Metrics > Send Metrics > Application Metrics > Deno",
+				HeadingsJSON:      mustJSON(ExtractHeadings(body)),
+				BodyMarkdown:      body,
+				FetchedAt:         now,
+			},
+		},
+	}
+	reg, err := NewIndexRegistry(ctx, snapshot)
+	require.NoError(t, err)
+	defer reg.Close(context.Background())
+
+	for _, section := range []string{"apm-distributed-tracing", "logs-management", "metrics"} {
+		result, err := reg.Search(ctx, "deno", section, 5)
+		require.NoError(t, err)
+		require.Len(t, result.Results, 1)
+		require.Equal(t, "https://signoz.io/docs/instrumentation/opentelemetry-deno/", result.Results[0].URL)
+		require.Equal(t, section, result.Results[0].SectionSlug)
+		require.Contains(t, result.Results[0].SectionBreadcrumb, "Deno")
+	}
+
+	result, err := reg.Search(ctx, "deno", "", 5)
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+}
+
+func TestMakeSnippetUsesOriginalOffsetsAfterUnicodeCaseFold(t *testing.T) {
+	body := strings.Repeat("İ", 220) + " target appears here " + strings.Repeat("tail ", 80)
+
+	snippet := makeSnippet(body, "target", 40)
+
+	require.Contains(t, snippet, "target")
+}
+
 func testSnapshot() CorpusSnapshot {
 	now := time.Now().UTC()
 	logs := "# Logs Management Overview\n\nSigNoz can receive Docker logs and OpenTelemetry logs.\n"
