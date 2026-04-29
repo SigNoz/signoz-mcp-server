@@ -31,6 +31,9 @@ type Config struct {
 	// Analytics settings
 	AnalyticsEnabled bool
 	SegmentKey       string
+
+	DocsRefreshInterval     time.Duration
+	DocsFullRefreshInterval time.Duration
 }
 
 const (
@@ -54,11 +57,16 @@ const (
 	OAuthRefreshTTLMinutes  = "OAUTH_REFRESH_TOKEN_TTL_MINUTES"
 	OAuthAuthCodeTTLSeconds = "OAUTH_AUTH_CODE_TTL_SECONDS"
 
+	DocsRefreshIntervalEnv     = "SIGNOZ_DOCS_REFRESH_INTERVAL"
+	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
+
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
 	defaultAccessTTLMinutes      = 60    // 1 hour
 	defaultRefreshTTLMinutes     = 43200 // 30 days
 	defaultAuthCodeTTLSeconds    = 600
+	defaultDocsRefreshInterval   = 6 * time.Hour
+	defaultDocsFullRefreshPeriod = 24 * time.Hour
 )
 
 func LoadConfig() (*Config, error) {
@@ -70,6 +78,14 @@ func LoadConfig() (*Config, error) {
 	accessTTLMinutes := getEnvInt(OAuthAccessTTLMinutes, defaultAccessTTLMinutes)
 	refreshTTLMinutes := getEnvInt(OAuthRefreshTTLMinutes, defaultRefreshTTLMinutes)
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
+	docsRefreshInterval := getEnvDuration(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
+	docsFullRefreshInterval := getEnvDuration(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
+	if docsFullRefreshInterval < docsRefreshInterval {
+		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
+			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
+		docsRefreshInterval = defaultDocsRefreshInterval
+		docsFullRefreshInterval = defaultDocsFullRefreshPeriod
+	}
 
 	// Parse custom headers from SIGNOZ_CUSTOM_HEADERS env var (format: "Key1:Value1,Key2:Value2")
 	customHeaders := make(map[string]string)
@@ -87,22 +103,24 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		URL:              url,
-		APIKey:           getEnv(SignozApiKey, ""),
-		LogLevel:         getEnv(LogLevel, "info"),
-		TransportMode:    getEnv(TransportMode, "stdio"),
-		Port:             getEnv(MCPPort, "8000"),
-		OAuthEnabled:     getEnvBool(OAuthEnabledEnv, false),
-		OAuthTokenSecret: getEnv(OAuthTokenSecretEnv, ""),
-		OAuthIssuerURL:   strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
-		AccessTokenTTL:   time.Duration(accessTTLMinutes) * time.Minute,
-		RefreshTokenTTL:  time.Duration(refreshTTLMinutes) * time.Minute,
-		AuthCodeTTL:      time.Duration(authCodeTTLSeconds) * time.Second,
-		ClientCacheSize:  cacheSize,
-		ClientCacheTTL:   time.Duration(cacheTTLMinutes) * time.Minute,
-		CustomHeaders:    customHeaders,
-		AnalyticsEnabled: getEnvBool(AnalyticsEnabledEnv, false),
-		SegmentKey:       getEnv(SegmentKeyEnv, ""),
+		URL:                     url,
+		APIKey:                  getEnv(SignozApiKey, ""),
+		LogLevel:                getEnv(LogLevel, "info"),
+		TransportMode:           getEnv(TransportMode, "stdio"),
+		Port:                    getEnv(MCPPort, "8000"),
+		OAuthEnabled:            getEnvBool(OAuthEnabledEnv, false),
+		OAuthTokenSecret:        getEnv(OAuthTokenSecretEnv, ""),
+		OAuthIssuerURL:          strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
+		AccessTokenTTL:          time.Duration(accessTTLMinutes) * time.Minute,
+		RefreshTokenTTL:         time.Duration(refreshTTLMinutes) * time.Minute,
+		AuthCodeTTL:             time.Duration(authCodeTTLSeconds) * time.Second,
+		ClientCacheSize:         cacheSize,
+		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
+		CustomHeaders:           customHeaders,
+		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
+		SegmentKey:              getEnv(SegmentKeyEnv, ""),
+		DocsRefreshInterval:     docsRefreshInterval,
+		DocsFullRefreshInterval: docsFullRefreshInterval,
 	}, nil
 }
 
@@ -127,6 +145,16 @@ func getEnvBool(key string, defaultValue bool) bool {
 		if parsed, err := strconv.ParseBool(value); err == nil {
 			return parsed
 		}
+	}
+	return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
+			return parsed
+		}
+		log.Printf("WARN: invalid duration for %s=%q; using %s", key, value, defaultValue)
 	}
 	return defaultValue
 }

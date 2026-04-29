@@ -79,3 +79,20 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
+	cfg := &Config{
+		TransportMode: "http",
+		Port:          "8000",
+	}
+
+	require.NoError(t, cfg.ValidateConfig())
+}
+
+func TestValidateConfig_StdioRequiresConfiguredCredentials(t *testing.T) {
+	cfg := &Config{
+		TransportMode: "stdio",
+	}
+
+	require.ErrorContains(t, cfg.ValidateConfig(), "SIGNOZ_API_KEY is required")
+}

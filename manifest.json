@@ -106,6 +106,14 @@
       "description": "Get a single SigNoz saved view by UUID"
     },
     {
+      "name": "signoz_search_docs",
+      "description": "Search official SigNoz documentation for any product, setup, instrumentation, deployment, configuration, API, or troubleshooting question"
+    },
+    {
+      "name": "signoz_fetch_doc",
+      "description": "Fetch full markdown for a single official SigNoz documentation page or heading from the local docs index"
+    },
+    {
       "name": "signoz_create_view",
       "description": "Create a new SigNoz saved Explorer view"
     },
@@ -160,6 +168,14 @@
     {
       "name": "signoz_delete_notification_channel",
       "description": "Delete a notification channel by ID"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "signoz://docs/sitemap",
+      "name": "SigNoz Docs Sitemap",
+      "description": "Indexed sitemap used by signoz_search_docs and signoz_fetch_doc",
+      "mimeType": "text/markdown"
     }
   ],
   "compatibility": {
