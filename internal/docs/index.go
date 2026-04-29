@@ -24,7 +24,7 @@ import (
 	bleveQuery "github.com/blevesearch/bleve/v2/search/query"
 )
 
-const fetchContentByteLimit = 100 * 1024
+const fetchContentByteLimit = 256 * 1024
 const snippetRuneLimit = 200
 
 //go:embed assets/corpus.gob.gz assets/corpus.manifest.json

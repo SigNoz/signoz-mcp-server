@@ -61,7 +61,7 @@ func TestDocsHandlers(t *testing.T) {
 		require.False(t, result.IsError)
 		fetched := result.StructuredContent.(docsindex.FetchResult)
 		require.Equal(t, "size", fetched.TruncationReason)
-		require.LessOrEqual(t, len(fetched.Content), 100*1024)
+		require.LessOrEqual(t, len(fetched.Content), 256*1024)
 
 		result, err = h.handleFetchDoc(ctx, makeToolRequest("signoz_fetch_doc", map[string]any{"url": "/docs/duplicate-headings/", "heading": "setup-2"}))
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func newDocsTestHandler(t *testing.T) (*Handler, func()) {
 func docsHandlerSnapshot() docsindex.CorpusSnapshot {
 	now := time.Now().UTC()
 	logs := "# Send logs to SigNoz\n\n## Docker collector\n\nCollect Docker logs with the OpenTelemetry Collector and send them to SigNoz.\n"
-	large := "# Large Doc\n\n" + strings.Repeat("large content line\n", 9000)
+	large := "# Large Doc\n\n" + strings.Repeat("large content line\n", 20000)
 	duplicate := "# Duplicate Headings\n\n## Setup\n\nfirst setup\n\n## Setup\n\nsecond setup\n\n## Done\n\nfinished\n"
 	pages := []docsindex.PageRecord{
 		docsHandlerPage("https://signoz.io/docs/logs-management/send-logs-to-signoz/", "Send logs to SigNoz", "logs-management", "Logs Management > Send logs", logs, now),

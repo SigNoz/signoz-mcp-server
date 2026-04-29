@@ -47,8 +47,8 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 }
 
 func TestTruncateContentIsUTF8Safe(t *testing.T) {
-	content := strings.Repeat("日志🙂", 40*1024)
-	truncated, reason := truncateContent(content, 100*1024)
+	content := strings.Repeat("日志🙂", 80*1024)
+	truncated, reason := truncateContent(content, 256*1024)
 	require.Equal(t, "size", reason)
 	require.True(t, strings.HasPrefix(content, truncated))
 }
