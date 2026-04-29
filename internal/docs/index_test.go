@@ -112,6 +112,58 @@ func TestIndexMergesDuplicateURLSectionsForFiltering(t *testing.T) {
 	require.Len(t, result.Results, 1)
 }
 
+func TestIndexDuplicateURLMergeUsesFreshestPagePayload(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreTopFunction("github.com/blevesearch/bleve_index_api.AnalysisWorker"),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	oldFetchedAt := time.Now().UTC().Add(-time.Hour)
+	newFetchedAt := time.Now().UTC()
+	oldBody := "# Duplicate Doc\n\nstale fallback body\n"
+	newBody := "# Duplicate Doc\n\nfresh successful body\n"
+	snapshot := CorpusSnapshot{
+		SchemaVersion: CorpusSchemaVersion,
+		BuiltAt:       newFetchedAt,
+		Pages: []PageRecord{
+			{
+				URL:               "https://signoz.io/docs/duplicate/",
+				Title:             "Duplicate Doc",
+				SectionSlug:       "logs-management",
+				SectionBreadcrumb: "Logs Management > Duplicate",
+				HeadingsJSON:      mustJSON(ExtractHeadings(oldBody)),
+				BodyMarkdown:      oldBody,
+				FetchedAt:         oldFetchedAt,
+			},
+			{
+				URL:               "https://signoz.io/docs/duplicate/",
+				Title:             "Duplicate Doc",
+				SectionSlug:       "metrics",
+				SectionBreadcrumb: "Metrics > Duplicate",
+				HeadingsJSON:      mustJSON(ExtractHeadings(newBody)),
+				BodyMarkdown:      newBody,
+				FetchedAt:         newFetchedAt,
+			},
+		},
+	}
+	reg, err := NewIndexRegistry(ctx, snapshot)
+	require.NoError(t, err)
+	defer reg.Close(context.Background())
+
+	doc, code, err := reg.FetchDoc(ctx, "https://signoz.io/docs/duplicate/", "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Contains(t, doc.Content, "fresh successful body")
+	require.NotContains(t, doc.Content, "stale fallback body")
+
+	for _, section := range []string{"logs-management", "metrics"} {
+		result, err := reg.Search(ctx, "fresh", section, 5)
+		require.NoError(t, err)
+		require.Len(t, result.Results, 1)
+		require.Equal(t, section, result.Results[0].SectionSlug)
+	}
+}
+
 func TestMakeSnippetUsesOriginalOffsetsAfterUnicodeCaseFold(t *testing.T) {
 	body := strings.Repeat("İ", 220) + " target appears here " + strings.Repeat("tail ", 80)
 

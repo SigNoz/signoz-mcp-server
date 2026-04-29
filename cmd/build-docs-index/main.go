@@ -85,9 +85,11 @@ func main() {
 
 	pages := make([]docs.PageRecord, 0, len(entries))
 	failures := 0
+	notFound := 0
 	for _, o := range outcomes {
 		if o.result.Status == docs.FetchStatusNotFound {
 			log.Printf("WARN: skipping 404 docs page %s", o.entry.URL)
+			notFound++
 			continue
 		}
 		if o.result.Status != docs.FetchStatusOK {
@@ -97,8 +99,8 @@ func main() {
 		}
 		pages = append(pages, pageFromFetch(o.entry, o.result))
 	}
-	if len(entries) > 0 && failures*100 > len(entries)*10 {
-		log.Fatalf("too many docs fetch failures: %d/%d", failures, len(entries))
+	if corpusFailureThresholdExceeded(len(entries), failures, notFound) {
+		log.Fatalf("too many docs fetch failures: failures=%d 404s=%d total=%d", failures, notFound, len(entries))
 	}
 	snapshot := docs.CorpusSnapshot{
 		SchemaVersion: docs.CorpusSchemaVersion,
@@ -111,6 +113,14 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("wrote %s and %s (%d pages)\n", corpusPath, manifestPath, len(pages))
+}
+
+func corpusFailureThresholdExceeded(total, failures, notFound int) bool {
+	if total <= 0 {
+		return false
+	}
+	totalFailures := failures + notFound
+	return totalFailures*100 > total*10 || notFound*100 > total*5
 }
 
 func pageFromFetch(entry docs.SitemapEntry, result docs.PageFetch) docs.PageRecord {

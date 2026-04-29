@@ -387,6 +387,14 @@ func mergeDuplicatePages(pages []PageRecord) []indexedPage {
 			current.page.URL = canonical
 			byURL[canonical] = current
 			order = append(order, canonical)
+		} else if shouldReplaceDuplicatePayload(page, current.page.PageRecord) {
+			sectionSlugs := current.page.SectionSlugs
+			sectionMap := current.page.SectionMap
+			current.page.PageRecord = page
+			current.page.URL = canonical
+			current.page.CanonicalURL = canonical
+			current.page.SectionSlugs = sectionSlugs
+			current.page.SectionMap = sectionMap
 		}
 		if page.SectionSlug == "" {
 			continue
@@ -404,6 +412,16 @@ func mergeDuplicatePages(pages []PageRecord) []indexedPage {
 		merged = append(merged, byURL[canonical].page)
 	}
 	return merged
+}
+
+func shouldReplaceDuplicatePayload(candidate, current PageRecord) bool {
+	if current.BodyMarkdown == "" && candidate.BodyMarkdown != "" {
+		return true
+	}
+	if candidate.FetchedAt.After(current.FetchedAt) {
+		return true
+	}
+	return false
 }
 
 func newIndexMapping() *mapping.IndexMappingImpl {
