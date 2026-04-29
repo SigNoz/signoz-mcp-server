@@ -327,6 +327,30 @@ func TestConfigPrecedence(t *testing.T) {
 	require.Equal(t, 24*time.Hour, cfg.DocsFullRefreshInterval)
 }
 
+func TestJitteredCapsLargeJitterRelativeToBase(t *testing.T) {
+	base := 5 * time.Minute
+	for i := 0; i < 1000; i++ {
+		got := jittered(base, defaultRefreshJitter)
+		require.GreaterOrEqual(t, got, base/2)
+		require.LessOrEqual(t, got, base+base/2)
+	}
+}
+
+func TestJitteredPreservesSmallerJitterWindow(t *testing.T) {
+	base := 6 * time.Hour
+	jitter := 30 * time.Minute
+	for i := 0; i < 1000; i++ {
+		got := jittered(base, jitter)
+		require.GreaterOrEqual(t, got, base-jitter)
+		require.LessOrEqual(t, got, base+jitter)
+	}
+}
+
+func TestJitteredDisabledForNonPositiveJitter(t *testing.T) {
+	require.Equal(t, 5*time.Minute, jittered(5*time.Minute, 0))
+	require.Equal(t, 5*time.Minute, jittered(5*time.Minute, -time.Minute))
+}
+
 func TestRefreshThreshold(t *testing.T) {
 	entries := manyEntries(20)
 	previous := snapshotForEntries(entries, bodiesForEntries(entries))

@@ -29,11 +29,13 @@ type RefreshConfig struct {
 	FullRefreshInterval time.Duration
 	RefreshDeadline     time.Duration
 	// JitterWindow is the symmetric maximum jitter applied to scheduled
-	// refresh ticks so replica fleets don't herd on a common cadence.
+	// refresh ticks so replica fleets don't herd on a common cadence. The
+	// effective jitter is capped to half the scheduled interval so short
+	// configured cadences do not collapse into near-tight polling loops.
 	// Semantics (normalized in NewRefresher):
 	//   - zero (default)    → use defaultRefreshJitter (30 min)
 	//   - negative          → no jitter (tests that want determinism)
-	//   - positive duration → use that value
+	//   - positive duration → use that value, capped per interval
 	JitterWindow time.Duration
 }
 
@@ -181,18 +183,30 @@ func (r *Refresher) run(ctx context.Context) {
 	}
 }
 
-// jittered applies uniform ±maxJitter to base. Clamped so the returned
-// interval is never below 1 s (avoid pathological tight loops on misconfig).
+// jittered applies uniform ±maxJitter to base. The effective jitter is capped
+// to half of base so an oversized jitter window cannot turn a short interval
+// into near-tight polling.
 func jittered(base, maxJitter time.Duration) time.Duration {
+	maxJitter = boundedJitter(base, maxJitter)
 	if maxJitter <= 0 {
 		return base
 	}
 	delta := rand.Int63n(int64(maxJitter*2)) - int64(maxJitter)
-	result := base + time.Duration(delta)
-	if result < time.Second {
-		return time.Second
+	return base + time.Duration(delta)
+}
+
+func boundedJitter(base, maxJitter time.Duration) time.Duration {
+	if base <= 0 || maxJitter <= 0 {
+		return 0
 	}
-	return result
+	maxAllowed := base / 2
+	if maxAllowed <= 0 {
+		return 0
+	}
+	if maxJitter > maxAllowed {
+		return maxAllowed
+	}
+	return maxJitter
 }
 
 func (r *Refresher) refresh(ctx context.Context, forced bool) error {
