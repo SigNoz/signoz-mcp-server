@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestHandleDeleteDashboard_Success(t *testing.T) {
@@ -142,4 +144,114 @@ func TestHandleDeleteDashboard_ClientError(t *testing.T) {
 	if !result.IsError {
 		t.Error("expected error result when client returns error")
 	}
+}
+
+func TestHandleCreateDashboard_RejectsV4(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+
+	// v4-shaped widget: aggregateAttribute + aggregateOperator, no aggregations[].
+	payload := map[string]any{
+		"title":   "T",
+		"version": "v5",
+		"widgets": []any{
+			map[string]any{
+				"id":         "w1",
+				"panelTypes": "graph",
+				"title":      "Bad widget",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []any{
+							map[string]any{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"aggregateOperator": "rate",
+								"aggregateAttribute": map[string]any{
+									"key": "system.cpu.time",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	res, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", payload))
+	if err != nil {
+		t.Fatalf("handler returned go-error %v; expected mcp tool error result", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true, got tool success: %+v", res)
+	}
+	text := readToolErrorText(t, res)
+	if !strings.Contains(text, "v4 widget shapes are not supported") {
+		t.Fatalf("error text missing v4-rejection prefix:\n%s", text)
+	}
+	if !strings.Contains(text, "aggregateOperator") {
+		t.Fatalf("error text did not name aggregateOperator:\n%s", text)
+	}
+}
+
+func TestHandleCreateDashboard_AcceptsV5(t *testing.T) {
+	mock := &client.MockClient{
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"uuid":"dashboard-v5-ok"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	payload := map[string]any{
+		"title":   "T",
+		"version": "v5",
+		"widgets": []any{
+			map[string]any{
+				"id":         "w1",
+				"panelTypes": "graph",
+				"title":      "Good widget",
+				"query": map[string]any{
+					"queryType": "builder",
+					"builder": map[string]any{
+						"queryData": []any{
+							map[string]any{
+								"queryName":  "A",
+								"dataSource": "metrics",
+								"expression": "A",
+								"aggregations": []any{
+									map[string]any{
+										"metricName":       "system.cpu.time",
+										"timeAggregation":  "rate",
+										"spaceAggregation": "sum",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	res, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", payload))
+	if err != nil {
+		t.Fatalf("handler returned go-error %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success, got tool error: %s", readToolErrorText(t, res))
+	}
+}
+
+// readToolErrorText extracts the error string from an MCP tool result.
+// The mcp-go SDK wraps text content in []mcp.Content; this helper picks the
+// first text block.
+func readToolErrorText(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	if res == nil || len(res.Content) == 0 {
+		return ""
+	}
+	if tc, ok := res.Content[0].(mcp.TextContent); ok {
+		return tc.Text
+	}
+	return ""
 }
