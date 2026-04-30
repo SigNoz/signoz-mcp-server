@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -837,4 +838,298 @@ func TestValidate_DecimalPrecisionIntAccepted(t *testing.T) {
 	widgets := result["widgets"].([]any)
 	w := widgets[0].(map[string]any)
 	assert.Equal(t, float64(2), w["decimalPrecision"])
+}
+
+// --- v4 rejection (rejectV4Shapes) ---
+
+// helper: minimal v5 widget builder used by table cases below.
+func v5WidgetBuilder() map[string]any {
+	return map[string]any{
+		"id":         "w-test",
+		"panelTypes": "graph",
+		"title":      "Test",
+		"query": map[string]any{
+			"queryType": "builder",
+			"builder": map[string]any{
+				"queryData": []any{
+					map[string]any{
+						"queryName":  "A",
+						"dataSource": "metrics",
+						"expression": "A",
+						"aggregations": []any{
+							map[string]any{
+								"metricName":       "system.cpu.time",
+								"timeAggregation":  "rate",
+								"spaceAggregation": "sum",
+							},
+						},
+					},
+				},
+				"queryFormulas": []any{},
+			},
+		},
+	}
+}
+
+// helper: shape a dashboard payload around a single widget.
+func dash(widget map[string]any) map[string]any {
+	return map[string]any{
+		"title":   "T",
+		"version": "v5",
+		"widgets": []any{widget},
+	}
+}
+
+// helper: take v5 widget, mutate the first queryData entry.
+func mutateQueryData(widget map[string]any, mutate func(qd map[string]any)) map[string]any {
+	qd := widget["query"].(map[string]any)["builder"].(map[string]any)["queryData"].([]any)[0].(map[string]any)
+	mutate(qd)
+	return widget
+}
+
+func TestRejectV4Shapes(t *testing.T) {
+	cases := []struct {
+		name        string
+		build       func() map[string]any
+		wantErr     bool
+		wantContain string // substring expected in joined error message
+	}{
+		{
+			name: "aggregate_operator_only",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["aggregateOperator"] = "rate"
+				}))
+			},
+			wantErr:     true,
+			wantContain: "aggregateOperator",
+		},
+		{
+			name: "aggregate_attribute_only",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["aggregateAttribute"] = map[string]any{"key": "x"}
+				}))
+			},
+			wantErr:     true,
+			wantContain: "aggregateAttribute",
+		},
+		{
+			name: "temporality_at_querydata",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["temporality"] = "Cumulative"
+				}))
+			},
+			wantErr:     true,
+			wantContain: "temporality",
+		},
+		{
+			name: "timeagg_at_querydata",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["timeAggregation"] = "rate"
+				}))
+			},
+			wantErr:     true,
+			wantContain: "timeAggregation",
+		},
+		{
+			name: "spaceagg_at_querydata",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["spaceAggregation"] = "sum"
+				}))
+			},
+			wantErr:     true,
+			wantContain: "spaceAggregation",
+		},
+		{
+			name: "reduceto_at_querydata",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["reduceTo"] = "avg"
+				}))
+			},
+			wantErr:     true,
+			wantContain: "reduceTo",
+		},
+		{
+			name: "series_aggregation",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["seriesAggregation"] = "p99"
+				}))
+			},
+			wantErr:     true,
+			wantContain: "seriesAggregation",
+		},
+		{
+			name: "filters_items_v4",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["filters"] = map[string]any{
+						"items": []any{map[string]any{
+							"key":   map[string]any{"key": "host.name"},
+							"op":    "=",
+							"value": "x",
+						}},
+						"op": "AND",
+					}
+				}))
+			},
+			wantErr:     true,
+			wantContain: "filters.items",
+		},
+		{
+			name: "having_array_v4",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["having"] = []any{map[string]any{
+						"columnName": "x", "op": ">", "value": 0,
+					}}
+				}))
+			},
+			wantErr:     true,
+			wantContain: "'having'",
+		},
+		{
+			name: "shiftby_present",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["ShiftBy"] = float64(60)
+				}))
+			},
+			wantErr:     true,
+			wantContain: "ShiftBy",
+		},
+		{
+			name: "isanomaly_present",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["IsAnomaly"] = true
+				}))
+			},
+			wantErr:     true,
+			wantContain: "IsAnomaly",
+		},
+		{
+			name: "queries_used_in_formula",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["QueriesUsedInFormula"] = []any{"A", "B"}
+				}))
+			},
+			wantErr:     true,
+			wantContain: "QueriesUsedInFormula",
+		},
+		{
+			name: "mixed_v4_v5",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["aggregateOperator"] = "rate"
+					// aggregations[] already populated by v5WidgetBuilder
+				}))
+			},
+			wantErr:     true,
+			wantContain: "aggregateOperator",
+		},
+		{
+			name: "pure_v5_full",
+			build: func() map[string]any {
+				w := v5WidgetBuilder()
+				qd := w["query"].(map[string]any)["builder"].(map[string]any)["queryData"].([]any)[0].(map[string]any)
+				qd["filter"] = map[string]any{"expression": "host.name IN $host.name"}
+				qd["having"] = map[string]any{"expression": "sum(x) > 0"}
+				qd["aggregations"].([]any)[0].(map[string]any)["temporality"] = "Cumulative"
+				return dash(w)
+			},
+			wantErr: false,
+		},
+		{
+			name:    "pure_v5_minimal",
+			build:   func() map[string]any { return dash(v5WidgetBuilder()) },
+			wantErr: false,
+		},
+		{
+			name: "empty_aggregateAttribute",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["aggregateAttribute"] = map[string]any{}
+				}))
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty_filters_object",
+			build: func() map[string]any {
+				return dash(mutateQueryData(v5WidgetBuilder(), func(qd map[string]any) {
+					qd["filters"] = map[string]any{"items": []any{}, "op": "AND"}
+				}))
+			},
+			wantErr: false,
+		},
+		{
+			name: "nested_temporality_only",
+			build: func() map[string]any {
+				w := v5WidgetBuilder()
+				qd := w["query"].(map[string]any)["builder"].(map[string]any)["queryData"].([]any)[0].(map[string]any)
+				qd["aggregations"].([]any)[0].(map[string]any)["temporality"] = "Cumulative"
+				return dash(w)
+			},
+			wantErr: false,
+		},
+		{
+			name: "formulas_v4",
+			build: func() map[string]any {
+				w := v5WidgetBuilder()
+				w["query"].(map[string]any)["builder"].(map[string]any)["queryFormulas"] = []any{
+					map[string]any{
+						"queryName":         "F1",
+						"dataSource":        "metrics",
+						"expression":        "A/B",
+						"aggregateOperator": "rate", // v4 in formula
+					},
+				}
+				return dash(w)
+			},
+			wantErr:     true,
+			wantContain: "queryFormulas[0]",
+		},
+		{
+			name: "multi_widget_isolation",
+			build: func() map[string]any {
+				d := dash(v5WidgetBuilder())
+				bad := v5WidgetBuilder()
+				bad["id"] = "w-bad"
+				qd := bad["query"].(map[string]any)["builder"].(map[string]any)["queryData"].([]any)[0].(map[string]any)
+				qd["aggregateOperator"] = "rate"
+				d["widgets"] = append(d["widgets"].([]any), bad)
+				return d
+			},
+			wantErr:     true,
+			wantContain: "widgets[1]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := toJSON(t, tc.build())
+			errs := rejectV4Shapes(payload)
+
+			if tc.wantErr {
+				if len(errs) == 0 {
+					t.Fatalf("expected v4 rejection, got no errors\npayload: %s", string(payload))
+				}
+				joined := strings.Join(errs, "\n")
+				if tc.wantContain != "" && !strings.Contains(joined, tc.wantContain) {
+					t.Fatalf("error did not mention %q\nerrors:\n%s", tc.wantContain, joined)
+				}
+			} else {
+				if len(errs) > 0 {
+					t.Fatalf("expected pass, got %d errors:\n  %s", len(errs), strings.Join(errs, "\n  "))
+				}
+			}
+		})
+	}
 }
