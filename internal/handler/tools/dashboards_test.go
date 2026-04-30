@@ -242,6 +242,58 @@ func TestHandleCreateDashboard_AcceptsV5(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateDashboard_RejectsV4(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+
+	// v4-shaped widget: aggregateAttribute + aggregateOperator, no aggregations[].
+	// Wrapped per the update tool's argument schema: {uuid, dashboard}.
+	req := makeToolRequest("signoz_update_dashboard", map[string]any{
+		"uuid": "test-uuid",
+		"dashboard": map[string]any{
+			"title":   "T",
+			"version": "v5",
+			"widgets": []any{
+				map[string]any{
+					"id":         "w1",
+					"panelTypes": "graph",
+					"title":      "Bad widget",
+					"query": map[string]any{
+						"queryType": "builder",
+						"builder": map[string]any{
+							"queryData": []any{
+								map[string]any{
+									"queryName":  "A",
+									"dataSource": "metrics",
+									"expression": "A",
+									"aggregateOperator": "rate",
+									"aggregateAttribute": map[string]any{
+										"key": "system.cpu.time",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	res, err := h.handleUpdateDashboard(testCtx(), req)
+	if err != nil {
+		t.Fatalf("handler returned go-error %v; expected mcp tool error result", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected IsError=true, got tool success: %+v", res)
+	}
+	text := readToolErrorText(t, res)
+	if !strings.Contains(text, "v4 widget shapes are not supported") {
+		t.Fatalf("error text missing v4-rejection prefix:\n%s", text)
+	}
+	if !strings.Contains(text, "aggregateOperator") {
+		t.Fatalf("error text did not name aggregateOperator:\n%s", text)
+	}
+}
+
 // readToolErrorText extracts the error string from an MCP tool result.
 // The mcp-go SDK wraps text content in []mcp.Content; this helper picks the
 // first text block.
