@@ -56,38 +56,13 @@ INCORRECT (write): having: [{columnName: count, op: '>', value: 10}]  # v4 array
 
 ERROR: Sending having as an array is a v4 shape and is rejected by the server. SOLUTION: Use the object form with an expression string, e.g. having: {expression: "sum(count) > 0"}. Omit having if no threshold is needed.
 
---- filters.items (structured filters) ---
+--- filter.expression (write-shape) ---
 
-CORRECT: filters: op: AND items: - key: key: service.name # Use 'key' not 'name' dataType: string op: IN value: $service_name
+CORRECT (write): filter: expression: service.name IN $service_name AND has_error = true
 
-INCORRECT: filters: items: - key: name: service.name # ERROR: Should be 'key' op: IN value: $service_name
+INCORRECT (write): filters: op: AND items: [...]  # v4 structured-filter form -- REJECTED by server
 
-ERROR: Using 'name' in filter items causes filter parsing errors. SOLUTION: Always use 'key' field in filters.items[].key.
-
---- filters.items[].key (write-shape for edit-modal hydration) ---
-
-CORRECT (write):
-  filters.items[0].key = {key: k8s.node.name, dataType: string, type: "", id: "k8s.node.name--string--"}
-
-INCORRECT (write):
-  filters.items[0].key = {key: k8s.node.name, type: ""}                              # missing dataType, malformed id
-  filters.items[0].key = {key: k8s.node.name, dataType: string, id: "k8s.node.name"}  # id missing --<dataType>--<type> suffix
-
-Canonical id form is <key>--<dataType>--<type> (trailing "--" is correct when type is empty). The SigNoz edit modal reverse-maps the key back to the autocomplete dropdown by this id; a malformed id makes the filter row fail to hydrate even though the list/graph renders fine (it uses the top-level filter.expression string).
-
-For variable references on IN filters, always send value as a plain string like "$var", not a single-element array like ["$var"]. The array form causes the form row to misrender.
-
-The server auto-heals all three cases (fills dataType, rebuilds malformed id, unwraps single-$var arrays) so a GET-echoed payload round-trips cleanly — but prefer sending the canonical shape directly.
-
---- filters.items[].op (write-shape casing) ---
-
-CORRECT (write): op: IN  OR  op: NOT_IN  OR  op: LIKE  OR  op: EXISTS  OR  op: =  OR  op: !=
-
-INCORRECT (write): op: in  OR  op: Not_In  OR  op: like  # lowercase/mixed-case as returned by some GET responses
-
-Canonical operators (uppercase word ops; symbol ops unaffected by case): IN, NOT_IN, LIKE, NOT_LIKE, ILIKE, NOT_ILIKE, REGEX, NOT_REGEX, EXISTS, NOT_EXISTS, CONTAINS, NOT_CONTAINS, HAS, NHAS, =, !=, >=, >, <=, <.
-
-ERROR: Sending lowercase or mixed-case word operators to POST/PUT is rejected by panel validation. SOLUTION: Use uppercase. The server trims + uppercases filter operators when round-tripping a GET payload, but prefer sending uppercase directly.
+ERROR: Sending filters.items (v4 structured-filter array) is rejected by the v5 validator. SOLUTION: Use filter.expression with a string expression. Omit the filters.items field entirely.
 
 === PANEL TYPE REQUIREMENTS ===
 
@@ -199,11 +174,7 @@ With Variables: filter: expression: service.name in $service_name telemetry.sdk.
 
 Existence Check: filter: expression: llm.model_name EXISTS
 
---- Structured Filter Format (Optional) ---
-
-filters: op: AND items: - key: key: service.name dataType: string op: IN value: $service_name - key: key: has_error op: = value: true
-
-NOTE: You can use BOTH filter.expression AND filters.items together for compatibility. When you do, they MUST stay consistent: every key.key in filters.items must appear in filter.expression. The MCP server REJECTS dashboards where a filter item's key is missing from the expression — even though the SigNoz backend would accept the payload. Rationale: the list/graph renderer reads filter.expression directly, while the edit-modal's expression-reconstruction path walks filters.items[]. A mismatch causes the two to execute different queries, silently dropping predicates in the list view and breaking edit-modal hydration. If the two must differ intentionally, send only one side (leave filter.expression empty OR leave filters.items unset).
+NOTE: filter.expression is the ONLY supported filter format in v5. Do NOT use filters.items (v4 structured-filter array). The server rejects any payload that contains a filters.items field.
 
 ERROR: Invalid operators cause filter errors. ERROR: Missing $ prefix for variables causes literal string matching. ERROR: Typo in field names causes no data.
 
