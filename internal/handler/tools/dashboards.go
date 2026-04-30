@@ -44,19 +44,29 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_create_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
-			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
-				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
-				"1. signoz://dashboard/instructions - REQUIRED: Dashboard structure and basics\n"+
-				"2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules\n"+
-				"3. signoz://dashboard/widgets-examples - REQUIRED: Complete widget examples with all required fields\n\n"+
+			"Creates a new monitoring dashboard. **Server accepts v5 widget shape only.** "+
+				"Widgets that contain v4 fields (aggregateOperator, aggregateAttribute, "+
+				"filters.items, having as array, or queryData-level temporality / "+
+				"timeAggregation / spaceAggregation / reduceTo / seriesAggregation / "+
+				"ShiftBy / IsAnomaly / QueriesUsedInFormula) are rejected with a "+
+				"validation error.\n\n"+
+				"v5 canonical widget shape:\n"+
+				"  query.builder.queryData[].aggregations[]   - required, one per series.\n"+
+				"    Each entry: {metricName, timeAggregation, spaceAggregation, optional reduceTo/temporality}.\n"+
+				"  query.builder.queryData[].filter.expression - single string, supports $variable.\n"+
+				"  query.builder.queryData[].having.expression - single string, e.g. \"sum(metric) > 0\".\n\n"+
+				"CRITICAL: read these resources BEFORE generating any dashboard JSON:\n"+
+				"1. signoz://dashboard/instructions - Dashboard structure and basics\n"+
+				"2. signoz://dashboard/widgets-instructions - Widget configuration rules\n"+
+				"3. signoz://dashboard/widgets-examples - Complete v5 widget examples\n\n"+
 				"QUERY-SPECIFIC RESOURCES (read based on query type used):\n"+
 				"- For PromQL queries: signoz://promql/instructions\n"+
 				"- For Query Builder queries: signoz://dashboard/query-builder-example\n"+
 				"- For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
 				"- For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
 				"- For ClickHouse SQL on traces: signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
-				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
-				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
+				"When importing a pre-built template, pass the template JSON through verbatim — "+
+				"templates ship in v5 shape and reshaping them produces v4 errors.",
 		),
 		mcp.WithInputSchema[types.CreateDashboardInput](),
 	)
@@ -67,21 +77,29 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_update_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
-			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
-				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
-				"The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications.\n\n"+
+			"Update an existing dashboard by supplying its UUID along with a fully assembled "+
+				"dashboard JSON object. **Server accepts v5 widget shape only.** v4 fields "+
+				"(aggregateOperator, aggregateAttribute, filters.items, having as array, or "+
+				"queryData-level temporality / timeAggregation / spaceAggregation / reduceTo / "+
+				"seriesAggregation / ShiftBy / IsAnomaly / QueriesUsedInFormula) are rejected.\n\n"+
+				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before generating any update JSON.\n\n"+
+				"The provided object must represent the complete post-update state, combining "+
+				"the current dashboard data and the intended modifications.\n\n"+
+				"v5 canonical widget shape:\n"+
+				"  query.builder.queryData[].aggregations[]   - required, one per series.\n"+
+				"    Each entry: {metricName, timeAggregation, spaceAggregation, optional reduceTo/temporality}.\n"+
+				"  query.builder.queryData[].filter.expression - single string.\n"+
+				"  query.builder.queryData[].having.expression - single string.\n\n"+
 				"REQUIRED RESOURCES (read ALL before generating output):\n"+
 				"1. signoz://dashboard/instructions\n"+
 				"2. signoz://dashboard/widgets-instructions\n"+
-				"3. signoz://dashboard/widgets-examples ← CRITICAL: Shows complete widget field structure\n\n"+
+				"3. signoz://dashboard/widgets-examples (v5 shape)\n\n"+
 				"CONDITIONAL RESOURCES (based on query type):\n"+
-				"• PromQL → signoz://promql/instructions\n"+
-				"• Query Builder → signoz://dashboard/query-builder-example\n"+
-				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
-				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
-				"• ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
-				"WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields "+
-				"(id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks).",
+				"* PromQL -> signoz://promql/instructions\n"+
+				"* Query Builder -> signoz://dashboard/query-builder-example\n"+
+				"* ClickHouse Logs -> signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
+				"* ClickHouse Metrics -> signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
+				"* ClickHouse Traces -> signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example",
 		),
 		mcp.WithInputSchema[types.UpdateDashboardInput](),
 	)
