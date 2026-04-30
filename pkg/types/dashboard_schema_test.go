@@ -67,7 +67,12 @@ func TestSchemaExport_NoV4Fields(t *testing.T) {
 
 	required, _ := bq["required"].([]any)
 	if !containsString(required, "aggregations") {
-		t.Errorf("BuilderQuery.required does not contain 'aggregations' — schema must force v5 aggregations[]")
+		t.Errorf("BuilderQuery.required does not contain 'aggregations' - schema must force v5 aggregations[]")
+	}
+	for _, k := range forbiddenV4 {
+		if containsString(required, k) {
+			t.Errorf("BuilderQuery.required contains v4 field %q (must not appear even in required)", k)
+		}
 	}
 
 	// having must be object-shaped with an 'expression' property — never an array.
@@ -140,20 +145,6 @@ func schemaIsObjectLike(schema map[string]any) bool {
 		}
 	}
 	return false
-}
-
-// findDef looks up a definition by name in either $defs or definitions.
-// Returns nil when the library uses a flat/inline schema (no $defs).
-func findDef(t *testing.T, doc map[string]any, name string) map[string]any {
-	t.Helper()
-	for _, key := range []string{"$defs", "definitions"} {
-		if defs, ok := doc[key].(map[string]any); ok {
-			if d, ok := defs[name].(map[string]any); ok {
-				return d
-			}
-		}
-	}
-	return nil
 }
 
 func containsString(arr []any, want string) bool {
