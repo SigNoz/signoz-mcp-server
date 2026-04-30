@@ -146,32 +146,36 @@ type BuilderQueryDashboard struct {
 	QueryTraceOperator []interface{}  `json:"queryTraceOperator,omitempty"`
 }
 
+// BuilderQuery is the v5 builder-query shape used by the MCP input schema.
+// v4 fields (aggregateOperator, aggregateAttribute, queryData-level
+// temporality/timeAggregation/spaceAggregation/reduceTo/seriesAggregation,
+// filters, having-as-array, ShiftBy, IsAnomaly, QueriesUsedInFormula) are
+// intentionally absent. They live on builderQueryInternal for backward
+// JSON decoding and are rejected by pkg/dashboard.rejectV4Shapes at runtime.
 type BuilderQuery struct {
-	QueryName          string            `json:"queryName" jsonschema:"required" jsonschema_extras:"description=Name of the query"`
-	StepInterval       *int64            `json:"stepInterval" jsonschema:"required" jsonschema_extras:"description=Step/Aggregation interval for the query in seconds."`
-	DataSource         DataSource        `json:"dataSource" jsonschema:"required" jsonschema_extras:"description=Data source for the query"`
-	AggregateOperator  AggregateOperator `json:"aggregateOperator,omitempty" jsonschema_extras:"description=Aggregate operator for the query"`
-	AggregateAttribute AttributeKey      `json:"aggregateAttribute,omitempty"`
-	Temporality        Temporality       `json:"temporality,omitempty" jsonschema_extras:"description=Temporality for metrics data"`
-	Filters            FilterSet         `json:"filters,omitempty"`
-	GroupBy            []AttributeKey    `json:"groupBy" jsonschema_extras:"description=Group by attributes for the query"`
-	Expression         string            `json:"expression" jsonschema:"required" jsonschema_extras:"description=Expression for the query"`
-	Disabled           bool              `json:"disabled,omitempty" jsonschema_extras:"description=Whether the query is disabled"`
-	Having             interface{}       `json:"having,omitempty" jsonschema_extras:"description=Having clauses for the query"`
-	Legend             string            `json:"legend,omitempty" jsonschema_extras:"description=Legend template for labeling grouped chart series. Use {{attribute_name}} placeholders that exactly match groupBy keys. REQUIRED when this query uses groupBy and is rendered as a multi-series chart for timeseries/graph or bar or pie or histogram. Example: if groupBy includes service.name then set legend to {{service.name}}. For multiple keys use {{service.name}} - {{http.method}}. Without legend SigNoz shows raw query identifiers such as A."`
-	Limit              uint64            `json:"limit,omitempty" jsonschema_extras:"description=Limit for the query"`
-	Offset             uint64            `json:"offset,omitempty" jsonschema_extras:"description=Offset for the query"`
-	PageSize           uint64            `json:"pageSize,omitempty" jsonschema_extras:"description=Page size for the query"`
-	OrderBy            []OrderBy         `json:"orderBy" jsonschema_extras:"description=Order by for the query"`
-	ReduceTo           ReduceToOperator  `json:"reduceTo,omitempty" jsonschema_extras:"description=Reduce to operator for the query"`
-	SelectColumns      []AttributeKey    `json:"selectColumns" jsonschema_extras:"description=Select columns for the query. Required for list panel types."`
-	TimeAggregation    TimeAggregation   `json:"timeAggregation,omitempty" jsonschema_extras:"description=Time aggregation for metrics queries"`
-	SpaceAggregation   SpaceAggregation  `json:"spaceAggregation,omitempty" jsonschema_extras:"description=Space aggregation for metrics queries"`
-	SeriesAggregation  string            `json:"seriesAggregation,omitempty" jsonschema_extras:"description=Series aggregation for metrics queries with group by"`
-	Functions          []Function        `json:"functions" jsonschema_extras:"description=Functions to apply to the query result"`
-	Aggregations       []Aggregation     `json:"aggregations"`
-	Filter             *QueryFilter      `json:"filter,omitempty"`
-	Source             string            `json:"source,omitempty"`
+	QueryName     string            `json:"queryName" jsonschema:"required" jsonschema_extras:"description=Name of the query"`
+	StepInterval  *int64            `json:"stepInterval" jsonschema:"required" jsonschema_extras:"description=Step/Aggregation interval for the query in seconds."`
+	DataSource    DataSource        `json:"dataSource" jsonschema:"required" jsonschema_extras:"description=Data source for the query"`
+	GroupBy       []AttributeKey    `json:"groupBy" jsonschema_extras:"description=Group by attributes for the query"`
+	Expression    string            `json:"expression" jsonschema:"required" jsonschema_extras:"description=Expression for the query"`
+	Disabled      bool              `json:"disabled,omitempty" jsonschema_extras:"description=Whether the query is disabled"`
+	Legend        string            `json:"legend,omitempty" jsonschema_extras:"description=Legend template for labeling grouped chart series. Use {{attribute_name}} placeholders that exactly match groupBy keys. REQUIRED when this query uses groupBy and is rendered as a multi-series chart for timeseries/graph or bar or pie or histogram. Example: if groupBy includes service.name then set legend to {{service.name}}. For multiple keys use {{service.name}} - {{http.method}}. Without legend SigNoz shows raw query identifiers such as A."`
+	Limit         uint64            `json:"limit,omitempty" jsonschema_extras:"description=Limit for the query"`
+	Offset        uint64            `json:"offset,omitempty" jsonschema_extras:"description=Offset for the query"`
+	PageSize      uint64            `json:"pageSize,omitempty" jsonschema_extras:"description=Page size for the query"`
+	OrderBy       []OrderBy         `json:"orderBy" jsonschema_extras:"description=Order by for the query"`
+	SelectColumns []AttributeKey    `json:"selectColumns" jsonschema_extras:"description=Select columns for the query. Required for list panel types."`
+	Functions     []Function        `json:"functions" jsonschema_extras:"description=Functions to apply to the query result"`
+	Aggregations  []Aggregation     `json:"aggregations" jsonschema:"required" jsonschema_extras:"description=v5 canonical aggregations array. For metrics queries, populate one Aggregation per series with metricName, timeAggregation, spaceAggregation, and optional reduceTo/temporality. This is the only supported aggregation shape — do NOT use legacy aggregateAttribute / aggregateOperator (v4, rejected by the server)."`
+	Filter        *QueryFilter      `json:"filter,omitempty" jsonschema_extras:"description=v5 canonical filter. Single object with an 'expression' string. Example: {\"expression\": \"host.name IN $host.name AND state != 'idle'\"}. Do NOT also populate the legacy 'filters' field (v4, rejected)."`
+	Having        *HavingExpression `json:"having,omitempty" jsonschema_extras:"description=v5 canonical having clause. Object with single 'expression' string. Example: {\"expression\": \"sum(metric) > 0\"}. Do NOT pass an array form (v4, rejected)."`
+	Source        string            `json:"source,omitempty"`
+}
+
+// HavingExpression is the v5 having-clause shape — always an object with a
+// single SQL-like expression string. Replaces the v4 array-of-clauses form.
+type HavingExpression struct {
+	Expression string `json:"expression,omitempty" jsonschema_extras:"description=Having expression as a single SQL-like string."`
 }
 
 type Aggregation struct {
