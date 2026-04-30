@@ -180,10 +180,11 @@ func TestValidate_DynamicVariableExplicitFalse(t *testing.T) {
 
 func TestValidate_NormalizesGetShapePayload(t *testing.T) {
 	// Mirrors a real round-trip: fetch via GET (lowercase dynamicVariablesSource,
-	// object-form having, lowercase filter op, legacy "all sources" alias),
-	// mutate nothing, send back via PUT. Without normalization this would fail
-	// at panel unmarshal (strict []HavingClause), variable validation (strict
-	// canonical-form enum), and panel-validator filter operator check.
+	// object-form having, legacy "all sources" alias), mutate nothing, send back
+	// via PUT. Without normalization this would fail at panel unmarshal (strict
+	// []HavingClause), variable validation (strict canonical-form enum).
+	// Note: v4 filters.items shapes are now rejected by rejectV4Shapes; the
+	// fixture uses the v5 filter.expression shape instead.
 	data := toJSON(t, map[string]any{
 		"title": "Round-trip",
 		"variables": map[string]any{
@@ -210,16 +211,7 @@ func TestValidate_NormalizesGetShapePayload(t *testing.T) {
 								"dataSource": "traces",
 								"expression": "A",
 								"having":     map[string]any{"expression": ""}, // object form as returned by GET
-								"filters": map[string]any{
-									"op": "AND",
-									"items": []any{
-										map[string]any{
-											"key":   map[string]any{"key": "service.name", "dataType": "string"},
-											"op":    "in", // lowercase as returned by GET
-											"value": "$service_name",
-										},
-									},
-								},
+								"filter":     map[string]any{"expression": "service.name IN $service_name"},
 							},
 						},
 						"queryFormulas": []map[string]any{
@@ -253,11 +245,6 @@ func TestValidate_NormalizesGetShapePayload(t *testing.T) {
 	qdHaving, ok := qd[0].(map[string]any)["having"].([]any)
 	require.True(t, ok, "queryData[0].having must be an array, got %T", qd[0].(map[string]any)["having"])
 	assert.Empty(t, qdHaving)
-
-	// filters.items[].op normalized to uppercase.
-	filters := qd[0].(map[string]any)["filters"].(map[string]any)
-	items := filters["items"].([]any)
-	assert.Equal(t, "IN", items[0].(map[string]any)["op"])
 
 	qf := builder["queryFormulas"].([]any)
 	qfHaving, ok := qf[0].(map[string]any)["having"].([]any)
@@ -293,9 +280,9 @@ func TestValidate_InvalidDynamicSourceStillRejected(t *testing.T) {
 }
 
 func TestValidate_RejectsFilterExpressionMismatch(t *testing.T) {
-	// Payload with 3 items but a 2-clause expression must be rejected
-	// regardless of whether SigNoz would accept it — the list view and edit
-	// modal see different predicates otherwise.
+	// Payload that uses the v4 filters.items shape is now rejected by
+	// rejectV4Shapes before the mismatch check. The v4 rejection error
+	// directs the caller to use filter.expression instead.
 	data := toJSON(t, map[string]any{
 		"title": "Mismatch",
 		"widgets": []map[string]any{
@@ -329,17 +316,17 @@ func TestValidate_RejectsFilterExpressionMismatch(t *testing.T) {
 	})
 	_, err := Validate(data)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "k8s.namespace.name")
+	// rejectV4Shapes fires first and surfaces the v4 filter shape error,
+	// which itself references filter.expression as the replacement.
+	assert.Contains(t, err.Error(), "filters.items")
 	assert.Contains(t, err.Error(), "filter.expression")
 }
 
-func TestValidate_NormalizesMalformedFilterItem(t *testing.T) {
-	// Mirrors the "CPU Used" dashboard bug: the k8s.node.name filter item
-	// has a missing key.dataType, non-canonical key.id, and a value wrapped
-	// in a single-element $var array. List/render tolerates this (ClickHouse
-	// uses filter.expression) but the edit modal fails to hydrate. Our
-	// normalizer should heal all three deviations before the payload leaves
-	// Validate.
+func TestValidate_RejectsMalformedFilterItemsV4(t *testing.T) {
+	// Mirrors the "CPU Used" dashboard bug: previously the pipeline would
+	// attempt to normalize v4 filters.items entries. Now rejectV4Shapes fires
+	// first and surfaces a clear v4 → v5 migration error. Callers must replace
+	// filters.items with a filter.expression string.
 	data := toJSON(t, map[string]any{
 		"title": "Fixture",
 		"widgets": []map[string]any{
@@ -376,18 +363,10 @@ func TestValidate_NormalizesMalformedFilterItem(t *testing.T) {
 		},
 	})
 
-	out, err := Validate(data)
-	require.NoError(t, err)
-
-	var result map[string]any
-	require.NoError(t, json.Unmarshal(out, &result))
-
-	item := result["widgets"].([]any)[0].(map[string]any)["query"].(map[string]any)["builder"].(map[string]any)["queryData"].([]any)[0].(map[string]any)["filters"].(map[string]any)["items"].([]any)[0].(map[string]any)
-	key := item["key"].(map[string]any)
-
-	assert.Equal(t, "string", key["dataType"], "dataType should be filled")
-	assert.Equal(t, "k8s.node.name--string--", key["id"], "id should be canonicalized")
-	assert.Equal(t, "$k8s.node.name", item["value"], "value should be unwrapped")
+	_, err := Validate(data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "filters.items")
+	assert.Contains(t, err.Error(), "filter.expression")
 }
 
 // --- Auto-layout ---
@@ -435,7 +414,16 @@ func TestValidate_ListPanelRejectsMetrics(t *testing.T) {
 					"queryType": "builder",
 					"builder": map[string]any{
 						"queryData": []map[string]any{
-							{"queryName": "A", "dataSource": "metrics", "expression": "A", "aggregateOperator": "noop"},
+							{
+								"queryName": "A", "dataSource": "metrics", "expression": "A",
+								"aggregations": []any{
+									map[string]any{
+										"metricName":       "some.metric",
+										"timeAggregation":  "noop",
+										"spaceAggregation": "sum",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -576,8 +564,10 @@ func TestValidate_FullREDDashboard(t *testing.T) {
 						"queryData": []map[string]any{
 							{
 								"queryName": "A", "dataSource": "traces", "expression": "A",
-								"aggregateOperator": "count",
-								"filter":            map[string]any{"expression": "service.name IN $service_name"},
+								"aggregations": []any{
+									map[string]any{"expression": "count()"},
+								},
+								"filter": map[string]any{"expression": "service.name IN $service_name"},
 							},
 						},
 					},
@@ -590,8 +580,8 @@ func TestValidate_FullREDDashboard(t *testing.T) {
 					"queryType": "builder",
 					"builder": map[string]any{
 						"queryData": []map[string]any{
-							{"queryName": "A", "dataSource": "traces", "expression": "A", "disabled": true, "aggregateOperator": "count"},
-							{"queryName": "B", "dataSource": "traces", "expression": "B", "disabled": true, "aggregateOperator": "count"},
+							{"queryName": "A", "dataSource": "traces", "expression": "A", "disabled": true, "aggregations": []any{map[string]any{"expression": "count()"}}},
+							{"queryName": "B", "dataSource": "traces", "expression": "B", "disabled": true, "aggregations": []any{map[string]any{"expression": "count()"}}},
 						},
 						"queryFormulas": []map[string]any{
 							{"queryName": "F1", "expression": "A / (A+B)"},
@@ -606,7 +596,7 @@ func TestValidate_FullREDDashboard(t *testing.T) {
 					"queryType": "builder",
 					"builder": map[string]any{
 						"queryData": []map[string]any{
-							{"queryName": "A", "dataSource": "traces", "expression": "A", "aggregateOperator": "p95"},
+							{"queryName": "A", "dataSource": "traces", "expression": "A", "aggregations": []any{map[string]any{"expression": "p95(durationNano)"}}},
 						},
 					},
 				},
@@ -617,7 +607,7 @@ func TestValidate_FullREDDashboard(t *testing.T) {
 					"queryType": "builder",
 					"builder": map[string]any{
 						"queryData": []map[string]any{
-							{"queryName": "A", "dataSource": "traces", "expression": "A", "aggregateOperator": "count"},
+							{"queryName": "A", "dataSource": "traces", "expression": "A", "aggregations": []any{map[string]any{"expression": "count()"}}},
 						},
 					},
 				},
@@ -629,9 +619,9 @@ func TestValidate_FullREDDashboard(t *testing.T) {
 					"queryType": "builder",
 					"builder": map[string]any{
 						"queryData": []map[string]any{
-							{"queryName": "A", "dataSource": "traces", "expression": "A", "aggregateOperator": "p50", "legend": "P50"},
-							{"queryName": "B", "dataSource": "traces", "expression": "B", "aggregateOperator": "p95", "legend": "P95"},
-							{"queryName": "C", "dataSource": "traces", "expression": "C", "aggregateOperator": "p99", "legend": "P99"},
+							{"queryName": "A", "dataSource": "traces", "expression": "A", "aggregations": []any{map[string]any{"expression": "p50(durationNano)"}}, "legend": "P50"},
+							{"queryName": "B", "dataSource": "traces", "expression": "B", "aggregations": []any{map[string]any{"expression": "p95(durationNano)"}}, "legend": "P95"},
+							{"queryName": "C", "dataSource": "traces", "expression": "C", "aggregations": []any{map[string]any{"expression": "p99(durationNano)"}}, "legend": "P99"},
 						},
 					},
 				},
