@@ -178,6 +178,44 @@ type HavingExpression struct {
 	Expression string `json:"expression,omitempty" jsonschema_extras:"description=Having expression as a single SQL-like string."`
 }
 
+// builderQueryInternal preserves the legacy v4-shaped BuilderQuery for
+// backward JSON decoding and any internal callers that still construct
+// it directly. NEW CODE MUST NOT USE THIS TYPE — it is unexported and
+// will be removed once telemetry confirms zero v4 traffic. The MCP input
+// path uses the public v5 BuilderQuery (above).
+type builderQueryInternal struct {
+	QueryName          string            `json:"queryName"`
+	StepInterval       *int64            `json:"stepInterval"`
+	DataSource         DataSource        `json:"dataSource"`
+	AggregateOperator  AggregateOperator `json:"aggregateOperator,omitempty"`
+	AggregateAttribute AttributeKey      `json:"aggregateAttribute,omitempty"`
+	Temporality        Temporality       `json:"temporality,omitempty"`
+	Filters            FilterSet         `json:"filters,omitempty"`
+	GroupBy            []AttributeKey    `json:"groupBy"`
+	Expression         string            `json:"expression"`
+	Disabled           bool              `json:"disabled,omitempty"`
+	Having             interface{}       `json:"having,omitempty"`
+	Legend             string            `json:"legend,omitempty"`
+	Limit              uint64            `json:"limit,omitempty"`
+	Offset             uint64            `json:"offset,omitempty"`
+	PageSize           uint64            `json:"pageSize,omitempty"`
+	OrderBy            []OrderBy         `json:"orderBy"`
+	ReduceTo           ReduceToOperator  `json:"reduceTo,omitempty"`
+	SelectColumns      []AttributeKey    `json:"selectColumns"`
+	TimeAggregation    TimeAggregation   `json:"timeAggregation,omitempty"`
+	SpaceAggregation   SpaceAggregation  `json:"spaceAggregation,omitempty"`
+	SeriesAggregation  string            `json:"seriesAggregation,omitempty"`
+	Functions          []Function        `json:"functions"`
+	Aggregations       []Aggregation     `json:"aggregations"`
+	Filter             *QueryFilter      `json:"filter,omitempty"`
+	Source             string            `json:"source,omitempty"`
+}
+
+// Compile-time assertion: builderQueryInternal stays JSON-compatible with
+// the legacy shape. If a future contributor strips a field here without
+// updating callers, this would break decoding of historical payloads.
+var _ = builderQueryInternal{} //nolint:unused // kept for backward decode parity
+
 type Aggregation struct {
 	Expression       string           `json:"expression,omitempty"`
 	MetricName       string           `json:"metricName,omitempty"`
