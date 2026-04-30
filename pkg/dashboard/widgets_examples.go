@@ -3,6 +3,14 @@ package dashboard
 const WidgetExamples = `
 === SIGNOZ DASHBOARD CREATION GUIDELINES ===
 
+>>> ALL EXAMPLES BELOW USE SIGNOZ DASHBOARD V5 SHAPE. <<<
+The MCP server rejects v4 widget shapes (aggregateOperator,
+aggregateAttribute, filters.items, having as array, queryData-level
+temporality/timeAggregation/spaceAggregation/reduceTo/seriesAggregation,
+ShiftBy/IsAnomaly/QueriesUsedInFormula). v4 fields are shown only in the
+"INCORRECT Format (DEPRECATED)" anti-example section below -- never copy
+from there.
+
 CRITICAL: Use NEW Query Builder Format ONLY DO NOT mix old and new query builder formats in the same dashboard.
 
 === QUERY BUILDER FORMAT ===
@@ -42,11 +50,11 @@ ERROR: Using 'name' instead of 'key' in groupBy causes query errors. SOLUTION: A
 
 --- having (write-shape) ---
 
-CORRECT (write): having: []  OR  having: [{columnName: count, op: '>', value: 10}]
+CORRECT (write): having: {expression: "sum(count) > 10"}  OR  omit having entirely
 
-INCORRECT (write): having: {expression: ""}  # this is the GET-response shape; sending it back on write fails.
+INCORRECT (write): having: [{columnName: count, op: '>', value: 10}]  # v4 array form -- REJECTED by server
 
-ERROR: Sending the object form {expression: ""} to POST/PUT is rejected. SOLUTION: Use the array form. The server auto-coerces the empty object form to [] when round-tripping a GET payload, but prefer sending [] directly.
+ERROR: Sending having as an array is a v4 shape and is rejected by the server. SOLUTION: Use the object form with an expression string, e.g. having: {expression: "sum(count) > 0"}. Omit having if no threshold is needed.
 
 --- filters.items (structured filters) ---
 
@@ -598,20 +606,6 @@ Example: Errors (from Autogen)
           expression: A
           filter:
             expression: has_error = true service.name IN $service_name
-          filters:
-            items:
-              -
-                key:
-                  dataType: string
-                  key: service.name
-                op: IN
-                value: $service_name
-              -
-                key:
-                  key: has_error
-                op: =
-                value: true
-            op: AND
           orderBy:
             -
               columnName: timestamp
