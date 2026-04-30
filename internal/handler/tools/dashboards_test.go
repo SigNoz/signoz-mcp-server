@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -141,5 +144,120 @@ func TestHandleDeleteDashboard_ClientError(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Error("expected error result when client returns error")
+	}
+}
+
+// withTemplateServer swaps the package HTTP client for the test server's
+// client and restores it on cleanup.
+func withTemplateServer(t *testing.T, srv *httptest.Server) {
+	t.Helper()
+	origClient := templateHTTPClient
+	templateHTTPClient = srv.Client()
+	t.Cleanup(func() { templateHTTPClient = origClient })
+}
+
+func TestHandleCreateDashboardFromTemplate_Success(t *testing.T) {
+	template := `{"title":"Host Metrics","tags":["hostmetrics"],"layout":[],"widgets":[]}`
+
+	var receivedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(template))
+	}))
+	defer srv.Close()
+
+	// Point the package fetcher at our test server.
+	origBase := templateRepoBaseURLVar
+	templateRepoBaseURLVar = srv.URL
+	t.Cleanup(func() { templateRepoBaseURLVar = origBase })
+
+	withTemplateServer(t, srv)
+
+	var gotBody []byte
+	mock := &client.MockClient{
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			gotBody = append([]byte(nil), dashboardJSON...)
+			return json.RawMessage(`{"status":"success","data":{"uuid":"created-uuid"}}`), nil
+		},
+	}
+
+	h := newTestHandler(mock)
+	result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
+		"signoz_create_dashboard_from_template",
+		map[string]any{"path": "hostmetrics/hostmetrics.json"},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	if !strings.HasSuffix(receivedPath, "/hostmetrics/hostmetrics.json") {
+		t.Errorf("unexpected fetch path: %s", receivedPath)
+	}
+	if len(gotBody) == 0 {
+		t.Fatal("CreateDashboardRawFn was not called")
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(gotBody, &parsed); err != nil {
+		t.Fatalf("payload should be JSON: %v", err)
+	}
+	if parsed["title"] != "Host Metrics" {
+		t.Errorf("title = %v, want Host Metrics", parsed["title"])
+	}
+}
+
+func TestHandleCreateDashboardFromTemplate_MissingPath(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
+		"signoz_create_dashboard_from_template",
+		map[string]any{},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for missing path")
+	}
+}
+
+func TestHandleCreateDashboardFromTemplate_RejectsAbsoluteAndURL(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	for _, bad := range []string{"/etc/passwd", "https://example.com/x.json", "..\\windows", "../escape.json"} {
+		result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
+			"signoz_create_dashboard_from_template",
+			map[string]any{"path": bad},
+		))
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", bad, err)
+		}
+		if !result.IsError {
+			t.Errorf("expected error result for path %q", bad)
+		}
+	}
+}
+
+func TestHandleCreateDashboardFromTemplate_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	origBase := templateRepoBaseURLVar
+	templateRepoBaseURLVar = srv.URL
+	t.Cleanup(func() { templateRepoBaseURLVar = origBase })
+	withTemplateServer(t, srv)
+
+	h := newTestHandler(&client.MockClient{})
+	result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
+		"signoz_create_dashboard_from_template",
+		map[string]any{"path": "no/such/template.json"},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result on 404")
 	}
 }

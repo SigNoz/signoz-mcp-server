@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -14,6 +19,20 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/promql"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+)
+
+// Template fetch configuration for signoz_create_dashboard_from_template.
+// templateRepoBaseURLVar is a var (not const) so tests can point it at a
+// local httptest server. Kept in sync with the agent-skills
+// import_template.py PINNED_SHA.
+const (
+	templateRepoPinnedSHA = "61d374c50f9e1383e0eba3584fb81498f38c1f8d"
+	templateFetchTimeout  = 30 * time.Second
+)
+
+var (
+	templateRepoBaseURLVar = "https://raw.githubusercontent.com/SigNoz/dashboards"
+	templateHTTPClient     = &http.Client{Timeout: templateFetchTimeout}
 )
 
 func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
@@ -96,6 +115,22 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	)
 
 	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
+
+	createFromTemplateTool := mcp.NewTool(
+		"signoz_create_dashboard_from_template",
+		mcp.WithDestructiveHintAnnotation(true),
+		mcp.WithDescription(
+			"Create a new SigNoz dashboard from a curated template hosted in the SigNoz/dashboards GitHub repo. "+
+				"Takes a single 'path' argument (e.g. 'hostmetrics/hostmetrics.json' or 'postgresql/postgresql.json') "+
+				"that points to a template file under the pinned commit. The server fetches the JSON, validates it, "+
+				"and creates the dashboard in one call — the client does not need to inline the template body. "+
+				"Use this for any official SigNoz dashboard template; for custom dashboards, use signoz_create_dashboard.",
+		),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Template path within the SigNoz/dashboards repo, e.g. 'hostmetrics/hostmetrics.json'.")),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+	)
+
+	addTool(s, createFromTemplateTool, h.handleCreateDashboardFromTemplate)
 
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)
@@ -192,6 +227,87 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (h *Handler) handleCreateDashboardFromTemplate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, ok := req.Params.Arguments.(map[string]any)
+	if !ok {
+		return mcp.NewToolResultError(`Parameter validation failed: arguments must be an object with a "path" string field.`), nil
+	}
+	path, ok := args["path"].(string)
+	if !ok || strings.TrimSpace(path) == "" {
+		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a non-empty string, e.g. "hostmetrics/hostmetrics.json".`), nil
+	}
+	path = strings.TrimSpace(path)
+	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a relative template path within the SigNoz/dashboards repo (e.g. "hostmetrics/hostmetrics.json"), not an absolute path or URL.`), nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_create_dashboard_from_template", slog.String("path", path))
+
+	body, err := fetchTemplate(ctx, path)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to fetch dashboard template", slog.String("path", path), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(fmt.Sprintf("Template fetch error: %s", err.Error())), nil
+	}
+
+	var rawConfig map[string]any
+	if err := json.Unmarshal(body, &rawConfig); err != nil {
+		h.logger.ErrorContext(ctx, "Failed to parse template JSON", slog.String("path", path), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(fmt.Sprintf("Template parse error: %s", err.Error())), nil
+	}
+	if len(rawConfig) == 0 {
+		return mcp.NewToolResultError("Template is empty after parsing."), nil
+	}
+
+	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)
+	if err != nil {
+		h.logger.WarnContext(ctx, "Template validation failed", slog.String("path", path), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(fmt.Sprintf("Template validation error: %s", err.Error())), nil
+	}
+
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to create dashboard from template", slog.String("path", path), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+// fetchTemplate downloads a dashboard template JSON from the pinned
+// SigNoz/dashboards commit. Returns the raw response body.
+func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
+	rel := strings.TrimPrefix(path, "/")
+	// Preserve "/" separators between path segments while encoding each.
+	segments := strings.Split(rel, "/")
+	for i, seg := range segments {
+		segments[i] = url.PathEscape(seg)
+	}
+	fullURL := fmt.Sprintf("%s/%s/%s", templateRepoBaseURLVar, templateRepoPinnedSHA, strings.Join(segments, "/"))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := templateHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", fullURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("template not found at %s (HTTP 404). Verify the path exists in the SigNoz/dashboards repo at the pinned commit", path)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, path)
+	}
+
+	return io.ReadAll(resp.Body)
 }
 
 func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

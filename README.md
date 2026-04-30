@@ -353,6 +353,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_create_dashboard` | Create a new dashboard |
 | `signoz_update_dashboard` | Update an existing dashboard |
 | `signoz_delete_dashboard` | Delete a dashboard by UUID |
+| `signoz_create_dashboard_from_template` | Create a dashboard from a curated SigNoz/dashboards template by path |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics) |
@@ -457,6 +458,13 @@ Creates a dashboard.
   - `layout` (required) – Widget positioning grid
   - `variables` (optional) – Map of variables available for use in queries
   - `widgets` (required) – List of widgets added to the dashboard
+
+#### `signoz_create_dashboard_from_template`
+
+Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (pinned commit). The server fetches the template JSON, validates it, and creates the dashboard in one call.
+
+- **Parameters:**
+  - `path` (required) – Template path within the SigNoz/dashboards repo, e.g. `hostmetrics/hostmetrics.json`
 
 #### `signoz_update_dashboard`
 
