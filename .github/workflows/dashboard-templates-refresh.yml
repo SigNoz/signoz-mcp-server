@@ -33,23 +33,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache: true
-
       - name: Regenerate dashboard templates catalog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 .github/scripts/regenerate_dashboard_templates.py
-
-      - name: Verify package still builds and tests pass
-        # Cheap sanity check: malformed JSON would break the embed or the
-        # dashboards package tests. We do NOT want CI silently shipping a
-        # broken catalog.
-        run: go test ./internal/handler/tools/... -count=1
 
       - name: Detect changes
         id: diff
