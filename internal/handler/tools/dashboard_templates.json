@@ -140,6 +140,22 @@
     "category": "Bedrock"
   },
   {
+    "id": "cert-manager",
+    "title": "cert-manager Monitoring",
+    "path": "cert-manager/cert-manager-dashboard.json",
+    "keywords": [
+      "cert",
+      "manager",
+      "monitoring",
+      "kubernetes",
+      "tls",
+      "pki",
+      "prometheus"
+    ],
+    "description": "Monitors cert-manager health: certificate status, controller performance, ACME operations, webhook health, work queue, and resource usage. Scrape cert-manager port 9402 via OTel Collector Prometheus receiver.",
+    "category": "Cert Manager"
+  },
+  {
     "id": "cicd",
     "title": "CI/CD Observability",
     "path": "cicd/cicd.json",
@@ -554,7 +570,7 @@
       "detailed",
       "kubelet"
     ],
-    "description": "",
+    "description": "This dashboard uses the Kubernetes node metrics collected from the kubeletstats receiver to show CPU, Memory, Filesystem, and Network usage per node.",
     "category": "K8S Infra Metrics"
   },
   {
@@ -585,7 +601,7 @@
       "pod",
       "detailed"
     ],
-    "description": "",
+    "description": "This dashboard uses the Kubernetes pod metrics collected from the kubeletstats receiver to show CPU, Memory (usage, RSS, working set), Filesystem, and Network I/O & errors per pod across namespaces.",
     "category": "K8S Infra Metrics"
   },
   {
@@ -646,6 +662,20 @@
     ],
     "description": "",
     "category": "Key Operations"
+  },
+  {
+    "id": "kong-gateway",
+    "title": "Kong Gateway",
+    "path": "kong-gateway/kong-gateway-dashboard.json",
+    "keywords": [
+      "kong",
+      "gateway",
+      "api",
+      "opentelemetry",
+      "kubernetes"
+    ],
+    "description": "Kong API Gateway monitoring using the OpenTelemetry plugin (Kong 3.13+). Covers request rate, latency percentiles, error metrics, bandwidth, upstream health, and Lua memory. Variables: environment, Kong service.",
+    "category": "Kong Gateway"
   },
   {
     "id": "litellm",
@@ -889,6 +919,19 @@
     ],
     "description": "",
     "category": "Openclaw"
+  },
+  {
+    "id": "opencode",
+    "title": "OpenCode",
+    "path": "opencode/opencode-dashboard.json",
+    "keywords": [
+      "opencode",
+      "ai",
+      "opentelemetry",
+      "opeencode"
+    ],
+    "description": "Monitor OpenCode usage, costs, tokens, and productivity metrics",
+    "category": "Opencode"
   },
   {
     "id": "openrouter",
