@@ -21,7 +21,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-// Template fetch configuration for signoz_create_dashboard_from_template.
+// Template fetch configuration for signoz_import_dashboard.
 // templateRepoBaseURLVar is a var (not const) so tests can point it at a
 // local httptest server. Kept in sync with the agent-skills
 // import_template.py PINNED_SHA.
@@ -116,8 +116,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
 
-	createFromTemplateTool := mcp.NewTool(
-		"signoz_create_dashboard_from_template",
+	importDashboardTool := mcp.NewTool(
+		"signoz_import_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
 			"Create a new SigNoz dashboard from a curated template hosted in the SigNoz/dashboards GitHub repo. "+
@@ -130,7 +130,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 	)
 
-	addTool(s, createFromTemplateTool, h.handleCreateDashboardFromTemplate)
+	addTool(s, importDashboardTool, h.handleImportDashboard)
 
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)
@@ -229,7 +229,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	return mcp.NewToolResultText(string(data)), nil
 }
 
-func (h *Handler) handleCreateDashboardFromTemplate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError(`Parameter validation failed: arguments must be an object with a "path" string field.`), nil
@@ -243,7 +243,7 @@ func (h *Handler) handleCreateDashboardFromTemplate(ctx context.Context, req mcp
 		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a relative template path within the SigNoz/dashboards repo (e.g. "hostmetrics/hostmetrics.json"), not an absolute path or URL.`), nil
 	}
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_create_dashboard_from_template", slog.String("path", path))
+	h.logger.DebugContext(ctx, "Tool called: signoz_import_dashboard", slog.String("path", path))
 
 	body, err := fetchTemplate(ctx, path)
 	if err != nil {

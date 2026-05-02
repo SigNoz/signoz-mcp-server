@@ -90,7 +90,7 @@
       "description": "Delete a dashboard by UUID"
     },
     {
-      "name": "signoz_create_dashboard_from_template",
+      "name": "signoz_import_dashboard",
       "description": "Create a dashboard from a curated template in the SigNoz/dashboards GitHub repo"
     },
     {

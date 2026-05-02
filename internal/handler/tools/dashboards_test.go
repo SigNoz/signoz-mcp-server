@@ -156,7 +156,7 @@ func withTemplateServer(t *testing.T, srv *httptest.Server) {
 	t.Cleanup(func() { templateHTTPClient = origClient })
 }
 
-func TestHandleCreateDashboardFromTemplate_Success(t *testing.T) {
+func TestHandleImportDashboard_Success(t *testing.T) {
 	template := `{"title":"Host Metrics","tags":["hostmetrics"],"layout":[],"widgets":[]}`
 
 	var receivedPath string
@@ -183,8 +183,8 @@ func TestHandleCreateDashboardFromTemplate_Success(t *testing.T) {
 	}
 
 	h := newTestHandler(mock)
-	result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
-		"signoz_create_dashboard_from_template",
+	result, err := h.handleImportDashboard(testCtx(), makeToolRequest(
+		"signoz_import_dashboard",
 		map[string]any{"path": "hostmetrics/hostmetrics.json"},
 	))
 	if err != nil {
@@ -208,10 +208,10 @@ func TestHandleCreateDashboardFromTemplate_Success(t *testing.T) {
 	}
 }
 
-func TestHandleCreateDashboardFromTemplate_MissingPath(t *testing.T) {
+func TestHandleImportDashboard_MissingPath(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
-	result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
-		"signoz_create_dashboard_from_template",
+	result, err := h.handleImportDashboard(testCtx(), makeToolRequest(
+		"signoz_import_dashboard",
 		map[string]any{},
 	))
 	if err != nil {
@@ -222,11 +222,11 @@ func TestHandleCreateDashboardFromTemplate_MissingPath(t *testing.T) {
 	}
 }
 
-func TestHandleCreateDashboardFromTemplate_RejectsAbsoluteAndURL(t *testing.T) {
+func TestHandleImportDashboard_RejectsAbsoluteAndURL(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	for _, bad := range []string{"/etc/passwd", "https://example.com/x.json", "..\\windows", "../escape.json"} {
-		result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
-			"signoz_create_dashboard_from_template",
+		result, err := h.handleImportDashboard(testCtx(), makeToolRequest(
+			"signoz_import_dashboard",
 			map[string]any{"path": bad},
 		))
 		if err != nil {
@@ -238,7 +238,7 @@ func TestHandleCreateDashboardFromTemplate_RejectsAbsoluteAndURL(t *testing.T) {
 	}
 }
 
-func TestHandleCreateDashboardFromTemplate_NotFound(t *testing.T) {
+func TestHandleImportDashboard_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -250,8 +250,8 @@ func TestHandleCreateDashboardFromTemplate_NotFound(t *testing.T) {
 	withTemplateServer(t, srv)
 
 	h := newTestHandler(&client.MockClient{})
-	result, err := h.handleCreateDashboardFromTemplate(testCtx(), makeToolRequest(
-		"signoz_create_dashboard_from_template",
+	result, err := h.handleImportDashboard(testCtx(), makeToolRequest(
+		"signoz_import_dashboard",
 		map[string]any{"path": "no/such/template.json"},
 	))
 	if err != nil {
