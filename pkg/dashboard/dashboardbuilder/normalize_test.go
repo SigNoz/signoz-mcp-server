@@ -123,6 +123,60 @@ func TestCoerceHavingInQueryMaps_UnparseableExpressionUntouched(t *testing.T) {
 	}
 }
 
+func TestCoerceHavingInQueryMaps_TopLevelOrUntouched(t *testing.T) {
+	// HAVING is coerced to an AND-joined clause array; top-level OR (or `||`)
+	// cannot be represented and must NOT be partially parsed. Leave the
+	// original object so downstream validation surfaces a clear error.
+	cases := []string{
+		"count() > 5 OR count() < 1",
+		"count() > 5 or count() < 1",
+		"count() > 5 || count() < 1",
+		"count() > 5 AND count() < 100 OR count() = 0",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_OrInsideQuotesOrParensParsed(t *testing.T) {
+	// `OR` / `||` that is not at the top level (inside quotes or parentheses)
+	// must not trip the OR rejection.
+	entries := []map[string]any{
+		{"queryName": "A", "having": map[string]any{"expression": "count() > 5 AND service.name = 'a OR b'"}},
+		{"queryName": "B", "having": map[string]any{"expression": "OrderCount > 0"}},
+	}
+	coerceHavingInQueryMaps(entries)
+
+	got0, ok := entries[0]["having"].([]any)
+	if !ok || len(got0) != 2 {
+		t.Fatalf("entry 0: expected two-clause []any, got %#v", entries[0]["having"])
+	}
+	c := got0[1].(map[string]any)
+	if c["columnName"] != "service.name" || c["op"] != "=" || c["value"] != "a OR b" {
+		t.Errorf("entry 0 clause[1] = %#v", c)
+	}
+
+	got1, ok := entries[1]["having"].([]any)
+	if !ok || len(got1) != 1 {
+		t.Fatalf("entry 1: expected single-clause []any, got %#v", entries[1]["having"])
+	}
+	c1 := got1[0].(map[string]any)
+	if c1["columnName"] != "OrderCount" {
+		t.Errorf("entry 1 clause = %#v (column with leading 'Or' should not be split)", c1)
+	}
+}
+
 func TestCoerceHavingInQueryMaps_MalformedObjectUntouched(t *testing.T) {
 	// Out-of-contract shapes must NOT be silently coerced to []; they should
 	// be left as-is so downstream strict unmarshal can surface an error.

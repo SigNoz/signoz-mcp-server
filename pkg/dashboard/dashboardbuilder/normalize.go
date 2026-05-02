@@ -226,11 +226,13 @@ var havingOps = []string{">=", "<=", "!=", "=", ">", "<"}
 
 // parseHavingExpression converts a free-form having expression into one or
 // more clause maps `{columnName, op, value}`. Supports AND-joined comparisons.
-// Returns ok=false if any sub-expression cannot be parsed; the caller leaves
-// the original object form in place so validation surfaces a clear error.
+// Returns ok=false if the expression contains a top-level OR (HAVING clause
+// arrays are AND-joined; OR cannot be represented) or if any sub-expression
+// cannot be parsed; the caller leaves the original object form in place so
+// validation surfaces a clear error.
 func parseHavingExpression(expr string) ([]map[string]any, bool) {
-	parts := splitTopLevelAnd(expr)
-	if len(parts) == 0 {
+	parts, ok := splitTopLevelAnd(expr)
+	if !ok || len(parts) == 0 {
 		return nil, false
 	}
 	out := make([]map[string]any, 0, len(parts))
@@ -245,8 +247,10 @@ func parseHavingExpression(expr string) ([]map[string]any, bool) {
 }
 
 // splitTopLevelAnd splits on `AND` (case-insensitive) outside of parentheses
-// and quoted strings. Single `&&` is also treated as AND.
-func splitTopLevelAnd(s string) []string {
+// and quoted strings. Single `&&` is also treated as AND. Returns ok=false if
+// a top-level `OR` / `||` is found, since HAVING coerces to an AND-joined
+// clause array and OR cannot be represented faithfully.
+func splitTopLevelAnd(s string) ([]string, bool) {
 	var parts []string
 	depth := 0
 	var inQuote byte
@@ -282,6 +286,16 @@ func splitTopLevelAnd(s string) []string {
 			continue
 		}
 		if depth == 0 {
+			if c == '|' && i+1 < len(s) && s[i+1] == '|' {
+				return nil, false
+			}
+			if i+2 <= len(s) && (c == 'O' || c == 'o') && strings.EqualFold(s[i:i+2], "OR") {
+				before := i == 0 || isSpace(s[i-1])
+				after := i+2 == len(s) || isSpace(s[i+2])
+				if before && after {
+					return nil, false
+				}
+			}
 			if c == '&' && i+1 < len(s) && s[i+1] == '&' {
 				parts = append(parts, s[start:i])
 				i += 2
@@ -302,7 +316,7 @@ func splitTopLevelAnd(s string) []string {
 		i++
 	}
 	parts = append(parts, s[start:])
-	return parts
+	return parts, true
 }
 
 func isSpace(b byte) bool {
