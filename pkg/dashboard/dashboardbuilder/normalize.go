@@ -365,6 +365,16 @@ func parseHavingClause(s string) (map[string]any, bool) {
 		if depth != 0 {
 			continue
 		}
+		// Reject unsupported multi-character comparators (`<>`, `==`, `=<`,
+		// `=>`) before falling through to the single-character match. The
+		// single-char prefix would otherwise consume just the first byte and
+		// silently mis-coerce the remainder into the value.
+		if i+2 <= len(s) {
+			two := s[i : i+2]
+			if two == "<>" || two == "==" || two == "=<" || two == "=>" {
+				return nil, false
+			}
+		}
 		for _, op := range havingOps {
 			if strings.HasPrefix(s[i:], op) {
 				lhs := strings.TrimSpace(s[:i])

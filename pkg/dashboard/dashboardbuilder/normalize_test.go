@@ -176,6 +176,33 @@ func TestCoerceHavingInQueryMaps_TopLevelOrPunctuationBoundaryUntouched(t *testi
 	}
 }
 
+func TestCoerceHavingInQueryMaps_UnsupportedComparatorUntouched(t *testing.T) {
+	// Unsupported two-character comparators (`<>`, `==`, `=<`, `=>`) must NOT
+	// be silently coerced by matching the single-character prefix; the
+	// original object form should be preserved so downstream validation can
+	// surface a clear error.
+	cases := []string{
+		"count() <> 5",
+		"count() == 5",
+		"count() =< 5",
+		"count() => 5",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
 func TestCoerceHavingInQueryMaps_OrInsideQuotesOrParensParsed(t *testing.T) {
 	// `OR` / `||` that is not at the top level (inside quotes or parentheses)
 	// must not trip the OR rejection.
