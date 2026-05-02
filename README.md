@@ -462,7 +462,7 @@ Creates a dashboard.
 
 #### `signoz_import_dashboard`
 
-Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (pinned commit). The server fetches the template JSON, validates it, and creates the dashboard in one call.
+Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (`main` branch). The server fetches the template JSON, validates it, and creates the dashboard in one call.
 
 To discover available paths, call `signoz_list_dashboard_templates` first and let the model pick the best match.
 

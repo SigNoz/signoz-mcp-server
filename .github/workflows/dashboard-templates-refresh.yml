@@ -1,0 +1,82 @@
+name: dashboard-templates-refresh
+
+# Dispatch-only, mirroring docs-index-refresh.yml. The maintainer runs this
+# manually (typically right before pre-release.yaml) so the bundled PR carries
+# a freshly-rebuilt dashboard template catalog. Also usable ad-hoc whenever
+# the upstream SigNoz/dashboards repo has drifted enough that the committed
+# catalog is worth refreshing outside a release cycle.
+#
+# Walks SigNoz/dashboards at the tip of `main`, regenerates
+# internal/handler/tools/dashboard_templates.json, and opens a PR with the
+# diff so a reviewer can eyeball the change. The runtime fetcher
+# (signoz_import_dashboard) also reads from `main`, so the catalog and the
+# fetcher always reference the same ref — there is no pinned SHA to bump.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Regenerate dashboard templates catalog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/regenerate_dashboard_templates.py
+
+      - name: Verify package still builds and tests pass
+        # Cheap sanity check: malformed JSON would break the embed or the
+        # dashboards package tests. We do NOT want CI silently shipping a
+        # broken catalog.
+        run: go test ./internal/handler/tools/... -count=1
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet -- internal/handler/tools/dashboard_templates.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/dashboard-templates-refresh
+          commit-message: "chore(dashboards): refresh bundled dashboard template catalog"
+          title: "chore(dashboards): refresh bundled dashboard template catalog"
+          body: |
+            Scheduled refresh of the embedded dashboard template catalog from
+            [SigNoz/dashboards@main](https://github.com/SigNoz/dashboards/tree/main).
+
+            Review the catalog diff for added/removed/renamed templates before
+            merging. `signoz_import_dashboard` fetches templates from `main`
+            at runtime, so this PR is what makes new upstream templates
+            discoverable via `signoz_list_dashboard_templates`.
+          add-paths: |
+            internal/handler/tools/dashboard_templates.json
+          delete-branch: true
+          labels: automated
