@@ -67,17 +67,306 @@ func TestCoerceHavingInQueryMaps_AlreadyArrayUntouched(t *testing.T) {
 	}
 }
 
-func TestCoerceHavingInQueryMaps_NonEmptyExpressionUntouched(t *testing.T) {
-	// Unknown object shape — leave alone so validation surfaces an error.
-	obj := map[string]any{"expression": "count() > 10"}
+func TestCoerceHavingInQueryMaps_NonEmptyExpressionParsedToClauses(t *testing.T) {
+	entries := []map[string]any{
+		{"queryName": "A", "having": map[string]any{"expression": "count() > 10"}},
+		{"queryName": "B", "having": map[string]any{"expression": "sum(system.network.io) > 0"}},
+		{"queryName": "C", "having": map[string]any{"expression": "count() >= 5 AND count() < 100"}},
+	}
+	coerceHavingInQueryMaps(entries)
+
+	got0, ok := entries[0]["having"].([]any)
+	if !ok || len(got0) != 1 {
+		t.Fatalf("entry 0: expected single-clause []any, got %#v", entries[0]["having"])
+	}
+	c0 := got0[0].(map[string]any)
+	if c0["columnName"] != "count()" || c0["op"] != ">" || c0["value"] != int64(10) {
+		t.Errorf("entry 0 clause = %#v", c0)
+	}
+
+	got1, ok := entries[1]["having"].([]any)
+	if !ok || len(got1) != 1 {
+		t.Fatalf("entry 1: expected single-clause []any, got %#v", entries[1]["having"])
+	}
+	c1 := got1[0].(map[string]any)
+	if c1["columnName"] != "sum(system.network.io)" || c1["op"] != ">" || c1["value"] != int64(0) {
+		t.Errorf("entry 1 clause = %#v", c1)
+	}
+
+	got2, ok := entries[2]["having"].([]any)
+	if !ok || len(got2) != 2 {
+		t.Fatalf("entry 2: expected two-clause []any, got %#v", entries[2]["having"])
+	}
+	c2a := got2[0].(map[string]any)
+	c2b := got2[1].(map[string]any)
+	if c2a["op"] != ">=" || c2a["value"] != int64(5) {
+		t.Errorf("entry 2 clause[0] = %#v", c2a)
+	}
+	if c2b["op"] != "<" || c2b["value"] != int64(100) {
+		t.Errorf("entry 2 clause[1] = %#v", c2b)
+	}
+}
+
+func TestCoerceHavingInQueryMaps_UnparseableExpressionUntouched(t *testing.T) {
+	// No recognizable comparison operator at top level — leave the original
+	// shape so downstream validation can surface a clear error rather than
+	// fabricating a bogus clause.
+	obj := map[string]any{"expression": "definitely not a comparison"}
 	entries := []map[string]any{{"queryName": "A", "having": obj}}
 	coerceHavingInQueryMaps(entries)
 	got, ok := entries[0]["having"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
 	}
-	if got["expression"] != "count() > 10" {
+	if got["expression"] != "definitely not a comparison" {
 		t.Errorf("expected expression preserved, got %v", got["expression"])
+	}
+}
+
+func TestCoerceHavingInQueryMaps_TopLevelOrUntouched(t *testing.T) {
+	// HAVING is coerced to an AND-joined clause array; top-level OR (or `||`)
+	// cannot be represented and must NOT be partially parsed. Leave the
+	// original object so downstream validation surfaces a clear error.
+	cases := []string{
+		"count() > 5 OR count() < 1",
+		"count() > 5 or count() < 1",
+		"count() > 5 || count() < 1",
+		"count() > 5 AND count() < 100 OR count() = 0",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_TopLevelOrPunctuationBoundaryUntouched(t *testing.T) {
+	// OR / AND followed (or preceded) by punctuation rather than whitespace
+	// must still be recognized as a logical operator. Prior to this fix the
+	// boundary check only accepted whitespace, so `OR(` slipped through and
+	// the entire remainder was coerced into a single bogus clause.
+	cases := []string{
+		"count() > 5 OR(count() < 1)",
+		"count() > 5 OR\"x\" = 1",
+		"(count() > 5)OR count() < 1",
+		"count() > 5 AND(count() < 10) OR count() = 0",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_UnsupportedComparatorUntouched(t *testing.T) {
+	// Unsupported two-character comparators (`<>`, `==`, `=<`, `=>`) must NOT
+	// be silently coerced by matching the single-character prefix; the
+	// original object form should be preserved so downstream validation can
+	// surface a clear error.
+	cases := []string{
+		"count() <> 5",
+		"count() == 5",
+		"count() =< 5",
+		"count() => 5",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_ParenthesizedClausesParsed(t *testing.T) {
+	// Clauses wrapped in outer parentheses — either standalone or as
+	// AND-joined operands — must be parsed, not left untouched. The strict
+	// downstream `[]HavingClause` unmarshal would otherwise fail on
+	// otherwise-valid dashboards.
+	cases := []struct {
+		name       string
+		expression string
+		want       []map[string]any
+	}{
+		{
+			name:       "single fully wrapped",
+			expression: "(count() > 1000)",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+			},
+		},
+		{
+			name:       "double wrapped",
+			expression: "((count() > 1000))",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+			},
+		},
+		{
+			name:       "and-joined with each operand wrapped",
+			expression: "(count() > 1000) AND (count() < 5000)",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+				{"columnName": "count()", "op": "<", "value": int64(5000)},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []map[string]any{{"queryName": "A", "having": map[string]any{"expression": tc.expression}}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].([]any)
+			if !ok {
+				t.Fatalf("expected []any, got %T: %#v", entries[0]["having"], entries[0]["having"])
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d: %#v", len(got), len(tc.want), got)
+			}
+			for i, w := range tc.want {
+				c, ok := got[i].(map[string]any)
+				if !ok {
+					t.Fatalf("clause[%d]: expected map, got %T", i, got[i])
+				}
+				for k, v := range w {
+					if c[k] != v {
+						t.Errorf("clause[%d][%q] = %#v, want %#v", i, k, c[k], v)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_NestedAndGroupsFlattened(t *testing.T) {
+	// AND-only expressions wrapped in outer parentheses (or with nested AND
+	// sub-groups) should flatten into the clause array, not get rejected.
+	cases := []struct {
+		name       string
+		expression string
+		want       []map[string]any
+	}{
+		{
+			name:       "fully wrapped and-pair",
+			expression: "((count() > 1000) AND (count() < 5000))",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+				{"columnName": "count()", "op": "<", "value": int64(5000)},
+			},
+		},
+		{
+			name:       "nested and group",
+			expression: "count() > 0 AND (count() > 1000 AND count() < 5000)",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(0)},
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+				{"columnName": "count()", "op": "<", "value": int64(5000)},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []map[string]any{{"queryName": "A", "having": map[string]any{"expression": tc.expression}}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].([]any)
+			if !ok {
+				t.Fatalf("expected []any, got %T: %#v", entries[0]["having"], entries[0]["having"])
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d: %#v", len(got), len(tc.want), got)
+			}
+			for i, w := range tc.want {
+				c, ok := got[i].(map[string]any)
+				if !ok {
+					t.Fatalf("clause[%d]: expected map, got %T", i, got[i])
+				}
+				for k, v := range w {
+					if c[k] != v {
+						t.Errorf("clause[%d][%q] = %#v, want %#v", i, k, c[k], v)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_GroupedBooleanOperandUntouched(t *testing.T) {
+	// Grouped boolean operands joined by top-level AND must not be silently
+	// mis-coerced. After splitTopLevelAnd, the first AND operand becomes
+	// `(count() > 5 OR count() < 1)`, which after outer-paren stripping
+	// would otherwise consume the first `>` and treat the OR'd remainder
+	// as the value. Such expressions should be left as the original object
+	// form for downstream error handling.
+	cases := []string{
+		"(count() > 5 OR count() < 1) AND count() != 0",
+		"(count() > 5 || count() < 1) AND count() != 0",
+		"count() != 0 AND (count() > 5 OR count() < 1)",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T: %#v", entries[0]["having"], entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
+func TestCoerceHavingInQueryMaps_OrInsideQuotesOrParensParsed(t *testing.T) {
+	// `OR` / `||` that is not at the top level (inside quotes or parentheses)
+	// must not trip the OR rejection.
+	entries := []map[string]any{
+		{"queryName": "A", "having": map[string]any{"expression": "count() > 5 AND service.name = 'a OR b'"}},
+		{"queryName": "B", "having": map[string]any{"expression": "OrderCount > 0"}},
+	}
+	coerceHavingInQueryMaps(entries)
+
+	got0, ok := entries[0]["having"].([]any)
+	if !ok || len(got0) != 2 {
+		t.Fatalf("entry 0: expected two-clause []any, got %#v", entries[0]["having"])
+	}
+	c := got0[1].(map[string]any)
+	if c["columnName"] != "service.name" || c["op"] != "=" || c["value"] != "a OR b" {
+		t.Errorf("entry 0 clause[1] = %#v", c)
+	}
+
+	got1, ok := entries[1]["having"].([]any)
+	if !ok || len(got1) != 1 {
+		t.Fatalf("entry 1: expected single-clause []any, got %#v", entries[1]["having"])
+	}
+	c1 := got1[0].(map[string]any)
+	if c1["columnName"] != "OrderCount" {
+		t.Errorf("entry 1 clause = %#v (column with leading 'Or' should not be split)", c1)
 	}
 }
 
