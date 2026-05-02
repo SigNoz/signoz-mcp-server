@@ -149,6 +149,33 @@ func TestCoerceHavingInQueryMaps_TopLevelOrUntouched(t *testing.T) {
 	}
 }
 
+func TestCoerceHavingInQueryMaps_TopLevelOrPunctuationBoundaryUntouched(t *testing.T) {
+	// OR / AND followed (or preceded) by punctuation rather than whitespace
+	// must still be recognized as a logical operator. Prior to this fix the
+	// boundary check only accepted whitespace, so `OR(` slipped through and
+	// the entire remainder was coerced into a single bogus clause.
+	cases := []string{
+		"count() > 5 OR(count() < 1)",
+		"count() > 5 OR\"x\" = 1",
+		"(count() > 5)OR count() < 1",
+		"count() > 5 AND(count() < 10) OR count() = 0",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
 func TestCoerceHavingInQueryMaps_OrInsideQuotesOrParensParsed(t *testing.T) {
 	// `OR` / `||` that is not at the top level (inside quotes or parentheses)
 	// must not trip the OR rejection.

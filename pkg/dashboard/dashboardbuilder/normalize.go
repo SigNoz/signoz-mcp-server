@@ -290,8 +290,8 @@ func splitTopLevelAnd(s string) ([]string, bool) {
 				return nil, false
 			}
 			if i+2 <= len(s) && (c == 'O' || c == 'o') && strings.EqualFold(s[i:i+2], "OR") {
-				before := i == 0 || isSpace(s[i-1])
-				after := i+2 == len(s) || isSpace(s[i+2])
+				before := i == 0 || !isWordChar(s[i-1])
+				after := i+2 == len(s) || !isWordChar(s[i+2])
 				if before && after {
 					return nil, false
 				}
@@ -303,8 +303,8 @@ func splitTopLevelAnd(s string) ([]string, bool) {
 				continue
 			}
 			if i+3 <= len(s) && (c == 'A' || c == 'a') && strings.EqualFold(s[i:i+3], "AND") {
-				before := i == 0 || isSpace(s[i-1])
-				after := i+3 == len(s) || isSpace(s[i+3])
+				before := i == 0 || !isWordChar(s[i-1])
+				after := i+3 == len(s) || !isWordChar(s[i+3])
 				if before && after {
 					parts = append(parts, s[start:i])
 					i += 3
@@ -321,6 +321,14 @@ func splitTopLevelAnd(s string) ([]string, bool) {
 
 func isSpace(b byte) bool {
 	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
+}
+
+// isWordChar returns true for ASCII identifier characters (letters, digits,
+// underscore). Used to detect token boundaries around AND/OR keywords so a
+// keyword followed by punctuation (e.g. `OR(`, `AND"x"`) is correctly split,
+// while substrings inside identifiers (e.g. `OrderCount`, `expanded`) are not.
+func isWordChar(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
 // parseHavingClause parses a single comparison `<columnName> <op> <value>`.
