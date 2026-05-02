@@ -67,16 +67,58 @@ func TestCoerceHavingInQueryMaps_AlreadyArrayUntouched(t *testing.T) {
 	}
 }
 
-func TestCoerceHavingInQueryMaps_NonEmptyExpressionUntouched(t *testing.T) {
-	// Unknown object shape — leave alone so validation surfaces an error.
-	obj := map[string]any{"expression": "count() > 10"}
+func TestCoerceHavingInQueryMaps_NonEmptyExpressionParsedToClauses(t *testing.T) {
+	entries := []map[string]any{
+		{"queryName": "A", "having": map[string]any{"expression": "count() > 10"}},
+		{"queryName": "B", "having": map[string]any{"expression": "sum(system.network.io) > 0"}},
+		{"queryName": "C", "having": map[string]any{"expression": "count() >= 5 AND count() < 100"}},
+	}
+	coerceHavingInQueryMaps(entries)
+
+	got0, ok := entries[0]["having"].([]any)
+	if !ok || len(got0) != 1 {
+		t.Fatalf("entry 0: expected single-clause []any, got %#v", entries[0]["having"])
+	}
+	c0 := got0[0].(map[string]any)
+	if c0["columnName"] != "count()" || c0["op"] != ">" || c0["value"] != int64(10) {
+		t.Errorf("entry 0 clause = %#v", c0)
+	}
+
+	got1, ok := entries[1]["having"].([]any)
+	if !ok || len(got1) != 1 {
+		t.Fatalf("entry 1: expected single-clause []any, got %#v", entries[1]["having"])
+	}
+	c1 := got1[0].(map[string]any)
+	if c1["columnName"] != "sum(system.network.io)" || c1["op"] != ">" || c1["value"] != int64(0) {
+		t.Errorf("entry 1 clause = %#v", c1)
+	}
+
+	got2, ok := entries[2]["having"].([]any)
+	if !ok || len(got2) != 2 {
+		t.Fatalf("entry 2: expected two-clause []any, got %#v", entries[2]["having"])
+	}
+	c2a := got2[0].(map[string]any)
+	c2b := got2[1].(map[string]any)
+	if c2a["op"] != ">=" || c2a["value"] != int64(5) {
+		t.Errorf("entry 2 clause[0] = %#v", c2a)
+	}
+	if c2b["op"] != "<" || c2b["value"] != int64(100) {
+		t.Errorf("entry 2 clause[1] = %#v", c2b)
+	}
+}
+
+func TestCoerceHavingInQueryMaps_UnparseableExpressionUntouched(t *testing.T) {
+	// No recognizable comparison operator at top level — leave the original
+	// shape so downstream validation can surface a clear error rather than
+	// fabricating a bogus clause.
+	obj := map[string]any{"expression": "definitely not a comparison"}
 	entries := []map[string]any{{"queryName": "A", "having": obj}}
 	coerceHavingInQueryMaps(entries)
 	got, ok := entries[0]["having"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected map[string]any (untouched), got %T", entries[0]["having"])
 	}
-	if got["expression"] != "count() > 10" {
+	if got["expression"] != "definitely not a comparison" {
 		t.Errorf("expected expression preserved, got %v", got["expression"])
 	}
 }
