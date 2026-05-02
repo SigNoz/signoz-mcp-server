@@ -319,6 +319,54 @@ func splitTopLevelAnd(s string) ([]string, bool) {
 	return parts, true
 }
 
+// stripEnclosingParens removes outer balanced `(...)` wrappers from an
+// expression, preserving inner parentheses. Quoted strings are respected so
+// parentheses inside quotes are not counted. Returns the input unchanged if
+// the leading `(` does not pair with the trailing `)` (e.g. `(a) AND (b)`).
+func stripEnclosingParens(s string) string {
+	for {
+		if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
+			return s
+		}
+		depth := 0
+		var inQuote byte
+		matched := true
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if inQuote != 0 {
+				if c == '\\' && i+1 < len(s) {
+					i++
+					continue
+				}
+				if c == inQuote {
+					inQuote = 0
+				}
+				continue
+			}
+			switch c {
+			case '\'', '"':
+				inQuote = c
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 && i != len(s)-1 {
+					// The opening `(` closes before the end, so the outer
+					// parens are not a single enclosing pair.
+					matched = false
+				}
+			}
+			if !matched {
+				break
+			}
+		}
+		if !matched {
+			return s
+		}
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
+}
+
 // isWordChar returns true for ASCII identifier characters (letters, digits,
 // underscore). Used to detect token boundaries around AND/OR keywords so a
 // keyword followed by punctuation (e.g. `OR(`, `AND"x"`) is correctly split,
@@ -330,8 +378,11 @@ func isWordChar(b byte) bool {
 // parseHavingClause parses a single comparison `<columnName> <op> <value>`.
 // Operator detection respects parentheses and quoted strings; the first
 // top-level operator wins. Value is unquoted if it is a fully quoted string,
-// parsed as a number when numeric, or kept verbatim otherwise.
+// parsed as a number when numeric, or kept verbatim otherwise. Repeated
+// balanced enclosing parentheses are stripped first so `(count() > 1000)` is
+// treated the same as `count() > 1000`.
 func parseHavingClause(s string) (map[string]any, bool) {
+	s = stripEnclosingParens(strings.TrimSpace(s))
 	if s == "" {
 		return nil, false
 	}

@@ -203,6 +203,65 @@ func TestCoerceHavingInQueryMaps_UnsupportedComparatorUntouched(t *testing.T) {
 	}
 }
 
+func TestCoerceHavingInQueryMaps_ParenthesizedClausesParsed(t *testing.T) {
+	// Clauses wrapped in outer parentheses — either standalone or as
+	// AND-joined operands — must be parsed, not left untouched. The strict
+	// downstream `[]HavingClause` unmarshal would otherwise fail on
+	// otherwise-valid dashboards.
+	cases := []struct {
+		name       string
+		expression string
+		want       []map[string]any
+	}{
+		{
+			name:       "single fully wrapped",
+			expression: "(count() > 1000)",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+			},
+		},
+		{
+			name:       "double wrapped",
+			expression: "((count() > 1000))",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+			},
+		},
+		{
+			name:       "and-joined with each operand wrapped",
+			expression: "(count() > 1000) AND (count() < 5000)",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+				{"columnName": "count()", "op": "<", "value": int64(5000)},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []map[string]any{{"queryName": "A", "having": map[string]any{"expression": tc.expression}}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].([]any)
+			if !ok {
+				t.Fatalf("expected []any, got %T: %#v", entries[0]["having"], entries[0]["having"])
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d: %#v", len(got), len(tc.want), got)
+			}
+			for i, w := range tc.want {
+				c, ok := got[i].(map[string]any)
+				if !ok {
+					t.Fatalf("clause[%d]: expected map, got %T", i, got[i])
+				}
+				for k, v := range w {
+					if c[k] != v {
+						t.Errorf("clause[%d][%q] = %#v, want %#v", i, k, c[k], v)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestCoerceHavingInQueryMaps_OrInsideQuotesOrParensParsed(t *testing.T) {
 	// `OR` / `||` that is not at the top level (inside quotes or parentheses)
 	// must not trip the OR rejection.
