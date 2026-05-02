@@ -353,6 +353,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_create_dashboard` | Create a new dashboard |
 | `signoz_update_dashboard` | Update an existing dashboard |
 | `signoz_delete_dashboard` | Delete a dashboard by UUID |
+| `signoz_import_dashboard` | Create a dashboard from a curated SigNoz/dashboards template by path |
+| `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics) |
@@ -457,6 +459,22 @@ Creates a dashboard.
   - `layout` (required) – Widget positioning grid
   - `variables` (optional) – Map of variables available for use in queries
   - `widgets` (required) – List of widgets added to the dashboard
+
+#### `signoz_import_dashboard`
+
+Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (pinned commit). The server fetches the template JSON, validates it, and creates the dashboard in one call.
+
+To discover available paths, call `signoz_list_dashboard_templates` first and let the model pick the best match.
+
+- **Parameters:**
+  - `path` (required) – Template path within the SigNoz/dashboards repo, e.g. `hostmetrics/hostmetrics.json`
+
+#### `signoz_list_dashboard_templates`
+
+Returns the full bundled catalog of curated SigNoz dashboard templates (id, title, path, description, category, keywords) as a JSON array. Pair with `signoz_import_dashboard`: have the model read the catalog, choose the entry that best matches the user's intent, then import it by its `path`.
+
+- **Parameters:**
+  - `category` (optional) – Restrict results to a single catalog category (case-insensitive), e.g. `Apm`, `K8S Infra Metrics`
 
 #### `signoz_update_dashboard`
 
