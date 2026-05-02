@@ -329,9 +329,20 @@ func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := req.Params.Arguments.(map[string]any)
-	category, _ := args["category"].(string)
-	category = strings.TrimSpace(category)
+	var category string
+	if req.Params.Arguments != nil {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError(`Parameter validation failed: arguments must be a JSON object.`), nil
+		}
+		if raw, present := args["category"]; present && raw != nil {
+			str, ok := raw.(string)
+			if !ok {
+				return mcp.NewToolResultError(`Parameter validation failed: "category" must be a string, e.g. "Apm" or "K8S Infra Metrics".`), nil
+			}
+			category = strings.TrimSpace(str)
+		}
+	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates", slog.String("category", category))
 

@@ -336,6 +336,27 @@ func TestHandleListDashboardTemplates_UnknownCategory(t *testing.T) {
 	}
 }
 
+func TestHandleListDashboardTemplates_InvalidCategoryType(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	result, err := h.handleListDashboardTemplates(testCtx(), makeToolRequest(
+		"signoz_list_dashboard_templates",
+		map[string]any{"category": 123},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result for non-string category")
+	}
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", result.Content[0])
+	}
+	if !strings.Contains(textContent.Text, `"category" must be a string`) {
+		t.Errorf("error message should mention category type, got: %s", textContent.Text)
+	}
+}
+
 func TestHandleImportDashboard_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
