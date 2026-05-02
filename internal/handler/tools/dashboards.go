@@ -124,13 +124,31 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"Takes a single 'path' argument (e.g. 'hostmetrics/hostmetrics.json' or 'postgresql/postgresql.json') "+
 				"that points to a template file under the pinned commit. The server fetches the JSON, validates it, "+
 				"and creates the dashboard in one call — the client does not need to inline the template body. "+
-				"Use this for any official SigNoz dashboard template; for custom dashboards, use signoz_create_dashboard.",
+				"To discover the available paths, call signoz_list_dashboard_templates first and let the model pick the best match. "+
+				"For custom dashboards, use signoz_create_dashboard.",
 		),
 		mcp.WithString("path", mcp.Required(), mcp.Description("Template path within the SigNoz/dashboards repo, e.g. 'hostmetrics/hostmetrics.json'.")),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 	)
 
 	addTool(s, importDashboardTool, h.handleImportDashboard)
+
+	listTemplatesTool := mcp.NewTool(
+		"signoz_list_dashboard_templates",
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithDescription(
+			"List all curated SigNoz dashboard templates bundled with this server. "+
+				"Returns the full catalog as a JSON array — each entry includes 'id', 'title', 'path', 'description', 'category', and 'keywords'. "+
+				"Use this to discover which template fits the user's intent, then pass the chosen 'path' to signoz_import_dashboard. "+
+				"The catalog is small enough to read in full; let the model decide the best match rather than relying on keyword scoring. "+
+				"Optional 'category' narrows the result to a single catalog category (case-insensitive), e.g. 'Apm', 'K8S Infra Metrics'.",
+		),
+		mcp.WithString("category", mcp.Description("Optional catalog category to restrict results to (case-insensitive), e.g. 'Apm', 'K8S Infra Metrics'.")),
+		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+	)
+
+	addTool(s, listTemplatesTool, h.handleListDashboardTemplates)
 
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)
@@ -236,7 +254,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 	path, ok := args["path"].(string)
 	if !ok || strings.TrimSpace(path) == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a non-empty string, e.g. "hostmetrics/hostmetrics.json".`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a non-empty string, e.g. "hostmetrics/hostmetrics.json". Use signoz_list_dashboard_templates to discover available paths.`), nil
 	}
 	path = strings.TrimSpace(path)
 	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
@@ -308,6 +326,21 @@ func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 	}
 
 	return io.ReadAll(resp.Body)
+}
+
+func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := req.Params.Arguments.(map[string]any)
+	category, _ := args["category"].(string)
+	category = strings.TrimSpace(category)
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates", slog.String("category", category))
+
+	entries := listDashboardTemplates(category)
+	body, err := json.Marshal(entries)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
+	}
+	return mcp.NewToolResultText(string(body)), nil
 }
 
 func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

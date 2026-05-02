@@ -1,0 +1,1151 @@
+[
+  {
+    "id": "agno",
+    "title": "Agno",
+    "path": "agno/agno-dashboard.json",
+    "keywords": [
+      "agno"
+    ],
+    "description": "",
+    "category": "Agno"
+  },
+  {
+    "id": "anthropic",
+    "title": "Anthropic API",
+    "path": "anthropic/anthropic-dashboard.json",
+    "keywords": [
+      "anthropic",
+      "api"
+    ],
+    "description": "",
+    "category": "Anthropic"
+  },
+  {
+    "id": "apache-web-server",
+    "title": "Apache Monitoring Dashboard",
+    "path": "apache-web-server/apache.json",
+    "keywords": [
+      "apache",
+      "web",
+      "server",
+      "monitoring"
+    ],
+    "description": "",
+    "category": "Apache Web Server"
+  },
+  {
+    "id": "apm",
+    "title": "APM Metrics",
+    "path": "apm/apm-metrics.json",
+    "keywords": [
+      "apm",
+      "metrics",
+      "latency",
+      "error",
+      "rate",
+      "throughput"
+    ],
+    "description": "",
+    "category": "Apm"
+  },
+  {
+    "id": "apm",
+    "title": "DB Calls Monitoring",
+    "path": "apm/db-calls-monitoring.json",
+    "keywords": [
+      "apm",
+      "db",
+      "calls",
+      "monitoring"
+    ],
+    "description": "Built on top of available DB attributes from opentelemetry: https://opentelemetry.io/docs/specs/semconv/attributes-registry/db/",
+    "category": "Apm"
+  },
+  {
+    "id": "apm",
+    "title": "HTTP API Monitoring",
+    "path": "apm/http-api-monitoring.json",
+    "keywords": [
+      "apm",
+      "http",
+      "api",
+      "monitoring"
+    ],
+    "description": "Built on top of available HTTP attributes from opentelemetry: https://opentelemetry.io/docs/specs/semconv/attributes-registry/http/",
+    "category": "Apm"
+  },
+  {
+    "id": "argocd",
+    "title": "Argocd Dashboard",
+    "path": "argocd/argocd.json",
+    "keywords": [
+      "argocd"
+    ],
+    "description": "",
+    "category": "Argocd"
+  },
+  {
+    "id": "autogen",
+    "title": "Autogen",
+    "path": "autogen/autogen-dashboard.json",
+    "keywords": [
+      "autogen"
+    ],
+    "description": "",
+    "category": "Autogen"
+  },
+  {
+    "id": "aws-sqs-prometheus",
+    "title": "AWS SQS Prometheus",
+    "path": "aws-sqs-prometheus/aws-sqs-prometheus.json",
+    "keywords": [
+      "aws",
+      "sqs",
+      "prometheus"
+    ],
+    "description": "Dashboard is built on the provided metrics by Third-party prometheus exporters \n( https://github.com/jmal98/sqs-exporter )",
+    "category": "Aws Sqs Prometheus"
+  },
+  {
+    "id": "azure-openai",
+    "title": "Azure OpenAI API",
+    "path": "azure-openai/azure-openai-dashboard.json",
+    "keywords": [
+      "azure",
+      "openai",
+      "api"
+    ],
+    "description": "",
+    "category": "Azure Openai"
+  },
+  {
+    "id": "baseten",
+    "title": "Baseten",
+    "path": "baseten/baseten-dashboard.json",
+    "keywords": [
+      "baseten"
+    ],
+    "description": "",
+    "category": "Baseten"
+  },
+  {
+    "id": "bedrock",
+    "title": "Amazon Bedrock",
+    "path": "bedrock/bedrock-dashboard.json",
+    "keywords": [
+      "bedrock",
+      "amazon"
+    ],
+    "description": "",
+    "category": "Bedrock"
+  },
+  {
+    "id": "cicd",
+    "title": "CI/CD Observability",
+    "path": "cicd/cicd.json",
+    "keywords": [
+      "cicd",
+      "ci",
+      "cd",
+      "observability",
+      "vcs"
+    ],
+    "description": "Dashboard displaying metrics from CI and CD systems.",
+    "category": "Cicd"
+  },
+  {
+    "id": "claude-agent-sdk",
+    "title": "Claude Agent SDK",
+    "path": "claude-agent-sdk/claude-agent-sdk-dashboard.json",
+    "keywords": [
+      "claude",
+      "agent",
+      "sdk"
+    ],
+    "description": "",
+    "category": "Claude Agent Sdk"
+  },
+  {
+    "id": "claude-code",
+    "title": "Claude Code Metrics",
+    "path": "claude-code/claude-code-dashboard.json",
+    "keywords": [
+      "claude",
+      "code",
+      "metrics",
+      "ai",
+      "opentelemetry"
+    ],
+    "description": "Monitor Claude Code usage, costs, tokens, and productivity metrics",
+    "category": "Claude Code"
+  },
+  {
+    "id": "clickhouse",
+    "title": "Clickhouse Overview",
+    "path": "clickhouse/clickhouse-overview.json",
+    "keywords": [
+      "clickhouse",
+      "overview"
+    ],
+    "description": "This dashboard provides a high-level overview of your Clickhouse Server hosts.",
+    "category": "Clickhouse"
+  },
+  {
+    "id": "codex",
+    "title": "Codex",
+    "path": "codex/codex-dashboard.json",
+    "keywords": [
+      "codex"
+    ],
+    "description": "",
+    "category": "Codex"
+  },
+  {
+    "id": "couchdb",
+    "title": "CouchDB",
+    "path": "couchdb/couchdb.json",
+    "keywords": [
+      "couchdb"
+    ],
+    "description": "Basic metrics to monitor around CouchDB",
+    "category": "Couchdb"
+  },
+  {
+    "id": "crewai",
+    "title": "Crew AI",
+    "path": "crewai/crewai-dashboard.json",
+    "keywords": [
+      "crewai",
+      "crew",
+      "ai"
+    ],
+    "description": "",
+    "category": "Crewai"
+  },
+  {
+    "id": "deepseek",
+    "title": "Deepseek API",
+    "path": "deepseek/deepseek-dashboard.json",
+    "keywords": [
+      "deepseek",
+      "api"
+    ],
+    "description": "",
+    "category": "Deepseek"
+  },
+  {
+    "id": "ecs-infra-metrics",
+    "title": "Container Metrics - ECS",
+    "path": "ecs-infra-metrics/container-metrics.json",
+    "keywords": [
+      "ecs",
+      "infra",
+      "metrics",
+      "container",
+      "ec2",
+      "sidecar"
+    ],
+    "description": "Container Metrics Dashboard of ECS using sidecar",
+    "category": "Ecs Infra Metrics"
+  },
+  {
+    "id": "ecs-infra-metrics",
+    "title": "Instance Metrics - ECS",
+    "path": "ecs-infra-metrics/instance-metrics.json",
+    "keywords": [
+      "ecs",
+      "infra",
+      "metrics",
+      "instance",
+      "daemon",
+      "ec2"
+    ],
+    "description": "Instance Metrics Dashboard of ECS EC2",
+    "category": "Ecs Infra Metrics"
+  },
+  {
+    "id": "elasticsearch",
+    "title": "Elasticsearch Monitoring Dashboard",
+    "path": "elasticsearch/elasticsearch-dashboard-detailed.json",
+    "keywords": [
+      "elasticsearch",
+      "detailed",
+      "monitoring"
+    ],
+    "description": "Elasticsearch monitoring dashboard built on the OpenTelemetry Collector elasticsearch receiver, covering cluster health & shard state, node-level CPU/disk/HTTP metrics, etc.",
+    "category": "Elasticsearch"
+  },
+  {
+    "id": "envoy",
+    "title": "Envoy Monitoring Dasboard",
+    "path": "envoy/envoy-otlp-v1.json",
+    "keywords": [
+      "envoy",
+      "otlp",
+      "v1",
+      "monitoring",
+      "dasboard",
+      "proxy"
+    ],
+    "description": "",
+    "category": "Envoy"
+  },
+  {
+    "id": "flask-monitoring",
+    "title": "Flask monitoring",
+    "path": "flask-monitoring/flask-monitoring.json",
+    "keywords": [
+      "flask",
+      "monitoring"
+    ],
+    "description": "",
+    "category": "Flask Monitoring"
+  },
+  {
+    "id": "fly",
+    "title": "Fly.io — Fly App (SigNoz)",
+    "path": "fly/fly-prometheus-v1.json",
+    "keywords": [
+      "fly",
+      "prometheus",
+      "v1",
+      "io",
+      "app",
+      "(signoz)",
+      "federate"
+    ],
+    "description": "",
+    "category": "Fly"
+  },
+  {
+    "id": "go-runtime",
+    "title": "Go Runtime Metrics",
+    "path": "go-runtime/go-runtime-metrics.json",
+    "keywords": [
+      "go",
+      "runtime",
+      "metrics",
+      "golang"
+    ],
+    "description": "Go runtime metrics dashboard for monitoring memory, goroutines, and scheduler performance",
+    "category": "Go Runtime"
+  },
+  {
+    "id": "google-adk",
+    "title": "Google ADK",
+    "path": "google-adk/google-adk-dashboard.json",
+    "keywords": [
+      "google",
+      "adk"
+    ],
+    "description": "",
+    "category": "Google Adk"
+  },
+  {
+    "id": "google-gemini",
+    "title": "Gemini Dashboard",
+    "path": "google-gemini/google-gemini-template.json",
+    "keywords": [
+      "google",
+      "gemini"
+    ],
+    "description": "",
+    "category": "Google Gemini"
+  },
+  {
+    "id": "grok",
+    "title": "Grok",
+    "path": "grok/grok-dashboard.json",
+    "keywords": [
+      "grok"
+    ],
+    "description": "",
+    "category": "Grok"
+  },
+  {
+    "id": "groq",
+    "title": "Groq",
+    "path": "groq/groq-dashboard.json",
+    "keywords": [
+      "groq"
+    ],
+    "description": "",
+    "category": "Groq"
+  },
+  {
+    "id": "hadoop",
+    "title": "Hadoop Dashboard",
+    "path": "hadoop/hadoop-otlp-v1.json",
+    "keywords": [
+      "hadoop",
+      "otlp",
+      "v1"
+    ],
+    "description": "",
+    "category": "Hadoop"
+  },
+  {
+    "id": "haproxy",
+    "title": "HAProxy dashboard",
+    "path": "haproxy/haproxy.json",
+    "keywords": [
+      "haproxy"
+    ],
+    "description": "",
+    "category": "Haproxy"
+  },
+  {
+    "id": "haystack",
+    "title": "Haystack",
+    "path": "haystack/haystack-dashboard.json",
+    "keywords": [
+      "haystack"
+    ],
+    "description": "",
+    "category": "Haystack"
+  },
+  {
+    "id": "hostmetrics",
+    "title": "Host Metrics",
+    "path": "hostmetrics/hostmetrics.json",
+    "keywords": [
+      "hostmetrics",
+      "host",
+      "metrics",
+      "cpu",
+      "memory",
+      "network"
+    ],
+    "description": "This dashboard uses the system metrics collected from the `hostmetrics` receiver to show CPU, Memory, Disk, Network and Filesystem usage",
+    "category": "Hostmetrics"
+  },
+  {
+    "id": "hostmetrics",
+    "title": "Host Metrics (k8s)",
+    "path": "hostmetrics/hostmetrics-k8s.json",
+    "keywords": [
+      "hostmetrics",
+      "k8s",
+      "host",
+      "metrics",
+      "(k8s)",
+      "node"
+    ],
+    "description": "This dashboard uses the system metrics collected from the `hostmetrics` receiver to show CPU, Memory, Disk, Network and Filesystem usage",
+    "category": "Hostmetrics"
+  },
+  {
+    "id": "huggingface",
+    "title": "HuggingFace",
+    "path": "huggingface/huggingface-dashboard.json",
+    "keywords": [
+      "huggingface"
+    ],
+    "description": "",
+    "category": "Huggingface"
+  },
+  {
+    "id": "inkeep",
+    "title": "Inkeep",
+    "path": "inkeep/inkeep-dashboard.json",
+    "keywords": [
+      "inkeep"
+    ],
+    "description": "",
+    "category": "Inkeep"
+  },
+  {
+    "id": "jenkins",
+    "title": "Jenkins",
+    "path": "jenkins/jenkins-metrics.json",
+    "keywords": [
+      "jenkins",
+      "metrics",
+      "admin",
+      "devops"
+    ],
+    "description": "Monitor: Scale from 0 or to 0\nSpecific Instance type based on request\nResource Usage of jobs",
+    "category": "Jenkins"
+  },
+  {
+    "id": "jmx",
+    "title": "Cassandra metrics",
+    "path": "jmx/cassandra.json",
+    "keywords": [
+      "jmx",
+      "cassandra",
+      "metrics"
+    ],
+    "description": "",
+    "category": "Jmx"
+  },
+  {
+    "id": "jvm",
+    "title": "JVM Metrics",
+    "path": "jvm/jvm-metrics-by-service.json",
+    "keywords": [
+      "jvm",
+      "metrics",
+      "by",
+      "service",
+      "runtime"
+    ],
+    "description": "JVM Runtime metrics for service",
+    "category": "Jvm"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Host Metrics (k8s)",
+    "path": "k8s-infra-metrics/host-metrics.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "host",
+      "(k8s)",
+      "hostmetrics",
+      "node"
+    ],
+    "description": "This dashboard uses the system metrics collected from the `hostmetrics` receiver to show CPU, Memory, Disk, Network and Filesystem usage",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes Cluster Events",
+    "path": "k8s-infra-metrics/k8s-events-receiver.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "events",
+      "receiver",
+      "kubernetes",
+      "cluster",
+      "cloud"
+    ],
+    "description": "This dashboard displays specific event and object kind counts, as well as their respective time-series charts, allowing the viewer to understand what's happening inside a cluster at a glance.",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes Cluster Metrics",
+    "path": "k8s-infra-metrics/kubernetes-cluster-metrics.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "cluster",
+      "k8sclusterreceiver"
+    ],
+    "description": "This dashboard uses the metrics sent using `k8sclusterreceiver` to show the desired and currently running pods for deployments, daemonsets, statefulset, replicasets and pods count by phase.",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes Node Metrics - Detailed",
+    "path": "k8s-infra-metrics/kubernetes-node-metrics-detailed.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "node",
+      "detailed",
+      "kubelet"
+    ],
+    "description": "",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes Node Metrics - Overall",
+    "path": "k8s-infra-metrics/kubernetes-node-metrics-overall.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "node",
+      "overall",
+      "kubelet"
+    ],
+    "description": "",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes Pod Metrics - Detailed",
+    "path": "k8s-infra-metrics/kubernetes-pod-metrics-detailed.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "pod",
+      "detailed"
+    ],
+    "description": "",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes Pod Metrics - Overall",
+    "path": "k8s-infra-metrics/kubernetes-pod-metrics-overall.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "pod",
+      "overall"
+    ],
+    "description": "",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
+    "title": "Kubernetes PVC Metrics",
+    "path": "k8s-infra-metrics/kubernetes-pvc-metrics.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "pvc",
+      "pod",
+      "volume"
+    ],
+    "description": "",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "keda",
+    "title": "KEDA Dashboard",
+    "path": "keda/keda-otlp-v1.json",
+    "keywords": [
+      "keda",
+      "otlp",
+      "v1"
+    ],
+    "description": "",
+    "category": "Keda"
+  },
+  {
+    "id": "key-operations",
+    "title": "Key operations",
+    "path": "key-operations/key-operations.json",
+    "keywords": [
+      "key",
+      "operations",
+      "apm",
+      "latency",
+      "error",
+      "rate",
+      "throughput"
+    ],
+    "description": "",
+    "category": "Key Operations"
+  },
+  {
+    "id": "litellm",
+    "title": "LiteLLM Proxy",
+    "path": "litellm/litellm-proxy-dashboard.json",
+    "keywords": [
+      "litellm",
+      "proxy"
+    ],
+    "description": "",
+    "category": "Litellm"
+  },
+  {
+    "id": "litellm",
+    "title": "LiteLLM SDK",
+    "path": "litellm/litellm-sdk-dashboard.json",
+    "keywords": [
+      "litellm",
+      "sdk"
+    ],
+    "description": "",
+    "category": "Litellm"
+  },
+  {
+    "id": "livekit",
+    "title": "LiveKit",
+    "path": "livekit/livekit-dashboard.json",
+    "keywords": [
+      "livekit"
+    ],
+    "description": "",
+    "category": "Livekit"
+  },
+  {
+    "id": "llm-observability",
+    "title": "SigNoz Chat PDF Performance Metrics",
+    "path": "llm-observability/sample-chatpdf-performance-metrics.json",
+    "keywords": [
+      "llm",
+      "observability",
+      "sample",
+      "chatpdf",
+      "performance",
+      "metrics",
+      "signoz",
+      "chat",
+      "pdf",
+      "langchain"
+    ],
+    "description": "",
+    "category": "Llm Observability"
+  },
+  {
+    "id": "llm-observability",
+    "title": "SigNoz ChatPDF Cost Dashboard",
+    "path": "llm-observability/sample-chatpdf-cost-dashboard.json",
+    "keywords": [
+      "llm",
+      "observability",
+      "sample",
+      "chatpdf",
+      "cost",
+      "signoz"
+    ],
+    "description": "",
+    "category": "Llm Observability"
+  },
+  {
+    "id": "mastra",
+    "title": "Mastra",
+    "path": "mastra/mastra-dashboard.json",
+    "keywords": [
+      "mastra"
+    ],
+    "description": "",
+    "category": "Mastra"
+  },
+  {
+    "id": "memcached",
+    "title": "Memcached",
+    "path": "memcached/memcached.json",
+    "keywords": [
+      "memcached"
+    ],
+    "description": "Dashboard to monitor Memcached",
+    "category": "Memcached"
+  },
+  {
+    "id": "meter",
+    "title": "Meter Breakdown",
+    "path": "meter/meter.json",
+    "keywords": [
+      "meter",
+      "breakdown",
+      "cost",
+      "ingestion"
+    ],
+    "description": "Provides breakdown of meter by service and environment. Please use time range greater than 1 hour as meter data is aggregated over 1 hour intervals. ",
+    "category": "Meter"
+  },
+  {
+    "id": "mistral",
+    "title": "Mistral AI",
+    "path": "mistral/mistral-dashboard.json",
+    "keywords": [
+      "mistral",
+      "ai"
+    ],
+    "description": "",
+    "category": "Mistral"
+  },
+  {
+    "id": "mongodb",
+    "title": "Mongo overview",
+    "path": "mongodb/mongodb.json",
+    "keywords": [
+      "mongodb",
+      "mongo",
+      "overview",
+      "database"
+    ],
+    "description": "This dashboard provides a high-level overview of your MongoDB. It includes read/write performance, most-used replicas, collection metrics etc...",
+    "category": "Mongodb"
+  },
+  {
+    "id": "mysql",
+    "title": "MySQL (OTEL)",
+    "path": "mysql/mysql-otlp-v1.json",
+    "keywords": [
+      "mysql",
+      "otlp",
+      "v1",
+      "(otel)",
+      "otel"
+    ],
+    "description": "",
+    "category": "Mysql"
+  },
+  {
+    "id": "n8n",
+    "title": "n8n",
+    "path": "n8n/n8n-dashboard.json",
+    "keywords": [
+      "n8n"
+    ],
+    "description": "",
+    "category": "N8N"
+  },
+  {
+    "id": "nginx",
+    "title": "Ingress Nginx - Request Handling Performance",
+    "path": "nginx/nginx-ingress-request-handling-performance.json",
+    "keywords": [
+      "nginx",
+      "ingress",
+      "request",
+      "handling",
+      "performance"
+    ],
+    "description": "",
+    "category": "Nginx"
+  },
+  {
+    "id": "nginx",
+    "title": "NGINX (OTEL)",
+    "path": "nginx/nginx.json",
+    "keywords": [
+      "nginx",
+      "(otel)",
+      "otel"
+    ],
+    "description": "",
+    "category": "Nginx"
+  },
+  {
+    "id": "nginx",
+    "title": "NGINX Ingress controller [WIP by SigNoz] ",
+    "path": "nginx/ingress-nginx-controller.json",
+    "keywords": [
+      "nginx",
+      "ingress",
+      "controller",
+      "[wip",
+      "by",
+      "signoz]"
+    ],
+    "description": "",
+    "category": "Nginx"
+  },
+  {
+    "id": "nomad",
+    "title": "Nomad Metrics",
+    "path": "nomad/nomad-metrics-by-host.json",
+    "keywords": [
+      "nomad",
+      "metrics",
+      "by",
+      "host"
+    ],
+    "description": "",
+    "category": "Nomad"
+  },
+  {
+    "id": "nvidia-dcgm",
+    "title": "NVIDIA DCGM",
+    "path": "nvidia-dcgm/nvidia-dcgm.json",
+    "keywords": [
+      "nvidia",
+      "dcgm"
+    ],
+    "description": "",
+    "category": "Nvidia Dcgm"
+  },
+  {
+    "id": "ollama",
+    "title": "Ollama",
+    "path": "ollama/ollama-dashboard.json",
+    "keywords": [
+      "ollama"
+    ],
+    "description": "",
+    "category": "Ollama"
+  },
+  {
+    "id": "openai",
+    "title": "OpenAI",
+    "path": "openai/openai-dashboard.json",
+    "keywords": [
+      "openai"
+    ],
+    "description": "",
+    "category": "Openai"
+  },
+  {
+    "id": "openclaw",
+    "title": "Openclaw Overview",
+    "path": "openclaw/openclaw-dashboard.json",
+    "keywords": [
+      "openclaw",
+      "overview"
+    ],
+    "description": "",
+    "category": "Openclaw"
+  },
+  {
+    "id": "openrouter",
+    "title": "Openrouter",
+    "path": "openrouter/openrouter-dashboard.json",
+    "keywords": [
+      "openrouter"
+    ],
+    "description": "",
+    "category": "Openrouter"
+  },
+  {
+    "id": "pipecat",
+    "title": "Pipecat",
+    "path": "pipecat/pipecat-dashboard.json",
+    "keywords": [
+      "pipecat"
+    ],
+    "description": "",
+    "category": "Pipecat"
+  },
+  {
+    "id": "postgresql",
+    "title": "Postgres overview",
+    "path": "postgresql/postgresql.json",
+    "keywords": [
+      "postgresql",
+      "postgres",
+      "overview",
+      "database"
+    ],
+    "description": "This dashboard provides a high-level overview of your PostgreSQL databases. It includes replication, locks, and throughput etc...",
+    "category": "Postgresql"
+  },
+  {
+    "id": "pydantic-ai",
+    "title": "Pydantic",
+    "path": "pydantic-ai/pydantic-dashboard.json",
+    "keywords": [
+      "pydantic",
+      "ai"
+    ],
+    "description": "",
+    "category": "Pydantic Ai"
+  },
+  {
+    "id": "qwen",
+    "title": "Qwen",
+    "path": "qwen/qwen-dashboard.json",
+    "keywords": [
+      "qwen"
+    ],
+    "description": "",
+    "category": "Qwen"
+  },
+  {
+    "id": "rabbitmq",
+    "title": "RabbitMQ Metricsl (OTEL)",
+    "path": "rabbitmq/rabbitmq.json",
+    "keywords": [
+      "rabbitmq",
+      "metricsl",
+      "(otel)",
+      "otel",
+      "queue"
+    ],
+    "description": "Dashboard for rabbitmq metrics provided by (rabbitmqreceiver)[https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/rabbitmqreceiver]",
+    "category": "Rabbitmq"
+  },
+  {
+    "id": "redis",
+    "title": "Redis overview",
+    "path": "redis/redis-overview.json",
+    "keywords": [
+      "redis",
+      "overview",
+      "database"
+    ],
+    "description": "This dashboard shows the Redis instance overview. It includes latency, hit/miss rate, connections, and memory information.\n",
+    "category": "Redis"
+  },
+  {
+    "id": "render",
+    "title": "Render Test",
+    "path": "render/render-dashboard.json",
+    "keywords": [
+      "render",
+      "test"
+    ],
+    "description": "",
+    "category": "Render"
+  },
+  {
+    "id": "semantic-kernel",
+    "title": "Semantic Kernel",
+    "path": "semantic-kernel/semantic-kernel-dashboard.json",
+    "keywords": [
+      "semantic",
+      "kernel"
+    ],
+    "description": "",
+    "category": "Semantic Kernel"
+  },
+  {
+    "id": "signoz-ingestion-analysis",
+    "title": "Ingestion",
+    "path": "signoz-ingestion-analysis/signoz-ingestion-analysis-v1.json",
+    "keywords": [
+      "signoz",
+      "ingestion",
+      "analysis",
+      "v1"
+    ],
+    "description": "This dashboard shows the metrics, traces and logs ingested.  Please follow the following guides to control your data sent to SigNoz. Only last 15 minutes of data is shown as this is mainly intended to help you understand the recent volume. \n\nMetrics: https://signoz.io/docs/userguide/drop-metrics/\n\n\nLogs: https://signoz.io/docs/logs-management/guides/drop-logs/\n\n\nTraces: https://signoz.io/docs/traces-management/guides/drop-spans/",
+    "category": "Signoz Ingestion Analysis"
+  },
+  {
+    "id": "signoz-ingestion-analysis",
+    "title": "IngestionV2",
+    "path": "signoz-ingestion-analysis/signoz-ingestion-analysis-v2.json",
+    "keywords": [
+      "signoz",
+      "ingestion",
+      "analysis",
+      "v2",
+      "ingestionv2",
+      "usage"
+    ],
+    "description": "This dashboard shows the metrics, traces and logs ingested.  Please follow the following guides to control your data sent to SigNoz. Only last 15 minutes of data is shown as this is mainly intended to help you understand the recent volume. \n\nMetrics: https://signoz.io/docs/userguide/drop-metrics/\n\n\nLogs: https://signoz.io/docs/logs-management/guides/drop-logs/\n\n\nTraces: https://signoz.io/docs/traces-management/guides/drop-spans/",
+    "category": "Signoz Ingestion Analysis"
+  },
+  {
+    "id": "slurm",
+    "title": "SLURM ",
+    "path": "slurm/slurm.json",
+    "keywords": [
+      "slurm"
+    ],
+    "description": "",
+    "category": "Slurm"
+  },
+  {
+    "id": "snowflake",
+    "title": "Snowflake Dashboard",
+    "path": "snowflake/snowflake-otlp-v1.json",
+    "keywords": [
+      "snowflake",
+      "otlp",
+      "v1"
+    ],
+    "description": "This dashboard plots all the important metrics for Snowflake.",
+    "category": "Snowflake"
+  },
+  {
+    "id": "supabase",
+    "title": "Supabase Monitoring Dashboard",
+    "path": "supabase/supabase-dashboard-detailed.json",
+    "keywords": [
+      "supabase",
+      "detailed",
+      "monitoring"
+    ],
+    "description": "",
+    "category": "Supabase"
+  },
+  {
+    "id": "temporal-agents",
+    "title": "Temporal for AI",
+    "path": "temporal-agents/temporal-dashboard.json",
+    "keywords": [
+      "temporal",
+      "agents",
+      "for",
+      "ai"
+    ],
+    "description": "",
+    "category": "Temporal Agents"
+  },
+  {
+    "id": "temporal.io",
+    "title": "Temporal Cloud Metrics",
+    "path": "temporal.io/Temporal Cloud Metrics.json",
+    "keywords": [
+      "temporal",
+      "io",
+      "cloud",
+      "metrics"
+    ],
+    "description": "",
+    "category": "Temporal.Io"
+  },
+  {
+    "id": "temporal.io",
+    "title": "Temporal SDK Metrics",
+    "path": "temporal.io/Temporal SDK Metrics - golang.json",
+    "keywords": [
+      "temporal",
+      "io",
+      "sdk",
+      "metrics",
+      "golang"
+    ],
+    "description": "",
+    "category": "Temporal.Io"
+  },
+  {
+    "id": "temporal.io",
+    "title": "Temporal SDK Metrics",
+    "path": "temporal.io/Temporal SDK Metrics - typescript.json",
+    "keywords": [
+      "temporal",
+      "io",
+      "sdk",
+      "metrics",
+      "typescript"
+    ],
+    "description": "",
+    "category": "Temporal.Io"
+  },
+  {
+    "id": "vercel-ai-sdk",
+    "title": "Vercel AI SDK Template",
+    "path": "vercel-ai-sdk/vercel-ai-sdk-template.json",
+    "keywords": [
+      "vercel",
+      "ai",
+      "sdk"
+    ],
+    "description": "",
+    "category": "Vercel Ai Sdk"
+  },
+  {
+    "id": "web-vitals-monitoring",
+    "title": "Web Vitals Monitoring",
+    "path": "web-vitals-monitoring/web-vitals-monitoring-with-metrics.json",
+    "keywords": [
+      "web",
+      "vitals",
+      "monitoring",
+      "with",
+      "metrics"
+    ],
+    "description": "Real-time monitoring of key Web Vitals metrics to track user experience and page performance.",
+    "category": "Web Vitals Monitoring"
+  },
+  {
+    "id": "web-vitals-monitoring",
+    "title": "Web Vitals Monitoring",
+    "path": "web-vitals-monitoring/web-vitals-monitoring-with-traces.json",
+    "keywords": [
+      "web",
+      "vitals",
+      "monitoring",
+      "with",
+      "traces"
+    ],
+    "description": "Real-time monitoring of key Web Vitals using traces to track user experience and page performance.\n\n",
+    "category": "Web Vitals Monitoring"
+  }
+]

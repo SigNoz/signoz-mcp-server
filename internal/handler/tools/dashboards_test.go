@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
@@ -235,6 +237,102 @@ func TestHandleImportDashboard_RejectsAbsoluteAndURL(t *testing.T) {
 		if !result.IsError {
 			t.Errorf("expected error result for path %q", bad)
 		}
+	}
+}
+
+func TestHandleListDashboardTemplates_FullCatalog(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	result, err := h.handleListDashboardTemplates(testCtx(), makeToolRequest(
+		"signoz_list_dashboard_templates",
+		map[string]any{},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", result.Content[0])
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal([]byte(textContent.Text), &entries); err != nil {
+		t.Fatalf("response should be a JSON array: %v\n%s", err, textContent.Text)
+	}
+	if len(entries) < 50 {
+		t.Errorf("expected the full catalog (>=50 entries), got %d", len(entries))
+	}
+	// Spot-check that a known template is present and well-formed.
+	foundPostgres := false
+	for _, e := range entries {
+		if e["path"] == "postgresql/postgresql.json" {
+			foundPostgres = true
+			for _, key := range []string{"id", "title", "path", "category"} {
+				if _, ok := e[key]; !ok {
+					t.Errorf("postgres entry missing %q field: %#v", key, e)
+				}
+			}
+			break
+		}
+	}
+	if !foundPostgres {
+		t.Error("expected postgresql/postgresql.json to be in the bundled catalog")
+	}
+}
+
+func TestHandleListDashboardTemplates_CategoryFilter(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	result, err := h.handleListDashboardTemplates(testCtx(), makeToolRequest(
+		"signoz_list_dashboard_templates",
+		map[string]any{"category": "apm"},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", result.Content[0])
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal([]byte(textContent.Text), &entries); err != nil {
+		t.Fatalf("response should be a JSON array: %v\n%s", err, textContent.Text)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected at least one Apm template")
+	}
+	for _, e := range entries {
+		if !strings.EqualFold(e["category"].(string), "Apm") {
+			t.Errorf("category filter leaked entry from %q", e["category"])
+		}
+	}
+}
+
+func TestHandleListDashboardTemplates_UnknownCategory(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	result, err := h.handleListDashboardTemplates(testCtx(), makeToolRequest(
+		"signoz_list_dashboard_templates",
+		map[string]any{"category": "no-such-category-zzz"},
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error: %v", result.Content)
+	}
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", result.Content[0])
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal([]byte(textContent.Text), &entries); err != nil {
+		t.Fatalf("response should be a JSON array: %v\n%s", err, textContent.Text)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected empty result for unknown category, got %d entries", len(entries))
 	}
 }
 

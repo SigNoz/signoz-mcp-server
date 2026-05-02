@@ -91,7 +91,11 @@
     },
     {
       "name": "signoz_import_dashboard",
-      "description": "Create a dashboard from a curated template in the SigNoz/dashboards GitHub repo"
+      "description": "Create a dashboard from a curated template in the SigNoz/dashboards GitHub repo by path"
+    },
+    {
+      "name": "signoz_list_dashboard_templates",
+      "description": "List the bundled curated SigNoz dashboard template catalog so the model can pick a template by intent"
     },
     {
       "name": "signoz_list_services",
