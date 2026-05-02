@@ -23,11 +23,12 @@ import (
 
 // Template fetch configuration for signoz_import_dashboard.
 // templateRepoBaseURLVar is a var (not const) so tests can point it at a
-// local httptest server. Kept in sync with the agent-skills
-// import_template.py PINNED_SHA.
+// local httptest server. Templates are fetched from the SigNoz/dashboards
+// `main` branch — we deliberately do not pin a SHA, so new upstream
+// templates become reachable as soon as they land.
 const (
-	templateRepoPinnedSHA = "61d374c50f9e1383e0eba3584fb81498f38c1f8d"
-	templateFetchTimeout  = 30 * time.Second
+	templateRepoRef      = "main"
+	templateFetchTimeout = 30 * time.Second
 )
 
 var (
@@ -122,7 +123,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithDescription(
 			"Create a new SigNoz dashboard from a curated template hosted in the SigNoz/dashboards GitHub repo. "+
 				"Takes a single 'path' argument (e.g. 'hostmetrics/hostmetrics.json' or 'postgresql/postgresql.json') "+
-				"that points to a template file under the pinned commit. The server fetches the JSON, validates it, "+
+				"that points to a template file on the main branch. The server fetches the JSON, validates it, "+
 				"and creates the dashboard in one call — the client does not need to inline the template body. "+
 				"To discover the available paths, call signoz_list_dashboard_templates first and let the model pick the best match. "+
 				"For custom dashboards, use signoz_create_dashboard.",
@@ -297,8 +298,8 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	return mcp.NewToolResultText(string(data)), nil
 }
 
-// fetchTemplate downloads a dashboard template JSON from the pinned
-// SigNoz/dashboards commit. Returns the raw response body.
+// fetchTemplate downloads a dashboard template JSON from the SigNoz/dashboards
+// `main` branch. Returns the raw response body.
 func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 	rel := strings.TrimPrefix(path, "/")
 	// Preserve "/" separators between path segments while encoding each.
@@ -306,7 +307,7 @@ func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 	for i, seg := range segments {
 		segments[i] = url.PathEscape(seg)
 	}
-	fullURL := fmt.Sprintf("%s/%s/%s", templateRepoBaseURLVar, templateRepoPinnedSHA, strings.Join(segments, "/"))
+	fullURL := fmt.Sprintf("%s/%s/%s", templateRepoBaseURLVar, templateRepoRef, strings.Join(segments, "/"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
@@ -319,7 +320,7 @@ func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("template not found at %s (HTTP 404). Verify the path exists in the SigNoz/dashboards repo at the pinned commit", path)
+		return nil, fmt.Errorf("template not found at %s (HTTP 404). Verify the path exists on the main branch of the SigNoz/dashboards repo", path)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, path)

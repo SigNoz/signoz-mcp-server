@@ -27,8 +27,8 @@ bundle/
 go.work
 go.work.sum
 
-# Local scripts
-scripts/
+# Local scripts (root-only; CI helpers under .github/scripts/ are tracked)
+/scripts/
 
 # env file
 .env
