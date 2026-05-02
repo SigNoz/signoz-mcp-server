@@ -262,6 +262,34 @@ func TestCoerceHavingInQueryMaps_ParenthesizedClausesParsed(t *testing.T) {
 	}
 }
 
+func TestCoerceHavingInQueryMaps_GroupedBooleanOperandUntouched(t *testing.T) {
+	// Grouped boolean operands joined by top-level AND must not be silently
+	// mis-coerced. After splitTopLevelAnd, the first AND operand becomes
+	// `(count() > 5 OR count() < 1)`, which after outer-paren stripping
+	// would otherwise consume the first `>` and treat the OR'd remainder
+	// as the value. Such expressions should be left as the original object
+	// form for downstream error handling.
+	cases := []string{
+		"(count() > 5 OR count() < 1) AND count() != 0",
+		"(count() > 5 || count() < 1) AND count() != 0",
+		"count() != 0 AND (count() > 5 OR count() < 1)",
+	}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			obj := map[string]any{"expression": expr}
+			entries := []map[string]any{{"queryName": "A", "having": obj}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected map[string]any (untouched), got %T: %#v", entries[0]["having"], entries[0]["having"])
+			}
+			if got["expression"] != expr {
+				t.Errorf("expected expression preserved, got %v", got["expression"])
+			}
+		})
+	}
+}
+
 func TestCoerceHavingInQueryMaps_OrInsideQuotesOrParensParsed(t *testing.T) {
 	// `OR` / `||` that is not at the top level (inside quotes or parentheses)
 	// must not trip the OR rejection.

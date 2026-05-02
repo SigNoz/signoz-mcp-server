@@ -319,6 +319,65 @@ func splitTopLevelAnd(s string) ([]string, bool) {
 	return parts, true
 }
 
+// containsTopLevelBoolean reports whether s contains a top-level (outside
+// parentheses and quoted strings) boolean keyword (`AND`, `OR`) or operator
+// (`&&`, `||`). Used to reject single-clause expressions that secretly carry
+// grouped boolean logic on the RHS, such as `5 OR count() < 1`.
+func containsTopLevelBoolean(s string) bool {
+	depth := 0
+	var inQuote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inQuote != 0 {
+			if c == '\\' && i+1 < len(s) {
+				i++
+				continue
+			}
+			if c == inQuote {
+				inQuote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			inQuote = c
+			continue
+		case '(':
+			depth++
+			continue
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+			continue
+		}
+		if depth != 0 {
+			continue
+		}
+		if c == '|' && i+1 < len(s) && s[i+1] == '|' {
+			return true
+		}
+		if c == '&' && i+1 < len(s) && s[i+1] == '&' {
+			return true
+		}
+		if i+2 <= len(s) && (c == 'O' || c == 'o') && strings.EqualFold(s[i:i+2], "OR") {
+			before := i == 0 || !isWordChar(s[i-1])
+			after := i+2 == len(s) || !isWordChar(s[i+2])
+			if before && after {
+				return true
+			}
+		}
+		if i+3 <= len(s) && (c == 'A' || c == 'a') && strings.EqualFold(s[i:i+3], "AND") {
+			before := i == 0 || !isWordChar(s[i-1])
+			after := i+3 == len(s) || !isWordChar(s[i+3])
+			if before && after {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // stripEnclosingParens removes outer balanced `(...)` wrappers from an
 // expression, preserving inner parentheses. Quoted strings are respected so
 // parentheses inside quotes are not counted. Returns the input unchanged if
@@ -431,6 +490,14 @@ func parseHavingClause(s string) (map[string]any, bool) {
 				lhs := strings.TrimSpace(s[:i])
 				rhs := strings.TrimSpace(s[i+len(op):])
 				if lhs == "" || rhs == "" {
+					return nil, false
+				}
+				// Reject grouped boolean operands that survived top-level
+				// AND splitting (e.g. `(count() > 5 OR count() < 1)` taken
+				// as a whole AND-operand). Without this guard, the first
+				// operator would be consumed and the remaining boolean
+				// expression silently coerced into the value.
+				if containsTopLevelBoolean(rhs) {
 					return nil, false
 				}
 				return map[string]any{
