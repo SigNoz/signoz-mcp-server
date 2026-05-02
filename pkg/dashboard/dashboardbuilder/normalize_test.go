@@ -262,6 +262,58 @@ func TestCoerceHavingInQueryMaps_ParenthesizedClausesParsed(t *testing.T) {
 	}
 }
 
+func TestCoerceHavingInQueryMaps_NestedAndGroupsFlattened(t *testing.T) {
+	// AND-only expressions wrapped in outer parentheses (or with nested AND
+	// sub-groups) should flatten into the clause array, not get rejected.
+	cases := []struct {
+		name       string
+		expression string
+		want       []map[string]any
+	}{
+		{
+			name:       "fully wrapped and-pair",
+			expression: "((count() > 1000) AND (count() < 5000))",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+				{"columnName": "count()", "op": "<", "value": int64(5000)},
+			},
+		},
+		{
+			name:       "nested and group",
+			expression: "count() > 0 AND (count() > 1000 AND count() < 5000)",
+			want: []map[string]any{
+				{"columnName": "count()", "op": ">", "value": int64(0)},
+				{"columnName": "count()", "op": ">", "value": int64(1000)},
+				{"columnName": "count()", "op": "<", "value": int64(5000)},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []map[string]any{{"queryName": "A", "having": map[string]any{"expression": tc.expression}}}
+			coerceHavingInQueryMaps(entries)
+			got, ok := entries[0]["having"].([]any)
+			if !ok {
+				t.Fatalf("expected []any, got %T: %#v", entries[0]["having"], entries[0]["having"])
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d: %#v", len(got), len(tc.want), got)
+			}
+			for i, w := range tc.want {
+				c, ok := got[i].(map[string]any)
+				if !ok {
+					t.Fatalf("clause[%d]: expected map, got %T", i, got[i])
+				}
+				for k, v := range w {
+					if c[k] != v {
+						t.Errorf("clause[%d][%q] = %#v, want %#v", i, k, c[k], v)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestCoerceHavingInQueryMaps_GroupedBooleanOperandUntouched(t *testing.T) {
 	// Grouped boolean operands joined by top-level AND must not be silently
 	// mis-coerced. After splitTopLevelAnd, the first AND operand becomes

@@ -231,13 +231,28 @@ var havingOps = []string{">=", "<=", "!=", "=", ">", "<"}
 // cannot be parsed; the caller leaves the original object form in place so
 // validation surfaces a clear error.
 func parseHavingExpression(expr string) ([]map[string]any, bool) {
+	// Strip outer balanced parentheses first so a fully wrapped expression
+	// (e.g. `((count() > 1000) AND (count() < 5000))`) splits at the inner
+	// AND rather than parsing as a single clause.
+	expr = stripEnclosingParens(strings.TrimSpace(expr))
 	parts, ok := splitTopLevelAnd(expr)
 	if !ok || len(parts) == 0 {
 		return nil, false
 	}
 	out := make([]map[string]any, 0, len(parts))
 	for _, p := range parts {
-		clause, ok := parseHavingClause(strings.TrimSpace(p))
+		// A part may itself be a wrapped AND group like `(A AND B)`.
+		// Recursively flatten before falling back to clause parsing.
+		trimmed := strings.TrimSpace(p)
+		stripped := stripEnclosingParens(trimmed)
+		if stripped != trimmed {
+			sub, ok := parseHavingExpression(stripped)
+			if ok {
+				out = append(out, sub...)
+				continue
+			}
+		}
+		clause, ok := parseHavingClause(trimmed)
 		if !ok {
 			return nil, false
 		}
