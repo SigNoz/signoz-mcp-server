@@ -319,10 +319,6 @@ func splitTopLevelAnd(s string) ([]string, bool) {
 	return parts, true
 }
 
-func isSpace(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
-}
-
 // isWordChar returns true for ASCII identifier characters (letters, digits,
 // underscore). Used to detect token boundaries around AND/OR keywords so a
 // keyword followed by punctuation (e.g. `OR(`, `AND"x"`) is correctly split,
