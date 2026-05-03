@@ -6,7 +6,6 @@ import "encoding/json"
 // and /api/v1/testChannel endpoints. Only one of the *_configs fields
 // should be populated per receiver.
 type Receiver struct {
-	ID               int               `json:"id,omitempty"`
 	Name             string            `json:"name"`
 	SlackConfigs     []SlackConfig     `json:"slack_configs,omitempty"`
 	WebhookConfigs   []WebhookConfig   `json:"webhook_configs,omitempty"`
