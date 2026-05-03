@@ -658,6 +658,7 @@ func TestHandleCreateNotificationChannel_InvalidSendResolved(t *testing.T) {
 // --- Update notification channel tests ---
 
 func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
+	channelID := "019b1af4-3ef5-734d-8ba8-cc12fb5b5978"
 	var capturedID string
 	var capturedBody []byte
 	mock := &client.MockClient{
@@ -667,7 +668,9 @@ func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
 			return nil
 		},
 		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":{"id":"1","name":"my-slack","type":"slack"}}`), nil
+			return json.RawMessage(
+				`{"data":{"id":"019b1af4-3ef5-734d-8ba8-cc12fb5b5978","name":"my-slack","type":"slack"}}`,
+			), nil
 		},
 		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
 			return nil
@@ -675,7 +678,7 @@ func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_update_notification_channel", map[string]any{
-		"id":            "1",
+		"id":            channelID,
 		"type":          "slack",
 		"name":          "my-slack",
 		"slack_api_url": "https://hooks.slack.com/services/T123/B456/new",
@@ -690,8 +693,8 @@ func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 
-	if capturedID != "1" {
-		t.Errorf("expected id=1, got %v", capturedID)
+	if capturedID != channelID {
+		t.Errorf("expected id=%s, got %v", channelID, capturedID)
 	}
 
 	var receiver map[string]any
@@ -700,6 +703,9 @@ func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
 	}
 	if receiver["name"] != "my-slack" {
 		t.Errorf("expected name=my-slack, got %v", receiver["name"])
+	}
+	if _, ok := receiver["id"]; ok {
+		t.Errorf("expected receiver body to omit stale numeric id, got %v", receiver["id"])
 	}
 	slackConfigs, ok := receiver["slack_configs"].([]any)
 	if !ok || len(slackConfigs) != 1 {
@@ -801,15 +807,18 @@ func TestHandleUpdateNotificationChannel_TestFails(t *testing.T) {
 // --- Get / Delete notification channel tests ---
 
 func TestHandleGetNotificationChannel(t *testing.T) {
+	channelID := "019b1af4-3ef5-734d-8ba8-cc12fb5b5978"
 	var capturedID string
 	mock := &client.MockClient{
 		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
 			capturedID = id
-			return json.RawMessage(`{"status":"success","data":{"id":"42","name":"primary","type":"slack","data":"{}"}}`), nil
+			return json.RawMessage(
+				`{"status":"success","data":{"id":"019b1af4-3ef5-734d-8ba8-cc12fb5b5978","name":"primary","type":"slack","data":"{}"}}`,
+			), nil
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "42"})
+	req := makeToolRequest("signoz_get_notification_channel", map[string]any{"id": channelID})
 
 	result, err := h.handleGetNotificationChannel(testCtx(), req)
 	if err != nil {
@@ -818,8 +827,8 @@ func TestHandleGetNotificationChannel(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error result: %v", result.Content)
 	}
-	if capturedID != "42" {
-		t.Errorf("expected id=42 forwarded to client, got %s", capturedID)
+	if capturedID != channelID {
+		t.Errorf("expected id=%s forwarded to client, got %s", channelID, capturedID)
 	}
 }
 
@@ -838,6 +847,7 @@ func TestHandleGetNotificationChannel_MissingID(t *testing.T) {
 }
 
 func TestHandleDeleteNotificationChannel(t *testing.T) {
+	channelID := "019b1af4-3ef5-734d-8ba8-cc12fb5b5978"
 	var capturedID string
 	mock := &client.MockClient{
 		DeleteNotificationChannelFn: func(ctx context.Context, id string) error {
@@ -846,7 +856,7 @@ func TestHandleDeleteNotificationChannel(t *testing.T) {
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "42"})
+	req := makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": channelID})
 
 	result, err := h.handleDeleteNotificationChannel(testCtx(), req)
 	if err != nil {
@@ -855,8 +865,8 @@ func TestHandleDeleteNotificationChannel(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error result: %v", result.Content)
 	}
-	if capturedID != "42" {
-		t.Errorf("expected id=42 forwarded to client, got %s", capturedID)
+	if capturedID != channelID {
+		t.Errorf("expected id=%s forwarded to client, got %s", channelID, capturedID)
 	}
 }
 

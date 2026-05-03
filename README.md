@@ -724,7 +724,7 @@ Create a notification channel and send a test notification.
 Update an existing notification channel and send a test notification.
 
 - **Parameters**:
-  - `id` (required) - Notification channel ID
+  - `id` (required) - Notification channel UUID
   - `type` (required) - Channel type
   - `name` (required) - Channel name
   - Full channel configuration fields for the selected channel type
@@ -734,14 +734,14 @@ Update an existing notification channel and send a test notification.
 Get a single notification channel by ID (`GET /api/v1/channels/{id}`).
 
 - **Parameters**:
-  - `id` (required) - Notification channel ID
+  - `id` (required) - Notification channel UUID
 
 #### `signoz_delete_notification_channel`
 
 Delete a notification channel by ID (`DELETE /api/v1/channels/{id}`). Irreversible — warn if alert rules still reference this channel.
 
 - **Parameters**:
-  - `id` (required) - Notification channel ID
+  - `id` (required) - Notification channel UUID
 
 #### `signoz_execute_builder_query`
 

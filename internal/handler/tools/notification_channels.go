@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -108,7 +107,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 				"IMPORTANT: This replaces the full channel configuration. All fields must be provided, not just the ones being changed.\n\n"+
 				"SUPPORTED TYPES: slack, webhook, pagerduty, email, opsgenie, msteams\n\n"+
 				"REQUIRED FIELDS:\n"+
-				"- id: The numeric ID of the channel to update\n"+
+				"- id: The UUID of the channel to update\n"+
 				"- type: Channel type (slack, webhook, pagerduty, email, opsgenie, msteams)\n"+
 				"- name: Channel name\n\n"+
 				"REQUIRED FIELDS BY TYPE:\n"+
@@ -122,7 +121,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 				"The response includes both the channel update result and the test notification outcome.",
 		),
 		// ID field (required for update)
-		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel to update")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel to update")),
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
@@ -167,7 +166,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get a single notification channel by ID (GET /api/v1/channels/{id}). Returns the full channel configuration including the embedded receiver config (slack/webhook/pagerduty/email/opsgenie/msteams)."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel.")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel.")),
 	)
 	addTool(s, getChannelTool, h.handleGetNotificationChannel)
 
@@ -175,7 +174,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Delete a notification channel by ID (DELETE /api/v1/channels/{id}). Irreversible. Confirm with the user before calling, and warn if the channel is referenced by existing alert rules."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The numeric ID of the notification channel to delete.")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel to delete.")),
 	)
 	addTool(s, deleteChannelTool, h.handleDeleteNotificationChannel)
 }
@@ -375,7 +374,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// Validate id
 	id, _ := args["id"].(string)
 	if id == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required. Provide the numeric ID of the notification channel to update.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required. Provide the UUID of the notification channel to update.`), nil
 	}
 
 	// Validate required fields
@@ -401,27 +400,11 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		}
 	}
 
-	idInt, err := strconv.Atoi(id)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id" value: "%s". Must be a numeric ID.`, id)), nil
-	}
-
 	// Build receiver JSON based on type
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	// Inject the channel ID into the receiver JSON for the update request body
-	var receiver types.Receiver
-	if err := json.Unmarshal(receiverJSON, &receiver); err != nil {
-		return mcp.NewToolResultError("failed to parse receiver JSON: " + err.Error()), nil
-	}
-	receiver.ID = idInt
-	receiverJSON, err = types.MarshalReceiver(receiver)
-	if err != nil {
-		return mcp.NewToolResultError("failed to marshal receiver JSON: " + err.Error()), nil
 	}
 
 	client, err := h.GetClient(ctx)
