@@ -93,17 +93,17 @@ type ContextLinks struct {
 }
 
 type Threshold struct {
-	Index                 string      `json:"index,omitempty"`
+	Index                 string      `json:"index,omitempty" jsonschema_extras:"description=Stable identifier for this threshold within the widget."`
 	IsEditEnabled         bool        `json:"isEditEnabled,omitempty"`
 	KeyIndex              int         `json:"keyIndex,omitempty"`
 	SelectedGraph         string      `json:"selectedGraph,omitempty"`
-	ThresholdColor        string      `json:"thresholdColor,omitempty"`
-	ThresholdFormat       string      `json:"thresholdFormat,omitempty"`
-	ThresholdLabel        string      `json:"thresholdLabel,omitempty"`
-	ThresholdOperator     string      `json:"thresholdOperator,omitempty"`
+	ThresholdColor        string      `json:"thresholdColor,omitempty" jsonschema_extras:"description=Hex color for the threshold (e.g. #FF0000)."`
+	ThresholdFormat       string      `json:"thresholdFormat,omitempty" jsonschema_extras:"description=How the threshold is rendered. Allowed values: 'Text' or 'Background'. SigNoz does NOT support a Grafana-style 'Line' marker; do not use 'Line'. 'Background' tints the panel area when the operator+value condition holds; 'Text' colors the threshold value label only."`
+	ThresholdLabel        string      `json:"thresholdLabel,omitempty" jsonschema_extras:"description=Optional display label for the threshold."`
+	ThresholdOperator     string      `json:"thresholdOperator,omitempty" jsonschema_extras:"description=Comparison operator. Allowed values: '>', '<', '>=', '<=', '='."`
 	ThresholdTableOptions string      `json:"thresholdTableOptions,omitempty"`
-	ThresholdUnit         string      `json:"thresholdUnit,omitempty"`
-	ThresholdValue        interface{} `json:"thresholdValue,omitempty"`
+	ThresholdUnit         string      `json:"thresholdUnit,omitempty" jsonschema_extras:"description=Unit for the threshold value (should match the panel's yAxisUnit)."`
+	ThresholdValue        interface{} `json:"thresholdValue,omitempty" jsonschema_extras:"description=Numeric value the operator is compared against."`
 }
 
 type SelectedLogField struct {
