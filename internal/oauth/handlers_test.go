@@ -414,6 +414,93 @@ func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 	}
 }
 
+func TestAuthorizeSubmitStripsSigNozURLPath(t *testing.T) {
+	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/user/me" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer signozServer.Close()
+
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+		AuthCodeTTL:      10 * time.Minute,
+	}
+
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
+	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("EncryptClientID() error = %v", err)
+	}
+
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
+			"&redirect_uri="+url.QueryEscape("http://127.0.0.1:4567/callback")+
+			"&state=state-123&code_challenge=challenge&code_challenge_method=S256",
+		nil,
+	)
+	authorizeRR := httptest.NewRecorder()
+	handler.HandleAuthorizePage(authorizeRR, authorizeReq)
+
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	matches := re.FindStringSubmatch(authorizeRR.Body.String())
+	if len(matches) != 2 {
+		t.Fatalf("csrf token not found in authorize page: %s", authorizeRR.Body.String())
+	}
+	authorizeResult := authorizeRR.Result()
+	if len(authorizeResult.Cookies()) == 0 {
+		t.Fatalf("expected CSRF cookie to be set")
+	}
+
+	form := url.Values{
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"state":                 {"state-123"},
+		"code_challenge":        {"challenge"},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {matches[1]},
+		"signoz_url":            {signozServer.URL + "/home?orgId=123#logs"},
+		"api_key":               {"snz-api-key"},
+	}
+
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(authorizeResult.Cookies()[0])
+	submitRR := httptest.NewRecorder()
+	handler.HandleAuthorizeSubmit(submitRR, submitReq)
+
+	if submitRR.Code != http.StatusFound {
+		t.Fatalf("authorize POST status = %d, want %d, body = %s", submitRR.Code, http.StatusFound, submitRR.Body.String())
+	}
+	redirected, err := url.Parse(submitRR.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse redirect location: %v", err)
+	}
+	code := redirected.Query().Get("code")
+	if code == "" {
+		t.Fatalf("authorization code missing from redirect %q", submitRR.Header().Get("Location"))
+	}
+
+	_, signozURL, _, _, _, _, _, err := DecryptAuthorizationCode(code, []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("DecryptAuthorizationCode() error = %v", err)
+	}
+	if signozURL != signozServer.URL {
+		t.Fatalf("authorization code signozURL = %q, want %q", signozURL, signozServer.URL)
+	}
+}
+
 func TestRegisterClientAcceptsIPv6LoopbackRedirectURI(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:     true,

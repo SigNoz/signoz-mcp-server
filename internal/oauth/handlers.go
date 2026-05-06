@@ -208,7 +208,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
-	normalizedURL, err := util.NormalizeSigNozURL(signozURL)
+	normalizedURL, err := util.NormalizeSigNozURLFormInput(signozURL)
 	if err != nil {
 		h.renderAuthorizePage(w, r, http.StatusBadRequest, authorizeTemplateData{
 			ClientID:            params.ClientID,
@@ -219,7 +219,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 			CodeChallengeMethod: params.CodeChallengeMethod,
 			Scope:               params.Scope,
 			SignozURL:           signozURL,
-			ErrorMessage:        "Enter a valid SigNoz base URL, for example https://your-signoz-instance.",
+			ErrorMessage:        "Enter a valid SigNoz URL, for example your-instance.signoz.cloud.",
 			ErrorCode:           "invalid_request",
 		})
 		return

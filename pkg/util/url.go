@@ -28,6 +28,9 @@ func NormalizeSigNozURL(rawURL string) (string, error) {
 	if parsed.Fragment != "" {
 		return "", fmt.Errorf("URL must be an origin (scheme://host[:port]) without a fragment")
 	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("URL must not include user info")
+	}
 
 	host := strings.ToLower(parsed.Hostname())
 	if host == "" {
@@ -52,4 +55,50 @@ func NormalizeSigNozURL(rawURL string) (string, error) {
 		origin += ":" + port
 	}
 	return origin, nil
+}
+
+// NormalizeSigNozURLFormInput normalizes URLs entered by humans in auth forms. It
+// accepts protocol-less hosts by assuming HTTPS and strips path/query/fragment
+// suffixes before delegating to the strict origin validator.
+func NormalizeSigNozURLFormInput(rawURL string) (string, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return "", fmt.Errorf("URL is required")
+	}
+
+	normalized := trimmed
+	if strings.HasPrefix(normalized, "//") {
+		normalized = "https:" + normalized
+	} else if hasMalformedHTTPScheme(normalized) {
+		return "", fmt.Errorf("malformed URL: http and https URLs must start with // after the scheme")
+	} else if !hasExplicitScheme(normalized) {
+		normalized = "https://" + normalized
+	}
+
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return "", fmt.Errorf("malformed URL: %w", err)
+	}
+	parsed.Path = ""
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+
+	return NormalizeSigNozURL(parsed.String())
+}
+
+func hasExplicitScheme(rawURL string) bool {
+	schemeSep := strings.Index(rawURL, "://")
+	if schemeSep < 0 {
+		return false
+	}
+
+	pathStart := strings.IndexAny(rawURL, "/?#")
+	return pathStart < 0 || schemeSep < pathStart
+}
+
+func hasMalformedHTTPScheme(rawURL string) bool {
+	lower := strings.ToLower(rawURL)
+	return strings.HasPrefix(lower, "http:") && !strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https:") && !strings.HasPrefix(lower, "https://")
 }
