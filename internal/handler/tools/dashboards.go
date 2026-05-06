@@ -142,10 +142,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 			"List all curated SigNoz dashboard templates bundled with this server. "+
 				"Returns the full catalog as a JSON array — each entry includes 'id', 'title', 'path', 'description', 'category', and 'keywords'. "+
 				"Use this to discover which template fits the user's intent, then pass the chosen 'path' to signoz_import_dashboard. "+
-				"The catalog is small enough to read in full; let the model decide the best match rather than relying on keyword scoring. "+
-				"Optional 'category' narrows the result to a single catalog category (case-insensitive), e.g. 'Apm', 'K8S Infra Metrics'.",
+				"The catalog is small enough to read in full; let the model decide the best match rather than relying on keyword scoring.",
 		),
-		mcp.WithString("category", mcp.Description("Optional catalog category to restrict results to (case-insensitive), e.g. 'Apm', 'K8S Infra Metrics'.")),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 	)
 
@@ -330,13 +328,9 @@ func fetchTemplate(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := req.Params.Arguments.(map[string]any)
-	category, _ := args["category"].(string)
-	category = strings.TrimSpace(category)
+	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates")
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates", slog.String("category", category))
-
-	entries := listDashboardTemplates(category)
+	entries := listDashboardTemplates()
 	body, err := json.Marshal(entries)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil

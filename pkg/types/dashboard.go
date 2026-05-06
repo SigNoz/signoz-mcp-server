@@ -14,7 +14,7 @@ type CreateDashboardInput struct {
 type Dashboard struct {
 	Title       string              `json:"title" jsonschema:"required" jsonschema_extras:"description=The display name of the dashboard."`
 	Description string              `json:"description,omitempty" jsonschema_extras:"description=A brief explanation of what the dashboard shows."`
-	Tags        []string            `json:"tags" jsonschema_extras:"description=Keywords for categorization e.g performance latency."`
+	Tags        []string            `json:"tags,omitempty" jsonschema_extras:"description=Keywords for categorization e.g performance latency."`
 	Layout      []LayoutItem        `json:"layout" jsonschema:"required" jsonschema_extras:"description=Defines the grid positioning and size for each widget."`
 	Variables   map[string]Variable `json:"variables,omitempty" jsonschema_extras:"description=Key-value map of template variables available for queries."`
 	Widgets     []Widget            `json:"widgets" jsonschema:"required" jsonschema_extras:"description=The list of all graphical components displayed on the dashboard."`
