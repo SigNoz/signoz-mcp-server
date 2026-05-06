@@ -153,15 +153,23 @@ type PanelMapEntry struct {
 
 // Threshold represents a visual threshold on a chart.
 // Fields match the SigNoz frontend schema (types.Threshold).
+//
+// thresholdFormat: only "Text" or "Background" are accepted by SigNoz.
+//   - "Text"       colors the threshold value label.
+//   - "Background" tints the panel area when the operator+value condition holds.
+//
+// SigNoz does NOT support a Grafana-style "Line" marker on timeseries panels.
+//
+// thresholdOperator: one of ">", "<", ">=", "<=", "=".
 type Threshold struct {
 	Index                 string `json:"index,omitempty"`
 	IsEditEnabled         bool   `json:"isEditEnabled,omitempty"`
 	KeyIndex              int    `json:"keyIndex,omitempty"`
 	SelectedGraph         string `json:"selectedGraph,omitempty"`
 	ThresholdColor        string `json:"thresholdColor,omitempty"`
-	ThresholdFormat       string `json:"thresholdFormat,omitempty"`
+	ThresholdFormat       string `json:"thresholdFormat,omitempty"` // "Text" | "Background" (NOT "Line")
 	ThresholdLabel        string `json:"thresholdLabel,omitempty"`
-	ThresholdOperator     string `json:"thresholdOperator,omitempty"`
+	ThresholdOperator     string `json:"thresholdOperator,omitempty"` // ">" | "<" | ">=" | "<=" | "="
 	ThresholdTableOptions string `json:"thresholdTableOptions,omitempty"`
 	ThresholdUnit         string `json:"thresholdUnit,omitempty"`
 	ThresholdValue        any    `json:"thresholdValue,omitempty"`

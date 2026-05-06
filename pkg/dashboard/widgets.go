@@ -70,7 +70,7 @@ Note: This panel is best used when you need to compare discrete categories (e.g.
 - Bar Chart displays frequency or aggregated values for one or more categories over time or across categories.
 - It supports data from logs, traces, or metrics.
 - You can configure the Y-axis unit, and optionally set "Soft Min/Max" to control vertical scale so small values aren't exaggerated.
-- You can add thresholds (value + optional color) to draw reference lines on the Y-axis, useful for highlighting important limits.
+- You can add thresholds (value + operator + optional color) to highlight important limits. thresholdFormat must be 'Text' (color the threshold label) or 'Background' (tint the panel when the condition holds). SigNoz does not support a Grafana-style 'Line' marker — do not set thresholdFormat to 'Line'. thresholdOperator must be one of '>', '<', '>=', '<=', '='.
 
 Histogram panel [CRITICAL]:
 Note: This panel is best used to understand distribution patterns, detect skew, and analyze how values cluster across ranges.
@@ -109,7 +109,7 @@ Note: This panel is best used for any metric whose meaning depends on temporal e
 - Fill Gaps converts missing timestamps into zeros, useful when sparse data must be interpreted as absence of activity rather than missing samples.
 - Y-axis Unit formats numerical values for readability and domain correctness (bytes, durations, percentages, counts).
 - Soft Min/Max constrains the y-axis so small fluctuations aren't visually amplified or drowned out, stabilizing interpretation across charts.
-- Thresholds add horizontal reference lines for limits, SLOs, warning levels, or expected baselines, improving anomaly recognition.
+- Thresholds highlight limits, SLOs, warning levels, or expected baselines. thresholdFormat must be 'Text' (color the threshold label) or 'Background' (tint the panel when the condition holds). SigNoz timeseries panels do NOT render a Grafana-style horizontal line at the threshold value — do not set thresholdFormat to 'Line'. thresholdOperator must be one of '>', '<', '>=', '<=', '='.
 
 Value panel [CRITICAL]:
 - Value Panel reduces a time series to a single representative number, exposing a point-in-time or aggregated metric such as current throughput, average latency, error count, or any computed summary.
