@@ -66,6 +66,8 @@ func TestNormalizeSigNozURLFormInputRejectsInvalidHosts(t *testing.T) {
 		"https:/tenant.example.com/home",
 		"http:tenant.example.com/home",
 		"https:tenant.example.com/home",
+		"//http:tenant.example.com/home",
+		"//https:tenant.example.com/home",
 		"https://tough-gecko.us.signoz.cloud@evil.example/home",
 		"tough-gecko.us.signoz.cloud@evil.example/home",
 		"localhost/home",

@@ -134,7 +134,7 @@ Then run `/mcp` inside Codex to verify the connection.
 
 When you add the hosted MCP URL to your client, the client initiates an authentication flow. You will be prompted to enter:
 
-1. Your SigNoz instance URL (for example, `https://your-instance.signoz.cloud`; protocol-less URLs are accepted, and pasted paths, query parameters, and fragments are ignored)
+1. Your SigNoz instance URL (for example, `your-instance.signoz.cloud`). Protocol-less URLs are accepted; paths, query parameters, and fragments are ignored.
 2. Your API key
 
 Create an API key in **Settings → API Keys** in SigNoz. Only **Admin** users can create API keys.

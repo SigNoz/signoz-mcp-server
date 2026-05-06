@@ -414,7 +414,7 @@ func TestAuthorizeSubmitRejectsInvalidSigNozCredentials(t *testing.T) {
 	}
 }
 
-func TestAuthorizeSubmitStripsSigNozURLPath(t *testing.T) {
+func TestAuthorizeSubmitStripsSigNozURLPathQueryFragment(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/user/me" {
 			http.NotFound(w, r)

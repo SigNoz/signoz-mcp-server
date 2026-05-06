@@ -20,6 +20,11 @@
 - Kept broader private-network SSRF policy out of scope because existing local/self-hosted tests and workflows rely on loopback URLs.
 - Updated UI and README copy to describe protocol-less HTTPS assumption and path/query/fragment stripping.
 
+### 2026-05-06 - Claude PR review cleanup
+- Rejected protocol-relative malformed HTTP-like inputs such as `//http:tenant`.
+- Renamed the OAuth submit integration test to mention path, query, and fragment stripping.
+- Changed the README auth example to use the protocol-less form as the canonical example.
+
 ## Open Questions
 - [x] Should protocol-less auth-form input default to HTTPS? Answer: yes.
 - [x] Should `/home` and similar suffixes be rejected or stripped? Answer: strip path, query, and fragment in the auth-form path.

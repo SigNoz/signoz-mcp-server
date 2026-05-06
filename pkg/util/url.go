@@ -68,6 +68,9 @@ func NormalizeSigNozURLFormInput(rawURL string) (string, error) {
 
 	normalized := trimmed
 	if strings.HasPrefix(normalized, "//") {
+		if hasHTTPishPrefix(strings.TrimPrefix(normalized, "//")) {
+			return "", fmt.Errorf("malformed URL: http and https URLs must start with // after the scheme")
+		}
 		normalized = "https:" + normalized
 	} else if hasMalformedHTTPScheme(normalized) {
 		return "", fmt.Errorf("malformed URL: http and https URLs must start with // after the scheme")
@@ -99,6 +102,11 @@ func hasExplicitScheme(rawURL string) bool {
 
 func hasMalformedHTTPScheme(rawURL string) bool {
 	lower := strings.ToLower(rawURL)
-	return strings.HasPrefix(lower, "http:") && !strings.HasPrefix(lower, "http://") ||
-		strings.HasPrefix(lower, "https:") && !strings.HasPrefix(lower, "https://")
+	return hasHTTPishPrefix(lower) && !strings.HasPrefix(lower, "http://") &&
+		!strings.HasPrefix(lower, "https://")
+}
+
+func hasHTTPishPrefix(rawURL string) bool {
+	lower := strings.ToLower(rawURL)
+	return strings.HasPrefix(lower, "http:") || strings.HasPrefix(lower, "https:")
 }
