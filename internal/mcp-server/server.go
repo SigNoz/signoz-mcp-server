@@ -118,6 +118,21 @@ func (m *MCPServer) attachClientInfo(props map[string]any, sessionID string) {
 	}
 }
 
+// attachCallerCorrelation copies caller-correlation values from ctx onto an
+// analytics property map. clientSource is always set; the assistant IDs may
+// be empty.
+func attachCallerCorrelation(ctx context.Context, props map[string]any) {
+	if source, ok := util.GetClientSource(ctx); ok && source != "" {
+		props[analytics.AttrClientSource] = source
+	}
+	if threadID, ok := util.GetAssistantThreadID(ctx); ok && threadID != "" {
+		props[analytics.AttrAssistantThreadID] = threadID
+	}
+	if executionID, ok := util.GetAssistantExecutionID(ctx); ok && executionID != "" {
+		props[analytics.AttrAssistantExecutionID] = executionID
+	}
+}
+
 const analyticsAsyncTimeout = 5 * time.Second
 
 func (m *MCPServer) analyticsEnabled() bool {
@@ -264,6 +279,15 @@ func (m *MCPServer) detachedAnalyticsContext(parent context.Context) (context.Co
 	}
 	if sessionID, ok := util.GetSessionID(parent); ok && sessionID != "" {
 		ctx = util.SetSessionID(ctx, sessionID)
+	}
+	if clientSource, ok := util.GetClientSource(parent); ok && clientSource != "" {
+		ctx = util.SetClientSource(ctx, clientSource)
+	}
+	if threadID, ok := util.GetAssistantThreadID(parent); ok && threadID != "" {
+		ctx = util.SetAssistantThreadID(ctx, threadID)
+	}
+	if executionID, ok := util.GetAssistantExecutionID(parent); ok && executionID != "" {
+		ctx = util.SetAssistantExecutionID(ctx, executionID)
 	}
 	if spanCtx := trace.SpanContextFromContext(parent); spanCtx.IsValid() {
 		ctx = trace.ContextWithSpanContext(ctx, spanCtx)
@@ -651,6 +675,7 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 		spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
 	}
 	spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
+	spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
 
 	errorType := methodErrorType(err)
 	if errorType != "" {
@@ -665,6 +690,7 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 			attribute.String("mcp.method.name", string(observation.method)),
 		}
 		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
+		metricAttrs = otelpkg.AppendClientSource(ctx, metricAttrs)
 		if errorType != "" {
 			metricAttrs = append(metricAttrs, attribute.String("error.type", errorType))
 		}
@@ -684,6 +710,7 @@ func (m *MCPServer) startMethodSpan(ctx context.Context, method mcp.MCPMethod) (
 	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 		attrs = append(attrs, otelpkg.MCPTenantURLKey.String(signozURL))
 	}
+	attrs = otelpkg.AppendCallerCorrelation(ctx, attrs)
 
 	return otel.Tracer("signoz-mcp-server").Start(ctx, "MCP "+string(method),
 		trace.WithSpanKind(trace.SpanKindServer),
@@ -782,6 +809,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
 		}
 		spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
+		spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
 		if len(spanAttrs) > 0 {
 			span.SetAttributes(spanAttrs...)
 		}
@@ -820,6 +848,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
 		if m.meters != nil {
 			attrs := otelpkg.AppendTenantURL(ctx, nil)
+			attrs = otelpkg.AppendClientSource(ctx, attrs)
 			m.meters.SessionRegistered.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
 
@@ -847,6 +876,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			}
 			m.attachClientInfo(traits, sessionID)
 			m.attachClientInfo(props, sessionID)
+			attachCallerCorrelation(ctx, props)
 			m.identifyAndTrackAsync(ctx, analytics.EventSessionRegistered, traits, props)
 		}
 	})
@@ -875,6 +905,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				props[analytics.AttrSessionID] = session.SessionID()
 				m.attachClientInfo(props, session.SessionID())
 			}
+			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventPromptFetched, props)
 		}
 	})
@@ -888,6 +919,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				props[analytics.AttrSessionID] = session.SessionID()
 				m.attachClientInfo(props, session.SessionID())
 			}
+			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
 		}
 	})
@@ -927,14 +959,17 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			// Use the span's own span ID as the tool call ID.
 			span.SetAttributes(otelpkg.GenAIToolCallIDKey.String(span.SpanContext().SpanID().String()))
 
+			extraAttrs := []attribute.KeyValue{}
 			if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-				span.SetAttributes(otelpkg.MCPSessionIDKey.String(sid))
+				extraAttrs = append(extraAttrs, otelpkg.MCPSessionIDKey.String(sid))
 			}
 			if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-				span.SetAttributes(otelpkg.MCPSearchContextKey.String(sc))
+				extraAttrs = append(extraAttrs, otelpkg.MCPSearchContextKey.String(sc))
 			}
-			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
-				span.SetAttributes(attr)
+			extraAttrs = otelpkg.AppendTenantURL(ctx, extraAttrs)
+			extraAttrs = otelpkg.AppendCallerCorrelation(ctx, extraAttrs)
+			if len(extraAttrs) > 0 {
+				span.SetAttributes(extraAttrs...)
 			}
 
 			toolNameAttr := slog.String("gen_ai.tool.name", req.Params.Name)
@@ -989,6 +1024,7 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 					attribute.Bool("mcp.tool.is_error", isErr),
 				}
 				attrKVs = otelpkg.AppendTenantURL(ctx, attrKVs)
+				attrKVs = otelpkg.AppendClientSource(ctx, attrKVs)
 				attrs := metric.WithAttributes(attrKVs...)
 				m.meters.ToolCalls.Add(ctx, 1, attrs)
 				m.meters.ToolCallDuration.Record(ctx, float64(duration)/float64(time.Millisecond), attrs)
@@ -1006,12 +1042,10 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 					props[analytics.AttrSessionID] = sid
 					m.attachClientInfo(props, sid)
 				}
-				if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
-					props[analytics.AttrSearchContext] = sc
-				}
 				if errorType := toolErrorType(err, result); errorType != "" {
 					props[analytics.AttrErrorType] = errorType
 				}
+				attachCallerCorrelation(ctx, props)
 				m.trackEventAsync(ctx, analytics.EventToolCalled, props)
 			}
 
@@ -1092,6 +1126,9 @@ func (m *MCPServer) runStdio(ctx context.Context, s *server.MCPServer) error {
 		ctx = util.SetAPIKey(ctx, m.config.APIKey)
 		ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 		ctx = util.SetSigNozURL(ctx, m.config.URL)
+		// Stdio has no HTTP headers; seed the default so client_source is
+		// always populated.
+		ctx = util.SetClientSource(ctx, util.ClientSourceUserClient)
 		return ctx
 	})
 
@@ -1108,6 +1145,28 @@ func isJWTToken(token string) bool {
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+
+		// Read correlation headers up front so every auth branch (including
+		// 401/early-reject paths) propagates them. Values are advisory and
+		// flow into every log/span/event, so they are normalized
+		// (trim + length-cap) before being stashed.
+		clientSource := util.NormalizeCallerCorrelationValue(r.Header.Get("X-SigNoz-Client-Source"))
+		if clientSource == "" {
+			clientSource = util.ClientSourceUserClient
+		}
+		ctx = util.SetClientSource(ctx, clientSource)
+		if threadID := util.NormalizeCallerCorrelationValue(r.Header.Get("X-SigNoz-Assistant-Thread-Id")); threadID != "" {
+			ctx = util.SetAssistantThreadID(ctx, threadID)
+		}
+		if executionID := util.NormalizeCallerCorrelationValue(r.Header.Get("X-SigNoz-Assistant-Execution-Id")); executionID != "" {
+			ctx = util.SetAssistantExecutionID(ctx, executionID)
+		}
+
+		// Apply to the otelhttp root span so 401/early-reject traces are
+		// still queryable by caller.
+		if rootSpan := trace.SpanFromContext(ctx); rootSpan.IsRecording() {
+			rootSpan.SetAttributes(otelpkg.AppendCallerCorrelation(ctx, nil)...)
+		}
 
 		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
 		customURL := r.Header.Get("X-SigNoz-URL")

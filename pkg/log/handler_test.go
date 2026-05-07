@@ -46,6 +46,49 @@ func TestContextHandler_InjectsTenantSessionSearchContext(t *testing.T) {
 	}
 }
 
+func TestContextHandler_InjectsAssistantCorrelation(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	ctx := context.Background()
+	ctx = util.SetClientSource(ctx, "ai-assistant")
+	ctx = util.SetAssistantThreadID(ctx, "thread-abc")
+	ctx = util.SetAssistantExecutionID(ctx, "exec-xyz")
+
+	logger.InfoContext(ctx, "ping")
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("parse log record: %v", err)
+	}
+	if got := rec["mcp.client_source"]; got != "ai-assistant" {
+		t.Fatalf("mcp.client_source = %v, want ai-assistant", got)
+	}
+	if got := rec["mcp.assistant.thread_id"]; got != "thread-abc" {
+		t.Fatalf("mcp.assistant.thread_id = %v, want thread-abc", got)
+	}
+	if got := rec["mcp.assistant.execution_id"]; got != "exec-xyz" {
+		t.Fatalf("mcp.assistant.execution_id = %v, want exec-xyz", got)
+	}
+}
+
+func TestContextHandler_OmitsAssistantCorrelationWhenAbsent(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	logger.InfoContext(context.Background(), "ping")
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("parse log record: %v", err)
+	}
+	for _, key := range []string{"mcp.client_source", "mcp.assistant.thread_id", "mcp.assistant.execution_id"} {
+		if _, ok := rec[key]; ok {
+			t.Fatalf("%s should not be present when ctx carries no value, got %v", key, rec[key])
+		}
+	}
+}
+
 func TestContextHandler_InjectsTraceAndSpanIDs(t *testing.T) {
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
