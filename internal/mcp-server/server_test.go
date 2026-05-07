@@ -404,6 +404,96 @@ func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewarePropagatesAssistantCorrelationHeaders(t *testing.T) {
+	cfg := &config.Config{}
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+
+	cases := []struct {
+		name              string
+		clientSource      string
+		threadID          string
+		executionID       string
+		wantClientSource  string
+		wantThreadPresent bool
+		wantExecPresent   bool
+	}{
+		{
+			name:              "ai-assistant with full correlation",
+			clientSource:      "ai-assistant",
+			threadID:          "thread-abc",
+			executionID:       "exec-xyz",
+			wantClientSource:  "ai-assistant",
+			wantThreadPresent: true,
+			wantExecPresent:   true,
+		},
+		{
+			name:              "missing client source defaults to user-client",
+			clientSource:      "",
+			threadID:          "",
+			executionID:       "",
+			wantClientSource:  util.ClientSourceUserClient,
+			wantThreadPresent: false,
+			wantExecPresent:   false,
+		},
+		{
+			name:              "blank client source value defaults to user-client",
+			clientSource:      "   ",
+			threadID:          "",
+			executionID:       "",
+			wantClientSource:  util.ClientSourceUserClient,
+			wantThreadPresent: false,
+			wantExecPresent:   false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("SIGNOZ-API-KEY", "test-key")
+			req.Header.Set("X-SigNoz-URL", "https://tenant.example.com")
+			if tc.clientSource != "" {
+				req.Header.Set("X-SigNoz-Client-Source", tc.clientSource)
+			}
+			if tc.threadID != "" {
+				req.Header.Set("X-SigNoz-Assistant-Thread-Id", tc.threadID)
+			}
+			if tc.executionID != "" {
+				req.Header.Set("X-SigNoz-Assistant-Execution-Id", tc.executionID)
+			}
+
+			var gotSource, gotThread, gotExec string
+			var threadPresent, execPresent bool
+
+			rr := httptest.NewRecorder()
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotSource, _ = util.GetClientSource(r.Context())
+				gotThread, threadPresent = util.GetAssistantThreadID(r.Context())
+				gotExec, execPresent = util.GetAssistantExecutionID(r.Context())
+				w.WriteHeader(http.StatusOK)
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if gotSource != tc.wantClientSource {
+				t.Fatalf("clientSource = %q, want %q", gotSource, tc.wantClientSource)
+			}
+			if threadPresent != tc.wantThreadPresent {
+				t.Fatalf("thread present = %v, want %v", threadPresent, tc.wantThreadPresent)
+			}
+			if tc.wantThreadPresent && gotThread != tc.threadID {
+				t.Fatalf("thread = %q, want %q", gotThread, tc.threadID)
+			}
+			if execPresent != tc.wantExecPresent {
+				t.Fatalf("exec present = %v, want %v", execPresent, tc.wantExecPresent)
+			}
+			if tc.wantExecPresent && gotExec != tc.executionID {
+				t.Fatalf("exec = %q, want %q", gotExec, tc.executionID)
+			}
+		})
+	}
+}
+
 func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:   true,
@@ -518,6 +608,9 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	ctx = util.SetAuthHeader(ctx, "Authorization")
 	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
 	ctx = newAnalyticsTestContext(ctx, "sess-jwt")
+	ctx = util.SetClientSource(ctx, "ai-assistant")
+	ctx = util.SetAssistantThreadID(ctx, "thread-abc")
+	ctx = util.SetAssistantExecutionID(ctx, "exec-xyz")
 
 	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil, &mcp.InitializeRequest{}, &mcp.InitializeResult{})
 
@@ -581,8 +674,26 @@ func TestUserScopedAnalyticsUseJWTIdentity(t *testing.T) {
 	if toolCall.attrs[analytics.AttrToolIsError] != false {
 		t.Fatalf("tool error attr = %v, want false", toolCall.attrs[analytics.AttrToolIsError])
 	}
-	if toolCall.attrs[analytics.AttrSearchContext] != "list services" {
-		t.Fatalf("tool searchContext attr = %v, want %q", toolCall.attrs[analytics.AttrSearchContext], "list services")
+	if _, ok := toolCall.attrs["searchContext"]; ok {
+		t.Fatalf("tool attrs should not include searchContext (logs/spans only); got %v", toolCall.attrs["searchContext"])
+	}
+	if toolCall.attrs[analytics.AttrClientSource] != "ai-assistant" {
+		t.Fatalf("tool clientSource attr = %v, want %q", toolCall.attrs[analytics.AttrClientSource], "ai-assistant")
+	}
+	if toolCall.attrs[analytics.AttrAssistantThreadID] != "thread-abc" {
+		t.Fatalf("tool assistantThreadId attr = %v, want %q", toolCall.attrs[analytics.AttrAssistantThreadID], "thread-abc")
+	}
+	if toolCall.attrs[analytics.AttrAssistantExecutionID] != "exec-xyz" {
+		t.Fatalf("tool assistantExecutionId attr = %v, want %q", toolCall.attrs[analytics.AttrAssistantExecutionID], "exec-xyz")
+	}
+	if registered.attrs[analytics.AttrClientSource] != "ai-assistant" {
+		t.Fatalf("registered clientSource attr = %v, want %q", registered.attrs[analytics.AttrClientSource], "ai-assistant")
+	}
+	if registered.attrs[analytics.AttrAssistantThreadID] != "thread-abc" {
+		t.Fatalf("registered assistantThreadId attr = %v, want %q", registered.attrs[analytics.AttrAssistantThreadID], "thread-abc")
+	}
+	if registered.attrs[analytics.AttrAssistantExecutionID] != "exec-xyz" {
+		t.Fatalf("registered assistantExecutionId attr = %v, want %q", registered.attrs[analytics.AttrAssistantExecutionID], "exec-xyz")
 	}
 	if toolCall.attrs[analytics.AttrOrgID] != "org-123" || toolCall.attrs[analytics.AttrPrincipal] != "user" || toolCall.attrs[analytics.AttrEmail] != "user@example.com" {
 		t.Fatalf("tool attrs = %#v, want orgId, principal, and email", toolCall.attrs)
@@ -1884,6 +1995,83 @@ func TestLoggingMiddleware_PanicPathRecordsErrorMetricAndSpan(t *testing.T) {
 	if spans[0].Status.Code != codes.Error {
 		t.Fatalf("span status code = %v, want %v", spans[0].Status.Code, codes.Error)
 	}
+}
+
+// TestLoggingMiddleware_MetricCardinalityInvariants pins the cardinality
+// split: client_source on the tool-call counter and histogram; per-execution
+// UUIDs only on logs/spans/analytics, never on metrics.
+func TestLoggingMiddleware_MetricCardinalityInvariants(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
+	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, noopanalytics.New(), meters)
+
+	ctx := context.Background()
+	ctx = util.SetClientSource(ctx, "ai-assistant")
+	ctx = util.SetAssistantThreadID(ctx, "thread-abc")
+	ctx = util.SetAssistantExecutionID(ctx, "exec-xyz")
+
+	noopTool := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{}, nil
+	}
+	chain := mcpServer.loggingMiddleware()(noopTool)
+	if _, err := chain(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{Name: "signoz_list_services"},
+	}); err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+
+	checkAttrs := func(name string, attrs attribute.Set) {
+		t.Helper()
+		clientSource, ok := attrs.Value(otelpkg.MCPClientSourceKey)
+		if !ok {
+			t.Fatalf("%s: mcp.client_source attribute missing", name)
+		}
+		if got := clientSource.AsString(); got != "ai-assistant" {
+			t.Fatalf("%s: mcp.client_source = %q, want %q", name, got, "ai-assistant")
+		}
+		if _, present := attrs.Value(otelpkg.MCPAssistantThreadIDKey); present {
+			t.Fatalf("%s: mcp.assistant.thread_id must not be a metric attribute (cardinality)", name)
+		}
+		if _, present := attrs.Value(otelpkg.MCPAssistantExecutionIDKey); present {
+			t.Fatalf("%s: mcp.assistant.execution_id must not be a metric attribute (cardinality)", name)
+		}
+	}
+
+	toolCalls, found := oteltest.FindInt64SumMetric(collected, "mcp.tool.calls")
+	if !found {
+		t.Fatal("mcp.tool.calls metric not found")
+	}
+	if len(toolCalls.DataPoints) != 1 {
+		t.Fatalf("mcp.tool.calls datapoints = %d, want 1", len(toolCalls.DataPoints))
+	}
+	checkAttrs("mcp.tool.calls", toolCalls.DataPoints[0].Attributes)
+
+	toolDuration, found := oteltest.FindFloat64HistogramMetric(collected, "mcp.tool.call.duration")
+	if !found {
+		t.Fatal("mcp.tool.call.duration metric not found")
+	}
+	if len(toolDuration.DataPoints) != 1 {
+		t.Fatalf("mcp.tool.call.duration datapoints = %d, want 1", len(toolDuration.DataPoints))
+	}
+	checkAttrs("mcp.tool.call.duration", toolDuration.DataPoints[0].Attributes)
 }
 
 func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {

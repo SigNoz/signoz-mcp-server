@@ -48,6 +48,15 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" {
 		r.AddAttrs(slog.String("mcp.search_context", searchContext))
 	}
+	if clientSource, ok := util.GetClientSource(ctx); ok && clientSource != "" {
+		r.AddAttrs(slog.String("mcp.client_source", clientSource))
+	}
+	if threadID, ok := util.GetAssistantThreadID(ctx); ok && threadID != "" {
+		r.AddAttrs(slog.String("mcp.assistant.thread_id", threadID))
+	}
+	if executionID, ok := util.GetAssistantExecutionID(ctx); ok && executionID != "" {
+		r.AddAttrs(slog.String("mcp.assistant.execution_id", executionID))
+	}
 
 	if r.Level >= slog.LevelError {
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {
