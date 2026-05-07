@@ -2,7 +2,7 @@
 
 ## Feature Planning Convention
 
-For every non-trivial feature, maintain a file pair in `plans/` (git-ignored, own git repo):
+For every non-trivial feature, maintain a file pair in `plans/` and commit it alongside the feature PR:
 
 ```
 plans/
