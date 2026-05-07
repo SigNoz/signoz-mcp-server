@@ -3,7 +3,6 @@ package tools
 import (
 	_ "embed"
 	"encoding/json"
-	"strings"
 )
 
 //go:embed dashboard_templates.json
@@ -29,20 +28,9 @@ func init() {
 	}
 }
 
-// listDashboardTemplates returns the embedded catalog. When category is
-// non-empty, results are restricted to that catalog category (case-insensitive).
-func listDashboardTemplates(category string) []dashboardTemplateEntry {
-	if category == "" {
-		out := make([]dashboardTemplateEntry, len(dashboardTemplateCatalog))
-		copy(out, dashboardTemplateCatalog)
-		return out
-	}
-	want := strings.ToLower(category)
-	out := make([]dashboardTemplateEntry, 0, len(dashboardTemplateCatalog))
-	for _, e := range dashboardTemplateCatalog {
-		if strings.ToLower(e.Category) == want {
-			out = append(out, e)
-		}
-	}
+// listDashboardTemplates returns a copy of the embedded catalog.
+func listDashboardTemplates() []dashboardTemplateEntry {
+	out := make([]dashboardTemplateEntry, len(dashboardTemplateCatalog))
+	copy(out, dashboardTemplateCatalog)
 	return out
 }

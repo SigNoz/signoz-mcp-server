@@ -473,8 +473,7 @@ To discover available paths, call `signoz_list_dashboard_templates` first and le
 
 Returns the full bundled catalog of curated SigNoz dashboard templates (id, title, path, description, category, keywords) as a JSON array. Pair with `signoz_import_dashboard`: have the model read the catalog, choose the entry that best matches the user's intent, then import it by its `path`.
 
-- **Parameters:**
-  - `category` (optional) – Restrict results to a single catalog category (case-insensitive), e.g. `Apm`, `K8S Infra Metrics`
+- **Parameters:** none
 
 #### `signoz_update_dashboard`
 

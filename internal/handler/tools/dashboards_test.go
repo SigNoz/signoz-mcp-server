@@ -281,61 +281,6 @@ func TestHandleListDashboardTemplates_FullCatalog(t *testing.T) {
 	}
 }
 
-func TestHandleListDashboardTemplates_CategoryFilter(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	result, err := h.handleListDashboardTemplates(testCtx(), makeToolRequest(
-		"signoz_list_dashboard_templates",
-		map[string]any{"category": "apm"},
-	))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error: %v", result.Content)
-	}
-	textContent, ok := result.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", result.Content[0])
-	}
-	var entries []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &entries); err != nil {
-		t.Fatalf("response should be a JSON array: %v\n%s", err, textContent.Text)
-	}
-	if len(entries) == 0 {
-		t.Fatal("expected at least one Apm template")
-	}
-	for _, e := range entries {
-		if !strings.EqualFold(e["category"].(string), "Apm") {
-			t.Errorf("category filter leaked entry from %q", e["category"])
-		}
-	}
-}
-
-func TestHandleListDashboardTemplates_UnknownCategory(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	result, err := h.handleListDashboardTemplates(testCtx(), makeToolRequest(
-		"signoz_list_dashboard_templates",
-		map[string]any{"category": "no-such-category-zzz"},
-	))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error: %v", result.Content)
-	}
-	textContent, ok := result.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected TextContent, got %T", result.Content[0])
-	}
-	var entries []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &entries); err != nil {
-		t.Fatalf("response should be a JSON array: %v\n%s", err, textContent.Text)
-	}
-	if len(entries) != 0 {
-		t.Errorf("expected empty result for unknown category, got %d entries", len(entries))
-	}
-}
-
 func TestHandleImportDashboard_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
