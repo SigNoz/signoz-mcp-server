@@ -943,6 +943,9 @@ func TestWriteOAuthErrorLogsRequestMetadata(t *testing.T) {
 	handler := NewHandler(newBufferedLogger(&buf, slog.LevelDebug), cfg, nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString("grant_type=bogus"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "claude-code/2.1.133 (cli)")
+	req.Header.Set("X-Forwarded-For", "198.51.100.8, 10.0.0.2")
+	req.Header.Set("Mcp-Session-Id", "mcp-session-oauth")
 	rr := httptest.NewRecorder()
 
 	handler.HandleToken(rr, req)
@@ -967,5 +970,14 @@ func TestWriteOAuthErrorLogsRequestMetadata(t *testing.T) {
 	}
 	if rec["url.path"] != "/oauth/token" {
 		t.Fatalf("url.path = %v, want /oauth/token", rec["url.path"])
+	}
+	if rec["client.address"] != "198.51.100.8" {
+		t.Fatalf("client.address = %v, want 198.51.100.8", rec["client.address"])
+	}
+	if rec["user_agent.original"] != "claude-code/2.1.133 (cli)" {
+		t.Fatalf("user_agent.original = %v, want claude-code user agent", rec["user_agent.original"])
+	}
+	if _, ok := rec["mcp.session.id"]; ok {
+		t.Fatalf("mcp.session.id = %v, want field omitted for OAuth request logs", rec["mcp.session.id"])
 	}
 }

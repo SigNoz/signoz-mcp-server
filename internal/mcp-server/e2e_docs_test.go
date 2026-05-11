@@ -1,18 +1,31 @@
 package mcp_server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
+	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // TestE2EDocsAgentFlow drives the SigNoz MCP docs feature with a real
@@ -125,6 +138,64 @@ func TestE2EDocsAgentFlow(t *testing.T) {
 	require.Contains(t, textContent.Text, "Send logs to SigNoz")
 }
 
+func TestE2EAuthFailureTelemetry(t *testing.T) {
+	traceExporter := tracetest.NewInMemoryExporter()
+	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
+	prevTracerProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(traceProvider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTracerProvider)
+		require.NoError(t, traceProvider.Shutdown(context.Background()))
+	})
+
+	var logBuf lockedBuffer
+	handler := newDocsHTTPHandlerWithLogger(t, newBufferedLogger(&logBuf, slog.LevelDebug))
+	testSrv := httptest.NewServer(handler)
+	t.Cleanup(testSrv.Close)
+
+	req, err := http.NewRequest(http.MethodPost, testSrv.URL+"/mcp", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "claude-code/2.1.133 (cli)")
+	req.Header.Set("X-Forwarded-For", "198.51.100.9, 10.0.0.2")
+	req.Header.Set(util.HeaderMCPSessionID, "mcp-session-e2e")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	records := parseJSONLogLines(t, &logBuf)
+	require.NotEmpty(t, records)
+	rec := records[len(records)-1]
+	require.Equal(t, "No API key found in headers or environment", rec["msg"])
+	require.Equal(t, authFailureMissingCredential, rec["mcp.auth.failure_reason"])
+	require.Equal(t, authModeNone, rec["mcp.auth.mode"])
+	require.Equal(t, "198.51.100.9", rec["client.address"])
+	require.Equal(t, "claude-code/2.1.133 (cli)", rec["user_agent.original"])
+	require.Equal(t, "mcp-session-e2e", rec["mcp.session.id"])
+
+	var httpAttrs []attribute.KeyValue
+	for _, span := range traceExporter.GetSpans() {
+		if span.Name == "HTTP POST /mcp" {
+			httpAttrs = span.Attributes
+			break
+		}
+	}
+	require.NotNil(t, httpAttrs, "expected otelhttp root span")
+	for key, want := range map[attribute.Key]string{
+		"mcp.auth.failure_reason": authFailureMissingCredential,
+		"mcp.auth.mode":           authModeNone,
+		"client.address":          "198.51.100.9",
+		"user_agent.original":     "claude-code/2.1.133 (cli)",
+		otelpkg.MCPSessionIDKey:   "mcp-session-e2e",
+	} {
+		got, ok := spanAttrValue(httpAttrs, key)
+		require.True(t, ok, "missing span attr %s", key)
+		require.Equal(t, want, got.AsString(), "span attr %s", key)
+	}
+}
+
 func firstTextContent(t *testing.T, content []mcp.Content) string {
 	t.Helper()
 	for _, c := range content {
@@ -134,4 +205,29 @@ func firstTextContent(t *testing.T, content []mcp.Content) string {
 	}
 	t.Fatalf("no TextContent in tool result")
 	return ""
+}
+
+func newDocsHTTPHandlerWithLogger(t *testing.T, logger *slog.Logger) http.Handler {
+	t.Helper()
+	cfg := &config.Config{
+		TransportMode:   "http",
+		Port:            "0",
+		OAuthEnabled:    true,
+		OAuthIssuerURL:  "https://mcp.example.com",
+		ClientCacheSize: 8,
+		ClientCacheTTL:  time.Minute,
+	}
+	h := tools.NewHandler(logger, cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	reg, err := docsindex.NewIndexRegistry(ctx, docsSnapshot())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cancel()
+		reg.Close(context.Background())
+	})
+	h.SetDocsIndex(reg)
+	m := NewMCPServer(logger, h, cfg, nil, nil)
+	s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+	h.RegisterDocsHandlers(s)
+	return m.buildHTTP(s).Handler
 }

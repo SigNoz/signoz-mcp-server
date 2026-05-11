@@ -502,12 +502,7 @@ func (h *Handler) recordOAuthFailure(ctx context.Context, r *http.Request, statu
 		slog.String("oauth.error_code", code),
 		slog.String("oauth.error_description", description),
 	}
-	if r != nil {
-		attrs = append(attrs,
-			slog.String("http.request.method", r.Method),
-			slog.String("url.path", r.URL.Path),
-		)
-	}
+	attrs = append(attrs, logpkg.HTTPRequestAttrs(r)...)
 
 	if h.meters != nil {
 		metricAttrs := []attribute.KeyValue{
