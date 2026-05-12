@@ -1142,6 +1142,78 @@ func isJWTToken(token string) bool {
 	return strings.Count(token, ".") == 2 && strings.HasPrefix(token, "eyJ")
 }
 
+const (
+	authModeNone                = "none"
+	authModeSignozAPIKeyHeader  = "signoz-api-key-header"
+	authModeAuthorizationAPIKey = "authorization-api-key"
+	authModeAuthorizationBearer = "authorization-bearer"
+	authModeAuthorizationJWT    = "authorization-jwt"
+	authModeOAuthAccessToken    = "oauth-access-token"
+	authModeConfigAPIKey        = "config-api-key"
+
+	authFailureExpiredOAuthToken = "expired_oauth_token"
+	authFailureInvalidOAuthToken = "invalid_oauth_token"
+	authFailureInvalidSignozURL  = "invalid_signoz_url"
+	authFailureMissingCredential = "missing_credentials"
+	authFailureMissingSignozURL  = "missing_signoz_url"
+)
+
+func httpRequestSpanAttrs(r *http.Request) []attribute.KeyValue {
+	if r == nil {
+		return nil
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String("http.request.method", r.Method),
+	}
+	if r.URL != nil && r.URL.Path != "" {
+		attrs = append(attrs, attribute.String("url.path", r.URL.Path))
+	}
+	if serverAddress := util.HTTPServerAddress(r); serverAddress != "" {
+		attrs = append(attrs, attribute.String("server.address", serverAddress))
+	}
+	if clientAddress := util.HTTPClientAddress(r); clientAddress != "" {
+		attrs = append(attrs, attribute.String("client.address", clientAddress))
+	}
+	if userAgent := util.HTTPUserAgent(r); userAgent != "" {
+		attrs = append(attrs, attribute.String("user_agent.original", userAgent))
+	}
+	if sessionID := util.HTTPSessionID(r); sessionID != "" {
+		attrs = append(attrs, otelpkg.MCPSessionIDKey.String(sessionID))
+	}
+	return attrs
+}
+
+func decorateAuthSpan(ctx context.Context, r *http.Request, authMode string, attrs ...attribute.KeyValue) {
+	span := trace.SpanFromContext(ctx)
+	if !span.IsRecording() {
+		return
+	}
+
+	spanAttrs := httpRequestSpanAttrs(r)
+	if authMode != "" {
+		spanAttrs = append(spanAttrs, attribute.String("mcp.auth.mode", authMode))
+	}
+	spanAttrs = append(spanAttrs, attrs...)
+	span.SetAttributes(spanAttrs...)
+}
+
+func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status int, reason, authMode, msg string, attrs ...slog.Attr) {
+	decorateAuthSpan(ctx, r, authMode,
+		attribute.Int("http.response.status_code", status),
+		attribute.String("mcp.auth.failure_reason", reason),
+	)
+
+	logAttrs := []slog.Attr{
+		slog.Int("http.response.status_code", status),
+		slog.String("mcp.auth.failure_reason", reason),
+		slog.String("mcp.auth.mode", authMode),
+	}
+	logAttrs = append(logAttrs, logpkg.MCPHTTPRequestAttrs(r)...)
+	logAttrs = append(logAttrs, attrs...)
+	m.logger.LogAttrs(ctx, slog.LevelWarn, msg, logAttrs...)
+}
+
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -1182,10 +1254,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		var apiKey string
 		var signozURL string
 		var usedOAuthToken bool
+		authMode := authModeNone
 
 		if signozAPIKey != "" {
 			// Explicit PAT via SIGNOZ-API-KEY header — forward as-is.
 			apiKey = strings.TrimPrefix(signozAPIKey, "Bearer ")
+			authMode = authModeSignozAPIKeyHeader
 
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
@@ -1196,12 +1270,14 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				if isJWTToken(token) {
 					// JWT token — forward via Authorization: Bearer <token>
 					apiKey = "Bearer " + token
+					authMode = authModeAuthorizationJWT
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "Authorization")
 					m.logger.DebugContext(ctx, "Using JWT token authentication via Authorization header", slog.String("mcp.tenant_url", customURL))
 				} else {
 					// PAT token — forward via SIGNOZ-API-KEY
 					apiKey = token
+					authMode = authModeAuthorizationAPIKey
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 					m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header", slog.String("mcp.tenant_url", customURL))
@@ -1213,10 +1289,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					apiKey = decryptedAPIKey
 					signozURL = decryptedURL
 					usedOAuthToken = true
+					authMode = authModeOAuthAccessToken
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 					m.logger.DebugContext(ctx, "OAuth access token extracted from Authorization header", slog.String("mcp.tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
+					authMode = authModeOAuthAccessToken
 					// The token is expired but was once server-issued, so the
 					// embedded URL is a trusted tenant value. Decorate the
 					// otelhttp root span so the 401 trace carries mcp.tenant_url.
@@ -1226,6 +1304,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 							trace.SpanFromContext(ctx).SetAttributes(attr)
 						}
 					}
+					m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureExpiredOAuthToken, authMode, "OAuth access token expired")
 					m.setOAuthChallenge(w, `error="invalid_token", error_description="access token expired"`)
 					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
 					return
@@ -1234,18 +1313,20 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					// carries an explicit SigNoz URL (header or config). Otherwise a
 					// stale bearer token can mask the OAuth challenge flow.
 					if customURL == "" && m.config.URL == "" {
-						m.logger.WarnContext(ctx, "Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
+						m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureInvalidOAuthToken, authModeAuthorizationBearer, "Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
 						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
 						http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
 						return
 					}
 					apiKey = token
+					authMode = authModeAuthorizationAPIKey
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 					m.logger.DebugContext(ctx, "Bearer token did not match OAuth token format, falling back to raw API key")
 				}
 			} else {
 				apiKey = token
+				authMode = authModeAuthorizationAPIKey
 				ctx = util.SetAPIKey(ctx, apiKey)
 				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 				m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header")
@@ -1254,11 +1335,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		} else if m.config.APIKey != "" {
 			// Fallback to config API key
 			apiKey = m.config.APIKey
+			authMode = authModeConfigAPIKey
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 			m.logger.DebugContext(ctx, "Using API key from environment config")
 		} else {
-			m.logger.WarnContext(ctx, "No API key found in headers or environment")
+			m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureMissingCredential, authMode, "No API key found in headers or environment")
 			if m.config.OAuthEnabled {
 				m.setOAuthChallenge(w, "")
 			}
@@ -1271,6 +1353,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
 			}
+			decorateAuthSpan(ctx, r, authMode)
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)
 			return
@@ -1281,7 +1364,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			trimmed := strings.TrimSuffix(customURL, "/")
 			normalized, err := util.NormalizeSigNozURL(trimmed)
 			if err != nil {
-				m.logger.WarnContext(ctx, "Invalid X-SigNoz-URL header",
+				m.logAuthFailure(ctx, r, http.StatusBadRequest, authFailureInvalidSignozURL, authMode, "Invalid X-SigNoz-URL header",
 					slog.String("url", customURL), logpkg.ErrAttr(err))
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
@@ -1292,7 +1375,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			signozURL = m.config.URL
 			m.logger.DebugContext(ctx, "Using URL from environment config", slog.String("mcp.tenant_url", signozURL))
 		} else {
-			m.logger.WarnContext(ctx, "No SigNoz URL found in X-SigNoz-URL header or environment")
+			m.logAuthFailure(ctx, r, http.StatusBadRequest, authFailureMissingSignozURL, authMode, "No SigNoz URL found in X-SigNoz-URL header or environment")
 			http.Error(w, "SigNoz instance URL is required", http.StatusBadRequest)
 			return
 		}
@@ -1304,6 +1387,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 			trace.SpanFromContext(ctx).SetAttributes(attr)
 		}
+		decorateAuthSpan(ctx, r, authMode)
 
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)

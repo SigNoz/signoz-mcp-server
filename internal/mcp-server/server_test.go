@@ -518,6 +518,234 @@ func TestAuthMiddlewareReturnsOAuthChallengeWhenMissingAuth(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareLogsAndSpansAuthFailureTelemetry(t *testing.T) {
+	var buf lockedBuffer
+	logger := newBufferedLogger(&buf, slog.LevelDebug)
+	cfg := &config.Config{
+		OAuthEnabled:   true,
+		OAuthIssuerURL: "https://mcp.example.com",
+	}
+	server := &MCPServer{logger: logger, config: cfg, analytics: noopanalytics.New()}
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	ctx, span := tracerProvider.Tracer("test").Start(context.Background(), "HTTP POST /mcp")
+
+	req := httptest.NewRequest(http.MethodPost, "https://mcp.us.signoz.cloud/mcp", nil).WithContext(ctx)
+	req.RemoteAddr = "203.0.113.10:54321"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 10.0.0.2")
+	req.Header.Set("User-Agent", "claude-code/2.1.133 (cli)")
+	req.Header.Set(util.HeaderMCPSessionID, "mcp-session-test")
+	rr := httptest.NewRecorder()
+
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+	span.End()
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	records := parseJSONLogLines(t, &buf)
+	if len(records) == 0 {
+		t.Fatal("expected auth failure log line")
+	}
+	rec := records[len(records)-1]
+	if rec["msg"] != "No API key found in headers or environment" {
+		t.Fatalf("msg = %v, want missing API key log", rec["msg"])
+	}
+	if rec["mcp.auth.failure_reason"] != authFailureMissingCredential {
+		t.Fatalf("mcp.auth.failure_reason = %v, want %s", rec["mcp.auth.failure_reason"], authFailureMissingCredential)
+	}
+	if rec["mcp.auth.mode"] != authModeNone {
+		t.Fatalf("mcp.auth.mode = %v, want %s", rec["mcp.auth.mode"], authModeNone)
+	}
+	if rec["http.response.status_code"] != float64(http.StatusUnauthorized) {
+		t.Fatalf("http.response.status_code = %v, want %d", rec["http.response.status_code"], http.StatusUnauthorized)
+	}
+	if rec["http.request.method"] != http.MethodPost {
+		t.Fatalf("http.request.method = %v, want POST", rec["http.request.method"])
+	}
+	if rec["url.path"] != "/mcp" {
+		t.Fatalf("url.path = %v, want /mcp", rec["url.path"])
+	}
+	if rec["server.address"] != "mcp.us.signoz.cloud" {
+		t.Fatalf("server.address = %v, want mcp.us.signoz.cloud", rec["server.address"])
+	}
+	if rec["client.address"] != "198.51.100.7" {
+		t.Fatalf("client.address = %v, want 198.51.100.7", rec["client.address"])
+	}
+	if rec["user_agent.original"] != "claude-code/2.1.133 (cli)" {
+		t.Fatalf("user_agent.original = %v, want claude-code user agent", rec["user_agent.original"])
+	}
+	if rec["mcp.session.id"] != "mcp-session-test" {
+		t.Fatalf("mcp.session.id = %v, want mcp-session-test", rec["mcp.session.id"])
+	}
+	if rec["mcp.client_source"] != util.ClientSourceUserClient {
+		t.Fatalf("mcp.client_source = %v, want %s", rec["mcp.client_source"], util.ClientSourceUserClient)
+	}
+
+	spans := spanRecorder.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(spans))
+	}
+	attrs := spans[0].Attributes()
+	for key, want := range map[attribute.Key]string{
+		"mcp.auth.failure_reason": authFailureMissingCredential,
+		"mcp.auth.mode":           authModeNone,
+		"http.request.method":     http.MethodPost,
+		"url.path":                "/mcp",
+		"server.address":          "mcp.us.signoz.cloud",
+		"client.address":          "198.51.100.7",
+		"user_agent.original":     "claude-code/2.1.133 (cli)",
+		otelpkg.MCPSessionIDKey:   "mcp-session-test",
+	} {
+		got, ok := spanAttrValue(attrs, key)
+		if !ok {
+			t.Fatalf("span attr %s missing", key)
+		}
+		if got.AsString() != want {
+			t.Fatalf("span attr %s = %q, want %q", key, got.AsString(), want)
+		}
+	}
+	gotStatus, ok := spanAttrValue(attrs, "http.response.status_code")
+	if !ok {
+		t.Fatal("span attr http.response.status_code missing")
+	}
+	if gotStatus.AsInt64() != int64(http.StatusUnauthorized) {
+		t.Fatalf("span attr http.response.status_code = %d, want %d", gotStatus.AsInt64(), http.StatusUnauthorized)
+	}
+}
+
+func TestAuthMiddlewareAuthFailureTelemetryBranches(t *testing.T) {
+	const tokenSecret = "0123456789abcdef0123456789abcdef"
+	expiredToken, err := oauth.EncryptToken(
+		"oauth-api-key",
+		"https://oauth.example.com",
+		"client-1",
+		time.Now().UTC().Add(-time.Hour),
+		[]byte(tokenSecret),
+	)
+	if err != nil {
+		t.Fatalf("EncryptToken() error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		cfg        config.Config
+		setup      func(*http.Request)
+		wantStatus int
+		wantReason string
+		wantMode   string
+	}{
+		{
+			name: "invalid OAuth bearer without fallback URL",
+			cfg: config.Config{
+				OAuthEnabled:     true,
+				OAuthTokenSecret: tokenSecret,
+				OAuthIssuerURL:   "https://mcp.example.com",
+			},
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer stale-token")
+			},
+			wantStatus: http.StatusUnauthorized,
+			wantReason: authFailureInvalidOAuthToken,
+			wantMode:   authModeAuthorizationBearer,
+		},
+		{
+			name: "expired OAuth bearer",
+			cfg: config.Config{
+				OAuthEnabled:     true,
+				OAuthTokenSecret: tokenSecret,
+				OAuthIssuerURL:   "https://mcp.example.com",
+			},
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+expiredToken)
+			},
+			wantStatus: http.StatusUnauthorized,
+			wantReason: authFailureExpiredOAuthToken,
+			wantMode:   authModeOAuthAccessToken,
+		},
+		{
+			name: "invalid SigNoz URL",
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer raw-api-key")
+				req.Header.Set("X-SigNoz-URL", "https://tenant.example.com/path")
+			},
+			wantStatus: http.StatusBadRequest,
+			wantReason: authFailureInvalidSignozURL,
+			wantMode:   authModeAuthorizationAPIKey,
+		},
+		{
+			name: "missing SigNoz URL",
+			setup: func(req *http.Request) {
+				req.Header.Set("SIGNOZ-API-KEY", "api-key")
+			},
+			wantStatus: http.StatusBadRequest,
+			wantReason: authFailureMissingSignozURL,
+			wantMode:   authModeSignozAPIKeyHeader,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf lockedBuffer
+			cfg := tt.cfg
+			server := &MCPServer{logger: newBufferedLogger(&buf, slog.LevelDebug), config: &cfg, analytics: noopanalytics.New()}
+
+			spanRecorder := tracetest.NewSpanRecorder()
+			tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+			ctx, span := tracerProvider.Tracer("test").Start(context.Background(), "HTTP POST /mcp")
+
+			req := httptest.NewRequest(http.MethodPost, "https://mcp.example.com/mcp", nil).WithContext(ctx)
+			tt.setup(req)
+			rr := httptest.NewRecorder()
+
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatal("next handler should not be called")
+			})).ServeHTTP(rr, req)
+			span.End()
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rr.Code, tt.wantStatus)
+			}
+
+			records := parseJSONLogLines(t, &buf)
+			if len(records) == 0 {
+				t.Fatal("expected auth failure log line")
+			}
+			rec := records[len(records)-1]
+			if rec["mcp.auth.failure_reason"] != tt.wantReason {
+				t.Fatalf("log mcp.auth.failure_reason = %v, want %s", rec["mcp.auth.failure_reason"], tt.wantReason)
+			}
+			if rec["mcp.auth.mode"] != tt.wantMode {
+				t.Fatalf("log mcp.auth.mode = %v, want %s", rec["mcp.auth.mode"], tt.wantMode)
+			}
+
+			spans := spanRecorder.Ended()
+			if len(spans) != 1 {
+				t.Fatalf("ended spans = %d, want 1", len(spans))
+			}
+			attrs := spans[0].Attributes()
+			gotReason, ok := spanAttrValue(attrs, "mcp.auth.failure_reason")
+			if !ok {
+				t.Fatal("span attr mcp.auth.failure_reason missing")
+			}
+			if gotReason.AsString() != tt.wantReason {
+				t.Fatalf("span mcp.auth.failure_reason = %q, want %q", gotReason.AsString(), tt.wantReason)
+			}
+			gotMode, ok := spanAttrValue(attrs, "mcp.auth.mode")
+			if !ok {
+				t.Fatal("span attr mcp.auth.mode missing")
+			}
+			if gotMode.AsString() != tt.wantMode {
+				t.Fatalf("span mcp.auth.mode = %q, want %q", gotMode.AsString(), tt.wantMode)
+			}
+		})
+	}
+}
+
 func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	var requests atomic.Int32
 	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
