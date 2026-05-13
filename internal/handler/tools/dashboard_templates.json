@@ -21,6 +21,19 @@
     "category": "Anthropic"
   },
   {
+    "id": "apache-druid",
+    "title": "Apache Druid",
+    "path": "apache-druid/apache-druid-dashboard.json",
+    "keywords": [
+      "apache",
+      "druid",
+      "database",
+      "metrics"
+    ],
+    "description": "Broker and coordinator metrics — query performance, JVM health, GC activity, and HTTP thread pool saturation.",
+    "category": "Apache Druid"
+  },
+  {
     "id": "apache-web-server",
     "title": "Apache Monitoring Dashboard",
     "path": "apache-web-server/apache.json",
@@ -248,6 +261,21 @@
     ],
     "description": "",
     "category": "Deepseek"
+  },
+  {
+    "id": "dify",
+    "title": "Dify Service - Overview & LLM Observability",
+    "path": "dify/dify-dashboard.json",
+    "keywords": [
+      "dify",
+      "service",
+      "overview",
+      "llm",
+      "observability",
+      "genai"
+    ],
+    "description": "Comprehensive monitoring dashboard for the langgenius/dify service. Covers RED metrics (Rate, Errors, Duration), HTTP endpoint performance, LLM/GenAI activity (token usage, model latency, providers), workflow & app activity, and Postgres/Redis dependencies. Built from traces and metrics observed for the service.",
+    "category": "Dify"
   },
   {
     "id": "ecs-infra-metrics",
@@ -634,6 +662,20 @@
     ],
     "description": "",
     "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "kafka",
+    "title": "Kafka Server Monitoring",
+    "path": "kafka/kafka-dashboard.json",
+    "keywords": [
+      "kafka",
+      "server",
+      "monitoring",
+      "messaging",
+      "otel"
+    ],
+    "description": "Monitors Kafka brokers, topics, partitions, and consumer groups using OTel kafkametricsreceiver metrics.",
+    "category": "Kafka"
   },
   {
     "id": "keda",
