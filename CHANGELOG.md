@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.4.0] - 2026-05-13
+
+### Added
+- tag MCP traffic with assistant correlation headers ([#167](https://github.com/SigNoz/signoz-mcp-server/pull/167))
+- add signoz_create_dashboard_from_template MCP tool ([#157](https://github.com/SigNoz/signoz-mcp-server/pull/157))
+- add signoz_search_docs and signoz_fetch_doc MCP tools ([#143](https://github.com/SigNoz/signoz-mcp-server/pull/143))
+
+### Fixed
+- omit null tags and drop unused category filter ([#166](https://github.com/SigNoz/signoz-mcp-server/pull/166))
+- parse having expression strings into clause arrays ([#160](https://github.com/SigNoz/signoz-mcp-server/pull/160))
+
+### Documentation
+- track plan files for assistant-correlation-headers + correct CLAUDE.md ([#168](https://github.com/SigNoz/signoz-mcp-server/pull/168))
+- clarify threshold format and operator constraints ([#164](https://github.com/SigNoz/signoz-mcp-server/pull/164))
+- document alert rule version floor ([#156](https://github.com/SigNoz/signoz-mcp-server/pull/156))
+
+### CI
+- add workflow to refresh bundled dashboard template catalog ([#161](https://github.com/SigNoz/signoz-mcp-server/pull/161))
+
+### Other
+- improve MCP auth failure telemetry ([#170](https://github.com/SigNoz/signoz-mcp-server/pull/170))
+- [codex] Fix OAuth auth form URL normalization ([#165](https://github.com/SigNoz/signoz-mcp-server/pull/165))
+- Accept notification channel UUIDs in MCP tools ([#163](https://github.com/SigNoz/signoz-mcp-server/pull/163))
+- refresh bundled dashboard template catalog ([#162](https://github.com/SigNoz/signoz-mcp-server/pull/162))
+
 ## [0.3.0] - 2026-04-28
 
 ### Added
@@ -191,3 +217,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.2.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.1.2...v0.2.0
 [0.2.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.2.0...v0.2.1
 [0.3.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.2.1...v0.3.0
+[0.4.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.3.0...v0.4.0
