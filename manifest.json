@@ -155,7 +155,7 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Execute a raw SigNoz Query Builder v5 query"
+      "description": "Execute a SigNoz Query Builder v5 query (builder_query / builder_formula / promql / clickhouse_sql envelopes)"
     },
     {
       "name": "signoz_list_notification_channels",
