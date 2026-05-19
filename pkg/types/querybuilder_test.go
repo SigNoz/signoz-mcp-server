@@ -217,6 +217,99 @@ func TestQueryUnmarshalJSON_MalformedPromQLSpec(t *testing.T) {
 	}
 }
 
+// Regression test for the codex review on PR #180: builder_formula envelopes
+// were being decoded into QuerySpec, which has no `expression` or `legend`
+// fields, so formulas like "A / B * 100" were silently dropped during the
+// typed round-trip — exactly the same class of bug the PromQL fix addresses.
+func TestQueryPayloadRoundTrip_PreservesBuilderFormula(t *testing.T) {
+	input := `{
+		"schemaVersion":"v1",
+		"start":1700000000,
+		"end":1700003600,
+		"requestType":"time_series",
+		"compositeQuery":{
+			"queries":[
+				{"type":"builder_query","spec":{"name":"A","signal":"metrics","aggregations":[{"metricName":"http.requests","spaceAggregation":"sum"}],"stepInterval":60}},
+				{"type":"builder_query","spec":{"name":"B","signal":"metrics","aggregations":[{"metricName":"http.errors","spaceAggregation":"sum"}],"stepInterval":60}},
+				{"type":"builder_formula","spec":{"name":"C","expression":"A / B * 100","legend":"error_pct","disabled":false}}
+			]
+		}
+	}`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+	require.NoError(t, payload.Validate())
+
+	formula, ok := payload.CompositeQuery.Queries[2].Spec.(FormulaSpec)
+	require.True(t, ok, "expected FormulaSpec, got %T", payload.CompositeQuery.Queries[2].Spec)
+	require.Equal(t, "A / B * 100", formula.Expression)
+	require.Equal(t, "error_pct", formula.Legend)
+
+	out, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var roundTripped QueryPayload
+	require.NoError(t, json.Unmarshal(out, &roundTripped))
+	require.Equal(t, "builder_formula", roundTripped.CompositeQuery.Queries[2].Type)
+	rt, ok := roundTripped.CompositeQuery.Queries[2].Spec.(FormulaSpec)
+	require.True(t, ok, "round-tripped spec is %T not FormulaSpec; output was: %s",
+		roundTripped.CompositeQuery.Queries[2].Spec, string(out))
+	require.Equal(t, "A / B * 100", rt.Expression,
+		"formula expression did not survive round trip; output was: %s", string(out))
+	require.Equal(t, "error_pct", rt.Legend)
+}
+
+// builder_trace_operator (and any future / less-common envelope type) must
+// survive the round-trip byte-for-byte via the json.RawMessage fallback —
+// its fields (expression, returnSpansFrom, etc.) are not in QuerySpec and
+// would be dropped if we decoded into the wrong typed spec.
+func TestQueryPayloadRoundTrip_PreservesTraceOperator(t *testing.T) {
+	input := `{
+		"schemaVersion":"v1",
+		"start":1700000000,
+		"end":1700003600,
+		"requestType":"time_series",
+		"compositeQuery":{
+			"queries":[
+				{"type":"builder_trace_operator","spec":{"name":"T","expression":"A => B","returnSpansFrom":"A","disabled":false}}
+			]
+		}
+	}`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+	require.NoError(t, payload.Validate())
+
+	raw, ok := payload.CompositeQuery.Queries[0].Spec.(json.RawMessage)
+	require.True(t, ok, "expected json.RawMessage, got %T", payload.CompositeQuery.Queries[0].Spec)
+
+	out, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	// Re-parse and confirm the trace_operator-specific fields are still there.
+	var roundTripped struct {
+		CompositeQuery struct {
+			Queries []struct {
+				Type string         `json:"type"`
+				Spec map[string]any `json:"spec"`
+			} `json:"queries"`
+		} `json:"compositeQuery"`
+	}
+	require.NoError(t, json.Unmarshal(out, &roundTripped))
+	require.Equal(t, "builder_trace_operator", roundTripped.CompositeQuery.Queries[0].Type)
+	require.Equal(t, "A => B", roundTripped.CompositeQuery.Queries[0].Spec["expression"],
+		"trace_operator expression did not survive round trip; output was: %s", string(out))
+	require.Equal(t, "A", roundTripped.CompositeQuery.Queries[0].Spec["returnSpansFrom"])
+	// Sanity: no leaked builder-only zero fields were injected.
+	_, hasSignal := roundTripped.CompositeQuery.Queries[0].Spec["signal"]
+	require.False(t, hasSignal, "spec leaked builder-only `signal` field; output was: %s", string(out))
+	_, hasOrder := roundTripped.CompositeQuery.Queries[0].Spec["order"]
+	require.False(t, hasOrder, "spec leaked builder-only `order` field; output was: %s", string(out))
+
+	// Sanity on the in-memory raw: it should be the original spec bytes.
+	require.Contains(t, string(raw), `"expression":"A => B"`)
+}
+
 func TestQueryPayloadValidate_PromQLRequiresQuery(t *testing.T) {
 	q := &QueryPayload{
 		Start: 1,

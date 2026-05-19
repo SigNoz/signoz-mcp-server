@@ -80,11 +80,27 @@ func (q *Query) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("invalid clickhouse_sql spec: %w", err)
 		}
 		q.Spec = spec
-	default:
+	case "builder_formula":
+		var spec FormulaSpec
+		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
+			return fmt.Errorf("invalid builder_formula spec: %w", err)
+		}
+		q.Spec = spec
+	case "builder_query":
 		var spec QuerySpec
 		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
-			return fmt.Errorf("invalid %s spec: %w", shadow.Type, err)
+			return fmt.Errorf("invalid builder_query spec: %w", err)
 		}
+		q.Spec = spec
+	default:
+		// Preserve unknown / less-common envelope types (builder_trace_operator,
+		// builder_sub_query, builder_join, future additions) as raw JSON so
+		// their fields survive the round-trip byte-for-byte. Decoding into
+		// QuerySpec would drop type-specific fields like `expression`,
+		// `returnSpansFrom`, and inject zero-valued builder fields the
+		// backend's DisallowUnknownFields decoder would reject.
+		spec := make(json.RawMessage, len(shadow.Spec))
+		copy(spec, shadow.Spec)
 		q.Spec = spec
 	}
 	return nil
