@@ -89,13 +89,33 @@
   },
   {
     "id": "argocd",
-    "title": "Argocd Dashboard",
+    "title": "Argo CD Metrics",
     "path": "argocd/argocd.json",
     "keywords": [
-      "argocd"
+      "argocd",
+      "argo",
+      "cd",
+      "metrics"
     ],
     "description": "",
     "category": "Argocd"
+  },
+  {
+    "id": "aspnetcore",
+    "title": "ASP .NET Core Metrics",
+    "path": "aspnetcore/aspnetcore-otlp-v1.json",
+    "keywords": [
+      "aspnetcore",
+      "otlp",
+      "v1",
+      "asp",
+      "net",
+      "core",
+      "metrics",
+      "dotnet"
+    ],
+    "description": "ASP.NET Core application metrics — request performance, process health, .NET runtime internals (GC, threading), and routing. Based on OTLP instrumentation.",
+    "category": "Aspnetcore"
   },
   {
     "id": "autogen",
@@ -497,6 +517,21 @@
     ],
     "description": "",
     "category": "Inkeep"
+  },
+  {
+    "id": "istio",
+    "title": "Istio Monitoring Dashboard",
+    "path": "istio/istio-prometheus-v1.json",
+    "keywords": [
+      "istio",
+      "prometheus",
+      "v1",
+      "monitoring",
+      "service",
+      "mesh"
+    ],
+    "description": "Istio service mesh dashboard for Istio, Envoy, Pilot, Citadel, Galley, and Kubernetes resource metrics collected in SigNoz.",
+    "category": "Istio"
   },
   {
     "id": "jenkins",
