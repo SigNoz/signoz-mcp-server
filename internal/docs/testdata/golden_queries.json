@@ -149,7 +149,7 @@
   },
   {
     "query": "logs query troubleshooting",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/logs-query-troubleshooting/"]
+    "expected_top_pages": ["https://signoz.io/docs/logs-management/troubleshooting/troubleshooting/"]
   },
   {
     "query": "metrics troubleshooting missing data",
