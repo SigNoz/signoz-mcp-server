@@ -747,6 +747,11 @@ Delete a notification channel by ID (`DELETE /api/v1/channels/{id}`). Irreversib
 Executes a SigNoz Query Builder v5 query.
 
 - **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
+- **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:
+  - `builder_query` — signal-specific spec (logs/traces/metrics) with filter, aggregations, groupBy, etc.
+  - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).
+  - `promql` — `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
+  - `clickhouse_sql` — `{name, query, disabled, legend?}`.
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 
 </details>

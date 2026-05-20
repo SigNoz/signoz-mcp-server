@@ -20,9 +20,100 @@ type CompositeQuery struct {
 	Queries []Query `json:"queries"`
 }
 
+// Query is a single entry in CompositeQuery.Queries. Spec's concrete type
+// depends on Type:
+//   - "builder_query"          -> QuerySpec
+//   - "builder_formula"        -> FormulaSpec
+//   - "promql"                 -> PromQLSpec
+//   - "clickhouse_sql"         -> ClickHouseSQLSpec
+//   - anything else (e.g. "builder_trace_operator", "builder_sub_query",
+//     "builder_join") -> json.RawMessage, preserved byte-for-byte so the
+//     backend sees the caller's original spec.
+//
+// Note: builder_formula is a sibling envelope type, not a kind of builder_query.
+// Formulas reference other queries' results by name (e.g. "A / B * 100") and
+// carry only name/expression/legend/disabled.
 type Query struct {
-	Type string    `json:"type"`
-	Spec QuerySpec `json:"spec"`
+	Type string `json:"type"`
+	Spec any    `json:"spec"`
+}
+
+// PromQLSpec is the spec for a query envelope with Type="promql".
+// Mirrors signoz/pkg/types/querybuildertypes/querybuildertypesv5.PromQuery —
+// Step is left as any so callers can pass either a Go-duration string
+// ("60s", "1m") or a number of seconds, matching the backend's OneOf schema.
+type PromQLSpec struct {
+	Name     string `json:"name"`
+	Query    string `json:"query"`
+	Disabled bool   `json:"disabled,omitempty"`
+	Step     any    `json:"step,omitempty"`
+	Stats    bool   `json:"stats,omitempty"`
+	Legend   string `json:"legend,omitempty"`
+}
+
+// ClickHouseSQLSpec is the spec for a query envelope with Type="clickhouse_sql".
+type ClickHouseSQLSpec struct {
+	Name     string `json:"name"`
+	Query    string `json:"query"`
+	Disabled bool   `json:"disabled,omitempty"`
+	Legend   string `json:"legend,omitempty"`
+}
+
+// UnmarshalJSON decodes Spec into the right concrete type based on Type, so
+// PromQL / ClickHouse SQL query strings survive the typed round-trip in
+// signoz_execute_builder_query instead of being silently dropped.
+func (q *Query) UnmarshalJSON(data []byte) error {
+	var shadow struct {
+		Type string          `json:"type"`
+		Spec json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(data, &shadow); err != nil {
+		return err
+	}
+	q.Type = shadow.Type
+
+	if len(shadow.Spec) == 0 || string(shadow.Spec) == "null" {
+		q.Spec = nil
+		return nil
+	}
+
+	switch shadow.Type {
+	case "promql":
+		var spec PromQLSpec
+		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
+			return fmt.Errorf("invalid promql spec: %w", err)
+		}
+		q.Spec = spec
+	case "clickhouse_sql":
+		var spec ClickHouseSQLSpec
+		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
+			return fmt.Errorf("invalid clickhouse_sql spec: %w", err)
+		}
+		q.Spec = spec
+	case "builder_formula":
+		var spec FormulaSpec
+		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
+			return fmt.Errorf("invalid builder_formula spec: %w", err)
+		}
+		q.Spec = spec
+	case "builder_query":
+		var spec QuerySpec
+		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
+			return fmt.Errorf("invalid builder_query spec: %w", err)
+		}
+		q.Spec = spec
+	default:
+		// Preserve unknown / less-common envelope types (builder_trace_operator,
+		// builder_sub_query, builder_join, future additions) as raw JSON so
+		// their fields survive the round-trip byte-for-byte. Decoding into
+		// QuerySpec would drop type-specific fields like `expression`,
+		// `returnSpansFrom`, and inject zero-valued builder fields the
+		// backend's DisallowUnknownFields decoder would reject.
+		spec := make(json.RawMessage, len(shadow.Spec))
+		copy(spec, shadow.Spec)
+		q.Spec = spec
+	}
+	return nil
 }
 
 type QuerySpec struct {
@@ -91,11 +182,48 @@ func (q *QueryPayload) Validate() error {
 	}
 
 	for i, query := range q.CompositeQuery.Queries {
-		if query.Type != "builder_query" {
+		switch query.Type {
+		case "promql":
+			spec, ok := query.Spec.(PromQLSpec)
+			if !ok {
+				return fmt.Errorf("query at position %d: promql envelope has wrong spec type %T", i+1, query.Spec)
+			}
+			if spec.Query == "" {
+				name := spec.Name
+				if name == "" {
+					name = fmt.Sprintf("query at position %d", i+1)
+				}
+				return fmt.Errorf("%s: missing query string for promql query", name)
+			}
+			if q.RequestType == "" {
+				q.RequestType = "time_series"
+			}
+			continue
+		case "clickhouse_sql":
+			spec, ok := query.Spec.(ClickHouseSQLSpec)
+			if !ok {
+				return fmt.Errorf("query at position %d: clickhouse_sql envelope has wrong spec type %T", i+1, query.Spec)
+			}
+			if spec.Query == "" {
+				name := spec.Name
+				if name == "" {
+					name = fmt.Sprintf("query at position %d", i+1)
+				}
+				return fmt.Errorf("%s: missing query string for clickhouse_sql query", name)
+			}
+			continue
+		case "builder_query":
+			// fall through to builder validation below
+		default:
+			// builder_formula, builder_trace_operator, builder_sub_query, builder_join, etc.
+			// Pass through unchanged; backend will validate.
 			continue
 		}
 
-		spec := query.Spec
+		spec, ok := query.Spec.(QuerySpec)
+		if !ok {
+			return fmt.Errorf("query at position %d: builder_query envelope has wrong spec type %T", i+1, query.Spec)
+		}
 		signal := spec.Signal
 		queryName := spec.Name
 		if queryName == "" {
