@@ -20,9 +20,19 @@ type CompositeQuery struct {
 	Queries []Query `json:"queries"`
 }
 
-// Query is a single entry in CompositeQuery.Queries. The Spec shape depends on
-// Type: builder_query / builder_formula / builder_trace_operator use QuerySpec;
-// promql uses PromQLSpec; clickhouse_sql uses ClickHouseSQLSpec.
+// Query is a single entry in CompositeQuery.Queries. Spec's concrete type
+// depends on Type:
+//   - "builder_query"          -> QuerySpec
+//   - "builder_formula"        -> FormulaSpec
+//   - "promql"                 -> PromQLSpec
+//   - "clickhouse_sql"         -> ClickHouseSQLSpec
+//   - anything else (e.g. "builder_trace_operator", "builder_sub_query",
+//     "builder_join") -> json.RawMessage, preserved byte-for-byte so the
+//     backend sees the caller's original spec.
+//
+// Note: builder_formula is a sibling envelope type, not a kind of builder_query.
+// Formulas reference other queries' results by name (e.g. "A / B * 100") and
+// carry only name/expression/legend/disabled.
 type Query struct {
 	Type string `json:"type"`
 	Spec any    `json:"spec"`
