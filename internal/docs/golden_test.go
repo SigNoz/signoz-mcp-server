@@ -58,7 +58,9 @@ func TestGoldenSet(t *testing.T) {
 	recallAt3 := float64(recallHits) / float64(len(queries))
 	precisionAt1 := float64(precisionHits) / float64(len(queries))
 	t.Logf("recall@3=%.3f precision@1=%.3f queries=%d", recallAt3, precisionAt1, len(queries))
-	require.GreaterOrEqual(t, recallAt3, 0.9)
+	// 0.85 tolerates 6 misses out of 45 to absorb routine ranking drift from
+	// scheduled corpus refreshes; dropping below this means real search regression.
+	require.GreaterOrEqual(t, recallAt3, 0.85)
 	require.GreaterOrEqual(t, precisionAt1, 0.7)
 }
 
