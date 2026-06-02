@@ -418,6 +418,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
+  - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
 
 #### `signoz_list_alerts`
 
