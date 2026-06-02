@@ -44,7 +44,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Auto-fetch metric metadata if not provided
 	if mqr.MetricType == "" {
-		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName)
+		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
 			return mcp.NewToolResultError(fmt.Sprintf(
 				"Failed to auto-fetch metric metadata for %q: %s\n"+
@@ -129,7 +129,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Formula sub-queries
 	for _, fq := range mqr.FormulaQueries {
-		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, &decisions)
+		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, mqr.Source, &decisions)
 		if subErr != nil {
 			return mcp.NewToolResultError(subErr.Error()), nil
 		}
@@ -197,11 +197,13 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 }
 
 // fetchMetricMetadata calls ListMetrics to get type/temporality/isMonotonic for a metric.
+// source is forwarded so that Cost Meter metrics (source="meter") are looked up in the
+// correct store rather than the default metrics store.
 func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-}, metricName string) (*metricMetadata, error) {
+}, metricName, source string) (*metricMetadata, error) {
 	// Search with exact metric name, limit 10 to find it
-	result, err := client.ListMetrics(ctx, 0, 0, 10, metricName, "")
+	result, err := client.ListMetrics(ctx, 0, 0, 10, metricName, source)
 	if err != nil {
 		return nil, err
 	}
@@ -292,14 +294,14 @@ func normalizeMetricType(t string) string {
 // resolveFormulaSubQuery applies defaults for a formula sub-query, auto-fetching metadata if needed.
 func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-}, fq formulaSubQuery, requestType string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
+}, fq formulaSubQuery, requestType, source string, decisions *[]string) (*metricsrules.ResolvedAggregation, error) {
 	metricType := fq.MetricType
 	isMonotonic := fq.IsMonotonic
 	temporality := fq.Temporality
 
 	// Auto-fetch if needed
 	if metricType == "" {
-		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName)
+		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName, source)
 		if err != nil {
 			return nil, fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
 		}
