@@ -365,6 +365,54 @@ func TestQueryPayloadRoundTrip_MixedBuilderAndPromQL(t *testing.T) {
 	require.Equal(t, "up", prom.Query)
 }
 
+// Regression test for issue #176: the `source` field (e.g. "meter" for Cost Meter
+// queries) is a sibling of "name" and "signal" inside the builder_query spec object,
+// NOT a top-level QueryPayload field. It must survive the unmarshal → Validate →
+// re-marshal round trip performed by signoz_execute_builder_query, and must be
+// absent from the marshaled output when empty (omitempty).
+func TestQueryPayloadRoundTrip_PreservesSource(t *testing.T) {
+	input := `{
+		"schemaVersion":"v1",
+		"start":1700000000,
+		"end":1700003600,
+		"requestType":"time_series",
+		"compositeQuery":{
+			"queries":[{
+				"type":"builder_query",
+				"spec":{"name":"A","signal":"metrics","source":"meter","aggregations":[{"metricName":"signoz_db_samples_ingested","spaceAggregation":"sum"}]}
+			}]
+		}
+	}`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+
+	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
+	require.Equal(t, "meter", spec.Source)
+
+	require.NoError(t, payload.Validate())
+
+	out, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var roundTripped QueryPayload
+	require.NoError(t, json.Unmarshal(out, &roundTripped))
+	rt, ok := roundTripped.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "round-tripped spec is %T not QuerySpec; output was: %s",
+		roundTripped.CompositeQuery.Queries[0].Spec, string(out))
+	require.Equal(t, "meter", rt.Source,
+		"source field did not survive round trip; output was: %s", string(out))
+
+	// Verify omitempty: a spec with empty source must not emit the field.
+	spec.Source = ""
+	payload.CompositeQuery.Queries[0].Spec = spec
+	outEmpty, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.NotContains(t, string(outEmpty), `"source"`,
+		"empty source must be omitted from JSON; got: %s", string(outEmpty))
+}
+
 // jsonString JSON-encodes s and returns the result as a Go string (including
 // the surrounding double quotes).
 func jsonString(s string) string {

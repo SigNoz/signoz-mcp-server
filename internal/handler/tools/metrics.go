@@ -57,6 +57,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("reduceTo", mcp.Description("For requestType=scalar only. Reduces time series to a single value: sum, count, avg, min, max, last, median. Auto-defaulted by metricType.")),
 		mcp.WithString("formula", mcp.Description("Formula expression over named queries. Example: 'A / B * 100'. The primary metric becomes query 'A'. Additional queries are defined in formulaQueries.")),
 		mcp.WithString("formulaQueries", mcp.Description("JSON array of additional named metric queries for formula. Each object: {\"name\":\"B\", \"metricName\":\"...\", \"metricType\":\"...\", \"isMonotonic\":true, \"temporality\":\"...\", \"timeAggregation\":\"...\", \"spaceAggregation\":\"...\", \"groupBy\":[\"...\"], \"filter\":\"...\"}. All fields except name and metricName are optional.")),
+		mcp.WithString("source", mcp.Description("Optional data-source filter forwarded to the backend. Use \"meter\" to query Cost Meter data. Omit for the default SigNoz metrics store.")),
 	)
 
 	addTool(s, queryMetricsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
