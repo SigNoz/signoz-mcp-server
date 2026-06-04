@@ -138,7 +138,7 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 }
 
 // GetAnalyticsIdentity returns the org + user identity for the current
-// credentials, cached per-client and mutex-serialized so a burst of events
+// credentials, cached per-credential and mutex-serialized so a burst of events
 // produces a single /me roundtrip.
 //
 // Auth-token clients hit /api/v2/users/me (v2 is required — it returns
@@ -152,6 +152,11 @@ func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, 
 	}
 	cacheKey := util.HashCredential(apiKey, authHeader)
 
+	// identityMu is held across the fetch below, so distinct credentials do not
+	// fetch /me concurrently — this is intentional: the cache is per-credential,
+	// but identity lookups are rare and short, and global serialization keeps the
+	// burst dedup (one roundtrip per burst) simple. Revisit with singleflight only
+	// if concurrent multi-tenant identity fetches become a measured bottleneck.
 	s.identityMu.Lock()
 	defer s.identityMu.Unlock()
 
