@@ -53,26 +53,29 @@ type AnalyticsIdentity struct {
 }
 
 type SigNoz struct {
-	baseURL        string
-	apiKey         string
-	authHeaderName string
-	logger         *slog.Logger
-	httpClient     *http.Client
-	customHeaders  map[string]string
+	baseURL       string
+	logger        *slog.Logger
+	httpClient    *http.Client
+	customHeaders map[string]string
 
-	identityMu       sync.Mutex
-	cachedIdentity   *AnalyticsIdentity
-	identityCachedAt time.Time
-	meters           *otelpkg.Meters
+	identityMu    sync.Mutex
+	identityCache map[string]identityEntry // key: util.HashCredential(apiKey, authHeader)
+	meters        *otelpkg.Meters
 }
 
-func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
+// identityEntry is one cached analytics identity with its fetch time, so the
+// per-credential cache can expire entries independently.
+type identityEntry struct {
+	identity *AnalyticsIdentity
+	cachedAt time.Time
+}
+
+func NewClient(log *slog.Logger, baseURL string, customHeaders map[string]string) *SigNoz {
 	return &SigNoz{
-		logger:         log,
-		baseURL:        baseURL,
-		apiKey:         apiKey,
-		authHeaderName: authHeaderName,
-		customHeaders:  customHeaders,
+		logger:        log,
+		baseURL:       baseURL,
+		customHeaders: customHeaders,
+		identityCache: make(map[string]identityEntry),
 		httpClient: &http.Client{
 			// Default client span name is just the HTTP method (per OTel HTTP
 			// semconv — the client doesn't know a templated route). We keep
