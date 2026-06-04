@@ -20,11 +20,26 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
 	base := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: level})
 	return slog.New(logpkg.NewContextHandler(base))
+}
+
+// credCtx returns a context carrying the credentials the client now reads at
+// request time. Defaults match the old baked-in test values.
+func credCtx() context.Context {
+	ctx := util.SetAPIKey(context.Background(), "test-api-key")
+	return util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+}
+
+// credCtxFor returns a credentialed context for a specific apiKey/authHeader,
+// used by tests that exercise the Authorization (user-token) path.
+func credCtxFor(apiKey, authHeader string) context.Context {
+	ctx := util.SetAPIKey(context.Background(), apiKey)
+	return util.SetAuthHeader(ctx, authHeader)
 }
 
 func TestGetAlertByRuleID(t *testing.T) {
@@ -99,9 +114,9 @@ func TestGetAlertByRuleID(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.GetAlertByRuleID(ctx, tt.ruleID)
 
 			if tt.expectedError {
@@ -142,9 +157,9 @@ func TestListAlertRules(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logger, server.URL, nil)
 
-	result, err := client.ListAlertRules(context.Background())
+	result, err := client.ListAlertRules(credCtx())
 	require.NoError(t, err)
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }
@@ -233,9 +248,9 @@ func TestValidateCredentials(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			err := client.ValidateCredentials(context.Background())
+			err := client.ValidateCredentials(credCtx())
 
 			if tt.expectedError {
 				assert.Error(t, err)
@@ -362,9 +377,9 @@ func TestGetAnalyticsIdentity(t *testing.T) {
 			if tt.authHeaderName == "Authorization" {
 				apiKey = "Bearer jwt-token"
 			}
-			client := NewClient(logger, server.URL, apiKey, tt.authHeaderName, nil)
+			client := NewClient(logger, server.URL, nil)
 
-			identity, err := client.GetAnalyticsIdentity(context.Background())
+			identity, err := client.GetAnalyticsIdentity(credCtxFor(apiKey, tt.authHeaderName))
 
 			if tt.checkErr != nil {
 				assert.Error(t, err)
@@ -389,10 +404,10 @@ func TestGetAnalyticsIdentity_CachesResult(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
+	client := NewClient(logger, server.URL, nil)
 
 	for i := 0; i < 5; i++ {
-		identity, err := client.GetAnalyticsIdentity(context.Background())
+		identity, err := client.GetAnalyticsIdentity(credCtxFor("Bearer jwt", "Authorization"))
 		require.NoError(t, err)
 		assert.Equal(t, "user-1", identity.UserID)
 	}
@@ -411,7 +426,7 @@ func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
+	client := NewClient(logger, server.URL, nil)
 
 	const callers = 10
 	var wg sync.WaitGroup
@@ -419,7 +434,7 @@ func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
 	for i := 0; i < callers; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := client.GetAnalyticsIdentity(context.Background())
+			_, err := client.GetAnalyticsIdentity(credCtxFor("Bearer jwt", "Authorization"))
 			assert.NoError(t, err)
 		}()
 	}
@@ -438,9 +453,9 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, nil)
 
-	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	_, err := client.doRequest(credCtx(), http.MethodGet, server.URL, nil, time.Second)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected status 503")
 
@@ -484,9 +499,9 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, nil)
 
-	body, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	body, err := client.doRequest(credCtx(), http.MethodGet, server.URL, nil, time.Second)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"status":"success"}`, string(body))
 
@@ -521,9 +536,9 @@ func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, nil)
 
-	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	_, err := client.doRequest(credCtx(), http.MethodGet, server.URL, nil, time.Second)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected status 400")
 
@@ -616,9 +631,9 @@ func TestListMetricKeys(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.ListMetricKeys(ctx)
 
 			if tt.expectedError {
@@ -736,9 +751,9 @@ func TestListDashboards(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.ListDashboards(ctx)
 
 			if tt.expectedError {
@@ -865,9 +880,9 @@ func TestListServices(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.ListServices(ctx, tt.start, tt.end)
 
 			if tt.expectedError {
@@ -1051,9 +1066,9 @@ func TestGetAlertHistory(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.GetAlertHistory(ctx, tt.ruleID, tt.request)
 
 			if tt.expectedError {
@@ -1216,9 +1231,9 @@ func TestQueryBuilderV5(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.QueryBuilderV5(ctx, tt.queryBody)
 
 			if tt.expectedError {
@@ -1272,7 +1287,7 @@ func TestCreateDashboard(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logger, server.URL, nil)
 
 	d := types.Dashboard{
 		Title:   "whatever",
@@ -1280,7 +1295,7 @@ func TestCreateDashboard(t *testing.T) {
 		Widgets: []types.Widget{},
 	}
 
-	ctx := context.Background()
+	ctx := credCtx()
 	resp, err := client.CreateDashboard(ctx, d)
 	require.NoError(t, err)
 
@@ -1310,7 +1325,7 @@ func TestUpdateDashboard(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logger, srv.URL, nil)
 
 	d := types.Dashboard{
 		Title:   "updated-title",
@@ -1318,7 +1333,7 @@ func TestUpdateDashboard(t *testing.T) {
 		Widgets: []types.Widget{},
 	}
 
-	err := client.UpdateDashboard(context.Background(), "id-123", d)
+	err := client.UpdateDashboard(credCtx(), "id-123", d)
 	require.NoError(t, err)
 }
 
@@ -1333,9 +1348,9 @@ func TestDeleteDashboard(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logger, srv.URL, nil)
 
-	err := client.DeleteDashboard(context.Background(), "dash-456")
+	err := client.DeleteDashboard(credCtx(), "dash-456")
 	require.NoError(t, err)
 }
 
@@ -1421,9 +1436,9 @@ func TestGetFieldKeys(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.GetFieldKeys(ctx, tt.signal, tt.metricName, tt.searchText, tt.fieldContext, tt.fieldDataType, tt.source)
 
 			if tt.expectedError {
@@ -1522,9 +1537,9 @@ func TestGetFieldValues(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, nil)
 
-			ctx := context.Background()
+			ctx := credCtx()
 			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.source)
 
 			if tt.expectedError {
@@ -1558,9 +1573,9 @@ func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
+	c := NewClient(logger, srv.URL, nil)
 
-	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	result, err := c.doRequest(credCtx(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, 3, attempts)
 	assert.Contains(t, string(result), "success")
@@ -1576,9 +1591,9 @@ func TestDoRequest_RetriesExhausted(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
+	c := NewClient(logger, srv.URL, nil)
 
-	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	result, err := c.doRequest(credCtx(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Equal(t, 3, attempts)
@@ -1593,9 +1608,9 @@ func TestDoRequest_ContextCancelled(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
+	c := NewClient(logger, srv.URL, nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(credCtx())
 	cancel() // Cancel immediately
 
 	_, err := c.doRequest(ctx, http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
@@ -1612,9 +1627,9 @@ func TestDoRequest_NoRetryOn4xx(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
+	c := NewClient(logger, srv.URL, nil)
 
-	_, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	_, err := c.doRequest(credCtx(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	assert.Error(t, err)
 	assert.Equal(t, 1, attempts)
 	assert.Contains(t, err.Error(), "400")
@@ -1635,9 +1650,9 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	defer srv.Close()
 
 	logger := logpkg.New("debug")
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
+	c := NewClient(logger, srv.URL, nil)
 
-	result, err := c.doRequest(context.Background(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
+	result, err := c.doRequest(credCtx(), http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, 2, attempts)
 	assert.Contains(t, string(result), "success")
@@ -1664,9 +1679,9 @@ func TestNewClient_SetsCustomHeaders(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
+	client := NewClient(logger, server.URL, customHeaders)
 
-	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	_, err := client.ListAlerts(credCtx(), types.ListAlertsParams{})
 	assert.NoError(t, err)
 }
 
@@ -1682,9 +1697,9 @@ func TestNewClient_NilHeaders(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logger, server.URL, nil)
 
-	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	_, err := client.ListAlerts(credCtx(), types.ListAlertsParams{})
 	assert.NoError(t, err)
 }
 
@@ -1699,9 +1714,9 @@ func TestNewClient_EmptyHeaders(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{})
+	client := NewClient(logger, server.URL, map[string]string{})
 
-	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	_, err := client.ListAlerts(credCtx(), types.ListAlertsParams{})
 	assert.NoError(t, err)
 }
 
@@ -1726,9 +1741,9 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	defer server.Close()
 
 	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
+	client := NewClient(logger, server.URL, customHeaders)
 
-	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
+	_, err := client.ListAlerts(credCtx(), types.ListAlertsParams{})
 	assert.NoError(t, err)
 }
 
@@ -1740,9 +1755,9 @@ func TestCreateAlertRule_v2Returns201(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"rule-123"}}`))
 	}))
 	defer srv.Close()
-	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("debug"), srv.URL, nil)
 
-	data, err := client.CreateAlertRule(context.Background(), []byte(`{"alert":"x"}`))
+	data, err := client.CreateAlertRule(credCtx(), []byte(`{"alert":"x"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v2/rules", gotPath)
 	assert.Equal(t, http.MethodPost, gotMethod)
@@ -1756,9 +1771,9 @@ func TestUpdateAlertRule_v2Returns204(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("debug"), srv.URL, nil)
 
-	err := client.UpdateAlertRule(context.Background(), "abc-123", []byte(`{"alert":"x"}`))
+	err := client.UpdateAlertRule(credCtx(), "abc-123", []byte(`{"alert":"x"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v2/rules/abc-123", gotPath)
 	assert.Equal(t, http.MethodPut, gotMethod)
@@ -1771,9 +1786,9 @@ func TestDeleteAlertRule_v2Returns204(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("debug"), srv.URL, nil)
 
-	err := client.DeleteAlertRule(context.Background(), "abc-123")
+	err := client.DeleteAlertRule(credCtx(), "abc-123")
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v2/rules/abc-123", gotPath)
 	assert.Equal(t, http.MethodDelete, gotMethod)
@@ -1786,9 +1801,9 @@ func TestTestNotificationChannel_UsesNewPath(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("debug"), srv.URL, nil)
 
-	err := client.TestNotificationChannel(context.Background(), []byte(`{"name":"x"}`))
+	err := client.TestNotificationChannel(credCtx(), []byte(`{"name":"x"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/channels/test", gotPath)
 }
@@ -1800,9 +1815,9 @@ func TestUpdateNotificationChannel_Returns204(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("debug"), srv.URL, nil)
 
-	err := client.UpdateNotificationChannel(context.Background(), "42", []byte(`{"name":"x"}`))
+	err := client.UpdateNotificationChannel(credCtx(), "42", []byte(`{"name":"x"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/channels/42", gotPath)
 	assert.Equal(t, http.MethodPut, gotMethod)
@@ -1815,9 +1830,9 @@ func TestDeleteNotificationChannel(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("debug"), srv.URL, nil)
 
-	err := client.DeleteNotificationChannel(context.Background(), "42")
+	err := client.DeleteNotificationChannel(credCtx(), "42")
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/channels/42", gotPath)
 	assert.Equal(t, http.MethodDelete, gotMethod)
@@ -1835,8 +1850,8 @@ func TestListViews(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	_, err := c.ListViews(context.Background(), "traces", "ak", "ops")
+	c := NewClient(logpkg.New("error"), server.URL, nil)
+	_, err := c.ListViews(credCtx(), "traces", "ak", "ops")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views", gotPath)
@@ -1853,8 +1868,8 @@ func TestGetView(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
 	}))
 	defer server.Close()
-	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	_, err := c.GetView(context.Background(), "view-uuid-1")
+	c := NewClient(logpkg.New("error"), server.URL, nil)
+	_, err := c.GetView(credCtx(), "view-uuid-1")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views/view-uuid-1", gotPath)
@@ -1870,9 +1885,9 @@ func TestCreateView(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"new-id"}}`))
 	}))
 	defer server.Close()
-	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	c := NewClient(logpkg.New("error"), server.URL, nil)
 	body := []byte(`{"name":"x","sourcePage":"traces","compositeQuery":{}}`)
-	_, err := c.CreateView(context.Background(), body)
+	_, err := c.CreateView(credCtx(), body)
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPost, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views", gotPath)
@@ -1887,8 +1902,8 @@ func TestUpdateView(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
 	}))
 	defer server.Close()
-	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	_, err := c.UpdateView(context.Background(), "view-1", []byte(`{}`))
+	c := NewClient(logpkg.New("error"), server.URL, nil)
+	_, err := c.UpdateView(credCtx(), "view-1", []byte(`{}`))
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPut, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
@@ -1902,8 +1917,8 @@ func TestDeleteView(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"success"}`))
 	}))
 	defer server.Close()
-	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	_, err := c.DeleteView(context.Background(), "view-1")
+	c := NewClient(logpkg.New("error"), server.URL, nil)
+	_, err := c.DeleteView(credCtx(), "view-1")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodDelete, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
