@@ -42,15 +42,24 @@ fields. No new method-signature churn.
   the credential. (`customHeaders` is already config-derived and URL-gated by the caller.)
 - `NewClient` signature drops `apiKey` and `authHeaderName`:
   `NewClient(log, baseURL, customHeaders)`.
-- In `doRequest` / `doValidationRequest`, resolve credentials from `ctx`:
+- In **both** `doRequest` *and* `doValidationRequest` (the two functions that actually stamp
+  the auth header — lines 246 and 329), resolve credentials from `ctx`:
   - `apiKey, _ := util.GetAPIKey(ctx)`
   - `authHeader, _ := util.GetAuthHeader(ctx)`; default to `SIGNOZ-API-KEY` if empty
     (preserving the current fallback that lives in `GetClient`).
   - If `apiKey == ""`, return an error before sending — fail closed rather than send an
-    unauthenticated request. This guards the implicit-context risk.
+    unauthenticated request. This guards the implicit-context risk. Applies to both functions.
   - `req.Header.Set(authHeader, apiKey)` and use `authHeader` in the reserved-header skip
-    checks for `customHeaders` (replacing the `s.authHeaderName` references at lines 249,
+    checks for `customHeaders` (replacing the `s.authHeaderName` references at lines 249–250,
     329, 332).
+  - Note: `doValidationRequest` is the shared sender for `ValidateCredentials` *and*
+    `fetchAnalyticsIdentity`, so fixing it covers all three public entry points. The URL
+    strings those callers build still come from `s.baseURL` (unchanged — `baseURL` stays on
+    the struct); only the auth header now comes from ctx.
+- `fetchAnalyticsIdentity` (line ~177) currently selects its endpoint via
+  `strings.EqualFold(s.authHeaderName, "Authorization")`. Change this to read the auth header
+  from ctx (`authHeader, _ := util.GetAuthHeader(ctx)`) so endpoint selection follows the
+  per-request credential, not a struct field.
 
 ### Identity cache (resolves the deferred open question)
 
@@ -64,9 +73,18 @@ Fix: replace the single-value cache with a per-credential map guarded by the exi
 `identityMu`:
 
 ```go
+// remove: cachedIdentity *AnalyticsIdentity / identityCachedAt time.Time
 identityMu    sync.Mutex
-identityCache map[string]identityEntry // key: hash of (apiKey, authHeader)
+identityCache map[string]identityEntry // key: HashCredential(apiKey, authHeader)
+
+type identityEntry struct {
+    identity *AnalyticsIdentity
+    cachedAt time.Time
+}
 ```
+
+(The map is lazily initialized — `if s.identityCache == nil { s.identityCache = map[...]{} }`
+under the mutex, or initialized in `NewClient`.)
 
 - Key by a hash of `(apiKey, authHeader)` — the auth header is part of the key because it
   changes which endpoint is queried and thus which identity shape comes back. `HashTenantKey`
@@ -74,6 +92,12 @@ identityCache map[string]identityEntry // key: hash of (apiKey, authHeader)
   no callers. Repurpose it into `util.HashCredential(apiKey, authHeader)` (same SHA-256
   approach) and use it as the identity-cache map key, so raw keys are never held in the map and
   no dead code is left behind.
+- **Defaulting consistency (avoid a subtle cache-mismatch bug):** apply the
+  `authHeader == "" → "SIGNOZ-API-KEY"` default *once*, before both the key computation and
+  the endpoint selection in `fetchAnalyticsIdentity`. If the map key used the raw (empty)
+  header while the endpoint logic used the defaulted header, two equivalent requests could
+  map to different keys or pick mismatched endpoints. Resolve+default the header at the top of
+  `GetAnalyticsIdentity`, pass the normalized header down (or re-default identically).
 - `GetAnalyticsIdentity` reads `apiKey` / `authHeader` from `ctx`, computes the key, and
   does per-entry TTL expiry (same `analyticsIdentityCacheTTL`). Cache-hit / cache-miss meter
   emission is unchanged.
@@ -82,9 +106,18 @@ identityCache map[string]identityEntry // key: hash of (apiKey, authHeader)
 
 ### Cache-key change (`internal/handler/tools/handler.go`)
 
-- `GetClient`: `cacheKey := util.NormalizeSigNozURL(signozURL)` (already normalized
-  upstream; use the normalized URL string as the key) instead of
-  `util.HashTenantKey(apiKey, signozURL)`.
+- `GetClient`: replace `cacheKey := util.HashTenantKey(apiKey, signozURL)` with a key derived
+  from the URL alone: `cacheKey := strings.ToLower(signozURL)`.
+  - **Do not** call `util.NormalizeSigNozURL` here: it returns `(string, error)` (can't be
+    assigned inline) and is not applied to the ctx URL anywhere today, so introducing it would
+    be a behavior change beyond this issue's scope. The ctx `signozURL` is used raw today (the
+    old key hashed it raw); we keep that semantics and only drop the apiKey from the key.
+  - `ToLower` is used (rather than the raw string) only to match the case-insensitive
+    `strings.EqualFold(signozURL, h.configURL)` semantics already used for the custom-header
+    gate — so a single tenant URL maps to one cache entry regardless of case. This is a
+    deliberate, conservative choice; if exact-match keying is preferred we can use `signozURL`
+    verbatim, which is also correct (just slightly less sharing). Either way it is not a
+    correctness/security issue because credentials are no longer part of the key.
 - Still read `apiKey` from ctx and keep the "missing tenant credentials" guard — a request
   with no API key is still an error; we just don't key the cache on it.
 - `NewClient` call updated to the new signature (drop `apiKey`, `authHeader`).
@@ -136,6 +169,14 @@ client.Method(ctx) → doRequest(ctx):
 
 ## Testing / verification
 
+- **Existing-test migration (large, mechanical, mandatory):** `internal/client/client_test.go`
+  has ~40 call sites using the old 5-arg `NewClient(logger, url, apiKey, authHeader, headers)`.
+  All must move to the 3-arg signature, and every test that then calls a request method must
+  seed the credential into the test's ctx (`ctx = util.SetAPIKey(ctx, "test-api-key"); ctx =
+  util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")`). Tests that today vary `authHeaderName` per case
+  (e.g. lines 365, 392, 414 — the `Authorization` cases) must set the header on ctx instead of
+  passing it to the constructor. Without this, the new fail-closed guard makes every request
+  test error. A shared test helper that returns a credentialed ctx is the cleanest path.
 - Unit: `internal/client/client_test.go` — request methods stamp the ctx credential;
   missing-credential ctx errors; identity cache is keyed per credential (two ctxs with
   different keys against one client get distinct identities; same key hits cache).
