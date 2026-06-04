@@ -145,39 +145,45 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 // orgId, v1 doesn't). API-key clients hit /api/v1/service_accounts/me.
 func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
 	ctx = s.ensureTenantContext(ctx)
+
+	apiKey, authHeader, credErr := credentialsFromContext(ctx)
+	if credErr != nil {
+		return nil, credErr
+	}
+	cacheKey := util.HashCredential(apiKey, authHeader)
+
 	s.identityMu.Lock()
 	defer s.identityMu.Unlock()
 
-	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
+	if entry, ok := s.identityCache[cacheKey]; ok && time.Since(entry.cachedAt) < analyticsIdentityCacheTTL {
 		if s.meters != nil {
 			attrs := otelpkg.AppendTenantURL(ctx, nil)
 			s.meters.IdentityCacheHits.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
-		return s.cachedIdentity, nil
+		return entry.identity, nil
 	}
 	if s.meters != nil {
 		attrs := otelpkg.AppendTenantURL(ctx, nil)
 		s.meters.IdentityCacheMisses.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 
-	identity, err := s.fetchAnalyticsIdentity(ctx)
+	identity, err := s.fetchAnalyticsIdentity(ctx, authHeader)
 	if err != nil {
 		return nil, err
 	}
 
-	s.cachedIdentity = identity
-	s.identityCachedAt = time.Now()
+	s.identityCache[cacheKey] = identityEntry{identity: identity, cachedAt: time.Now()}
 	return identity, nil
 }
 
-func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
+func (s *SigNoz) fetchAnalyticsIdentity(ctx context.Context, authHeader string) (*AnalyticsIdentity, error) {
 	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	endpoint := "/api/v1/service_accounts/me"
 	principal := "service_account"
-	if strings.EqualFold(s.authHeaderName, "Authorization") {
+	if strings.EqualFold(authHeader, "Authorization") {
 		endpoint = "/api/v2/users/me"
 		principal = "user"
 	}
