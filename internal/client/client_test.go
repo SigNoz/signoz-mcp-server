@@ -1923,3 +1923,20 @@ func TestDeleteView(t *testing.T) {
 	assert.Equal(t, http.MethodDelete, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
 }
+
+func TestDoRequest_MissingCredentialFailsClosed(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, nil)
+
+	// Background ctx has no API key -> must error before any HTTP call.
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing API key")
+	assert.False(t, called, "no HTTP request should be sent without credentials")
+}
