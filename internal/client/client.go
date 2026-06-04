@@ -237,6 +237,22 @@ func parseAnalyticsIdentity(body []byte, principal string) (*AnalyticsIdentity, 
 	}, nil
 }
 
+// credentialsFromContext pulls the per-request API key and auth header from
+// ctx. The auth header defaults to SIGNOZ-API-KEY (matching the handler's
+// fallback). An empty apiKey is an error: we fail closed rather than send an
+// unauthenticated request, since the client no longer stores a credential.
+func credentialsFromContext(ctx context.Context) (apiKey, authHeader string, err error) {
+	apiKey, _ = util.GetAPIKey(ctx)
+	authHeader, _ = util.GetAuthHeader(ctx)
+	if authHeader == "" {
+		authHeader = SignozApiKey
+	}
+	if apiKey == "" {
+		return "", "", errors.New("missing API key in request context")
+	}
+	return apiKey, authHeader, nil
+}
+
 // doValidationRequest sends a GET request to the given URL with auth headers
 // and returns the HTTP status code, response body, and any transport error.
 func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, []byte, error) {
@@ -245,11 +261,16 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		return 0, nil, fmt.Errorf("failed to create validation request: %w", err)
 	}
 
+	apiKey, authHeader, credErr := credentialsFromContext(ctx)
+	if credErr != nil {
+		return 0, nil, credErr
+	}
+
 	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(s.authHeaderName, s.apiKey)
+	req.Header.Set(authHeader, apiKey)
 
 	for k, v := range s.customHeaders {
-		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, s.authHeaderName) {
+		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, authHeader) {
 			req.Header.Set(k, v)
 		}
 	}
@@ -313,6 +334,11 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 	}
 
+	apiKey, authHeader, credErr := credentialsFromContext(ctx)
+	if credErr != nil {
+		return nil, credErr
+	}
+
 	var lastErr error
 	wait := retryBaseWait
 
@@ -328,11 +354,10 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		req.Header.Set(ContentType, "application/json")
-
-		req.Header.Set(s.authHeaderName, s.apiKey)
+		req.Header.Set(authHeader, apiKey)
 
 		for k, v := range s.customHeaders {
-			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
+			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, authHeader) {
 				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
 					slog.String("header", k), slog.String("value", v))
 				continue
