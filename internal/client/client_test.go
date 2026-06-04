@@ -1940,3 +1940,27 @@ func TestDoRequest_MissingCredentialFailsClosed(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing API key")
 	assert.False(t, called, "no HTTP request should be sent without credentials")
 }
+
+func TestGetAnalyticsIdentity_PerCredentialCache(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","email":"a@x.io","orgId":"org-1"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, nil)
+
+	// Two distinct credentials -> two fetches.
+	_, err := client.GetAnalyticsIdentity(credCtxFor("key-a", "SIGNOZ-API-KEY"))
+	require.NoError(t, err)
+	_, err = client.GetAnalyticsIdentity(credCtxFor("key-b", "SIGNOZ-API-KEY"))
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), requests.Load(), "different credentials must not share a cached identity")
+
+	// Repeating key-a hits the cache -> no new fetch.
+	_, err = client.GetAnalyticsIdentity(credCtxFor("key-a", "SIGNOZ-API-KEY"))
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), requests.Load(), "same credential must reuse the cached identity")
+}
