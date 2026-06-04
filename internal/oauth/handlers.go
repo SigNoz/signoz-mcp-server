@@ -303,7 +303,13 @@ func (h *Handler) validateSigNozCredentials(ctx context.Context, signozURL, apiK
 	if strings.EqualFold(signozURL, configNormalized) {
 		headers = h.config.CustomHeaders
 	}
-	signozClient := client.NewClient(h.logger, signozURL, apiKey, "SIGNOZ-API-KEY", headers)
+
+	// The client reads credentials from context, so seed them here — the OAuth
+	// flow received them as form fields / decrypted grants, not on the context.
+	ctx = util.SetAPIKey(ctx, apiKey)
+	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+
+	signozClient := client.NewClient(h.logger, signozURL, headers)
 	return signozClient.ValidateCredentials(ctx)
 }
 
