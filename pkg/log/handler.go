@@ -48,6 +48,12 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" {
 		r.AddAttrs(slog.String("mcp.search_context", searchContext))
 	}
+	if toolName, ok := util.GetToolName(ctx); ok && toolName != "" {
+		r.AddAttrs(
+			slog.String("gen_ai.tool.name", toolName),
+			slog.String("gen_ai.operation.name", "execute_tool"),
+		)
+	}
 	if clientSource, ok := util.GetClientSource(ctx); ok && clientSource != "" {
 		r.AddAttrs(slog.String("mcp.client_source", clientSource))
 	}

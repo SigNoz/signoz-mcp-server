@@ -628,7 +628,7 @@ func (m *MCPServer) expireMethodObservation(key string) {
 	m.completeMethodObservation(observation, expireErr)
 
 	logCtx := context.WithoutCancel(observation.ctx)
-	attrs := []any{slog.String("mcp.method", string(observation.method))}
+	attrs := []any{slog.String("mcp.method.name", string(observation.method))}
 	if ctxErr != nil {
 		attrs = append(attrs, slog.String("context_error", ctxErr.Error()))
 	}
@@ -813,7 +813,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		if len(spanAttrs) > 0 {
 			span.SetAttributes(spanAttrs...)
 		}
-		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method", string(method)))
+		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method.name", string(method)))
 	})
 	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
 		if !m.finishMethodObservation(ctx, id, method, message, nil) && shouldObserveMethod(method) {
@@ -840,7 +840,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			span.SetStatus(codes.Error, err.Error())
 		}
 		m.logger.ErrorContext(ctx, "mcp error",
-			slog.String("mcp.method", string(method)),
+			slog.String("mcp.method.name", string(method)),
 			logpkg.ErrAttr(err))
 	})
 	// Analytics: track session registration after successful initialize.
@@ -947,6 +947,8 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				}
 			}
 
+			ctx = util.SetToolName(ctx, req.Params.Name)
+
 			// Create a span for this tool call with GenAI semantic attributes.
 			ctx, span := tracer.Start(ctx, "execute_tool",
 				trace.WithSpanKind(trace.SpanKindServer),
@@ -972,8 +974,7 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				span.SetAttributes(extraAttrs...)
 			}
 
-			toolNameAttr := slog.String("gen_ai.tool.name", req.Params.Name)
-			m.logger.DebugContext(ctx, "tool call started", toolNameAttr)
+			m.logger.DebugContext(ctx, "tool call started")
 			result, err := next(ctx, req)
 
 			// Determine error status: either a Go error or an MCP tool result error.
@@ -998,21 +999,18 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			switch {
 			case err != nil:
 				m.logger.ErrorContext(ctx, "tool call failed",
-					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,
 					logpkg.ErrAttr(err))
 			case result != nil && result.IsError:
 				m.logger.WarnContext(ctx, "tool call returned error result",
-					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,
 					slog.String("error_message", extractToolErrorMessage(result)))
 			default:
 				m.logger.DebugContext(ctx, "tool call finished",
-					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr)
@@ -1203,6 +1201,14 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 		attribute.Int("http.response.status_code", status),
 		attribute.String("mcp.auth.failure_reason", reason),
 	)
+	if m.meters != nil {
+		metricAttrs := []attribute.KeyValue{
+			attribute.String("mcp.auth.failure_reason", reason),
+			attribute.String("mcp.auth.mode", authMode),
+		}
+		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
+		m.meters.AuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+	}
 
 	logAttrs := []slog.Attr{
 		slog.Int("http.response.status_code", status),
@@ -1211,7 +1217,11 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 	}
 	logAttrs = append(logAttrs, logpkg.MCPHTTPRequestAttrs(r)...)
 	logAttrs = append(logAttrs, attrs...)
-	m.logger.LogAttrs(ctx, slog.LevelWarn, msg, logAttrs...)
+	level := slog.LevelWarn
+	if reason == authFailureExpiredOAuthToken || reason == authFailureMissingCredential {
+		level = slog.LevelDebug
+	}
+	m.logger.LogAttrs(ctx, level, msg, logAttrs...)
 }
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
@@ -1263,7 +1273,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-			m.logger.DebugContext(ctx, "Using SIGNOZ-API-KEY header for auth")
 		} else if authHeader != "" {
 			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 			if customURL != "" {
@@ -1273,14 +1282,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					authMode = authModeAuthorizationJWT
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "Authorization")
-					m.logger.DebugContext(ctx, "Using JWT token authentication via Authorization header", slog.String("mcp.tenant_url", customURL))
 				} else {
 					// PAT token — forward via SIGNOZ-API-KEY
 					apiKey = token
 					authMode = authModeAuthorizationAPIKey
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header", slog.String("mcp.tenant_url", customURL))
 				}
 			} else if m.config.OAuthEnabled {
 				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
@@ -1292,7 +1299,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					authMode = authModeOAuthAccessToken
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.DebugContext(ctx, "OAuth access token extracted from Authorization header", slog.String("mcp.tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
 					authMode = authModeOAuthAccessToken
 					// The token is expired but was once server-issued, so the
@@ -1329,7 +1335,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				authMode = authModeAuthorizationAPIKey
 				ctx = util.SetAPIKey(ctx, apiKey)
 				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-				m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header")
 			}
 
 		} else if m.config.APIKey != "" {
@@ -1370,7 +1375,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			signozURL = normalized
-			m.logger.DebugContext(ctx, "Using URL from X-SigNoz-URL header", slog.String("mcp.tenant_url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
 			m.logger.DebugContext(ctx, "Using URL from environment config", slog.String("mcp.tenant_url", signozURL))

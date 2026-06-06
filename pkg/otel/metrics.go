@@ -10,6 +10,7 @@ type Meters struct {
 	MethodCalls         metric.Int64Counter
 	MethodDuration      metric.Float64Histogram
 	SessionRegistered   metric.Int64Counter
+	AuthFailures        metric.Int64Counter
 	OAuthEvents         metric.Int64Counter
 	OAuthFailures       metric.Int64Counter
 	IdentityCacheHits   metric.Int64Counter
@@ -67,6 +68,14 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	sessionRegistered, err := meter.Int64Counter(
 		"mcp.session.registered",
 		metric.WithDescription("Count of MCP sessions successfully registered"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	authFailures, err := meter.Int64Counter(
+		"mcp.auth.failures",
+		metric.WithDescription("Count of request-time auth failures"),
 	)
 	if err != nil {
 		return nil, err
@@ -154,6 +163,7 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		MethodCalls:         methodCalls,
 		MethodDuration:      methodDuration,
 		SessionRegistered:   sessionRegistered,
+		AuthFailures:        authFailures,
 		OAuthEvents:         oauthEvents,
 		OAuthFailures:       oauthFailures,
 		IdentityCacheHits:   identityCacheHits,
