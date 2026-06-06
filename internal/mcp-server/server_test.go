@@ -162,6 +162,34 @@ func parseJSONLogLines(t *testing.T, buf logStringer) []map[string]any {
 	return records
 }
 
+func rawJSONLogLines(buf logStringer) []string {
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func logRecordByMessage(t *testing.T, buf logStringer, msg string) (map[string]any, string) {
+	t.Helper()
+
+	records := parseJSONLogLines(t, buf)
+	lines := rawJSONLogLines(buf)
+	if len(records) != len(lines) {
+		t.Fatalf("parsed records = %d, raw lines = %d", len(records), len(lines))
+	}
+	for i, rec := range records {
+		if rec["msg"] == msg {
+			return rec, lines[i]
+		}
+	}
+	t.Fatalf("log message %q not found in %v", msg, records)
+	return nil, ""
+}
+
 func spanAttrValue(attrs []attribute.KeyValue, key attribute.Key) (attribute.Value, bool) {
 	for _, attr := range attrs {
 		if attr.Key == key {
@@ -746,6 +774,156 @@ func TestAuthMiddlewareAuthFailureTelemetryBranches(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareExpiredOAuthLogsDebugAndRecordsAuthFailureMetric(t *testing.T) {
+	const tokenSecret = "0123456789abcdef0123456789abcdef"
+	expiredToken, err := oauth.EncryptToken(
+		"oauth-api-key",
+		"https://oauth.example.com",
+		"client-1",
+		time.Now().UTC().Add(-time.Hour),
+		[]byte(tokenSecret),
+	)
+	if err != nil {
+		t.Fatalf("EncryptToken() error = %v", err)
+	}
+
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	var buf lockedBuffer
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: tokenSecret,
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+	server := &MCPServer{logger: newBufferedLogger(&buf, slog.LevelDebug), config: cfg, analytics: noopanalytics.New(), meters: meters}
+
+	req := httptest.NewRequest(http.MethodPost, "https://mcp.example.com/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+expiredToken)
+	rr := httptest.NewRecorder()
+
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	rec, _ := logRecordByMessage(t, &buf, "OAuth access token expired")
+	if rec["level"] != "DEBUG" {
+		t.Fatalf("level = %v, want DEBUG", rec["level"])
+	}
+	if rec["mcp.auth.failure_reason"] != authFailureExpiredOAuthToken {
+		t.Fatalf("mcp.auth.failure_reason = %v, want %s", rec["mcp.auth.failure_reason"], authFailureExpiredOAuthToken)
+	}
+	if rec["mcp.auth.mode"] != authModeOAuthAccessToken {
+		t.Fatalf("mcp.auth.mode = %v, want %s", rec["mcp.auth.mode"], authModeOAuthAccessToken)
+	}
+	if rec["mcp.tenant_url"] != "https://oauth.example.com" {
+		t.Fatalf("mcp.tenant_url = %v, want OAuth token tenant", rec["mcp.tenant_url"])
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+	authFailures, found := oteltest.FindInt64SumMetric(metrics, "mcp.auth.failures")
+	if !found {
+		t.Fatal("mcp.auth.failures metric not found")
+	}
+	if len(authFailures.DataPoints) != 1 {
+		t.Fatalf("mcp.auth.failures datapoints = %d, want 1", len(authFailures.DataPoints))
+	}
+	dp := authFailures.DataPoints[0]
+	if dp.Value != 1 {
+		t.Fatalf("mcp.auth.failures value = %d, want 1", dp.Value)
+	}
+	if attr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.failure_reason")); !ok || attr.AsString() != authFailureExpiredOAuthToken {
+		t.Fatalf("metric mcp.auth.failure_reason = %v, want %s", attr, authFailureExpiredOAuthToken)
+	}
+	if attr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.mode")); !ok || attr.AsString() != authModeOAuthAccessToken {
+		t.Fatalf("metric mcp.auth.mode = %v, want %s", attr, authModeOAuthAccessToken)
+	}
+	if attr, ok := dp.Attributes.Value(otelpkg.MCPTenantURLKey); !ok || attr.AsString() != "https://oauth.example.com" {
+		t.Fatalf("metric mcp.tenant_url = %v, want OAuth token tenant", attr)
+	}
+}
+
+func TestAuthMiddlewareMissingCredentialsLogsDebugAndRecordsAuthFailureMetric(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	var buf lockedBuffer
+	cfg := &config.Config{
+		OAuthEnabled:   true,
+		OAuthIssuerURL: "https://mcp.example.com",
+	}
+	server := &MCPServer{logger: newBufferedLogger(&buf, slog.LevelDebug), config: cfg, analytics: noopanalytics.New(), meters: meters}
+
+	req := httptest.NewRequest(http.MethodPost, "https://mcp.example.com/mcp", nil)
+	rr := httptest.NewRecorder()
+
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	rec, _ := logRecordByMessage(t, &buf, "No API key found in headers or environment")
+	if rec["level"] != "DEBUG" {
+		t.Fatalf("level = %v, want DEBUG", rec["level"])
+	}
+	if rec["mcp.auth.failure_reason"] != authFailureMissingCredential {
+		t.Fatalf("mcp.auth.failure_reason = %v, want %s", rec["mcp.auth.failure_reason"], authFailureMissingCredential)
+	}
+	if rec["mcp.auth.mode"] != authModeNone {
+		t.Fatalf("mcp.auth.mode = %v, want %s", rec["mcp.auth.mode"], authModeNone)
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+	authFailures, found := oteltest.FindInt64SumMetric(metrics, "mcp.auth.failures")
+	if !found {
+		t.Fatal("mcp.auth.failures metric not found")
+	}
+	if len(authFailures.DataPoints) != 1 {
+		t.Fatalf("mcp.auth.failures datapoints = %d, want 1", len(authFailures.DataPoints))
+	}
+	dp := authFailures.DataPoints[0]
+	if dp.Value != 1 {
+		t.Fatalf("mcp.auth.failures value = %d, want 1", dp.Value)
+	}
+	if attr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.failure_reason")); !ok || attr.AsString() != authFailureMissingCredential {
+		t.Fatalf("metric mcp.auth.failure_reason = %v, want %s", attr, authFailureMissingCredential)
+	}
+	if attr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.mode")); !ok || attr.AsString() != authModeNone {
+		t.Fatalf("metric mcp.auth.mode = %v, want %s", attr, authModeNone)
+	}
+}
+
 func TestBuildHooks_APIKeyAnalyticsUseServiceAccountIdentity(t *testing.T) {
 	var requests atomic.Int32
 	sigNoz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1223,6 +1401,22 @@ func TestBuildHooks_NonToolMethodsRecordSpanAndMetrics(t *testing.T) {
 	}
 	if attr, ok := spanAttrValue(spans[0].Attributes, otelpkg.MCPTenantURLKey); !ok || attr.AsString() != "https://tenant.example.com" {
 		t.Fatalf("span mcp.tenant_url = %v, want tenant URL", attr)
+	}
+}
+
+func TestBuildHooks_MCPRequestLogUsesMethodNameKey(t *testing.T) {
+	var buf lockedBuffer
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(logpkg.New("error"), cfg)
+	mcpServer := NewMCPServer(newBufferedLogger(&buf, slog.LevelDebug), handler, cfg, noopanalytics.New(), nil)
+	hooks := mcpServer.buildHooks()
+
+	ctx := newAnalyticsTestContext(context.Background(), "sess-init")
+	singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, "req-1", mcp.MethodInitialize, &mcp.InitializeRequest{})
+
+	rec, _ := logRecordByMessage(t, &buf, "mcp request")
+	if rec["mcp.method.name"] != string(mcp.MethodInitialize) {
+		t.Fatalf("mcp.method.name = %v, want %q", rec["mcp.method.name"], mcp.MethodInitialize)
 	}
 }
 
@@ -2064,6 +2258,86 @@ func TestMethodSpanMiddleware_SkipsOversizedBodyAndPassesThrough(t *testing.T) {
 	}
 	if spans := traceExporter.GetSpans(); len(spans) != 0 {
 		t.Fatalf("span count = %d, want 0", len(spans))
+	}
+}
+
+func TestLoggingMiddlewareAddsToolNameToLifecycleAndDownstreamLogs(t *testing.T) {
+	tests := []struct {
+		name          string
+		result        *mcp.CallToolResult
+		err           error
+		terminalMsg   string
+		terminalLevel string
+	}{
+		{
+			name:          "success",
+			result:        &mcp.CallToolResult{},
+			terminalMsg:   "tool call finished",
+			terminalLevel: "DEBUG",
+		},
+		{
+			name: "tool error result",
+			result: &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{mcp.TextContent{Text: "tool exploded"}},
+			},
+			terminalMsg:   "tool call returned error result",
+			terminalLevel: "WARN",
+		},
+		{
+			name:          "go error",
+			err:           errors.New("upstream failed"),
+			terminalMsg:   "tool call failed",
+			terminalLevel: "ERROR",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf lockedBuffer
+			logger := newBufferedLogger(&buf, slog.LevelDebug)
+			mcpServer := NewMCPServer(logger, nil, &config.Config{}, noopanalytics.New(), nil)
+
+			middleware := mcpServer.loggingMiddleware()
+			_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				logger.DebugContext(ctx, "downstream tool log")
+				return tt.result, tt.err
+			})(context.Background(), mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Name: "signoz_query",
+					Arguments: map[string]any{
+						"searchContext": "find slow services",
+					},
+				},
+			})
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("middleware error = %v, want %v", err, tt.err)
+			}
+
+			for _, msg := range []string{"tool call started", tt.terminalMsg, "downstream tool log"} {
+				rec, line := logRecordByMessage(t, &buf, msg)
+				if rec["gen_ai.tool.name"] != "signoz_query" {
+					t.Fatalf("%s gen_ai.tool.name = %v, want signoz_query", msg, rec["gen_ai.tool.name"])
+				}
+				if rec["gen_ai.operation.name"] != "execute_tool" {
+					t.Fatalf("%s gen_ai.operation.name = %v, want execute_tool", msg, rec["gen_ai.operation.name"])
+				}
+				if rec["mcp.search_context"] != "find slow services" {
+					t.Fatalf("%s mcp.search_context = %v, want search text", msg, rec["mcp.search_context"])
+				}
+				if strings.HasPrefix(msg, "tool call ") {
+					count := strings.Count(line, `"gen_ai.tool.name":`)
+					if count != 1 {
+						t.Fatalf("%s gen_ai.tool.name key count in %q = %d, want 1", msg, line, count)
+					}
+				}
+			}
+
+			terminal, _ := logRecordByMessage(t, &buf, tt.terminalMsg)
+			if terminal["level"] != tt.terminalLevel {
+				t.Fatalf("%s level = %v, want %s", tt.terminalMsg, terminal["level"], tt.terminalLevel)
+			}
+		})
 	}
 }
 

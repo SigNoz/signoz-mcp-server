@@ -15,6 +15,7 @@ const (
 	signozURLContextKey            contextKey = "signoz_url"
 	searchContextContextKey        contextKey = "search_context"
 	sessionIDContextKey            contextKey = "session_id"
+	toolNameContextKey             contextKey = "tool_name"
 	clientSourceContextKey         contextKey = "client_source"
 	assistantThreadIDContextKey    contextKey = "assistant_thread_id"
 	assistantExecutionIDContextKey contextKey = "assistant_execution_id"
@@ -100,6 +101,17 @@ func SetSessionID(ctx context.Context, id string) context.Context {
 func GetSessionID(ctx context.Context) (string, bool) {
 	id, ok := ctx.Value(sessionIDContextKey).(string)
 	return id, ok
+}
+
+// SetToolName stores the MCP tool name in the context.
+func SetToolName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, toolNameContextKey, name)
+}
+
+// GetToolName retrieves the MCP tool name from the context.
+func GetToolName(ctx context.Context) (string, bool) {
+	name, ok := ctx.Value(toolNameContextKey).(string)
+	return name, ok
 }
 
 // SetClientSource stores the MCP caller category in the context.

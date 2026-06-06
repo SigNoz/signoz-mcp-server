@@ -564,7 +564,8 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 	s.logger.DebugContext(ctx, "sending request",
 		slog.String("url", reqURL),
-		slog.String("body", logpkg.TruncBody(body)))
+		slog.String("body", logpkg.TruncBody(body)),
+		slog.Int("request.body.size_bytes", len(body)))
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
