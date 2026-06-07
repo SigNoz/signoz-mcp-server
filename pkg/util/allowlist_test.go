@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestTenantURLAllowlistUnconfiguredAllowsAll(t *testing.T) {
-	al := ParseTenantURLAllowlist("")
+func TestInstanceURLAllowlistUnconfiguredAllowsAll(t *testing.T) {
+	al := ParseInstanceURLAllowlist("")
 	if al.Configured() {
 		t.Fatalf("empty allowlist should not be configured")
 	}
@@ -20,8 +20,8 @@ func TestTenantURLAllowlistUnconfiguredAllowsAll(t *testing.T) {
 	}
 }
 
-func TestTenantURLAllowlistWildcard(t *testing.T) {
-	al := ParseTenantURLAllowlist("*.us.signoz.cloud")
+func TestInstanceURLAllowlistWildcard(t *testing.T) {
+	al := ParseInstanceURLAllowlist("*.us.signoz.cloud")
 	if !al.Configured() {
 		t.Fatalf("allowlist should be configured")
 	}
@@ -54,8 +54,8 @@ func TestTenantURLAllowlistWildcard(t *testing.T) {
 	}
 }
 
-func TestTenantURLAllowlistExactAndMultiple(t *testing.T) {
-	al := ParseTenantURLAllowlist("signoz.example.com, *.eu.signoz.cloud ,https://*.us.signoz.cloud/")
+func TestInstanceURLAllowlistExactAndMultiple(t *testing.T) {
+	al := ParseInstanceURLAllowlist("signoz.example.com, *.eu.signoz.cloud ,https://*.us.signoz.cloud/")
 
 	allowed := []string{
 		"signoz.example.com",
@@ -80,24 +80,24 @@ func TestTenantURLAllowlistExactAndMultiple(t *testing.T) {
 	}
 }
 
-func TestTenantURLAllowlistStripsPortFromEntry(t *testing.T) {
+func TestInstanceURLAllowlistStripsPortFromEntry(t *testing.T) {
 	// A pasted full URL with scheme/port/path is reduced to the bare host so it
 	// still matches (url.Hostname() never carries a port). Avoids a silent
 	// all-403 footgun for operators who paste a full URL.
-	if !ParseTenantURLAllowlist("https://signoz.example.com:8080/").AllowsHost("signoz.example.com") {
+	if !ParseInstanceURLAllowlist("https://signoz.example.com:8080/").AllowsHost("signoz.example.com") {
 		t.Errorf("entry with scheme/port/path should match the bare host")
 	}
-	if !ParseTenantURLAllowlist("*.us.signoz.cloud:443").AllowsHost("demo.us.signoz.cloud") {
+	if !ParseInstanceURLAllowlist("*.us.signoz.cloud:443").AllowsHost("demo.us.signoz.cloud") {
 		t.Errorf("wildcard entry with a port should match a subdomain")
 	}
 	// Port on the checked URL is likewise ignored.
-	if !ParseTenantURLAllowlist("signoz.example.com").AllowsURL("https://signoz.example.com:8443") {
+	if !ParseInstanceURLAllowlist("signoz.example.com").AllowsURL("https://signoz.example.com:8443") {
 		t.Errorf("port on the checked URL should be ignored when matching a bare-host entry")
 	}
 }
 
-func TestTenantNotPermittedMessage(t *testing.T) {
-	msg := TenantNotPermittedMessage()
+func TestInstanceURLNotPermittedMessage(t *testing.T) {
+	msg := InstanceURLNotPermittedMessage()
 	if !strings.Contains(msg, "https://mcp.<region>.signoz.cloud/mcp") {
 		t.Errorf("message should point to the regional MCP URL, got: %s", msg)
 	}
@@ -106,8 +106,8 @@ func TestTenantNotPermittedMessage(t *testing.T) {
 	}
 }
 
-func TestTenantURLAllowlistAllowsURL(t *testing.T) {
-	al := ParseTenantURLAllowlist("*.us.signoz.cloud")
+func TestInstanceURLAllowlistAllowsURL(t *testing.T) {
+	al := ParseInstanceURLAllowlist("*.us.signoz.cloud")
 
 	if !al.AllowsURL("https://demo.us.signoz.cloud") {
 		t.Errorf("expected normalized cloud URL to be allowed")

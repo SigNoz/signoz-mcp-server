@@ -406,9 +406,9 @@ func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareRejectsTenantURLNotInAllowlist(t *testing.T) {
+func TestAuthMiddlewareRejectsInstanceURLNotInAllowlist(t *testing.T) {
 	cfg := &config.Config{
-		TenantURLAllowlist: util.ParseTenantURLAllowlist("*.us.signoz.cloud"),
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
 	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
@@ -427,13 +427,13 @@ func TestAuthMiddlewareRejectsTenantURLNotInAllowlist(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
 	}
 	if nextCalled {
-		t.Fatalf("next handler must not run for a disallowed tenant URL")
+		t.Fatalf("next handler must not run for a disallowed SigNoz URL")
 	}
 }
 
-func TestAuthMiddlewareAllowsTenantURLInAllowlist(t *testing.T) {
+func TestAuthMiddlewareAllowsInstanceURLInAllowlist(t *testing.T) {
 	cfg := &config.Config{
-		TenantURLAllowlist: util.ParseTenantURLAllowlist("*.us.signoz.cloud"),
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
 	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}

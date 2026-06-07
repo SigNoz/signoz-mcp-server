@@ -1157,16 +1157,16 @@ const (
 	authFailureDisallowedSignozURL = "disallowed_signoz_url"
 )
 
-// enforceTenantURLAllowlist rejects a client-supplied tenant URL not in
-// SIGNOZ_TENANT_URL_ALLOWLIST, returning false after writing the 403 + auth
+// enforceInstanceURLAllowlist rejects a client-supplied SigNoz URL not in
+// SIGNOZ_INSTANCE_URL_ALLOWLIST, returning false after writing the 403 + auth
 // failure. signozURL must already be on ctx so the failure carries mcp.tenant_url.
-func (m *MCPServer) enforceTenantURLAllowlist(ctx context.Context, w http.ResponseWriter, r *http.Request, signozURL, authMode string) bool {
-	if m.config.TenantURLAllowlist.AllowsURL(signozURL) {
+func (m *MCPServer) enforceInstanceURLAllowlist(ctx context.Context, w http.ResponseWriter, r *http.Request, signozURL, authMode string) bool {
+	if m.config.InstanceURLAllowlist.AllowsURL(signozURL) {
 		return true
 	}
 	m.logAuthFailure(ctx, r, http.StatusForbidden, authFailureDisallowedSignozURL, authMode,
 		"Tenant SigNoz URL is not permitted by the server allowlist", slog.String("mcp.tenant_url", signozURL))
-	http.Error(w, util.TenantNotPermittedMessage(), http.StatusForbidden)
+	http.Error(w, util.InstanceURLNotPermittedMessage(), http.StatusForbidden)
 	return false
 }
 
@@ -1378,7 +1378,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
 			}
-			if !m.enforceTenantURLAllowlist(ctx, w, r, signozURL, authMode) {
+			if !m.enforceInstanceURLAllowlist(ctx, w, r, signozURL, authMode) {
 				return
 			}
 			decorateAuthSpan(ctx, r, authMode)
@@ -1397,9 +1397,9 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
-			// Set tenant URL on ctx first so an allowlist rejection is attributed.
+			// Set the SigNoz URL on ctx first so an allowlist rejection is attributed.
 			ctx = util.SetSigNozURL(ctx, normalized)
-			if !m.enforceTenantURLAllowlist(ctx, w, r, normalized, authMode) {
+			if !m.enforceInstanceURLAllowlist(ctx, w, r, normalized, authMode) {
 				return
 			}
 			signozURL = normalized

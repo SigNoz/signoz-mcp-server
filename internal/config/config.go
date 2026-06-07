@@ -31,9 +31,9 @@ type Config struct {
 
 	CustomHeaders map[string]string
 
-	// TenantURLAllowlist optionally restricts which SigNoz backend hosts the
+	// InstanceURLAllowlist optionally restricts which SigNoz backend hosts the
 	// (multi-tenant) server will proxy to. Empty => every host is allowed.
-	TenantURLAllowlist util.TenantURLAllowlist
+	InstanceURLAllowlist util.InstanceURLAllowlist
 
 	// Analytics settings
 	AnalyticsEnabled bool
@@ -50,10 +50,10 @@ const (
 	TransportMode = "TRANSPORT_MODE"
 	MCPPort       = "MCP_SERVER_PORT"
 
-	SignozCustomHeaders   = "SIGNOZ_CUSTOM_HEADERS"
-	TenantURLAllowlistEnv = "SIGNOZ_TENANT_URL_ALLOWLIST"
-	ClientCacheSize       = "CLIENT_CACHE_SIZE"
-	ClientCacheTTL        = "CLIENT_CACHE_TTL_MINUTES"
+	SignozCustomHeaders     = "SIGNOZ_CUSTOM_HEADERS"
+	InstanceURLAllowlistEnv = "SIGNOZ_INSTANCE_URL_ALLOWLIST"
+	ClientCacheSize         = "CLIENT_CACHE_SIZE"
+	ClientCacheTTL          = "CLIENT_CACHE_TTL_MINUTES"
 
 	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
 	SegmentKeyEnv       = "SEGMENT_KEY"
@@ -110,9 +110,9 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	tenantURLAllowlist := util.ParseTenantURLAllowlist(getEnv(TenantURLAllowlistEnv, ""))
-	if tenantURLAllowlist.Configured() {
-		log.Printf("INFO: tenant URL allowlist enabled via %s; only matching SigNoz hosts will be served", TenantURLAllowlistEnv)
+	instanceURLAllowlist := util.ParseInstanceURLAllowlist(getEnv(InstanceURLAllowlistEnv, ""))
+	if instanceURLAllowlist.Configured() {
+		log.Printf("INFO: SigNoz URL allowlist enabled via %s; only matching SigNoz hosts will be served", InstanceURLAllowlistEnv)
 	}
 
 	return &Config{
@@ -130,7 +130,7 @@ func LoadConfig() (*Config, error) {
 		ClientCacheSize:         cacheSize,
 		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
 		CustomHeaders:           customHeaders,
-		TenantURLAllowlist:      tenantURLAllowlist,
+		InstanceURLAllowlist:    instanceURLAllowlist,
 		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
 		SegmentKey:              getEnv(SegmentKeyEnv, ""),
 		DocsRefreshInterval:     docsRefreshInterval,

@@ -933,7 +933,7 @@ func TestAuthorizeSubmitUnauthorizedRecordsFailureMetric(t *testing.T) {
 	}
 }
 
-func TestRefreshTokenGrantRejectsDisallowedTenant(t *testing.T) {
+func TestRefreshTokenGrantRejectsDisallowedInstanceURL(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	defer func() {
@@ -948,17 +948,17 @@ func TestRefreshTokenGrantRejectsDisallowedTenant(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		OAuthEnabled:       true,
-		OAuthTokenSecret:   "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:     "https://mcp.example.com",
-		AccessTokenTTL:     time.Hour,
-		RefreshTokenTTL:    24 * time.Hour,
-		TenantURLAllowlist: util.ParseTenantURLAllowlist("*.us.signoz.cloud"),
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		AccessTokenTTL:       time.Hour,
+		RefreshTokenTTL:      24 * time.Hour,
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
 
-	// A long-lived refresh token issued for a tenant that is no longer allowed.
+	// A long-lived refresh token issued for a SigNoz instance that is no longer allowed.
 	refreshToken, err := EncryptRefreshToken("api-key", "https://selfhosted.example.com", "client-123",
 		time.Now().UTC().Add(time.Hour), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
@@ -979,7 +979,7 @@ func TestRefreshTokenGrantRejectsDisallowedTenant(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
 	}
 	if strings.Contains(rr.Body.String(), "access_token") {
-		t.Fatalf("disallowed tenant must not be issued tokens, body = %s", rr.Body.String())
+		t.Fatalf("disallowed SigNoz URL must not be issued tokens, body = %s", rr.Body.String())
 	}
 	if !strings.Contains(rr.Body.String(), "invalid_grant") {
 		t.Fatalf("expected invalid_grant error, body = %s", rr.Body.String())
@@ -999,7 +999,7 @@ func TestRefreshTokenGrantRejectsDisallowedTenant(t *testing.T) {
 	}
 }
 
-func TestAuthorizeSubmitRejectsDisallowedTenant(t *testing.T) {
+func TestAuthorizeSubmitRejectsDisallowedInstanceURL(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	defer func() {
@@ -1014,11 +1014,11 @@ func TestAuthorizeSubmitRejectsDisallowedTenant(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		OAuthEnabled:       true,
-		OAuthTokenSecret:   "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:     "https://mcp.example.com",
-		AuthCodeTTL:        10 * time.Minute,
-		TenantURLAllowlist: util.ParseTenantURLAllowlist("*.us.signoz.cloud"),
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		AuthCodeTTL:          10 * time.Minute,
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
 	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)

@@ -48,6 +48,12 @@
 - Ran a live E2E (local server, real JWT in header, local `initialize` so the staging backend is never dialed): 13 edge cases all correct — allow (exact/no-slash/UPPERCASE/:443/:8443), deny 403 (wrong-region/self-hosted/apex/trailing-dot/SSRF metadata IP), 400 (localhost rejected by NormalizeSigNozURL, missing URL), unset allowlist allows all, and zero rejection log lines at debug (metric-only confirmed).
 - Finding: `signozCloudRegion` took the label before `.signoz.cloud`, which is correct for production (`tenant.us.signoz.cloud` → `us`) but mis-detects staging (`t.eu.staging.signoz.cloud` → `staging`). Decision: drop region extraction entirely — `TenantNotPermittedMessage()` now returns one generic message (Cloud → `mcp.<region>.signoz.cloud/mcp`, self-hosted → run your own, + docs link). Always correct, never names a wrong region. Removed `signozCloudRegion`.
 
+### 2026-06-07 — rename: drop "tenant" from the public surface
+- A reviewer noted "tenant" reads as internal jargon for an open-source project. Discussion: "tenant"/"multi-tenant" is standard SaaS-architecture vocabulary, but users configuring this think in terms of their *SigNoz instance URL* (the wording the README/OAuth form already use), so dropping "tenant" improves clarity regardless. `SIGNOZ_URL_ALLOWLIST` was rejected — too easily confused with the operator's own `SIGNOZ_URL`.
+- Renamed (feature is unreleased, so no back-compat/deprecation): env var `SIGNOZ_TENANT_URL_ALLOWLIST` → `SIGNOZ_INSTANCE_URL_ALLOWLIST`; Go symbols `TenantURLAllowlist`/`ParseTenantURLAllowlist`/`enforceTenantURLAllowlist`/`TenantNotPermittedMessage`/`TenantURLAllowlistEnv` → `Instance…`; config field/const, tests, README, and these plan files (renamed `tenant-url-allowlist.*` → `instance-url-allowlist.*`).
+- Deliberately KEPT: the released `mcp.tenant_url` telemetry attribute and the pre-existing `AttrTenantURL`/`AppendTenantURL`/`MCPTenantURLKey` analytics — renaming those is a breaking telemetry change (live in dashboards), out of scope. "multi-tenant" as an architecture term also kept.
+- Note: prior entries above intentionally retain the old `SIGNOZ_TENANT_URL_ALLOWLIST` / `TenantURLAllowlist` names — they are the accurate audit trail of what existed when written.
+
 ## Open Questions
 - [x] Should `*.signoz.cloud` match multi-label regional subdomains like `x.us.signoz.cloud`? — Yes; wildcard matches on dot-anchored suffix across labels.
 - [x] Should the operator's own `SIGNOZ_URL` be subject to the allowlist? — No; it is operator-configured and trusted, exempt from the check.

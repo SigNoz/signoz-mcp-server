@@ -233,8 +233,8 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 	}
 	// Reject disallowed backends before probing them, so the server never
 	// dials — or issues a token for — a host it will not serve.
-	if !h.config.TenantURLAllowlist.AllowsURL(normalizedURL) {
-		// Seed tenant_url so the rejection is attributed in mcp.oauth.failures.
+	if !h.config.InstanceURLAllowlist.AllowsURL(normalizedURL) {
+		// Seed the SigNoz URL (mcp.tenant_url) so the rejection is attributed in mcp.oauth.failures.
 		r = r.WithContext(util.SetSigNozURL(r.Context(), normalizedURL))
 		h.renderAuthorizePage(w, r, http.StatusForbidden, authorizeTemplateData{
 			ClientID:            params.ClientID,
@@ -245,7 +245,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 			CodeChallengeMethod: params.CodeChallengeMethod,
 			Scope:               params.Scope,
 			SignozURL:           normalizedURL,
-			ErrorMessage:        util.TenantNotPermittedMessage(),
+			ErrorMessage:        util.InstanceURLNotPermittedMessage(),
 			ErrorCode:           "access_denied",
 			FailureReason:       authFailureDisallowedSignozURL,
 		})
@@ -446,12 +446,12 @@ func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 func (h *Handler) issueTokenPair(w http.ResponseWriter, r *http.Request, clientID, apiKey, signozURL, grantType string) {
 	r = r.WithContext(util.SetSigNozURL(r.Context(), signozURL))
 
-	// Refuse to mint tokens for a now-disallowed tenant (e.g. a refresh token
+	// Refuse to mint tokens for a now-disallowed SigNoz URL (e.g. a refresh token
 	// from before the allowlist tightened). invalid_grant makes the client
 	// re-run the authorize flow, where the form rejects the URL up front.
-	if !h.config.TenantURLAllowlist.AllowsURL(signozURL) {
+	if !h.config.InstanceURLAllowlist.AllowsURL(signozURL) {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant",
-			util.TenantNotPermittedMessage(),
+			util.InstanceURLNotPermittedMessage(),
 			attribute.String("mcp.auth.failure_reason", authFailureDisallowedSignozURL))
 		return
 	}

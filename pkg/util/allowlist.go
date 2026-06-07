@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-// MCPDocsURL is linked in tenant-not-permitted rejection messages.
+// MCPDocsURL is linked in allowlist rejection messages.
 const MCPDocsURL = "https://signoz.io/docs/ai/signoz-mcp-server/"
 
-// TenantURLAllowlist restricts which SigNoz backend hosts a multi-tenant
-// deployment will proxy to (see ParseTenantURLAllowlist). An empty allowlist
+// InstanceURLAllowlist restricts which SigNoz backend hosts a multi-tenant
+// deployment will proxy to (see ParseInstanceURLAllowlist). An empty allowlist
 // permits every host.
-type TenantURLAllowlist struct {
+type InstanceURLAllowlist struct {
 	// exact holds lowercased hostnames that must match in full.
 	exact map[string]struct{}
 	// suffixes holds dot-anchored suffixes (e.g. ".us.signoz.cloud") derived
@@ -22,8 +22,8 @@ type TenantURLAllowlist struct {
 	suffixes []string
 }
 
-// ParseTenantURLAllowlist parses a comma-separated list of host patterns into a
-// TenantURLAllowlist. Each non-empty entry is either:
+// ParseInstanceURLAllowlist parses a comma-separated list of host patterns into a
+// InstanceURLAllowlist. Each non-empty entry is either:
 //
 //   - an exact hostname, e.g. "signoz.example.com"; or
 //   - a wildcard "*.suffix", e.g. "*.us.signoz.cloud", matching any host ending
@@ -32,8 +32,8 @@ type TenantURLAllowlist struct {
 //
 // Matching is host-only and case-insensitive; a pasted scheme/port/path in an
 // entry is stripped to the bare host.
-func ParseTenantURLAllowlist(raw string) TenantURLAllowlist {
-	al := TenantURLAllowlist{exact: make(map[string]struct{})}
+func ParseInstanceURLAllowlist(raw string) InstanceURLAllowlist {
+	al := InstanceURLAllowlist{exact: make(map[string]struct{})}
 	for _, entry := range strings.Split(raw, ",") {
 		pattern := stripToHostPattern(strings.ToLower(strings.TrimSpace(entry)))
 		if pattern == "" {
@@ -52,14 +52,14 @@ func ParseTenantURLAllowlist(raw string) TenantURLAllowlist {
 
 // Configured reports whether the allowlist contains any patterns. When false,
 // every host is allowed.
-func (a TenantURLAllowlist) Configured() bool {
+func (a InstanceURLAllowlist) Configured() bool {
 	return len(a.exact) > 0 || len(a.suffixes) > 0
 }
 
 // AllowsHost reports whether host is permitted. An unconfigured allowlist allows
 // everything; otherwise the host must exact-match or fall under a wildcard
 // suffix.
-func (a TenantURLAllowlist) AllowsHost(host string) bool {
+func (a InstanceURLAllowlist) AllowsHost(host string) bool {
 	if !a.Configured() {
 		return true
 	}
@@ -82,7 +82,7 @@ func (a TenantURLAllowlist) AllowsHost(host string) bool {
 // AllowsURL parses a normalized origin URL (scheme://host[:port]) and reports
 // whether its host is permitted. A malformed URL is rejected when the allowlist
 // is configured.
-func (a TenantURLAllowlist) AllowsURL(rawURL string) bool {
+func (a InstanceURLAllowlist) AllowsURL(rawURL string) bool {
 	if !a.Configured() {
 		return true
 	}
@@ -112,10 +112,10 @@ func stripToHostPattern(pattern string) string {
 	return pattern
 }
 
-// TenantNotPermittedMessage is the rejection message for a tenant URL the
+// InstanceURLNotPermittedMessage is the rejection message for a SigNoz URL the
 // allowlist refuses: SigNoz Cloud users should use their region's MCP URL and
 // self-hosted users should run their own MCP. Links to the docs.
-func TenantNotPermittedMessage() string {
+func InstanceURLNotPermittedMessage() string {
 	return fmt.Sprintf("This SigNoz instance is not served by this MCP endpoint. SigNoz Cloud users must use their "+
 		"region's MCP URL (https://mcp.<region>.signoz.cloud/mcp); self-hosted users should run the SigNoz MCP "+
 		"server themselves. Docs: %s", MCPDocsURL)
