@@ -33,6 +33,12 @@
 - **Fixed (Codex real bug):** trace `offset` was a no-op — `BuildTracesQueryPayload` hardcoded `Offset:0` and didn't take the param, so `parseSearchTracesArgs` discarded offset and the clamp note's "paginate with offset" was false for traces. Wired offset through `BuildTracesQueryPayload` (+ `client.GetTraceDetails` passes 0). Logs already honored offset.
 - **Scope:** user chose "targeted now + follow-up" — ship search_logs/search_traces clamp; follow-ups recorded in `.plan.md`.
 
+### 2026-06-07 — Trace offset wiring reverted (owner decision)
+- Owner: the trace `offset` change isn't needed; keep this PR scoped to the memory/OOM fix (not a trace-pagination behavior change). Reverted the offset wiring: `BuildTracesQueryPayload` back to 4 args / `Offset: 0`; `traces.go` + `client.go` callers back to 4 args.
+- Factual note for the record: `offset` *is* a registered tool param for `signoz_search_traces` (traces.go:66) and is parsed (traces_helper.go:33), so it was a parsed-but-discarded value pre-PR (silent no-op). The revert restores that pre-existing state — it does NOT remove the dead param (out of scope).
+- Coupled fix: since offset is a no-op for traces again, the clamp note no longer promises offset pagination — reworded `rawSearchResult` note to "narrow the time range or filters to see more" (accurate for both logs and traces), and dropped "paginate with offset" from the `search_traces` `limit` description. Logs keep the offset mention (logs pagination via offset genuinely works).
+- Possible follow-up: either remove the dead `offset` param from `search_traces` or wire it intentionally — left out of this PR.
+
 ## Open Questions
 - [x] Do scorch in-memory search results match the golden tests? — **Yes.** Full `internal/docs` suite (golden/verification/index/sitemap) passes with no golden changes.
 - [x] Final cap value for `limit`? — **10000** (≈16 MiB result, validated). Constant `MaxRawResultLimit`; can be promoted to env config later if needed.
