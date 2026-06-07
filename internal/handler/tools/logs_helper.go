@@ -19,6 +19,7 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 type SearchLogsRequest struct {
 	FilterExpression string
 	Limit            int
+	LimitClamped     bool
 	Offset           int
 	StartTime        int64
 	EndTime          int64
@@ -35,6 +36,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	limit, clamped := clampLimit(limit)
 
 	offset, err := intArg(args, "offset", 0)
 	if err != nil {
@@ -49,6 +51,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	return &SearchLogsRequest{
 		FilterExpression: filterExpr,
 		Limit:            limit,
+		LimitClamped:     clamped,
 		Offset:           offset,
 		StartTime:        startTime,
 		EndTime:          endTime,

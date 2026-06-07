@@ -56,7 +56,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with offset)")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
@@ -139,5 +139,5 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	return rawSearchResult(result, reqData.LimitClamped), nil
 }

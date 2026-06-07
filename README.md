@@ -613,7 +613,7 @@ Search logs with flexible filtering across all services.
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
   - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
-  - `limit` (optional) - Maximum number of logs to return (default: 100)
+  - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
 
 #### `signoz_get_field_keys`

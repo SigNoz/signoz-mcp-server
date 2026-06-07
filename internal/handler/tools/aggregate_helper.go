@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -171,4 +173,35 @@ func intArg(args map[string]any, key string, defaultVal int) (int, error) {
 		return defaultVal, nil
 	}
 	return num, nil
+}
+
+// MaxRawResultLimit caps how many raw rows search_logs / search_traces will
+// request from the backend. Each row is read fully into memory, decoded, and
+// re-marshaled into the tool response (~1.6 MiB per 1000 log rows measured
+// against a real backend), so an uncapped limit is an unbounded single-request
+// memory vector on the shared, memory-limited multi-tenant pod. Callers that
+// need more rows should paginate via offset.
+const MaxRawResultLimit = 10000
+
+// clampLimit bounds a parsed limit to MaxRawResultLimit. It returns the
+// effective limit and whether clamping occurred so handlers can surface it.
+func clampLimit(n int) (int, bool) {
+	if n > MaxRawResultLimit {
+		return MaxRawResultLimit, true
+	}
+	return n, false
+}
+
+// rawSearchResult wraps a raw backend JSON payload as a tool result. The JSON
+// payload is always the first content block so clients can parse it intact;
+// when the requested row limit was clamped, a pagination note is appended as a
+// separate second content block (rather than prepended into the JSON) so the
+// caller is told the response is truncated without breaking JSON parsing.
+func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
+	res := mcp.NewToolResultText(string(payload))
+	if limitClamped {
+		note := fmt.Sprintf("note: result limited to %d rows to bound server memory; paginate with \"offset\" for more.", MaxRawResultLimit)
+		res.Content = append(res.Content, mcp.NewTextContent(note))
+	}
+	return res
 }
