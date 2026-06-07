@@ -224,6 +224,23 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
+	// Reject backends outside the configured allowlist before probing them, so
+	// the server never issues a token for — or dials — a host it will not serve.
+	if !h.config.TenantURLAllowlist.AllowsURL(normalizedURL) {
+		h.renderAuthorizePage(w, r, http.StatusForbidden, authorizeTemplateData{
+			ClientID:            params.ClientID,
+			ClientName:          params.ClientName,
+			RedirectURI:         params.RedirectURI,
+			State:               params.State,
+			CodeChallenge:       params.CodeChallenge,
+			CodeChallengeMethod: params.CodeChallengeMethod,
+			Scope:               params.Scope,
+			SignozURL:           normalizedURL,
+			ErrorMessage:        "This SigNoz instance is not permitted on this server. Contact your administrator, or self-host the SigNoz MCP server for your own instance.",
+			ErrorCode:           "access_denied",
+		})
+		return
+	}
 	if err := h.validateSigNozCredentials(r.Context(), normalizedURL, apiKey); err != nil {
 		switch {
 		case errors.Is(err, client.ErrUnauthorized):
