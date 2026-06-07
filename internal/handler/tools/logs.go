@@ -30,7 +30,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
 		mcp.WithString("severity", mcp.Description("Shortcut filter for log severity (DEBUG, INFO, WARN, ERROR, FATAL). Equivalent to adding severity_text = '<value>' to filter.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the aggregation expression descending.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10, max: 10000; higher values are clamped)")),
 		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
@@ -101,7 +101,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	return aggregateResult(result, reqData.LimitClamped), nil
 }
 
 func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

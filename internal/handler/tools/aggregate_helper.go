@@ -42,6 +42,7 @@ type AggregateRequest struct {
 	OrderExpr        string
 	OrderDir         string
 	Limit            int
+	LimitClamped     bool
 	StartTime        int64
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
@@ -110,6 +111,9 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	if err != nil {
 		return nil, err
 	}
+	// Bound the group limit (high-cardinality groupBy). Surfaced via
+	// aggregateResult's note since aggregations have no offset pagination.
+	limit, limitClamped := clampLimit(limit)
 
 	startTime, endTime, err := resolveTimestamps(args, "1h")
 	if err != nil {
@@ -135,6 +139,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		OrderExpr:        orderExpr,
 		OrderDir:         orderDir,
 		Limit:            limit,
+		LimitClamped:     limitClamped,
 		StartTime:        startTime,
 		EndTime:          endTime,
 		RequestType:      requestType,
@@ -192,16 +197,29 @@ func clampLimit(n int) (int, bool) {
 	return n, false
 }
 
-// rawSearchResult wraps a raw backend JSON payload as a tool result. The JSON
-// payload is always the first content block so clients can parse it intact;
-// when the requested row limit was clamped, a pagination note is appended as a
-// separate second content block (rather than prepended into the JSON) so the
-// caller is told the response is truncated without breaking JSON parsing.
-func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
+// clampedResult wraps a raw JSON payload as a tool result. The JSON is always
+// the first (parseable) content block; when clamped, `note` is appended as a
+// separate block rather than prepended into the JSON.
+func clampedResult(payload []byte, limitClamped bool, note string) *mcp.CallToolResult {
 	res := mcp.NewToolResultText(string(payload))
 	if limitClamped {
-		note := fmt.Sprintf("note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.", MaxRawResultLimit)
 		res.Content = append(res.Content, mcp.NewTextContent(note))
 	}
 	return res
+}
+
+// rawSearchResult is the result wrapper for raw row tools (search_logs /
+// search_traces), which support offset pagination.
+func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
+	return clampedResult(payload, limitClamped, fmt.Sprintf(
+		"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
+		MaxRawResultLimit))
+}
+
+// aggregateResult is the result wrapper for aggregation tools. Aggregations
+// have no offset pagination, so the note advises narrowing the query instead.
+func aggregateResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
+	return clampedResult(payload, limitClamped, fmt.Sprintf(
+		"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",
+		MaxRawResultLimit))
 }

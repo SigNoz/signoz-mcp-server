@@ -598,7 +598,7 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `service` (optional) - Shortcut filter for service name
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
-  - `limit` (optional) - Maximum number of groups to return (default: 10)
+  - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
@@ -668,7 +668,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
-  - `limit` (optional) - Maximum number of groups to return (default: 10)
+  - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
@@ -780,6 +780,7 @@ Executes a SigNoz Query Builder v5 query.
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
+| `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Runtime docs sitemap refresh interval (Go duration, default: `6h`) | No |
 | `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Runtime full docs refresh interval (Go duration, default: `24h`) | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |

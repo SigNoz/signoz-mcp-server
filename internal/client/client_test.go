@@ -1908,3 +1908,50 @@ func TestDeleteView(t *testing.T) {
 	assert.Equal(t, http.MethodDelete, gotMethod)
 	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
 }
+
+// TestDoRequest_RejectsOversizeResponse verifies the response-size guard: a
+// backend response larger than maxResponseBytes is rejected with a clear error
+// (never silently truncated into invalid JSON), bounding single-request memory
+// on the shared multi-tenant pod.
+func TestDoRequest_RejectsOversizeResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Stream just past the cap without buffering it all server-side.
+		chunk := bytes.Repeat([]byte("a"), 1<<20) // 1 MiB
+		var written int64
+		for written <= maxResponseBytes {
+			n, err := w.Write(chunk)
+			if err != nil {
+				return
+			}
+			written += int64(n)
+		}
+	}))
+	defer server.Close()
+
+	var logBuf bytes.Buffer
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+}
+
+// TestDoRequest_AllowsLargeUnderCapResponse verifies a large-but-under-cap
+// response is returned intact, so the guard does not regress legitimate large
+// (e.g. ~10k-row) results.
+func TestDoRequest_AllowsLargeUnderCapResponse(t *testing.T) {
+	body := bytes.Repeat([]byte("b"), 4<<20) // 4 MiB, well under cap
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	var logBuf bytes.Buffer
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	got, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, len(body), len(got))
+}
