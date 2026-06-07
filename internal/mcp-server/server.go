@@ -798,6 +798,34 @@ func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// maxBytesMiddleware bounds the size of an inbound request body so a single
+// oversized MCP POST cannot be buffered unbounded into memory on the shared,
+// memory-limited multi-tenant pod. The cap (config.MaxRequestBytes, default
+// 4 MiB; env MCP_MAX_REQUEST_BYTES) is far above any legitimate tool-call
+// payload. When the client declares an over-cap Content-Length we reject early
+// with 413; otherwise http.MaxBytesReader bounds the (possibly chunked) stream,
+// so an over-cap body surfaces downstream as a read error (mcp-go maps it to a
+// JSON-RPC parse error) without buffering unbounded memory. It is the outermost
+// /mcp middleware so the cap also governs the body that methodSpanMiddleware
+// peeks and reconstructs downstream. The limit<=0 guard is defensive for
+// directly-constructed configs (e.g. tests); env-loaded configs always carry a
+// positive default.
+func (m *MCPServer) maxBytesMiddleware(next http.Handler) http.Handler {
+	limit := int64(m.config.MaxRequestBytes)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if limit > 0 {
+			if r.ContentLength > limit {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // buildHooks returns lifecycle hooks for observability.
 func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks := &server.Hooks{}
@@ -1439,7 +1467,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	mcpHandler := server.NewStreamableHTTPServer(s,
 		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
 	)
-	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
+	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(m.methodSpanMiddleware(mcpHandler))))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),

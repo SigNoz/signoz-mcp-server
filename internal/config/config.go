@@ -34,6 +34,9 @@ type Config struct {
 
 	DocsRefreshInterval     time.Duration
 	DocsFullRefreshInterval time.Duration
+
+	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
+	MaxRequestBytes int
 }
 
 const (
@@ -60,6 +63,8 @@ const (
 	DocsRefreshIntervalEnv     = "SIGNOZ_DOCS_REFRESH_INTERVAL"
 	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 
+	MaxRequestBytesEnv = "MCP_MAX_REQUEST_BYTES"
+
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
 	defaultAccessTTLMinutes      = 60    // 1 hour
@@ -67,6 +72,11 @@ const (
 	defaultAuthCodeTTLSeconds    = 600
 	defaultDocsRefreshInterval   = 6 * time.Hour
 	defaultDocsFullRefreshPeriod = 24 * time.Hour
+	// defaultMaxRequestBytes bounds inbound MCP request bodies. MCP tool-call
+	// JSON-RPC payloads are tiny; 4 MiB is far above any legitimate request
+	// (incl. dashboard imports) yet prevents a single oversized POST from being
+	// buffered unbounded into memory on the shared multi-tenant pod.
+	defaultMaxRequestBytes = 4 << 20 // 4 MiB
 )
 
 func LoadConfig() (*Config, error) {
@@ -121,6 +131,7 @@ func LoadConfig() (*Config, error) {
 		SegmentKey:              getEnv(SegmentKeyEnv, ""),
 		DocsRefreshInterval:     docsRefreshInterval,
 		DocsFullRefreshInterval: docsFullRefreshInterval,
+		MaxRequestBytes:         getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
 	}, nil
 }
 
