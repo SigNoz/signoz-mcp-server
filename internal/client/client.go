@@ -66,6 +66,28 @@ type SigNoz struct {
 	meters           *otelpkg.Meters
 }
 
+// sharedTransport is a single process-wide *http.Transport — and therefore a
+// single connection pool — reused by every SigNoz client. Go pools idle
+// keep-alive connections per host on the Transport, so sharing one transport lets
+// all clients (and tenants) reuse connections to a given SigNoz host instead of
+// re-handshaking on each request.
+//
+// We clone http.DefaultTransport (preserving its dial/TLS timeouts, proxy, HTTP/2
+// settings, etc.) and raise the idle-connection limits. The stdlib defaults —
+// MaxIdleConnsPerHost=2, MaxIdleConns=100 — are tuned for a browser-like client
+// and throttle keep-alive reuse under the concurrency a multi-tenant MCP server
+// sees: once more than 2 requests to the same SigNoz host are in flight, the
+// surplus connections are closed rather than pooled, forcing fresh TCP+TLS
+// handshakes on the next request. These values are conservative starting points;
+// the per-host cap bounds reuse for a hot host while the global cap bounds total
+// idle FDs across many distinct tenant hosts.
+var sharedTransport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConns = 200       // total idle conns across all SigNoz hosts (was 100)
+	t.MaxIdleConnsPerHost = 20 // idle conns kept per host for reuse (was 2)
+	return t
+}()
+
 func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
 	return &SigNoz{
 		logger:         log,
@@ -81,7 +103,10 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 			// /channels/{id}, /explorer/views/{id}, /rules/{id}/history/...)
 			// which would blow up span-name cardinality in the backend. The
 			// full URL is still attached as a span attribute for drilling.
-			Transport: otelhttp.NewTransport(http.DefaultTransport),
+			//
+			// All clients share sharedTransport so connections to a SigNoz host
+			// are pooled/reused process-wide regardless of how many clients exist.
+			Transport: otelhttp.NewTransport(sharedTransport),
 		},
 	}
 }
