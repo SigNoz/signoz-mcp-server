@@ -87,6 +87,10 @@ investigation.
   (direct from `ClientInfo`), drop it on per-call events, remove the session→clientinfo LRU.
 - [ ] Should mcp-go be bumped for 2026-07-28 support? → Out of scope here; this change is
   forward-compatible and the SDK bump is a separate follow-up once mcp-go ships RC support.
+- [ ] Follow-up (deferred): reimplement #69/#187 (credential-free client, cache by URL for
+  connection reuse) AFTER #192 merges, and correct the #187 closing comment then. The client
+  cache (`handler.go` `HashTenantKey(apiKey,signozURL)`) is independent of statelessness and
+  still needed — statelessness raises its importance (every request is independent).
 
 ### 2026-06-07 — Codex review (gpt-5.5, high + fast mode) — approve-with-nits
 - xhigh hung 3× (no output, 0 CPU). Root cause: codex is configured with the SigNoz staging
@@ -105,3 +109,24 @@ investigation.
   `buildHTTP` comment and `docs/architecture.md` to "no issued session ID / no POST session
   state; an open GET listener may hold transient SDK stream state (harmless — no server→client
   messaging)."
+
+### 2026-06-07 — Codex xhigh re-review + live E2E vs staging — clean
+- Re-ran Codex at gpt-5.5 / xhigh (the hang was an expired-MCP-token startup stall; `--config
+  'mcp_servers={}'` fixed it): **approve-with-nits**, verified with `-race`. Confirmed no
+  session dependency, GET empty-session benign, LRU removal complete. One Nit: `plans/analytics.md`
+  catalog was stale (sessionId/clientName/clientVersion on per-call events). → Fixed (commit on
+  branch): corrected the catalog and rewrote the client-attribution section for stateless.
+- Live E2E against staging (`app.us.staging.signoz.cloud`) via a locally-run stateless build,
+  4 read-only agents + 1 write-path agent:
+  - Core read-only tools: 23/23 pass (real data, session-less).
+  - Stateless protocol: 9/9 (no Mcp-Session-Id issued; session-less / unknown / garbage-session
+    all accepted; GET SSE streams + DELETE no-op fine).
+  - Auth/error: 8/8 (graceful 401/400, JSON-RPC -32700/-32601/-32602, upstream 401 as isError;
+    zero 5xx/hang).
+  - Concurrency/leak: 7/7 (236 calls, 0 5xx, 0 timeouts, RSS +4 MiB → no leak).
+  - Write path (create→verify→update→delete→delete-verify): 5/5 (dashboard, import, view,
+    notification channel, alert); staging left clean (verified via list tools). Server log: 0
+    panics; only ERROR/WARN lines were the intentional negative-test cases.
+  - Non-blocking upstream quirks noted: saved-view GET-after-delete returns 500 (SigNoz backend)
+    not 404; MCP layer does not reject a structurally-malformed `filters` object (passed through,
+    backend ignores). Neither is an MCP regression.
