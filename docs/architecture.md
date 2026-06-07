@@ -99,11 +99,11 @@ subgraph GetClient["GetClient — Unified for Both Transports"]
     READ --> MISSING{"Both present?"}
 
     MISSING -->|No| ERR["Return error"]
-    MISSING -->|Yes| HASH["cacheKey = SHA256(apiKey + delimiter + signozURL)"]
+    MISSING -->|Yes| HASH["cacheKey = lowercase(signozURL)"]
 
     HASH --> LOOKUP{"clientCache LRU hit?"}
-    LOOKUP -->|Yes| HIT["Return cached client"]
-    LOOKUP -->|No| CREATE["Create new SigNoz client and cache it"]
+    LOOKUP -->|Yes| HIT["Return cached client (shared across API keys)"]
+    LOOKUP -->|No| CREATE["Create new credential-free SigNoz client and cache it"]
 
     CREATE --> HIT
 end
@@ -114,7 +114,7 @@ end
 
 subgraph APICall["SigNoz API Call"]
     CLIENT["SigNoz Client<br/>(otelhttp instrumented)"]
-    CLIENT --> APIREQ["HTTP Request with SIGNOZ-API-KEY header"]
+    CLIENT --> APIREQ["HTTP Request — auth header set<br/>per-request from ctx credentials"]
     APIREQ --> S1["SigNoz Instance 1"]
     APIREQ --> S2["SigNoz Instance 2"]
     APIREQ --> SN["SigNoz Instance N"]
@@ -147,6 +147,20 @@ One consequence: MCP client identity (name/version) is captured only on the
 `session_registered` analytics event, taken directly from the `initialize` request's
 `ClientInfo`. With no session to correlate against, it is not attached to later
 per-tool-call events.
+
+## Client Caching
+
+`GetClient` caches one `SigNoz` client per `signozURL` (case-insensitive), in a bounded
+expirable LRU. The client is **credential-free**: it does not store the API key or auth
+header. Instead, those are read from the request context and stamped onto each outbound
+request at send time. This lets multiple API keys targeting the same SigNoz URL share a
+single client — and therefore a single HTTP connection pool — maximizing connection reuse.
+This pairs naturally with the stateless transport above: every request is independent and
+self-authenticating, and the per-URL pool is what makes that efficient.
+
+A request with no API key in context fails closed (errors before any HTTP call) rather than
+sending an unauthenticated request. The analytics identity cache (`/me` lookups) lives on the
+shared client but is keyed per credential, so attribution stays correct across API keys.
 
 ## OAuth 2.1 — Stateless Token Design
 
