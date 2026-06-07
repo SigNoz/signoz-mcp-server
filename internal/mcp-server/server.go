@@ -1168,7 +1168,7 @@ func (m *MCPServer) enforceTenantURLAllowlist(ctx context.Context, w http.Respon
 	}
 	m.logAuthFailure(ctx, r, http.StatusForbidden, authFailureDisallowedSignozURL, authMode,
 		"Tenant SigNoz URL is not permitted by the server allowlist", slog.String("mcp.tenant_url", signozURL))
-	http.Error(w, "This SigNoz instance URL is not permitted on this server", http.StatusForbidden)
+	http.Error(w, util.TenantNotPermittedMessage(signozURL), http.StatusForbidden)
 	return false
 }
 

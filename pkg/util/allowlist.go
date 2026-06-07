@@ -1,9 +1,15 @@
 package util
 
 import (
+	"fmt"
+	"net"
 	"net/url"
 	"strings"
 )
+
+// MCPDocsURL links to the hosted MCP connection / region documentation, shown
+// in tenant-not-permitted rejection messages.
+const MCPDocsURL = "https://signoz.io/docs/ai/signoz-mcp-server/"
 
 // TenantURLAllowlist restricts which SigNoz backend hosts a multi-tenant
 // deployment is willing to proxy to. It is built from a comma-separated list of
@@ -28,7 +34,8 @@ type TenantURLAllowlist struct {
 //     ("us.signoz.cloud") is NOT matched by its wildcard.
 //
 // Matching is hostname-only and case-insensitive. A scheme, port, or path
-// accidentally included in an entry is tolerated and stripped to the host.
+// accidentally included in an entry is tolerated and stripped to the bare host,
+// so a pasted full URL like "https://demo.us.signoz.cloud:8080/" still matches.
 func ParseTenantURLAllowlist(raw string) TenantURLAllowlist {
 	al := TenantURLAllowlist{exact: make(map[string]struct{})}
 	for _, entry := range strings.Split(raw, ",") {
@@ -92,9 +99,10 @@ func (a TenantURLAllowlist) AllowsURL(rawURL string) bool {
 	return a.AllowsHost(parsed.Hostname())
 }
 
-// stripToHostPattern reduces an allowlist entry to its host portion, tolerating
-// operators who paste a full URL ("https://*.us.signoz.cloud/") instead of a
-// bare host pattern.
+// stripToHostPattern reduces an allowlist entry to its bare host, tolerating
+// operators who paste a full URL ("https://*.us.signoz.cloud:443/") instead of
+// a bare host pattern. The port is dropped (and IPv6 brackets unwrapped) so
+// entries compare equal to url.Hostname(), which never carries the port.
 func stripToHostPattern(pattern string) string {
 	if i := strings.Index(pattern, "://"); i >= 0 {
 		pattern = pattern[i+3:]
@@ -102,5 +110,46 @@ func stripToHostPattern(pattern string) string {
 	if i := strings.IndexAny(pattern, "/?#"); i >= 0 {
 		pattern = pattern[:i]
 	}
+	if host, _, err := net.SplitHostPort(pattern); err == nil {
+		return host
+	}
+	if strings.HasPrefix(pattern, "[") && strings.HasSuffix(pattern, "]") {
+		return pattern[1 : len(pattern)-1]
+	}
 	return pattern
+}
+
+// signozCloudRegion returns the region label of a "<tenant>.<region>.signoz.cloud"
+// host (e.g. "us" for "tough-gecko.us.signoz.cloud"), or "" when host is not a
+// multi-label signoz.cloud tenant.
+func signozCloudRegion(host string) string {
+	const suffix = ".signoz.cloud"
+	host = strings.ToLower(host)
+	if !strings.HasSuffix(host, suffix) {
+		return ""
+	}
+	labels := strings.Split(strings.TrimSuffix(host, suffix), ".")
+	if len(labels) < 2 {
+		return ""
+	}
+	return labels[len(labels)-1]
+}
+
+// TenantNotPermittedMessage builds the user-facing rejection message for a
+// tenant URL that the allowlist refuses. For a SigNoz Cloud host it names the
+// region and the correct regional MCP URL; otherwise it gives generic guidance.
+// Both variants link to the MCP docs.
+func TenantNotPermittedMessage(signozURL string) string {
+	host := ""
+	if u, err := url.Parse(signozURL); err == nil {
+		host = u.Hostname()
+	}
+	if region := signozCloudRegion(host); region != "" {
+		return fmt.Sprintf("SigNoz instance %s is in the %q region, which this MCP endpoint does not serve. "+
+			"Connect to your region's MCP URL instead: https://mcp.%s.signoz.cloud/mcp . Docs: %s",
+			host, region, region, MCPDocsURL)
+	}
+	return fmt.Sprintf("This SigNoz instance is not served by this MCP endpoint. SigNoz Cloud users must use their "+
+		"region's MCP URL (https://mcp.<region>.signoz.cloud/mcp); self-hosted users should run the SigNoz MCP "+
+		"server themselves. Docs: %s", MCPDocsURL)
 }

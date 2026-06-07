@@ -43,6 +43,14 @@ only matching hosts are accepted; when unset, behavior is unchanged.
 - After `NormalizeSigNozURLFormInput` succeeds, reject with a 403 authorize page
   (`access_denied`) when `h.config.TenantURLAllowlist.AllowsURL(normalizedURL)`
   is false — before `validateSigNozCredentials` probes the backend.
+- In `issueTokenPair` (shared by the authorization_code and refresh_token
+  grants), reject with `invalid_grant` before minting tokens or emitting
+  token-issued analytics, so existing refresh tokens for now-disallowed tenants
+  are refused at the token endpoint, not just at `/mcp`.
+- Telemetry: `recordOAuthFailure`/`writeOAuthError` take an optional
+  `mcp.auth.failure_reason` attribute, and `authorizeTemplateData` gains a
+  `FailureReason` field, so allowlist rejections at the OAuth endpoints are
+  alertable on the same `disallowed_signoz_url` reason as the `/mcp` paths.
 
 ## Files to Modify
 - `pkg/util/allowlist.go` — new matcher type + parser.
