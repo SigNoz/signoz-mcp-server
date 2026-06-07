@@ -1157,18 +1157,16 @@ const (
 	authFailureDisallowedSignozURL = "disallowed_signoz_url"
 )
 
-// enforceTenantURLAllowlist rejects client-supplied tenant SigNoz URLs that are
-// not permitted by SIGNOZ_TENANT_URL_ALLOWLIST. It returns true when the request
-// may proceed; on rejection it has already emitted the auth-failure telemetry
-// and written a 403 response. signozURL is expected to already be set on ctx so
-// the failure carries mcp.tenant_url.
+// enforceTenantURLAllowlist rejects a client-supplied tenant URL not in
+// SIGNOZ_TENANT_URL_ALLOWLIST, returning false after writing the 403 + auth
+// failure. signozURL must already be on ctx so the failure carries mcp.tenant_url.
 func (m *MCPServer) enforceTenantURLAllowlist(ctx context.Context, w http.ResponseWriter, r *http.Request, signozURL, authMode string) bool {
 	if m.config.TenantURLAllowlist.AllowsURL(signozURL) {
 		return true
 	}
 	m.logAuthFailure(ctx, r, http.StatusForbidden, authFailureDisallowedSignozURL, authMode,
 		"Tenant SigNoz URL is not permitted by the server allowlist", slog.String("mcp.tenant_url", signozURL))
-	http.Error(w, util.TenantNotPermittedMessage(signozURL), http.StatusForbidden)
+	http.Error(w, util.TenantNotPermittedMessage(), http.StatusForbidden)
 	return false
 }
 
@@ -1224,6 +1222,12 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 		}
 		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
 		m.meters.AuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+	}
+
+	// Allowlist rejections are recorded on the metric and span only; the
+	// per-request log would be noisy for a misconfigured/looping client.
+	if reason == authFailureDisallowedSignozURL {
+		return
 	}
 
 	logAttrs := []slog.Attr{
@@ -1393,8 +1397,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
-			// Enforce the tenant URL allowlist for client-supplied URLs. Set the
-			// tenant URL on ctx first so the rejection telemetry is attributed.
+			// Set tenant URL on ctx first so an allowlist rejection is attributed.
 			ctx = util.SetSigNozURL(ctx, normalized)
 			if !m.enforceTenantURLAllowlist(ctx, w, r, normalized, authMode) {
 				return

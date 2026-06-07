@@ -39,6 +39,15 @@
 - Codex GitHub bot (P2) on `allowlist.go`: `stripToHostPattern` kept the `:port`, so a pasted entry like `https://demo.us.signoz.cloud:8080` (or `*.us.signoz.cloud:443/`) could never match `url.Hostname()` (which drops the port) → legitimate tenants 403'd. Valid (fail-closed footgun, no security risk). Adopted the bot's fix — strip the port (and unwrap IPv6 brackets) in `stripToHostPattern` — instead of the earlier doc-only "ports not stripped" note, since the parser already advertises tolerating pasted full URLs.
 - Product request: make the rejection guide users to their own region's MCP URL with a docs link. Added `util.TenantNotPermittedMessage(signozURL)` + `signozCloudRegion()`: for a `*.signoz.cloud` host it names the region and suggests `https://mcp.<region>.signoz.cloud/mcp`; otherwise generic guidance (cloud → region URL, self-hosted → run your own MCP). Both link `MCPDocsURL` (https://signoz.io/docs/ai/signoz-mcp-server/). Wired into all three rejection points (authMiddleware helper, OAuth form, issueTokenPair).
 
+### 2026-06-07 — drop per-request log for allowlist rejections (metric-only)
+- `disallowed_signoz_url` rejections initially logged at WARN on all paths. A misconfigured/wrong-region client can loop (cf. the 62k-202/day pattern), flooding WARN. Decision: drop the per-request log entirely; keep the metric (and span on `/mcp`) as the signal — extends the denoise rationale from PR #188 ([[reference_ai_assistant_telemetry]] context).
+- `logAuthFailure` (server.go) early-returns before logging when `reason == authFailureDisallowedSignozURL` (span + `mcp.auth.failures` metric still emitted).
+- `recordOAuthFailure` (handlers.go) emits the `mcp.oauth.failures` metric first, then skips the log when `extraAttrs` carry `mcp.auth.failure_reason=disallowed_signoz_url` (via `hasAttrValue`). Other OAuth failures still log at WARN/ERROR.
+
+### 2026-06-07 — E2E test + drop region extraction from rejection message
+- Ran a live E2E (local server, real JWT in header, local `initialize` so the staging backend is never dialed): 13 edge cases all correct — allow (exact/no-slash/UPPERCASE/:443/:8443), deny 403 (wrong-region/self-hosted/apex/trailing-dot/SSRF metadata IP), 400 (localhost rejected by NormalizeSigNozURL, missing URL), unset allowlist allows all, and zero rejection log lines at debug (metric-only confirmed).
+- Finding: `signozCloudRegion` took the label before `.signoz.cloud`, which is correct for production (`tenant.us.signoz.cloud` → `us`) but mis-detects staging (`t.eu.staging.signoz.cloud` → `staging`). Decision: drop region extraction entirely — `TenantNotPermittedMessage()` now returns one generic message (Cloud → `mcp.<region>.signoz.cloud/mcp`, self-hosted → run your own, + docs link). Always correct, never names a wrong region. Removed `signozCloudRegion`.
+
 ## Open Questions
 - [x] Should `*.signoz.cloud` match multi-label regional subdomains like `x.us.signoz.cloud`? — Yes; wildcard matches on dot-anchored suffix across labels.
 - [x] Should the operator's own `SIGNOZ_URL` be subject to the allowlist? — No; it is operator-configured and trusted, exempt from the check.

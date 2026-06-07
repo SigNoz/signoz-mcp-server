@@ -61,9 +61,8 @@ type registerClientResponse struct {
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 }
 
-// authFailureDisallowedSignozURL mirrors the mcp-server auth-failure reason so
-// allowlist rejections at the OAuth endpoints are alertable on the same
-// mcp.auth.failure_reason dimension as the /mcp request paths.
+// authFailureDisallowedSignozURL mirrors the mcp-server reason so OAuth
+// allowlist rejections are alertable on the same mcp.auth.failure_reason.
 const authFailureDisallowedSignozURL = "disallowed_signoz_url"
 
 type authorizeTemplateData struct {
@@ -232,8 +231,8 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
-	// Reject backends outside the configured allowlist before probing them, so
-	// the server never issues a token for — or dials — a host it will not serve.
+	// Reject disallowed backends before probing them, so the server never
+	// dials — or issues a token for — a host it will not serve.
 	if !h.config.TenantURLAllowlist.AllowsURL(normalizedURL) {
 		// Seed tenant_url so the rejection is attributed in mcp.oauth.failures.
 		r = r.WithContext(util.SetSigNozURL(r.Context(), normalizedURL))
@@ -246,7 +245,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 			CodeChallengeMethod: params.CodeChallengeMethod,
 			Scope:               params.Scope,
 			SignozURL:           normalizedURL,
-			ErrorMessage:        util.TenantNotPermittedMessage(normalizedURL),
+			ErrorMessage:        util.TenantNotPermittedMessage(),
 			ErrorCode:           "access_denied",
 			FailureReason:       authFailureDisallowedSignozURL,
 		})
@@ -447,15 +446,12 @@ func (h *Handler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request
 func (h *Handler) issueTokenPair(w http.ResponseWriter, r *http.Request, clientID, apiKey, signozURL, grantType string) {
 	r = r.WithContext(util.SetSigNozURL(r.Context(), signozURL))
 
-	// Refuse to mint tokens for a tenant the server is no longer allowed to
-	// serve (e.g. a long-lived refresh token issued before the allowlist was
-	// tightened). invalid_grant prompts the client to re-run the authorize
-	// flow, where the form rejects the URL up front. The /mcp paths also reject
-	// the access token, but enforcing here keeps the token endpoint consistent
-	// and avoids emitting token-issued analytics for a disallowed tenant.
+	// Refuse to mint tokens for a now-disallowed tenant (e.g. a refresh token
+	// from before the allowlist tightened). invalid_grant makes the client
+	// re-run the authorize flow, where the form rejects the URL up front.
 	if !h.config.TenantURLAllowlist.AllowsURL(signozURL) {
 		h.writeOAuthError(r, w, http.StatusBadRequest, "invalid_grant",
-			util.TenantNotPermittedMessage(signozURL),
+			util.TenantNotPermittedMessage(),
 			attribute.String("mcp.auth.failure_reason", authFailureDisallowedSignozURL))
 		return
 	}
@@ -543,16 +539,6 @@ func (h *Handler) writeTokenResponse(w http.ResponseWriter, resp tokenResponse) 
 }
 
 func (h *Handler) recordOAuthFailure(ctx context.Context, r *http.Request, status int, code, description string, extraAttrs ...attribute.KeyValue) {
-	attrs := []slog.Attr{
-		slog.Int("http.response.status_code", status),
-		slog.String("oauth.error_code", code),
-		slog.String("oauth.error_description", description),
-	}
-	for _, kv := range extraAttrs {
-		attrs = append(attrs, slog.String(string(kv.Key), kv.Value.Emit()))
-	}
-	attrs = append(attrs, logpkg.HTTPRequestAttrs(r)...)
-
 	if h.meters != nil {
 		metricAttrs := []attribute.KeyValue{
 			attribute.String("oauth.error_code", code),
@@ -563,11 +549,36 @@ func (h *Handler) recordOAuthFailure(ctx context.Context, r *http.Request, statu
 		h.meters.OAuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 	}
 
+	// Allowlist rejections are recorded on the metric only; the per-request log
+	// would be noisy for a misconfigured/looping client.
+	if hasAttrValue(extraAttrs, "mcp.auth.failure_reason", authFailureDisallowedSignozURL) {
+		return
+	}
+
+	attrs := []slog.Attr{
+		slog.Int("http.response.status_code", status),
+		slog.String("oauth.error_code", code),
+		slog.String("oauth.error_description", description),
+	}
+	for _, kv := range extraAttrs {
+		attrs = append(attrs, slog.String(string(kv.Key), kv.Value.Emit()))
+	}
+	attrs = append(attrs, logpkg.HTTPRequestAttrs(r)...)
+
 	level := slog.LevelWarn
 	if status >= http.StatusInternalServerError {
 		level = slog.LevelError
 	}
 	h.logger.LogAttrs(ctx, level, "OAuth request failed", attrs...)
+}
+
+func hasAttrValue(attrs []attribute.KeyValue, key, value string) bool {
+	for _, a := range attrs {
+		if string(a.Key) == key && a.Value.AsString() == value {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) writeOAuthError(r *http.Request, w http.ResponseWriter, status int, code, description string, extraAttrs ...attribute.KeyValue) {

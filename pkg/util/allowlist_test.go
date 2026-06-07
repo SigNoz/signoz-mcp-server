@@ -97,24 +97,12 @@ func TestTenantURLAllowlistStripsPortFromEntry(t *testing.T) {
 }
 
 func TestTenantNotPermittedMessage(t *testing.T) {
-	cloud := TenantNotPermittedMessage("https://foo.eu.signoz.cloud")
-	if !strings.Contains(cloud, "https://mcp.eu.signoz.cloud/mcp") {
-		t.Errorf("cloud message should suggest the regional MCP URL, got: %s", cloud)
+	msg := TenantNotPermittedMessage()
+	if !strings.Contains(msg, "https://mcp.<region>.signoz.cloud/mcp") {
+		t.Errorf("message should point to the regional MCP URL, got: %s", msg)
 	}
-	if !strings.Contains(cloud, MCPDocsURL) {
-		t.Errorf("message should include the docs link, got: %s", cloud)
-	}
-
-	if r := signozCloudRegion("bar.eu2.signoz.cloud"); r != "eu2" {
-		t.Errorf("region = %q, want eu2", r)
-	}
-	if r := signozCloudRegion("signoz.example.com"); r != "" {
-		t.Errorf("non-cloud host should have no region, got %q", r)
-	}
-
-	selfHosted := TenantNotPermittedMessage("https://signoz.example.com")
-	if !strings.Contains(selfHosted, "<region>") || !strings.Contains(selfHosted, MCPDocsURL) {
-		t.Errorf("self-hosted message should be generic and link docs, got: %s", selfHosted)
+	if !strings.Contains(msg, MCPDocsURL) {
+		t.Errorf("message should include the docs link, got: %s", msg)
 	}
 }
 
