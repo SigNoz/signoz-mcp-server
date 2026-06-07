@@ -23,9 +23,6 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Execute a SigNoz Query Builder v5 query.\n\n"+
-				"Each builder_query \"limit\" is capped at 10000 (rows for raw/trace, groups for "+
-				"scalar/time_series) to bound server memory; higher values are clamped (a note is "+
-				"returned) — narrow the time range/filters, or paginate raw queries with \"offset\".\n\n"+
 				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
 				"It documents filter expression syntax, correct field names (camelCase vs dot notation), "+
 				"and complete working examples.\n\n"+
@@ -89,8 +86,6 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		return mcp.NewToolResultError("query validation error: " + err.Error()), nil
 	}
 
-	limitClamped := clampBuilderQueryLimits(&queryPayload)
-
 	finalQueryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal validated query payload", logpkg.ErrAttr(err))
@@ -108,33 +103,5 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	}
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")
-	return builderQueryResult(data, limitClamped), nil
-}
-
-// clampBuilderQueryLimits bounds the per-query limit on every builder_query in
-// the payload to MaxRawResultLimit. execute_builder_query lets the caller embed
-// an arbitrary `limit` inside the opaque query JSON, which bypasses the
-// search_logs / search_traces clamp; without this a single query could request
-// millions of rows ("raw"/"trace" requestType) or groups ("scalar"/
-// "time_series") and buffer an unbounded response on the shared memory-limited
-// pod. The cap is applied regardless of requestType — it matches the raw-row
-// cap and the aggregate tools' group cap, and >MaxRawResultLimit is far outside
-// normal usage for any mode. Non-builder_query specs (promql, clickhouse_sql,
-// builder_formula, raw passthrough JSON) carry no row limit and are skipped via
-// the type assertion. A zero/unset limit is left for the backend to default.
-// Returns whether any limit was clamped so the handler can surface a note.
-func clampBuilderQueryLimits(qp *types.QueryPayload) bool {
-	clampedAny := false
-	for i := range qp.CompositeQuery.Queries {
-		spec, ok := qp.CompositeQuery.Queries[i].Spec.(types.QuerySpec)
-		if !ok {
-			continue
-		}
-		if limit, clamped := clampLimit(spec.Limit); clamped {
-			spec.Limit = limit
-			qp.CompositeQuery.Queries[i].Spec = spec
-			clampedAny = true
-		}
-	}
-	return clampedAny
+	return mcp.NewToolResultText(string(data)), nil
 }

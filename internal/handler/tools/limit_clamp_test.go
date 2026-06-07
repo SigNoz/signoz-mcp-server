@@ -74,43 +74,30 @@ func TestRawSearchResult_NoteIsSeparateBlock(t *testing.T) {
 	}
 }
 
-// TestClampedResultWrappers_SurfaceSeparateNote guards that aggregateResult and
-// builderQueryResult follow the same contract — parseable JSON as block 0, a
-// mode-appropriate note as a separate block 1 only when clamped.
-func TestClampedResultWrappers_SurfaceSeparateNote(t *testing.T) {
+// TestAggregateResult_SurfaceSeparateNote guards that aggregateResult follows
+// the same contract as rawSearchResult — parseable JSON as block 0, a note as a
+// separate block 1 only when clamped.
+func TestAggregateResult_SurfaceSeparateNote(t *testing.T) {
 	payload := []byte(`{"status":"success","data":[]}`)
 
-	cases := []struct {
-		name    string
-		res     *mcp.CallToolResult
-		wantSub string
-	}{
-		{"aggregate", aggregateResult(payload, true), "groups"},
-		{"builder", builderQueryResult(payload, true), "limit"},
+	clamped := aggregateResult(payload, true)
+	if len(clamped.Content) != 2 {
+		t.Fatalf("clamped: want 2 content blocks, got %d", len(clamped.Content))
 	}
-	for _, tc := range cases {
-		if len(tc.res.Content) != 2 {
-			t.Fatalf("%s: want 2 content blocks, got %d", tc.name, len(tc.res.Content))
-		}
-		block0, ok := tc.res.Content[0].(mcp.TextContent)
-		if !ok {
-			t.Fatalf("%s: block 0 is %T, want mcp.TextContent", tc.name, tc.res.Content[0])
-		}
-		var parsed map[string]any
-		if err := json.Unmarshal([]byte(block0.Text), &parsed); err != nil {
-			t.Fatalf("%s: block 0 must be valid JSON, got %q (err: %v)", tc.name, block0.Text, err)
-		}
-		block1, ok := tc.res.Content[1].(mcp.TextContent)
-		if !ok || !strings.Contains(block1.Text, tc.wantSub) {
-			t.Fatalf("%s: block 1 note %#v should contain %q", tc.name, tc.res.Content[1], tc.wantSub)
-		}
+	block0, ok := clamped.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("clamped: block 0 is %T, want mcp.TextContent", clamped.Content[0])
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(block0.Text), &parsed); err != nil {
+		t.Fatalf("clamped: block 0 must be valid JSON, got %q (err: %v)", block0.Text, err)
+	}
+	block1, ok := clamped.Content[1].(mcp.TextContent)
+	if !ok || !strings.Contains(block1.Text, "groups") {
+		t.Fatalf("clamped: block 1 should be the groups note, got %#v", clamped.Content[1])
 	}
 
-	// Not clamped -> single block, no note.
 	if n := len(aggregateResult(payload, false).Content); n != 1 {
 		t.Fatalf("not-clamped aggregate: want 1 content block, got %d", n)
-	}
-	if n := len(builderQueryResult(payload, false).Content); n != 1 {
-		t.Fatalf("not-clamped builder: want 1 content block, got %d", n)
 	}
 }

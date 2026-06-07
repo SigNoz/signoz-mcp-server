@@ -798,18 +798,13 @@ func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// maxBytesMiddleware bounds the size of an inbound request body so a single
-// oversized MCP POST cannot be buffered unbounded into memory on the shared,
-// memory-limited multi-tenant pod. The cap (config.MaxRequestBytes, default
-// 4 MiB; env MCP_MAX_REQUEST_BYTES) is far above any legitimate tool-call
-// payload. When the client declares an over-cap Content-Length we reject early
-// with 413; otherwise http.MaxBytesReader bounds the (possibly chunked) stream,
-// so an over-cap body surfaces downstream as a read error (mcp-go maps it to a
-// JSON-RPC parse error) without buffering unbounded memory. It is the outermost
-// /mcp middleware so the cap also governs the body that methodSpanMiddleware
-// peeks and reconstructs downstream. The limit<=0 guard is defensive for
-// directly-constructed configs (e.g. tests); env-loaded configs always carry a
-// positive default.
+// maxBytesMiddleware bounds an inbound /mcp request body (config.MaxRequestBytes,
+// default 4 MiB; env MCP_MAX_REQUEST_BYTES) so one oversized POST can't OOM the
+// shared pod: a declared over-cap Content-Length is rejected early with 413,
+// otherwise MaxBytesReader bounds the (possibly chunked) stream and an over-cap
+// read surfaces downstream as mcp-go's JSON-RPC parse error. Outermost /mcp
+// middleware, so the cap also covers the methodSpanMiddleware peek. The limit<=0
+// guard is defensive for directly-constructed configs (e.g. tests).
 func (m *MCPServer) maxBytesMiddleware(next http.Handler) http.Handler {
 	limit := int64(m.config.MaxRequestBytes)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

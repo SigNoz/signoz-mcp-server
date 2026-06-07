@@ -292,14 +292,10 @@ const (
 	retryMultiply = 4
 )
 
-// maxResponseBytes caps how many bytes doRequest will buffer from a single
-// backend response. The MCP server runs on a shared, memory-limited
-// multi-tenant pod and reads each response fully into memory before decoding,
-// so an unbounded response — e.g. an execute_builder_query asking for millions
-// of rows, which bypasses the per-tool row clamp — is a single-request OOM
-// vector. 64 MiB is far above any legitimate response (~16 MiB for a 10k-row
-// search) yet bounds the worst case. We error rather than silently truncate so
-// callers never receive invalid JSON.
+// maxResponseBytes caps how many bytes doRequest buffers from one backend
+// response, so an unbounded response (e.g. a builder query for millions of
+// rows) can't OOM the shared pod. We error rather than truncate, so callers
+// never get invalid JSON.
 const maxResponseBytes int64 = 64 << 20 // 64 MiB
 
 // doRequest performs an HTTP request with standard headers, timeout, status
@@ -374,9 +370,8 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			break
 		}
 
-		// Read one byte past the cap so we can detect (and reject) an
-		// over-limit response instead of silently truncating it into invalid
-		// JSON. Oversize is a terminal error — not retryable.
+		// Read one byte past the cap to detect (and reject, not truncate) an
+		// over-limit response. Oversize is terminal, not retried.
 		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 		_ = resp.Body.Close()
 

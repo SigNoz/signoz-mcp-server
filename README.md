@@ -762,7 +762,6 @@ Delete a notification channel by ID (`DELETE /api/v1/channels/{id}`). Irreversib
 Executes a SigNoz Query Builder v5 query.
 
 - **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
-- **Limit cap**: each `builder_query` `limit` is capped at 10000 (rows for `raw`/`trace`, groups for `scalar`/`time_series`) to bound server memory; higher values are clamped (a note is returned) — narrow the time range/filters, or paginate raw queries with the per-query `offset`.
 - **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:
   - `builder_query` — signal-specific spec (logs/traces/metrics) with filter, aggregations, groupBy, etc.
   - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).

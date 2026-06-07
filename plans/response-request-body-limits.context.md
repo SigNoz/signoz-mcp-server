@@ -41,11 +41,15 @@
 - **Fixed (nit):** oversize response error now includes `resp.StatusCode` and less query-specific wording (it fires on any backend call).
 - **Decided (nit):** manifest.json change NOT needed — its `user_config`/`env` only exposes a curated UI subset (url/api_key/log_level); all other operational env vars (CLIENT_CACHE_SIZE, SIGNOZ_DOCS_*, etc.) are README-only, so `MCP_MAX_REQUEST_BYTES` is consistent there. Tool descriptions are behavior-agnostic.
 
+### 2026-06-07 — clampBuilderQueryLimits removed (owner decision)
+- Owner questioned whether the builder clamp was needed/correct/maintainable. Assessment: the 64 MiB `doRequest` response guard already bounds `execute_builder_query`, so the clamp was NOT needed for the OOM ceiling — it only tightened this tool from ~64 MiB to ~16 MiB (consistency with search tools + concurrent-load, churn ~3.5×) and gave graceful degradation. Correct (Codex-verified) and low-maintenance, but it rewrote the caller's *authored* query.
+- Owner chose **remove**. Dropped `clampBuilderQueryLimits`, `builderQueryResult`, the builder-clamp tests, and the tool-description/README cap notes. `execute_builder_query` reverts to `NewToolResultText`; the 64 MiB response guard is its sole bound. Comments across the PR also trimmed for concision.
+
 ## Open Questions
-- [x] Which limits in this PR? — **All three** + request body cap (#70 item 3).
-- [x] Builder clamp: raw-only or all requestTypes? — **All `builder_query` specs** (covers trace + aggregate bypasses Codex found).
+- [x] Which limits in this PR? — response guard + aggregate clamp + request body cap (builder clamp removed below).
 - [x] Aggregate clamp: silent or surfaced? — **Surfaced** (reversed the earlier silent decision per Codex).
 - [x] Request cap env-disable? — **No** (positive-only; guard is defensive for tests).
+- [x] Keep the builder clamp? — **No** (removed; response guard suffices — see 2026-06-07 entry).
 - [x] Response guard: hard byte cap vs error? — **Error** (read cap+1, reject) so JSON is never truncated.
 - [x] Aggregate clamp: surface a note? — **No** (silent); offset note is inaccurate for aggregations.
 - [x] Request body cap value / configurability? — **4 MiB default, `MCP_MAX_REQUEST_BYTES`**.

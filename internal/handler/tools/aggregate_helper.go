@@ -111,10 +111,8 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	if err != nil {
 		return nil, err
 	}
-	// Bound the group limit to keep a high-cardinality groupBy from buffering an
-	// unbounded scalar response. Surfaced via aggregateResult's note so the
-	// assistant knows the group set was truncated (there is no offset pagination
-	// for aggregation groups — the note advises narrowing instead).
+	// Bound the group limit (high-cardinality groupBy). Surfaced via
+	// aggregateResult's note since aggregations have no offset pagination.
 	limit, limitClamped := clampLimit(limit)
 
 	startTime, endTime, err := resolveTimestamps(args, "1h")
@@ -199,11 +197,9 @@ func clampLimit(n int) (int, bool) {
 	return n, false
 }
 
-// clampedResult wraps a raw backend JSON payload as a tool result. The JSON
-// payload is always the first content block so clients can parse it intact;
-// when the requested limit was clamped, `note` is appended as a separate second
-// content block (rather than prepended into the JSON) so the caller is told the
-// response is truncated without breaking JSON parsing.
+// clampedResult wraps a raw JSON payload as a tool result. The JSON is always
+// the first (parseable) content block; when clamped, `note` is appended as a
+// separate block rather than prepended into the JSON.
 func clampedResult(payload []byte, limitClamped bool, note string) *mcp.CallToolResult {
 	res := mcp.NewToolResultText(string(payload))
 	if limitClamped {
@@ -225,13 +221,5 @@ func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
 func aggregateResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
 	return clampedResult(payload, limitClamped, fmt.Sprintf(
 		"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",
-		MaxRawResultLimit))
-}
-
-// builderQueryResult is the result wrapper for execute_builder_query, whose
-// payload may mix raw and aggregation builder queries, so the note covers both.
-func builderQueryResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
-	return clampedResult(payload, limitClamped, fmt.Sprintf(
-		"note: a query \"limit\" was reduced to %d to bound server memory; narrow the time range/filters (or, for raw queries, paginate with \"offset\") to retrieve more.",
 		MaxRawResultLimit))
 }

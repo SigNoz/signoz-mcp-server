@@ -72,10 +72,8 @@ const (
 	defaultAuthCodeTTLSeconds    = 600
 	defaultDocsRefreshInterval   = 6 * time.Hour
 	defaultDocsFullRefreshPeriod = 24 * time.Hour
-	// defaultMaxRequestBytes bounds inbound MCP request bodies. MCP tool-call
-	// JSON-RPC payloads are tiny; 4 MiB is far above any legitimate request
-	// (incl. dashboard imports) yet prevents a single oversized POST from being
-	// buffered unbounded into memory on the shared multi-tenant pod.
+	// defaultMaxRequestBytes bounds inbound MCP request bodies; 4 MiB is far
+	// above any legitimate tool-call payload (incl. dashboard imports).
 	defaultMaxRequestBytes = 4 << 20 // 4 MiB
 )
 
