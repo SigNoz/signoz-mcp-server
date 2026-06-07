@@ -200,7 +200,7 @@ func clampLimit(n int) (int, bool) {
 func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
 	res := mcp.NewToolResultText(string(payload))
 	if limitClamped {
-		note := fmt.Sprintf("note: result limited to %d rows to bound server memory; narrow the time range or filters to see more.", MaxRawResultLimit)
+		note := fmt.Sprintf("note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.", MaxRawResultLimit)
 		res.Content = append(res.Content, mcp.NewTextContent(note))
 	}
 	return res

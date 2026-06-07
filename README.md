@@ -640,6 +640,21 @@ Get possible values for a specific field key for a given signal.
   - `source` (optional) - Filter by source
 
 
+#### `signoz_search_traces`
+
+Search traces/spans with flexible filtering.
+
+- **Parameters**:
+  - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND hasError = true")
+  - `service` (optional) - Service name to filter by
+  - `operation` (optional) - Operation/span name to filter by
+  - `error` (optional) - Filter by error status ('true' or 'false')
+  - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
+  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
+  - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
+  - `offset` (optional) - Offset for pagination (default: 0)
+
 #### `signoz_aggregate_traces`
 
 Aggregate trace statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields.

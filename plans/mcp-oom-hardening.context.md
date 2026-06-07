@@ -39,6 +39,12 @@
 - Coupled fix: since offset is a no-op for traces again, the clamp note no longer promises offset pagination — reworded `rawSearchResult` note to "narrow the time range or filters to see more" (accurate for both logs and traces), and dropped "paginate with offset" from the `search_traces` `limit` description. Logs keep the offset mention (logs pagination via offset genuinely works).
 - Possible follow-up: either remove the dead `offset` param from `search_traces` or wire it intentionally — left out of this PR.
 
+### 2026-06-07 — Trace offset re-wired (owner decision, reversed)
+- Owner: "if offset is supported then let's use it, update relevant docs too." Since `offset` is a registered param, parsed, and the backend honors it (E2E-verified: offset=0 vs offset=5 returned distinct pages), re-applied the wiring: `BuildTracesQueryPayload` takes `offset` again / `Offset: offset`; `handleSearchTraces` passes `reqData.Offset`; `GetTraceDetails` passes 0 (single trace).
+- Restored the offset wording: clamp note → "paginate with \"offset\" (or narrow the time range/filters)"; `search_traces` `limit` description → "paginate with offset".
+- Docs: added a full `#### signoz_search_traces` parameter section to README (it previously had only a table row), documenting query/service/operation/error/min-maxDuration/timeRange/start/end/limit(max 10000)/offset. manifest.json carries no per-param schema for these tools (nothing to sync there).
+- Regression guard: `TestBuildTracesQueryPayload_PropagatesOffset` in pkg/types asserts offset reaches the query spec (the field that was the silent no-op).
+
 ## Open Questions
 - [x] Do scorch in-memory search results match the golden tests? — **Yes.** Full `internal/docs` suite (golden/verification/index/sitemap) passes with no golden changes.
 - [x] Final cap value for `limit`? — **10000** (≈16 MiB result, validated). Constant `MaxRawResultLimit`; can be promoted to env config later if needed.

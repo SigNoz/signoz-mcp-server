@@ -17,7 +17,6 @@ Prod `signoz-mcp-server` OOMKills on a ~1.5 GiB-limited, multi-tenant shared pod
 - `plans/mcp-oom-hardening.*` — this pair (committed alongside).
 
 ## Follow-ups (out of scope for this PR — Codex review, 2026-06-07)
-- `signoz_search_traces` exposes an `offset` param that is parsed but ignored (pre-existing no-op; `BuildTracesQueryPayload` hardcodes `Offset: 0`). Either wire it intentionally or remove the dead param. (Offset wiring was added then reverted per owner decision to keep this PR scoped.)
 - Bound `signoz_execute_builder_query`: tenant controls `limit` inside the raw query-builder JSON, so it bypasses the clamp — an equivalent large-response vector. Needs query-level inspection/clamp.
 - Clamp `aggregate_logs` / `aggregate_traces` `limit` (groups; smaller payloads, lower priority — reuse `clampLimit`).
 - Consider a client-layer response guard. NOTE: a hard `io.LimitReader` byte cap at `client.go` would truncate valid JSON mid-stream → parse errors; prefer per-query limits over a blunt byte cap.

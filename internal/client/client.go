@@ -696,7 +696,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
 	limit := 1000
 
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0)
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
