@@ -406,6 +406,56 @@ func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareRejectsInstanceURLNotInAllowlist(t *testing.T) {
+	cfg := &config.Config{
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("SIGNOZ-API-KEY", "pat-token")
+	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+
+	rr := httptest.NewRecorder()
+	nextCalled := false
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
+	}
+	if nextCalled {
+		t.Fatalf("next handler must not run for a disallowed SigNoz URL")
+	}
+}
+
+func TestAuthMiddlewareAllowsInstanceURLInAllowlist(t *testing.T) {
+	cfg := &config.Config{
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("SIGNOZ-API-KEY", "pat-token")
+	req.Header.Set("X-SigNoz-URL", "https://demo.us.signoz.cloud")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		signozURL, _ := util.GetSigNozURL(r.Context())
+		w.Header().Set("X-SigNoz-URL", signozURL)
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if got := rr.Header().Get("X-SigNoz-URL"); got != "https://demo.us.signoz.cloud" {
+		t.Fatalf("signoz URL = %q, want %q", got, "https://demo.us.signoz.cloud")
+	}
+}
+
 func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:     true,
