@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/index/scorch"
 	"github.com/blevesearch/bleve/v2/mapping"
 	bleveQuery "github.com/blevesearch/bleve/v2/search/query"
 )
@@ -317,7 +318,14 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 	if snapshot.SchemaVersion != CorpusSchemaVersion {
 		return nil, fmt.Errorf("unsupported corpus schema version %d", snapshot.SchemaVersion)
 	}
-	idx, err := bleve.NewMemOnly(newIndexMapping())
+	// In-memory scorch index. scorch (bleve's default on-disk backend) supports
+	// a path-less in-memory mode and is dramatically more memory-efficient than
+	// the legacy upsidedown+gtreap store that bleve.NewMemOnly uses: profiling
+	// the 777-page corpus showed ~323 MiB resident + ~1.5 GiB allocation churn
+	// per rebuild on upsidedown/gtreap, which dominated the server's footprint
+	// and made the periodic docs refresh a latent OOM trigger on the
+	// memory-limited multi-tenant pod.
+	idx, err := bleve.NewUsing("", newIndexMapping(), scorch.Name, scorch.Name, nil)
 	if err != nil {
 		return nil, err
 	}

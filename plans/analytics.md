@@ -812,11 +812,10 @@ All event names are defined in [pkg/analytics/events.go](../pkg/analytics/events
 
 | Event | Fired at | Notable attributes |
 | --- | --- | --- |
-| `MCP Session: Registered` | `AddAfterInitialize` hook (successful initialize) | `tenantUrl`, `sessionId`, `clientName`, `clientVersion` |
-| `MCP Session: Unregistered` | `AddOnUnregisterSession` hook (only fires for long-lived GET listener, not POST-only clients) | `tenantUrl`, `sessionId`, `clientName`, `clientVersion` |
-| `MCP Tool: Called` | tool-handler middleware, post-return | `toolName`, `toolIsError`, `durationMs`, `searchContext`, `sessionId`, `clientName`, `clientVersion` |
-| `MCP Prompt: Fetched` | `AddAfterGetPrompt` (success only) | `promptName`, `sessionId` |
-| `MCP Resource: Fetched` | `AddAfterReadResource` (success only) | `resourceUri`, `sessionId` |
+| `MCP Session: Registered` | `AddAfterInitialize` hook (successful initialize) | `tenantUrl`, `clientName`, `clientVersion`, `protocolVersion` |
+| `MCP Tool: Called` | tool-handler middleware, post-return | `toolName`, `toolIsError`, `durationMs`, `errorType`, `tenantUrl`, `clientSource`, `assistantThreadId`/`assistantExecutionId` |
+| `MCP Prompt: Fetched` | `AddAfterGetPrompt` (success only) | `promptName`, `tenantUrl` |
+| `MCP Resource: Fetched` | `AddAfterReadResource` (success only) | `resourceUri`, `tenantUrl` |
 | `MCP OAuth: Authorization submitted` | `HandleAuthorizeSubmit` after credential validation | `tenantUrl` |
 | `MCP OAuth: Token issued` | `issueTokenPair` for both auth-code and refresh-token grants | `grantType` |
 
@@ -826,9 +825,9 @@ Every event is enriched with identity attributes (`orgId`, `principal`, `name`, 
 
 All analytics emission runs on a detached goroutine via `trackEventAsync` / `identifyAsync` / `identifyAndTrackAsync` with a 5s budget and its own context carrying credentials, session/tenant context, and the OTel span context (so the identity HTTP request joins the originating tool-call trace). Tool-call latency is never blocked on analytics.
 
-### Client attribution
+### Client attribution (stateless transport)
 
-MCP `ClientInfo` (Name, Version from `InitializeRequest.Params.ClientInfo`) is captured on `AfterInitialize` into an `expirable.LRU[string, mcp.Implementation]` cache keyed by session ID (cap 1024, TTL 30min, sliding window on read). Attribute attach happens synchronously before the async dispatch, so the goroutine snapshots client info correctly even when the session cleanup fires immediately after.
+The Streamable HTTP transport runs stateless (`WithStateLess(true)`; see [architecture.md](architecture.md)) — no `Mcp-Session-Id` is issued and there is no session to correlate requests across. Consequently MCP `ClientInfo` (Name, Version from `InitializeRequest.Params.ClientInfo`) is attached **only to `MCP Session: Registered`**, read directly from the initialize request in the `AfterInitialize` hook. Per-call events (`MCP Tool: Called`, `MCP Prompt: Fetched`, `MCP Resource: Fetched`) do **not** carry `clientName`/`clientVersion`, and `sessionId` is unset on all events. (The earlier per-session `expirable.LRU[string, mcp.Implementation]` cache that propagated client info onto later events was removed with the move to stateless.) `clientSource` and assistant correlation (`assistantThreadId`/`assistantExecutionId`) are unaffected — they are header-derived and attached per request via `attachCallerCorrelation`.
 
 ### OAuth
 

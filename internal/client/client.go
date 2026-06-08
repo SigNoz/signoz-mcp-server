@@ -66,6 +66,28 @@ type SigNoz struct {
 	meters           *otelpkg.Meters
 }
 
+// sharedTransport is a single process-wide *http.Transport — and therefore a
+// single connection pool — reused by every SigNoz client. Go pools idle
+// keep-alive connections per host on the Transport, so sharing one transport lets
+// all clients (and tenants) reuse connections to a given SigNoz host instead of
+// re-handshaking on each request.
+//
+// We clone http.DefaultTransport (preserving its dial/TLS timeouts, proxy, HTTP/2
+// settings, etc.) and raise the idle-connection limits. The stdlib defaults —
+// MaxIdleConnsPerHost=2, MaxIdleConns=100 — are tuned for a browser-like client
+// and throttle keep-alive reuse under the concurrency a multi-tenant MCP server
+// sees: once more than 2 requests to the same SigNoz host are in flight, the
+// surplus connections are closed rather than pooled, forcing fresh TCP+TLS
+// handshakes on the next request. These values are conservative starting points;
+// the per-host cap bounds reuse for a hot host while the global cap bounds total
+// idle FDs across many distinct tenant hosts.
+var sharedTransport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConns = 200       // total idle conns across all SigNoz hosts (was 100)
+	t.MaxIdleConnsPerHost = 20 // idle conns kept per host for reuse (was 2)
+	return t
+}()
+
 func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customHeaders map[string]string) *SigNoz {
 	return &SigNoz{
 		logger:         log,
@@ -81,7 +103,10 @@ func NewClient(log *slog.Logger, baseURL, apiKey, authHeaderName string, customH
 			// /channels/{id}, /explorer/views/{id}, /rules/{id}/history/...)
 			// which would blow up span-name cardinality in the backend. The
 			// full URL is still attached as a span attribute for drilling.
-			Transport: otelhttp.NewTransport(http.DefaultTransport),
+			//
+			// All clients share sharedTransport so connections to a SigNoz host
+			// are pooled/reused process-wide regardless of how many clients exist.
+			Transport: otelhttp.NewTransport(sharedTransport),
 		},
 	}
 }
@@ -292,6 +317,12 @@ const (
 	retryMultiply = 4
 )
 
+// maxResponseBytes caps how many bytes doRequest buffers from one backend
+// response, so an unbounded response (e.g. a builder query for millions of
+// rows) can't OOM the shared pod. We error rather than truncate, so callers
+// never get invalid JSON.
+const maxResponseBytes int64 = 64 << 20 // 64 MiB
+
 // doRequest performs an HTTP request with standard headers, timeout, status
 // checking, body reading, and retry with exponential backoff for transient
 // failures (429, 502, 503, 504, network errors).
@@ -364,11 +395,16 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			break
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
+		// Read one byte past the cap to detect (and reject, not truncate) an
+		// over-limit response. Oversize is terminal, not retried.
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 		_ = resp.Body.Close()
 
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read response body: %w", readErr)
+		}
+		if int64(len(respBody)) > maxResponseBytes {
+			return nil, fmt.Errorf("response body (status %d) exceeds maximum allowed size of %d bytes; if this was a data query, narrow it (reduce limit, time range, or cardinality)", resp.StatusCode, maxResponseBytes)
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -564,7 +600,8 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)
 	s.logger.DebugContext(ctx, "sending request",
 		slog.String("url", reqURL),
-		slog.String("body", logpkg.TruncBody(body)))
+		slog.String("body", logpkg.TruncBody(body)),
+		slog.Int("request.body.size_bytes", len(body)))
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
@@ -695,7 +732,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
 	limit := 1000
 
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0)
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query payload: %w", err)

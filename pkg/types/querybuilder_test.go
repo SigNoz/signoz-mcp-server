@@ -451,3 +451,14 @@ func TestQueryPayloadValidate_LogsTimeSeriesRequiresAggregations(t *testing.T) {
 
 	require.Error(t, q.Validate())
 }
+
+// TestBuildTracesQueryPayload_PropagatesOffset guards against a regression where
+// the traces payload hardcoded Offset:0 and ignored the caller's offset, making
+// signoz_search_traces pagination a silent no-op.
+func TestBuildTracesQueryPayload_PropagatesOffset(t *testing.T) {
+	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 25)
+	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
+	require.Equal(t, 50, spec.Limit)
+	require.Equal(t, 25, spec.Offset, "offset must propagate into the traces query")
+}

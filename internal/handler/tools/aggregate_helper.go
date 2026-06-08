@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -40,6 +42,7 @@ type AggregateRequest struct {
 	OrderExpr        string
 	OrderDir         string
 	Limit            int
+	LimitClamped     bool
 	StartTime        int64
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
@@ -108,6 +111,9 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	if err != nil {
 		return nil, err
 	}
+	// Bound the group limit (high-cardinality groupBy). Surfaced via
+	// aggregateResult's note since aggregations have no offset pagination.
+	limit, limitClamped := clampLimit(limit)
 
 	startTime, endTime, err := resolveTimestamps(args, "1h")
 	if err != nil {
@@ -133,6 +139,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		OrderExpr:        orderExpr,
 		OrderDir:         orderDir,
 		Limit:            limit,
+		LimitClamped:     limitClamped,
 		StartTime:        startTime,
 		EndTime:          endTime,
 		RequestType:      requestType,
@@ -171,4 +178,48 @@ func intArg(args map[string]any, key string, defaultVal int) (int, error) {
 		return defaultVal, nil
 	}
 	return num, nil
+}
+
+// MaxRawResultLimit caps how many raw rows search_logs / search_traces will
+// request from the backend. Each row is read fully into memory, decoded, and
+// re-marshaled into the tool response (~1.6 MiB per 1000 log rows measured
+// against a real backend), so an uncapped limit is an unbounded single-request
+// memory vector on the shared, memory-limited multi-tenant pod. Callers that
+// need more rows should paginate via offset.
+const MaxRawResultLimit = 10000
+
+// clampLimit bounds a parsed limit to MaxRawResultLimit. It returns the
+// effective limit and whether clamping occurred so handlers can surface it.
+func clampLimit(n int) (int, bool) {
+	if n > MaxRawResultLimit {
+		return MaxRawResultLimit, true
+	}
+	return n, false
+}
+
+// clampedResult wraps a raw JSON payload as a tool result. The JSON is always
+// the first (parseable) content block; when clamped, `note` is appended as a
+// separate block rather than prepended into the JSON.
+func clampedResult(payload []byte, limitClamped bool, note string) *mcp.CallToolResult {
+	res := mcp.NewToolResultText(string(payload))
+	if limitClamped {
+		res.Content = append(res.Content, mcp.NewTextContent(note))
+	}
+	return res
+}
+
+// rawSearchResult is the result wrapper for raw row tools (search_logs /
+// search_traces), which support offset pagination.
+func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
+	return clampedResult(payload, limitClamped, fmt.Sprintf(
+		"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
+		MaxRawResultLimit))
+}
+
+// aggregateResult is the result wrapper for aggregation tools. Aggregations
+// have no offset pagination, so the note advises narrowing the query instead.
+func aggregateResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
+	return clampedResult(payload, limitClamped, fmt.Sprintf(
+		"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",
+		MaxRawResultLimit))
 }

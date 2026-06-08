@@ -27,7 +27,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
-	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -38,12 +37,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Streamable HTTP only fires OnUnregisterSession for the long-lived GET
-// listener — POST-only clients never trigger explicit cleanup — so the
-// session → ClientInfo map needs bounded eviction.
 const (
-	sessionClientCacheSize       = 1024
-	sessionClientCacheTTL        = 30 * time.Minute
 	defaultMethodSpanBodyMaxSize = 1 << 20
 	// methodObsTombstoneTTL is how long an expired method observation lingers
 	// in methodObs so a late OnError hook can detect the race and skip its
@@ -69,7 +63,6 @@ type MCPServer struct {
 	analytics              analytics.Analytics
 	meters                 *otelpkg.Meters
 	methodObs              sync.Map
-	sessionClients         *expirable.LRU[string, mcp.Implementation]
 	maxMethodSpanBodyBytes int64
 	methodObsTombstoneTTL  time.Duration
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
@@ -79,36 +72,11 @@ type MCPServer struct {
 	analyticsWG sync.WaitGroup
 }
 
-func (m *MCPServer) rememberClientInfo(sessionID string, info mcp.Implementation) {
-	if sessionID == "" || info.Name == "" || m.sessionClients == nil {
-		return
-	}
-	m.sessionClients.Add(sessionID, info)
-}
-
-// lookupClientInfo re-Adds on hit so the TTL behaves as a sliding window
-// keyed on last use, keeping long-running sessions from losing attribution.
-func (m *MCPServer) lookupClientInfo(sessionID string) mcp.Implementation {
-	if sessionID == "" || m.sessionClients == nil {
-		return mcp.Implementation{}
-	}
-	v, ok := m.sessionClients.Get(sessionID)
-	if !ok {
-		return mcp.Implementation{}
-	}
-	m.sessionClients.Add(sessionID, v)
-	return v
-}
-
-func (m *MCPServer) forgetClientInfo(sessionID string) {
-	if sessionID == "" || m.sessionClients == nil {
-		return
-	}
-	m.sessionClients.Remove(sessionID)
-}
-
-func (m *MCPServer) attachClientInfo(props map[string]any, sessionID string) {
-	info := m.lookupClientInfo(sessionID)
+// attachClientInfo copies the MCP client name/version onto an analytics property
+// map. The server is stateless, so there is no session to correlate later tool
+// calls against — this is populated only from the InitializeRequest's ClientInfo
+// on the session_registered event, where the client identity is carried directly.
+func attachClientInfo(props map[string]any, info mcp.Implementation) {
 	if info.Name == "" {
 		return
 	}
@@ -316,7 +284,6 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		config:                 cfg,
 		analytics:              a,
 		meters:                 meters,
-		sessionClients:         expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
 		maxMethodSpanBodyBytes: defaultMethodSpanBodyMaxSize,
 		methodObsTombstoneTTL:  methodObsTombstoneTTL,
 	}
@@ -628,7 +595,7 @@ func (m *MCPServer) expireMethodObservation(key string) {
 	m.completeMethodObservation(observation, expireErr)
 
 	logCtx := context.WithoutCancel(observation.ctx)
-	attrs := []any{slog.String("mcp.method", string(observation.method))}
+	attrs := []any{slog.String("mcp.method.name", string(observation.method))}
 	if ctxErr != nil {
 		attrs = append(attrs, slog.String("context_error", ctxErr.Error()))
 	}
@@ -798,6 +765,29 @@ func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// maxBytesMiddleware bounds an inbound /mcp request body (config.MaxRequestBytes,
+// default 4 MiB; env MCP_MAX_REQUEST_BYTES) so one oversized POST can't OOM the
+// shared pod: a declared over-cap Content-Length is rejected early with 413,
+// otherwise MaxBytesReader bounds the (possibly chunked) stream and an over-cap
+// read surfaces downstream as mcp-go's JSON-RPC parse error. Outermost /mcp
+// middleware, so the cap also covers the methodSpanMiddleware peek. The limit<=0
+// guard is defensive for directly-constructed configs (e.g. tests).
+func (m *MCPServer) maxBytesMiddleware(next http.Handler) http.Handler {
+	limit := int64(m.config.MaxRequestBytes)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if limit > 0 {
+			if r.ContentLength > limit {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // buildHooks returns lifecycle hooks for observability.
 func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks := &server.Hooks{}
@@ -813,7 +803,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		if len(spanAttrs) > 0 {
 			span.SetAttributes(spanAttrs...)
 		}
-		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method", string(method)))
+		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method.name", string(method)))
 	})
 	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
 		if !m.finishMethodObservation(ctx, id, method, message, nil) && shouldObserveMethod(method) {
@@ -840,7 +830,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			span.SetStatus(codes.Error, err.Error())
 		}
 		m.logger.ErrorContext(ctx, "mcp error",
-			slog.String("mcp.method", string(method)),
+			slog.String("mcp.method.name", string(method)),
 			logpkg.ErrAttr(err))
 	})
 	// Analytics: track session registration after successful initialize.
@@ -855,9 +845,6 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		var sessionID string
 		if session := server.ClientSessionFromContext(ctx); session != nil {
 			sessionID = session.SessionID()
-		}
-		if message != nil {
-			m.rememberClientInfo(sessionID, message.Params.ClientInfo)
 		}
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -874,26 +861,26 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				props[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
 				traits[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
 			}
-			m.attachClientInfo(traits, sessionID)
-			m.attachClientInfo(props, sessionID)
+			if message != nil {
+				attachClientInfo(traits, message.Params.ClientInfo)
+				attachClientInfo(props, message.Params.ClientInfo)
+			}
 			attachCallerCorrelation(ctx, props)
 			m.identifyAndTrackAsync(ctx, analytics.EventSessionRegistered, traits, props)
 		}
 	})
-	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
+	hooks.AddOnRegisterSession(func(ctx context.Context, _ server.ClientSession) {
 		m.logger.InfoContext(ctx, "mcp session registered")
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
 				analytics.AttrTenantURL: signozURL,
 			}
-			m.attachClientInfo(traits, session.SessionID())
 			m.identifyAsync(ctx, traits)
 		}
 	})
-	hooks.AddOnUnregisterSession(func(ctx context.Context, sess server.ClientSession) {
+	hooks.AddOnUnregisterSession(func(ctx context.Context, _ server.ClientSession) {
 		m.logger.InfoContext(ctx, "mcp session unregistered")
-		m.forgetClientInfo(sess.SessionID())
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -901,9 +888,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				analytics.AttrTenantURL:  signozURL,
 				analytics.AttrPromptName: message.Params.Name,
 			}
-			if session := server.ClientSessionFromContext(ctx); session != nil {
+			if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
 				props[analytics.AttrSessionID] = session.SessionID()
-				m.attachClientInfo(props, session.SessionID())
 			}
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventPromptFetched, props)
@@ -915,9 +901,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				analytics.AttrTenantURL:   signozURL,
 				analytics.AttrResourceURI: message.Params.URI,
 			}
-			if session := server.ClientSessionFromContext(ctx); session != nil {
+			if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
 				props[analytics.AttrSessionID] = session.SessionID()
-				m.attachClientInfo(props, session.SessionID())
 			}
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
@@ -947,6 +932,8 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				}
 			}
 
+			ctx = util.SetToolName(ctx, req.Params.Name)
+
 			// Create a span for this tool call with GenAI semantic attributes.
 			ctx, span := tracer.Start(ctx, "execute_tool",
 				trace.WithSpanKind(trace.SpanKindServer),
@@ -972,8 +959,7 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				span.SetAttributes(extraAttrs...)
 			}
 
-			toolNameAttr := slog.String("gen_ai.tool.name", req.Params.Name)
-			m.logger.DebugContext(ctx, "tool call started", toolNameAttr)
+			m.logger.DebugContext(ctx, "tool call started")
 			result, err := next(ctx, req)
 
 			// Determine error status: either a Go error or an MCP tool result error.
@@ -998,21 +984,18 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			switch {
 			case err != nil:
 				m.logger.ErrorContext(ctx, "tool call failed",
-					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,
 					logpkg.ErrAttr(err))
 			case result != nil && result.IsError:
 				m.logger.WarnContext(ctx, "tool call returned error result",
-					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,
 					slog.String("error_message", extractToolErrorMessage(result)))
 			default:
 				m.logger.DebugContext(ctx, "tool call finished",
-					toolNameAttr,
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr)
@@ -1040,7 +1023,6 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				}
 				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
 					props[analytics.AttrSessionID] = sid
-					m.attachClientInfo(props, sid)
 				}
 				if errorType := toolErrorType(err, result); errorType != "" {
 					props[analytics.AttrErrorType] = errorType
@@ -1151,12 +1133,26 @@ const (
 	authModeOAuthAccessToken    = "oauth-access-token"
 	authModeConfigAPIKey        = "config-api-key"
 
-	authFailureExpiredOAuthToken = "expired_oauth_token"
-	authFailureInvalidOAuthToken = "invalid_oauth_token"
-	authFailureInvalidSignozURL  = "invalid_signoz_url"
-	authFailureMissingCredential = "missing_credentials"
-	authFailureMissingSignozURL  = "missing_signoz_url"
+	authFailureExpiredOAuthToken   = "expired_oauth_token"
+	authFailureInvalidOAuthToken   = "invalid_oauth_token"
+	authFailureInvalidSignozURL    = "invalid_signoz_url"
+	authFailureMissingCredential   = "missing_credentials"
+	authFailureMissingSignozURL    = "missing_signoz_url"
+	authFailureDisallowedSignozURL = "disallowed_signoz_url"
 )
+
+// enforceInstanceURLAllowlist rejects a client-supplied SigNoz URL not in
+// SIGNOZ_INSTANCE_URL_ALLOWLIST, returning false after writing the 403 + auth
+// failure. signozURL must already be on ctx so the failure carries mcp.tenant_url.
+func (m *MCPServer) enforceInstanceURLAllowlist(ctx context.Context, w http.ResponseWriter, r *http.Request, signozURL, authMode string) bool {
+	if m.config.InstanceURLAllowlist.AllowsURL(signozURL) {
+		return true
+	}
+	m.logAuthFailure(ctx, r, http.StatusForbidden, authFailureDisallowedSignozURL, authMode,
+		"Tenant SigNoz URL is not permitted by the server allowlist", slog.String("mcp.tenant_url", signozURL))
+	http.Error(w, util.InstanceURLNotPermittedMessage(), http.StatusForbidden)
+	return false
+}
 
 func httpRequestSpanAttrs(r *http.Request) []attribute.KeyValue {
 	if r == nil {
@@ -1203,6 +1199,20 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 		attribute.Int("http.response.status_code", status),
 		attribute.String("mcp.auth.failure_reason", reason),
 	)
+	if m.meters != nil {
+		metricAttrs := []attribute.KeyValue{
+			attribute.String("mcp.auth.failure_reason", reason),
+			attribute.String("mcp.auth.mode", authMode),
+		}
+		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
+		m.meters.AuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+	}
+
+	// Allowlist rejections are recorded on the metric and span only; the
+	// per-request log would be noisy for a misconfigured/looping client.
+	if reason == authFailureDisallowedSignozURL {
+		return
+	}
 
 	logAttrs := []slog.Attr{
 		slog.Int("http.response.status_code", status),
@@ -1211,7 +1221,11 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 	}
 	logAttrs = append(logAttrs, logpkg.MCPHTTPRequestAttrs(r)...)
 	logAttrs = append(logAttrs, attrs...)
-	m.logger.LogAttrs(ctx, slog.LevelWarn, msg, logAttrs...)
+	level := slog.LevelWarn
+	if reason == authFailureExpiredOAuthToken || reason == authFailureMissingCredential {
+		level = slog.LevelDebug
+	}
+	m.logger.LogAttrs(ctx, level, msg, logAttrs...)
 }
 
 func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
@@ -1263,7 +1277,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-			m.logger.DebugContext(ctx, "Using SIGNOZ-API-KEY header for auth")
 		} else if authHeader != "" {
 			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 			if customURL != "" {
@@ -1273,14 +1286,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					authMode = authModeAuthorizationJWT
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "Authorization")
-					m.logger.DebugContext(ctx, "Using JWT token authentication via Authorization header", slog.String("mcp.tenant_url", customURL))
 				} else {
 					// PAT token — forward via SIGNOZ-API-KEY
 					apiKey = token
 					authMode = authModeAuthorizationAPIKey
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header", slog.String("mcp.tenant_url", customURL))
 				}
 			} else if m.config.OAuthEnabled {
 				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
@@ -1292,7 +1303,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					authMode = authModeOAuthAccessToken
 					ctx = util.SetAPIKey(ctx, apiKey)
 					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.DebugContext(ctx, "OAuth access token extracted from Authorization header", slog.String("mcp.tenant_url", signozURL))
 				case errors.Is(err, oauth.ErrExpiredToken):
 					authMode = authModeOAuthAccessToken
 					// The token is expired but was once server-issued, so the
@@ -1329,7 +1339,6 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				authMode = authModeAuthorizationAPIKey
 				ctx = util.SetAPIKey(ctx, apiKey)
 				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-				m.logger.DebugContext(ctx, "Using API KEY token authentication via SIGNOZ-API-KEY header")
 			}
 
 		} else if m.config.APIKey != "" {
@@ -1353,6 +1362,9 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
 			}
+			if !m.enforceInstanceURLAllowlist(ctx, w, r, signozURL, authMode) {
+				return
+			}
 			decorateAuthSpan(ctx, r, authMode)
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)
@@ -1369,8 +1381,12 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
 				return
 			}
+			// Set the SigNoz URL on ctx first so an allowlist rejection is attributed.
+			ctx = util.SetSigNozURL(ctx, normalized)
+			if !m.enforceInstanceURLAllowlist(ctx, w, r, normalized, authMode) {
+				return
+			}
 			signozURL = normalized
-			m.logger.DebugContext(ctx, "Using URL from X-SigNoz-URL header", slog.String("mcp.tenant_url", signozURL))
 		} else if m.config.URL != "" {
 			signozURL = m.config.URL
 			m.logger.DebugContext(ctx, "Using URL from environment config", slog.String("mcp.tenant_url", signozURL))
@@ -1432,10 +1448,24 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
 	}
 
+	// Run the transport fully stateless: no Mcp-Session-Id is issued and no
+	// session is registered for POST requests, so any instance can serve any
+	// request without sticky routing. (An open GET listening stream still holds
+	// transient SDK-level stream state for its lifetime, which is harmless here
+	// since the server sends no server→client messages.) The server has no
+	// functional dependence on sessions — auth
+	// and the SigNoz URL are resolved per-request from headers, tools/resources
+	// are static, and nothing uses sampling or server→client messages. This also
+	// drops mcp-go's per-session maps (server.sessions/activeSessions), which the
+	// disabled idle sweeper would otherwise leak for POST-only clients, and aligns
+	// with the MCP 2026-07-28 direction of removing the session model entirely.
+	// WithHeartbeatInterval is kept: clients may still open a GET listening stream
+	// and the heartbeat keeps it alive through proxies.
 	mcpHandler := server.NewStreamableHTTPServer(s,
+		server.WithStateLess(true),
 		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
 	)
-	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
+	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(m.methodSpanMiddleware(mcpHandler))))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),

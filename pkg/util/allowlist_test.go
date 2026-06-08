@@ -1,0 +1,124 @@
+package util
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestInstanceURLAllowlistUnconfiguredAllowsAll(t *testing.T) {
+	al := ParseInstanceURLAllowlist("")
+	if al.Configured() {
+		t.Fatalf("empty allowlist should not be configured")
+	}
+	for _, host := range []string{"demo.us.signoz.cloud", "1.1.1.1", "signoz.example.com", ""} {
+		if !al.AllowsHost(host) {
+			t.Errorf("unconfigured allowlist should allow %q", host)
+		}
+	}
+	if !al.AllowsURL("https://anything.example.com") {
+		t.Errorf("unconfigured allowlist should allow any URL")
+	}
+}
+
+func TestInstanceURLAllowlistWildcard(t *testing.T) {
+	al := ParseInstanceURLAllowlist("*.us.signoz.cloud")
+	if !al.Configured() {
+		t.Fatalf("allowlist should be configured")
+	}
+
+	allowed := []string{
+		"demo.us.signoz.cloud",
+		"DEMO.US.SIGNOZ.CLOUD", // case-insensitive
+		"tough-gecko.us.signoz.cloud",
+		"a.b.us.signoz.cloud", // wildcard spans multiple labels
+	}
+	for _, host := range allowed {
+		if !al.AllowsHost(host) {
+			t.Errorf("expected %q to be allowed", host)
+		}
+	}
+
+	denied := []string{
+		"us.signoz.cloud",               // apex is not matched by its own wildcard
+		"evil.eu.signoz.cloud",          // different region
+		"notus.signoz.cloud",            // no dot boundary before suffix
+		"demo.us.signoz.cloud.evil.com", // suffix not at the end
+		"demo.us.signoz.cloud.",         // trailing-dot FQDN fails closed
+		"1.1.1.1",
+		"",
+	}
+	for _, host := range denied {
+		if al.AllowsHost(host) {
+			t.Errorf("expected %q to be denied", host)
+		}
+	}
+}
+
+func TestInstanceURLAllowlistExactAndMultiple(t *testing.T) {
+	al := ParseInstanceURLAllowlist("signoz.example.com, *.eu.signoz.cloud ,https://*.us.signoz.cloud/")
+
+	allowed := []string{
+		"signoz.example.com",
+		"demo.eu.signoz.cloud",
+		"demo.us.signoz.cloud", // scheme/path in the pattern is stripped
+	}
+	for _, host := range allowed {
+		if !al.AllowsHost(host) {
+			t.Errorf("expected %q to be allowed", host)
+		}
+	}
+
+	denied := []string{
+		"sub.signoz.example.com", // exact entry does not cover subdomains
+		"signoz.example.org",
+		"169.254.169.254", // SSRF target blocked once an allowlist is set
+	}
+	for _, host := range denied {
+		if al.AllowsHost(host) {
+			t.Errorf("expected %q to be denied", host)
+		}
+	}
+}
+
+func TestInstanceURLAllowlistStripsPortFromEntry(t *testing.T) {
+	// A pasted full URL with scheme/port/path is reduced to the bare host so it
+	// still matches (url.Hostname() never carries a port). Avoids a silent
+	// all-403 footgun for operators who paste a full URL.
+	if !ParseInstanceURLAllowlist("https://signoz.example.com:8080/").AllowsHost("signoz.example.com") {
+		t.Errorf("entry with scheme/port/path should match the bare host")
+	}
+	if !ParseInstanceURLAllowlist("*.us.signoz.cloud:443").AllowsHost("demo.us.signoz.cloud") {
+		t.Errorf("wildcard entry with a port should match a subdomain")
+	}
+	// Port on the checked URL is likewise ignored.
+	if !ParseInstanceURLAllowlist("signoz.example.com").AllowsURL("https://signoz.example.com:8443") {
+		t.Errorf("port on the checked URL should be ignored when matching a bare-host entry")
+	}
+}
+
+func TestInstanceURLNotPermittedMessage(t *testing.T) {
+	msg := InstanceURLNotPermittedMessage()
+	if !strings.Contains(msg, "https://mcp.<region>.signoz.cloud/mcp") {
+		t.Errorf("message should point to the regional MCP URL, got: %s", msg)
+	}
+	if !strings.Contains(msg, MCPDocsURL) {
+		t.Errorf("message should include the docs link, got: %s", msg)
+	}
+}
+
+func TestInstanceURLAllowlistAllowsURL(t *testing.T) {
+	al := ParseInstanceURLAllowlist("*.us.signoz.cloud")
+
+	if !al.AllowsURL("https://demo.us.signoz.cloud") {
+		t.Errorf("expected normalized cloud URL to be allowed")
+	}
+	if !al.AllowsURL("https://demo.us.signoz.cloud:443") {
+		t.Errorf("port should not affect host matching")
+	}
+	if al.AllowsURL("https://1.1.1.1") {
+		t.Errorf("expected non-cloud URL to be denied")
+	}
+	if al.AllowsURL("://bad-url") {
+		t.Errorf("malformed URL should be denied when allowlist is configured")
+	}
+}

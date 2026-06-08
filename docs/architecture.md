@@ -127,6 +127,27 @@ HIT --> CLIENT
 LOOKUP -.->|read/write| LRU_C
 ```
 
+## Stateless Transport
+
+The Streamable HTTP transport (`/mcp`) runs fully stateless: the server is built with
+`WithStateLess(true)`, so it issues no `Mcp-Session-Id` and registers no session state for
+POST requests. (An open GET listening stream still holds transient SDK-level stream state for
+its lifetime, which is harmless here — see below.) Every request is self-contained — auth
+credentials and the SigNoz URL are resolved per request in `authMiddleware` (from the OAuth
+token, headers, or env), tools and resources are static, and the server uses no sampling or
+server→client messaging.
+
+Any instance can therefore serve any request behind a plain round-robin load balancer — no
+sticky sessions or session affinity — mirroring the OAuth token design below. It also avoids
+the per-session maps the MCP SDK would otherwise accumulate, and aligns with the MCP
+`2026-07-28` spec direction of removing the protocol-level session model. Clients may still
+open a GET listening stream; a periodic heartbeat keeps it alive through intermediary proxies.
+
+One consequence: MCP client identity (name/version) is captured only on the
+`session_registered` analytics event, taken directly from the `initialize` request's
+`ClientInfo`. With no session to correlate against, it is not attached to later
+per-tool-call events.
+
 ## OAuth 2.1 — Stateless Token Design
 
 The OAuth implementation is fully stateless — no database or in-memory store is needed. All state is encrypted into the tokens themselves using AES-GCM with a shared `OAUTH_TOKEN_SECRET`.
