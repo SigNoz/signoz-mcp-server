@@ -22,6 +22,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -929,6 +930,156 @@ func TestAuthorizeSubmitUnauthorizedRecordsFailureMetric(t *testing.T) {
 	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
 	if !ok || statusAttr.AsInt64() != http.StatusUnauthorized {
 		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusUnauthorized)
+	}
+}
+
+func TestRefreshTokenGrantRejectsDisallowedInstanceURL(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		AccessTokenTTL:       time.Hour,
+		RefreshTokenTTL:      24 * time.Hour,
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+
+	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+
+	// A long-lived refresh token issued for a SigNoz instance that is no longer allowed.
+	refreshToken, err := EncryptRefreshToken("api-key", "https://selfhosted.example.com", "client-123",
+		time.Now().UTC().Add(time.Hour), []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("EncryptRefreshToken() error = %v", err)
+	}
+
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	handler.HandleToken(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "access_token") {
+		t.Fatalf("disallowed SigNoz URL must not be issued tokens, body = %s", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid_grant") {
+		t.Fatalf("expected invalid_grant error, body = %s", rr.Body.String())
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
+	if !found || len(failures.DataPoints) != 1 {
+		t.Fatalf("expected one mcp.oauth.failures datapoint (found=%v)", found)
+	}
+	reasonAttr, ok := failures.DataPoints[0].Attributes.Value(attribute.Key("mcp.auth.failure_reason"))
+	if !ok || reasonAttr.AsString() != "disallowed_signoz_url" {
+		t.Fatalf("mcp.auth.failure_reason = %v, want disallowed_signoz_url", reasonAttr)
+	}
+}
+
+func TestAuthorizeSubmitRejectsDisallowedInstanceURL(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown meter provider: %v", err)
+		}
+	}()
+
+	meters, err := otelpkg.NewMeters(meterProvider)
+	if err != nil {
+		t.Fatalf("new meters: %v", err)
+	}
+
+	cfg := &config.Config{
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		AuthCodeTTL:          10 * time.Minute,
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+
+	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
+	if err != nil {
+		t.Fatalf("EncryptClientID() error = %v", err)
+	}
+
+	authorizeReq := httptest.NewRequest(
+		http.MethodGet,
+		"/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
+			"&redirect_uri="+url.QueryEscape("http://127.0.0.1:4567/callback")+
+			"&state=state-123&code_challenge=challenge&code_challenge_method=S256",
+		nil,
+	)
+	authorizeRR := httptest.NewRecorder()
+	handler.HandleAuthorizePage(authorizeRR, authorizeReq)
+
+	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+	matches := re.FindStringSubmatch(authorizeRR.Body.String())
+	if len(matches) != 2 {
+		t.Fatalf("csrf token not found in authorize page: %s", authorizeRR.Body.String())
+	}
+
+	form := url.Values{
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
+		"state":                 {"state-123"},
+		"code_challenge":        {"challenge"},
+		"code_challenge_method": {"S256"},
+		"csrf_token":            {matches[1]},
+		"signoz_url":            {"https://selfhosted.example.com"}, // disallowed; rejected before any credential probe
+		"api_key":               {"some-api-key"},
+	}
+
+	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
+	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	submitReq.AddCookie(authorizeRR.Result().Cookies()[0])
+	submitRR := httptest.NewRecorder()
+	handler.HandleAuthorizeSubmit(submitRR, submitReq)
+
+	if submitRR.Code != http.StatusForbidden {
+		t.Fatalf("authorize POST status = %d, want %d, body = %s", submitRR.Code, http.StatusForbidden, submitRR.Body.String())
+	}
+
+	var metrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &metrics); err != nil {
+		t.Fatalf("collect metrics: %v", err)
+	}
+	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
+	if !found || len(failures.DataPoints) != 1 {
+		t.Fatalf("expected one mcp.oauth.failures datapoint (found=%v)", found)
+	}
+	dp := failures.DataPoints[0]
+	reasonAttr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.failure_reason"))
+	if !ok || reasonAttr.AsString() != "disallowed_signoz_url" {
+		t.Fatalf("mcp.auth.failure_reason = %v, want disallowed_signoz_url", reasonAttr)
+	}
+	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
+	if !ok || statusAttr.AsInt64() != http.StatusForbidden {
+		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusForbidden)
 	}
 }
 

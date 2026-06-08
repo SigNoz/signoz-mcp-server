@@ -157,6 +157,56 @@ func docsSnapshot() docsindex.CorpusSnapshot {
 	}
 }
 
+// TestStatelessTransportIssuesNoSessionID is the transport-level regression for
+// WithStateLess(true): a POST initialize must not return an Mcp-Session-Id, and a
+// follow-up request carrying no session id must still be served (not rejected as a
+// missing/invalid session). Auth is satisfied via env credentials on cfg so the
+// requests reach the MCP layer.
+func TestStatelessTransportIssuesNoSessionID(t *testing.T) {
+	logger := logpkg.New("error")
+	cfg := &config.Config{
+		TransportMode:   "http",
+		Port:            "0",
+		URL:             "https://example.signoz.cloud",
+		APIKey:          "test-key",
+		ClientCacheSize: 8,
+		ClientCacheTTL:  time.Minute,
+	}
+	h := tools.NewHandler(logger, cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	reg, err := docsindex.NewIndexRegistry(ctx, docsSnapshot())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cancel()
+		reg.Close(context.Background())
+	})
+	h.SetDocsIndex(reg)
+	m := NewMCPServer(logger, h, cfg, nil, nil)
+	s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+	h.RegisterDocsHandlers(s)
+	handler := m.buildHTTP(s).Handler
+
+	post := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("MCP-Protocol-Version", "2025-06-18")
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr
+	}
+
+	// POST initialize — stateless server must NOT issue a session id.
+	initRR := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"itest","version":"1"}}}`)
+	require.Equal(t, http.StatusOK, initRR.Code, "initialize body: %s", initRR.Body.String())
+	require.Empty(t, initRR.Header().Get(server.HeaderKeySessionID), "stateless server must not issue an Mcp-Session-Id")
+
+	// POST a follow-up request with NO session id — must be served, not rejected
+	// as a missing/invalid/terminated session (HTTP 400/404).
+	listRR := post(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	require.Equal(t, http.StatusOK, listRR.Code, "tools/list without a session id should succeed; body: %s", listRR.Body.String())
+}
+
 func docsPage(url, title, section, breadcrumb, body string, fetchedAt time.Time) docsindex.PageRecord {
 	rawHeadings, _ := json.Marshal(docsindex.ExtractHeadings(body))
 	return docsindex.PageRecord{

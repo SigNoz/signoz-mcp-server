@@ -406,6 +406,56 @@ func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareRejectsInstanceURLNotInAllowlist(t *testing.T) {
+	cfg := &config.Config{
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("SIGNOZ-API-KEY", "pat-token")
+	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+
+	rr := httptest.NewRecorder()
+	nextCalled := false
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
+	}
+	if nextCalled {
+		t.Fatalf("next handler must not run for a disallowed SigNoz URL")
+	}
+}
+
+func TestAuthMiddlewareAllowsInstanceURLInAllowlist(t *testing.T) {
+	cfg := &config.Config{
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("SIGNOZ-API-KEY", "pat-token")
+	req.Header.Set("X-SigNoz-URL", "https://demo.us.signoz.cloud")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		signozURL, _ := util.GetSigNozURL(r.Context())
+		w.Header().Set("X-SigNoz-URL", signozURL)
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if got := rr.Header().Get("X-SigNoz-URL"); got != "https://demo.us.signoz.cloud" {
+		t.Fatalf("signoz URL = %q, want %q", got, "https://demo.us.signoz.cloud")
+	}
+}
+
 func TestAuthMiddlewareRejectsInvalidOAuthBearerWithoutSigNozURL(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:     true,
@@ -1246,7 +1296,11 @@ func meEndpointServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
+// TestClientInfoAttachesToSessionRegisteredEvent verifies that under the stateless
+// transport the MCP client name/version land on the session_registered event
+// (taken directly from the InitializeRequest's ClientInfo), but NOT on per-tool-call
+// events — there is no session to correlate later calls against.
+func TestClientInfoAttachesToSessionRegisteredEvent(t *testing.T) {
 	sigNoz := meEndpointServer(t)
 	defer sigNoz.Close()
 
@@ -1286,25 +1340,34 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 	waitForCondition(t, time.Second, func() bool {
 		_, trackCalls := spy.snapshot()
 		return len(trackCalls) == 2
-	}, "timed out waiting for tool analytics")
+	}, "timed out waiting for analytics")
 
 	_, trackCalls := spy.snapshot()
-	var toolCall analyticsCall
+	var registered, toolCall analyticsCall
 	for _, c := range trackCalls {
-		if c.event == analytics.EventToolCalled {
+		switch c.event {
+		case analytics.EventSessionRegistered:
+			registered = c
+		case analytics.EventToolCalled:
 			toolCall = c
 		}
 	}
-	if toolCall.attrs[analytics.AttrClientName] != "claude-desktop" {
-		t.Fatalf("clientName = %v, want claude-desktop", toolCall.attrs[analytics.AttrClientName])
+
+	// Client identity is attached to session_registered, sourced directly from
+	// the InitializeRequest's ClientInfo.
+	if registered.attrs[analytics.AttrClientName] != "claude-desktop" {
+		t.Fatalf("registered clientName = %v, want claude-desktop", registered.attrs[analytics.AttrClientName])
 	}
-	if toolCall.attrs[analytics.AttrClientVersion] != "1.2.3" {
-		t.Fatalf("clientVersion = %v, want 1.2.3", toolCall.attrs[analytics.AttrClientVersion])
+	if registered.attrs[analytics.AttrClientVersion] != "1.2.3" {
+		t.Fatalf("registered clientVersion = %v, want 1.2.3", registered.attrs[analytics.AttrClientVersion])
 	}
 
-	mcpServer.forgetClientInfo("sess-client")
-	if mcpServer.lookupClientInfo("sess-client").Name != "" {
-		t.Fatalf("expected ClientInfo to be cleared after forgetClientInfo")
+	// Stateless: no session correlation, so per-tool-call events carry no client identity.
+	if _, ok := toolCall.attrs[analytics.AttrClientName]; ok {
+		t.Fatalf("tool-call event should not carry clientName in stateless mode; got %v", toolCall.attrs[analytics.AttrClientName])
+	}
+	if _, ok := toolCall.attrs[analytics.AttrClientVersion]; ok {
+		t.Fatalf("tool-call event should not carry clientVersion in stateless mode; got %v", toolCall.attrs[analytics.AttrClientVersion])
 	}
 }
 
@@ -2576,39 +2639,6 @@ func TestLoggingMiddleware_MetricCardinalityInvariants(t *testing.T) {
 	checkAttrs("mcp.tool.call.duration", toolDuration.DataPoints[0].Attributes)
 }
 
-func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
-	sigNoz := meEndpointServer(t)
-	defer sigNoz.Close()
-
-	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	handler := tools.NewHandler(logpkg.New("error"), cfg)
-	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
-	hooks := mcpServer.buildHooks()
-
-	ctx := context.Background()
-	ctx = util.SetAPIKey(ctx, "k")
-	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
-	ctx = newAnalyticsTestContext(ctx, "sess-cleanup")
-
-	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil,
-		&mcp.InitializeRequest{Params: mcp.InitializeParams{
-			ClientInfo: mcp.Implementation{Name: "cursor", Version: "0.9"},
-		}}, &mcp.InitializeResult{})
-
-	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "cursor" {
-		t.Fatalf("pre-unregister ClientInfo = %+v, want name=cursor", got)
-	}
-
-	session := fakeSession{id: "sess-cleanup", ch: make(chan mcp.JSONRPCNotification, 1)}
-	singleHook(t, hooks.OnUnregisterSession, "OnUnregisterSession")(ctx, session)
-
-	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "" {
-		t.Fatalf("post-unregister ClientInfo = %+v, want empty", got)
-	}
-}
-
 func TestPromptFetchedEvent(t *testing.T) {
 	sigNoz := meEndpointServer(t)
 	defer sigNoz.Close()
@@ -3065,5 +3095,75 @@ func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not exit within 5s of Shutdown")
+	}
+}
+
+// TestMaxBytesMiddlewareRejectsOversizeBody verifies the inbound request-body
+// cap: an over-cap body declared via Content-Length is rejected early with 413
+// (inner not reached); an over-cap body of unknown length is bounded by
+// MaxBytesReader so the downstream read fails; an under-cap body is readable in
+// full.
+func TestMaxBytesMiddlewareRejectsOversizeBody(t *testing.T) {
+	server := &MCPServer{logger: logpkg.New("error"), config: &config.Config{MaxRequestBytes: 16}, analytics: noopanalytics.New()}
+
+	var innerCalled bool
+	var readErr error
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		innerCalled = true
+		_, readErr = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("declared length over cap -> 413", func(t *testing.T) {
+		innerCalled, readErr = false, nil
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 100)))
+		rr := httptest.NewRecorder()
+		server.maxBytesMiddleware(inner).ServeHTTP(rr, req)
+		if rr.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+		}
+		if innerCalled {
+			t.Fatal("inner handler must not be called for a declared over-cap body")
+		}
+	})
+
+	t.Run("unknown length over cap -> read error", func(t *testing.T) {
+		innerCalled, readErr = false, nil
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 100)))
+		req.ContentLength = -1 // simulate chunked / unknown length
+		server.maxBytesMiddleware(inner).ServeHTTP(httptest.NewRecorder(), req)
+		if !innerCalled {
+			t.Fatal("inner handler should run for an unknown-length body")
+		}
+		if readErr == nil {
+			t.Fatal("expected read error for over-cap streamed body, got nil")
+		}
+	})
+
+	t.Run("under cap -> ok", func(t *testing.T) {
+		innerCalled, readErr = false, nil
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("hello"))
+		server.maxBytesMiddleware(inner).ServeHTTP(httptest.NewRecorder(), req)
+		if !innerCalled || readErr != nil {
+			t.Fatalf("under-cap body: innerCalled=%v readErr=%v, want true/nil", innerCalled, readErr)
+		}
+	})
+}
+
+// TestMaxBytesMiddlewareDisabledWhenZero verifies a zero/unset cap is a no-op
+// (so tests / configs that don't set MaxRequestBytes are not silently capped).
+func TestMaxBytesMiddlewareDisabledWhenZero(t *testing.T) {
+	server := &MCPServer{logger: logpkg.New("error"), config: &config.Config{MaxRequestBytes: 0}, analytics: noopanalytics.New()}
+
+	var readErr error
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, readErr = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 1000)))
+	server.maxBytesMiddleware(inner).ServeHTTP(httptest.NewRecorder(), req)
+	if readErr != nil {
+		t.Fatalf("zero cap should not limit body, got err: %v", readErr)
 	}
 }

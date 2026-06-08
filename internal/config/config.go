@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 type Config struct {
@@ -28,12 +30,20 @@ type Config struct {
 	ClientCacheTTL  time.Duration
 
 	CustomHeaders map[string]string
+
+	// InstanceURLAllowlist optionally restricts which SigNoz backend hosts the
+	// (multi-tenant) server will proxy to. Empty => every host is allowed.
+	InstanceURLAllowlist util.InstanceURLAllowlist
+
 	// Analytics settings
 	AnalyticsEnabled bool
 	SegmentKey       string
 
 	DocsRefreshInterval     time.Duration
 	DocsFullRefreshInterval time.Duration
+
+	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
+	MaxRequestBytes int
 }
 
 const (
@@ -43,9 +53,10 @@ const (
 	TransportMode = "TRANSPORT_MODE"
 	MCPPort       = "MCP_SERVER_PORT"
 
-	SignozCustomHeaders = "SIGNOZ_CUSTOM_HEADERS"
-	ClientCacheSize     = "CLIENT_CACHE_SIZE"
-	ClientCacheTTL      = "CLIENT_CACHE_TTL_MINUTES"
+	SignozCustomHeaders     = "SIGNOZ_CUSTOM_HEADERS"
+	InstanceURLAllowlistEnv = "SIGNOZ_INSTANCE_URL_ALLOWLIST"
+	ClientCacheSize         = "CLIENT_CACHE_SIZE"
+	ClientCacheTTL          = "CLIENT_CACHE_TTL_MINUTES"
 
 	AnalyticsEnabledEnv = "ANALYTICS_ENABLED"
 	SegmentKeyEnv       = "SEGMENT_KEY"
@@ -60,6 +71,8 @@ const (
 	DocsRefreshIntervalEnv     = "SIGNOZ_DOCS_REFRESH_INTERVAL"
 	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 
+	MaxRequestBytesEnv = "MCP_MAX_REQUEST_BYTES"
+
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
 	defaultAccessTTLMinutes      = 60    // 1 hour
@@ -67,6 +80,9 @@ const (
 	defaultAuthCodeTTLSeconds    = 600
 	defaultDocsRefreshInterval   = 6 * time.Hour
 	defaultDocsFullRefreshPeriod = 24 * time.Hour
+	// defaultMaxRequestBytes bounds inbound MCP request bodies; 4 MiB is far
+	// above any legitimate tool-call payload (incl. dashboard imports).
+	defaultMaxRequestBytes = 4 << 20 // 4 MiB
 )
 
 func LoadConfig() (*Config, error) {
@@ -102,6 +118,11 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	instanceURLAllowlist := util.ParseInstanceURLAllowlist(getEnv(InstanceURLAllowlistEnv, ""))
+	if instanceURLAllowlist.Configured() {
+		log.Printf("INFO: SigNoz URL allowlist enabled via %s; only matching SigNoz hosts will be served", InstanceURLAllowlistEnv)
+	}
+
 	return &Config{
 		URL:                     url,
 		APIKey:                  getEnv(SignozApiKey, ""),
@@ -117,10 +138,12 @@ func LoadConfig() (*Config, error) {
 		ClientCacheSize:         cacheSize,
 		ClientCacheTTL:          time.Duration(cacheTTLMinutes) * time.Minute,
 		CustomHeaders:           customHeaders,
+		InstanceURLAllowlist:    instanceURLAllowlist,
 		AnalyticsEnabled:        getEnvBool(AnalyticsEnabledEnv, false),
 		SegmentKey:              getEnv(SegmentKeyEnv, ""),
 		DocsRefreshInterval:     docsRefreshInterval,
 		DocsFullRefreshInterval: docsFullRefreshInterval,
+		MaxRequestBytes:         getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
 	}, nil
 }
 

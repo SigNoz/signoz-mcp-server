@@ -317,6 +317,12 @@ const (
 	retryMultiply = 4
 )
 
+// maxResponseBytes caps how many bytes doRequest buffers from one backend
+// response, so an unbounded response (e.g. a builder query for millions of
+// rows) can't OOM the shared pod. We error rather than truncate, so callers
+// never get invalid JSON.
+const maxResponseBytes int64 = 64 << 20 // 64 MiB
+
 // doRequest performs an HTTP request with standard headers, timeout, status
 // checking, body reading, and retry with exponential backoff for transient
 // failures (429, 502, 503, 504, network errors).
@@ -389,11 +395,16 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			break
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
+		// Read one byte past the cap to detect (and reject, not truncate) an
+		// over-limit response. Oversize is terminal, not retried.
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 		_ = resp.Body.Close()
 
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read response body: %w", readErr)
+		}
+		if int64(len(respBody)) > maxResponseBytes {
+			return nil, fmt.Errorf("response body (status %d) exceeds maximum allowed size of %d bytes; if this was a data query, narrow it (reduce limit, time range, or cardinality)", resp.StatusCode, maxResponseBytes)
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -721,7 +732,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
 	limit := 1000
 
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit)
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0)
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
