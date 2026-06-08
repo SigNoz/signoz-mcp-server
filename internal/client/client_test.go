@@ -1909,6 +1909,18 @@ func TestDeleteView(t *testing.T) {
 	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
 }
 
+func TestSharedTransportPoolTuning(t *testing.T) {
+	// Idle-connection limits are raised above the stdlib defaults (per-host 2,
+	// total 100) so a multi-tenant server reuses keep-alive connections under
+	// concurrency instead of re-handshaking. Every other test in this file already
+	// drives requests through sharedTransport (NewClient wires it in), so this just
+	// guards the tuned values and that the transport is a proper DefaultTransport clone.
+	require.Equal(t, 20, sharedTransport.MaxIdleConnsPerHost, "MaxIdleConnsPerHost")
+	require.Equal(t, 200, sharedTransport.MaxIdleConns, "MaxIdleConns")
+	require.NotZero(t, sharedTransport.TLSHandshakeTimeout, "cloned DefaultTransport: TLSHandshakeTimeout preserved")
+	require.NotNil(t, sharedTransport.DialContext, "cloned DefaultTransport: DialContext preserved")
+}
+
 // TestDoRequest_RejectsOversizeResponse verifies the response-size guard: a
 // backend response larger than maxResponseBytes is rejected with a clear error
 // (never silently truncated into invalid JSON), bounding single-request memory
