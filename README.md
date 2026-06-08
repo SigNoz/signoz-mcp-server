@@ -396,7 +396,7 @@ Search and list available metrics from SigNoz. Supports filtering by name substr
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `start` (optional) - Start time in unix milliseconds
   - `end` (optional) - End time in unix milliseconds
-  - `source` (optional) - Filter by source
+  - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter (telemetry ingestion volume) metrics; omit for the default metrics store
 
 #### `signoz_query_metrics`
 

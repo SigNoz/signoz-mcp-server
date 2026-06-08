@@ -229,6 +229,19 @@ To query them, set ` + "`source: \"meter\"`" + ` on the ` + "`builder_query`" + 
 ` + "`source`" + ` (or leave it empty) for ordinary metrics. Everything else — filters, groupBy,
 aggregations, formulas — works exactly as for normal metrics.
 
+Even log and span volume are queried this way — as metrics with ` + "`signal: \"metrics\"`" + ` and
+` + "`source: \"meter\"`" + `, not through the logs or traces tools.
+
+### Hourly aggregation — use ` + "`stepInterval: 3600`" + `
+
+Meter data is aggregated in 1-hour buckets, so always set ` + "`stepInterval: 3600`" + ` (as in the
+example below). A smaller step adds no resolution — the backend rounds it up to 1 hour — and a
+query window shorter than 1 hour returns only a single bucket for the current, still-incomplete
+hour (flagged ` + "`partial: true`" + `). Use a window of at least a few hours. Note that
+**signoz_query_metrics** auto-derives ` + "`stepInterval`" + ` as ` + "`max(60, window/300)`" + ` seconds, which
+is below 3600 for any window shorter than ~12.5 days; for meter queries pass ` + "`stepInterval: 3600`" + `
+explicitly rather than relying on that default.
+
 ### Available Cost Meter metrics
 
 All are **delta**, **monotonic sums** (counters), so use ` + "`timeAggregation: rate`" + ` or
