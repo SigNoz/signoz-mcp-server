@@ -217,6 +217,61 @@ Formula C: A / B * 100
 
 ---
 
+## Cost Meter (Telemetry Ingestion Volume)
+
+Cost Meter tracks how much telemetry each signal ingests — used to answer questions like
+"which services are consuming the most telemetry budget?" or "show ingestion volume by
+environment week-over-week". These metrics live in a separate data store and are **not**
+visible in the default metrics store.
+
+To query them, set ` + "`source: \"meter\"`" + ` on the ` + "`builder_query`" + ` spec (a sibling of
+` + "`name`" + ` and ` + "`signal`" + `), or pass ` + "`source=\"meter\"`" + ` to **signoz_query_metrics**. Omit
+` + "`source`" + ` (or leave it empty) for ordinary metrics. Everything else — filters, groupBy,
+aggregations, formulas — works exactly as for normal metrics.
+
+### Available Cost Meter metrics
+
+All are **delta**, **monotonic sums** (counters), so use ` + "`timeAggregation: rate`" + ` or
+` + "`increase`" + ` with ` + "`spaceAggregation: sum`" + ` (the counter defaults apply).
+
+| Metric | Meaning | Unit |
+|---|---|---|
+| ` + "`signoz.meter.log.count`" + ` | log records ingested | ` + "`1`" + ` |
+| ` + "`signoz.meter.log.size`" + ` | log bytes ingested | ` + "`By`" + ` |
+| ` + "`signoz.meter.metric.datapoint.count`" + ` | metric data points ingested | ` + "`1`" + ` |
+| ` + "`signoz.meter.metric.datapoint.size`" + ` | metric bytes ingested | ` + "`By`" + ` |
+| ` + "`signoz.meter.span.count`" + ` | spans ingested | — |
+| ` + "`signoz.meter.span.size`" + ` | span bytes ingested | — |
+
+### Example: Log Bytes Ingested Over Time
+
+Add a ` + "`groupBy`" + ` (e.g. a service or environment attribute) to break the volume down by
+dimension, just like any other metric.
+` + "```json" + `
+{
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "signal": "metrics",
+        "source": "meter",
+        "name": "A",
+        "stepInterval": 3600,
+        "aggregations": [{
+          "metricName": "signoz.meter.log.size",
+          "temporality": "delta",
+          "timeAggregation": "increase",
+          "spaceAggregation": "sum"
+        }]
+      }
+    }]
+  }
+}
+` + "```" + `
+
+---
+
 ## Step Interval
 
 - Auto-calculated as: max(60, (end - start) / 300 / 1000) seconds

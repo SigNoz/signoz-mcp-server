@@ -32,3 +32,12 @@ Verified working after the fix:
 - `signoz_list_metrics` with `source=meter` ✅ — returns all 6 Cost Meter metrics
 - `signoz_execute_builder_query` with `"source":"meter"` inside spec ✅ — real data vs null without source
 - `signoz_query_metrics` with `source=meter` ✅ — works including groupBy breakdowns
+
+### 2026-06-08 — Review follow-up: direct test + agent-facing guide example
+
+Review of the PR surfaced two gaps, both addressed here:
+
+- **Test coverage.** The existing `TestQueryPayloadRoundTrip_PreservesSource` only exercises the `signoz_execute_builder_query` path (unmarshal → validate → marshal of a hand-written payload). The `signoz_query_metrics` path goes through `BuildMetricsQueryPayloadJSON` — the function that actually gained the `source` argument — and had no direct test. Added `TestBuildMetricsQueryPayloadJSON_AppliesSource`, asserting source lands on every `builder_query` spec, never on a `builder_formula` spec, and is omitted when empty.
+- **Discoverability.** The `source` parameter was documented in the README param reference, but the `signoz://metrics-aggregation-guide` MCP resource (`pkg/metricsrules/guide.go`) — the agent-facing guide with payload examples — had no mention of Cost Meter. An agent reading it would never learn to set `source: "meter"`. Added a "Cost Meter (Telemetry Ingestion Volume)" section with the six real meter metric names/units (verified live via `signoz_list_metrics source=meter`: all delta monotonic sums) and a working example payload.
+
+The six Cost Meter metrics (verified live): `signoz.meter.log.count`/`.size`, `signoz.meter.metric.datapoint.count`/`.size`, `signoz.meter.span.count`/`.size`.

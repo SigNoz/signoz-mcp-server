@@ -413,6 +413,56 @@ func TestQueryPayloadRoundTrip_PreservesSource(t *testing.T) {
 		"empty source must be omitted from JSON; got: %s", string(outEmpty))
 }
 
+// TestBuildMetricsQueryPayloadJSON_AppliesSource covers the signoz_query_metrics
+// build path (distinct from the signoz_execute_builder_query round-trip above).
+// It asserts the source argument lands on every builder_query spec, never on a
+// builder_formula spec, and is omitted entirely when empty (omitempty) so existing
+// payloads stay byte-for-byte unchanged.
+func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
+	queries := []MetricsQuerySpec{
+		{
+			Name: "A",
+			Aggregation: MetricAggregation{
+				MetricName:       "signoz.meter.log.size",
+				Temporality:      "delta",
+				TimeAggregation:  "increase",
+				SpaceAggregation: "sum",
+			},
+		},
+		{
+			Name:       "B",
+			IsFormula:  true,
+			Expression: "A",
+			Legend:     "ingested_bytes",
+		},
+	}
+
+	// source set → present on the builder_query spec, absent on builder_formula.
+	out, err := BuildMetricsQueryPayloadJSON(1700000000, 1700003600, 60, queries, "time_series", "meter")
+	require.NoError(t, err)
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal(out, &payload))
+	require.Len(t, payload.CompositeQuery.Queries, 2)
+
+	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
+	require.Equal(t, "meter", spec.Source)
+
+	_, ok = payload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
+	require.True(t, ok, "expected FormulaSpec, got %T", payload.CompositeQuery.Queries[1].Spec)
+
+	// "source":"meter" appears exactly once — on the lone builder_query, not the formula.
+	require.Equal(t, 1, strings.Count(string(out), `"source":"meter"`),
+		"source must be set on the builder_query spec only; got: %s", string(out))
+
+	// empty source → field omitted everywhere (omitempty).
+	outEmpty, err := BuildMetricsQueryPayloadJSON(1700000000, 1700003600, 60, queries, "time_series", "")
+	require.NoError(t, err)
+	require.NotContains(t, string(outEmpty), `"source"`,
+		"empty source must be omitted from JSON; got: %s", string(outEmpty))
+}
+
 // jsonString JSON-encodes s and returns the result as a Go string (including
 // the surrounding double quotes).
 func jsonString(s string) string {
