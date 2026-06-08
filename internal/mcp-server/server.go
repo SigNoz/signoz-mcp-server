@@ -1172,12 +1172,26 @@ const (
 	authModeOAuthAccessToken    = "oauth-access-token"
 	authModeConfigAPIKey        = "config-api-key"
 
-	authFailureExpiredOAuthToken = "expired_oauth_token"
-	authFailureInvalidOAuthToken = "invalid_oauth_token"
-	authFailureInvalidSignozURL  = "invalid_signoz_url"
-	authFailureMissingCredential = "missing_credentials"
-	authFailureMissingSignozURL  = "missing_signoz_url"
+	authFailureExpiredOAuthToken   = "expired_oauth_token"
+	authFailureInvalidOAuthToken   = "invalid_oauth_token"
+	authFailureInvalidSignozURL    = "invalid_signoz_url"
+	authFailureMissingCredential   = "missing_credentials"
+	authFailureMissingSignozURL    = "missing_signoz_url"
+	authFailureDisallowedSignozURL = "disallowed_signoz_url"
 )
+
+// enforceInstanceURLAllowlist rejects a client-supplied SigNoz URL not in
+// SIGNOZ_INSTANCE_URL_ALLOWLIST, returning false after writing the 403 + auth
+// failure. signozURL must already be on ctx so the failure carries mcp.tenant_url.
+func (m *MCPServer) enforceInstanceURLAllowlist(ctx context.Context, w http.ResponseWriter, r *http.Request, signozURL, authMode string) bool {
+	if m.config.InstanceURLAllowlist.AllowsURL(signozURL) {
+		return true
+	}
+	m.logAuthFailure(ctx, r, http.StatusForbidden, authFailureDisallowedSignozURL, authMode,
+		"Tenant SigNoz URL is not permitted by the server allowlist", slog.String("mcp.tenant_url", signozURL))
+	http.Error(w, util.InstanceURLNotPermittedMessage(), http.StatusForbidden)
+	return false
+}
 
 func httpRequestSpanAttrs(r *http.Request) []attribute.KeyValue {
 	if r == nil {
@@ -1231,6 +1245,12 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 		}
 		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
 		m.meters.AuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+	}
+
+	// Allowlist rejections are recorded on the metric and span only; the
+	// per-request log would be noisy for a misconfigured/looping client.
+	if reason == authFailureDisallowedSignozURL {
+		return
 	}
 
 	logAttrs := []slog.Attr{
@@ -1381,6 +1401,9 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			if attr, ok := otelpkg.TenantURLAttr(ctx); ok {
 				trace.SpanFromContext(ctx).SetAttributes(attr)
 			}
+			if !m.enforceInstanceURLAllowlist(ctx, w, r, signozURL, authMode) {
+				return
+			}
 			decorateAuthSpan(ctx, r, authMode)
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)
@@ -1395,6 +1418,11 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 				m.logAuthFailure(ctx, r, http.StatusBadRequest, authFailureInvalidSignozURL, authMode, "Invalid X-SigNoz-URL header",
 					slog.String("url", customURL), logpkg.ErrAttr(err))
 				http.Error(w, fmt.Sprintf("Invalid X-SigNoz-URL: %v", err), http.StatusBadRequest)
+				return
+			}
+			// Set the SigNoz URL on ctx first so an allowlist rejection is attributed.
+			ctx = util.SetSigNozURL(ctx, normalized)
+			if !m.enforceInstanceURLAllowlist(ctx, w, r, normalized, authMode) {
 				return
 			}
 			signozURL = normalized
