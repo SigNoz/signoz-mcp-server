@@ -127,6 +127,26 @@ HIT --> CLIENT
 LOOKUP -.->|read/write| LRU_C
 ```
 
+## Memory Limit (GOMEMLIMIT)
+
+At startup the server derives a soft memory limit from the container's cgroup memory limit and
+applies it via `debug.SetMemoryLimit` (see `pkg/memlimit`). This makes the garbage collector
+reclaim more aggressively as the heap approaches the limit, so the pod is far less likely to be
+cgroup OOM-killed under steady-state or gradual-growth pressure.
+
+- Reads the cgroup limit (v2 `memory.max`, falling back to v1 `memory.limit_in_bytes`) and sets
+  `GOMEMLIMIT` to `ratio × limit`. Ratio defaults to **0.9** and is overridable via
+  `SIGNOZ_GOMEMLIMIT_RATIO` — headroom covers non-heap memory (goroutine stacks, the docs index,
+  runtime overhead).
+- **Fails open:** if `GOMEMLIMIT` is already set explicitly, no cgroup limit is detected (e.g.
+  local/stdio runs, non-containerized), or the limit is implausibly small, the runtime default is
+  left untouched. The decision is logged at startup.
+- `GOMAXPROCS` is intentionally not touched — the Go runtime (≥1.25) already derives it from the
+  cgroup CPU quota.
+
+Note: a soft limit is a backstop, not a hard cap — it cannot prevent a single transient
+allocation larger than the limit (e.g. a docs-index rebuild spike); that is addressed separately.
+
 ## OAuth 2.1 — Stateless Token Design
 
 The OAuth implementation is fully stateless — no database or in-memory store is needed. All state is encrypted into the tokens themselves using AES-GCM with a shared `OAUTH_TOKEN_SECRET`.

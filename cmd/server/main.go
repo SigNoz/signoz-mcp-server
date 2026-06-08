@@ -22,6 +22,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/segmentanalytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/memlimit"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
@@ -45,6 +46,12 @@ func main() {
 	logger.InfoContext(ctx, "Starting SigNoz MCP Server",
 		slog.String("log_level", cfg.LogLevel),
 		slog.String("transport_mode", cfg.TransportMode))
+
+	// Derive GOMEMLIMIT from the container memory limit before the heavy
+	// docs-index build, so the GC reclaims under pressure instead of the cgroup
+	// OOM-killing the pod. No-op when GOMEMLIMIT is already set or no cgroup
+	// limit is detected (e.g. local/stdio runs).
+	memlimit.Configure(ctx, logger)
 
 	// resource.New returns a best-effort Resource even when individual
 	// detectors fail (e.g. malformed OTEL_RESOURCE_ATTRIBUTES), so log the
