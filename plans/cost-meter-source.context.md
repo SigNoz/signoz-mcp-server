@@ -94,3 +94,14 @@ The pushes re-triggered Codex; two new valid findings (the older inline comments
 - **Manifest sync.** Per the CLAUDE.md doc-sync checklist, enriched `signoz_list_metrics` and `signoz_query_metrics` descriptions in `manifest.json` to mention `source="meter"` (Cost Meter), so manifest-consuming catalogs surface the capability.
 
 Replied to the two Codex inline comments on the PR confirming the fixes.
+
+### 2026-06-08 — Second Codex (gpt-5.5/xhigh) review pass + meter-step E2E
+
+A fresh xhigh review (and a new PR inline comment) surfaced these; applied the valid set:
+- **`frequency` now required** in `validateEvaluation` for both rolling and cumulative (it was only auto-supplied when the whole block was omitted; the schema marks it required).
+- **Alert `source` validation hardened** to mirror the dashboard validator: reject any non-empty `source` other than `"meter"`, then enforce `"meter"` only with `signal:"metrics"` (previously only the meter+non-metrics case errored, so `source:"foo"` slipped through).
+- **`AlertEvaluationSchedule.type` marked `jsonschema:"required"`**, and `validateEvaluation` now range-checks `minute` (0-59) / `hour` (0-23).
+- **anomaly_rule now rejects a supplied `evaluation` block** (v1 anomaly uses top-level evalWindow/frequency; a stray evaluation previously passed through).
+- **Decoupled** the builder-spec `source` doc line from cumulative (it had said "Pair with a cumulative evaluation window"); fixed the stale "ten canonical examples" wording in the alert instructions/examples resource. Added 5 unit tests; new `floatVal` helper.
+
+- **Meter-step auto-flooring (re-raised by Codex) — declined again, now with E2E evidence.** Subagent test against staging: a `source=meter` query with **no `stepInterval`** (the `signoz_query_metrics` default path) returns a complete, usable series over a normal 24h window — the backend auto-floors to a 1h step (25 buckets, only edge buckets `partial`). Only a sub-hour *window* degrades to a single partial bucket. So client-side step coercion is **not** needed; the doc guidance covers the sub-hour caveat. Replied on the PR declining, per the standing no-coercion decision.

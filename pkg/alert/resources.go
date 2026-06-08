@@ -12,7 +12,7 @@ Schemas supported:
 - **v1** for anomaly_rule — top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
 ## CRITICAL: Before Creating an Alert
-1. ALWAYS read signoz://alert/examples for complete working payloads (mirrors the ten canonical examples from SigNoz PR #11023).
+1. ALWAYS read signoz://alert/examples for complete working payloads (the canonical SigNoz PR #11023 examples plus a Cost Meter cumulative-budget example).
 2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects.
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
 4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first.
@@ -62,7 +62,7 @@ The envelope type must match compositeQuery.queryType:
 ### Builder query spec (builder_query)
 - name: query identifier (A, B, C, …)
 - signal: "metrics" | "logs" | "traces" (must match alertType)
-- source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Pair with a cumulative evaluation window.
+- source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Works with either evaluation kind — cumulative for daily/monthly spend budgets, rolling for rate/over-time meter alerts.
 - stepInterval: interval in seconds (60 for most alerts)
 - aggregations: see "Aggregation shapes" below
 - filter: {expression: "service.name = 'frontend' AND http.status_code >= 500"}
@@ -359,7 +359,7 @@ User-facing docs. Cite these back to the user when they want to understand a con
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.
-// The ten examples below mirror the canonical payloads in SigNoz PR #11023
+// The examples below mirror the canonical payloads in SigNoz PR #11023, plus a Cost Meter example
 // (pkg/apiserver/signozapiserver/ruler_examples.go). Keep this list in sync
 // with upstream when that file changes.
 const Examples = `# SigNoz Alert Rule — Examples (mirrors SigNoz PR #11023)

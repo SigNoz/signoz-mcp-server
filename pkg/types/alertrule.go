@@ -206,7 +206,7 @@ type AlertEvaluationSpec struct {
 
 // AlertEvaluationSchedule is the reset schedule for a cumulative evaluation window.
 type AlertEvaluationSchedule struct {
-	Type   string `json:"type" jsonschema_extras:"description=Reset cadence: daily or monthly."`
+	Type   string `json:"type" jsonschema:"required" jsonschema_extras:"description=Reset cadence: daily or monthly."`
 	Minute int    `json:"minute" jsonschema_extras:"description=Minute of the reset boundary (0-59); e.g. 0 for the top of the hour."`
 	Hour   int    `json:"hour" jsonschema_extras:"description=Hour of the reset boundary (0-23); e.g. 0 for midnight."`
 }

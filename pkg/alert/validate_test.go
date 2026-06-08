@@ -1061,3 +1061,59 @@ func TestValidate_InvalidEvaluationKind(t *testing.T) {
 		t.Errorf("expected kind error, got: %v", err)
 	}
 }
+
+func TestValidate_EvaluationRequiresFrequency(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["evaluation"] = map[string]any{"kind": "rolling", "spec": map[string]any{"evalWindow": "5m"}}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: evaluation without frequency")
+	}
+	if !strings.Contains(err.Error(), "frequency") {
+		t.Errorf("expected frequency error, got: %v", err)
+	}
+}
+
+func TestValidate_CumulativeScheduleOutOfRange(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["evaluation"] = map[string]any{
+		"kind": "cumulative",
+		"spec": map[string]any{
+			"schedule":  map[string]any{"type": "daily", "minute": 0, "hour": 25},
+			"frequency": "1m",
+			"timezone":  "UTC",
+		},
+	}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: schedule hour out of range")
+	}
+	if !strings.Contains(err.Error(), "hour") {
+		t.Errorf("expected hour-range error, got: %v", err)
+	}
+}
+
+func TestValidate_AnomalyRejectsEvaluationBlock(t *testing.T) {
+	rule := minimalValidAnomalyRule()
+	rule["evaluation"] = map[string]any{"kind": "rolling", "spec": map[string]any{"evalWindow": "5m", "frequency": "1m"}}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: anomaly_rule must omit evaluation")
+	}
+	if !strings.Contains(err.Error(), "evaluation") {
+		t.Errorf("expected evaluation-omitted error, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidSourceValueRejected(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	spec["source"] = "logsdb"
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: invalid source value")
+	}
+	if !strings.Contains(err.Error(), "source") {
+		t.Errorf("expected source error, got: %v", err)
+	}
+}

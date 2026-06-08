@@ -295,9 +295,13 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			} else if !validSignals[sig] {
 				errs.Addf(prefix+".spec.signal", "must be metrics, logs, or traces; got %q", sig)
 			}
-			// source="meter" (Cost Meter) only applies to the metrics signal.
-			if strVal(spec, "source") == "meter" && sig != "metrics" {
-				errs.Addf(prefix+".spec.source", `"meter" (Cost Meter) is only valid with signal "metrics"; got %q`, sig)
+			// source filter: only "meter" (Cost Meter) is supported, and only on the metrics signal.
+			if src := strVal(spec, "source"); src != "" {
+				if src != "meter" {
+					errs.Addf(prefix+".spec.source", `must be "" or "meter"; got %q`, src)
+				} else if sig != "metrics" {
+					errs.Addf(prefix+".spec.source", `"meter" (Cost Meter) is only valid with signal "metrics"; got signal %q`, sig)
+				}
 			}
 		}
 
@@ -362,11 +366,16 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 // here. Anomaly rules use top-level evalWindow/frequency instead and are skipped.
 func validateEvaluation(rule map[string]any, errs *ValidationError) {
 	if strVal(rule, "ruleType") == "anomaly_rule" {
+		// Anomaly rules use the v1 schema (top-level evalWindow/frequency) and must
+		// not carry a v2alpha1 evaluation block.
+		if raw, ok := rule["evaluation"]; ok && raw != nil {
+			errs.Add("evaluation", "must be omitted for anomaly_rule (v1 schema uses top-level evalWindow/frequency)")
+		}
 		return
 	}
 	raw, ok := rule["evaluation"]
 	if !ok || raw == nil {
-		return
+		return // auto-defaulted to a rolling window later
 	}
 	eval, ok := raw.(map[string]any)
 	if !ok {
@@ -385,11 +394,25 @@ func validateEvaluation(rule map[string]any, errs *ValidationError) {
 		sched := mapVal(spec, "schedule")
 		if sched == nil {
 			errs.Add("evaluation.spec.schedule", `is required when evaluation.kind is cumulative (e.g. {"type":"daily","minute":0,"hour":0})`)
-		} else if st := strVal(sched, "type"); st != "daily" && st != "monthly" {
-			errs.Addf("evaluation.spec.schedule.type", "must be daily or monthly; got %q", st)
+		} else {
+			if st := strVal(sched, "type"); st != "daily" && st != "monthly" {
+				errs.Addf("evaluation.spec.schedule.type", "must be daily or monthly; got %q", st)
+			}
+			if v, ok := floatVal(sched, "minute"); ok && (v < 0 || v > 59) {
+				errs.Addf("evaluation.spec.schedule.minute", "must be between 0 and 59; got %v", v)
+			}
+			if v, ok := floatVal(sched, "hour"); ok && (v < 0 || v > 23) {
+				errs.Addf("evaluation.spec.schedule.hour", "must be between 0 and 23; got %v", v)
+			}
 		}
 	default:
 		errs.Addf("evaluation.kind", "must be rolling or cumulative; got %q", strVal(eval, "kind"))
+		return
+	}
+	// frequency is required for both rolling and cumulative (the backend only
+	// auto-supplies it when the whole evaluation block is omitted).
+	if spec != nil && strVal(spec, "frequency") == "" {
+		errs.Add("evaluation.spec.frequency", "is required (Go duration string, e.g. 1m)")
 	}
 }
 
@@ -619,4 +642,20 @@ func boolVal(m map[string]any, key string) bool {
 		return v
 	}
 	return false
+}
+
+// floatVal returns m[key] as a float64 when it is a JSON number.
+func floatVal(m map[string]any, key string) (float64, bool) {
+	switch v := m[key].(type) {
+	case float64:
+		return v, true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case json.Number:
+		f, err := v.Float64()
+		return f, err == nil
+	}
+	return 0, false
 }
