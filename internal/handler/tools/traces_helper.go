@@ -9,6 +9,7 @@ import (
 type SearchTracesRequest struct {
 	FilterExpression string
 	Limit            int
+	LimitClamped     bool
 	Offset           int
 	StartTime        int64
 	EndTime          int64
@@ -27,6 +28,7 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	limit, clamped := clampLimit(limit)
 
 	offset, err := intArg(args, "offset", 0)
 	if err != nil {
@@ -41,6 +43,7 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	return &SearchTracesRequest{
 		FilterExpression: filterExpr,
 		Limit:            limit,
+		LimitClamped:     clamped,
 		Offset:           offset,
 		StartTime:        startTime,
 		EndTime:          endTime,
