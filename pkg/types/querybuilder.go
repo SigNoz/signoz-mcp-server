@@ -535,7 +535,7 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 	return json.Marshal(payload)
 }
 
-func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, limit int) *QueryPayload {
+func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, limit int, offset int) *QueryPayload {
 	return &QueryPayload{
 		SchemaVersion: "v1",
 		Start:         startTime,
@@ -551,7 +551,7 @@ func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, 
 						Disabled: false,
 						Filter:   &Filter{Expression: filterExpression},
 						Limit:    limit,
-						Offset:   0,
+						Offset:   offset,
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},

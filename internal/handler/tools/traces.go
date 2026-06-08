@@ -36,7 +36,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10, max: 10000; higher values are clamped)")),
 		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
@@ -62,7 +62,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of traces to return (default: 100)")),
+		mcp.WithString("limit", mcp.Description("Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with offset)")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 	)
 
@@ -121,7 +121,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	return aggregateResult(result, reqData.LimitClamped), nil
 }
 
 func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -135,7 +135,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	queryPayload := types.BuildTracesQueryPayload(reqData.StartTime, reqData.EndTime, reqData.FilterExpression, reqData.Limit)
+	queryPayload := types.BuildTracesQueryPayload(reqData.StartTime, reqData.EndTime, reqData.FilterExpression, reqData.Limit, reqData.Offset)
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
@@ -156,7 +156,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	return rawSearchResult(result, reqData.LimitClamped), nil
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

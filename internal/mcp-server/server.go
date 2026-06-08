@@ -798,6 +798,29 @@ func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// maxBytesMiddleware bounds an inbound /mcp request body (config.MaxRequestBytes,
+// default 4 MiB; env MCP_MAX_REQUEST_BYTES) so one oversized POST can't OOM the
+// shared pod: a declared over-cap Content-Length is rejected early with 413,
+// otherwise MaxBytesReader bounds the (possibly chunked) stream and an over-cap
+// read surfaces downstream as mcp-go's JSON-RPC parse error. Outermost /mcp
+// middleware, so the cap also covers the methodSpanMiddleware peek. The limit<=0
+// guard is defensive for directly-constructed configs (e.g. tests).
+func (m *MCPServer) maxBytesMiddleware(next http.Handler) http.Handler {
+	limit := int64(m.config.MaxRequestBytes)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if limit > 0 {
+			if r.ContentLength > limit {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // buildHooks returns lifecycle hooks for observability.
 func (m *MCPServer) buildHooks() *server.Hooks {
 	hooks := &server.Hooks{}
@@ -1467,7 +1490,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	mcpHandler := server.NewStreamableHTTPServer(s,
 		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
 	)
-	mux.Handle("/mcp", m.authMiddleware(m.methodSpanMiddleware(mcpHandler)))
+	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(m.methodSpanMiddleware(mcpHandler))))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),

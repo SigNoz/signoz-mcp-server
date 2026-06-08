@@ -3117,3 +3117,73 @@ func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 		t.Fatal("Run did not exit within 5s of Shutdown")
 	}
 }
+
+// TestMaxBytesMiddlewareRejectsOversizeBody verifies the inbound request-body
+// cap: an over-cap body declared via Content-Length is rejected early with 413
+// (inner not reached); an over-cap body of unknown length is bounded by
+// MaxBytesReader so the downstream read fails; an under-cap body is readable in
+// full.
+func TestMaxBytesMiddlewareRejectsOversizeBody(t *testing.T) {
+	server := &MCPServer{logger: logpkg.New("error"), config: &config.Config{MaxRequestBytes: 16}, analytics: noopanalytics.New()}
+
+	var innerCalled bool
+	var readErr error
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		innerCalled = true
+		_, readErr = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("declared length over cap -> 413", func(t *testing.T) {
+		innerCalled, readErr = false, nil
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 100)))
+		rr := httptest.NewRecorder()
+		server.maxBytesMiddleware(inner).ServeHTTP(rr, req)
+		if rr.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+		}
+		if innerCalled {
+			t.Fatal("inner handler must not be called for a declared over-cap body")
+		}
+	})
+
+	t.Run("unknown length over cap -> read error", func(t *testing.T) {
+		innerCalled, readErr = false, nil
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 100)))
+		req.ContentLength = -1 // simulate chunked / unknown length
+		server.maxBytesMiddleware(inner).ServeHTTP(httptest.NewRecorder(), req)
+		if !innerCalled {
+			t.Fatal("inner handler should run for an unknown-length body")
+		}
+		if readErr == nil {
+			t.Fatal("expected read error for over-cap streamed body, got nil")
+		}
+	})
+
+	t.Run("under cap -> ok", func(t *testing.T) {
+		innerCalled, readErr = false, nil
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("hello"))
+		server.maxBytesMiddleware(inner).ServeHTTP(httptest.NewRecorder(), req)
+		if !innerCalled || readErr != nil {
+			t.Fatalf("under-cap body: innerCalled=%v readErr=%v, want true/nil", innerCalled, readErr)
+		}
+	})
+}
+
+// TestMaxBytesMiddlewareDisabledWhenZero verifies a zero/unset cap is a no-op
+// (so tests / configs that don't set MaxRequestBytes are not silently capped).
+func TestMaxBytesMiddlewareDisabledWhenZero(t *testing.T) {
+	server := &MCPServer{logger: logpkg.New("error"), config: &config.Config{MaxRequestBytes: 0}, analytics: noopanalytics.New()}
+
+	var readErr error
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, readErr = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 1000)))
+	server.maxBytesMiddleware(inner).ServeHTTP(httptest.NewRecorder(), req)
+	if readErr != nil {
+		t.Fatalf("zero cap should not limit body, got err: %v", readErr)
+	}
+}
