@@ -1296,7 +1296,11 @@ func meEndpointServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
+// TestClientInfoAttachesToSessionRegisteredEvent verifies that under the stateless
+// transport the MCP client name/version land on the session_registered event
+// (taken directly from the InitializeRequest's ClientInfo), but NOT on per-tool-call
+// events — there is no session to correlate later calls against.
+func TestClientInfoAttachesToSessionRegisteredEvent(t *testing.T) {
 	sigNoz := meEndpointServer(t)
 	defer sigNoz.Close()
 
@@ -1336,25 +1340,34 @@ func TestClientInfoAttachesToToolCallEvent(t *testing.T) {
 	waitForCondition(t, time.Second, func() bool {
 		_, trackCalls := spy.snapshot()
 		return len(trackCalls) == 2
-	}, "timed out waiting for tool analytics")
+	}, "timed out waiting for analytics")
 
 	_, trackCalls := spy.snapshot()
-	var toolCall analyticsCall
+	var registered, toolCall analyticsCall
 	for _, c := range trackCalls {
-		if c.event == analytics.EventToolCalled {
+		switch c.event {
+		case analytics.EventSessionRegistered:
+			registered = c
+		case analytics.EventToolCalled:
 			toolCall = c
 		}
 	}
-	if toolCall.attrs[analytics.AttrClientName] != "claude-desktop" {
-		t.Fatalf("clientName = %v, want claude-desktop", toolCall.attrs[analytics.AttrClientName])
+
+	// Client identity is attached to session_registered, sourced directly from
+	// the InitializeRequest's ClientInfo.
+	if registered.attrs[analytics.AttrClientName] != "claude-desktop" {
+		t.Fatalf("registered clientName = %v, want claude-desktop", registered.attrs[analytics.AttrClientName])
 	}
-	if toolCall.attrs[analytics.AttrClientVersion] != "1.2.3" {
-		t.Fatalf("clientVersion = %v, want 1.2.3", toolCall.attrs[analytics.AttrClientVersion])
+	if registered.attrs[analytics.AttrClientVersion] != "1.2.3" {
+		t.Fatalf("registered clientVersion = %v, want 1.2.3", registered.attrs[analytics.AttrClientVersion])
 	}
 
-	mcpServer.forgetClientInfo("sess-client")
-	if mcpServer.lookupClientInfo("sess-client").Name != "" {
-		t.Fatalf("expected ClientInfo to be cleared after forgetClientInfo")
+	// Stateless: no session correlation, so per-tool-call events carry no client identity.
+	if _, ok := toolCall.attrs[analytics.AttrClientName]; ok {
+		t.Fatalf("tool-call event should not carry clientName in stateless mode; got %v", toolCall.attrs[analytics.AttrClientName])
+	}
+	if _, ok := toolCall.attrs[analytics.AttrClientVersion]; ok {
+		t.Fatalf("tool-call event should not carry clientVersion in stateless mode; got %v", toolCall.attrs[analytics.AttrClientVersion])
 	}
 }
 
@@ -2624,39 +2637,6 @@ func TestLoggingMiddleware_MetricCardinalityInvariants(t *testing.T) {
 		t.Fatalf("mcp.tool.call.duration datapoints = %d, want 1", len(toolDuration.DataPoints))
 	}
 	checkAttrs("mcp.tool.call.duration", toolDuration.DataPoints[0].Attributes)
-}
-
-func TestUnregisterSessionHookClearsClientInfo(t *testing.T) {
-	sigNoz := meEndpointServer(t)
-	defer sigNoz.Close()
-
-	cfg := &config.Config{URL: sigNoz.URL, APIKey: "k", ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	handler := tools.NewHandler(logpkg.New("error"), cfg)
-	spy := &spyAnalytics{enabled: true}
-	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, spy, nil)
-	hooks := mcpServer.buildHooks()
-
-	ctx := context.Background()
-	ctx = util.SetAPIKey(ctx, "k")
-	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-	ctx = util.SetSigNozURL(ctx, sigNoz.URL)
-	ctx = newAnalyticsTestContext(ctx, "sess-cleanup")
-
-	singleHook(t, hooks.OnAfterInitialize, "OnAfterInitialize")(ctx, nil,
-		&mcp.InitializeRequest{Params: mcp.InitializeParams{
-			ClientInfo: mcp.Implementation{Name: "cursor", Version: "0.9"},
-		}}, &mcp.InitializeResult{})
-
-	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "cursor" {
-		t.Fatalf("pre-unregister ClientInfo = %+v, want name=cursor", got)
-	}
-
-	session := fakeSession{id: "sess-cleanup", ch: make(chan mcp.JSONRPCNotification, 1)}
-	singleHook(t, hooks.OnUnregisterSession, "OnUnregisterSession")(ctx, session)
-
-	if got := mcpServer.lookupClientInfo("sess-cleanup"); got.Name != "" {
-		t.Fatalf("post-unregister ClientInfo = %+v, want empty", got)
-	}
 }
 
 func TestPromptFetchedEvent(t *testing.T) {

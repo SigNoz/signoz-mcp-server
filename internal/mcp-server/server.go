@@ -27,7 +27,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
-	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -38,12 +37,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Streamable HTTP only fires OnUnregisterSession for the long-lived GET
-// listener — POST-only clients never trigger explicit cleanup — so the
-// session → ClientInfo map needs bounded eviction.
 const (
-	sessionClientCacheSize       = 1024
-	sessionClientCacheTTL        = 30 * time.Minute
 	defaultMethodSpanBodyMaxSize = 1 << 20
 	// methodObsTombstoneTTL is how long an expired method observation lingers
 	// in methodObs so a late OnError hook can detect the race and skip its
@@ -69,7 +63,6 @@ type MCPServer struct {
 	analytics              analytics.Analytics
 	meters                 *otelpkg.Meters
 	methodObs              sync.Map
-	sessionClients         *expirable.LRU[string, mcp.Implementation]
 	maxMethodSpanBodyBytes int64
 	methodObsTombstoneTTL  time.Duration
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
@@ -79,36 +72,11 @@ type MCPServer struct {
 	analyticsWG sync.WaitGroup
 }
 
-func (m *MCPServer) rememberClientInfo(sessionID string, info mcp.Implementation) {
-	if sessionID == "" || info.Name == "" || m.sessionClients == nil {
-		return
-	}
-	m.sessionClients.Add(sessionID, info)
-}
-
-// lookupClientInfo re-Adds on hit so the TTL behaves as a sliding window
-// keyed on last use, keeping long-running sessions from losing attribution.
-func (m *MCPServer) lookupClientInfo(sessionID string) mcp.Implementation {
-	if sessionID == "" || m.sessionClients == nil {
-		return mcp.Implementation{}
-	}
-	v, ok := m.sessionClients.Get(sessionID)
-	if !ok {
-		return mcp.Implementation{}
-	}
-	m.sessionClients.Add(sessionID, v)
-	return v
-}
-
-func (m *MCPServer) forgetClientInfo(sessionID string) {
-	if sessionID == "" || m.sessionClients == nil {
-		return
-	}
-	m.sessionClients.Remove(sessionID)
-}
-
-func (m *MCPServer) attachClientInfo(props map[string]any, sessionID string) {
-	info := m.lookupClientInfo(sessionID)
+// attachClientInfo copies the MCP client name/version onto an analytics property
+// map. The server is stateless, so there is no session to correlate later tool
+// calls against — this is populated only from the InitializeRequest's ClientInfo
+// on the session_registered event, where the client identity is carried directly.
+func attachClientInfo(props map[string]any, info mcp.Implementation) {
 	if info.Name == "" {
 		return
 	}
@@ -316,7 +284,6 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		config:                 cfg,
 		analytics:              a,
 		meters:                 meters,
-		sessionClients:         expirable.NewLRU[string, mcp.Implementation](sessionClientCacheSize, nil, sessionClientCacheTTL),
 		maxMethodSpanBodyBytes: defaultMethodSpanBodyMaxSize,
 		methodObsTombstoneTTL:  methodObsTombstoneTTL,
 	}
@@ -879,9 +846,6 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		if session := server.ClientSessionFromContext(ctx); session != nil {
 			sessionID = session.SessionID()
 		}
-		if message != nil {
-			m.rememberClientInfo(sessionID, message.Params.ClientInfo)
-		}
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
@@ -897,26 +861,26 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				props[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
 				traits[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
 			}
-			m.attachClientInfo(traits, sessionID)
-			m.attachClientInfo(props, sessionID)
+			if message != nil {
+				attachClientInfo(traits, message.Params.ClientInfo)
+				attachClientInfo(props, message.Params.ClientInfo)
+			}
 			attachCallerCorrelation(ctx, props)
 			m.identifyAndTrackAsync(ctx, analytics.EventSessionRegistered, traits, props)
 		}
 	})
-	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
+	hooks.AddOnRegisterSession(func(ctx context.Context, _ server.ClientSession) {
 		m.logger.InfoContext(ctx, "mcp session registered")
 
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			traits := map[string]any{
 				analytics.AttrTenantURL: signozURL,
 			}
-			m.attachClientInfo(traits, session.SessionID())
 			m.identifyAsync(ctx, traits)
 		}
 	})
-	hooks.AddOnUnregisterSession(func(ctx context.Context, sess server.ClientSession) {
+	hooks.AddOnUnregisterSession(func(ctx context.Context, _ server.ClientSession) {
 		m.logger.InfoContext(ctx, "mcp session unregistered")
-		m.forgetClientInfo(sess.SessionID())
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
@@ -924,9 +888,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				analytics.AttrTenantURL:  signozURL,
 				analytics.AttrPromptName: message.Params.Name,
 			}
-			if session := server.ClientSessionFromContext(ctx); session != nil {
+			if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
 				props[analytics.AttrSessionID] = session.SessionID()
-				m.attachClientInfo(props, session.SessionID())
 			}
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventPromptFetched, props)
@@ -938,9 +901,8 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				analytics.AttrTenantURL:   signozURL,
 				analytics.AttrResourceURI: message.Params.URI,
 			}
-			if session := server.ClientSessionFromContext(ctx); session != nil {
+			if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
 				props[analytics.AttrSessionID] = session.SessionID()
-				m.attachClientInfo(props, session.SessionID())
 			}
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
@@ -1061,7 +1023,6 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 				}
 				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
 					props[analytics.AttrSessionID] = sid
-					m.attachClientInfo(props, sid)
 				}
 				if errorType := toolErrorType(err, result); errorType != "" {
 					props[analytics.AttrErrorType] = errorType
@@ -1487,7 +1448,21 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 		mux.HandleFunc("POST /oauth/token", oauthHandler.HandleToken)
 	}
 
+	// Run the transport fully stateless: no Mcp-Session-Id is issued and no
+	// session is registered for POST requests, so any instance can serve any
+	// request without sticky routing. (An open GET listening stream still holds
+	// transient SDK-level stream state for its lifetime, which is harmless here
+	// since the server sends no server→client messages.) The server has no
+	// functional dependence on sessions — auth
+	// and the SigNoz URL are resolved per-request from headers, tools/resources
+	// are static, and nothing uses sampling or server→client messages. This also
+	// drops mcp-go's per-session maps (server.sessions/activeSessions), which the
+	// disabled idle sweeper would otherwise leak for POST-only clients, and aligns
+	// with the MCP 2026-07-28 direction of removing the session model entirely.
+	// WithHeartbeatInterval is kept: clients may still open a GET listening stream
+	// and the heartbeat keeps it alive through proxies.
 	mcpHandler := server.NewStreamableHTTPServer(s,
+		server.WithStateLess(true),
 		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
 	)
 	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(m.methodSpanMiddleware(mcpHandler))))
