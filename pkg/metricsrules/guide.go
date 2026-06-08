@@ -217,12 +217,14 @@ Formula C: A / B * 100
 
 ---
 
-## Cost Meter (Telemetry Ingestion Volume)
+## Cost Meter (SigNoz usage / billing metrics)
 
-Cost Meter tracks how much telemetry each signal ingests — used to answer questions like
-"which services are consuming the most telemetry budget?" or "show ingestion volume by
-environment week-over-week". These metrics live in a separate data store and are **not**
-visible in the default metrics store.
+Cost Meter is the data store for the metrics SigNoz meters and bills on. Today these are
+telemetry ingestion volume — logs, spans, and metric data points, by count and by bytes —
+and the set evolves (it may include other billable usage, such as AI credit consumption, in
+future). They answer questions like "which services consume the most telemetry budget?" or
+"ingestion volume by environment week-over-week". These metrics live in a separate store and
+are **not** visible in the default metrics store.
 
 To query them, set ` + "`source: \"meter\"`" + ` on the ` + "`builder_query`" + ` spec (a sibling of
 ` + "`name`" + ` and ` + "`signal`" + `), or pass ` + "`source=\"meter\"`" + ` to **signoz_query_metrics**. Omit
@@ -242,19 +244,16 @@ hour (flagged ` + "`partial: true`" + `). Use a window of at least a few hours. 
 is below 3600 for any window shorter than ~12.5 days; for meter queries pass ` + "`stepInterval: 3600`" + `
 explicitly rather than relying on that default.
 
-### Available Cost Meter metrics
+### Discover the current meter metrics
 
-All are **delta**, **monotonic sums** (counters), so use ` + "`timeAggregation: rate`" + ` or
-` + "`increase`" + ` with ` + "`spaceAggregation: sum`" + ` (the counter defaults apply).
-
-| Metric | Meaning | Unit |
-|---|---|---|
-| ` + "`signoz.meter.log.count`" + ` | log records ingested | ` + "`1`" + ` |
-| ` + "`signoz.meter.log.size`" + ` | log bytes ingested | ` + "`By`" + ` |
-| ` + "`signoz.meter.metric.datapoint.count`" + ` | metric data points ingested | ` + "`1`" + ` |
-| ` + "`signoz.meter.metric.datapoint.size`" + ` | metric bytes ingested | ` + "`By`" + ` |
-| ` + "`signoz.meter.span.count`" + ` | spans ingested | — |
-| ` + "`signoz.meter.span.size`" + ` | span bytes ingested | — |
+Don't assume a fixed list — the meter metric set evolves. Call **signoz_list_metrics** with
+` + "`source=\"meter\"`" + ` for the authoritative, current set, with each metric's ` + "`type`" + `,
+` + "`temporality`" + `, and ` + "`unit`" + `, then apply the normal per-type aggregation rules (see above).
+As of this writing the set is telemetry-ingestion counters (delta monotonic sums) — for
+example ` + "`signoz.meter.log.size`" + ` (bytes), ` + "`signoz.meter.span.count`" + `, and
+` + "`signoz.meter.metric.datapoint.size`" + ` — for which ` + "`timeAggregation: rate`" + ` or ` + "`increase`" + `
+with ` + "`spaceAggregation: sum`" + ` is correct. Verify type/unit per metric via signoz_list_metrics
+rather than relying on this example list.
 
 ### Example: Log Bytes Ingested Over Time
 

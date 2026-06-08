@@ -24,7 +24,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("limit", mcp.Description("Maximum number of metrics to return (optional, default 50).")),
 		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional).")),
 		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional).")),
-		mcp.WithString("source", mcp.Description("Optional data-source filter. Use \"meter\" to list Cost Meter (telemetry ingestion volume) metrics. Omit for the default SigNoz metrics store.")),
+		mcp.WithString("source", mcp.Description("Optional data-source filter. Use \"meter\" to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume). Omit for the default SigNoz metrics store.")),
 	)
 
 	addTool(s, listMetricsTool, h.handleListMetrics)
