@@ -419,6 +419,8 @@ func TestQueryPayloadRoundTrip_PreservesSource(t *testing.T) {
 // builder_formula spec, and is omitted entirely when empty (omitempty) so existing
 // payloads stay byte-for-byte unchanged.
 func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
+	// Two builder queries (A, B) + one formula (C) — so we can prove source lands on
+	// EVERY builder_query, never on the builder_formula.
 	queries := []MetricsQuerySpec{
 		{
 			Name: "A",
@@ -430,37 +432,50 @@ func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
 			},
 		},
 		{
-			Name:       "B",
+			Name: "B",
+			Aggregation: MetricAggregation{
+				MetricName:       "signoz.meter.span.size",
+				Temporality:      "delta",
+				TimeAggregation:  "increase",
+				SpaceAggregation: "sum",
+			},
+		},
+		{
+			Name:       "C",
 			IsFormula:  true,
-			Expression: "A",
+			Expression: "A + B",
 			Legend:     "ingested_bytes",
 		},
 	}
 
-	// source set → present on the builder_query spec, absent on builder_formula.
+	// source set → present on both builder_query specs, absent on the builder_formula.
 	out, err := BuildMetricsQueryPayloadJSON(1700000000, 1700003600, 60, queries, "time_series", "meter")
 	require.NoError(t, err)
 
 	var payload QueryPayload
 	require.NoError(t, json.Unmarshal(out, &payload))
-	require.Len(t, payload.CompositeQuery.Queries, 2)
+	require.Len(t, payload.CompositeQuery.Queries, 3)
 
-	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
-	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
-	require.Equal(t, "meter", spec.Source)
+	for i := 0; i < 2; i++ {
+		spec, ok := payload.CompositeQuery.Queries[i].Spec.(QuerySpec)
+		require.True(t, ok, "query %d: expected QuerySpec, got %T", i, payload.CompositeQuery.Queries[i].Spec)
+		require.Equal(t, "meter", spec.Source, "query %d: source must be set", i)
+	}
 
-	_, ok = payload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
-	require.True(t, ok, "expected FormulaSpec, got %T", payload.CompositeQuery.Queries[1].Spec)
+	_, ok := payload.CompositeQuery.Queries[2].Spec.(FormulaSpec)
+	require.True(t, ok, "expected FormulaSpec, got %T", payload.CompositeQuery.Queries[2].Spec)
 
-	// "source":"meter" appears exactly once — on the lone builder_query, not the formula.
-	require.Equal(t, 1, strings.Count(string(out), `"source":"meter"`),
-		"source must be set on the builder_query spec only; got: %s", string(out))
+	// "source":"meter" appears exactly twice — once per builder_query, never on the formula.
+	require.Equal(t, 2, strings.Count(string(out), `"source":"meter"`),
+		"source must be set on every builder_query spec only; got: %s", string(out))
 
-	// empty source → field omitted everywhere (omitempty).
+	// empty source → byte-for-byte identical to omitting the field, and "source" absent entirely.
 	outEmpty, err := BuildMetricsQueryPayloadJSON(1700000000, 1700003600, 60, queries, "time_series", "")
 	require.NoError(t, err)
 	require.NotContains(t, string(outEmpty), `"source"`,
 		"empty source must be omitted from JSON; got: %s", string(outEmpty))
+	require.Equal(t, 0, strings.Count(string(outEmpty), `"source"`),
+		"empty source must not emit the key at all; got: %s", string(outEmpty))
 }
 
 // jsonString JSON-encodes s and returns the result as a Go string (including

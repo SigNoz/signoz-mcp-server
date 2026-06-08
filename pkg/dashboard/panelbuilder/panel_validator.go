@@ -672,6 +672,10 @@ func validateBuilderQuery(q BuilderQuery, idx int, panelType string, r *Validati
 	if q.Source != "" && q.Source != "meter" {
 		r.addError(fmt.Sprintf("%s.source: must be '' or 'meter', got '%s'", path, q.Source))
 	}
+	// source="meter" (Cost Meter) only applies to the metrics data source.
+	if q.Source == "meter" && q.DataSource != DataSourceMetrics {
+		r.addError(fmt.Sprintf("%s.source: 'meter' (Cost Meter) is only valid with dataSource 'metrics', got '%s'", path, q.DataSource))
+	}
 
 	// Sub-component validation
 	validateTagFilter(q.Filters, path+".filters", r)

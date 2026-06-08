@@ -986,3 +986,27 @@ func TestValidate_MatchType_SumAlias_Accepted(t *testing.T) {
 		t.Errorf("expected matchType=sum to validate, got: %v", err)
 	}
 }
+
+func TestValidate_MeterSourceRejectedForNonMetricsSignal(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["alertType"] = "LOGS_BASED_ALERT"
+	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	spec["signal"] = "logs"
+	spec["source"] = "meter"
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: source=meter is only valid with signal=metrics")
+	}
+	if !strings.Contains(err.Error(), "meter") {
+		t.Errorf("expected meter-source error, got: %v", err)
+	}
+}
+
+func TestValidate_MeterSourceAllowedForMetrics(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	spec["source"] = "meter"
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Fatalf("metrics + source=meter should validate, got: %v", err)
+	}
+}

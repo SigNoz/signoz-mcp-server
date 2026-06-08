@@ -237,12 +237,12 @@ Even log and span volume are queried this way — as metrics with ` + "`signal: 
 ### Hourly aggregation — use ` + "`stepInterval: 3600`" + `
 
 Meter data is aggregated in 1-hour buckets, so always set ` + "`stepInterval: 3600`" + ` (as in the
-example below). A smaller step adds no resolution — the backend rounds it up to 1 hour — and a
-query window shorter than 1 hour returns only a single bucket for the current, still-incomplete
-hour (flagged ` + "`partial: true`" + `). Use a window of at least a few hours. Note that
-**signoz_query_metrics** auto-derives ` + "`stepInterval`" + ` as ` + "`max(60, window/300)`" + ` seconds, which
-is below 3600 for any window shorter than ~12.5 days; for meter queries pass ` + "`stepInterval: 3600`" + `
-explicitly rather than relying on that default.
+example below). A smaller step adds no resolution and a query window shorter than 1 hour yields at
+most the current, still-incomplete hour (the build tested returns it flagged ` + "`partial: true`" + `;
+some versions return no data). Use a window of at least a few hours. When **signoz_query_metrics**
+is called without ` + "`stepInterval`" + ` it sends none and the backend auto-derives roughly
+` + "`max(60, window/300)`" + ` seconds — below 3600 for any window shorter than ~12.5 days — so pass
+` + "`stepInterval: 3600`" + ` explicitly for meter queries.
 
 ### Discover the current meter metrics
 

@@ -62,6 +62,7 @@ The envelope type must match compositeQuery.queryType:
 ### Builder query spec (builder_query)
 - name: query identifier (A, B, C, …)
 - signal: "metrics" | "logs" | "traces" (must match alertType)
+- source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Pair with a cumulative evaluation window.
 - stepInterval: interval in seconds (60 for most alerts)
 - aggregations: see "Aggregation shapes" below
 - filter: {expression: "service.name = 'frontend' AND http.status_code >= 500"}
@@ -222,6 +223,20 @@ evaluation controls how the rule is evaluated:
 - Auto-generated (5m window, 1m frequency) if omitted for threshold/promql rules.
 - **Format**: Go duration strings. Both "5m" and "5m0s" are accepted; stick to one style per payload. Common values: 1m, 5m, 15m, 30m, 1h, 4h, 24h, 1d.
 - **Sizing tips**: keep evalWindow ≥ frequency. Short windows (1-5m) catch spikes; long windows (30m-1h) smooth noise. For infrequent signals (hourly batch jobs) set frequency to 5-15m to reduce evaluation cost.
+
+### Cumulative window (daily/monthly totals)
+
+A general evaluation kind, independent of signal/source — use it for any period-total alert (daily error budgets, monthly request counts, Cost Meter spend budgets, …). It accumulates from a fixed reset point instead of using a sliding window:
+
+` + "```" + `json
+"evaluation": {
+  "kind": "cumulative",
+  "spec": {"schedule": {"type": "daily", "minute": 0, "hour": 0}, "frequency": "1m", "timezone": "UTC"}
+}
+` + "```" + `
+
+- kind "cumulative" sums since the schedule boundary (vs "rolling" sliding window); pair with threshold matchType "in_total".
+- schedule.type: "daily" (shown; minute/hour set the reset, e.g. 00:00) or "monthly". timezone e.g. "UTC".
 
 ## Notification Settings (v2alpha1)
 
@@ -948,6 +963,48 @@ Demonstrates groupBy (noise control), newGroupEvalDelay (grace period for new se
   "annotations": {
     "description": "{{$service.name}} 5xx rate in {{$deployment.environment}} is {{$value}}%.",
     "summary": "API service error rate elevated"
+  }
+}
+` + "```" + `
+
+## 11. metric_cost_meter — Cost Meter budget alert (cumulative window, source "meter")
+
+Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Meter (source "meter") with timeAggregation increase; the threshold uses matchType in_total over a cumulative daily window. For a $-denominated budget, add a builder_formula converting bytes to cost (e.g. "(A / 1e9) * cost_per_gb") and set selectedQueryName to the formula.
+
+` + "```" + `json
+{
+  "alert": "Daily log ingestion budget",
+  "alertType": "METRIC_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "metrics",
+            "source": "meter",
+            "stepInterval": 3600,
+            "aggregations": [
+              {"metricName": "signoz.meter.log.size", "timeAggregation": "increase", "spaceAggregation": "sum"}
+            ]
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "target": 10737418240, "op": "above", "matchType": "in_total", "channels": ["my-channel"]}
+      ]
+    }
+  },
+  "evaluation": {
+    "kind": "cumulative",
+    "spec": {"schedule": {"type": "daily", "minute": 0, "hour": 0}, "frequency": "1m", "timezone": "UTC"}
   }
 }
 ` + "```" + `

@@ -294,6 +294,10 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			} else if !validSignals[sig] {
 				errs.Addf(prefix+".spec.signal", "must be metrics, logs, or traces; got %q", sig)
 			}
+			// source="meter" (Cost Meter) only applies to the metrics signal.
+			if strVal(spec, "source") == "meter" && sig != "metrics" {
+				errs.Addf(prefix+".spec.source", `"meter" (Cost Meter) is only valid with signal "metrics"; got %q`, sig)
+			}
 		}
 
 		// For promql / clickhouse_sql envelopes, require the query text on the

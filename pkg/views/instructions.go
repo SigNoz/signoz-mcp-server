@@ -55,7 +55,7 @@ The server rejects them with HTTP 400 "failed to validate request body".
 |--------------|----------|-------|
 | name         | string   | Reference name, e.g. "A" |
 | signal       | string   | Required. MUST match sourcePage: "traces" / "logs" / "metrics" |
-| source       | string   | Usually "" |
+| source       | string   | Usually "". Set "meter" (metrics views only) to save a Cost Meter usage/billing view |
 | stepInterval | integer  | Seconds per bucket. 0 for list panels, e.g. 60 for graphs |
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |

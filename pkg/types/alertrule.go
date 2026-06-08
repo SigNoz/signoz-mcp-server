@@ -53,7 +53,7 @@ type AlertRule struct {
 	Frequency  string `json:"frequency,omitempty" jsonschema_extras:"description=v1 schema only (anomaly_rule). Evaluation frequency as a Go duration string (e.g. 1m, 5m, 3h). For threshold/promql rules, use evaluation.spec.frequency instead."`
 
 	// v2alpha1 schema fields (used for threshold_rule and promql_rule).
-	Evaluation           *AlertEvaluation      `json:"evaluation,omitempty" jsonschema_extras:"description=v2alpha1 only. Evaluation configuration (eval window and frequency). Auto-generated with defaults (5m/1m) if omitted. Skipped entirely for anomaly_rule which uses top-level evalWindow/frequency instead."`
+	Evaluation           *AlertEvaluation      `json:"evaluation,omitempty" jsonschema_extras:"description=v2alpha1 only. Evaluation configuration. kind=rolling (sliding window) auto-generated with defaults (5m/1m) if omitted; kind=cumulative (daily/monthly reset) for period-total alerts such as daily error counts or Cost Meter spend budgets. Skipped entirely for anomaly_rule which uses top-level evalWindow/frequency instead."`
 	SchemaVersion        string                `json:"schemaVersion,omitempty" jsonschema_extras:"description=Schema version. Set to v2alpha1 automatically for threshold_rule/promql_rule. Must be omitted (or empty) for anomaly_rule."`
 	NotificationSettings *NotificationSettings `json:"notificationSettings,omitempty" jsonschema_extras:"description=v2alpha1 only. Notification settings - controls grouping and re-notification behavior. Auto-generated with defaults if omitted."`
 }
@@ -106,7 +106,7 @@ type AlertQuerySpec struct {
 	Signal       string               `json:"signal,omitempty" jsonschema_extras:"description=Signal type for builder queries: metrics or logs or traces. Required for builder_query type."`
 	StepInterval *int64               `json:"stepInterval,omitempty" jsonschema_extras:"description=Step interval in seconds for time aggregation. Use 60 for metrics alerts."`
 	Disabled     bool                 `json:"disabled,omitempty" jsonschema_extras:"description=Whether this query is disabled."`
-	Source       string               `json:"source,omitempty"`
+	Source       string               `json:"source,omitempty" jsonschema_extras:"description=Data-source filter for metrics builder_query only. Set to meter to alert on Cost Meter (usage/billing) metrics such as signoz.meter.log.size; omit otherwise."`
 	Aggregations []AlertAggregation   `json:"aggregations,omitempty" jsonschema_extras:"description=Aggregation expressions for builder queries. For metrics signal use the object shape: [{metricName: k8s.pod.cpu_request_utilization, timeAggregation: avg, spaceAggregation: max}]. For logs/traces use the expression shape: [{expression: count()}] or [{expression: p99(duration_nano)}]."`
 	Filter       *AlertQueryFilter    `json:"filter,omitempty" jsonschema_extras:"description=Filter expression for builder queries. Example: {expression: service.name = frontend AND http.status_code >= 500}."`
 	GroupBy      []AlertGroupByField  `json:"groupBy,omitempty" jsonschema_extras:"description=Fields to group by. Grouped dimensions appear as labels in alert notifications."`
@@ -191,14 +191,24 @@ type BasicThreshold struct {
 
 // AlertEvaluation holds the evaluation schedule for v2 schema alerts.
 type AlertEvaluation struct {
-	Kind string              `json:"kind" jsonschema:"required" jsonschema_extras:"description=Evaluation kind. Currently only rolling is supported."`
-	Spec AlertEvaluationSpec `json:"spec" jsonschema:"required" jsonschema_extras:"description=Evaluation specification."`
+	Kind string              `json:"kind" jsonschema:"required" jsonschema_extras:"description=Evaluation kind: rolling (sliding lookback window) or cumulative (accumulates from a fixed daily/monthly reset boundary). Cumulative works for any period-total alert (e.g. daily error counts, monthly request budgets); Cost Meter spend budgets are one common use."`
+	Spec AlertEvaluationSpec `json:"spec" jsonschema:"required" jsonschema_extras:"description=Evaluation specification. For kind=rolling set evalWindow + frequency; for kind=cumulative set schedule + frequency + timezone."`
 }
 
-// AlertEvaluationSpec defines the evaluation window and frequency.
+// AlertEvaluationSpec defines the evaluation window. Rolling uses evalWindow+frequency;
+// cumulative uses schedule+frequency+timezone.
 type AlertEvaluationSpec struct {
-	EvalWindow string `json:"evalWindow" jsonschema:"required" jsonschema_extras:"description=Evaluation window as a Go duration string (e.g. 5m, 15m, 30m, 1h, 4h, 24h)."`
-	Frequency  string `json:"frequency" jsonschema:"required" jsonschema_extras:"description=Evaluation frequency as a Go duration string (e.g. 1m, 5m, 15m)."`
+	EvalWindow string                   `json:"evalWindow,omitempty" jsonschema_extras:"description=Rolling kind only. Evaluation window as a Go duration string (e.g. 5m, 15m, 30m, 1h, 4h, 24h)."`
+	Frequency  string                   `json:"frequency" jsonschema:"required" jsonschema_extras:"description=Evaluation frequency as a Go duration string (e.g. 1m, 5m, 15m)."`
+	Schedule   *AlertEvaluationSchedule `json:"schedule,omitempty" jsonschema_extras:"description=Cumulative kind only. Fixed reset boundary the accumulation window starts from."`
+	Timezone   string                   `json:"timezone,omitempty" jsonschema_extras:"description=Cumulative kind only. IANA timezone for the schedule boundary (e.g. UTC)."`
+}
+
+// AlertEvaluationSchedule is the reset schedule for a cumulative evaluation window.
+type AlertEvaluationSchedule struct {
+	Type   string `json:"type" jsonschema_extras:"description=Reset cadence: daily or monthly."`
+	Minute int    `json:"minute" jsonschema_extras:"description=Minute of the reset boundary (0-59); e.g. 0 for the top of the hour."`
+	Hour   int    `json:"hour" jsonschema_extras:"description=Hour of the reset boundary (0-23); e.g. 0 for midnight."`
 }
 
 // NotificationSettings controls alert notification behavior for v2alpha1 rules.
