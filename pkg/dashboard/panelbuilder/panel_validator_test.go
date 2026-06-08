@@ -422,6 +422,24 @@ func TestValidatePanel_InvalidSource(t *testing.T) {
 	}
 }
 
+func TestValidatePanel_MeterSourceRejectedForNonMetrics(t *testing.T) {
+	panel := CreateDefaultPanel(PanelTypeTimeSeries, DataSourceLogs)
+	panel.Query.Builder.QueryData[0].Source = "meter"
+	result := ValidatePanel(panel)
+	if result.Valid {
+		t.Error("expected invalid result for source=meter on a non-metrics (logs) query")
+	}
+}
+
+func TestValidatePanel_MeterSourceAllowedForMetrics(t *testing.T) {
+	panel := CreateDefaultPanel(PanelTypeTimeSeries, DataSourceMetrics)
+	panel.Query.Builder.QueryData[0].Source = "meter"
+	result := ValidatePanel(panel)
+	if !result.Valid {
+		t.Errorf("expected valid result for source=meter on a metrics query, got: %v", result.Errors)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }

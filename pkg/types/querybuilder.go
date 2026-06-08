@@ -119,6 +119,7 @@ func (q *Query) UnmarshalJSON(data []byte) error {
 type QuerySpec struct {
 	Name         string        `json:"name"`
 	Signal       string        `json:"signal"`
+	Source       string        `json:"source,omitempty"`
 	StepInterval *int64        `json:"stepInterval,omitempty"`
 	Disabled     bool          `json:"disabled"`
 	Filter       *Filter       `json:"filter,omitempty"`
@@ -462,7 +463,9 @@ type FormulaSpec struct {
 
 // BuildMetricsQueryPayloadJSON builds the metrics payload and returns the
 // marshalled JSON. It handles formula specs that need a different shape.
-func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType string) ([]byte, error) {
+// source is an optional data-source filter (e.g. "meter" for Cost Meter queries);
+// pass an empty string for the default SigNoz metrics store.
+func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType, source string) ([]byte, error) {
 	if requestType == "" {
 		requestType = "time_series"
 	}
@@ -490,6 +493,7 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 		spec := QuerySpec{
 			Name:         q.Name,
 			Signal:       "metrics",
+			Source:       source,
 			Disabled:     false,
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,

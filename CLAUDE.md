@@ -72,3 +72,7 @@ Planning
 ## Verification
 <how to test end-to-end>
 ```
+
+## End-to-End / Live Verification
+
+Verifying against a live SigNoz instance — creating/reading/updating/deleting real alerts, dashboards, or views, or any multi-step API probing with credentials — should be delegated to a subagent (Agent tool), not run inline. The subagent must: delete every resource it creates and confirm it's gone; never print or persist credentials; report which fields round-tripped server-side; and prefer copying an existing resource's shape over hand-crafting one.

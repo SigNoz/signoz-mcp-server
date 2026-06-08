@@ -365,6 +365,119 @@ func TestQueryPayloadRoundTrip_MixedBuilderAndPromQL(t *testing.T) {
 	require.Equal(t, "up", prom.Query)
 }
 
+// Regression test for issue #176: the `source` field (e.g. "meter" for Cost Meter
+// queries) is a sibling of "name" and "signal" inside the builder_query spec object,
+// NOT a top-level QueryPayload field. It must survive the unmarshal → Validate →
+// re-marshal round trip performed by signoz_execute_builder_query, and must be
+// absent from the marshaled output when empty (omitempty).
+func TestQueryPayloadRoundTrip_PreservesSource(t *testing.T) {
+	input := `{
+		"schemaVersion":"v1",
+		"start":1700000000,
+		"end":1700003600,
+		"requestType":"time_series",
+		"compositeQuery":{
+			"queries":[{
+				"type":"builder_query",
+				"spec":{"name":"A","signal":"metrics","source":"meter","aggregations":[{"metricName":"signoz_db_samples_ingested","spaceAggregation":"sum"}]}
+			}]
+		}
+	}`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+
+	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
+	require.Equal(t, "meter", spec.Source)
+
+	require.NoError(t, payload.Validate())
+
+	out, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var roundTripped QueryPayload
+	require.NoError(t, json.Unmarshal(out, &roundTripped))
+	rt, ok := roundTripped.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "round-tripped spec is %T not QuerySpec; output was: %s",
+		roundTripped.CompositeQuery.Queries[0].Spec, string(out))
+	require.Equal(t, "meter", rt.Source,
+		"source field did not survive round trip; output was: %s", string(out))
+
+	// Verify omitempty: a spec with empty source must not emit the field.
+	spec.Source = ""
+	payload.CompositeQuery.Queries[0].Spec = spec
+	outEmpty, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.NotContains(t, string(outEmpty), `"source"`,
+		"empty source must be omitted from JSON; got: %s", string(outEmpty))
+}
+
+// TestBuildMetricsQueryPayloadJSON_AppliesSource covers the signoz_query_metrics
+// build path (distinct from the signoz_execute_builder_query round-trip above).
+// It asserts the source argument lands on every builder_query spec, never on a
+// builder_formula spec, and is omitted entirely when empty (omitempty) so existing
+// payloads stay byte-for-byte unchanged.
+func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
+	// Two builder queries (A, B) + one formula (C) — so we can prove source lands on
+	// EVERY builder_query, never on the builder_formula.
+	queries := []MetricsQuerySpec{
+		{
+			Name: "A",
+			Aggregation: MetricAggregation{
+				MetricName:       "signoz.meter.log.size",
+				Temporality:      "delta",
+				TimeAggregation:  "increase",
+				SpaceAggregation: "sum",
+			},
+		},
+		{
+			Name: "B",
+			Aggregation: MetricAggregation{
+				MetricName:       "signoz.meter.span.size",
+				Temporality:      "delta",
+				TimeAggregation:  "increase",
+				SpaceAggregation: "sum",
+			},
+		},
+		{
+			Name:       "C",
+			IsFormula:  true,
+			Expression: "A + B",
+			Legend:     "ingested_bytes",
+		},
+	}
+
+	// source set → present on both builder_query specs, absent on the builder_formula.
+	out, err := BuildMetricsQueryPayloadJSON(1700000000, 1700003600, 60, queries, "time_series", "meter")
+	require.NoError(t, err)
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal(out, &payload))
+	require.Len(t, payload.CompositeQuery.Queries, 3)
+
+	for i := 0; i < 2; i++ {
+		spec, ok := payload.CompositeQuery.Queries[i].Spec.(QuerySpec)
+		require.True(t, ok, "query %d: expected QuerySpec, got %T", i, payload.CompositeQuery.Queries[i].Spec)
+		require.Equal(t, "meter", spec.Source, "query %d: source must be set", i)
+	}
+
+	_, ok := payload.CompositeQuery.Queries[2].Spec.(FormulaSpec)
+	require.True(t, ok, "expected FormulaSpec, got %T", payload.CompositeQuery.Queries[2].Spec)
+
+	// "source":"meter" appears exactly twice — once per builder_query, never on the formula.
+	require.Equal(t, 2, strings.Count(string(out), `"source":"meter"`),
+		"source must be set on every builder_query spec only; got: %s", string(out))
+
+	// empty source → byte-for-byte identical to omitting the field, and "source" absent entirely.
+	outEmpty, err := BuildMetricsQueryPayloadJSON(1700000000, 1700003600, 60, queries, "time_series", "")
+	require.NoError(t, err)
+	require.NotContains(t, string(outEmpty), `"source"`,
+		"empty source must be omitted from JSON; got: %s", string(outEmpty))
+	require.Equal(t, 0, strings.Count(string(outEmpty), `"source"`),
+		"empty source must not emit the key at all; got: %s", string(outEmpty))
+}
+
 // jsonString JSON-encodes s and returns the result as a Go string (including
 // the surrounding double quotes).
 func jsonString(s string) string {

@@ -788,6 +788,11 @@ Metrics-Specific Features:
     - Smoothing: EWMA 3/5/7
     - Time Shift: Time Shift 3600 (1 hour)
 
+  Cost Meter (usage/billing metrics):
+    Set source: "meter" on a metrics builder query to chart Cost Meter metrics
+    (e.g. signoz.meter.log.size). Discover the current set via signoz_list_metrics
+    with source=meter. Meter data is bucketed hourly.
+
 ================================================================================
 SEARCH SYNTAX
 ================================================================================

@@ -396,7 +396,7 @@ Search and list available metrics from SigNoz. Supports filtering by name substr
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `start` (optional) - Start time in unix milliseconds
   - `end` (optional) - End time in unix milliseconds
-  - `source` (optional) - Filter by source
+  - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
 
 #### `signoz_query_metrics`
 
@@ -418,6 +418,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
+  - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
 
 #### `signoz_list_alerts`
 
@@ -693,7 +694,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1** schema: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
-- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (mirrors the ten canonical SigNoz PR #11023 payloads) before composing payloads. For `promql_rule`, also read `signoz://promql/instructions` — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form.
+- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (the ten canonical SigNoz PR #11023 payloads plus a Cost Meter cumulative-budget example) before composing payloads. For `promql_rule`, also read `signoz://promql/instructions` — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form.
 
 #### `signoz_update_alert`
 

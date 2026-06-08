@@ -217,6 +217,73 @@ Formula C: A / B * 100
 
 ---
 
+## Cost Meter (SigNoz usage / billing metrics)
+
+Cost Meter is the data store for the metrics SigNoz meters and bills on. Today these are
+telemetry ingestion volume — logs, spans, and metric data points, by count and by bytes —
+and the set evolves (it may include other billable usage, such as AI credit consumption, in
+future). They answer questions like "which services consume the most telemetry budget?" or
+"ingestion volume by environment week-over-week". These metrics live in a separate store and
+are **not** visible in the default metrics store.
+
+To query them, set ` + "`source: \"meter\"`" + ` on the ` + "`builder_query`" + ` spec (a sibling of
+` + "`name`" + ` and ` + "`signal`" + `), or pass ` + "`source=\"meter\"`" + ` to **signoz_query_metrics**. Omit
+` + "`source`" + ` (or leave it empty) for ordinary metrics. Everything else — filters, groupBy,
+aggregations, formulas — works exactly as for normal metrics.
+
+Even log and span volume are queried this way — as metrics with ` + "`signal: \"metrics\"`" + ` and
+` + "`source: \"meter\"`" + `, not through the logs or traces tools.
+
+### Hourly aggregation — use ` + "`stepInterval: 3600`" + `
+
+Meter data is aggregated in 1-hour buckets, so always set ` + "`stepInterval: 3600`" + ` (as in the
+example below). A smaller step adds no resolution and a query window shorter than 1 hour yields at
+most the current, still-incomplete hour (the build tested returns it flagged ` + "`partial: true`" + `;
+some versions return no data). Use a window of at least a few hours. When **signoz_query_metrics**
+is called without ` + "`stepInterval`" + ` it sends none and the backend auto-derives roughly
+` + "`max(60, window/300)`" + ` seconds — below 3600 for any window shorter than ~12.5 days — so pass
+` + "`stepInterval: 3600`" + ` explicitly for meter queries.
+
+### Discover the current meter metrics
+
+Don't assume a fixed list — the meter metric set evolves. Call **signoz_list_metrics** with
+` + "`source=\"meter\"`" + ` for the authoritative, current set, with each metric's ` + "`type`" + `,
+` + "`temporality`" + `, and ` + "`unit`" + `, then apply the normal per-type aggregation rules (see above).
+As of this writing the set is telemetry-ingestion counters (delta monotonic sums) — for
+example ` + "`signoz.meter.log.size`" + ` (bytes), ` + "`signoz.meter.span.count`" + `, and
+` + "`signoz.meter.metric.datapoint.size`" + ` — for which ` + "`timeAggregation: rate`" + ` or ` + "`increase`" + `
+with ` + "`spaceAggregation: sum`" + ` is correct. Verify type/unit per metric via signoz_list_metrics
+rather than relying on this example list.
+
+### Example: Log Bytes Ingested Over Time
+
+Add a ` + "`groupBy`" + ` (e.g. a service or environment attribute) to break the volume down by
+dimension, just like any other metric.
+` + "```json" + `
+{
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "signal": "metrics",
+        "source": "meter",
+        "name": "A",
+        "stepInterval": 3600,
+        "aggregations": [{
+          "metricName": "signoz.meter.log.size",
+          "temporality": "delta",
+          "timeAggregation": "increase",
+          "spaceAggregation": "sum"
+        }]
+      }
+    }]
+  }
+}
+` + "```" + `
+
+---
+
 ## Step Interval
 
 - Auto-calculated as: max(60, (end - start) / 300 / 1000) seconds

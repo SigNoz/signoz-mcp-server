@@ -26,6 +26,7 @@ type metricsQueryRequest struct {
 	RequestType      string
 	Formula          string
 	FormulaQueries   []formulaSubQuery
+	Source           string
 }
 
 // formulaSubQuery represents one sub-query within a formula request.
@@ -58,6 +59,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		TimeRange:        stringArg(args, "timeRange"),
 		RequestType:      stringArg(args, "requestType"),
 		Formula:          stringArg(args, "formula"),
+		Source:           stringArg(args, "source"),
 	}
 
 	// isMonotonic — accept bool or string

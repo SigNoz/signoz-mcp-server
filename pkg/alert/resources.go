@@ -12,7 +12,7 @@ Schemas supported:
 - **v1** for anomaly_rule — top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
 ## CRITICAL: Before Creating an Alert
-1. ALWAYS read signoz://alert/examples for complete working payloads (mirrors the ten canonical examples from SigNoz PR #11023).
+1. ALWAYS read signoz://alert/examples for complete working payloads (the canonical SigNoz PR #11023 examples plus a Cost Meter cumulative-budget example).
 2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects.
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
 4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first.
@@ -62,6 +62,7 @@ The envelope type must match compositeQuery.queryType:
 ### Builder query spec (builder_query)
 - name: query identifier (A, B, C, …)
 - signal: "metrics" | "logs" | "traces" (must match alertType)
+- source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Works with either evaluation kind — cumulative for daily/monthly spend budgets, rolling for rate/over-time meter alerts.
 - stepInterval: interval in seconds (60 for most alerts)
 - aggregations: see "Aggregation shapes" below
 - filter: {expression: "service.name = 'frontend' AND http.status_code >= 500"}
@@ -223,6 +224,20 @@ evaluation controls how the rule is evaluated:
 - **Format**: Go duration strings. Both "5m" and "5m0s" are accepted; stick to one style per payload. Common values: 1m, 5m, 15m, 30m, 1h, 4h, 24h, 1d.
 - **Sizing tips**: keep evalWindow ≥ frequency. Short windows (1-5m) catch spikes; long windows (30m-1h) smooth noise. For infrequent signals (hourly batch jobs) set frequency to 5-15m to reduce evaluation cost.
 
+### Cumulative window (daily/monthly totals)
+
+A general evaluation kind, independent of signal/source — use it for any period-total alert (daily error budgets, monthly request counts, Cost Meter spend budgets, …). It accumulates from a fixed reset point instead of using a sliding window:
+
+` + "```" + `json
+"evaluation": {
+  "kind": "cumulative",
+  "spec": {"schedule": {"type": "daily", "minute": 0, "hour": 0}, "frequency": "1m", "timezone": "UTC"}
+}
+` + "```" + `
+
+- kind "cumulative" sums since the schedule boundary (vs "rolling" sliding window); pair with threshold matchType "in_total".
+- schedule.type: "daily" (shown; minute/hour set the reset, e.g. 00:00) or "monthly". timezone e.g. "UTC".
+
 ## Notification Settings (v2alpha1)
 
 ` + "```" + `json
@@ -344,7 +359,7 @@ User-facing docs. Cite these back to the user when they want to understand a con
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.
-// The ten examples below mirror the canonical payloads in SigNoz PR #11023
+// The examples below mirror the canonical payloads in SigNoz PR #11023, plus a Cost Meter example
 // (pkg/apiserver/signozapiserver/ruler_examples.go). Keep this list in sync
 // with upstream when that file changes.
 const Examples = `# SigNoz Alert Rule — Examples (mirrors SigNoz PR #11023)
@@ -948,6 +963,48 @@ Demonstrates groupBy (noise control), newGroupEvalDelay (grace period for new se
   "annotations": {
     "description": "{{$service.name}} 5xx rate in {{$deployment.environment}} is {{$value}}%.",
     "summary": "API service error rate elevated"
+  }
+}
+` + "```" + `
+
+## 11. metric_cost_meter — Cost Meter budget alert (cumulative window, source "meter")
+
+Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Meter (source "meter") with timeAggregation increase; the threshold uses matchType in_total over a cumulative daily window. For a $-denominated budget, add a builder_formula converting bytes to cost (e.g. "(A / 1e9) * cost_per_gb") and set selectedQueryName to the formula.
+
+` + "```" + `json
+{
+  "alert": "Daily log ingestion budget",
+  "alertType": "METRIC_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "condition": {
+    "compositeQuery": {
+      "queryType": "builder",
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "metrics",
+            "source": "meter",
+            "stepInterval": 3600,
+            "aggregations": [
+              {"metricName": "signoz.meter.log.size", "timeAggregation": "increase", "spaceAggregation": "sum"}
+            ]
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "kind": "basic",
+      "spec": [
+        {"name": "critical", "target": 10737418240, "op": "above", "matchType": "in_total", "channels": ["my-channel"]}
+      ]
+    }
+  },
+  "evaluation": {
+    "kind": "cumulative",
+    "spec": {"schedule": {"type": "daily", "minute": 0, "hour": 0}, "frequency": "1m", "timezone": "UTC"}
   }
 }
 ` + "```" + `
