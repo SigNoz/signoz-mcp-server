@@ -133,6 +133,7 @@ func Validate(jsonBytes []byte) ([]byte, error) {
 	validateRequired(rule, errs)
 	validateEnums(rule, errs)
 	validateCondition(rule, errs)
+	validateEvaluation(rule, errs)
 	validateNotificationSettings(rule, errs)
 	validateCrossConstraints(rule, errs)
 
@@ -352,6 +353,43 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 				errs.Addf(prefix+".matchType", "must be a valid match type; got %q", mt)
 			}
 		}
+	}
+}
+
+// validateEvaluation checks the v2alpha1 evaluation block when one is supplied.
+// A rolling window needs spec.evalWindow; a cumulative window needs spec.schedule.
+// An omitted evaluation is auto-defaulted to rolling later, so it is not an error
+// here. Anomaly rules use top-level evalWindow/frequency instead and are skipped.
+func validateEvaluation(rule map[string]any, errs *ValidationError) {
+	if strVal(rule, "ruleType") == "anomaly_rule" {
+		return
+	}
+	raw, ok := rule["evaluation"]
+	if !ok || raw == nil {
+		return
+	}
+	eval, ok := raw.(map[string]any)
+	if !ok {
+		errs.Add("evaluation", "must be an object with kind and spec")
+		return
+	}
+	spec := mapVal(eval, "spec")
+	switch strVal(eval, "kind") {
+	case "":
+		errs.Add("evaluation.kind", "is required (rolling or cumulative)")
+	case "rolling":
+		if spec == nil || strVal(spec, "evalWindow") == "" {
+			errs.Add("evaluation.spec.evalWindow", "is required when evaluation.kind is rolling (Go duration string, e.g. 5m, 1h)")
+		}
+	case "cumulative":
+		sched := mapVal(spec, "schedule")
+		if sched == nil {
+			errs.Add("evaluation.spec.schedule", `is required when evaluation.kind is cumulative (e.g. {"type":"daily","minute":0,"hour":0})`)
+		} else if st := strVal(sched, "type"); st != "daily" && st != "monthly" {
+			errs.Addf("evaluation.spec.schedule.type", "must be daily or monthly; got %q", st)
+		}
+	default:
+		errs.Addf("evaluation.kind", "must be rolling or cumulative; got %q", strVal(eval, "kind"))
 	}
 }
 

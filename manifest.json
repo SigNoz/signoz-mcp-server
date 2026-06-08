@@ -27,11 +27,11 @@
   "tools": [
     {
       "name": "signoz_list_metrics",
-      "description": "Search and list available metrics from SigNoz"
+      "description": "Search and list available metrics from SigNoz. Set source=\"meter\" to list Cost Meter (usage/billing) metrics"
     },
     {
       "name": "signoz_query_metrics",
-      "description": "Query metrics with smart aggregation defaults based on metric type"
+      "description": "Query metrics with smart aggregation defaults based on metric type. Set source=\"meter\" to query Cost Meter (usage/billing) data"
     },
     {
       "name": "signoz_get_field_keys",

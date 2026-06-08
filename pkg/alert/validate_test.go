@@ -1010,3 +1010,54 @@ func TestValidate_MeterSourceAllowedForMetrics(t *testing.T) {
 		t.Fatalf("metrics + source=meter should validate, got: %v", err)
 	}
 }
+
+func TestValidate_RollingEvaluationRequiresEvalWindow(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["evaluation"] = map[string]any{"kind": "rolling", "spec": map[string]any{"frequency": "1m"}}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: rolling evaluation without evalWindow")
+	}
+	if !strings.Contains(err.Error(), "evalWindow") {
+		t.Errorf("expected evalWindow error, got: %v", err)
+	}
+}
+
+func TestValidate_CumulativeEvaluationRequiresSchedule(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["evaluation"] = map[string]any{"kind": "cumulative", "spec": map[string]any{"frequency": "1m", "timezone": "UTC"}}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: cumulative evaluation without schedule")
+	}
+	if !strings.Contains(err.Error(), "schedule") {
+		t.Errorf("expected schedule error, got: %v", err)
+	}
+}
+
+func TestValidate_CumulativeEvaluationValid(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["evaluation"] = map[string]any{
+		"kind": "cumulative",
+		"spec": map[string]any{
+			"schedule":  map[string]any{"type": "daily", "minute": 0, "hour": 0},
+			"frequency": "1m",
+			"timezone":  "UTC",
+		},
+	}
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Fatalf("valid cumulative evaluation should pass, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidEvaluationKind(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["evaluation"] = map[string]any{"kind": "sliding", "spec": map[string]any{"evalWindow": "5m"}}
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected error: invalid evaluation kind")
+	}
+	if !strings.Contains(err.Error(), "rolling or cumulative") {
+		t.Errorf("expected kind error, got: %v", err)
+	}
+}
