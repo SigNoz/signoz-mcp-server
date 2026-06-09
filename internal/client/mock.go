@@ -44,6 +44,7 @@ type MockClient struct {
 	UpdateNotificationChannelFn func(ctx context.Context, id string, receiverJSON []byte) error
 	DeleteNotificationChannelFn func(ctx context.Context, id string) error
 	TestNotificationChannelFn   func(ctx context.Context, receiverJSON []byte) error
+	GetMetricsStatsFn           func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 }
 
 // Compile-time check that MockClient satisfies Client.
@@ -278,4 +279,11 @@ func (m *MockClient) TestNotificationChannel(ctx context.Context, receiverJSON [
 		return m.TestNotificationChannelFn(ctx, receiverJSON)
 	}
 	return nil
+}
+
+func (m *MockClient) GetMetricsStats(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	if m.GetMetricsStatsFn != nil {
+		return m.GetMetricsStatsFn(ctx, start, end, limit)
+	}
+	return json.RawMessage(`{}`), nil
 }

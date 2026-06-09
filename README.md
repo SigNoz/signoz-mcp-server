@@ -339,6 +339,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
+| `signoz_get_metrics_stats` | Rank metrics by ingested sample count for cost analysis |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -419,6 +420,15 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
+
+#### `signoz_get_metrics_stats`
+
+Return metrics ranked by ingested sample count (highest first). Use this to identify which metrics are driving the most ingestion volume and cost. Wraps `POST /api/v2/metrics/stats`.
+
+- **Parameters**:
+  - `timeRange` (optional) - Relative range: 24h, 3d, 7d (default: 7d; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
+- **Note**: Always fetches all metrics automatically — probes the total count first, then retrieves everything in a single follow-up call.
 
 #### `signoz_list_alerts`
 
