@@ -345,3 +345,86 @@ func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
 	}
 }
+
+func TestHandleGetDashboard_WrappedBodyGetsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"uuid":"x","name":"Hosts"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	result, err := h.handleGetDashboard(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result")
+	}
+	body := textContent(t, result)
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(body), &obj); err != nil {
+		t.Fatalf("body not json: %v", err)
+	}
+	inner, ok := obj["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected wrapped data object, got: %s", body)
+	}
+	if inner["webUrl"] != "https://signoz.example.com/dashboard/x" {
+		t.Fatalf("expected webUrl on inner object, got: %s", body)
+	}
+}
+
+func TestHandleGetDashboard_BareBodyGetsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
+			return json.RawMessage(`{"uuid":"x","name":"Hosts"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	result, err := h.handleGetDashboard(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/x"`) {
+		t.Fatalf("expected top-level webUrl, got: %s", body)
+	}
+}
+
+func TestHandleGetDashboard_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"uuid":"x"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	result, err := h.handleGetDashboard(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}
+
+func TestHandleGetDashboard_MalformedBodyReturnedVerbatim(t *testing.T) {
+	mock := &client.MockClient{
+		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
+			return json.RawMessage(`not json`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	result, err := h.handleGetDashboard(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if body != "not json" {
+		t.Fatalf("expected malformed body returned verbatim, got: %s", body)
+	}
+}
