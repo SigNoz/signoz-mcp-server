@@ -378,6 +378,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
+> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`) include a `webUrl` field — an absolute deep link to the resource in the SigNoz web UI — when the request carries a SigNoz instance URL.
+
 ### Agent Routing Guidance
 
 Use `signoz_search_docs` for any SigNoz product question: how-to, feature usage, setup, configuration, API behavior, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Use live data tools for actual telemetry, alert state, dashboard contents, saved views, and tenant-specific resources. When a docs search result needs exact commands or a specific section, call `signoz_fetch_doc`.
