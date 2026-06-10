@@ -20,7 +20,7 @@ read-tool outputs.
 - Supports `dashboard`, `alert`, `service`; returns `("", false)` on an empty
   base/id or an unknown type so callers omit the field rather than emit a broken
   link.
-- Templates: `/dashboard/<uuid>`, `/alerts/overview?ruleId=<id>&tab=AlertRules`,
+- Templates: `/dashboard/<uuid>`, `/alerts/overview?ruleId=<id>`,
   `/services/<url-encoded-name>`. Path/query segments are URL-encoded; the base
   origin is trimmed of a trailing slash.
 

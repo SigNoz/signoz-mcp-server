@@ -1208,7 +1208,7 @@ func TestHandleListAlerts_AddsWebURL(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 	body := textContent(t, result)
-	if !strings.Contains(body, "/alerts/overview?ruleId=rule-123") || !strings.Contains(body, "tab=AlertRules") {
+	if !strings.Contains(body, "/alerts/overview?ruleId=rule-123") {
 		t.Fatalf("expected alert webUrl in list_alerts output, got: %s", body)
 	}
 }
@@ -1229,8 +1229,7 @@ func TestHandleListAlertRules_AddsWebURL(t *testing.T) {
 		t.Fatalf("handler returned error result")
 	}
 	body := textContent(t, result)
-	// Go's json.Marshal HTML-escapes & as & by default
-	if !strings.Contains(body, "rule-123") || !strings.Contains(body, "/alerts/overview?ruleId=rule-123") || !strings.Contains(body, "tab=AlertRules") {
+	if !strings.Contains(body, "rule-123") || !strings.Contains(body, "/alerts/overview?ruleId=rule-123") {
 		t.Fatalf("expected alert webUrl, got: %s", body)
 	}
 }
@@ -1274,7 +1273,7 @@ func TestHandleGetAlert_WrappedBodyGetsWebURL(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected wrapped data object, got: %s", body)
 	}
-	if inner["webUrl"] != "https://signoz.example.com/alerts/overview?ruleId=rule-123&tab=AlertRules" {
+	if inner["webUrl"] != "https://signoz.example.com/alerts/overview?ruleId=rule-123" {
 		t.Fatalf("expected webUrl on inner object, got: %v", inner["webUrl"])
 	}
 }

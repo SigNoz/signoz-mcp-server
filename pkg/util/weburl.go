@@ -23,7 +23,6 @@ func ResourceWebURL(base, resourceType, id string) (string, bool) {
 	case "alert":
 		q := url.Values{}
 		q.Set("ruleId", id)
-		q.Set("tab", "AlertRules")
 		return base + "/alerts/overview?" + q.Encode(), true
 	case "service":
 		return base + "/services/" + url.PathEscape(id), true

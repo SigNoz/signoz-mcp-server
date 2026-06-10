@@ -18,7 +18,7 @@
   the full encoded `compositeQuery` in the URL; there is no id-only frontend route.
 - Templates:
   - `/dashboard/<uuid>`
-  - `/alerts/overview?ruleId=<id>&tab=AlertRules`
+  - `/alerts/overview?ruleId=<id>`
   - `/services/<url-encoded-name>`
 - Origin comes from `util.GetSigNozURL(ctx)`; `webUrl` is omitted on an empty base.
 - Helper: `pkg/util/weburl.go` `ResourceWebURL(base, type, id) -> (url, ok)`.
@@ -29,6 +29,13 @@
 - `manifest.json` left unchanged: it documents tool `name`/`description` only (not
   output shapes), and no tool descriptions changed in A1–A4 — only outputs gained a
   field.
+
+### 2026-06-10 — drop inert `tab=AlertRules` from alert webUrl (#245)
+- Alert template changed from `/alerts/overview?ruleId=<id>&tab=AlertRules` to
+  `/alerts/overview?ruleId=<id>`. The `tab=AlertRules` param is inert on the
+  `/alerts/overview` route — that page uses `AlertDetailsTab` (OVERVIEW/HISTORY);
+  `AlertRules` is a tab on the `/alerts` list page, not the overview detail page.
+  Removed it so the deep link is clean.
 
 ## Open Questions
 - [x] Should saved views get a `webUrl`? — No; no id-only frontend route exists

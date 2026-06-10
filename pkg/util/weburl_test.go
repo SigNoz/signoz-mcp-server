@@ -13,7 +13,7 @@ func TestResourceWebURL(t *testing.T) {
 	}{
 		{"dashboard", "https://signoz.example.com", "dashboard", "019a2e3d-uuid", "https://signoz.example.com/dashboard/019a2e3d-uuid", true},
 		{"trailing slash base", "https://signoz.example.com/", "dashboard", "x", "https://signoz.example.com/dashboard/x", true},
-		{"alert", "https://signoz.example.com", "alert", "rule-123", "https://signoz.example.com/alerts/overview?ruleId=rule-123&tab=AlertRules", true},
+		{"alert", "https://signoz.example.com", "alert", "rule-123", "https://signoz.example.com/alerts/overview?ruleId=rule-123", true},
 		{"service with space", "https://signoz.example.com", "service", "cart service", "https://signoz.example.com/services/cart%20service", true},
 		{"service with slash", "https://signoz.example.com", "service", "a/b", "https://signoz.example.com/services/a%2Fb", true},
 		{"empty base omits", "", "dashboard", "x", "", false},
