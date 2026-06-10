@@ -12,6 +12,7 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
@@ -192,5 +193,34 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		h.logger.ErrorContext(ctx, "Failed to get trace details", slog.String("traceId", traceID), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	result = enrichTraceWebURL(ctx, result, traceID)
 	return mcp.NewToolResultText(string(result)), nil
+}
+
+// enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough
+// body. On any parse failure it returns the original bytes unchanged so
+// enrichment can never break a working response.
+func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte {
+	base, hasURL := util.GetSigNozURL(ctx)
+	if !hasURL {
+		return data
+	}
+	webURL, ok := util.ResourceWebURL(base, "trace", traceID)
+	if !ok {
+		return data
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return data
+	}
+	if inner, ok := obj["data"].(map[string]any); ok {
+		inner["webUrl"] = webURL
+	} else {
+		obj["webUrl"] = webURL
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return data
+	}
+	return out
 }

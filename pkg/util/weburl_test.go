@@ -16,9 +16,10 @@ func TestResourceWebURL(t *testing.T) {
 		{"alert", "https://signoz.example.com", "alert", "rule-123", "https://signoz.example.com/alerts/overview?ruleId=rule-123", true},
 		{"service with space", "https://signoz.example.com", "service", "cart service", "https://signoz.example.com/services/cart%20service", true},
 		{"service with slash", "https://signoz.example.com", "service", "a/b", "https://signoz.example.com/services/a%2Fb", true},
+		{"trace", "https://signoz.example.com", "trace", "e4dfc429fd5655656d46a0e9db386296", "https://signoz.example.com/trace/e4dfc429fd5655656d46a0e9db386296", true},
 		{"empty base omits", "", "dashboard", "x", "", false},
 		{"empty id omits", "https://signoz.example.com", "dashboard", "", "", false},
-		{"unknown type omits", "https://signoz.example.com", "trace", "x", "", false},
+		{"unknown type omits", "https://signoz.example.com", "log", "x", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

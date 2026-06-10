@@ -37,8 +37,20 @@
   `AlertRules` is a tab on the `/alerts` list page, not the overview detail page.
   Removed it so the deep link is clean.
 
+### 2026-06-10 — add trace deep link (#245)
+- Added a fourth single-id type: `trace` → `/trace/<traceId>`. Verified against a
+  live staging instance (`https://<base>/trace/<trace_id>`).
+- Enriches `signoz_get_trace_details` (passthrough body → `enrichTraceWebURL`,
+  wrapped `{"data":{…}}` + bare, fail-open). `search_traces` is NOT enriched: its
+  rows put `traceId` in dynamic query columns, not a stable top-level key, so
+  per-row enrichment is fragile — `get_trace_details` is the deep-link use case.
+- Frontend companion adds a `trace` case to `ResourceType`/`resourceRoute()` so the
+  `open_resource` chip routes to `/trace/:id`.
+
 ## Open Questions
 - [x] Should saved views get a `webUrl`? — No; no id-only frontend route exists
   (the URL requires the full encoded `compositeQuery`).
 - [x] Where should the origin come from? — `util.GetSigNozURL(ctx)`; omit `webUrl`
   when empty.
+- [x] Should traces get a `webUrl`? — Yes; `/trace/<traceId>` is a clean single-id
+  route. Scoped to `get_trace_details` (not `search_traces`).

@@ -17,12 +17,12 @@ read-tool outputs.
 
 ### `pkg/util/weburl.go`
 - `ResourceWebURL(base, resourceType, id string) (string, bool)`.
-- Supports `dashboard`, `alert`, `service`; returns `("", false)` on an empty
-  base/id or an unknown type so callers omit the field rather than emit a broken
-  link.
+- Supports `dashboard`, `alert`, `service`, `trace`; returns `("", false)` on an
+  empty base/id or an unknown type so callers omit the field rather than emit a
+  broken link.
 - Templates: `/dashboard/<uuid>`, `/alerts/overview?ruleId=<id>`,
-  `/services/<url-encoded-name>`. Path/query segments are URL-encoded; the base
-  origin is trimmed of a trailing slash.
+  `/services/<url-encoded-name>`, `/trace/<traceId>`. Path/query segments are
+  URL-encoded; the base origin is trimmed of a trailing slash.
 
 ### `internal/handler/tools/dashboards.go`
 - Enrich list items in `handleListDashboards`.
@@ -36,6 +36,12 @@ read-tool outputs.
 - Enrich `handleListAlerts`, `handleListAlertRules`, and the `handleGetAlert`
   passthrough (`enrichAlertWebURL`).
 
+### `internal/handler/tools/traces.go`
+- Enrich the `handleGetTraceDetails` passthrough body via `enrichTraceWebURL`
+  (wrapped `{"data":{…}}` + bare, fail-open), using the `traceId` arg.
+- `search_traces` is not enriched (trace id lives in dynamic query rows, not a
+  stable top-level key).
+
 ### Omission rule
 - `webUrl` is omitted when `util.GetSigNozURL(ctx)` is empty (no instance URL on the
   request).
@@ -47,6 +53,7 @@ read-tool outputs.
 - `internal/handler/tools/services.go` — enrich list
 - `internal/handler/tools/alerts.go` — enrich list/list-rules/get
 - `pkg/types/alerts.go` — `WebURL` field on `Alert` / `AlertRuleSummary`
+- `internal/handler/tools/traces.go` — enrich `get_trace_details`
 - `README.md` — note on the `webUrl` output field
 - `plans/resource-web-urls.*` — this pair
 

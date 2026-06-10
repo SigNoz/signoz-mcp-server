@@ -378,7 +378,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
-> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`) include a `webUrl` field — an absolute deep link to the resource in the SigNoz web UI — when the request carries a SigNoz instance URL.
+> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_get_trace_details`) include a `webUrl` field — an absolute deep link to the resource in the SigNoz web UI — when the request carries a SigNoz instance URL.
 
 ### Agent Routing Guidance
 
