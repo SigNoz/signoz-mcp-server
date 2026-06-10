@@ -1,6 +1,8 @@
 package util
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/url"
 	"strings"
 )
@@ -32,4 +34,39 @@ func ResourceWebURL(base, resourceType, id string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// InjectWebURL adds a webUrl deep link to a single-resource passthrough JSON
+// body. When the body is wrapped as {"data": {...}} the field is set on the
+// inner object; otherwise it is set at the top level.
+//
+// It decodes with UseNumber so large int64 fields (e.g. trace durationNano,
+// span ids, epoch-nanosecond timestamps) are preserved verbatim rather than
+// being coerced through float64 and rounded. On any failure — empty base,
+// unsupported type, or unparseable body — it returns the original bytes
+// unchanged so enrichment can never corrupt a working response.
+func InjectWebURL(data []byte, base, resourceType, id string) []byte {
+	webURL, ok := ResourceWebURL(base, resourceType, id)
+	if !ok {
+		return data
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var obj map[string]any
+	if err := dec.Decode(&obj); err != nil {
+		return data
+	}
+
+	if inner, ok := obj["data"].(map[string]any); ok {
+		inner["webUrl"] = webURL
+	} else {
+		obj["webUrl"] = webURL
+	}
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return data
+	}
+	return out
 }

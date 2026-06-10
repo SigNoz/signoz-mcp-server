@@ -231,31 +231,11 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 }
 
 // enrichDashboardWebURL injects a webUrl deep link into a single-dashboard
-// passthrough body. On any parse failure it returns the original bytes
-// unchanged so enrichment can never break a working response.
+// passthrough body. Delegates to util.InjectWebURL, which preserves large
+// int64 fields and fails open on unparseable input.
 func enrichDashboardWebURL(ctx context.Context, data []byte, uuid string) []byte {
-	base, hasURL := util.GetSigNozURL(ctx)
-	if !hasURL {
-		return data
-	}
-	webURL, ok := util.ResourceWebURL(base, "dashboard", uuid)
-	if !ok {
-		return data
-	}
-	var obj map[string]any
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return data
-	}
-	if inner, ok := obj["data"].(map[string]any); ok {
-		inner["webUrl"] = webURL
-	} else {
-		obj["webUrl"] = webURL
-	}
-	out, err := json.Marshal(obj)
-	if err != nil {
-		return data
-	}
-	return out
+	base, _ := util.GetSigNozURL(ctx)
+	return util.InjectWebURL(data, base, "dashboard", uuid)
 }
 
 func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

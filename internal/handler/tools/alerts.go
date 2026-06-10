@@ -297,31 +297,11 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 }
 
 // enrichAlertWebURL injects a webUrl deep link into a single-alert passthrough
-// body. On any parse failure it returns the original bytes unchanged so
-// enrichment can never break a working response.
+// body. Delegates to util.InjectWebURL, which preserves large int64 fields and
+// fails open on unparseable input.
 func enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
-	base, hasURL := util.GetSigNozURL(ctx)
-	if !hasURL {
-		return data
-	}
-	webURL, ok := util.ResourceWebURL(base, "alert", ruleID)
-	if !ok {
-		return data
-	}
-	var obj map[string]any
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return data
-	}
-	if inner, ok := obj["data"].(map[string]any); ok {
-		inner["webUrl"] = webURL
-	} else {
-		obj["webUrl"] = webURL
-	}
-	out, err := json.Marshal(obj)
-	if err != nil {
-		return data
-	}
-	return out
+	base, _ := util.GetSigNozURL(ctx)
+	return util.InjectWebURL(data, base, "alert", ruleID)
 }
 
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
