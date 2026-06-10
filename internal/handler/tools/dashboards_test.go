@@ -304,3 +304,44 @@ func TestHandleImportDashboard_NotFound(t *testing.T) {
 		t.Error("expected error result on 404")
 	}
 }
+
+func TestHandleListDashboards_AddsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"uuid":"abc-123","name":"Hosts"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_dashboards", map[string]any{})
+
+	result, err := h.handleListDashboards(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result")
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
+		t.Fatalf("expected webUrl in output, got: %s", body)
+	}
+}
+
+func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"uuid":"abc-123","name":"Hosts"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_dashboards", map[string]any{})
+
+	result, err := h.handleListDashboards(testCtx(), req) // no URL in ctx
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}

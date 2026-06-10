@@ -19,6 +19,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/promql"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 // Template fetch configuration for signoz_import_dashboard.
@@ -179,6 +180,19 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 
+	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
+		for _, item := range data {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			uuid, _ := m["uuid"].(string)
+			if webURL, ok := util.ResourceWebURL(base, "dashboard", uuid); ok {
+				m["webUrl"] = webURL
+			}
+		}
+	}
+
 	total := len(data)
 	pagedData := paginate.Array(data, offset, limit)
 
@@ -212,7 +226,36 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 		h.logger.ErrorContext(ctx, "Failed to get dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	data = enrichDashboardWebURL(ctx, data, uuid)
 	return mcp.NewToolResultText(string(data)), nil
+}
+
+// enrichDashboardWebURL injects a webUrl deep link into a single-dashboard
+// passthrough body. On any parse failure it returns the original bytes
+// unchanged so enrichment can never break a working response.
+func enrichDashboardWebURL(ctx context.Context, data []byte, uuid string) []byte {
+	base, hasURL := util.GetSigNozURL(ctx)
+	if !hasURL {
+		return data
+	}
+	webURL, ok := util.ResourceWebURL(base, "dashboard", uuid)
+	if !ok {
+		return data
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return data
+	}
+	if inner, ok := obj["data"].(map[string]any); ok {
+		inner["webUrl"] = webURL
+	} else {
+		obj["webUrl"] = webURL
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return data
+	}
+	return out
 }
 
 func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
