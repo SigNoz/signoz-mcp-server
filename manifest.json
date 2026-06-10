@@ -34,8 +34,8 @@
       "description": "Query metrics with smart aggregation defaults based on metric type. Set source=\"meter\" to query Cost Meter (usage/billing) data"
     },
     {
-      "name": "signoz_get_metrics_stats",
-      "description": "Rank metrics by ingested sample count (highest first) for cost and volume analysis"
+      "name": "signoz_get_top_metrics",
+      "description": "Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis"
     },
     {
       "name": "signoz_get_field_keys",

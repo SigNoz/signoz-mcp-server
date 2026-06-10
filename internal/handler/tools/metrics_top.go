@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -11,27 +10,27 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
-func (h *Handler) RegisterMetricsStatsHandlers(s *server.MCPServer) {
-	h.logger.Debug("Registering metrics stats handlers")
+func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering top metrics handlers")
 
-	tool := mcp.NewTool("signoz_get_metrics_stats",
+	tool := mcp.NewTool("signoz_get_top_metrics",
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription(
-			"Return metrics ranked by ingested sample count (highest first). "+
+			"Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. "+
 				"Use this for questions like 'which metrics cost the most?', 'top metrics by sample count', "+
 				"'what is driving my metrics ingestion volume?', 'metrics by ingestion cost'. "+
-				"Wraps POST /api/v2/metrics/stats."),
+				"Wraps POST /api/v2/metrics/treemap."),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithString("timeRange", mcp.Description("Relative time range to analyze: 24h, 3d, 7d. Default: 7d. Ignored when both start and end are provided.")),
 		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 	)
 
-	addTool(s, tool, h.handleGetMetricsStats)
+	addTool(s, tool, h.handleGetTopMetrics)
 }
 
-func (h *Handler) handleGetMetricsStats(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.Params.Arguments.(map[string]any)
 
 	startTime, endTime, err := resolveTimestamps(args, "7d")
@@ -44,32 +43,13 @@ func (h *Handler) handleGetMetricsStats(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Probe with limit=1 to discover the total metric count, then fetch all.
-	// This avoids hardcoding an arbitrary cap that could silently truncate
-	// results on large tenants.
-	probe, err := client.GetMetricsStats(ctx, startTime, endTime, 1)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get metrics stats", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	var probeResp struct {
-		Data struct {
-			Total int `json:"total"`
-		} `json:"data"`
-	}
-	total := 2000
-	if err := json.Unmarshal(probe, &probeResp); err == nil && probeResp.Data.Total > 0 {
-		total = probeResp.Data.Total
-	}
-
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_metrics_stats",
-		slog.Int("total", total),
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_top_metrics",
 		slog.Int64("start", startTime),
 		slog.Int64("end", endTime))
 
-	result, err := client.GetMetricsStats(ctx, startTime, endTime, total)
+	result, err := client.GetTopMetrics(ctx, startTime, endTime, 100)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get metrics stats", logpkg.ErrAttr(err))
+		h.logger.ErrorContext(ctx, "Failed to get top metrics", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 

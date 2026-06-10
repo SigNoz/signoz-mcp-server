@@ -26,6 +26,14 @@
 - Default timeRange changed from "1h" to "7d" — the skill always uses a 7-day window; shorter windows miss volume patterns needed for accurate cost analysis
 - Supported timeRange values narrowed to 24h, 3d, 7d — sub-day windows are not meaningful for this tool's purpose
 
+### 2026-06-10 — Switch from stats API to treemap API
+- `POST /api/v2/metrics/stats` required a two-call probe to get the total count, then a second call with `limit=total` — unnecessary complexity
+- `POST /api/v2/metrics/treemap` with `mode: "samples"`, `treemap: "samples"`, `filter: {expression: ""}` returns top 100 metrics in a single call with `percentage` and `totalValue` pre-computed by the backend
+- Response is under `data.samples` (not `data.metrics`), each entry: `{"metricName": "...", "percentage": 8.13, "totalValue": 45235627}`
+- A UI bug where temporal metrics did not appear in the proportion view was investigated — confirmed to be a frontend rendering issue only; the API reliably returns all metrics when searched. API is trustworthy.
+- Decision: switch `GetMetricsStats` to use `/api/v2/metrics/treemap`, remove two-call probe, single call with `limit=100`
+
 ## Open Questions
 - [x] Should `orderBy` be a tool parameter? Decided: No — hardcode samples desc; the tool's purpose is cost ranking
-- [x] Should `limit` be a tool parameter? Decided: No — always auto-fetch all metrics via two-call probe pattern
+- [x] Should `limit` be a tool parameter? Decided: No — fixed at 100 (treemap API default); backend pre-computes percentages so no need to fetch all
+- [x] Use stats API or treemap API? Decided: treemap — simpler (1 call), pre-computed percentages, same data the UI uses
