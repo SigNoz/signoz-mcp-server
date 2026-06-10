@@ -1192,6 +1192,27 @@ func TestHandleDeleteAlert_ClientError(t *testing.T) {
 	}
 }
 
+func TestHandleListAlerts_AddsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[{"labels":{"alertname":"High CPU","ruleId":"rule-123","severity":"critical"},"status":{"state":"firing"},"startsAt":"2026-06-10T00:00:00Z","endsAt":"0001-01-01T00:00:00Z"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alerts", map[string]any{})
+	result, err := h.handleListAlerts(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, "/alerts/overview?ruleId=rule-123") || !strings.Contains(body, "tab=AlertRules") {
+		t.Fatalf("expected alert webUrl in list_alerts output, got: %s", body)
+	}
+}
+
 func TestHandleListAlertRules_AddsWebURL(t *testing.T) {
 	mock := &client.MockClient{
 		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
