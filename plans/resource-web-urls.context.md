@@ -47,7 +47,24 @@
 - Frontend companion adds a `trace` case to `ResourceType`/`resourceRoute()` so the
   `open_resource` chip routes to `/trace/:id`.
 
-## Open Questions
+### 2026-06-11 — InjectWebURL rewritten to shallow RawMessage decode (#245)
+- Design review compared the webUrl approach against alternatives (MCP
+  `resource_link` content blocks, `structuredContent`, client-side route
+  construction, a `get_resource_url` tool, `_meta`). Kept in-band `webUrl`: it is
+  the only option visible to the LLM in every MCP host. One implementation
+  improvement accepted: stop full-tree decoding passthrough bodies.
+- `InjectWebURL` now decodes one level deep into `map[string]json.RawMessage`
+  (two levels for the `{"data":{…}}` wrap). Everything below the injection level
+  passes through as verbatim bytes, so:
+  - int64 precision is preserved by construction — the `UseNumber` guard became
+    unnecessary and was removed;
+  - nested key order / number formatting are untouched;
+  - multi-MiB trace bodies (response cap is 64 MiB) no longer pay the ~3–5×
+    allocation cost of a full `map[string]any` tree decode + re-marshal.
+- Fixed a latent panic found during the rewrite: a literal `null` body decoded
+  to a nil map and the subsequent `obj["webUrl"]=` write panicked
+  (`assignment to entry in nil map`). Now fails open. New tests cover verbatim
+  inner bytes, `null` body, `"data":null`, and `"data":[…]`.
 - [x] Should saved views get a `webUrl`? — No; no id-only frontend route exists
   (the URL requires the full encoded `compositeQuery`).
 - [x] Where should the origin come from? — `util.GetSigNozURL(ctx)`; omit `webUrl`

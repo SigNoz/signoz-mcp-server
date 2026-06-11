@@ -23,6 +23,11 @@ read-tool outputs.
 - Templates: `/dashboard/<uuid>`, `/alerts/overview?ruleId=<id>`,
   `/services/<url-encoded-name>`, `/trace/<traceId>`. Path/query segments are
   URL-encoded; the base origin is trimmed of a trailing slash.
+- `InjectWebURL(data, base, type, id) []byte` for passthrough bodies: shallow
+  decode into `map[string]json.RawMessage` — one level deep, two for the
+  `{"data":{…}}` wrap — so nested values (span trees, int64 fields, number
+  formatting, key order) pass through as verbatim bytes with no re-encoding.
+  Fails open on any non-object or unparseable body, including literal `null`.
 
 ### `internal/handler/tools/dashboards.go`
 - Enrich list items in `handleListDashboards`.

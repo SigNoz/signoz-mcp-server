@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/url"
 	"strings"
@@ -40,28 +39,38 @@ func ResourceWebURL(base, resourceType, id string) (string, bool) {
 // body. When the body is wrapped as {"data": {...}} the field is set on the
 // inner object; otherwise it is set at the top level.
 //
-// It decodes with UseNumber so large int64 fields (e.g. trace durationNano,
-// span ids, epoch-nanosecond timestamps) are preserved verbatim rather than
-// being coerced through float64 and rounded. On any failure — empty base,
-// unsupported type, or unparseable body — it returns the original bytes
-// unchanged so enrichment can never corrupt a working response.
+// The body is decoded only one level deep (two for the {"data": {...}} wrap)
+// into map[string]json.RawMessage, so everything below the injection level —
+// span trees, large int64 fields like durationNano, number formatting, key
+// order — passes through as verbatim bytes rather than being re-encoded. On
+// any failure — empty base, unsupported type, or a body that is not a JSON
+// object — it returns the original bytes unchanged so enrichment can never
+// corrupt a working response.
 func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 	webURL, ok := ResourceWebURL(base, resourceType, id)
 	if !ok {
 		return data
 	}
 
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	var obj map[string]any
-	if err := dec.Decode(&obj); err != nil {
+	obj, ok := decodeShallowObject(data)
+	if !ok {
 		return data
 	}
 
-	if inner, ok := obj["data"].(map[string]any); ok {
-		inner["webUrl"] = webURL
+	urlJSON, err := json.Marshal(webURL)
+	if err != nil {
+		return data
+	}
+
+	if inner, ok := decodeShallowObject(obj["data"]); ok {
+		inner["webUrl"] = urlJSON
+		innerJSON, err := json.Marshal(inner)
+		if err != nil {
+			return data
+		}
+		obj["data"] = innerJSON
 	} else {
-		obj["webUrl"] = webURL
+		obj["webUrl"] = urlJSON
 	}
 
 	out, err := json.Marshal(obj)
@@ -69,4 +78,16 @@ func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 		return data
 	}
 	return out
+}
+
+// decodeShallowObject decodes raw as a JSON object one level deep: values stay
+// verbatim json.RawMessage bytes. ok is false when raw is empty, "null", or
+// not a JSON object (Unmarshal leaves the map nil for "null", so the nil check
+// also guards writes into a nil map).
+func decodeShallowObject(raw json.RawMessage) (map[string]json.RawMessage, bool) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
+		return nil, false
+	}
+	return m, true
 }
