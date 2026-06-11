@@ -291,3 +291,73 @@ func TestHandleGetTraceDetails_EmptyTraceId(t *testing.T) {
 		t.Error("expected error result for empty traceId")
 	}
 }
+
+func TestHandleGetTraceDetails_WrappedBodyGetsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetTraceDetailsFn: func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"spans":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_trace_details", map[string]any{
+		"traceId": "e4dfc429fd5655656d46a0e9db386296",
+	})
+
+	result, err := h.handleGetTraceDetails(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result")
+	}
+	body := textContent(t, result)
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(body), &obj); err != nil {
+		t.Fatalf("body not json: %v", err)
+	}
+	inner, ok := obj["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected wrapped data object, got: %s", body)
+	}
+	if inner["webUrl"] != "https://signoz.example.com/trace/e4dfc429fd5655656d46a0e9db386296" {
+		t.Fatalf("expected webUrl on inner object, got: %v", inner["webUrl"])
+	}
+}
+
+func TestHandleGetTraceDetails_BareBodyGetsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetTraceDetailsFn: func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+			return json.RawMessage(`{"spans":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_trace_details", map[string]any{"traceId": "abc-123"})
+
+	result, err := h.handleGetTraceDetails(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
+		t.Fatalf("expected top-level webUrl, got: %s", body)
+	}
+}
+
+func TestHandleGetTraceDetails_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetTraceDetailsFn: func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"spans":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_trace_details", map[string]any{"traceId": "abc-123"})
+
+	result, err := h.handleGetTraceDetails(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}

@@ -43,5 +43,5 @@ const ServerInstructions = `# SigNoz MCP Server — Instructions
 
 5. **Never convert Unix timestamps manually.** All SigNoz timestamps (start, end, and time series values) are Unix milliseconds. When presenting timestamps to the user, always use a programmatic method (e.g., a date conversion tool or function) to convert them to human-readable format. Do NOT attempt mental arithmetic or manual offset calculations — this is error-prone and leads to incorrect times being reported.
 
-6. **Do not generate SigNoz frontend links.** Never guess or build a clickable SigNoz URL from IDs, names, or the base domain. Only return a link if a tool or resource explicitly provides the full frontend URL; otherwise say MCP cannot generate a reliable link.
+6. **Use the webUrl field for SigNoz links.** Resource tool outputs (dashboards, alerts, services, traces) include a webUrl field with a deep link to the resource in the SigNoz UI. When linking to a resource, use that field verbatim. Never construct a SigNoz URL by hand from IDs, names, or the base domain.
 `

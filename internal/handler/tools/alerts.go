@@ -174,8 +174,10 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	// takes only meaningful data
+	base, _ := util.GetSigNozURL(ctx)
 	alertsList := make([]types.Alert, 0, len(apiResponse.Data))
 	for _, apiAlert := range apiResponse.Data {
+		webURL, _ := util.ResourceWebURL(base, "alert", apiAlert.Labels.RuleID)
 		alertsList = append(alertsList, types.Alert{
 			Alertname: apiAlert.Labels.Alertname,
 			RuleID:    apiAlert.Labels.RuleID,
@@ -183,6 +185,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 			StartsAt:  apiAlert.StartsAt,
 			EndsAt:    apiAlert.EndsAt,
 			State:     apiAlert.Status.State,
+			WebURL:    webURL,
 		})
 	}
 
@@ -222,6 +225,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to parse alert rules response: " + err.Error()), nil
 	}
 
+	base, _ := util.GetSigNozURL(ctx)
 	ruleSummaries := make([]types.AlertRuleSummary, 0, len(apiResponse.Data))
 	for _, apiRule := range apiResponse.Data {
 		createdAt := apiRule.CreatedAt
@@ -233,6 +237,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 			updatedAt = apiRule.UpdateAt
 		}
 
+		webURL, _ := util.ResourceWebURL(base, "alert", apiRule.ID)
 		ruleSummaries = append(ruleSummaries, types.AlertRuleSummary{
 			RuleID:      apiRule.ID,
 			Alert:       apiRule.Alert,
@@ -245,6 +250,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 			Labels:      apiRule.Labels,
 			CreatedAt:   createdAt,
 			UpdatedAt:   updatedAt,
+			WebURL:      webURL,
 		})
 	}
 
@@ -286,7 +292,16 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	respJSON = enrichAlertWebURL(ctx, respJSON, ruleID)
 	return mcp.NewToolResultText(string(respJSON)), nil
+}
+
+// enrichAlertWebURL injects a webUrl deep link into a single-alert passthrough
+// body. Delegates to util.InjectWebURL, which preserves large int64 fields and
+// fails open on unparseable input.
+func enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
+	base, _ := util.GetSigNozURL(ctx)
+	return util.InjectWebURL(data, base, "alert", ruleID)
 }
 
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

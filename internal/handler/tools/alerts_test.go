@@ -1191,3 +1191,107 @@ func TestHandleDeleteAlert_ClientError(t *testing.T) {
 		t.Fatal("expected error result from client error")
 	}
 }
+
+func TestHandleListAlerts_AddsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[{"labels":{"alertname":"High CPU","ruleId":"rule-123","severity":"critical"},"status":{"state":"firing"},"startsAt":"2026-06-10T00:00:00Z","endsAt":"0001-01-01T00:00:00Z"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alerts", map[string]any{})
+	result, err := h.handleListAlerts(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, "/alerts/overview?ruleId=rule-123") {
+		t.Fatalf("expected alert webUrl in list_alerts output, got: %s", body)
+	}
+}
+
+func TestHandleListAlertRules_AddsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"id":"rule-123","alert":"High CPU","state":"inactive","alertType":"METRIC_BASED_ALERT","ruleType":"threshold_rule","disabled":false}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alert_rules", map[string]any{})
+	result, err := h.handleListAlertRules(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result")
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, "rule-123") || !strings.Contains(body, "/alerts/overview?ruleId=rule-123") {
+		t.Fatalf("expected alert webUrl, got: %s", body)
+	}
+}
+
+func TestHandleListAlertRules_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"id":"rule-123","alert":"High CPU","state":"inactive","alertType":"METRIC_BASED_ALERT","ruleType":"threshold_rule","disabled":false}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_alert_rules", map[string]any{})
+	result, err := h.handleListAlertRules(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}
+
+func TestHandleGetAlert_WrappedBodyGetsWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetAlertByRuleIDFn: func(ctx context.Context, ruleID string) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"rule-123","alert":"High CPU"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert", map[string]any{"ruleId": "rule-123"})
+	result, err := h.handleGetAlert(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(body), &obj); err != nil {
+		t.Fatalf("body not json: %v", err)
+	}
+	inner, ok := obj["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected wrapped data object, got: %s", body)
+	}
+	if inner["webUrl"] != "https://signoz.example.com/alerts/overview?ruleId=rule-123" {
+		t.Fatalf("expected webUrl on inner object, got: %v", inner["webUrl"])
+	}
+}
+
+func TestHandleGetAlert_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		GetAlertByRuleIDFn: func(ctx context.Context, ruleID string) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"rule-123"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_alert", map[string]any{"ruleId": "rule-123"})
+	result, err := h.handleGetAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}
