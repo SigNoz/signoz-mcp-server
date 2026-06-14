@@ -225,6 +225,46 @@
       text-decoration: underline;
     }
 
+    .api-key-help {
+      position: relative;
+      display: inline-block;
+    }
+
+    .api-key-tooltip {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      z-index: 20;
+      width: min(320px, calc(100vw - 72px));
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      background: #0f1117;
+      box-shadow: 0 12px 30px var(--shadow);
+      color: var(--ink-secondary);
+      font-size: 0.78rem;
+      font-weight: 400;
+      line-height: 1.45;
+      text-decoration: none;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-2px);
+    }
+
+    .api-key-help:hover .api-key-tooltip,
+    .api-key-help:focus-within .api-key-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .api-key-help a:focus-visible {
+      border-radius: 4px;
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
     .error-banner {
       margin-bottom: 18px;
       padding: 12px 14px;
@@ -423,8 +463,13 @@
           <label for="api_key">API Key</label>
           <input id="api_key" name="api_key" type="password" placeholder="Paste your SigNoz API key" required>
           <div class="field-hint">
-            <a href="https://signoz.io/docs/ai/signoz-mcp-server/#get-your-api-key" target="_blank" rel="noopener">How
-              to get your API key?</a>
+            <span class="api-key-help">
+              <a href="https://signoz.io/docs/manage/administrator-guide/iam/service-accounts/#create-a-service-account"
+                target="_blank" rel="noopener" aria-describedby="api-key-help-tooltip">How to get your API key?</a>
+              <span id="api-key-help-tooltip" class="api-key-tooltip" role="tooltip">Go to Settings → Service Accounts in
+                SigNoz, create a service account, and generate an API key (requires Admin role). Click for
+                details.</span>
+            </span>
           </div>
         </div>
 
