@@ -9,7 +9,7 @@ const Instructions = `# SigNoz Saved View Schema
 
 A saved view is a reusable snapshot of an Explorer query. It maps 1:1
 to the "Saved Views" feature in the SigNoz UI (traces-explorer,
-logs-explorer, metrics-explorer).
+logs-explorer, metrics-explorer, meter-explorer / Cost Meter).
 
 ## SavedView fields
 
@@ -18,7 +18,7 @@ logs-explorer, metrics-explorer).
 | id              | string (UUID)     | No (server-assigned) | Path param on get/update/delete. Do not send on create/update. |
 | name            | string            | Yes                 | Display name |
 | category        | string            | No                  | Free-form grouping label |
-| sourcePage      | string            | Yes                 | One of: "traces", "logs", "metrics" |
+| sourcePage      | string            | Yes                 | One of: "traces", "logs", "metrics", "meter". "meter" is the Cost Meter Explorer (a distinct page) |
 | tags            | string[]          | No                  | Free-form tags |
 | compositeQuery  | object            | Yes                 | Query Builder v5 — see below |
 | extraData       | string            | No                  | UI-controlled options (JSON string). Safe to leave "" |
@@ -54,8 +54,8 @@ The server rejects them with HTTP 400 "failed to validate request body".
 | Field        | Type     | Notes |
 |--------------|----------|-------|
 | name         | string   | Reference name, e.g. "A" |
-| signal       | string   | Required. MUST match sourcePage: "traces" / "logs" / "metrics" |
-| source       | string   | Usually "". Set "meter" (metrics views only) to save a Cost Meter usage/billing view |
+| signal       | string   | Required. MUST match sourcePage for "traces"/"logs"/"metrics". For a "meter" view, signal MUST be "metrics" |
+| source       | string   | Usually "". For a "meter" view it MUST be "meter". Do NOT set "meter" on a "metrics" (or other) sourcePage — Cost Meter views belong on sourcePage "meter" |
 | stepInterval | integer  | Seconds per bucket. 0 for list panels, e.g. 60 for graphs |
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |
@@ -63,8 +63,14 @@ The server rejects them with HTTP 400 "failed to validate request body".
 
 ## Rules
 
-- **signal must equal sourcePage.** A ` + "`sourcePage:\"traces\"`" + ` view must use
-  ` + "`\"signal\":\"traces\"`" + ` in every builder_query spec.
+- **signal must equal sourcePage** for "traces"/"logs"/"metrics". A
+  ` + "`sourcePage:\"traces\"`" + ` view must use ` + "`\"signal\":\"traces\"`" + ` in every
+  builder_query spec.
+- **Cost Meter views are special.** A Cost Meter view is
+  ` + "`sourcePage:\"meter\"`" + ` (its own Explorer page) but is queried as metrics:
+  every builder_query spec must set ` + "`\"signal\":\"metrics\"`" + ` AND
+  ` + "`\"source\":\"meter\"`" + `. Do not file a Cost Meter view under
+  ` + "`sourcePage:\"metrics\"`" + ` — it will land in the wrong Explorer's list.
 - **panelType by intent:** "list" for tabular spans/logs; "graph" for
   time-series; "table" for grouped tables; "value" for a single number.
 - **Full Query Builder v5 spec:** https://signoz.io/docs/userguide/query-builder-v5/

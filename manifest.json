@@ -107,7 +107,7 @@
     },
     {
       "name": "signoz_list_views",
-      "description": "List SigNoz saved Explorer views for a given sourcePage (traces, logs, or metrics), with optional name/category filters"
+      "description": "List SigNoz saved Explorer views for a given sourcePage (traces, logs, metrics, or meter for Cost Meter views), with optional name/category filters"
     },
     {
       "name": "signoz_get_view",

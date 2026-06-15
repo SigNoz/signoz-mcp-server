@@ -696,6 +696,199 @@ func TestHandleCreateView_IgnoresSignalOnNonBuilderQuery(t *testing.T) {
 	}
 }
 
+func TestHandleListViews_Meter(t *testing.T) {
+	// "meter" (Cost Meter Explorer) is a valid sourcePage and must be passed
+	// through to the client verbatim, not rejected as invalid.
+	var gotSourcePage string
+	mock := &client.MockClient{
+		ListViewsFn: func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+			gotSourcePage = sourcePage
+			return json.RawMessage(`{"status":"success","data":[]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_views", map[string]any{"sourcePage": "meter"})
+	result, err := h.handleListViews(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error for meter sourcePage: %v", result.Content)
+	}
+	if gotSourcePage != "meter" {
+		t.Errorf("client called with sourcePage=%q, want meter", gotSourcePage)
+	}
+}
+
+func TestHandleCreateView_AllowsMeterView(t *testing.T) {
+	// A Cost Meter view: sourcePage "meter", signal "metrics", source "meter".
+	var gotBody []byte
+	mock := &client.MockClient{
+		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			gotBody = body
+			return json.RawMessage(`{"status":"success","data":{"id":"m1"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "log-ingestion",
+		"sourcePage": "meter",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "graph",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "metrics", "source": "meter"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if result.IsError {
+		t.Fatalf("expected meter view to be accepted; got: %v", result.Content)
+	}
+	if !strings.Contains(string(gotBody), `"sourcePage":"meter"`) ||
+		!strings.Contains(string(gotBody), `"source":"meter"`) {
+		t.Errorf("meter view body missing sourcePage/source: %s", gotBody)
+	}
+}
+
+func TestHandleCreateView_RejectsMeterWithoutSource(t *testing.T) {
+	// A "meter" view that omits source="meter" would silently query the
+	// default metrics store. Reject it at the MCP boundary.
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "bad-meter",
+		"sourcePage": "meter",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "graph",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "metrics"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected rejection for meter view without source=meter")
+	}
+	body := renderContent(result.Content)
+	if !strings.Contains(body, "source") || !strings.Contains(body, "meter") {
+		t.Errorf("error should mention source and meter; got: %s", body)
+	}
+}
+
+func TestHandleCreateView_RejectsMeterWrongSignal(t *testing.T) {
+	// A "meter" view is queried as metrics; any other signal is invalid.
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "bad-meter-signal",
+		"sourcePage": "meter",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "graph",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "logs", "source": "meter"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected rejection for meter view with non-metrics signal")
+	}
+	body := renderContent(result.Content)
+	if !strings.Contains(body, "metrics") {
+		t.Errorf("error should require signal metrics; got: %s", body)
+	}
+}
+
+func TestHandleCreateView_RejectsSourceMeterOnMetricsPage(t *testing.T) {
+	// source="meter" belongs on the "meter" page, not mis-filed under
+	// "metrics" (this is the exact mis-filing the meter sourcePage fixes).
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "misfiled-meter",
+		"sourcePage": "metrics",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "graph",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "metrics", "source": "meter"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected rejection for source=meter on metrics page")
+	}
+	body := renderContent(result.Content)
+	if !strings.Contains(body, "meter") || !strings.Contains(body, "sourcePage") {
+		t.Errorf("error should point to sourcePage meter; got: %s", body)
+	}
+}
+
+func TestHandleCreateView_RejectsSourceMeterOnTracesPage(t *testing.T) {
+	// The anti-mis-filing guard is not metrics-only: source="meter" is invalid
+	// on any non-meter page, including traces.
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_create_view", map[string]any{
+		"name":       "misfiled-meter-traces",
+		"sourcePage": "traces",
+		"compositeQuery": map[string]any{
+			"queryType": "builder",
+			"panelType": "list",
+			"queries": []any{map[string]any{
+				"type": "builder_query",
+				"spec": map[string]any{"name": "A", "signal": "traces", "source": "meter"},
+			}},
+		},
+	})
+	result, _ := h.handleCreateView(testCtx(), req)
+	if !result.IsError {
+		t.Fatalf("expected rejection for source=meter on traces page")
+	}
+}
+
+func TestHandleUpdateView_AllowsMeterView(t *testing.T) {
+	// Updating an existing meter view (sourcePage unchanged) must pass the
+	// meter validation branch and reach the client.
+	updateCalled := false
+	mock := &client.MockClient{
+		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"m1","sourcePage":"meter"}}`), nil
+		},
+		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
+			updateCalled = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_view", map[string]any{
+		"viewId": "m1",
+		"view": map[string]any{
+			"name":       "renamed-meter",
+			"sourcePage": "meter",
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "graph",
+				"queries": []any{map[string]any{
+					"type": "builder_query",
+					"spec": map[string]any{"name": "A", "signal": "metrics", "source": "meter"},
+				}},
+			},
+		},
+	})
+	result, _ := h.handleUpdateView(testCtx(), req)
+	if result.IsError {
+		t.Fatalf("expected meter update to succeed; got: %v", result.Content)
+	}
+	if !updateCalled {
+		t.Fatalf("UpdateView should have been called for a valid meter view")
+	}
+}
+
 func TestHandleUpdateView_RejectsSignalMismatch(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	req := makeToolRequest("signoz_update_view", map[string]any{
