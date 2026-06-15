@@ -15,18 +15,22 @@ import (
 )
 
 // validSourcePages is the allow-list for the explorer-views sourcePage param.
+// "meter" is the Cost Meter Explorer — a distinct page in the SigNoz product
+// (its own Meter Explorer route), even though its queries run against the
+// metrics signal with spec.source="meter".
 var validSourcePages = map[string]struct{}{
 	"traces":  {},
 	"logs":    {},
 	"metrics": {},
+	"meter":   {},
 }
 
 func validateSourcePage(sp string) error {
 	if sp == "" {
-		return fmt.Errorf(`parameter validation failed: "sourcePage" is required. Must be one of: "traces", "logs", "metrics"`)
+		return fmt.Errorf(`parameter validation failed: "sourcePage" is required. Must be one of: "traces", "logs", "metrics", "meter"`)
 	}
 	if _, ok := validSourcePages[sp]; !ok {
-		return fmt.Errorf(`parameter validation failed: "sourcePage" must be one of: "traces", "logs", "metrics" (got %q)`, sp)
+		return fmt.Errorf(`parameter validation failed: "sourcePage" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, sp)
 	}
 	return nil
 }
@@ -40,9 +44,9 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type) — supported for the Logs, Traces, and Metrics Explorer pages. "+
+		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type) — supported for the Logs, Traces, Metrics, and Cost Meter Explorer pages. "+
 			"IMPORTANT: Supports pagination via 'limit' and 'offset'. The response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. When searching for a specific view, ALWAYS check 'pagination.hasMore' — if true, continue paging with 'nextOffset' until you find the item or 'hasMore' is false. Never conclude a view doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics".`)),
+		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics", "meter". Cost Meter views are filed under "meter" (not "metrics").`)),
 		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name (applied server-side).")),
 		mcp.WithString("category", mcp.Description("Optional partial-match filter on view category (applied server-side).")),
 		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Default: 50.")),
@@ -66,13 +70,14 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 			"Create a new SigNoz saved Explorer view.\n\n"+
 				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
 				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
-				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics\n\n"+
-				"Required fields: name, sourcePage (one of traces|logs|metrics), compositeQuery (object). "+
+				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics/meter\n\n"+
+				"Required fields: name, sourcePage (one of traces|logs|metrics|meter), compositeQuery (object). "+
+				"A Cost Meter view uses sourcePage \"meter\" with signal \"metrics\" and source \"meter\" in each builder spec. "+
 				"Optional: category, tags, extraData. Server populates id, createdAt/By, updatedAt/By — "+
 				"do not send them.",
 		),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Display name of the view.")),
-		mcp.WithString("sourcePage", mcp.Required(), mcp.Enum("traces", "logs", "metrics"), mcp.Description(`Which Explorer this view belongs to. One of: "traces", "logs", "metrics".`)),
+		mcp.WithString("sourcePage", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
 		mcp.WithObject("compositeQuery", mcp.Required(), mcp.AdditionalProperties(true), mcp.Description("The Query Builder payload as an object (not a string). Must contain queryType plus matching sub-query. See signoz://view/instructions and signoz://view/examples.")),
 		mcp.WithString("category", mcp.Description("Optional free-form grouping label.")),
 		mcp.WithArray("tags", mcp.WithStringItems(), mcp.Description("Optional free-form tags.")),
@@ -87,7 +92,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 			"Replace an existing SigNoz saved view (HTTP PUT — full body replace).\n\n"+
 				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
 				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
-				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics\n\n"+
+				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics/meter\n\n"+
 				"Pass the view's UUID as viewId and the full SavedView body as view. "+
 				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
 				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
@@ -131,7 +136,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	viewExamples := mcp.NewResource(
 		"signoz://view/examples",
 		"Saved View Examples",
-		mcp.WithResourceDescription("Three complete SavedView payloads — one per sourcePage (traces, logs, metrics) — suitable for signoz_create_view."),
+		mcp.WithResourceDescription("Complete SavedView payloads — one per sourcePage (traces, logs, metrics, meter) — suitable for signoz_create_view."),
 		mcp.WithMIMEType("text/markdown"),
 	)
 	s.AddResource(viewExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
@@ -156,8 +161,8 @@ func savedViewSchemaProperties() map[string]any {
 		},
 		"sourcePage": map[string]any{
 			"type":        "string",
-			"enum":        []string{"traces", "logs", "metrics"},
-			"description": `Which Explorer this view belongs to. One of: "traces", "logs", "metrics".`,
+			"enum":        []string{"traces", "logs", "metrics", "meter"},
+			"description": `Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
 		},
 		"compositeQuery": map[string]any{
 			"type":                 "object",
@@ -193,11 +198,22 @@ var serverPopulatedViewFields = []string{
 	"id", "createdAt", "createdBy", "updatedAt", "updatedBy",
 }
 
-// validateBuilderSignal enforces the documented rule: every builder_query
-// spec's `signal` field must be set and must match the view's sourcePage.
-// Upstream does not enforce this, so missing or mismatched signals silently
-// save unusable views. Non-builder queries (promql, clickhouse_sql) don't
-// carry a signal field and are skipped.
+// validateBuilderSignal enforces the documented signal/source rules for a
+// view's builder_query specs. Upstream enforces none of this, so missing,
+// mismatched, or mis-filed values silently save unusable views.
+//
+//   - Every builder_query spec must set `signal`.
+//   - Cost Meter views (sourcePage "meter") are a distinct Explorer page in
+//     the SigNoz product but are queried against the metrics signal with
+//     spec.source="meter". So a "meter" view must use signal "metrics" AND
+//     source "meter" — omitting source="meter" would silently query the
+//     default metrics store instead of the meter store.
+//   - For the ordinary pages (traces/logs/metrics), `signal` must equal
+//     sourcePage, and source must not be "meter" — a Cost Meter query belongs
+//     on the dedicated "meter" page, not mis-filed under "metrics".
+//
+// Non-builder queries (promql, clickhouse_sql) don't carry these fields and
+// are skipped.
 func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 	cq, ok := compositeQuery.(map[string]any)
 	if !ok {
@@ -220,6 +236,31 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 			continue
 		}
 		signal, _ := spec["signal"].(string)
+		source, _ := spec["source"].(string)
+
+		if sourcePage == "meter" {
+			// Cost Meter views are queried as metrics against the meter store.
+			if signal == "" {
+				return fmt.Errorf(
+					`parameter validation failed: compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
+					i,
+				)
+			}
+			if signal != "metrics" {
+				return fmt.Errorf(
+					`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
+					i, signal,
+				)
+			}
+			if source != "meter" {
+				return fmt.Errorf(
+					`parameter validation failed: compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
+					i, source,
+				)
+			}
+			continue
+		}
+
 		if signal == "" {
 			return fmt.Errorf(
 				`parameter validation failed: compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
@@ -230,6 +271,13 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 			return fmt.Errorf(
 				`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
 				i, signal, sourcePage,
+			)
+		}
+		// A Cost Meter query (source="meter") must live on the "meter" page.
+		if source == "meter" {
+			return fmt.Errorf(
+				`parameter validation failed: compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
+				i, sourcePage,
 			)
 		}
 	}

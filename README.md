@@ -357,7 +357,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
-| `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics) |
+| `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics/meter) |
 | `signoz_get_view` | Get a saved view by UUID |
 | `signoz_search_docs` | Search official SigNoz docs for product, setup, instrumentation, config, API, deployment, or troubleshooting questions |
 | `signoz_fetch_doc` | Fetch full markdown for one official SigNoz docs page or heading |
@@ -530,7 +530,7 @@ Gets alert history timeline for a specific rule.
 List SigNoz saved Explorer views for a given sourcePage. Supports pagination; response includes a `pagination` block with `total`, `hasMore`, and `nextOffset`.
 
 - **Parameters**:
-  - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`
+  - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
   - `name` (optional) - Partial-match filter on view name (server-side)
   - `category` (optional) - Partial-match filter on view category (server-side)
   - `limit` (optional) - Page size (default: 50)
