@@ -3,6 +3,11 @@ package mcp_server
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,6 +51,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 	handler.RegisterQueryBuilderV5Handlers(s)
 	handler.RegisterLogsHandlers(s)
 	handler.RegisterViewHandlers(s)
+	handler.RegisterDocsHandlers(s)
 	handler.RegisterTracesHandlers(s)
 	handler.RegisterNotificationChannelHandlers(s)
 	handler.RegisterResourceTemplates(s)
@@ -83,29 +89,73 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 		t.Error("expected tools capability to be present")
 	}
 
-	// List tools and verify count
+	// List tools and verify parity with manifest metadata.
 	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	const expectedToolCount = 36
-	if len(toolsResult.Tools) != expectedToolCount {
-		t.Errorf("expected %d tools, got %d", expectedToolCount, len(toolsResult.Tools))
-		for _, tool := range toolsResult.Tools {
-			t.Logf("  tool: %s", tool.Name)
+	expectedToolNames := manifestToolNames(t)
+	actualToolNames := listedToolNames(t, toolsResult.Tools)
+	if !reflect.DeepEqual(actualToolNames, expectedToolNames) {
+		t.Errorf("tools/list names differ from manifest.json\nexpected (%d): %v\nactual (%d): %v",
+			len(expectedToolNames), expectedToolNames, len(actualToolNames), actualToolNames)
+	}
+}
+
+func manifestToolNames(t *testing.T) []string {
+	t.Helper()
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to locate test file")
+	}
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", "manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest.json: %v", err)
+	}
+	var manifest struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(b, &manifest); err != nil {
+		t.Fatalf("parse manifest.json: %v", err)
+	}
+
+	names := make([]string, 0, len(manifest.Tools))
+	seen := make(map[string]struct{}, len(manifest.Tools))
+	for _, tool := range manifest.Tools {
+		if tool.Name == "" {
+			t.Fatal("manifest.json contains a tool without a name")
 		}
-	}
-	foundAlertRulesTool := false
-	for _, tool := range toolsResult.Tools {
-		if tool.Name == "signoz_list_alert_rules" {
-			foundAlertRulesTool = true
-			break
+		if _, ok := seen[tool.Name]; ok {
+			t.Fatalf("manifest.json contains duplicate tool name %q", tool.Name)
 		}
+		seen[tool.Name] = struct{}{}
+		names = append(names, tool.Name)
 	}
-	if !foundAlertRulesTool {
-		t.Error("expected signoz_list_alert_rules tool to be registered")
+	sort.Strings(names)
+	return names
+}
+
+func listedToolNames(t *testing.T, listedTools []mcp.Tool) []string {
+	t.Helper()
+
+	names := make([]string, 0, len(listedTools))
+	seen := make(map[string]struct{}, len(listedTools))
+	for _, tool := range listedTools {
+		if tool.Name == "" {
+			t.Fatal("tools/list returned a tool without a name")
+		}
+		if _, ok := seen[tool.Name]; ok {
+			t.Fatalf("tools/list returned duplicate tool name %q", tool.Name)
+		}
+		seen[tool.Name] = struct{}{}
+		names = append(names, tool.Name)
 	}
+	sort.Strings(names)
+	return names
 }
 
 func TestIntegration_ListToolsInputSchemasAreOpenAPICompatible(t *testing.T) {
