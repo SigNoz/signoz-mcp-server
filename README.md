@@ -339,7 +339,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
-| `signoz_get_top_metrics` | Rank metrics by ingested sample count for cost analysis |
+| `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
+| `signoz_check_metric_usage` | Given a list of metric names, return which dashboards and alerts reference each one, and whether each is safe to drop |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |

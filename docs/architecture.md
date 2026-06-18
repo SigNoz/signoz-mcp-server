@@ -14,7 +14,7 @@ subgraph Startup["Server Initialization"]
     OTEL --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
     CHSCHEMA --> MCPSRV["NewMCPServer"]
-    MCPSRV --> REGISTER["Register all tool handlers<br/>(Metrics, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Docs, Traces)"]
+    MCPSRV --> REGISTER["Register all tool handlers<br/>(Metrics, TopMetrics, MetricUsage, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Docs, Traces)"]
     REGISTER --> MODE{"TransportMode?"}
 end
 
