@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -415,5 +417,49 @@ func TestHandleSearchTraces_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}
+
+// driftSearchTracesBody is a v5 raw response whose rows carry "trace_id" instead
+// of the "traceID" key the enrichment looks for — i.e. a simulated upstream shape
+// change. Rows are present but none are enrichable.
+const driftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+	`{"timestamp":"t","data":{"trace_id":"abc-123","name":"GET /cart"}}` +
+	`]}]},"meta":{}}}`
+
+// emptySearchTracesBody is an ordinary "no data" response: results present, zero rows.
+const emptySearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[]}]}},"meta":{}}`
+
+func searchTracesWithCapturedLogs(t *testing.T, responseBody string) string {
+	t.Helper()
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return json.RawMessage(responseBody), nil
+		},
+	}
+	h := newTestHandler(mock)
+	var logs bytes.Buffer
+	h.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	req := makeToolRequest("signoz_search_traces", map[string]any{"service": "cart-svc", "timeRange": "1h"})
+
+	if _, err := h.handleSearchTraces(ctxWithURL(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return logs.String()
+}
+
+func TestHandleSearchTraces_WarnsOnProbableShapeDrift(t *testing.T) {
+	// Rows present but none enrichable -> WARN so the silent fail-open is detectable.
+	out := searchTracesWithCapturedLogs(t, driftSearchTracesBody)
+	if !strings.Contains(out, "enriched none") || !strings.Contains(out, "rowsSeen=1") {
+		t.Fatalf("expected a shape-drift WARN with rowsSeen, got logs: %q", out)
+	}
+}
+
+func TestHandleSearchTraces_NoWarnWhenNoRows(t *testing.T) {
+	// No rows -> ordinary "no data" -> no false drift warning.
+	out := searchTracesWithCapturedLogs(t, emptySearchTracesBody)
+	if strings.Contains(out, "enriched none") {
+		t.Fatalf("expected NO drift WARN for an empty result, got logs: %q", out)
 	}
 }

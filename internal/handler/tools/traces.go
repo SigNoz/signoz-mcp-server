@@ -157,7 +157,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	result = enrichSearchTracesWebURL(ctx, result)
+	result = h.enrichSearchTracesWebURL(ctx, result)
 	return rawSearchResult(result, reqData.LimitClamped), nil
 }
 
@@ -210,7 +210,19 @@ func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte 
 // traces passthrough body, one per result row keyed off each row's traceID.
 // Delegates to util.InjectRowsWebURL, which preserves large int64 fields
 // (e.g. durationNano) and fails open on unparseable input.
-func enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
+//
+// Enrichment is fail-open, so a change to the upstream v5 raw response shape (or
+// to the traceID column alias) would silently stop producing links. To make that
+// drift detectable, we WARN when rows were present but none could be enriched —
+// the signature of a shape change. A result with no rows is ordinary "no data"
+// and stays silent.
+func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
 	base, _ := util.GetSigNozURL(ctx)
-	return util.InjectRowsWebURL(data, base, "trace", "traceID")
+	out, res := util.InjectRowsWebURL(data, base, "trace", "traceID")
+	if res.RowsSeen > 0 && res.RowsEnriched == 0 {
+		h.logger.WarnContext(ctx,
+			"search_traces webUrl enrichment found rows but enriched none; the upstream v5 raw response shape or the traceID column alias may have changed",
+			slog.Int("rowsSeen", res.RowsSeen))
+	}
+	return out
 }

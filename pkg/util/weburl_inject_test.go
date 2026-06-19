@@ -119,7 +119,7 @@ func rawTracesBody() []byte {
 }
 
 func TestInjectRowsWebURL_InjectsPerRow(t *testing.T) {
-	out := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if !strings.Contains(s, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
@@ -134,7 +134,7 @@ func TestInjectRowsWebURL_PreservesLargeInt64(t *testing.T) {
 	// 2^53 + 1: a durationNano-style int64 that loses precision if coerced
 	// through float64. The shallow RawMessage decode must pass it through verbatim.
 	const bigInt = "9007199254740993"
-	out := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if !strings.Contains(s, bigInt) {
@@ -147,7 +147,7 @@ func TestInjectRowsWebURL_PreservesLargeInt64(t *testing.T) {
 
 func TestInjectRowsWebURL_NoBaseReturnsOriginal(t *testing.T) {
 	in := rawTracesBody()
-	out := InjectRowsWebURL(in, "", "trace", "traceID")
+	out, _ := InjectRowsWebURL(in, "", "trace", "traceID")
 	if string(out) != string(in) {
 		t.Fatalf("expected original bytes when base empty, got: %s", out)
 	}
@@ -160,7 +160,7 @@ func TestInjectRowsWebURL_MissingOrEmptyIDLeftUntouched(t *testing.T) {
 		`{"timestamp":"t","data":{"traceID":"","name":"empty-id"}},` +
 		`{"timestamp":"t","data":{"traceID":"ok-789","name":"good"}}` +
 		`]}]},"meta":{}}}`)
-	out := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if strings.Count(s, `"webUrl"`) != 1 {
@@ -181,7 +181,7 @@ func TestInjectRowsWebURL_PreservesSiblingBytesVerbatim(t *testing.T) {
 	in := []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","nextCursor":"zKey","rows":[` +
 		`{"timestamp":"t","data":{"traceID":"abc-123","durationNano":9007199254740993}}` +
 		`]}]},"meta":{"rowsScanned":2.50}}}`)
-	out := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if !strings.Contains(s, `"nextCursor":"zKey"`) {
@@ -210,7 +210,7 @@ func TestInjectRowsWebURL_MalformedReturnsOriginal(t *testing.T) {
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			out := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+			out, _ := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
 			if string(out) != string(in) {
 				t.Fatalf("expected original bytes unchanged, got: %s", out)
 			}
@@ -224,7 +224,7 @@ func TestInjectRowsWebURL_OverwritesExistingWebURL(t *testing.T) {
 	in := []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"rows":[` +
 		`{"data":{"traceID":"abc-123","webUrl":"https://stale.example.com/trace/old"}}` +
 		`]}]},"meta":{}}}`)
-	out := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if strings.Count(s, `"webUrl"`) != 1 {
@@ -244,7 +244,7 @@ func TestInjectRowsWebURL_EscapesTraceID(t *testing.T) {
 	in := []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"rows":[` +
 		`{"data":{"traceID":"a/b c"}}` +
 		`]}]},"meta":{}}}`)
-	out := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if !strings.Contains(s, `"webUrl":"https://signoz.example.com/trace/a%2Fb%20c"`) {
@@ -259,7 +259,7 @@ func TestInjectRowsWebURL_MultipleResultsMixed(t *testing.T) {
 		`{"queryName":"A","rows":[{"data":{"traceID":"a-1"}},{"data":{"name":"no-id"}}]},` +
 		`{"queryName":"B","rows":[{"data":{"traceID":"b-1"}}]}` +
 		`]},"meta":{}}}`)
-	out := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+	out, _ := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
 	s := string(out)
 
 	if !strings.Contains(s, `"webUrl":"https://signoz.example.com/trace/a-1"`) {
@@ -270,5 +270,35 @@ func TestInjectRowsWebURL_MultipleResultsMixed(t *testing.T) {
 	}
 	if strings.Count(s, `"webUrl"`) != 2 {
 		t.Fatalf("expected exactly two webUrls (one per good row across results), got: %s", s)
+	}
+}
+
+func TestInjectRowsWebURL_ReportsCounts(t *testing.T) {
+	// Happy path: two rows seen, two enriched.
+	_, res := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "traceID")
+	if res.RowsSeen != 2 || res.RowsEnriched != 2 {
+		t.Fatalf("happy path: got RowsSeen=%d RowsEnriched=%d, want 2/2", res.RowsSeen, res.RowsEnriched)
+	}
+}
+
+func TestInjectRowsWebURL_ReportsShapeDriftVsNoData(t *testing.T) {
+	// Probable upstream shape change: rows ARE present but none carry the
+	// expected id key, so RowsSeen > 0 while RowsEnriched == 0. This is the
+	// signal the handler turns into a WARN. The body is still returned verbatim.
+	drift := rawTracesBody()
+	out, res := InjectRowsWebURL(drift, "https://signoz.example.com", "trace", "trace_id") // wrong key
+	if res.RowsSeen == 0 || res.RowsEnriched != 0 {
+		t.Fatalf("drift: got RowsSeen=%d RowsEnriched=%d, want RowsSeen>0 and RowsEnriched==0", res.RowsSeen, res.RowsEnriched)
+	}
+	if string(out) != string(drift) {
+		t.Fatalf("drift must return original bytes unchanged, got: %s", out)
+	}
+
+	// Ordinary "no data": no rows at all, so RowsSeen == 0 — the handler stays
+	// silent (no false drift warning).
+	noData := []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[]}]}},"meta":{}}`)
+	_, res = InjectRowsWebURL(noData, "https://signoz.example.com", "trace", "traceID")
+	if res.RowsSeen != 0 || res.RowsEnriched != 0 {
+		t.Fatalf("no-data: got RowsSeen=%d RowsEnriched=%d, want 0/0", res.RowsSeen, res.RowsEnriched)
 	}
 }

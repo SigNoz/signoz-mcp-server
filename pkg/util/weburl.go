@@ -80,8 +80,20 @@ func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 	return out
 }
 
+// InjectRowsResult reports what InjectRowsWebURL observed while walking a v5 raw
+// body, so callers can tell an ordinary empty result (RowsSeen == 0) apart from a
+// probable upstream shape change (RowsSeen > 0 but RowsEnriched == 0 — rows were
+// present yet none carried a linkable id). Because enrichment fails open, that
+// drift is otherwise silent; these counts give callers a signal to surface.
+type InjectRowsResult struct {
+	RowsSeen     int
+	RowsEnriched int
+}
+
 // InjectRowsWebURL adds a per-row webUrl deep link to a query-builder v5 "raw"
-// passthrough body, one link per result row built from the row's id field.
+// passthrough body, one link per result row built from the row's id field. It
+// returns the (possibly enriched) body and an InjectRowsResult describing how
+// many rows it saw versus enriched.
 //
 // The expected nesting (a render.Success envelope wrapping a QueryRangeResponse)
 // is data.data.results[].rows[].data, with the id under rows[].data[idKey]; for
@@ -91,27 +103,28 @@ func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 // empty, or non-string are left untouched. On any failure — empty base or a body
 // that does not match the expected shape — it returns the original bytes
 // unchanged so enrichment can never corrupt a working response.
-func InjectRowsWebURL(data []byte, base, resourceType, idKey string) []byte {
+func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, InjectRowsResult) {
+	var res InjectRowsResult
 	if strings.TrimSpace(base) == "" {
-		return data
+		return data, res
 	}
 
 	envelope, ok := decodeShallowObject(data)
 	if !ok {
-		return data
+		return data, res
 	}
 	qrr, ok := decodeShallowObject(envelope["data"])
 	if !ok {
-		return data
+		return data, res
 	}
 	queryData, ok := decodeShallowObject(qrr["data"])
 	if !ok {
-		return data
+		return data, res
 	}
 
 	var results []json.RawMessage
 	if err := json.Unmarshal(queryData["results"], &results); err != nil || results == nil {
-		return data
+		return data, res
 	}
 
 	changed := false
@@ -127,11 +140,13 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) []byte {
 
 		rowsChanged := false
 		for i, rawRow := range rows {
+			res.RowsSeen++
 			injected, ok := injectRowWebURL(rawRow, base, resourceType, idKey)
 			if !ok {
 				continue
 			}
 			rows[i] = injected
+			res.RowsEnriched++
 			rowsChanged = true
 		}
 		if !rowsChanged {
@@ -140,35 +155,35 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) []byte {
 
 		rowsJSON, err := json.Marshal(rows)
 		if err != nil {
-			return data
+			return data, res
 		}
 		result["rows"] = rowsJSON
 		resultJSON, err := json.Marshal(result)
 		if err != nil {
-			return data
+			return data, res
 		}
 		results[ri] = resultJSON
 		changed = true
 	}
 
 	if !changed {
-		return data
+		return data, res
 	}
 
 	resultsJSON, err := json.Marshal(results)
 	if err != nil {
-		return data
+		return data, res
 	}
 	queryData["results"] = resultsJSON
 	if !remarshalUp(envelope, qrr, queryData) {
-		return data
+		return data, res
 	}
 
 	out, err := json.Marshal(envelope)
 	if err != nil {
-		return data
+		return data, res
 	}
-	return out
+	return out, res
 }
 
 // injectRowWebURL adds a webUrl sibling to a single raw row's inner "data"
