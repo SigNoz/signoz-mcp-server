@@ -96,7 +96,7 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	s.logger.DebugContext(ctx, "Fetching metric dashboard refs", slog.String("metric", name))
 
 	dashBody, err := s.doRequest(ctx, http.MethodGet, dashURL, nil, DefaultQueryTimeout)
-	var dashNames []string
+	dashNames := []string{}
 	if err != nil {
 		if !is404(err) {
 			return MetricUsage{}, fmt.Errorf("dashboards lookup for %q: %w", name, err)
@@ -114,7 +114,7 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	s.logger.DebugContext(ctx, "Fetching metric alert refs", slog.String("metric", name))
 
 	alertBody, err := s.doRequest(ctx, http.MethodGet, alertURL, nil, DefaultQueryTimeout)
-	var alertNames []string
+	alertNames := []string{}
 	if err != nil {
 		if !is404(err) {
 			return MetricUsage{}, fmt.Errorf("alerts lookup for %q: %w", name, err)
