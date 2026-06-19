@@ -327,3 +327,43 @@ func TestInjectRowsWebURL_FlagsUnwalkableEnvelope(t *testing.T) {
 		})
 	}
 }
+
+func TestInjectRowsWebURL_FlagsRowsKeyDrift(t *testing.T) {
+	// results[] IS reachable and non-empty, but the per-result "rows" key is
+	// renamed/removed/wrong-type so no rows array can be read. This must read as
+	// drift (ResultCount > 0, RowsArraysReached == 0), distinct from an empty
+	// result. The body is returned verbatim.
+	drift := map[string][]byte{
+		"rows renamed": []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","records":[{"data":{"traceID":"x"}}]}]}},"meta":{}}`),
+		"rows absent":  []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A"}]}},"meta":{}}`),
+		"rows object":  []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":{"0":{"data":{"traceID":"x"}}}}]}},"meta":{}}`),
+	}
+	for name, in := range drift {
+		t.Run(name, func(t *testing.T) {
+			out, res := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+			if !res.ResultsReached || res.ResultCount == 0 || res.RowsArraysReached != 0 {
+				t.Fatalf("%s: got ResultsReached=%v ResultCount=%d RowsArraysReached=%d, want true/>0/0",
+					name, res.ResultsReached, res.ResultCount, res.RowsArraysReached)
+			}
+			if string(out) != string(in) {
+				t.Fatalf("%s: expected original bytes unchanged, got: %s", name, out)
+			}
+		})
+	}
+
+	// Genuinely empty results (present-but-empty or null rows[]) must NOT read as
+	// drift: the "rows" key is present, so RowsArraysReached > 0 and RowsSeen == 0.
+	empty := map[string][]byte{
+		"rows empty array": []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[]}]}},"meta":{}}`),
+		"rows null":        []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":null}]}},"meta":{}}`),
+	}
+	for name, in := range empty {
+		t.Run(name, func(t *testing.T) {
+			_, res := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+			if res.RowsArraysReached == 0 || res.RowsSeen != 0 {
+				t.Fatalf("%s: got RowsArraysReached=%d RowsSeen=%d, want >0/0 (not drift)",
+					name, res.RowsArraysReached, res.RowsSeen)
+			}
+		})
+	}
+}

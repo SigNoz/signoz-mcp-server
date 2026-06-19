@@ -214,9 +214,10 @@ func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte 
 // Enrichment is fail-open, so a change to the upstream response would silently
 // stop producing links. The handler only runs on a 2xx /api/v5/query_range body
 // (doRequest errors on non-2xx), so anything we can't walk is a real anomaly,
-// not an error response. We WARN on both drift modes so the silent degradation
-// is detectable: envelope drift (results[] not reachable) and column-alias drift
-// (rows present but none enrichable). An ordinary empty result stays silent.
+// not an error response. We WARN on all three drift modes so the silent
+// degradation is detectable: envelope drift (results[] not reachable), rows-key
+// drift (result objects present but no readable rows[] array), and column-alias
+// drift (rows present but none enrichable). An ordinary empty result stays silent.
 func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
 	base, ok := util.GetSigNozURL(ctx)
 	if !ok || base == "" {
@@ -228,6 +229,10 @@ func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []b
 	case !res.ResultsReached:
 		h.logger.WarnContext(ctx,
 			"search_traces webUrl enrichment could not locate results[] in the v5 response; the upstream response envelope may have changed")
+	case res.ResultCount > 0 && res.RowsArraysReached == 0:
+		h.logger.WarnContext(ctx,
+			"search_traces webUrl enrichment found result objects but no readable rows[] array; the per-result rows key may have changed",
+			slog.Int("resultCount", res.ResultCount))
 	case res.RowsSeen > 0 && res.RowsEnriched == 0:
 		h.logger.WarnContext(ctx,
 			"search_traces webUrl enrichment found rows but enriched none; the traceID column alias may have changed",

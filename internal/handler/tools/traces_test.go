@@ -457,10 +457,25 @@ func TestHandleSearchTraces_WarnsOnProbableShapeDrift(t *testing.T) {
 }
 
 func TestHandleSearchTraces_NoWarnWhenNoRows(t *testing.T) {
-	// No rows -> ordinary "no data" -> no false drift warning.
+	// Present-but-empty rows[] -> ordinary "no data" -> no drift warning of any mode.
 	out := searchTracesWithCapturedLogs(t, emptySearchTracesBody)
-	if strings.Contains(out, "enriched none") || strings.Contains(out, "locate results") {
+	if strings.Contains(out, "webUrl enrichment") {
 		t.Fatalf("expected NO drift WARN for an empty result, got logs: %q", out)
+	}
+}
+
+// rowsKeyDriftSearchTracesBody is a 2xx v5 response whose results[] is reachable
+// and non-empty, but the per-result "rows" key is renamed ("records") so no rows
+// array can be read — a simulated per-result shape change.
+const rowsKeyDriftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","records":[` +
+	`{"timestamp":"t","data":{"traceID":"abc-123"}}` +
+	`]}]},"meta":{}}}`
+
+func TestHandleSearchTraces_WarnsWhenRowsKeyMissing(t *testing.T) {
+	// results[] reachable but no readable rows[] -> rows-key drift -> WARN.
+	out := searchTracesWithCapturedLogs(t, rowsKeyDriftSearchTracesBody)
+	if !strings.Contains(out, "no readable rows") {
+		t.Fatalf("expected a rows-key-drift WARN, got logs: %q", out)
 	}
 }
 

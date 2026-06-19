@@ -83,19 +83,27 @@ func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 // InjectRowsResult reports what InjectRowsWebURL observed while walking a v5 raw
 // body, so callers can distinguish ordinary "no data" from a probable upstream
 // shape change. Because enrichment fails open, that drift is otherwise silent;
-// these fields give callers a signal to surface. Two drift modes:
+// these fields give callers a signal to surface. Three drift modes, each at a
+// deeper level of the nesting:
 //   - envelope drift: ResultsReached == false — the data.data.results[] array
 //     could not be walked (the envelope nesting changed or was renamed);
+//   - rows-key drift: ResultCount > 0 but RowsArraysReached == 0 — result objects
+//     were present, but none exposed a readable rows[] array (the per-result
+//     "rows" key was renamed/removed). The v5 contract always emits a "rows" key
+//     (an array, or null when empty), so this only happens on a shape change;
 //   - column-alias drift: RowsSeen > 0 but RowsEnriched == 0 — rows were present
-//     yet none carried a linkable id (the id column was renamed).
+//     yet none carried a linkable id (the id column alias was renamed).
 //
-// An ordinary empty result is ResultsReached == true with RowsSeen == 0.
-// ResultsReached is meaningful only when a base was supplied (an empty base
-// returns early with the zero value, since enrichment was not attempted).
+// An ordinary empty result is ResultsReached == true with either ResultCount == 0
+// or RowsArraysReached > 0 && RowsSeen == 0 (a present-but-empty rows[]). All
+// fields are meaningful only when a base was supplied (an empty base returns
+// early with the zero value, since enrichment was not attempted).
 type InjectRowsResult struct {
-	ResultsReached bool
-	RowsSeen       int
-	RowsEnriched   int
+	ResultsReached    bool
+	ResultCount       int
+	RowsArraysReached int
+	RowsSeen          int
+	RowsEnriched      int
 }
 
 // InjectRowsWebURL adds a per-row webUrl deep link to a query-builder v5 "raw"
@@ -135,6 +143,7 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, In
 		return data, res
 	}
 	res.ResultsReached = true
+	res.ResultCount = len(results)
 
 	changed := false
 	for ri, rawResult := range results {
@@ -142,10 +151,18 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, In
 		if !ok {
 			continue
 		}
-		var rows []json.RawMessage
-		if err := json.Unmarshal(result["rows"], &rows); err != nil || rows == nil {
-			continue
+		rawRows, present := result["rows"]
+		if !present {
+			continue // "rows" key absent — always present in the v5 contract, so this is drift
 		}
+		var rows []json.RawMessage
+		if err := json.Unmarshal(rawRows, &rows); err != nil {
+			continue // "rows" present but not an array (renamed to a different type) — drift
+		}
+		// A present "rows" that decodes as an array or null (rows == nil) means the
+		// per-result shape is intact even when empty — count it so an ordinary
+		// empty result is not mistaken for rows-key drift.
+		res.RowsArraysReached++
 
 		rowsChanged := false
 		for i, rawRow := range rows {
