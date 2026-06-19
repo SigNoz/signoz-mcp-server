@@ -98,7 +98,7 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	dashBody, err := s.doRequest(ctx, http.MethodGet, dashURL, nil, DefaultQueryTimeout)
 	dashNames := []string{}
 	if err != nil {
-		if !is404(err) {
+		if !isMetricNotFound404(err) {
 			return MetricUsage{}, fmt.Errorf("dashboards lookup for %q: %w", name, err)
 		}
 		// 404 = metric not tracked → empty dashboards
@@ -116,7 +116,7 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	alertBody, err := s.doRequest(ctx, http.MethodGet, alertURL, nil, DefaultQueryTimeout)
 	alertNames := []string{}
 	if err != nil {
-		if !is404(err) {
+		if !isMetricNotFound404(err) {
 			return MetricUsage{}, fmt.Errorf("alerts lookup for %q: %w", name, err)
 		}
 		// 404 = metric not tracked → empty alerts
@@ -134,10 +134,24 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	}, nil
 }
 
-// is404 reports whether err came from a 404 response. doRequest formats
-// non-2xx errors as "unexpected status NNN: ..." so we check the prefix.
-func is404(err error) bool {
-	return err != nil && strings.HasPrefix(err.Error(), "unexpected status 404")
+// isMetricNotFound404 reports whether err is a metric-level 404 from the
+// SigNoz API, as opposed to a route-level 404 from the HTTP router.
+//
+// doRequest formats non-2xx errors as "unexpected status NNN: <body>".
+// A SigNoz API 404 (metric not tracked) has a JSON body starting with '{'.
+// A router-level 404 (endpoint not registered — e.g. SigNoz < v0.105.0)
+// returns plain text ("404 page not found"), which must NOT be silently
+// treated as empty usage, as it would incorrectly mark all metrics safe to drop.
+func isMetricNotFound404(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if !strings.HasPrefix(msg, "unexpected status 404") {
+		return false
+	}
+	body := strings.TrimSpace(strings.TrimPrefix(msg, "unexpected status 404: "))
+	return strings.HasPrefix(body, "{")
 }
 
 // parseDashboardNames extracts and deduplicates dashboard names from the
