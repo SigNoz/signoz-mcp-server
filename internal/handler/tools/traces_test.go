@@ -361,3 +361,59 @@ func TestHandleGetTraceDetails_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
 	}
 }
+
+// rawSearchTracesBody is a realistic query-builder v5 "raw" response (a
+// render.Success envelope wrapping QueryRangeResponse) with two rows. The second
+// row's durationNano exceeds float64's exact-integer range to guard precision.
+const rawSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+	`{"timestamp":"2026-06-19T10:00:00Z","data":{"traceID":"abc-123","durationNano":9007199254740993,"name":"GET /cart"}},` +
+	`{"timestamp":"2026-06-19T10:00:01Z","data":{"traceID":"def-456","durationNano":42,"name":"POST /checkout"}}` +
+	`]}]},"meta":{}}}`
+
+func TestHandleSearchTraces_RowsGetWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return json.RawMessage(rawSearchTracesBody), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_search_traces", map[string]any{"service": "cart-svc", "timeRange": "1h"})
+
+	result, err := h.handleSearchTraces(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
+		t.Fatalf("expected first row webUrl, got: %s", body)
+	}
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/trace/def-456"`) {
+		t.Fatalf("expected second row webUrl, got: %s", body)
+	}
+	// durationNano (> 2^53) must survive the enrichment round-trip exactly.
+	if !strings.Contains(body, "9007199254740993") {
+		t.Fatalf("durationNano lost precision: %s", body)
+	}
+}
+
+func TestHandleSearchTraces_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return json.RawMessage(rawSearchTracesBody), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_search_traces", map[string]any{"service": "cart-svc", "timeRange": "1h"})
+
+	result, err := h.handleSearchTraces(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}

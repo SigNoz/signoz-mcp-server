@@ -157,6 +157,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	result = enrichSearchTracesWebURL(ctx, result)
 	return rawSearchResult(result, reqData.LimitClamped), nil
 }
 
@@ -203,4 +204,13 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte {
 	base, _ := util.GetSigNozURL(ctx)
 	return util.InjectWebURL(data, base, "trace", traceID)
+}
+
+// enrichSearchTracesWebURL injects a per-row webUrl deep link into a search
+// traces passthrough body, one per result row keyed off each row's traceID.
+// Delegates to util.InjectRowsWebURL, which preserves large int64 fields
+// (e.g. durationNano) and fails open on unparseable input.
+func enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
+	base, _ := util.GetSigNozURL(ctx)
+	return util.InjectRowsWebURL(data, base, "trace", "traceID")
 }
