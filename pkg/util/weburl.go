@@ -81,13 +81,21 @@ func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 }
 
 // InjectRowsResult reports what InjectRowsWebURL observed while walking a v5 raw
-// body, so callers can tell an ordinary empty result (RowsSeen == 0) apart from a
-// probable upstream shape change (RowsSeen > 0 but RowsEnriched == 0 — rows were
-// present yet none carried a linkable id). Because enrichment fails open, that
-// drift is otherwise silent; these counts give callers a signal to surface.
+// body, so callers can distinguish ordinary "no data" from a probable upstream
+// shape change. Because enrichment fails open, that drift is otherwise silent;
+// these fields give callers a signal to surface. Two drift modes:
+//   - envelope drift: ResultsReached == false — the data.data.results[] array
+//     could not be walked (the envelope nesting changed or was renamed);
+//   - column-alias drift: RowsSeen > 0 but RowsEnriched == 0 — rows were present
+//     yet none carried a linkable id (the id column was renamed).
+//
+// An ordinary empty result is ResultsReached == true with RowsSeen == 0.
+// ResultsReached is meaningful only when a base was supplied (an empty base
+// returns early with the zero value, since enrichment was not attempted).
 type InjectRowsResult struct {
-	RowsSeen     int
-	RowsEnriched int
+	ResultsReached bool
+	RowsSeen       int
+	RowsEnriched   int
 }
 
 // InjectRowsWebURL adds a per-row webUrl deep link to a query-builder v5 "raw"
@@ -126,6 +134,7 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, In
 	if err := json.Unmarshal(queryData["results"], &results); err != nil || results == nil {
 		return data, res
 	}
+	res.ResultsReached = true
 
 	changed := false
 	for ri, rawResult := range results {

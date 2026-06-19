@@ -274,31 +274,56 @@ func TestInjectRowsWebURL_MultipleResultsMixed(t *testing.T) {
 }
 
 func TestInjectRowsWebURL_ReportsCounts(t *testing.T) {
-	// Happy path: two rows seen, two enriched.
+	// Happy path: results reached, two rows seen, two enriched.
 	_, res := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "traceID")
-	if res.RowsSeen != 2 || res.RowsEnriched != 2 {
-		t.Fatalf("happy path: got RowsSeen=%d RowsEnriched=%d, want 2/2", res.RowsSeen, res.RowsEnriched)
+	if !res.ResultsReached || res.RowsSeen != 2 || res.RowsEnriched != 2 {
+		t.Fatalf("happy path: got ResultsReached=%v RowsSeen=%d RowsEnriched=%d, want true/2/2",
+			res.ResultsReached, res.RowsSeen, res.RowsEnriched)
 	}
 }
 
-func TestInjectRowsWebURL_ReportsShapeDriftVsNoData(t *testing.T) {
-	// Probable upstream shape change: rows ARE present but none carry the
-	// expected id key, so RowsSeen > 0 while RowsEnriched == 0. This is the
-	// signal the handler turns into a WARN. The body is still returned verbatim.
+func TestInjectRowsWebURL_ReportsColumnAliasDriftVsNoData(t *testing.T) {
+	// Column-alias drift: results reached and rows ARE present, but none carry
+	// the expected id key, so RowsSeen > 0 while RowsEnriched == 0. The handler
+	// turns this into a WARN. The body is still returned verbatim.
 	drift := rawTracesBody()
 	out, res := InjectRowsWebURL(drift, "https://signoz.example.com", "trace", "trace_id") // wrong key
-	if res.RowsSeen == 0 || res.RowsEnriched != 0 {
-		t.Fatalf("drift: got RowsSeen=%d RowsEnriched=%d, want RowsSeen>0 and RowsEnriched==0", res.RowsSeen, res.RowsEnriched)
+	if !res.ResultsReached || res.RowsSeen == 0 || res.RowsEnriched != 0 {
+		t.Fatalf("drift: got ResultsReached=%v RowsSeen=%d RowsEnriched=%d, want true/>0/0",
+			res.ResultsReached, res.RowsSeen, res.RowsEnriched)
 	}
 	if string(out) != string(drift) {
 		t.Fatalf("drift must return original bytes unchanged, got: %s", out)
 	}
 
-	// Ordinary "no data": no rows at all, so RowsSeen == 0 — the handler stays
+	// Ordinary "no data": results reached but zero rows — the handler stays
 	// silent (no false drift warning).
 	noData := []byte(`{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[]}]}},"meta":{}}`)
 	_, res = InjectRowsWebURL(noData, "https://signoz.example.com", "trace", "traceID")
-	if res.RowsSeen != 0 || res.RowsEnriched != 0 {
-		t.Fatalf("no-data: got RowsSeen=%d RowsEnriched=%d, want 0/0", res.RowsSeen, res.RowsEnriched)
+	if !res.ResultsReached || res.RowsSeen != 0 || res.RowsEnriched != 0 {
+		t.Fatalf("no-data: got ResultsReached=%v RowsSeen=%d RowsEnriched=%d, want true/0/0",
+			res.ResultsReached, res.RowsSeen, res.RowsEnriched)
+	}
+}
+
+func TestInjectRowsWebURL_FlagsUnwalkableEnvelope(t *testing.T) {
+	// Envelope drift: the response carries data, but results[] is renamed/moved
+	// so the expected nesting can't be walked. ResultsReached must be false
+	// (distinct from an empty result), and the body is returned verbatim.
+	cases := map[string][]byte{
+		"results renamed":    []byte(`{"status":"success","data":{"type":"raw","data":{"rezults":[{"rows":[{"data":{"traceID":"x"}}]}]}},"meta":{}}`),
+		"inner data renamed": []byte(`{"status":"success","data":{"type":"raw","payload":{"results":[{"rows":[{"data":{"traceID":"x"}}]}]}},"meta":{}}`),
+		"results not array":  []byte(`{"status":"success","data":{"type":"raw","data":{"results":{"rows":[]}}}}`),
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, res := InjectRowsWebURL(in, "https://signoz.example.com", "trace", "traceID")
+			if res.ResultsReached {
+				t.Fatalf("expected ResultsReached=false for unwalkable envelope, got true")
+			}
+			if string(out) != string(in) {
+				t.Fatalf("expected original bytes unchanged, got: %s", out)
+			}
+		})
 	}
 }

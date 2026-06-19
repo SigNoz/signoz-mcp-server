@@ -459,7 +459,22 @@ func TestHandleSearchTraces_WarnsOnProbableShapeDrift(t *testing.T) {
 func TestHandleSearchTraces_NoWarnWhenNoRows(t *testing.T) {
 	// No rows -> ordinary "no data" -> no false drift warning.
 	out := searchTracesWithCapturedLogs(t, emptySearchTracesBody)
-	if strings.Contains(out, "enriched none") {
+	if strings.Contains(out, "enriched none") || strings.Contains(out, "locate results") {
 		t.Fatalf("expected NO drift WARN for an empty result, got logs: %q", out)
+	}
+}
+
+// envelopeDriftSearchTracesBody is a 2xx v5 response whose results[] array is
+// renamed ("rezults"), so the envelope can't be walked even though it carries
+// rows — a simulated upstream envelope-shape change.
+const envelopeDriftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"rezults":[{"queryName":"A","rows":[` +
+	`{"timestamp":"t","data":{"traceID":"abc-123"}}` +
+	`]}]},"meta":{}}}`
+
+func TestHandleSearchTraces_WarnsWhenEnvelopeUnwalkable(t *testing.T) {
+	// results[] not reachable -> envelope drift -> WARN (distinct from no-data).
+	out := searchTracesWithCapturedLogs(t, envelopeDriftSearchTracesBody)
+	if !strings.Contains(out, "locate results") {
+		t.Fatalf("expected an envelope-drift WARN, got logs: %q", out)
 	}
 }

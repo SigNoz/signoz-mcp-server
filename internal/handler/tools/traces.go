@@ -211,17 +211,26 @@ func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte 
 // Delegates to util.InjectRowsWebURL, which preserves large int64 fields
 // (e.g. durationNano) and fails open on unparseable input.
 //
-// Enrichment is fail-open, so a change to the upstream v5 raw response shape (or
-// to the traceID column alias) would silently stop producing links. To make that
-// drift detectable, we WARN when rows were present but none could be enriched —
-// the signature of a shape change. A result with no rows is ordinary "no data"
-// and stays silent.
+// Enrichment is fail-open, so a change to the upstream response would silently
+// stop producing links. The handler only runs on a 2xx /api/v5/query_range body
+// (doRequest errors on non-2xx), so anything we can't walk is a real anomaly,
+// not an error response. We WARN on both drift modes so the silent degradation
+// is detectable: envelope drift (results[] not reachable) and column-alias drift
+// (rows present but none enrichable). An ordinary empty result stays silent.
 func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
-	base, _ := util.GetSigNozURL(ctx)
+	base, ok := util.GetSigNozURL(ctx)
+	if !ok || base == "" {
+		return data // no instance URL on the request — nothing to enrich, nothing to warn about
+	}
+
 	out, res := util.InjectRowsWebURL(data, base, "trace", "traceID")
-	if res.RowsSeen > 0 && res.RowsEnriched == 0 {
+	switch {
+	case !res.ResultsReached:
 		h.logger.WarnContext(ctx,
-			"search_traces webUrl enrichment found rows but enriched none; the upstream v5 raw response shape or the traceID column alias may have changed",
+			"search_traces webUrl enrichment could not locate results[] in the v5 response; the upstream response envelope may have changed")
+	case res.RowsSeen > 0 && res.RowsEnriched == 0:
+		h.logger.WarnContext(ctx,
+			"search_traces webUrl enrichment found rows but enriched none; the traceID column alias may have changed",
 			slog.Int("rowsSeen", res.RowsSeen))
 	}
 	return out
