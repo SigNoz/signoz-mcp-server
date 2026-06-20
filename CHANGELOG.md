@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.5.1] - 2026-06-17
+
+### Other
+- [codex] Align docs tool registration parity ([#203](https://github.com/SigNoz/signoz-mcp-server/pull/203))
+- post-release v0.5.0 ([#202](https://github.com/SigNoz/signoz-mcp-server/pull/202))
+
 ## [0.5.0] - 2026-06-16
 
 ### Added
@@ -238,3 +245,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.4.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.3.0...v0.4.0
 [0.4.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.0...v0.4.1
 [0.5.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.2...v0.5.0
+[0.5.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.0...v0.5.1
