@@ -157,6 +157,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	result = h.enrichSearchTracesWebURL(ctx, result)
 	return rawSearchResult(result, reqData.LimitClamped), nil
 }
 
@@ -203,4 +204,39 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte {
 	base, _ := util.GetSigNozURL(ctx)
 	return util.InjectWebURL(data, base, "trace", traceID)
+}
+
+// enrichSearchTracesWebURL injects a per-row webUrl deep link into a search
+// traces passthrough body, one per result row keyed off each row's traceID.
+// Delegates to util.InjectRowsWebURL, which preserves large int64 fields
+// (e.g. durationNano) and fails open on unparseable input.
+//
+// Enrichment is fail-open, so a change to the upstream response would silently
+// stop producing links. The handler only runs on a 2xx /api/v5/query_range body
+// (doRequest errors on non-2xx), so anything we can't walk is a real anomaly,
+// not an error response. We WARN on all three drift modes so the silent
+// degradation is detectable: envelope drift (results[] not reachable), rows-key
+// drift (result objects present but no readable rows[] array), and column-alias
+// drift (rows present but none enrichable). An ordinary empty result stays silent.
+func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
+	base, ok := util.GetSigNozURL(ctx)
+	if !ok || base == "" {
+		return data // no instance URL on the request — nothing to enrich, nothing to warn about
+	}
+
+	out, res := util.InjectRowsWebURL(data, base, "trace", "traceID")
+	switch {
+	case !res.ResultsReached:
+		h.logger.WarnContext(ctx,
+			"search_traces webUrl enrichment could not locate results[] in the v5 response; the upstream response envelope may have changed")
+	case res.ResultCount > 0 && res.RowsArraysReached == 0:
+		h.logger.WarnContext(ctx,
+			"search_traces webUrl enrichment found result objects but no readable rows[] array; the per-result rows key may have changed",
+			slog.Int("resultCount", res.ResultCount))
+	case res.RowsSeen > 0 && res.RowsEnriched == 0:
+		h.logger.WarnContext(ctx,
+			"search_traces webUrl enrichment found rows but enriched none; the traceID column alias may have changed",
+			slog.Int("rowsSeen", res.RowsSeen))
+	}
+	return out
 }

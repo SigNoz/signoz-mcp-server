@@ -71,3 +71,31 @@
   when empty.
 - [x] Should traces get a `webUrl`? — Yes; `/trace/<traceId>` is a clean single-id
   route. Scoped to `get_trace_details` (not `search_traces`).
+
+### 2026-06-19 — enrich search_traces with per-row webUrl (#245, signoz-mcp-server#206)
+- Reverses the earlier "`search_traces` is NOT enriched" decision (2026-06-10
+  trace entry above; append-only, so that entry stays as the record of why we
+  initially scoped it out).
+- The original concern was that `traceId` lived in "dynamic query columns, not a
+  stable top-level key." On inspection the key IS stable: the v5 raw response
+  nests as `data.data.results[].rows[].data.traceID`, and the trace field-mapper
+  aliases each selected column to its `field.Name`, so the `traceID` select
+  field always yields a `traceID` row-data key. Confirmed against the SigNoz
+  backend: `querybuildertypesv5/resp.go` (`QueryRangeResponse`/`RawData`/`RawRow`),
+  `querier/consume.go` (`readAsRaw`), `telemetrytraces/field_mapper.go`
+  (`ColumnExpressionFor`), `http/render/render.go` (`Success` envelope).
+- Why now: the AI assistant only links a `webUrl` a tool returned and never
+  hand-builds URLs, so the common trace path (`search_traces` → "show me slow /
+  error traces") produced no clickable links; `get_trace_details` alone was
+  insufficient.
+- Implementation: new `util.InjectRowsWebURL(data, base, type, idKey)` walks the
+  rows and injects a per-row `webUrl` sibling, reusing `ResourceWebURL`. Same
+  shallow-RawMessage decode as `InjectWebURL` (preserves `durationNano` int64
+  precision, sibling bytes, and key order). Whole-body fail-open on shape
+  mismatch / empty base; per-row best-effort skips a row whose id is
+  missing/empty/non-string rather than dropping links for the whole result.
+  Wired via `enrichSearchTracesWebURL` in `handleSearchTraces`.
+- [x] Should `search_traces` rows get a `webUrl`? — Yes (reverses 2026-06-10);
+  the `traceID` row-data key is stable and enrichment fails open per row.
+- [x] Should `search_logs` get the same? — No; logs have no single-resource deep
+  link in `ResourceWebURL`, so there is nothing to inject.

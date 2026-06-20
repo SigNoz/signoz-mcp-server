@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -359,5 +361,135 @@ func TestHandleGetTraceDetails_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}
+
+// rawSearchTracesBody is a realistic query-builder v5 "raw" response (a
+// render.Success envelope wrapping QueryRangeResponse) with two rows. The second
+// row's durationNano exceeds float64's exact-integer range to guard precision.
+const rawSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+	`{"timestamp":"2026-06-19T10:00:00Z","data":{"traceID":"abc-123","durationNano":9007199254740993,"name":"GET /cart"}},` +
+	`{"timestamp":"2026-06-19T10:00:01Z","data":{"traceID":"def-456","durationNano":42,"name":"POST /checkout"}}` +
+	`]}]},"meta":{}}}`
+
+func TestHandleSearchTraces_RowsGetWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return json.RawMessage(rawSearchTracesBody), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_search_traces", map[string]any{"service": "cart-svc", "timeRange": "1h"})
+
+	result, err := h.handleSearchTraces(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
+		t.Fatalf("expected first row webUrl, got: %s", body)
+	}
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/trace/def-456"`) {
+		t.Fatalf("expected second row webUrl, got: %s", body)
+	}
+	// durationNano (> 2^53) must survive the enrichment round-trip exactly.
+	if !strings.Contains(body, "9007199254740993") {
+		t.Fatalf("durationNano lost precision: %s", body)
+	}
+}
+
+func TestHandleSearchTraces_OmitsWebURLWhenNoBaseURL(t *testing.T) {
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return json.RawMessage(rawSearchTracesBody), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_search_traces", map[string]any{"service": "cart-svc", "timeRange": "1h"})
+
+	result, err := h.handleSearchTraces(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := textContent(t, result)
+	if strings.Contains(body, "webUrl") {
+		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
+	}
+}
+
+// driftSearchTracesBody is a v5 raw response whose rows carry "trace_id" instead
+// of the "traceID" key the enrichment looks for — i.e. a simulated upstream shape
+// change. Rows are present but none are enrichable.
+const driftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+	`{"timestamp":"t","data":{"trace_id":"abc-123","name":"GET /cart"}}` +
+	`]}]},"meta":{}}}`
+
+// emptySearchTracesBody is an ordinary "no data" response: results present, zero rows.
+const emptySearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[]}]}},"meta":{}}`
+
+func searchTracesWithCapturedLogs(t *testing.T, responseBody string) string {
+	t.Helper()
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return json.RawMessage(responseBody), nil
+		},
+	}
+	h := newTestHandler(mock)
+	var logs bytes.Buffer
+	h.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	req := makeToolRequest("signoz_search_traces", map[string]any{"service": "cart-svc", "timeRange": "1h"})
+
+	if _, err := h.handleSearchTraces(ctxWithURL(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return logs.String()
+}
+
+func TestHandleSearchTraces_WarnsOnProbableShapeDrift(t *testing.T) {
+	// Rows present but none enrichable -> WARN so the silent fail-open is detectable.
+	out := searchTracesWithCapturedLogs(t, driftSearchTracesBody)
+	if !strings.Contains(out, "enriched none") || !strings.Contains(out, "rowsSeen=1") {
+		t.Fatalf("expected a shape-drift WARN with rowsSeen, got logs: %q", out)
+	}
+}
+
+func TestHandleSearchTraces_NoWarnWhenNoRows(t *testing.T) {
+	// Present-but-empty rows[] -> ordinary "no data" -> no drift warning of any mode.
+	out := searchTracesWithCapturedLogs(t, emptySearchTracesBody)
+	if strings.Contains(out, "webUrl enrichment") {
+		t.Fatalf("expected NO drift WARN for an empty result, got logs: %q", out)
+	}
+}
+
+// rowsKeyDriftSearchTracesBody is a 2xx v5 response whose results[] is reachable
+// and non-empty, but the per-result "rows" key is renamed ("records") so no rows
+// array can be read — a simulated per-result shape change.
+const rowsKeyDriftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","records":[` +
+	`{"timestamp":"t","data":{"traceID":"abc-123"}}` +
+	`]}]},"meta":{}}}`
+
+func TestHandleSearchTraces_WarnsWhenRowsKeyMissing(t *testing.T) {
+	// results[] reachable but no readable rows[] -> rows-key drift -> WARN.
+	out := searchTracesWithCapturedLogs(t, rowsKeyDriftSearchTracesBody)
+	if !strings.Contains(out, "no readable rows") {
+		t.Fatalf("expected a rows-key-drift WARN, got logs: %q", out)
+	}
+}
+
+// envelopeDriftSearchTracesBody is a 2xx v5 response whose results[] array is
+// renamed ("rezults"), so the envelope can't be walked even though it carries
+// rows — a simulated upstream envelope-shape change.
+const envelopeDriftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"rezults":[{"queryName":"A","rows":[` +
+	`{"timestamp":"t","data":{"traceID":"abc-123"}}` +
+	`]}]},"meta":{}}}`
+
+func TestHandleSearchTraces_WarnsWhenEnvelopeUnwalkable(t *testing.T) {
+	// results[] not reachable -> envelope drift -> WARN (distinct from no-data).
+	out := searchTracesWithCapturedLogs(t, envelopeDriftSearchTracesBody)
+	if !strings.Contains(out, "locate results") {
+		t.Fatalf("expected an envelope-drift WARN, got logs: %q", out)
 	}
 }

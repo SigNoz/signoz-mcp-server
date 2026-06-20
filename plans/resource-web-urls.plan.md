@@ -10,8 +10,8 @@ link in the MCP server keeps a single source of truth and benefits all MCP clien
 (including Cursor / Claude Desktop, which are not same-origin as the SigNoz
 instance).
 
-This adds a `webUrl` deep-link field to the dashboard, alert, and service resource
-read-tool outputs.
+This adds a `webUrl` deep-link field to the dashboard, alert, service, and trace
+resource read-tool outputs.
 
 ## Approach
 
@@ -28,6 +28,11 @@ read-tool outputs.
   `{"data":{…}}` wrap — so nested values (span trees, int64 fields, number
   formatting, key order) pass through as verbatim bytes with no re-encoding.
   Fails open on any non-object or unparseable body, including literal `null`.
+- `InjectRowsWebURL(data, base, type, idKey) []byte` for v5 raw list bodies:
+  walks `data.data.results[].rows[]` and injects a per-row `webUrl` built from
+  `rows[].data[idKey]`, with the same shallow-decode guarantees. Whole-body
+  fail-open on shape mismatch / empty base; per-row best-effort skips a row whose
+  id is missing/empty/non-string rather than dropping links for the whole result.
 
 ### `internal/handler/tools/dashboards.go`
 - Enrich list items in `handleListDashboards`.
@@ -44,8 +49,13 @@ read-tool outputs.
 ### `internal/handler/tools/traces.go`
 - Enrich the `handleGetTraceDetails` passthrough body via `enrichTraceWebURL`
   (wrapped `{"data":{…}}` + bare, fail-open), using the `traceId` arg.
-- `search_traces` is not enriched (trace id lives in dynamic query rows, not a
-  stable top-level key).
+- Enrich the `handleSearchTraces` passthrough body via `enrichSearchTracesWebURL`
+  (delegates to `util.InjectRowsWebURL`), injecting a per-row `webUrl` into each
+  v5 raw result row at `data.data.results[].rows[].data.traceID`. The `traceID`
+  row-data key is stable: the trace field-mapper aliases each selected column to
+  its `field.Name`, so the `traceID` select field always yields a `traceID` key.
+  Per-row best-effort + whole-body fail-open keep a malformed row from corrupting
+  the response.
 
 ### Omission rule
 - `webUrl` is omitted when `util.GetSigNozURL(ctx)` is empty (no instance URL on the
@@ -58,7 +68,7 @@ read-tool outputs.
 - `internal/handler/tools/services.go` — enrich list
 - `internal/handler/tools/alerts.go` — enrich list/list-rules/get
 - `pkg/types/alerts.go` — `WebURL` field on `Alert` / `AlertRuleSummary`
-- `internal/handler/tools/traces.go` — enrich `get_trace_details`
+- `internal/handler/tools/traces.go` — enrich `get_trace_details` + `search_traces`
 - `README.md` — note on the `webUrl` output field
 - `plans/resource-web-urls.*` — this pair
 
