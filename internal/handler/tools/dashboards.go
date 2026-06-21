@@ -206,7 +206,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
+	uuid, ok := req.GetArguments()["uuid"].(string)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid uuid parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
@@ -405,7 +405,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
+	uuid, ok := req.GetArguments()["uuid"].(string)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid uuid parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil

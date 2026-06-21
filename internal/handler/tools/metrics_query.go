@@ -22,7 +22,7 @@ type metricMetadata struct {
 }
 
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	mqr, err := parseMetricsQueryArgs(args)
 	if err != nil {
