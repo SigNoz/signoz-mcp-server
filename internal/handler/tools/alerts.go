@@ -138,7 +138,7 @@ func parseBoolParam(args map[string]any, key string) *bool {
 
 func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_alerts")
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 	limit, offset := paginate.ParseParams(args)
 
 	params := types.ListAlertsParams{
@@ -271,7 +271,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ruleID, ok := req.Params.Arguments.(map[string]any)["ruleId"].(string)
+	ruleID, ok := req.GetArguments()["ruleId"].(string)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid ruleId parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
@@ -305,7 +305,7 @@ func enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
 }
 
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	ruleID, ok := args["ruleId"].(string)
 	if !ok || ruleID == "" {

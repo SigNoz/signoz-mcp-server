@@ -47,7 +47,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 	limit, offset := paginate.ParseParams(req.Params.Arguments)
@@ -95,7 +95,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	service, ok := args["service"].(string)
 	if !ok {

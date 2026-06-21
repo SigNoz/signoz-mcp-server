@@ -162,7 +162,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	traceID, ok := args["traceId"].(string)
 	if !ok || traceID == "" {
