@@ -35,7 +35,7 @@
     },
     {
       "name": "signoz_check_metric_cardinality",
-      "description": "Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first. Use after signoz_check_metric_usage confirms the metric is in use."
+      "description": "Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first. Use this to investigate a metric's label structure when assessing whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes)."
     },
     {
       "name": "signoz_get_field_keys",
