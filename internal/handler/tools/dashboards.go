@@ -19,6 +19,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/promql"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 // Template fetch configuration for signoz_import_dashboard.
@@ -179,6 +180,19 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("invalid response format: expected data array"), nil
 	}
 
+	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
+		for _, item := range data {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			uuid, _ := m["uuid"].(string)
+			if webURL, ok := util.ResourceWebURL(base, "dashboard", uuid); ok {
+				m["webUrl"] = webURL
+			}
+		}
+	}
+
 	total := len(data)
 	pagedData := paginate.Array(data, offset, limit)
 
@@ -192,7 +206,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
+	uuid, ok := req.GetArguments()["uuid"].(string)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid uuid parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
@@ -212,7 +226,16 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 		h.logger.ErrorContext(ctx, "Failed to get dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	data = enrichDashboardWebURL(ctx, data, uuid)
 	return mcp.NewToolResultText(string(data)), nil
+}
+
+// enrichDashboardWebURL injects a webUrl deep link into a single-dashboard
+// passthrough body. Delegates to util.InjectWebURL, which preserves large
+// int64 fields and fails open on unparseable input.
+func enrichDashboardWebURL(ctx context.Context, data []byte, uuid string) []byte {
+	base, _ := util.GetSigNozURL(ctx)
+	return util.InjectWebURL(data, base, "dashboard", uuid)
 }
 
 func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -382,7 +405,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid, ok := req.Params.Arguments.(map[string]any)["uuid"].(string)
+	uuid, ok := req.GetArguments()["uuid"].(string)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid uuid parameter type", slog.Any("type", req.Params.Arguments))
 		return mcp.NewToolResultError(`Parameter validation failed: "uuid" must be a string. Example: {"uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil

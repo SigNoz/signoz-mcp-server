@@ -84,7 +84,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	searchText, _ := args["searchText"].(string)
 	source, _ := args["source"].(string)

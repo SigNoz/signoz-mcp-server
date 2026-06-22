@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
@@ -111,7 +111,7 @@
     },
     {
       "name": "signoz_list_views",
-      "description": "List SigNoz saved Explorer views for a given sourcePage (traces, logs, or metrics), with optional name/category filters"
+      "description": "List SigNoz saved Explorer views for a given sourcePage (traces, logs, metrics, or meter for Cost Meter views), with optional name/category filters"
     },
     {
       "name": "signoz_get_view",

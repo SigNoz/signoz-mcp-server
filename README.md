@@ -358,7 +358,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
-| `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics) |
+| `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics/meter) |
 | `signoz_get_view` | Get a saved view by UUID |
 | `signoz_search_docs` | Search official SigNoz docs for product, setup, instrumentation, config, API, deployment, or troubleshooting questions |
 | `signoz_fetch_doc` | Fetch full markdown for one official SigNoz docs page or heading |
@@ -378,6 +378,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_delete_notification_channel` | Delete a notification channel by ID |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
+
+> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) include a `webUrl` field — an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`) — when the request carries a SigNoz instance URL.
 
 ### Agent Routing Guidance
 
@@ -537,7 +539,7 @@ Gets alert history timeline for a specific rule.
 List SigNoz saved Explorer views for a given sourcePage. Supports pagination; response includes a `pagination` block with `total`, `hasMore`, and `nextOffset`.
 
 - **Parameters**:
-  - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`
+  - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
   - `name` (optional) - Partial-match filter on view name (server-side)
   - `category` (optional) - Partial-match filter on view category (server-side)
   - `limit` (optional) - Page size (default: 50)

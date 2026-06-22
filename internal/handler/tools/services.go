@@ -11,6 +11,7 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
@@ -46,7 +47,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 	limit, offset := paginate.ParseParams(req.Params.Arguments)
@@ -68,6 +69,19 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
+	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
+		for _, item := range services {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := m["serviceName"].(string)
+			if webURL, ok := util.ResourceWebURL(base, "service", name); ok {
+				m["webUrl"] = webURL
+			}
+		}
+	}
+
 	total := len(services)
 	pagedServices := paginate.Array(services, offset, limit)
 
@@ -81,7 +95,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	service, ok := args["service"].(string)
 	if !ok {

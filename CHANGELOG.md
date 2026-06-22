@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+
+## [0.5.1] - 2026-06-17
+
+### Other
+- [codex] Align docs tool registration parity ([#203](https://github.com/SigNoz/signoz-mcp-server/pull/203))
+- post-release v0.5.0 ([#202](https://github.com/SigNoz/signoz-mcp-server/pull/202))
+
+## [0.5.0] - 2026-06-16
+
+### Added
+- add webUrl resource deep links to tool outputs ([#197](https://github.com/SigNoz/signoz-mcp-server/pull/197))
+
+### Fixed
+- file Cost Meter saved views under sourcePage "meter" ([#200](https://github.com/SigNoz/signoz-mcp-server/pull/200))
+
+### Other
+- [codex] Add instant API key help tooltip ([#198](https://github.com/SigNoz/signoz-mcp-server/pull/198))
+
 ## [0.4.1] - 2026-05-20
 
 ### Fixed
@@ -225,3 +244,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.3.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.2.1...v0.3.0
 [0.4.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.3.0...v0.4.0
 [0.4.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.0...v0.4.1
+[0.5.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.2...v0.5.0
+[0.5.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.0...v0.5.1

@@ -30,6 +30,7 @@ type Alert struct {
 	StartsAt  string `json:"startsAt"`
 	EndsAt    string `json:"endsAt"`
 	State     string `json:"state"`
+	WebURL    string `json:"webUrl,omitempty"`
 }
 
 type APIAlertLabels struct {
@@ -67,6 +68,7 @@ type AlertRuleSummary struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	CreatedAt   string            `json:"createdAt,omitempty"`
 	UpdatedAt   string            `json:"updatedAt,omitempty"`
+	WebURL      string            `json:"webUrl,omitempty"`
 }
 
 // APIAlertRule mirrors the compact fields used from GET /api/v2/rules.

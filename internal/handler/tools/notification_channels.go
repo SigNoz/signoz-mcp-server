@@ -289,7 +289,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_notification_channel")
 
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	// Validate required fields
 	channelType, _ := args["type"].(string)
@@ -369,7 +369,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_notification_channel")
 
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	// Validate id
 	id, _ := args["id"].(string)

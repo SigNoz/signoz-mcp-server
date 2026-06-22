@@ -76,3 +76,13 @@ Planning
 ## End-to-End / Live Verification
 
 Verifying against a live SigNoz instance — creating/reading/updating/deleting real alerts, dashboards, or views, or any multi-step API probing with credentials — should be delegated to a subagent (Agent tool), not run inline. The subagent must: delete every resource it creates and confirm it's gone; never print or persist credentials; report which fields round-tripped server-side; and prefer copying an existing resource's shape over hand-crafting one.
+
+## Testing across external contracts
+
+This server sits between external parties: it consumes the SigNoz backend / query-builder (QB) API (upstream) and produces tool outputs that MCP clients and the AI assistant consume (downstream). Unit tests that assert behavior against hard-coded fixtures only prove our code matches our *assumption* of those contracts — they do not catch the contract drifting out from under us (a renamed field, a changed QB response envelope, a new route/output shape).
+
+For any code that parses an upstream response or shapes a tool output:
+
+- **Pin the contract, and test against reality where you can.** Beyond fixture-based unit tests, add a periodic/integration test against a live SigNoz instance (or a recorded real response) so upstream drift fails a test, not a user. Per-PR fixture tests are necessary but not sufficient.
+- **When tests can't catch it, observability must.** If a break only manifests against real data, add a metric or WARN log that fires when the contract appears violated (e.g. a passthrough enrichment that found rows but could not locate the expected field). Silent degradation that no test and no signal can catch is the failure mode to design against.
+- **Fail open, but never fail silent.** Prefer fail-open behavior for cross-boundary parsing, but always pair it with a detectable signal so "fail-open" does not become "fail-silent."

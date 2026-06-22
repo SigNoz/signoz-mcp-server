@@ -28,7 +28,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithNumber("limit", mcp.Description("Maximum results to return. Default 10, max 25.")),
 		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents".`)),
 	)
-	s.AddTool(searchTool, h.handleSearchDocs)
+	addTool(s, searchTool, h.handleSearchDocs)
 
 	fetchTool := mcp.NewTool("signoz_fetch_doc",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -38,7 +38,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithString("url", mcp.Required(), mcp.Description("Full https://signoz.io/docs/... URL or /docs/... path.")),
 		mcp.WithString("heading", mcp.Description(`Optional heading anchor ID or heading text, for example "prerequisites" or "## Prerequisites".`)),
 	)
-	s.AddTool(fetchTool, h.handleFetchDoc)
+	addTool(s, fetchTool, h.handleFetchDoc)
 
 	sitemap := mcp.NewResource(
 		docsindex.DocsSitemapURI,
