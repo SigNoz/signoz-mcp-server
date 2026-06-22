@@ -31,7 +31,7 @@ func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.Params.Arguments.(map[string]any)
+	args := req.GetArguments()
 
 	startTime, endTime, err := resolveTimestamps(args, "7d")
 	if err != nil {
