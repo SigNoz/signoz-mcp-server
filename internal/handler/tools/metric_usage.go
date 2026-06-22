@@ -18,9 +18,9 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription(
-			"Given a list of metric names, return which dashboards and alerts reference each one, "+
-				"and whether each metric is safe to drop. Use this after signoz_get_top_metrics to "+
-				"decide which expensive metrics can be safely dropped from ingestion."),
+			"Given a list of metric names, return which dashboards and alerts reference each one. "+
+				"Returns raw usage references per metric — dashboards and alerts only. "+
+				"Use this to understand metric dependencies before making drop or reduction decisions."),
 		mcp.WithString("searchContext",
 			mcp.Description("The user's original question or search text that triggered this tool call.")),
 		mcp.WithArray("metricNames",
@@ -33,9 +33,9 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, ok := req.Params.Arguments.(map[string]any)
-	if !ok {
-		return mcp.NewToolResultError("invalid arguments"), nil
+	args := req.GetArguments()
+	if args == nil {
+		return mcp.NewToolResultError("metricNames is required"), nil
 	}
 
 	rawNames, ok := args["metricNames"]
