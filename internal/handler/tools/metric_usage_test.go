@@ -15,12 +15,10 @@ func TestHandleCheckMetricUsage_ReturnsDashboardsAndAlerts(t *testing.T) {
 				"system.disk.io": {
 					Dashboards: []string{"Host Metrics", "Host Metrics (k8s)"},
 					Alerts:     []string{},
-					SafeToDrop: false,
 				},
 				"k8s.node.condition": {
 					Dashboards: []string{},
 					Alerts:     []string{},
-					SafeToDrop: true,
 				},
 			}, nil
 		},
@@ -46,16 +44,13 @@ func TestHandleCheckMetricUsage_ReturnsDashboardsAndAlerts(t *testing.T) {
 	}
 
 	disk := out["system.disk.io"]
-	if disk.SafeToDrop {
-		t.Errorf("system.disk.io should not be safe to drop")
-	}
 	if len(disk.Dashboards) != 2 {
 		t.Errorf("expected 2 dashboards for system.disk.io, got %d", len(disk.Dashboards))
 	}
 
 	node := out["k8s.node.condition"]
-	if !node.SafeToDrop {
-		t.Errorf("k8s.node.condition should be safe to drop")
+	if len(node.Dashboards) != 0 || len(node.Alerts) != 0 {
+		t.Errorf("expected empty dashboards and alerts for k8s.node.condition")
 	}
 }
 
@@ -99,7 +94,6 @@ func TestHandleCheckMetricUsage_PreservesDedupedDashboards(t *testing.T) {
 					// Same dashboard name once — dedup already applied by client
 					Dashboards: []string{"Host Metrics"},
 					Alerts:     []string{},
-					SafeToDrop: false,
 				},
 			}, nil
 		},

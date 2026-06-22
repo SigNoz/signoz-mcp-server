@@ -13,25 +13,24 @@ those as two MCP tools.
 
 ### Tool 1: `signoz_check_metric_usage`
 
-**Purpose:** Given a list of metric names, return which dashboards and alerts reference each one,
-and whether each metric is safe to drop.
+**Purpose:** Given a list of metric names, return which dashboards and alerts reference each one.
+The agent decides whether a metric is safe to drop based on this data combined with its own
+reasoning (infra metric exclusions, skill rules, business context).
 
 **Input:**
 - `metricNames` (required) — JSON array of metric name strings. No hard cap — bounded concurrency via `errgroup.SetLimit(10)` controls load on SigNoz.
 - `searchContext` (optional) — user's original question
 
-**Output:** Compact map — only what the agent needs for the drop-or-keep decision:
+**Output:** Compact map — raw reference data, no server-side drop verdict:
 ```json
 {
   "system.disk.io": {
     "dashboards": ["Host Metrics", "Host Metrics (k8s)"],
-    "alerts": [],
-    "safeToDrop": false
+    "alerts": []
   },
   "k8s.node.condition": {
     "dashboards": [],
-    "alerts": [],
-    "safeToDrop": true
+    "alerts": []
   }
 }
 ```
@@ -54,7 +53,7 @@ No IDs, no widget names — those are navigation aids, not decision inputs. Keep
   - Protects SigNoz from thundering herd; self-regulates without forcing the agent to batch
   - Consistent with `golang.org/x/sync/errgroup` already used in `internal/docs/refresh.go`
 - Deduplicate dashboard names (one metric can appear in multiple widgets of the same dashboard)
-- HTTP 404 = metric not tracked → treat as empty result `{dashboards:[], alerts:[], safeToDrop:true}`, not an error
+- HTTP 404 = metric not tracked → treat as empty result `{dashboards:[], alerts:[]}`, not an error
 - `url.PathEscape` is safe for metric names — dots are unreserved chars, won't be encoded; %2E returns 404
 - No query params on either endpoint — start/end are silently ignored by the server
 - Alerts endpoint returns only METRIC_BASED_ALERT rules — no client-side filtering needed
@@ -114,7 +113,7 @@ Response shape: `{data: {attributes: [{key: "...", valueCount: 42}]}}`
 - `docs/architecture.md` — add MetricUsage and MetricAttributes to registered handler list in Mermaid diagram
 
 ## Verification
-1. Unit tests: mock returns known dashboards/alerts for one metric, empty for another — verify map output and `safeToDrop` flag
+1. Unit tests: mock returns known dashboards/alerts for one metric, empty for another — verify map output
 2. Unit tests: mock returns 404 — verify treated as empty result, not error
 3. Unit tests: verify dashboard name deduplication (same dashboard, two widgets → one name in output)
 4. Unit tests: verify empty string and duplicate names are filtered before API calls

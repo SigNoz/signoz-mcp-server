@@ -433,6 +433,14 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
   - `timeRange` (optional) - Relative range (e.g. 24h, 3d, 7d, 30d; default: 7d; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
+#### `signoz_check_metric_usage`
+
+Given a list of metric names, return which dashboards and alerts reference each one, and whether each is safe to drop. Wraps `/api/v2/metrics/{name}/dashboards` and `/api/v2/metrics/{name}/alerts` per metric. Requires SigNoz v0.105.0+.
+
+- **Parameters**:
+  - `metricNames` (required) - Array of metric name strings to check. Example: `["system.disk.io", "k8s.node.condition"]`
+- **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric)
+
 #### `signoz_list_alerts`
 
 Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with a `ruleId` for one full rule definition, or `signoz_get_alert_history` for the state timeline.

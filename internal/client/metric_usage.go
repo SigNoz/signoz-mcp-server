@@ -30,7 +30,6 @@ type metricAlertRef struct {
 type MetricUsage struct {
 	Dashboards []string `json:"dashboards"`
 	Alerts     []string `json:"alerts"`
-	SafeToDrop bool     `json:"safeToDrop"`
 }
 
 // CheckMetricUsage returns dashboard and alert references for each metric in
@@ -130,7 +129,6 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	return MetricUsage{
 		Dashboards: dashNames,
 		Alerts:     alertNames,
-		SafeToDrop: len(dashNames) == 0 && len(alertNames) == 0,
 	}, nil
 }
 
