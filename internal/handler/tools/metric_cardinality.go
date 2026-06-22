@@ -18,10 +18,9 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription(
 			"Return label/attribute keys for a single metric with their cardinality counts and sample "+
-				"values, sorted highest-cardinality first. Use this after signoz_check_metric_usage confirms "+
-				"a metric is in use — cardinality analysis is only meaningful for metrics that cannot be "+
-				"dropped outright. The sample values in each attribute entry help determine whether high "+
-				"cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes)."),
+				"values, sorted highest-cardinality first. Use this to investigate a metric's label structure "+
+				"when assessing whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded "+
+				"(e.g. namespace names, status codes)."),
 		mcp.WithString("searchContext",
 			mcp.Description("The user's original question or search text that triggered this tool call.")),
 		mcp.WithString("metricName",
@@ -39,9 +38,9 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, ok := req.Params.Arguments.(map[string]any)
-	if !ok {
-		return mcp.NewToolResultError("invalid arguments"), nil
+	args := req.GetArguments()
+	if args == nil {
+		return mcp.NewToolResultError("\"metricName\" is required"), nil
 	}
 
 	metricName, _ := args["metricName"].(string)
