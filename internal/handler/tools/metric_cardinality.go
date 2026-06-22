@@ -1,0 +1,73 @@
+package tools
+
+import (
+	"context"
+	"log/slog"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+)
+
+func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
+	h.logger.Debug("Registering metric cardinality handlers")
+
+	tool := mcp.NewTool("signoz_check_metric_cardinality",
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithDescription(
+			"Return label/attribute keys for a single metric with their cardinality counts and sample "+
+				"values, sorted highest-cardinality first. Use this after signoz_check_metric_usage confirms "+
+				"a metric is in use — cardinality analysis is only meaningful for metrics that cannot be "+
+				"dropped outright. The sample values in each attribute entry help determine whether high "+
+				"cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes)."),
+		mcp.WithString("searchContext",
+			mcp.Description("The user's original question or search text that triggered this tool call.")),
+		mcp.WithString("metricName",
+			mcp.Required(),
+			mcp.Description("Name of the metric to inspect. Example: 'k8s.container.memory_limit'.")),
+		mcp.WithString("timeRange",
+			mcp.Description("Relative time range: 30m, 1h, 6h, 24h, 7d. Default: 7d. Ignored when both start and end are provided.")),
+		mcp.WithString("start",
+			mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end",
+			mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+	)
+
+	addTool(s, tool, h.handleCheckMetricCardinality)
+}
+
+func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, ok := req.Params.Arguments.(map[string]any)
+	if !ok {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
+
+	metricName, _ := args["metricName"].(string)
+	if metricName == "" {
+		return mcp.NewToolResultError("\"metricName\" is required"), nil
+	}
+
+	startTime, endTime, err := resolveTimestamps(args, "7d")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_check_metric_cardinality",
+		slog.String("metricName", metricName))
+
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	result, err := client.GetMetricCardinality(ctx, metricName, startTime, endTime)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to fetch metric cardinality",
+			slog.String("metricName", metricName), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(string(result)), nil
+}

@@ -339,6 +339,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
+| `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -421,6 +422,15 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
+
+#### `signoz_check_metric_cardinality`
+
+Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. Use this after `signoz_check_metric_usage` confirms the metric is in use — cardinality analysis is only meaningful for metrics that cannot be dropped outright. The `values` field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes).
+
+- **Parameters**:
+  - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`
+  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 7d; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
 #### `signoz_list_alerts`
 
