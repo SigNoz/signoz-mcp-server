@@ -428,7 +428,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. Use this to identify which metrics are driving the most ingestion volume and cost. Wraps `POST /api/v2/metrics/treemap`. Response fields: `metricName`, `percentage` (share of total sample volume), `totalValue` (absolute sample count).
 
 - **Parameters**:
-  - `timeRange` (optional) - Relative range: 24h, 3d, 7d (default: 7d; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative range (e.g. 24h, 3d, 7d, 30d; default: 7d; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
 #### `signoz_list_alerts`
