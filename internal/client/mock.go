@@ -33,7 +33,7 @@ type MockClient struct {
 	UpdateViewFn                func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
 	DeleteViewFn                func(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeysFn              func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
+	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
 	GetTraceDetailsFn           func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateAlertRuleFn           func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRuleFn           func(ctx context.Context, ruleID string, alertJSON []byte) error
@@ -44,6 +44,7 @@ type MockClient struct {
 	UpdateNotificationChannelFn func(ctx context.Context, id string, receiverJSON []byte) error
 	DeleteNotificationChannelFn func(ctx context.Context, id string) error
 	TestNotificationChannelFn   func(ctx context.Context, receiverJSON []byte) error
+	GetTopMetricsFn             func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 }
 
 // Compile-time check that MockClient satisfies Client.
@@ -203,9 +204,9 @@ func (m *MockClient) GetFieldKeys(ctx context.Context, signal, metricName, searc
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error) {
+func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
 	if m.GetFieldValuesFn != nil {
-		return m.GetFieldValuesFn(ctx, signal, name, metricName, searchText, source)
+		return m.GetFieldValuesFn(ctx, signal, name, metricName, searchText, fieldContext, source)
 	}
 	return json.RawMessage(`{}`), nil
 }
@@ -278,4 +279,11 @@ func (m *MockClient) TestNotificationChannel(ctx context.Context, receiverJSON [
 		return m.TestNotificationChannelFn(ctx, receiverJSON)
 	}
 	return nil
+}
+
+func (m *MockClient) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	if m.GetTopMetricsFn != nil {
+		return m.GetTopMetricsFn(ctx, start, end, limit)
+	}
+	return json.RawMessage(`{}`), nil
 }

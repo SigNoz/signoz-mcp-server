@@ -1449,18 +1449,20 @@ func TestGetFieldValues(t *testing.T) {
 		fieldName     string
 		metricName    string
 		searchText    string
+		fieldContext  string
 		source        string
 		resp          map[string]interface{}
 		statusCode    int
 		expectedError bool
 	}{
 		{
-			name:       "successful retrieval with all params",
-			signal:     "metrics",
-			fieldName:  "host.name",
-			metricName: "container.cpu.usage",
-			searchText: "prod",
-			source:     "otel",
+			name:         "successful retrieval with all params",
+			signal:       "metrics",
+			fieldName:    "host.name",
+			metricName:   "container.cpu.usage",
+			searchText:   "prod",
+			fieldContext: "resource",
+			source:       "otel",
 			resp: map[string]interface{}{
 				"status": "success",
 				"data":   []string{"prod-host-1", "prod-host-2"},
@@ -1513,6 +1515,7 @@ func TestGetFieldValues(t *testing.T) {
 				assert.Equal(t, tt.fieldName, q.Get("name"))
 				assert.Equal(t, tt.metricName, q.Get("metricName"))
 				assert.Equal(t, tt.searchText, q.Get("searchText"))
+				assert.Equal(t, tt.fieldContext, q.Get("fieldContext"))
 				assert.Equal(t, tt.source, q.Get("source"))
 
 				w.WriteHeader(tt.statusCode)
@@ -1525,7 +1528,7 @@ func TestGetFieldValues(t *testing.T) {
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
-			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.source)
+			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.fieldContext, tt.source)
 
 			if tt.expectedError {
 				assert.Error(t, err)

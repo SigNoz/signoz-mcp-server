@@ -44,6 +44,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 	)
 
 	handler.RegisterMetricsHandlers(s)
+	handler.RegisterTopMetricsHandlers(s)
 	handler.RegisterFieldsHandlers(s)
 	handler.RegisterAlertsHandlers(s)
 	handler.RegisterDashboardHandlers(s)
@@ -240,6 +241,73 @@ func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
 			if field == "searchContext" {
 				t.Errorf("%s searchContext should not be marked required", tool.Name)
 			}
+		}
+	}
+}
+
+func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+	toolsByName := make(map[string]mcp.Tool, len(toolsResult.Tools))
+	for _, tool := range toolsResult.Tools {
+		toolsByName[tool.Name] = tool
+	}
+
+	for _, name := range []string{
+		"signoz_search_logs",
+		"signoz_search_traces",
+		"signoz_aggregate_logs",
+		"signoz_aggregate_traces",
+		"signoz_query_metrics",
+	} {
+		tool, ok := toolsByName[name]
+		if !ok {
+			t.Fatalf("tool %s not registered", name)
+		}
+		props := schemaProperties(t, name, inputSchema(t, tool))
+		if _, ok := props["filter"]; !ok {
+			t.Errorf("%s should advertise canonical filter param", name)
+		}
+		if _, ok := props["query"]; ok {
+			t.Errorf("%s should not advertise legacy query alias", name)
+		}
+	}
+
+	falseFriends := map[string]string{
+		"signoz_list_alerts":           "filter",
+		"signoz_search_docs":           "query",
+		"signoz_execute_builder_query": "query",
+	}
+	for name, param := range falseFriends {
+		tool, ok := toolsByName[name]
+		if !ok {
+			t.Fatalf("tool %s not registered", name)
+		}
+		props := schemaProperties(t, name, inputSchema(t, tool))
+		if _, ok := props[param]; !ok {
+			t.Errorf("%s should keep %q param", name, param)
 		}
 	}
 }

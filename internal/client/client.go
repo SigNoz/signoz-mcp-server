@@ -703,7 +703,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
 	params := url.Values{}
 	params.Set("signal", signal)
 	params.Set("name", name)
@@ -712,6 +712,9 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	}
 	if searchText != "" {
 		params.Set("searchText", searchText)
+	}
+	if fieldContext != "" {
+		params.Set("fieldContext", fieldContext)
 	}
 	if source != "" {
 		params.Set("source", source)
@@ -821,6 +824,24 @@ func (s *SigNoz) DeleteNotificationChannel(ctx context.Context, id string) error
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting notification channel", slog.String("id", id))
 	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, ChannelWriteTimeout)
 	return err
+}
+
+func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	body, err := json.Marshal(map[string]any{
+		"start":   start,
+		"end":     end,
+		"limit":   limit,
+		"mode":    "samples",
+		"treemap": "samples",
+		"filter":  map[string]string{"expression": ""},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	reqURL := fmt.Sprintf("%s/api/v2/metrics/treemap", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metrics treemap",
+		slog.Int("limit", limit))
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {

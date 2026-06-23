@@ -10,13 +10,13 @@ Filters are a STRING expression in filter.expression — NOT a structured {op, i
 CORRECT:   "filter": {"expression": "hasError = true AND k8s.namespace.name = 'my-ns'"}
 INCORRECT: "filter": {"op": "AND", "items": [...]}
 
-Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  EXISTS  NOT EXISTS
+Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
 Examples:
   hasError = true
   durationNano > 500000000
-  statusCodeString = 'STATUS_CODE_ERROR'
+  statusCodeString = 'Error'
   name LIKE '%payment%'
   hasError = true AND k8s.namespace.name = 'prod'
   (hasError = true OR durationNano > 1000000000) AND service.name = 'checkout'
@@ -29,7 +29,7 @@ Use these directly by name in filter expressions and selectFields without fieldC
 
   hasError           bool      — whether the span has an error
   statusMessage      string    — OTel status message
-  statusCodeString   string    — e.g. "STATUS_CODE_ERROR", "STATUS_CODE_OK"
+  statusCodeString   string    — span status: 'Ok', 'Error', or 'Unset' (prefer hasError = true for errors)
   statusCode         int64     — numeric status code
   durationNano       int64     — span duration in nanoseconds
   traceID            string    — trace identifier
@@ -38,7 +38,7 @@ Use these directly by name in filter expressions and selectFields without fieldC
   timestamp          datetime  — span start timestamp
   httpMethod         string    — HTTP method
   httpUrl            string    — HTTP URL
-  spanKind           string    — SPAN_KIND_SERVER, SPAN_KIND_CLIENT, etc.
+  spanKind           string    — 'Server', 'Client', 'Internal', 'Producer', 'Consumer'
   responseStatusCode string    — HTTP response status as string
 
 selectFields entry (no fieldContext needed):
@@ -114,13 +114,13 @@ selectFields entry (fieldContext: "tag" required):
   "variables": {}
 }
 
---- Example 2: Aggregation query — error count grouped by service (requestType: "aggregate") ---
+--- Example 2: Aggregation query — error count grouped by service (requestType: "scalar") ---
 
 {
   "schemaVersion": "v1",
   "start": 1756386047000,
   "end": 1756387847000,
-  "requestType": "aggregate",
+  "requestType": "scalar",
   "compositeQuery": {
     "queries": [
       {
@@ -179,7 +179,9 @@ selectFields entry (fieldContext: "tag" required):
 
 == TIMESTAMP FORMAT ==
 
-"start" and "end" are Unix milliseconds (13-digit). Example: 1756386047000
+The top-level "start" and "end" request fields are Unix milliseconds (13-digit), e.g. 1756386047000.
+Prefer start/end to bound the time window. The built-in "timestamp" COLUMN is nanosecond-scale
+(DateTime64(9)), so do NOT put a millisecond value in an inline "timestamp" filter — use start/end instead.
 
 == QUICK REFERENCE ==
 

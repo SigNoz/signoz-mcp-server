@@ -32,7 +32,7 @@ type Client interface {
 	UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
 	DeleteView(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
+	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
 	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
@@ -43,4 +43,5 @@ type Client interface {
 	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error
 	DeleteNotificationChannel(ctx context.Context, id string) error
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
+	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 }

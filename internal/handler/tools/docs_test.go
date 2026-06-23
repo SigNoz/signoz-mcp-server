@@ -40,6 +40,16 @@ func TestDocsHandlers(t *testing.T) {
 		require.Contains(t, strings.ToLower(search.Results[0].Snippet), "docker")
 	})
 
+	t.Run("search docs still requires query not filter", func(t *testing.T) {
+		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
+			"filter": "docker collector logs",
+			"limit":  5,
+		}))
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		require.Contains(t, textContent(t, result), `"query" is required`)
+	})
+
 	t.Run("fetch errors", func(t *testing.T) {
 		result, err := h.handleFetchDoc(ctx, makeToolRequest("signoz_fetch_doc", map[string]any{"url": "https://example.com/docs/logs/"}))
 		require.NoError(t, err)

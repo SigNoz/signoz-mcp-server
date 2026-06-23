@@ -16,13 +16,16 @@ type SearchTracesRequest struct {
 }
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
-	query, _ := args["query"].(string)
+	filter, err := readFilterExpr(args)
+	if err != nil {
+		return nil, err
+	}
 	service, _ := args["service"].(string)
 	operation, _ := args["operation"].(string)
 	errorFilter, _ := args["error"].(string)
 	minDuration, _ := args["minDuration"].(string)
 	maxDuration, _ := args["maxDuration"].(string)
-	filterExpr := buildTraceFilterExpr(query, service, operation, errorFilter, minDuration, maxDuration)
+	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, minDuration, maxDuration)
 
 	limit, err := intArg(args, "limit", 100)
 	if err != nil {
@@ -57,7 +60,10 @@ func parseAggregateTracesArgs(args map[string]any) (*AggregateRequest, error) {
 	errorFilter, _ := args["error"].(string)
 	minDuration, _ := args["minDuration"].(string)
 	maxDuration, _ := args["maxDuration"].(string)
-	filter, _ := args["filter"].(string)
+	filter, err := readFilterExpr(args)
+	if err != nil {
+		return nil, err
+	}
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, minDuration, maxDuration)
 
 	return parseAggregateArgs(args, "traces", filterExpr)
