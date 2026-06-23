@@ -51,12 +51,12 @@ func TestParseSearchTracesArgs_LimitClamped(t *testing.T) {
 func TestRawSearchResult_NoteIsSeparateBlock(t *testing.T) {
 	payload := []byte(`{"status":"success","data":[]}`)
 
-	notClamped := rawSearchResult(payload, false)
+	notClamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, false)
 	if len(notClamped.Content) != 1 {
 		t.Fatalf("not-clamped: want 1 content block, got %d", len(notClamped.Content))
 	}
 
-	clamped := rawSearchResult(payload, true)
+	clamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, true)
 	if len(clamped.Content) != 2 {
 		t.Fatalf("clamped: want 2 content blocks, got %d", len(clamped.Content))
 	}
@@ -80,7 +80,7 @@ func TestRawSearchResult_NoteIsSeparateBlock(t *testing.T) {
 func TestAggregateResult_SurfaceSeparateNote(t *testing.T) {
 	payload := []byte(`{"status":"success","data":[]}`)
 
-	clamped := aggregateResult(payload, true)
+	clamped := aggregateResult(testCtx(), nil, "signoz_aggregate_logs", payload, true)
 	if len(clamped.Content) != 2 {
 		t.Fatalf("clamped: want 2 content blocks, got %d", len(clamped.Content))
 	}
@@ -97,7 +97,7 @@ func TestAggregateResult_SurfaceSeparateNote(t *testing.T) {
 		t.Fatalf("clamped: block 1 should be the groups note, got %#v", clamped.Content[1])
 	}
 
-	if n := len(aggregateResult(payload, false).Content); n != 1 {
+	if n := len(aggregateResult(testCtx(), nil, "signoz_aggregate_logs", payload, false).Content); n != 1 {
 		t.Fatalf("not-clamped aggregate: want 1 content block, got %d", n)
 	}
 }

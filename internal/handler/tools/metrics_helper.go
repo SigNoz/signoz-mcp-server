@@ -47,6 +47,10 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if metricName == "" {
 		return nil, fmt.Errorf("\"metricName\" is required. Use signoz_list_metrics to find available metrics")
 	}
+	filter, err := readFilterExpr(args)
+	if err != nil {
+		return nil, err
+	}
 
 	req := &metricsQueryRequest{
 		MetricName:       metricName,
@@ -55,7 +59,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		TimeAggregation:  stringArg(args, "timeAggregation"),
 		SpaceAggregation: stringArg(args, "spaceAggregation"),
 		ReduceTo:         stringArg(args, "reduceTo"),
-		Filter:           stringArg(args, "filter"),
+		Filter:           filter,
 		TimeRange:        stringArg(args, "timeRange"),
 		RequestType:      stringArg(args, "requestType"),
 		Formula:          stringArg(args, "formula"),

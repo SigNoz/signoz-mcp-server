@@ -180,6 +180,8 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
 		}
 	}
+	backendWarnings := extractBackendWarningMessages(result)
+	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
 
 	// Build response with decisions block
 	var response strings.Builder
@@ -189,6 +191,9 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	}
 	for _, w := range resolved.Warnings {
 		response.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
+	}
+	for _, w := range backendWarnings {
+		response.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
 	}
 	response.WriteString("---\n")
 	response.WriteString(string(result))
