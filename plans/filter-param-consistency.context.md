@@ -98,6 +98,20 @@ source of truth… read the `signoz://*` resources rather than transcribing sche
   is accurate; the live/recorded test above is what would pin it long-term.
 - Companion skills change shipped as draft agent-skills#51 (blocked until this MCP change is released).
 
+### 2026-06-23 — Post-review wording refinements (commit 4d05f59 on PR #213)
+- Owner flagged that the discovery nudge said "discover real **keys** first with
+  signoz_get_field_keys/**signoz_get_field_values**" — but get_field_values finds VALUES for a known key,
+  not keys (it requires name=<key>). Reworded both filter param descriptions (logs.go:15, traces.go:18) to
+  a two-step: "Discover valid keys with signoz_get_field_keys, then confirm values with
+  signoz_get_field_values, before filtering." Rationale: keys-discovery avoids `key not found` + resolves
+  resource/attribute ambiguity; value-discovery avoids the right-key/wrong-value → empty-results spiral.
+- Owner also noted logs (and traces) filter expressions support OR, but the TOOL DESCRIPTIONS only showed
+  AND examples (the param description is what most clients read; the guide is a passive resource). Confirmed
+  OR + parentheses are supported (logs_guide.go:14,23 already document them). Added "Combine conditions with
+  AND, OR, and parentheses" + an OR example to both param descriptions and the 4 README filter rows. The
+  pre-existing "Combined with service/... params using AND" suffix on the aggregate tools is correct (it
+  describes shortcut-param attachment, always AND) and was left unchanged. No test pins description strings.
+
 ## Open Questions
 - [x] Canonical name `filter` vs `query`? → **`filter`** (matches QB `filter.expression`; majority; `query`
       overloaded). Agreed by Claude + Codex.
