@@ -134,6 +134,33 @@ and `resource.`/`attribute.` prefixes all verified CORRECT. Found + fixed:
   uses literal `fieldContext` enum values (`log`/`body`) instead of prose labels.
 Build + tests green. Committed on PR #213.
 
+### 2026-06-23 — Body-JSON version-compat check + deep verification of traces_guide.go
+**Body-JSON version compatibility (logs guide):** agent traced ~/signoz/signoz git history. `body.<path>` AND
+`has(body.tags[*], …)` both shipped in v0.80.0 (commit b0d19035a4, 2025-04-17) — BEFORE the `/api/v5/query_range`
+route itself (v0.91.1). The `use_json_body` flag (registry.go:12, default OFF) only switches implementation
+(raw-body JSON funcs vs materialized columns); the default-off path supports the full syntax and is the tested
+one (filter_expr_logs_body_json_test.go with flag unset). So NO version gate is warranted beyond "a backend new
+enough to serve QB v5", which every logs query already requires. The genuinely-newer "new JSON QB" materialized
+work (PR #10050, v0.110+) is a flag-gated optimization, not a prerequisite. Real risk is DATA-SHAPE not version:
+body must be valid JSON or body.<path>/has() match nothing. → Added a data-shape caution to the logs guide
+body-JSON section; did NOT add a version string.
+
+**Traces guide deep verification (33-agent workflow vs backend):** fixed —
+- BLOCKER: `requestType: "aggregate"` is invalid (enum = scalar/time_series/raw/raw_stream/trace/distribution,
+  request_type.go:21-27); errors on unmarshal. → "scalar" (matches BuildAggregateQueryPayload default).
+- BLOCKER: `statusCodeString = 'STATUS_CODE_ERROR'` matches nothing on traces — values are 'Ok'/'Error'/'Unset'
+  (the STATUS_CODE_* form is a metrics label). → 'Error'; prefer hasError = true.
+- MAJOR: spanKind values are 'Server'/'Client'/'Internal'/'Producer'/'Consumer' (const.go:48), NOT SPAN_KIND_*.
+- MAJOR: operator list extended (ILIKE/NOT ILIKE, REGEXP/NOT REGEXP, CONTAINS/NOT CONTAINS, BETWEEN/NOT BETWEEN)
+  — all implemented for traces (telemetrytraces/condition_builder.go:96-135).
+- Hardening: timestamp column is DateTime64(9) ns — added the start/end warning (latent ms/ns hazard).
+- NOT changed: the camelCase intrinsic names (traceID/spanID/durationNano/httpMethod/httpUrl/spanKind/
+  statusCodeString/responseStatusCode) are DEPRECATED ALIASES (canonical is snake_case: trace_id/span_id/
+  duration_nano/kind_string/…), but they still resolve via the oldToNew map AND the MCP server's own
+  BuildTracesQueryPayload + buildTraceFilterExpr emit the SAME camelCase — so changing the guide alone would
+  desync it from shipping code. Tracked as a follow-up (migrate guide + MCP traces payloads to snake_case).
+Build + tests green. Committed on PR #213.
+
 ## Open Questions
 - [x] Canonical name `filter` vs `query`? → **`filter`** (matches QB `filter.expression`; majority; `query`
       overloaded). Agreed by Claude + Codex.

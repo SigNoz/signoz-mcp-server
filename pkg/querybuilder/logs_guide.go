@@ -102,7 +102,9 @@ Use body for full rendered-message text search:
   body CONTAINS 'timeout'
   body ILIKE '%connection refused%'
 
-Use body.<json path> only when the log body is JSON and you need a nested field:
+Use body.<json path> only when the log body is JSON and you need a nested field. If a record's body is not
+valid JSON, body.<path> (and has(...)) match nothing for that row — prefer body CONTAINS / ILIKE when you
+are unsure the body is JSON:
   body.user.id = '12345'
   body.error.code = 'E_CONN_RESET'
   body.request.method = 'POST'
