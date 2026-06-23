@@ -49,22 +49,26 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
+          EXPECTED_IMAGE="docker.io/signoz/signoz-mcp-server:${{ steps.version.outputs.tag }}"
           MANIFEST=$(jq -r '.version' manifest.json)
           SERVER=$(jq -r '.version' server.json)
+          SERVER_IMAGE=$(jq -r '.packages[0].identifier' server.json)
           CHANGELOG_HAS_ENTRY=false
           if grep -q "^## \[${VERSION}\]" CHANGELOG.md 2>/dev/null; then
             CHANGELOG_HAS_ENTRY=true
           fi
 
-          # Short-circuit only when *all three* artifacts already reflect this
-          # release. If any is missing (e.g., a partial bump, or CHANGELOG was
-          # never generated), fall through to the full flow — the per-step
-          # idempotency guards keep it safe to re-run.
-          if [ "$MANIFEST" = "$VERSION" ] && [ "$SERVER" = "$VERSION" ] && [ "$CHANGELOG_HAS_ENTRY" = "true" ]; then
+          # Short-circuit only when every release artifact already reflects this release —
+          # including server.json's pinned OCI identifier, which the update step below also
+          # rewrites. If any is stale (a partial bump, a pre-release PR from before the
+          # identifier was tracked, or a missing CHANGELOG), fall through to reconcile; the
+          # per-step idempotency guards keep it safe to re-run.
+          if [ "$MANIFEST" = "$VERSION" ] && [ "$SERVER" = "$VERSION" ] \
+             && [ "$SERVER_IMAGE" = "$EXPECTED_IMAGE" ] && [ "$CHANGELOG_HAS_ENTRY" = "true" ]; then
             echo "pre-release workflow already bumped files and changelog to ${VERSION}; post-release will no-op."
             echo "already_bumped=true" >> "$GITHUB_OUTPUT"
           else
-            echo "state incomplete (manifest=${MANIFEST} server=${SERVER} changelog_entry=${CHANGELOG_HAS_ENTRY}); post-release will reconcile to ${VERSION}."
+            echo "state incomplete (manifest=${MANIFEST} server=${SERVER} server_image=${SERVER_IMAGE} expected_image=${EXPECTED_IMAGE} changelog_entry=${CHANGELOG_HAS_ENTRY}); post-release will reconcile to ${VERSION}."
             echo "already_bumped=false" >> "$GITHUB_OUTPUT"
           fi
 
