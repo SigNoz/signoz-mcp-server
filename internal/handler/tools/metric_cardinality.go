@@ -18,9 +18,11 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription(
 			"Return label/attribute keys for a single metric with their cardinality counts and sample "+
-				"values, sorted highest-cardinality first. Use this to investigate a metric's label structure "+
-				"when assessing whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded "+
-				"(e.g. namespace names, status codes)."),
+				"values, sorted highest-cardinality first. The values field on each attribute entry contains a "+
+				"sample of actual label values, which helps determine whether high cardinality is real "+
+				"(e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric "+
+				"is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion "+
+				"cost entirely — more impactful than trimming its labels."),
 		mcp.WithString("searchContext",
 			mcp.Description("The user's original question or search text that triggered this tool call.")),
 		mcp.WithString("metricName",

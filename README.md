@@ -425,7 +425,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 
 #### `signoz_check_metric_cardinality`
 
-Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. Use this after `signoz_check_metric_usage` confirms the metric is in use — cardinality analysis is only meaningful for metrics that cannot be dropped outright. The `values` field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes).
+Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. The `values` field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion cost entirely — more impactful than trimming its labels.
 
 - **Parameters**:
   - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`

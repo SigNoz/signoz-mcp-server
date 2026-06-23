@@ -39,7 +39,7 @@ func (s *SigNoz) GetMetricCardinality(ctx context.Context, name string, start, e
 			Attributes []json.RawMessage `json:"attributes"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &probe); err != nil || probe.Data == nil {
+	if err := json.Unmarshal(body, &probe); err != nil || probe.Data == nil || probe.Data.Attributes == nil {
 		s.logger.WarnContext(ctx, "Unexpected response shape from metric attributes endpoint — upstream contract may have changed",
 			slog.String("metric", name))
 	}

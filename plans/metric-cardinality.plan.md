@@ -23,6 +23,7 @@ codes). This tool provides that data so the agent can make the cardinality asses
 - `internal/client/mock.go` — added GetMetricCardinalityFn to MockClient
 - `internal/mcp-server/server.go` — registered handler
 - `internal/handler/tools/nil_arguments_test.go` — nil-arg regression coverage
+- `internal/client/metric_cardinality_test.go` — contract-check branch coverage
 - `manifest.json` — tool metadata
 - `README.md` — tool table and parameter reference
 
