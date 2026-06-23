@@ -10,7 +10,7 @@ Filters are a STRING expression in filter.expression - NOT a structured {op, ite
 CORRECT:   "filter": {"expression": "severity_text = 'ERROR' AND service.name = 'checkout'"}
 INCORRECT: "filter": {"op": "AND", "items": [...]}
 
-Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  CONTAINS  NOT CONTAINS  EXISTS  NOT EXISTS
+Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
 Combine:   AND  OR  (use parentheses for precedence)
 
 Examples:
@@ -29,24 +29,28 @@ Unknown keys hard-error. Do not guess field names. If unsure, call:
   signoz_get_field_keys(signal="logs", fieldContext="attribute")
   signoz_get_field_values(signal="logs", name="<field>")
 
-If the same key exists in more than one context, SigNoz defaults to the resource context.
-Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key>.
+If a key matches BOTH the resource and attribute contexts, SigNoz defaults to the resource context (and warns). For other multi-context matches, every matching context is ORed together.
+Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key> (scope.<key> also exists).
 
 --- 1. Built-in log columns ---
 
 Use these directly by name in filter expressions:
 
-  timestamp       datetime  - log timestamp
+  timestamp       datetime  - log timestamp (stored as Unix NANOSECONDS; see TIMESTAMP FORMAT)
   body            string    - rendered log body
   severity_text   string    - DEBUG, INFO, WARN, ERROR, FATAL, etc.
-  severity_number int64     - numeric severity when present
+  severity_number number    - numeric severity when present
   trace_id        string    - linked trace identifier
   span_id         string    - linked span identifier
+  trace_flags     number    - W3C trace flags
+  id              string    - unique log record id (also the default secondary sort key)
+  scope_name      string    - instrumentation scope / logger name (fieldContext: "scope")
+  scope_version   string    - instrumentation scope version (fieldContext: "scope")
 
 Examples:
   severity_text = 'ERROR'
   trace_id = '4bf92f3577b34da6a3ce929d0e0e4736'
-  timestamp >= 1756386047000
+  trace_flags = 1
 
 --- 2. Resource attributes (dot notation, fieldContext: "resource") ---
 
@@ -104,8 +108,8 @@ Use body.<json path> only when the log body is JSON and you need a nested field:
   body.request.method = 'POST'
   body.latency_ms >= 1000
 
-For arrays inside JSON bodies, use the backend's body-array helpers when available:
-  has(body.tags, 'production')
+For arrays inside JSON bodies, mark the path as an array with the [*] suffix and use has():
+  has(body.tags[*], 'production')
 
 == COMPLETE WORKING EXAMPLES ==
 
@@ -230,17 +234,19 @@ For arrays inside JSON bodies, use the backend's body-array helpers when availab
 
 == TIMESTAMP FORMAT ==
 
-"start" and "end" are Unix milliseconds (13-digit). Example: 1756386047000
-The built-in timestamp field also uses Unix milliseconds in numeric comparisons.
+The top-level "start" and "end" request fields are Unix milliseconds (13-digit), e.g. 1756386047000;
+the backend auto-scales them to nanoseconds. Prefer start/end to bound the time window.
+The built-in "timestamp" COLUMN stores Unix NANOSECONDS, so an inline filter like "timestamp >= ..." must
+use a nanosecond value (e.g. 1756386047000000000), not milliseconds — otherwise it silently matches everything.
 
 == QUICK REFERENCE ==
 
 | Need                         | Field example            | Context in select/groupBy |
 |------------------------------|--------------------------|---------------------------|
-| Log severity                 | severity_text            | log/built-in              |
-| Rendered message text        | body                     | log/built-in              |
-| JSON field inside body       | body.error.code          | body JSON path            |
-| Trace correlation            | trace_id                 | log/built-in              |
+| Log severity                 | severity_text            | log (built-in)            |
+| Rendered message text        | body                     | log (built-in)            |
+| JSON field inside body       | body.error.code          | body                      |
+| Trace correlation            | trace_id                 | log (built-in)            |
 | Service name                 | service.name             | resource                  |
 | Kubernetes namespace         | k8s.namespace.name       | resource                  |
 | Application log attribute    | workflow_run_id          | attribute                 |

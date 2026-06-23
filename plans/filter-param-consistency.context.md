@@ -112,6 +112,28 @@ source of truth… read the `signoz://*` resources rather than transcribing sche
   pre-existing "Combined with service/... params using AND" suffix on the aggregate tools is correct (it
   describes shortcut-param attachment, always AND) and was left unchanged. No test pins description strings.
 
+### 2026-06-23 — Deep verification of logs_guide.go against real backend (~/signoz/signoz @ b8567664)
+Ran a 12-agent workflow (6 dimensions × adversarial double-check) verifying every claim in
+`pkg/querybuilder/logs_guide.go` against the authoritative backend source (filterquery grammar,
+querybuildertypesv5, telemetrylogs). Payload shape, `count()`, IN-lists, `body CONTAINS/ILIKE`, `body.<path>`,
+and `resource.`/`attribute.` prefixes all verified CORRECT. Found + fixed:
+- **BLOCKER:** the guide taught inline `timestamp >= <ms>` and "timestamp uses Unix ms". The `timestamp`
+  COLUMN is UInt64 **nanoseconds** (telemetrylogs/field_mapper.go:26); a user NUMBER literal is passed raw with
+  no ms→ns scaling (where_clause_visitor.go:884-890 → condition_builder.go:96-103), so a 13-digit ms value
+  matches essentially every row → silent unfiltered data. Fix: steer to top-level `start`/`end` (ms,
+  auto-scaled to ns); inline `timestamp` must use ns. Rewrote the TIMESTAMP FORMAT section + removed the bad
+  example.
+- **MAJOR:** `has(body.tags, 'production')` needs the `[*]` array suffix — `has(body.tags[*], 'production')`
+  (json_string.go:94-99; bare form errors in the new path / does scalar has() in the old). Fixed.
+- **MAJOR:** operator list omitted `REGEXP`/`NOT REGEXP` (real: builder_elements.go:109-110,
+  where_clause_visitor.go:620-624) — also added `NOT ILIKE`, `BETWEEN`/`NOT BETWEEN` for completeness.
+- **MINOR:** "ambiguous key → resource context" is only the resource↔attribute tiebreaker (and warns); other
+  multi-context matches are ORed (where_clause_visitor.go:982-994). Tightened the wording.
+- **MINOR:** added omitted built-ins `id`, `trace_flags`, `scope_name`/`scope_version` (const.go IntrinsicFields;
+  field_mapper.go logsV2Columns); softened `severity_number int64` → `number`; quick-ref context column now
+  uses literal `fieldContext` enum values (`log`/`body`) instead of prose labels.
+Build + tests green. Committed on PR #213.
+
 ## Open Questions
 - [x] Canonical name `filter` vs `query`? → **`filter`** (matches QB `filter.expression`; majority; `query`
       overloaded). Agreed by Claude + Codex.
