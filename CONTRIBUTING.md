@@ -9,6 +9,27 @@ Thanks for contributing to SigNoz MCP Server.
 3. Run local checks before opening a PR.
 4. Open a pull request with a clear summary and validation steps.
 
+## Releases & the MCP Registry
+
+The server is listed on the official [MCP Registry](https://registry.modelcontextprotocol.io)
+as `io.github.SigNoz/signoz-mcp-server`. Publishing is automated: on every stable `vX.Y.Z` tag,
+`.github/workflows/dockerbuildci.yaml` builds and pushes the Docker image, then the
+`publish-mcp-registry` job pins `server.json` to the released version and immutable image tag and
+publishes it to the registry via GitHub OIDC (no secret required). Pre-release tags (`-rc.N`) are
+skipped, and the job is idempotent — a re-run for an already-published version is a no-op.
+
+To publish out of band, prefer **re-running the `dockerbuildci` workflow on the release tag** — it
+does the version/image-tag pinning for you. If you must publish from a workstation, pin the package
+to the immutable image tag first (the committed `server.json` carries a mutable `:latest`):
+
+```bash
+TAG=v0.5.1   # the release tag
+jq --arg v "${TAG#v}" --arg id "docker.io/signoz/signoz-mcp-server:${TAG}" \
+   '.version = $v | .packages[0].identifier = $id' server.json > server.tmp && mv server.tmp server.json
+mcp-publisher login github   # as a SigNoz org member
+mcp-publisher publish
+```
+
 ## Required sync for MCP changes
 
 If your PR adds, removes, or renames MCP tools/resources/config behavior, update docs and metadata in the same PR:
