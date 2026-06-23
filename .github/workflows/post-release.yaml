@@ -78,7 +78,10 @@ jobs:
         if: steps.state.outputs.already_bumped == 'false'
         run: |
           set -euo pipefail
-          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' server.json > tmp.json && mv tmp.json server.json
+          # Keep parity with pre-release.yaml: bump the registry version and the pinned OCI tag.
+          jq --arg v "${{ steps.version.outputs.version }}" \
+             --arg id "docker.io/signoz/signoz-mcp-server:${{ steps.version.outputs.tag }}" \
+             '.version = $v | .packages[0].identifier = $id' server.json > tmp.json && mv tmp.json server.json
 
       - name: generate changelog entry
         if: steps.state.outputs.already_bumped == 'false'

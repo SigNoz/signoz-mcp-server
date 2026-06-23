@@ -11,52 +11,54 @@ automatically, with the OCI package pinned to the immutable image tag the releas
 
 ## Approach
 
-Add a tag-gated publish job to the existing release path and make `server.json` valid/current.
+Per reviewer feedback (PR #209): the committed `server.json` is the source of truth, bumped by the
+existing prereleaser PR and merged before tagging; the tag-publish ships that file as-is (no rewrite).
 
-1. **`server.json` (committed, source for `validate`):**
-   - Bump `$schema` to the current `2025-12-11`.
-   - Add `repository` (`https://github.com/SigNoz/signoz-mcp-server`, source `github`).
-   - Use a fully-qualified `:latest` identifier (`docker.io/signoz/signoz-mcp-server:latest`) so the
-     committed file never drifts and stays valid for `mcp-publisher validate` / manual publish.
+1. **`server.json` (committed source of truth):**
+   - `$schema` `2025-12-11`, `repository` field, OCI identifier **pinned** to the released version
+     (`docker.io/signoz/signoz-mcp-server:vX.Y.Z`), `.version` semver.
 
-2. **`dockerbuildci.yaml` — new `publish-mcp-registry` job:**
+2. **`pre-release.yaml` + `post-release.yaml` (the prereleaser & its fallback):**
+   - The bump PR now updates BOTH `.version` and `.packages[0].identifier` (pinned image tag), so the
+     merged/tagged commit carries the exact `server.json` to publish.
+
+3. **`dockerbuildci.yaml` — `publish-mcp-registry` job:**
    - `needs: build` → runs only after the multi-arch image manifest is pushed (image must exist
-     before the registry can verify the OCI ownership label). Codex confirmed the reusable
+     before the registry verifies the OCI ownership label). Codex confirmed the reusable
      `go-build.yaml` pushes the manifest before the job returns success.
    - `if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')` → skips `main`
      branch pushes and pre-release/RC tags (RCs should not appear in the public listing).
-   - Job permissions: `id-token: write` (OIDC to the registry) + `contents: read`.
+   - Job permissions: `id-token: write` (OIDC) + `contents: read`.
    - Steps:
      1. **checkout** the tag.
-     2. **pin** — validate `TAG` is stable `vX.Y.Z` (fail-fast otherwise), then rewrite
-        `server.json` `.version` (`${TAG#v}`) and `.packages[0].identifier`
-        (`docker.io/signoz/signoz-mcp-server:${TAG}`). The git tag is authoritative, so this is
-        correct even if the pre-release bump PR was not merged, and pins to the immutable tag.
+     2. **verify** — assert the committed `.version` and `.packages[0].identifier` match the tag;
+        fail loud pointing at the prereleaser if not (enforces "the commit contains the right
+        version"). Does NOT rewrite the file.
      3. **verify image** — `docker buildx imagetools inspect` in a 6×10s retry loop; covers
         registry propagation lag and fails loudly if the tag never appears.
      4. **idempotency check** — query `/v0/servers?search=<name>`; if this exact `name + version`
         already exists, skip publish (fail-open: only skip on positive confirmation).
      5. **publish** (gated on the check) — install `mcp-publisher` → `validate` → `login
-        github-oidc` → `publish`.
+        github-oidc` → `publish` the committed file.
 
-3. **`CONTRIBUTING.md`:** short note that releases auto-publish to the MCP Registry.
+4. **`CONTRIBUTING.md`:** document the prereleaser → merge → tag → publish flow.
 
 ## Files to Modify
-- `server.json` — schema bump, `repository`, fully-qualified `:latest` identifier.
-- `.github/workflows/dockerbuildci.yaml` — add `publish-mcp-registry` job (`needs: build`, tag-gated, OIDC).
-- `CONTRIBUTING.md` — document the release → registry automation.
+- `server.json` — schema bump, `repository`, pinned OCI identifier.
+- `.github/workflows/pre-release.yaml` + `post-release.yaml` — bump `.version` AND the pinned identifier.
+- `.github/workflows/dockerbuildci.yaml` — `publish-mcp-registry` job (`needs: build`, tag-gated, verify-and-publish, OIDC).
+- `CONTRIBUTING.md` — document the release → registry flow.
 - `plans/mcp-registry-publish.{context,plan}.md` — this pair.
 
 ## Verification
 - `mcp-publisher validate server.json` passes locally against the current schema.
-- Dry check the jq rewrite locally with `GITHUB_REF_NAME=v0.5.1` and confirm the resulting
-  `identifier` is `docker.io/signoz/signoz-mcp-server:v0.5.1` (a tag that exists on Docker Hub) and
-  `version` is `0.5.1`.
-- On the next `v*` tag: `dockerbuildci` builds+pushes the image, then `publish-mcp-registry` runs and
-  `curl "https://registry.modelcontextprotocol.io/v0/servers?search=signoz"` shows the new version as
-  `isLatest`.
-- One-off: to bring `0.5.1` live before the next release, run `mcp-publisher login github` (as a
-  SigNoz org member) + `mcp-publisher publish` locally, or re-run after merging.
+- Dry-run the prereleaser bump jq with `version=0.6.0`/`tag=v0.6.0` → `.version=0.6.0`,
+  `.identifier=docker.io/signoz/signoz-mcp-server:v0.6.0`.
+- Dry-run the publish-job verify step: committed `v0.5.1` + `:v0.5.1` against `GITHUB_REF_NAME=v0.5.1`
+  passes; a mismatched version/identifier fails loud.
+- On the next stable `vX.Y.Z` tag (after merging the prereleaser PR): `dockerbuildci` builds+pushes
+  the image, then `publish-mcp-registry` publishes and
+  `curl "https://registry.modelcontextprotocol.io/v0/servers?search=signoz"` shows it as `isLatest`.
 
 ## Known behavior / follow-ups
 - Re-runs are idempotent: the registry pre-check skips publish when the version already exists.

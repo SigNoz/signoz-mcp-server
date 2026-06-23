@@ -76,6 +76,28 @@ tag-prefix, or schema bug. Acted on all five findings:
 - **Added default (not from Codex):** gate now excludes pre-release tags
   (`!contains(github.ref, '-')`) so RCs do not clutter the public listing. Flag for owner review.
 
+### 2026-06-23 — Reviewer feedback (PR #209, @therealpandey): bump in the prereleaser PR, don't rewrite at publish
+Reviewer (CHANGES_REQUESTED) on `CONTRIBUTING.md`: "Can we create a prereleaser job which raises a
+PR to bump `server.json`? Once that PR is merged, a tag will then publish the updated `server.json`.
+Standard process for ensuring the commit contains the right version in server.json. See SigNoz for
+how we do this."
+- Checked `~/signoz/signoz`: pattern is `prereleaser.yaml` (manual dispatch → primus releaser raises
+  a bump PR) + `releaser.yaml` (runs on `release: published`). No server.json/mcp-publisher there.
+- This repo **already implements** that pattern via `pre-release.yaml` (raises a PR bumping
+  `manifest.json` + `server.json.version` + CHANGELOG, merged before tagging) and `post-release.yaml`
+  (fallback reconcile). The reviewer's invariant ("commit contains the right version") was already
+  met for `.version`.
+- **Reworked the approach to match the reviewer's model** (committed file is source of truth; the
+  tag-publish ships it, no rewrite):
+  - `pre-release.yaml` + `post-release.yaml` now bump BOTH `.version` and `.packages[0].identifier`
+    (pinned `docker.io/signoz/signoz-mcp-server:vX.Y.Z`) in the bump PR.
+  - Committed `server.json` identifier is now pinned (`:v0.5.1`) instead of `:latest`.
+  - `dockerbuildci.yaml` publish job no longer rewrites server.json from the tag. It **verifies**
+    the committed `version` and `identifier` match the tag (fail-loud, pointing at the prereleaser),
+    then publishes the file as-is. Image-pullable preflight + idempotency skip retained.
+- Net: the earlier "tag is authoritative / correct even if the pre-release PR wasn't merged" decision
+  is reversed — the prereleaser-merged commit is the contract now, enforced by the verify step.
+
 ## Open Questions
 - [x] Is it already listed? — Yes, stale at `0.0.4`. (resolved 2026-06-23)
 - [x] What image tag does the registry need to verify? — `docker.io/signoz/signoz-mcp-server:v<semver>` (resolved 2026-06-23)

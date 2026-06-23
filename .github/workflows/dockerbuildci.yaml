@@ -24,9 +24,12 @@ jobs:
       DOCKER_MANIFEST: true
       DOCKER_PROVIDERS: 'dockerhub gcp'
 
-  # Publish server.json to the official MCP Registry (registry.modelcontextprotocol.io).
-  # `needs: build` guarantees the multi-arch image manifest is pushed first — the registry
-  # verifies ownership by pulling the OCI image at the identifier tag and reading its
+  # Publish the committed server.json to the official MCP Registry (registry.modelcontextprotocol.io).
+  # The prereleaser (.github/workflows/pre-release.yaml) bumps server.json's version and pinned OCI
+  # image tag in a PR that is merged before tagging, so the tagged commit already carries the exact
+  # file to publish — this job publishes it as-is (it does not rewrite it).
+  # `needs: build` guarantees the multi-arch image manifest is pushed first — the registry verifies
+  # ownership by pulling the OCI image at the identifier tag and reading its
   # io.modelcontextprotocol.server.name label, so the image must exist before we publish.
   # Gated to stable v* tags: skips `main` branch pushes and pre-release tags (e.g. v1.2.3-rc.0)
   # so release candidates do not land in the public registry listing.
@@ -42,25 +45,24 @@ jobs:
       - name: checkout tag
         uses: actions/checkout@v4
 
-      - name: pin server.json to the released version and image tag
-        id: pin
+      - name: verify server.json matches the release tag
+        id: meta
         run: |
           set -euo pipefail
-          # GITHUB_REF_NAME is the tag, e.g. v0.5.1. The published Docker image carries the
-          # tag verbatim (docker.io/signoz/signoz-mcp-server:v0.5.1); the registry "version"
-          # field is semver without the leading v. The tag is authoritative here, so this is
-          # correct even if the pre-release version-bump PR was not merged before tagging.
+          # Source of truth is the committed server.json (bumped by the prereleaser PR). Assert it
+          # matches the tag and fail loud — pointing at the prereleaser — rather than silently
+          # publishing a stale version if someone tagged without running it first.
           TAG="${GITHUB_REF_NAME}"
-          # Fail fast on a malformed v* tag rather than emitting a confusing downstream error.
-          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::tag '$TAG' is not a stable vX.Y.Z release tag; refusing to publish."
+          VERSION="$(jq -r '.version' server.json)"
+          IMAGE="$(jq -r '.packages[0].identifier' server.json)"
+          if [ "$VERSION" != "${TAG#v}" ]; then
+            echo "::error::server.json version '$VERSION' does not match tag '$TAG'. Run the prereleaser to bump server.json before tagging."
             exit 1
           fi
-          VERSION="${TAG#v}"
-          IMAGE="docker.io/signoz/signoz-mcp-server:${TAG}"
-          jq --arg v "$VERSION" --arg id "$IMAGE" \
-             '.version = $v | .packages[0].identifier = $id' \
-             server.json > server.tmp && mv server.tmp server.json
+          if [ "$IMAGE" != "docker.io/signoz/signoz-mcp-server:${TAG}" ]; then
+            echo "::error::server.json identifier '$IMAGE' is not pinned to 'docker.io/signoz/signoz-mcp-server:${TAG}'. Run the prereleaser to bump server.json before tagging."
+            exit 1
+          fi
           {
             echo "version=$VERSION"
             echo "image=$IMAGE"
@@ -70,7 +72,7 @@ jobs:
 
       - name: verify image is published and pullable
         env:
-          IMAGE: ${{ steps.pin.outputs.image }}
+          IMAGE: ${{ steps.meta.outputs.image }}
         run: |
           set -euo pipefail
           # needs:build already finished, but allow for manifest/registry propagation lag
@@ -90,7 +92,7 @@ jobs:
       - name: skip if this version is already published
         id: check
         env:
-          VERSION: ${{ steps.pin.outputs.version }}
+          VERSION: ${{ steps.meta.outputs.version }}
           NAME: io.github.SigNoz/signoz-mcp-server
         run: |
           set -euo pipefail
