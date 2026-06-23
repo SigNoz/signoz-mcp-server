@@ -44,6 +44,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 	)
 
 	handler.RegisterMetricsHandlers(s)
+	handler.RegisterTopMetricsHandlers(s)
 	handler.RegisterFieldsHandlers(s)
 	handler.RegisterAlertsHandlers(s)
 	handler.RegisterDashboardHandlers(s)

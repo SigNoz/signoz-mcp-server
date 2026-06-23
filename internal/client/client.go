@@ -823,6 +823,24 @@ func (s *SigNoz) DeleteNotificationChannel(ctx context.Context, id string) error
 	return err
 }
 
+func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	body, err := json.Marshal(map[string]any{
+		"start":   start,
+		"end":     end,
+		"limit":   limit,
+		"mode":    "samples",
+		"treemap": "samples",
+		"filter":  map[string]string{"expression": ""},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	reqURL := fmt.Sprintf("%s/api/v2/metrics/treemap", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metrics treemap",
+		slog.Int("limit", limit))
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
+}
+
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/channels/test", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing notification channel")
