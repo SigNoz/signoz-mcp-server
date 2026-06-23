@@ -12,7 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>; discover real keys first with signoz_get_field_keys/signoz_get_field_values. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"body CONTAINS 'timeout'\", \"body.user.id = '123'\"."
+const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\"."
 
 func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering logs handlers")

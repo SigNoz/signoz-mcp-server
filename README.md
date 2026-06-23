@@ -605,7 +605,7 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
   - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://logs/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
@@ -618,7 +618,7 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
 Search logs with flexible filtering across all services.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND severity_text = 'ERROR'"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
@@ -656,7 +656,7 @@ Get possible values for a specific field key for a given signal.
 Search traces/spans with flexible filtering.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND hasError = true"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (hasError = true OR responseStatusCode >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status ('true' or 'false')
@@ -674,7 +674,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
   - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://traces/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans ('true' or 'false')

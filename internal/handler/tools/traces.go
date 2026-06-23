@@ -15,7 +15,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>; discover real keys first with signoz_get_field_keys/signoz_get_field_values. Examples: \"service.name = 'payment-svc' AND hasError = true\", \"httpMethod = 'POST' AND responseStatusCode >= 500\"."
+const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND hasError = true\", \"httpMethod = 'POST' AND (responseStatusCode >= 500 OR durationNano > 1000000000)\"."
 
 func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering traces handlers")
