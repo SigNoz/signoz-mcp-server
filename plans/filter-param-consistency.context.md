@@ -161,6 +161,27 @@ body-JSON section; did NOT add a version string.
   desync it from shipping code. Tracked as a follow-up (migrate guide + MCP traces payloads to snake_case).
 Build + tests green. Committed on PR #213.
 
+### 2026-06-23 — Completed signoz-ai-assistant#332 fix #2 (field-discovery context legend), folded into PR #213
+#332 (logs intrinsic-vs-attribute) had 3 suggested fixes. #1 (logs guide) already shipped in #213. Verified
+#2 against the backend BEFORE implementing (to avoid the silent-drop class): the `/api/v1/fields/values`
+endpoint DOES accept & honor `fieldContext` (PostableFieldValueParams embeds PostableFieldKeysParams which has
+`FieldContext query:"fieldContext"`, field.go:306; constructor copies it to FieldKeySelector.FieldContext,
+:337; scopes getLogFieldValues/getSpanFieldValues). So adding it is genuinely helpful, not advisory.
+Implemented (all behind the existing client interface):
+- Enumerated the bare `fieldContext`/`fieldDataType` descriptions on get_field_keys with the real valid
+  values (fieldContext: resource/attribute[alias tag]/scope/log|span|metric[intrinsic]/body, from
+  telemetrytypes/field_context.go:47-78; fieldDataType: string/bool/int64/float64/number/[]…, from
+  field_datatype.go:18-35). Framed to teach intrinsic-column vs user-attribute.
+- Added a `fieldContext` param to get_field_values + plumbed it through interface.go, client.go (sets the
+  query param), mock.go, and the handler. README rows synced. Manifest unchanged (no per-param schema; tool
+  descriptions unchanged).
+- Tests: TestGetFieldValues asserts the fieldContext query param; new fields_test.go asserts the handler
+  passes fieldContext (values) and fieldContext/fieldDataType (keys) through to the client (silent-drop guard).
+- Did NOT do #332 fix #3 (surface isColumn/fieldContext in field-discovery OUTPUT): the get_field_keys
+  response already passes `fieldContext` per key through verbatim, and the legend is now documented — so #3's
+  intent is largely subsumed; the `isColumn` enrichment is low marginal value. Left as optional follow-up.
+Build + full `go test ./...` green. Committed on PR #213.
+
 ## Open Questions
 - [x] Canonical name `filter` vs `query`? → **`filter`** (matches QB `filter.expression`; majority; `query`
       overloaded). Agreed by Claude + Codex.

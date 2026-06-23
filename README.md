@@ -635,8 +635,8 @@ Get available field keys for a given signal (metrics, traces, or logs).
   - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Filter by field context (e.g., `resource`, `span`)
-  - `fieldDataType` (optional) - Filter by data type (e.g., `string`, `int64`)
+  - `fieldContext` (optional) - Restrict to a field context: `resource`, `attribute` (alias `tag`), `scope`, `log`/`span`/`metric` (intrinsic/built-in columns), or `body` (JSON log body). Distinguishes intrinsic columns from user attributes.
+  - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`, or array forms like `[]string`
   - `source` (optional) - Filter by source
 
 #### `signoz_get_field_values`
@@ -648,6 +648,7 @@ Get possible values for a specific field key for a given signal.
   - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
   - `searchText` (optional) - Filter values by substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
+  - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`/`tag`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one
   - `source` (optional) - Filter by source
 
 

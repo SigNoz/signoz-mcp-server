@@ -33,7 +33,7 @@ type MockClient struct {
 	UpdateViewFn                func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
 	DeleteViewFn                func(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeysFn              func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
+	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
 	GetTraceDetailsFn           func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateAlertRuleFn           func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRuleFn           func(ctx context.Context, ruleID string, alertJSON []byte) error
@@ -203,9 +203,9 @@ func (m *MockClient) GetFieldKeys(ctx context.Context, signal, metricName, searc
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error) {
+func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
 	if m.GetFieldValuesFn != nil {
-		return m.GetFieldValuesFn(ctx, signal, name, metricName, searchText, source)
+		return m.GetFieldValuesFn(ctx, signal, name, metricName, searchText, fieldContext, source)
 	}
 	return json.RawMessage(`{}`), nil
 }
