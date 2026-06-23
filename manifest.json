@@ -34,6 +34,10 @@
       "description": "Query metrics with smart aggregation defaults based on metric type. Set source=\"meter\" to query Cost Meter (usage/billing) data"
     },
     {
+      "name": "signoz_check_metric_cardinality",
+      "description": "Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. The values field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion cost entirely — more impactful than trimming its labels."
+    },
+    {
       "name": "signoz_get_field_keys",
       "description": "Get available field keys for metrics, traces, or logs"
     },
