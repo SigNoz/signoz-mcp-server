@@ -1,7 +1,7 @@
 # Plan: signoz_check_metric_usage + signoz_get_metric_attributes
 
 ## Status
-In Progress
+Done (Tool 1 — signoz_check_metric_usage); Tool 2 shipped separately as signoz_check_metric_cardinality on PR #208
 
 ## Context
 The telemetry cost optimisation workflow (`signoz_get_top_metrics`) identifies expensive metrics but

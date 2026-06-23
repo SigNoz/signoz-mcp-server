@@ -102,6 +102,18 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		}
 		// 404 = metric not tracked → empty dashboards
 	} else {
+		// Fail-open contract check: warn if the expected shape is absent so silent
+		// degradation is detectable in production (see CONTRIBUTING.md §Testing across
+		// external contracts).
+		var dashProbe struct {
+			Data *struct {
+				Dashboards []json.RawMessage `json:"dashboards"`
+			} `json:"data"`
+		}
+		if perr := json.Unmarshal(dashBody, &dashProbe); perr != nil || dashProbe.Data == nil || dashProbe.Data.Dashboards == nil {
+			s.logger.WarnContext(ctx, "Unexpected response shape from metric dashboards endpoint — upstream contract may have changed",
+				slog.String("metric", name))
+		}
 		dashNames, err = parseDashboardNames(dashBody)
 		if err != nil {
 			return MetricUsage{}, fmt.Errorf("parsing dashboard refs for %q: %w", name, err)
@@ -120,6 +132,16 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		}
 		// 404 = metric not tracked → empty alerts
 	} else {
+		// Fail-open contract check.
+		var alertProbe struct {
+			Data *struct {
+				Alerts []json.RawMessage `json:"alerts"`
+			} `json:"data"`
+		}
+		if perr := json.Unmarshal(alertBody, &alertProbe); perr != nil || alertProbe.Data == nil || alertProbe.Data.Alerts == nil {
+			s.logger.WarnContext(ctx, "Unexpected response shape from metric alerts endpoint — upstream contract may have changed",
+				slog.String("metric", name))
+		}
 		alertNames, err = parseAlertNames(alertBody)
 		if err != nil {
 			return MetricUsage{}, fmt.Errorf("parsing alert refs for %q: %w", name, err)

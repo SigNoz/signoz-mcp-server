@@ -39,7 +39,7 @@
     },
     {
       "name": "signoz_check_metric_usage",
-      "description": "Given a list of metric names, return which dashboards and alerts reference each one, and whether each metric is safe to drop"
+      "description": "Given a list of metric names, return which dashboards and alerts reference each one"
     },
     {
       "name": "signoz_get_field_keys",
