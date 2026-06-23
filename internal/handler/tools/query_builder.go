@@ -52,6 +52,23 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			},
 		}, nil
 	})
+
+	logsQueryBuilderGuide := mcp.NewResource(
+		"signoz://logs/query-builder-guide",
+		"Logs Query Builder Guide",
+		mcp.WithResourceDescription("SigNoz Query Builder v5 logs guide: filter expression syntax (string, not structured object), log built-in columns, resource/log attribute naming, body text search, body JSON-path search, and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(logsQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     querybuilder.LogsQueryBuilderGuide,
+			},
+		}, nil
+	})
 }
 
 func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

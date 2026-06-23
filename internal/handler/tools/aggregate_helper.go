@@ -1,8 +1,11 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -33,6 +36,35 @@ var aggregationsWithoutField = map[string]bool{
 }
 
 const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90, p95, p99, rate, sum"
+
+const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
+
+// readFilterExpr returns the QB filter expression, accepting the canonical
+// "filter" key and the legacy "query" alias. TrimSpace is used only to decide
+// presence/equality; the returned expression preserves the caller's original
+// text. Never log filter expressions here because they can contain user data.
+func readFilterExpr(args map[string]any) (string, error) {
+	filterRaw := stringValue(args["filter"])
+	queryRaw := stringValue(args["query"])
+	filterTrimmed := strings.TrimSpace(filterRaw)
+	queryTrimmed := strings.TrimSpace(queryRaw)
+
+	if filterTrimmed != "" && queryTrimmed != "" && filterTrimmed != queryTrimmed {
+		return "", errors.New(conflictingFilterAliasError)
+	}
+	if filterTrimmed != "" {
+		return filterRaw, nil
+	}
+	if queryTrimmed != "" {
+		return queryRaw, nil
+	}
+	return "", nil
+}
+
+func stringValue(v any) string {
+	s, _ := v.(string)
+	return s
+}
 
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
@@ -197,12 +229,67 @@ func clampLimit(n int) (int, bool) {
 	return n, false
 }
 
-// clampedResult wraps a raw JSON payload as a tool result. The JSON is always
-// the first (parseable) content block; when clamped, `note` is appended as a
-// separate block rather than prepended into the JSON.
-func clampedResult(payload []byte, limitClamped bool, note string) *mcp.CallToolResult {
+// extractBackendWarningMessages parses non-fatal QB v5 warning messages from a
+// success response. It fails open: malformed or unexpected response shapes
+// simply produce no notes and never block returning the raw backend payload.
+func extractBackendWarningMessages(response json.RawMessage) []string {
+	var resp struct {
+		Data struct {
+			Warning struct {
+				Warnings []struct {
+					Message string `json:"message"`
+				} `json:"warnings"`
+			} `json:"warning"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response, &resp); err != nil {
+		return nil
+	}
+	var messages []string
+	for _, warning := range resp.Data.Warning.Warnings {
+		if strings.TrimSpace(warning.Message) != "" {
+			messages = append(messages, warning.Message)
+		}
+	}
+	return messages
+}
+
+func backendWarningsNote(messages []string) string {
+	var b strings.Builder
+	b.WriteString("note: SigNoz backend returned non-fatal warnings:")
+	for _, message := range messages {
+		b.WriteString("\n- ")
+		b.WriteString(message)
+	}
+	return b.String()
+}
+
+func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName string, messages []string) {
+	if len(messages) == 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.WarnContext(ctx,
+		"SigNoz query builder returned non-fatal warnings",
+		slog.String("tool", toolName),
+		slog.Int("warningCount", len(messages)),
+	)
+}
+
+// resultWithNotes wraps a raw JSON payload as a tool result. The JSON is always
+// the first (parseable) content block; notes are appended as separate blocks
+// rather than prepended into the JSON.
+func resultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
 	res := mcp.NewToolResultText(string(payload))
-	if limitClamped {
+	for _, note := range notes {
+		if strings.TrimSpace(note) == "" {
+			continue
+		}
 		res.Content = append(res.Content, mcp.NewTextContent(note))
 	}
 	return res
@@ -210,16 +297,34 @@ func clampedResult(payload []byte, limitClamped bool, note string) *mcp.CallTool
 
 // rawSearchResult is the result wrapper for raw row tools (search_logs /
 // search_traces), which support offset pagination.
-func rawSearchResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
-	return clampedResult(payload, limitClamped, fmt.Sprintf(
-		"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
-		MaxRawResultLimit))
+func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool) *mcp.CallToolResult {
+	var notes []string
+	if limitClamped {
+		notes = append(notes, fmt.Sprintf(
+			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
+			MaxRawResultLimit))
+	}
+	warnings := extractBackendWarningMessages(payload)
+	warnBackendWarnings(ctx, logger, toolName, warnings)
+	if len(warnings) > 0 {
+		notes = append(notes, backendWarningsNote(warnings))
+	}
+	return resultWithNotes(payload, notes...)
 }
 
 // aggregateResult is the result wrapper for aggregation tools. Aggregations
 // have no offset pagination, so the note advises narrowing the query instead.
-func aggregateResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
-	return clampedResult(payload, limitClamped, fmt.Sprintf(
-		"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",
-		MaxRawResultLimit))
+func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool) *mcp.CallToolResult {
+	var notes []string
+	if limitClamped {
+		notes = append(notes, fmt.Sprintf(
+			"note: result limited to %d groups to bound server memory; narrow the time range, filters, or groupBy cardinality for fewer, more-specific groups.",
+			MaxRawResultLimit))
+	}
+	warnings := extractBackendWarningMessages(payload)
+	warnBackendWarnings(ctx, logger, toolName, warnings)
+	if len(warnings) > 0 {
+		notes = append(notes, backendWarningsNote(warnings))
+	}
+	return resultWithNotes(payload, notes...)
 }

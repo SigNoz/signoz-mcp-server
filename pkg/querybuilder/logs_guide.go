@@ -1,0 +1,247 @@
+package querybuilder
+
+const LogsQueryBuilderGuide = `
+=== SIGNOZ QUERY BUILDER V5 - LOGS GUIDE ===
+
+== FILTER EXPRESSION FORMAT ==
+
+Filters are a STRING expression in filter.expression - NOT a structured {op, items} object.
+
+CORRECT:   "filter": {"expression": "severity_text = 'ERROR' AND service.name = 'checkout'"}
+INCORRECT: "filter": {"op": "AND", "items": [...]}
+
+Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  CONTAINS  NOT CONTAINS  EXISTS  NOT EXISTS
+Combine:   AND  OR  (use parentheses for precedence)
+
+Examples:
+  severity_text = 'ERROR'
+  body CONTAINS 'timeout'
+  service.name = 'checkout' AND severity_text IN ('ERROR', 'FATAL')
+  body.user.id = '12345'
+  body.error.message ILIKE '%connection refused%'
+  trace_id = 'abc123def456'
+  (severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'
+
+== FIELD NAMES AND CONTEXTS ==
+
+Unknown keys hard-error. Do not guess field names. If unsure, call:
+  signoz_get_field_keys(signal="logs", fieldContext="resource")
+  signoz_get_field_keys(signal="logs", fieldContext="attribute")
+  signoz_get_field_values(signal="logs", name="<field>")
+
+If the same key exists in more than one context, SigNoz defaults to the resource context.
+Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key>.
+
+--- 1. Built-in log columns ---
+
+Use these directly by name in filter expressions:
+
+  timestamp       datetime  - log timestamp
+  body            string    - rendered log body
+  severity_text   string    - DEBUG, INFO, WARN, ERROR, FATAL, etc.
+  severity_number int64     - numeric severity when present
+  trace_id        string    - linked trace identifier
+  span_id         string    - linked span identifier
+
+Examples:
+  severity_text = 'ERROR'
+  trace_id = '4bf92f3577b34da6a3ce929d0e0e4736'
+  timestamp >= 1756386047000
+
+--- 2. Resource attributes (dot notation, fieldContext: "resource") ---
+
+OTel resource attributes describe the emitting service, host, pod, or deployment.
+Discover real keys first with signoz_get_field_keys(signal="logs", fieldContext="resource").
+
+Common examples:
+  service.name
+  k8s.namespace.name
+  k8s.pod.name
+  k8s.cluster.name
+  host.name
+  deployment.environment
+
+Filter examples:
+  service.name = 'checkout'
+  k8s.namespace.name = 'prod'
+  resource.service.name = 'checkout'
+
+groupBy/selectFields entry:
+  {"name": "service.name", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
+
+--- 3. Log attributes (fieldContext: "attribute") ---
+
+Log attributes are key-value fields attached to individual log records.
+They vary by application and collector pipeline, so discover them before use:
+  signoz_get_field_keys(signal="logs", fieldContext="attribute")
+
+Common examples when instrumented:
+  http.method
+  http.status_code
+  exception.type
+  exception.message
+  workflow_run_id
+  user.id
+
+Filter examples:
+  http.status_code >= 500
+  attribute.http.status_code >= 500
+  workflow_run_id = 'wr_123'
+  attribute.workflow_run_id = 'wr_123'
+
+groupBy/selectFields entry:
+  {"name": "workflow_run_id", "fieldDataType": "string", "signal": "logs", "fieldContext": "attribute"}
+
+--- 4. Body text and body JSON path search ---
+
+Use body for full rendered-message text search:
+  body CONTAINS 'timeout'
+  body ILIKE '%connection refused%'
+
+Use body.<json path> only when the log body is JSON and you need a nested field:
+  body.user.id = '12345'
+  body.error.code = 'E_CONN_RESET'
+  body.request.method = 'POST'
+  body.latency_ms >= 1000
+
+For arrays inside JSON bodies, use the backend's body-array helpers when available:
+  has(body.tags, 'production')
+
+== COMPLETE WORKING EXAMPLES ==
+
+--- Example 1: Raw error logs for a service (requestType: "raw") ---
+
+{
+  "schemaVersion": "v1",
+  "start": 1756386047000,
+  "end": 1756387847000,
+  "requestType": "raw",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "disabled": false,
+          "limit": 100,
+          "offset": 0,
+          "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+          "having": {"expression": ""},
+          "filter": {"expression": "service.name = 'checkout' AND severity_text = 'ERROR' AND body CONTAINS 'timeout'"}
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+--- Example 2: Raw logs matching JSON body fields (requestType: "raw") ---
+
+{
+  "schemaVersion": "v1",
+  "start": 1756386047000,
+  "end": 1756387847000,
+  "requestType": "raw",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "disabled": false,
+          "limit": 50,
+          "offset": 0,
+          "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+          "having": {"expression": ""},
+          "filter": {"expression": "body.user.id = '12345' AND body.request.method = 'POST'"}
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+--- Example 3: Aggregation - error count grouped by service (requestType: "scalar") ---
+
+{
+  "schemaVersion": "v1",
+  "start": 1756386047000,
+  "end": 1756387847000,
+  "requestType": "scalar",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "disabled": false,
+          "limit": 20,
+          "offset": 0,
+          "having": {"expression": ""},
+          "filter": {"expression": "severity_text IN ('ERROR', 'FATAL')"},
+          "aggregations": [
+            {"expression": "count()"}
+          ],
+          "groupBy": [
+            {"name": "service.name", "fieldDataType": "string", "signal": "logs", "fieldContext": "resource"}
+          ],
+          "order": [{"key": {"name": "count()"}, "direction": "desc"}]
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+--- Example 4: Time series - error logs per minute (requestType: "time_series") ---
+
+{
+  "schemaVersion": "v1",
+  "start": 1756386047000,
+  "end": 1756387847000,
+  "requestType": "time_series",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "disabled": false,
+          "stepInterval": 60,
+          "having": {"expression": ""},
+          "filter": {"expression": "service.name = 'checkout' AND severity_text = 'ERROR'"},
+          "aggregations": [
+            {"expression": "count()"}
+          ]
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
+== TIMESTAMP FORMAT ==
+
+"start" and "end" are Unix milliseconds (13-digit). Example: 1756386047000
+The built-in timestamp field also uses Unix milliseconds in numeric comparisons.
+
+== QUICK REFERENCE ==
+
+| Need                         | Field example            | Context in select/groupBy |
+|------------------------------|--------------------------|---------------------------|
+| Log severity                 | severity_text            | log/built-in              |
+| Rendered message text        | body                     | log/built-in              |
+| JSON field inside body       | body.error.code          | body JSON path            |
+| Trace correlation            | trace_id                 | log/built-in              |
+| Service name                 | service.name             | resource                  |
+| Kubernetes namespace         | k8s.namespace.name       | resource                  |
+| Application log attribute    | workflow_run_id          | attribute                 |
+`

@@ -9,7 +9,10 @@ import (
 func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 	service, _ := args["service"].(string)
 	severity, _ := args["severity"].(string)
-	filter, _ := args["filter"].(string)
+	filter, err := readFilterExpr(args)
+	if err != nil {
+		return nil, err
+	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, "")
 
 	return parseAggregateArgs(args, "logs", filterExpr)
@@ -26,11 +29,14 @@ type SearchLogsRequest struct {
 }
 
 func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
-	query, _ := args["query"].(string)
+	filter, err := readFilterExpr(args)
+	if err != nil {
+		return nil, err
+	}
 	service, _ := args["service"].(string)
 	severity, _ := args["severity"].(string)
 	searchText, _ := args["searchText"].(string)
-	filterExpr := buildLogFilterExpr(query, service, severity, searchText)
+	filterExpr := buildLogFilterExpr(filter, service, severity, searchText)
 
 	limit, err := intArg(args, "limit", 100)
 	if err != nil {

@@ -15,6 +15,8 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
+const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>; discover real keys first with signoz_get_field_keys/signoz_get_field_values. Examples: \"service.name = 'payment-svc' AND hasError = true\", \"httpMethod = 'POST' AND responseStatusCode >= 500\"."
+
 func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering traces handlers")
 
@@ -30,7 +32,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
 		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'durationNano'). Required for all aggregations except count and rate.")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.")),
-		mcp.WithString("filter", mcp.Description("Filter expression using SigNoz search syntax (e.g., \"hasError = true AND httpMethod = 'GET'\"). Combined with service/operation/error/duration params using AND.")),
+		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with service/operation/error/duration params using AND.")),
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
 		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
 		mcp.WithString("error", mcp.Description("Shortcut filter for error spans ('true' or 'false'). Equivalent to adding hasError = true/false to filter.")),
@@ -51,10 +53,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Search traces with flexible filtering. Supports free-form query expressions, optional service/operation/error filters, and duration filtering. "+
-			"Use service param to scope to a single service, or query param for any filter expression. "+
+		mcp.WithDescription("Search traces with flexible filtering. Supports free-form filter expressions, optional service/operation/error filters, and duration filtering. "+
+			"Use service param to scope to a single service, or filter param for any filter expression. "+
+			"For traces filter syntax and field contexts, read signoz://traces/query-builder-guide. "+
 			"Defaults to last 1 hour if no time specified."),
-		mcp.WithString("query", mcp.Description("Free-form filter expression using SigNoz search syntax. Examples: \"service.name = 'payment-svc' AND hasError = true\", \"httpMethod = 'POST' AND responseStatusCode >= 500\". Combined with shortcut params using AND.")),
+		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with shortcut params using AND.")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
 		mcp.WithString("operation", mcp.Description("Operation/span name to filter by.")),
 		mcp.WithString("error", mcp.Description("Filter by error status ('true' or 'false').")),
@@ -122,7 +125,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return aggregateResult(result, reqData.LimitClamped), nil
+	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped), nil
 }
 
 func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -158,7 +161,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	}
 
 	result = h.enrichSearchTracesWebURL(ctx, result)
-	return rawSearchResult(result, reqData.LimitClamped), nil
+	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.LimitClamped), nil
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
