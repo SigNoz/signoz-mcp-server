@@ -242,19 +242,19 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 			// Cost Meter views are queried as metrics against the meter store.
 			if signal == "" {
 				return fmt.Errorf(
-					`Parameter validation failed: compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
+					`parameter validation failed: compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
 					i,
 				)
 			}
 			if signal != "metrics" {
 				return fmt.Errorf(
-					`Parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
+					`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
 					i, signal,
 				)
 			}
 			if source != "meter" {
 				return fmt.Errorf(
-					`Parameter validation failed: compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
+					`parameter validation failed: compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
 					i, source,
 				)
 			}
@@ -263,20 +263,20 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 
 		if signal == "" {
 			return fmt.Errorf(
-				`Parameter validation failed: compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
+				`parameter validation failed: compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
 				i, sourcePage,
 			)
 		}
 		if signal != sourcePage {
 			return fmt.Errorf(
-				`Parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
+				`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
 				i, signal, sourcePage,
 			)
 		}
 		// A Cost Meter query (source="meter") must live on the "meter" page.
 		if source == "meter" {
 			return fmt.Errorf(
-				`Parameter validation failed: compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
+				`parameter validation failed: compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
 				i, sourcePage,
 			)
 		}

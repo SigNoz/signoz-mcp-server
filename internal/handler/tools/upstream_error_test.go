@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"testing"
 
@@ -29,7 +29,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 		{
 			name: "list_dashboards",
 			mock: &client.MockClient{ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-				return nil, fmt.Errorf(upstreamMsg)
+				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
 				r, _ := h.handleListDashboards(testCtx(), makeToolRequest("signoz_list_dashboards", map[string]any{}))
@@ -39,7 +39,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 		{
 			name: "get_alert",
 			mock: &client.MockClient{GetAlertByRuleIDFn: func(ctx context.Context, ruleID string) (json.RawMessage, error) {
-				return nil, fmt.Errorf(upstreamMsg)
+				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
 				r, _ := h.handleGetAlert(testCtx(), makeToolRequest("signoz_get_alert", map[string]any{"ruleId": "01900000-0000-7000-8000-000000000000"}))
@@ -49,7 +49,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 		{
 			name: "list_services",
 			mock: &client.MockClient{ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
-				return nil, fmt.Errorf(upstreamMsg)
+				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
 				r, _ := h.handleListServices(testCtx(), makeToolRequest("signoz_list_services", map[string]any{}))
@@ -59,7 +59,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 		{
 			name: "get_field_keys",
 			mock: &client.MockClient{GetFieldKeysFn: func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error) {
-				return nil, fmt.Errorf(upstreamMsg)
+				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
 				r, _ := h.handleGetFieldKeys(testCtx(), makeToolRequest("signoz_get_field_keys", map[string]any{"signal": "logs"}))
@@ -69,7 +69,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 		{
 			name: "get_notification_channel",
 			mock: &client.MockClient{GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-				return nil, fmt.Errorf(upstreamMsg)
+				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
 				r, _ := h.handleGetNotificationChannel(testCtx(), makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "abc"}))
@@ -79,7 +79,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 		{
 			name: "list_alerts",
 			mock: &client.MockClient{ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
-				return nil, fmt.Errorf(upstreamMsg)
+				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
 				r, _ := h.handleListAlerts(testCtx(), makeToolRequest("signoz_list_alerts", map[string]any{}))
@@ -116,7 +116,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 func TestUpstreamErrorPrefix_FormulaMetadataFetchFailure(t *testing.T) {
 	mock := &client.MockClient{
 		ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
-			return nil, fmt.Errorf("connection refused")
+			return nil, errors.New("connection refused")
 		},
 		// QueryBuilderV5 must never be reached — the sub-query resolution fails first.
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
