@@ -408,25 +408,15 @@ func TestCountQueryRangeRows(t *testing.T) {
 			payload: `{"data":{"data":{"results":[{"rows":[]}]}}}`,
 			wantN:   0, wantOK: true,
 		},
-		// --- the should-fix cases: missing / null leaf must NOT count as 0 ---
+		// --- MISSING key / non-array-non-null leaf -> uncountable (fail open) ---
 		{
 			name:    "result object missing rows key -> fail open",
 			payload: `{"data":{"data":{"results":[{}]}}}`,
 			wantOK:  false,
 		},
 		{
-			name:    "result object with null rows -> fail open",
-			payload: `{"data":{"data":{"results":[{"rows":null}]}}}`,
-			wantOK:  false,
-		},
-		{
 			name:    "results key missing -> fail open",
 			payload: `{"data":{"data":{}}}`,
-			wantOK:  false,
-		},
-		{
-			name:    "results null -> fail open",
-			payload: `{"data":{"data":{"results":null}}}`,
 			wantOK:  false,
 		},
 		{
@@ -443,6 +433,23 @@ func TestCountQueryRangeRows(t *testing.T) {
 			name:    "non-QB shape -> fail open",
 			payload: `{"data":[]}`,
 			wantOK:  false,
+		},
+		// --- present-null leaf -> NORMAL empty (known-zero), matching the
+		// InjectRowsWebURL contract. NOT fail-open. ---
+		{
+			name:    "present null results -> known-zero",
+			payload: `{"data":{"data":{"results":null}}}`,
+			wantN:   0, wantOK: true,
+		},
+		{
+			name:    "result object with present null rows -> known-zero",
+			payload: `{"data":{"data":{"results":[{"rows":null}]}}}`,
+			wantN:   0, wantOK: true,
+		},
+		{
+			name:    "mix of present-null rows and a populated result",
+			payload: `{"data":{"data":{"results":[{"rows":null},{"rows":[{"data":{}},{"data":{}}]}]}}}`,
+			wantN:   2, wantOK: true,
 		},
 	}
 	for _, tt := range tests {
@@ -468,9 +475,10 @@ func TestCountDataArrayRows(t *testing.T) {
 	}{
 		{name: "two items", payload: `{"data":{"items":[{},{}]}}`, key: "items", wantN: 2, wantOK: true},
 		{name: "empty array is known-zero", payload: `{"data":{"metrics":[]}}`, key: "metrics", wantN: 0, wantOK: true},
-		// --- the should-fix cases ---
+		// present-null leaf -> NORMAL empty (known-zero), not fail-open.
+		{name: "present null key -> known-zero", payload: `{"data":{"metrics":null}}`, key: "metrics", wantN: 0, wantOK: true},
+		// --- MISSING key / non-array-non-null -> fail open ---
 		{name: "key absent -> fail open", payload: `{"data":{}}`, key: "items", wantOK: false},
-		{name: "key null -> fail open", payload: `{"data":{"metrics":null}}`, key: "metrics", wantOK: false},
 		{name: "key not an array -> fail open", payload: `{"data":{"samples":{}}}`, key: "samples", wantOK: false},
 		{name: "data missing -> fail open", payload: `{"status":"success"}`, key: "items", wantOK: false},
 		{name: "data null -> fail open", payload: `{"data":null}`, key: "items", wantOK: false},
@@ -512,10 +520,11 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		}
 	})
 
-	t.Run("list_metrics null metrics", func(t *testing.T) {
+	t.Run("list_metrics missing metrics key", func(t *testing.T) {
 		mock := &client.MockClient{
 			ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
-				return json.RawMessage(`{"status":"success","data":{"metrics":null}}`), nil
+				// "metrics" key absent (not null) -> uncountable -> generic note
+				return json.RawMessage(`{"status":"success","data":{}}`), nil
 			},
 		}
 		h := newTestHandler(mock)
@@ -525,8 +534,10 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		}
 		note := res.Content[1].(mcp.TextContent).Text
 		if strings.Contains(note, "hasMore=false") {
-			t.Fatalf("must not assert hasMore=false on null metrics; note=%q", note)
+			t.Fatalf("must not assert hasMore=false on missing metrics key; note=%q", note)
 		}
+		// list_metrics uses the limit-only note; its uncountable branch says
+		// "limit N applied" and advises narrowing (no offset claim).
 		if !strings.Contains(note, "limit 50 applied") {
 			t.Fatalf("expected generic fallback note, got %q", note)
 		}
@@ -554,7 +565,87 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		}
 	})
 
-	t.Run("get_top_metrics null samples", func(t *testing.T) {
+	t.Run("get_top_metrics non-array samples", func(t *testing.T) {
+		mock := &client.MockClient{
+			GetTopMetricsFn: func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+				// "samples" present but a non-array, non-null value -> uncountable
+				return json.RawMessage(`{"status":"success","data":{"samples":{}}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleGetTopMetrics(testCtx(), makeToolRequest("signoz_get_top_metrics", map[string]any{}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if strings.Contains(note, "hasMore=false") {
+			t.Fatalf("must not assert hasMore=false on non-array samples; note=%q", note)
+		}
+		// top_metrics generic branch: "showing up to the top 100"
+		if !strings.Contains(note, "up to the top 100") {
+			t.Fatalf("expected top-metrics generic fallback note, got %q", note)
+		}
+	})
+}
+
+// Present-null leaf arrays are a NORMAL empty collection (per the
+// InjectRowsWebURL contract), so the handlers must report a known-zero result
+// (hasMore=false), NOT the generic "more may exist" note.
+func TestHandlers_PresentNullLeaf_HasMoreFalse(t *testing.T) {
+	t.Run("search_logs present-null rows", func(t *testing.T) {
+		mock := &client.MockClient{
+			QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+				return json.RawMessage(`{"status":"success","data":{"data":{"results":[{"rows":null}]}}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", map[string]any{"limit": "100"}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if !strings.Contains(note, "hasMore=false") {
+			t.Fatalf("expected known-zero hasMore=false on present-null rows; note=%q", note)
+		}
+	})
+
+	t.Run("list_metrics present-null metrics", func(t *testing.T) {
+		mock := &client.MockClient{
+			ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
+				return json.RawMessage(`{"status":"success","data":{"metrics":null}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleListMetrics(testCtx(), makeToolRequest("signoz_list_metrics", map[string]any{"limit": "50"}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if !strings.Contains(note, "hasMore=false") {
+			t.Fatalf("expected known-zero hasMore=false on present-null metrics; note=%q", note)
+		}
+	})
+
+	t.Run("get_alert_history present-null items", func(t *testing.T) {
+		mock := &client.MockClient{
+			GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+				return json.RawMessage(`{"data":{"items":null}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
+			"ruleId": "rule-x", "limit": "20",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if !strings.Contains(note, "hasMore=false") {
+			t.Fatalf("expected known-zero hasMore=false on present-null items; note=%q", note)
+		}
+	})
+
+	t.Run("get_top_metrics present-null samples", func(t *testing.T) {
 		mock := &client.MockClient{
 			GetTopMetricsFn: func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
 				return json.RawMessage(`{"status":"success","data":{"samples":null}}`), nil
@@ -566,12 +657,9 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		note := res.Content[1].(mcp.TextContent).Text
-		if strings.Contains(note, "hasMore=false") {
-			t.Fatalf("must not assert hasMore=false on null samples; note=%q", note)
-		}
-		// top_metrics generic branch: "showing up to the top 100"
-		if !strings.Contains(note, "up to the top 100") {
-			t.Fatalf("expected top-metrics generic fallback note, got %q", note)
+		// 0 returned (< cap) -> "all ranked metrics returned for this window (hasMore=false)"
+		if !strings.Contains(note, "hasMore=false") {
+			t.Fatalf("expected known-zero hasMore=false on present-null samples; note=%q", note)
 		}
 	})
 }

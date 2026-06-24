@@ -277,12 +277,35 @@ func parseStepInterval(raw any) (*int64, string) {
 			return warn()
 		}
 		return &n, ""
-	default:
-		// JSON number (float64), json.Number, or int — parseIntLoose handles
-		// these correctly (no prefix-scan ambiguity for non-string types).
-		if n := parseIntLoose(raw); n > 0 {
-			return &n, ""
+	case float64:
+		// JSON numbers decode as float64. Reject non-integral values (e.g.
+		// 60.9) rather than truncating to 60 — the contract is "positive
+		// integer seconds", so a fractional value is invalid → auto-select.
+		if v != float64(int64(v)) || v <= 0 {
+			return warn()
 		}
+		n := int64(v)
+		return &n, ""
+	case json.Number:
+		// A json.Number preserves the literal; require it parse as a positive
+		// integer (Int64 errors on a fractional literal like "60.9").
+		n, err := v.Int64()
+		if err != nil || n <= 0 {
+			return warn()
+		}
+		return &n, ""
+	case int:
+		if v <= 0 {
+			return warn()
+		}
+		n := int64(v)
+		return &n, ""
+	case int64:
+		if v <= 0 {
+			return warn()
+		}
+		return &v, ""
+	default:
 		return warn()
 	}
 }
@@ -392,26 +415,33 @@ func countQueryRangeRows(payload []byte) (int, bool) {
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return 0, false
 	}
-	results, ok := decodeNonNilArray(envelope.Data.Data.Results)
+	// A present-but-null "results" is a normal empty response (matching the
+	// InjectRowsWebURL contract), so count it as zero. Only a MISSING or
+	// non-array, non-null "results" is uncountable drift.
+	results, ok := decodeArrayOrNull(envelope.Data.Data.Results)
 	if !ok {
 		return 0, false
 	}
 	total := 0
 	for _, rawResult := range results {
 		var result struct {
-			// Use RawMessage (not []json.RawMessage) so a missing/null "rows"
-			// key on any single result is detectable rather than silently 0.
+			// Use RawMessage (not []json.RawMessage) so a missing "rows" key on
+			// any single result is detectable rather than silently 0.
 			Rows json.RawMessage `json:"rows"`
 		}
 		if err := json.Unmarshal(rawResult, &result); err != nil {
 			return 0, false
 		}
-		rows, ok := decodeNonNilArray(result.Rows)
+		// A present "rows":null is a normal empty result per the v5 /
+		// InjectRowsWebURL contract — count it as zero rows. Only a MISSING
+		// "rows" key (always emitted by the contract) or a non-array, non-null
+		// value is drift → fail open.
+		if len(result.Rows) == 0 {
+			return 0, false // "rows" key absent — contract drift
+		}
+		rows, ok := decodeArrayOrNull(result.Rows)
 		if !ok {
-			// A result object without a readable rows[] array — the v5 contract
-			// always emits "rows", so this is drift. Fail open rather than
-			// undercount and falsely report completeness.
-			return 0, false
+			return 0, false // "rows" present but not an array or null — drift
 		}
 		total += len(rows)
 	}
@@ -420,10 +450,11 @@ func countQueryRangeRows(payload []byte) (int, bool) {
 
 // countDataArrayRows counts the elements of a JSON array nested at data.<key>
 // in a passthrough body (e.g. data.items for alert history, data.metrics for
-// list_metrics, data.samples for top_metrics). It fails open: it returns
-// (0, false) when the expected leaf is absent, null, or not an array, so a
-// completeness note is omitted (or falls back to the generic note) rather than
-// asserting a misleading hasMore=false.
+// list_metrics, data.samples for top_metrics). A present-but-null leaf counts
+// as zero rows (a normal empty collection). It fails open — returns
+// (0, false) — only when the key is ABSENT or its value is neither an array
+// nor null, so a misleading hasMore=false is never asserted on an uncountable
+// shape.
 func countDataArrayRows(payload []byte, key string) (int, bool) {
 	var resp struct {
 		Data map[string]json.RawMessage `json:"data"`
@@ -432,32 +463,48 @@ func countDataArrayRows(payload []byte, key string) (int, bool) {
 		return 0, false
 	}
 	raw, present := resp.Data[key]
-	if !present {
-		return 0, false
+	if !present || len(raw) == 0 {
+		return 0, false // key absent
 	}
-	arr, ok := decodeNonNilArray(raw)
+	arr, ok := decodeArrayOrNull(raw)
 	if !ok {
-		return 0, false
+		return 0, false // present but neither array nor null
 	}
 	return len(arr), true
 }
 
-// decodeNonNilArray reports whether raw is present and decodes as a NON-NIL JSON
-// array, returning its elements. A missing field (nil/empty raw), a literal
-// JSON null, or a non-array value all return (nil, false) so callers can treat
-// "couldn't locate the array" distinctly from "located an empty array".
-func decodeNonNilArray(raw json.RawMessage) ([]json.RawMessage, bool) {
+// decodeArrayOrNull decodes raw as a JSON array OR a literal null, returning the
+// elements (nil for null) and true. A present null is a NORMAL empty collection
+// (matching the InjectRowsWebURL contract), so it counts as zero rows rather
+// than as uncountable drift. It returns (nil, false) only when raw is
+// absent/empty or is a non-array, non-null value. Callers handle the
+// absent-key case separately (len(raw)==0) when "missing" must be distinguished
+// from "present null".
+func decodeArrayOrNull(raw json.RawMessage) ([]json.RawMessage, bool) {
 	if len(raw) == 0 {
 		return nil, false // key absent
+	}
+	if string(bytesTrimSpace(raw)) == "null" {
+		return nil, true // literal null == normal empty collection
 	}
 	var arr []json.RawMessage
 	if err := json.Unmarshal(raw, &arr); err != nil {
 		return nil, false // not an array
 	}
 	if arr == nil {
-		return nil, false // literal null
+		// Defensive: json.Unmarshal into a slice leaves it nil for "null",
+		// which we already handled above; any other nil here is treated as
+		// empty so a genuinely-empty array is never mistaken for drift.
+		return nil, true
 	}
 	return arr, true
+}
+
+// bytesTrimSpace trims ASCII whitespace from a json.RawMessage without
+// allocating a new string, so the "null" literal check tolerates surrounding
+// whitespace.
+func bytesTrimSpace(b json.RawMessage) json.RawMessage {
+	return json.RawMessage(strings.TrimSpace(string(b)))
 }
 
 // completenessNote builds a pagination/completeness advisory for raw-passthrough

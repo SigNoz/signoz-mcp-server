@@ -424,7 +424,13 @@ func TestE2E_N6_ChannelTestSendFailure(t *testing.T) {
 		t.Fatalf("channel create returned IsError (expected fail-open success): %s", firstTextBlock(t, createRes))
 	}
 	createdID := e2eChannelID(t, firstTextBlock(t, createRes))
+	if createdID == "" {
+		t.Fatalf("could not extract channel id from create response; manual cleanup needed for name=%s", name)
+	}
 	t.Logf("created channel id=%s", createdID)
+	// Register cleanup IMMEDIATELY so a later t.Fatalf can never orphan a real
+	// channel. t.Cleanup runs even on failure/fatal.
+	t.Cleanup(func() { e2eCleanupChannel(t, h, ctx, createdID) })
 
 	// N6: must NOT be IsError; must carry a prominent warning note about the
 	// failed test-send (the bad webhook can't be reached).
@@ -447,12 +453,6 @@ func TestE2E_N6_ChannelTestSendFailure(t *testing.T) {
 	} else {
 		t.Logf("N6: backend reported test-send success for unroutable URL (egress-dependent); warning-note path not exercised this run")
 	}
-
-	// Cleanup: delete + confirm gone.
-	if createdID == "" {
-		t.Fatalf("could not extract channel id from create response; manual cleanup needed for name=%s", name)
-	}
-	e2eDeleteChannelAndConfirm(t, h, ctx, createdID)
 }
 
 // TestE2E_N6_NormalChannelLifecycle: normal create -> verify -> delete -> gone.
@@ -479,6 +479,9 @@ func TestE2E_N6_NormalChannelLifecycle(t *testing.T) {
 		t.Fatalf("could not extract channel id; manual cleanup needed for name=%s", name)
 	}
 	t.Logf("created channel id=%s name=%s", createdID, name)
+	// Register cleanup IMMEDIATELY so a later t.Fatalf can never orphan a real
+	// channel. t.Cleanup runs even on failure/fatal.
+	t.Cleanup(func() { e2eCleanupChannel(t, h, ctx, createdID) })
 
 	// Verify via GET that name round-tripped server-side.
 	getRes, err := h.handleGetNotificationChannel(ctx, makeToolRequest("signoz_get_notification_channel", map[string]any{"id": createdID}))
@@ -492,8 +495,6 @@ func TestE2E_N6_NormalChannelLifecycle(t *testing.T) {
 	} else {
 		t.Logf("channel name round-tripped server-side")
 	}
-
-	e2eDeleteChannelAndConfirm(t, h, ctx, createdID)
 }
 
 // --- N5: normal list tools succeed (forcing truly-empty is impractical) ---
@@ -525,19 +526,31 @@ func TestE2E_N5_ListsSucceed(t *testing.T) {
 
 // --- helpers ---
 
-func e2eDeleteChannelAndConfirm(t *testing.T, h *Handler, ctx context.Context, id string) {
+// e2eCleanupChannel deletes a channel and confirms it is gone. It is designed
+// to run via t.Cleanup (registered the moment a non-empty id is known), so it
+// must never orphan a real resource: it uses t.Errorf (not t.Fatalf) so a
+// failure is recorded without aborting other cleanups, and it tolerates an
+// already-deleted channel (a delete error / non-error GET is reported, not
+// fatal). Cleanups run in LIFO order even when the test fails or t.Fatalf-s.
+func e2eCleanupChannel(t *testing.T, h *Handler, ctx context.Context, id string) {
 	t.Helper()
+	if id == "" {
+		return
+	}
 	delRes, err := h.handleDeleteNotificationChannel(ctx, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": id}))
 	if err != nil {
-		t.Fatalf("delete handler error for id=%s: %v", id, err)
+		t.Errorf("CLEANUP: delete handler error for id=%s: %v (manual cleanup may be needed)", id, err)
+		return
 	}
 	if delRes.IsError {
-		t.Fatalf("DELETE failed for id=%s (manual cleanup needed): %s", id, firstTextBlock(t, delRes))
+		t.Errorf("CLEANUP: DELETE failed for id=%s (manual cleanup may be needed): %s", id, firstTextBlock(t, delRes))
+		return
 	}
-	// Confirm gone: a follow-up GET should error.
+	// Confirm gone: a follow-up GET should error (404).
 	getRes, err := h.handleGetNotificationChannel(ctx, makeToolRequest("signoz_get_notification_channel", map[string]any{"id": id}))
 	if err != nil {
-		t.Fatalf("confirm-gone GET handler error: %v", err)
+		t.Errorf("CLEANUP: confirm-gone GET handler error for id=%s: %v", id, err)
+		return
 	}
 	if !getRes.IsError {
 		t.Errorf("CLEANUP NOT CONFIRMED: channel id=%s still fetchable after delete", id)
