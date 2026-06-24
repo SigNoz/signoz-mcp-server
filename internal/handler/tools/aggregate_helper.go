@@ -45,9 +45,8 @@ const conflictingFilterAliasError = "both 'filter' and 'query' were provided wit
 // '1h'."). The full Go-duration grammar is accepted; we advertise the m/h/d
 // subset because it covers every realistic observability window.
 func timeRangeDesc(defaultDesc string) string {
-	return "Relative time range. Recommended format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
+	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
 		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
-		"(Other Go duration forms like '90s', '1.5h', or '1h30m' are also accepted; the m/h/d subset is recommended.) " +
 		"Ignored when both start and end are provided. " + defaultDesc
 }
 

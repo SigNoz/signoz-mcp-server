@@ -567,7 +567,7 @@ Get a single saved view by UUID.
 Search official SigNoz documentation with BM25 over indexed markdown content.
 
 - **Parameters**:
-  - `searchText` (required) - Natural-language or keyword query (legacy alias: `query`, still accepted silently for backward compatibility)
+  - `searchText` (required) - Natural-language or keyword query to search official SigNoz docs
   - `limit` (optional) - Maximum results to return (default: 10, max: 25)
   - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
   - `searchContext` - User's original question
