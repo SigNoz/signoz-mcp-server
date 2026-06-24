@@ -39,6 +39,24 @@ const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
+// timeRangeDesc builds the shared "timeRange" description. All time-windowed
+// tools use one parser (timeutil.ParseTimeRange), so only the per-tool default
+// window differs — defaultDesc is that trailing sentence (e.g. "Defaults to
+// '1h'."). The full Go-duration grammar is accepted; we advertise the m/h/d
+// subset because it covers every realistic observability window.
+func timeRangeDesc(defaultDesc string) string {
+	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
+		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
+		"Ignored when both start and end are provided. " + defaultDesc
+}
+
+// stepIntervalDesc is the shared "stepInterval" description (seconds value with
+// backend auto-selection).
+const stepIntervalDesc = "Time bucket size in seconds for time_series mode (optional). " +
+	"When omitted, the backend auto-selects an appropriate interval. " +
+	"Only set this if the user explicitly requests a specific granularity. " +
+	"Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
+
 // readFilterExpr returns the QB filter expression, accepting the canonical
 // "filter" key and the legacy "query" alias. TrimSpace is used only to decide
 // presence/equality; the returned expression preserves the caller's original

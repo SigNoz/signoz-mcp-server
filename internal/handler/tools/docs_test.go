@@ -40,14 +40,50 @@ func TestDocsHandlers(t *testing.T) {
 		require.Contains(t, strings.ToLower(search.Results[0].Snippet), "docker")
 	})
 
-	t.Run("search docs still requires query not filter", func(t *testing.T) {
+	t.Run("search docs requires searchText not filter", func(t *testing.T) {
 		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
 			"filter": "docker collector logs",
 			"limit":  5,
 		}))
 		require.NoError(t, err)
 		require.True(t, result.IsError)
-		require.Contains(t, textContent(t, result), `"query" is required`)
+		require.Contains(t, textContent(t, result), `"searchText" is required`)
+	})
+
+	t.Run("search docs accepts canonical searchText", func(t *testing.T) {
+		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
+			"searchText":   "docker collector logs",
+			"section_slug": "logs-management",
+			"limit":        5,
+		}))
+		require.NoError(t, err)
+		require.False(t, result.IsError)
+		search := result.StructuredContent.(docsindex.SearchResponse)
+		require.NotEmpty(t, search.Results)
+	})
+
+	t.Run("search docs accepts legacy query alias", func(t *testing.T) {
+		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
+			"query": "docker collector logs",
+			"limit": 5,
+		}))
+		require.NoError(t, err)
+		require.False(t, result.IsError)
+		search := result.StructuredContent.(docsindex.SearchResponse)
+		require.NotEmpty(t, search.Results)
+	})
+
+	t.Run("search docs prefers searchText over legacy query", func(t *testing.T) {
+		// When both are present, the canonical searchText wins.
+		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
+			"searchText": "docker collector logs",
+			"query":      "",
+			"limit":      5,
+		}))
+		require.NoError(t, err)
+		require.False(t, result.IsError)
+		search := result.StructuredContent.(docsindex.SearchResponse)
+		require.NotEmpty(t, search.Results)
 	})
 
 	t.Run("fetch errors", func(t *testing.T) {

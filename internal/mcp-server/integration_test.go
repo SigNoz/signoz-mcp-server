@@ -376,9 +376,14 @@ func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T)
 		}
 	}
 
+	// "False friends": tools whose filter-ish param is a distinct, legitimate
+	// param that must stay advertised — NOT the canonical filter-expression
+	// alias the #213 sweep converged. Guards against a future query→filter
+	// rename wrongly touching them.
+	//   - signoz_list_alerts.filter      : Prometheus matcher expression
+	//   - signoz_execute_builder_query.query : the full QB v5 JSON object
 	falseFriends := map[string]string{
 		"signoz_list_alerts":           "filter",
-		"signoz_search_docs":           "query",
 		"signoz_execute_builder_query": "query",
 	}
 	for name, param := range falseFriends {
@@ -390,6 +395,22 @@ func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T)
 		if _, ok := props[param]; !ok {
 			t.Errorf("%s should keep %q param", name, param)
 		}
+	}
+
+	// signoz_search_docs was renamed (#367): its free-text param is now the
+	// canonical "searchText". The legacy "query" key is still accepted by the
+	// handler as a PERMANENT silent alias but is no longer advertised in the
+	// schema. Pin both halves of that contract.
+	if tool, ok := toolsByName["signoz_search_docs"]; ok {
+		props := schemaProperties(t, "signoz_search_docs", inputSchema(t, tool))
+		if _, ok := props["searchText"]; !ok {
+			t.Errorf("signoz_search_docs should advertise canonical %q param", "searchText")
+		}
+		if _, ok := props["query"]; ok {
+			t.Errorf("signoz_search_docs should NOT advertise legacy %q param (handler-only alias)", "query")
+		}
+	} else {
+		t.Fatalf("tool signoz_search_docs not registered")
 	}
 }
 

@@ -63,13 +63,13 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
-		mcp.WithString("state", mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
+		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
-		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
+		mcp.WithString("order", mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
 	addTool(s, alertHistoryTool, h.handleGetAlertHistory)
 
