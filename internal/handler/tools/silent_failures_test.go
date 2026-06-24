@@ -9,6 +9,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // --- N3: shared boolean parser ---
@@ -898,5 +899,39 @@ func TestBoolOrStringType_AdvertisesUnionSchema(t *testing.T) {
 	}
 	if len(typeArr) != 2 || typeArr[0] != "boolean" || typeArr[1] != "string" {
 		t.Fatalf("round-tripped type = %v, want [boolean string]", typeArr)
+	}
+}
+
+// Family A regression: aggregate stepInterval accepts a JSON integer number or
+// a string in parseStepInterval, so the advertised schema must admit both forms
+// for strict schema-validating MCP clients.
+func TestNumberOrStringType_StepIntervalAdvertisesUnion(t *testing.T) {
+	h := newTestHandler(nil)
+	s := server.NewMCPServer("test", "test")
+	h.RegisterLogsHandlers(s)
+
+	serverTool := s.GetTool("signoz_aggregate_logs")
+	if serverTool == nil {
+		t.Fatal("signoz_aggregate_logs was not registered")
+	}
+
+	prop, ok := serverTool.Tool.InputSchema.Properties["stepInterval"].(map[string]any)
+	if !ok {
+		t.Fatalf("stepInterval property = %#v, want map", serverTool.Tool.InputSchema.Properties["stepInterval"])
+	}
+	gotType, ok := prop["type"].([]string)
+	if !ok {
+		t.Fatalf("stepInterval type = %#v, want []string", prop["type"])
+	}
+	if len(gotType) != 2 || gotType[0] != "integer" || gotType[1] != "string" {
+		t.Fatalf("stepInterval type = %v, want [integer string] (integer primary)", gotType)
+	}
+
+	b, err := json.Marshal(serverTool.Tool)
+	if err != nil {
+		t.Fatalf("marshal aggregate logs tool: %v", err)
+	}
+	if !strings.Contains(string(b), `"type":["integer","string"]`) {
+		t.Fatalf("marshaled aggregate logs tool missing union type array; got %s", b)
 	}
 }

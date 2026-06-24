@@ -125,6 +125,24 @@ func boolOrStringType() mcp.PropertyOption {
 	}
 }
 
+// numberOrStringType is an mcp.PropertyOption that widens an integer-like
+// string property's advertised JSON Schema "type" from "string" to the union
+// ["integer","string"].
+//
+// WHY: aggregate stepInterval is parsed by parseStepInterval, which accepts a
+// JSON integer number OR a decimal string while rejecting fractional values. A
+// plain mcp.WithString advertises only type:"string", so strict schema-
+// validating MCP clients sending {"stepInterval":60} can reject the call before
+// it reaches the lenient handler. Use "integer" rather than "number" because
+// parseStepInterval rejects fractional values. mcp.PropertyOption is
+// func(map[string]any) and the property "type" is stored as any, so overriding
+// it with []string{...} serializes to a valid JSON-Schema type array.
+func numberOrStringType() mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["type"] = []string{"integer", "string"}
+	}
+}
+
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
 	AggregationExpr  string
