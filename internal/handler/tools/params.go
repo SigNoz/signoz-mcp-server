@@ -126,7 +126,7 @@ func validateRequestType(requestType string) error {
 	}
 	if !validRequestTypes[requestType] {
 		return fmt.Errorf(
-			`Parameter validation failed: "requestType" %q is invalid. Valid values: "scalar" (one aggregate value) or "time_series" (one value per time bucket).`,
+			`parameter validation failed: "requestType" %q is invalid. Valid values: "scalar" (one aggregate value) or "time_series" (one value per time bucket)`,
 			requestType,
 		)
 	}
