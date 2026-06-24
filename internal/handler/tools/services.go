@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -96,11 +96,21 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
+// tagsValidationError is the single canonical validation message for a
+// malformed "tags" argument. Kept as one constant so the real-array and
+// legacy-string paths report identically.
+//
+// NOTE(family-b-merge): once Family B's shared validationError(field, reason)
+// helper lands, route this through it for the canonical envelope.
+const tagsValidationError = `Parameter validation failed: "tags" must be an array of strings (e.g. {"tags": ["env=prod"]}); null elements, numbers, and other non-string elements are not allowed.`
+
 // parseTagsParam normalizes the optional "tags" argument into a JSON array
-// body for the upstream call. It accepts the canonical real array (the
-// declared WithArray-of-strings schema) as well as a legacy JSON-array string
-// for back-compat. An empty/absent value yields an empty array. Anything that
-// cannot be represented as a JSON array is rejected with a validation error.
+// body for the upstream call. It enforces a strict array-of-STRINGS contract on
+// both the canonical real array (the declared WithArray-of-strings schema) and
+// the legacy JSON-array-string form: null elements, numbers, and any other
+// non-string element are rejected. An empty/absent value yields an empty array.
+// The returned body is always re-marshaled from the validated []string, so the
+// upstream call receives a clean, canonical JSON array regardless of input form.
 func parseTagsParam(v any) (json.RawMessage, error) {
 	switch t := v.(type) {
 	case nil:
@@ -110,22 +120,51 @@ func parseTagsParam(v any) (json.RawMessage, error) {
 		if trimmed == "" {
 			return json.RawMessage("[]"), nil
 		}
-		// Legacy form: a JSON-array literal passed as a string.
-		var probe []any
-		if err := json.Unmarshal([]byte(trimmed), &probe); err != nil {
-			return nil, fmt.Errorf(`Parameter validation failed: "tags" must be an array of strings (or a JSON-array string). Example: {"tags": ["env=prod"]}`)
+		// Legacy form: a JSON-array literal passed as a string. Decode to a
+		// generic value and run it through the SAME element validator as the
+		// real-array path — decoding straight into []string is too lenient
+		// (the JSON literal `null` decodes to a nil slice, and a `null` element
+		// silently becomes ""), so we must reject those explicitly.
+		var decoded any
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+			return nil, errors.New(tagsValidationError)
 		}
-		return json.RawMessage(trimmed), nil
+		arr, ok := decoded.([]any)
+		if !ok {
+			// Not a JSON array (e.g. `null`, a number, an object).
+			return nil, errors.New(tagsValidationError)
+		}
+		return validateAndMarshalTags(arr)
 	case []any:
-		// Canonical form: a real JSON array (e.g. []string from the schema).
-		b, err := json.Marshal(t)
-		if err != nil {
-			return nil, fmt.Errorf(`Parameter validation failed: "tags" could not be encoded as a JSON array`)
-		}
-		return json.RawMessage(b), nil
+		// Canonical form: a real JSON array.
+		return validateAndMarshalTags(t)
 	default:
-		return nil, fmt.Errorf(`Parameter validation failed: "tags" must be an array of strings (or a JSON-array string). Example: {"tags": ["env=prod"]}`)
+		return nil, errors.New(tagsValidationError)
 	}
+}
+
+// validateAndMarshalTags enforces the strict array-of-STRINGS contract on a
+// decoded JSON array and re-marshals it as a canonical JSON array body. Every
+// element must be a non-null string: a JSON null decodes to a nil interface and
+// numbers/bools/objects decode to their own Go types, so the type assertion
+// rejects all of them. An empty array yields "[]" (not "null").
+func validateAndMarshalTags(arr []any) (json.RawMessage, error) {
+	tags := make([]string, 0, len(arr))
+	for _, el := range arr {
+		s, ok := el.(string)
+		if !ok {
+			return nil, errors.New(tagsValidationError)
+		}
+		tags = append(tags, s)
+	}
+	if len(tags) == 0 {
+		return json.RawMessage("[]"), nil
+	}
+	b, err := json.Marshal(tags)
+	if err != nil {
+		return nil, errors.New(tagsValidationError)
+	}
+	return json.RawMessage(b), nil
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

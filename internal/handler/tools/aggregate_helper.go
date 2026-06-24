@@ -44,9 +44,16 @@ const conflictingFilterAliasError = "both 'filter' and 'query' were provided wit
 // so the accepted grammar is identical everywhere — only the per-tool default
 // window differs. defaultDesc is the trailing sentence stating that default
 // (e.g. `Defaults to '1h'.` or `Defaults to last 6 hours if not provided.`).
+//
+// The recommended form is <number><unit> with unit m/h/d. The underlying
+// parser is Go's time.ParseDuration (plus an 'Nd' days extension), so it also
+// accepts other duration forms (e.g. '90s', '1.5h', '1h30m'); we advertise the
+// m/h/d subset because it covers every realistic observability window and keeps
+// the surface predictable across tools.
 func timeRangeDesc(defaultDesc string) string {
-	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
+	return "Relative time range. Recommended format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
 		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
+		"(Other Go duration forms like '90s', '1.5h', or '1h30m' are also accepted; the m/h/d subset is recommended.) " +
 		"Ignored when both start and end are provided. " + defaultDesc
 }
 

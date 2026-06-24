@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -192,27 +193,68 @@ func TestAggregationDescriptionDriftGuard(t *testing.T) {
 	}
 }
 
-// TestChannelTypeDriftGuard pins the in-code validChannelTypes set against the
-// types advertised in the create/update notification-channel descriptions.
-// channel `type` is a backend-owned/evolving set kept as a free-string, so this
-// is the only guard that the advertised list matches what we accept.
+// TestChannelTypeDriftGuard pins the in-code validChannelTypes set (the single
+// source of truth) against the types each notification-channel tool actually
+// advertises in its registered description. channel `type` is a backend-owned/
+// evolving set kept as a free-string, so this is the only guard that the
+// advertised list matches what we accept.
+//
+// The advertised set is DERIVED from the registered tool descriptions (the
+// "SUPPORTED TYPES: ..." line) rather than hardcoded here — so a drift in
+// either the description OR the validChannelTypes map fails the test. Both the
+// create AND update channel tools are covered.
 //
 // TODO(live-backend): the authoritative set is what the SigNoz backend's
 // notification-channel API accepts. Add a periodic/integration check
 // (guarded/skippable) diffing validChannelTypes against a real instance.
 func TestChannelTypeDriftGuard(t *testing.T) {
-	advertised := []string{"slack", "webhook", "pagerduty", "email", "opsgenie", "msteams"}
-	sort.Strings(advertised)
+	h := newTestHandler(&signozclient.MockClient{})
+	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	h.RegisterNotificationChannelHandlers(s)
+	registered := s.ListTools()
 
+	// Single in-code source of truth.
 	inCode := make([]string, 0, len(validChannelTypes))
 	for k := range validChannelTypes {
 		inCode = append(inCode, k)
 	}
 	sort.Strings(inCode)
 
-	if !reflect.DeepEqual(advertised, inCode) {
-		t.Fatalf("channel-type set drift: descriptions advertise %v but validChannelTypes accepts %v; keep them in sync", advertised, inCode)
+	for _, toolName := range []string{
+		"signoz_create_notification_channel",
+		"signoz_update_notification_channel",
+	} {
+		t.Run(toolName, func(t *testing.T) {
+			st, ok := registered[toolName]
+			if !ok {
+				t.Fatalf("tool %q not registered", toolName)
+			}
+			advertised := supportedTypesFromDescription(t, toolName, st.Tool.Description)
+			if !reflect.DeepEqual(advertised, inCode) {
+				t.Fatalf("channel-type set drift: %s advertises %v but validChannelTypes accepts %v; keep them in sync", toolName, advertised, inCode)
+			}
+		})
 	}
+}
+
+// supportedTypesFromDescription extracts the sorted channel-type list from the
+// "SUPPORTED TYPES: a, b, c" line of a tool description, failing if the marker
+// is absent. This keeps the test from hardcoding the advertised set.
+func supportedTypesFromDescription(t *testing.T, toolName, desc string) []string {
+	t.Helper()
+	const marker = "SUPPORTED TYPES:"
+	idx := strings.Index(desc, marker)
+	if idx < 0 {
+		t.Fatalf("%s description missing %q marker; cannot derive advertised channel types", toolName, marker)
+	}
+	rest := desc[idx+len(marker):]
+	// The list runs to the end of that line.
+	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+		rest = rest[:nl]
+	}
+	types := splitCSV(rest)
+	sort.Strings(types)
+	return types
 }
 
 // liveBackendDriftCheckSkipped is the shared skip hook for the live-backend
@@ -306,27 +348,108 @@ func TestTagsParamAcceptsArrayAndJSONString(t *testing.T) {
 	}
 }
 
-// TestTagsParamRejectsBadValue verifies a non-array, non-JSON-string tags value
-// is rejected with a validation error rather than silently forwarded.
+// TestTagsParamRejectsBadValue verifies that anything that is not a strict
+// array-of-strings is rejected with a validation error rather than silently
+// forwarded — covering the real-array path (null/number/mixed elements, wrong
+// outer type) and the legacy JSON-string path (non-array, null/number/mixed
+// elements). The upstream client must never be called for an invalid value.
 func TestTagsParamRejectsBadValue(t *testing.T) {
-	mock := &signozclient.MockClient{
-		GetServiceTopOperationsFn: func(_ context.Context, _, _, _ string, _ json.RawMessage) (json.RawMessage, error) {
-			t.Fatal("client should not be called on invalid tags")
-			return nil, nil
-		},
+	cases := []struct {
+		name string
+		tags any
+	}{
+		// real-array path
+		{"array with number element", []any{"ok", 1}},
+		{"array with null element", []any{"ok", nil}},
+		{"array with bool element", []any{true}},
+		{"array with nested array", []any{[]any{"x"}}},
+		{"array all numbers", []any{1, 2, 3}},
+		// wrong outer type
+		{"number scalar", float64(5)},
+		{"bool scalar", true},
+		// legacy JSON-string path
+		{"json string not an array", "not-a-json-array"},
+		{"json string array of numbers", "[1, 2]"},
+		{"json string mixed elements", `["x", 1]`},
+		{"json string with null element", `["x", null]`},
+		{"json string of null literal", "null"},
+		{"json string of object", `{"a":"b"}`},
 	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_service_top_operations", map[string]any{
-		"service": "frontend",
-		"tags":    "not-a-json-array",
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &signozclient.MockClient{
+				GetServiceTopOperationsFn: func(_ context.Context, _, _, _ string, _ json.RawMessage) (json.RawMessage, error) {
+					t.Fatal("client should not be called on invalid tags")
+					return nil, nil
+				},
+			}
+			h := newTestHandler(mock)
+			req := makeToolRequest("signoz_get_service_top_operations", map[string]any{
+				"service": "frontend",
+				"tags":    tc.tags,
+			})
+			res, err := h.handleGetServiceTopOperations(testCtx(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !res.IsError {
+				t.Fatalf("expected validation error for tags=%#v, got success", tc.tags)
+			}
+		})
+	}
+}
+
+// TestParseTagsParamUnit directly exercises parseTagsParam to pin the strict
+// array-of-strings contract and the canonical output, independent of the
+// handler plumbing.
+func TestParseTagsParamUnit(t *testing.T) {
+	t.Run("valid forms", func(t *testing.T) {
+		cases := []struct {
+			name string
+			in   any
+			want string
+		}{
+			{"nil", nil, "[]"},
+			{"empty string", "", "[]"},
+			{"empty real array", []any{}, "[]"},
+			{"empty json-string array", "[]", "[]"},
+			{"real array", []any{"a", "b"}, `["a","b"]`},
+			{"json-string array", `["a","b"]`, `["a","b"]`},
+			{"json-string normalizes whitespace", `[ "a" , "b" ]`, `["a","b"]`},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				got, err := parseTagsParam(tc.in)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if string(got) != tc.want {
+					t.Fatalf("parseTagsParam(%#v) = %q, want %q", tc.in, string(got), tc.want)
+				}
+			})
+		}
 	})
-	res, err := h.handleGetServiceTopOperations(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !res.IsError {
-		t.Fatalf("expected validation error for malformed tags")
-	}
+
+	t.Run("rejected forms", func(t *testing.T) {
+		bad := []any{
+			[]any{"ok", 1},
+			[]any{"ok", nil},
+			[]any{true},
+			float64(5),
+			true,
+			"null",
+			"[1,2]",
+			`["x", 1]`,
+			`["x", null]`,
+			"not-json",
+		}
+		for i, in := range bad {
+			if _, err := parseTagsParam(in); err == nil {
+				t.Fatalf("case %d: parseTagsParam(%#v) = nil error, want rejection", i, in)
+			}
+		}
+	})
 }
 
 // TestTagsSchemaIsArrayOfStrings pins the get_service_top_operations "tags"
