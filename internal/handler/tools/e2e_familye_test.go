@@ -391,36 +391,52 @@ func firstField(body, fieldName string) string {
 	return ""
 }
 
-// TestE2EFamilyE_K5_ViewCRUDRoundTrip creates a throwaway saved view, reads it
-// back via BOTH the canonical "id" and legacy "viewId" params, then deletes it
-// via the legacy key and confirms it is gone. The view name is prefixed
-// mcp-e2e-e-<rand>. A t.Cleanup guarantees deletion even on failure.
+// TestE2EFamilyE_K5_ViewCRUDRoundTrip CLONES an existing saved view (rather than
+// hand-crafting a payload, per CLAUDE.md), creates a throwaway copy with a
+// unique mcp-e2e-e-<rand> name, reads it back via BOTH the canonical "id" and
+// legacy "viewId" params, then deletes it via the legacy key and confirms it is
+// gone. A t.Cleanup guarantees deletion even on failure. If no existing view is
+// found on any sourcePage, the CRUD subtest is skipped (never hand-crafted).
 func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 	h, ctx := e2eHandler(t)
 
+	// 1. Find a real existing view to clone its shape from. Try each sourcePage.
+	srcViewID, srcSourcePage := findExistingView(t, h, ctx)
+	if srcViewID == "" {
+		t.Skip("no existing saved view found on any sourcePage to clone; skipping view CRUD round-trip (refusing to hand-craft a payload)")
+	}
+
+	// 2. Read the source view's full config.
+	srcRes, err := h.handleGetView(ctx, makeToolRequest("signoz_get_view", map[string]any{"id": srcViewID}))
+	if err != nil {
+		t.Fatalf("get_view (source) transport error: %v", err)
+	}
+	if srcRes.IsError {
+		t.Fatalf("get_view (source) error: %s", e2eText(t, srcRes))
+	}
+	srcData := extractViewData(e2eText(t, srcRes))
+	if srcData == nil {
+		t.Fatalf("could not extract source view data from: %s", e2eText(t, srcRes))
+	}
+
+	// 3. Build the create payload from THAT real shape, with a unique name.
+	//    Server-populated fields (id/createdAt/...) are stripped by the create
+	//    handler's marshalViewBody, so we can pass the cloned data as-is.
 	name := "mcp-e2e-e-" + e2eRandSuffix()
-	createReq := makeToolRequest("signoz_create_view", map[string]any{
-		"name":       name,
-		"sourcePage": "logs",
-		"compositeQuery": map[string]any{
-			"queryType": "builder",
-			"queries": []any{
-				map[string]any{
-					"type": "builder_query",
-					"spec": map[string]any{
-						"name":   "A",
-						"signal": "logs",
-					},
-				},
-			},
-		},
-	})
-	createRes, err := h.handleCreateView(ctx, createReq)
+	createArgs := map[string]any{}
+	for k, v := range srcData {
+		createArgs[k] = v
+	}
+	createArgs["name"] = name
+	delete(createArgs, "category") // keep the clone minimal/unambiguous
+	t.Logf("cloning existing %q view (sourcePage=%s) into %q", srcViewID, srcSourcePage, name)
+
+	createRes, err := h.handleCreateView(ctx, makeToolRequest("signoz_create_view", createArgs))
 	if err != nil {
 		t.Fatalf("create_view transport error: %v", err)
 	}
 	if createRes.IsError {
-		t.Fatalf("create_view error: %s", e2eText(t, createRes))
+		t.Fatalf("create_view (cloned shape) error: %s", e2eText(t, createRes))
 	}
 	viewID := extractViewID(e2eText(t, createRes))
 	if viewID == "" {
@@ -500,4 +516,41 @@ func extractViewName(body string) string {
 		return env.Data.Name
 	}
 	return env.Name
+}
+
+// findExistingView returns the id and sourcePage of the first existing saved
+// view found across the standard sourcePages, or ("", "") if none exist. Used
+// to clone a real view's shape rather than hand-craft a create payload.
+func findExistingView(t *testing.T, h *Handler, ctx context.Context) (id, sourcePage string) {
+	t.Helper()
+	for _, sp := range []string{"traces", "logs", "metrics", "meter"} {
+		res, err := h.handleListViews(ctx, makeToolRequest("signoz_list_views", map[string]any{
+			"sourcePage": sp,
+			"limit":      "1",
+		}))
+		if err != nil || res.IsError {
+			continue
+		}
+		if vid := firstField(e2eText(t, res), "id"); vid != "" {
+			return vid, sp
+		}
+	}
+	return "", ""
+}
+
+// extractViewData returns the SavedView "data" object from a get_view response
+// envelope ({"status":...,"data":{...}}), or the top-level object if there is
+// no envelope. This is the real shape we clone into a new create_view payload.
+func extractViewData(body string) map[string]any {
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err == nil && len(env.Data) > 0 {
+		return env.Data
+	}
+	var flat map[string]any
+	if err := json.Unmarshal([]byte(body), &flat); err == nil && len(flat) > 0 {
+		return flat
+	}
+	return nil
 }
