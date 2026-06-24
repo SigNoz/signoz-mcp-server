@@ -21,8 +21,8 @@ func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
 				"Use this for questions like 'which metrics cost the most?', 'top metrics by sample count', "+
 				"'what is driving my metrics ingestion volume?', 'metrics by ingestion cost'."),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("timeRange", mcp.Description("Relative time range to analyze (e.g. 24h, 3d, 7d, 30d). Default: 7d. Ignored when both start and end are provided.")),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+		mcp.WithString("timeRange", mcp.DefaultString("7d"), mcp.Description("Relative time range to analyze (e.g. 24h, 3d, 7d, 30d). Default: 7d. Ignored when both start and end are provided.")),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange. Other magnitudes (seconds/micros/nanos) are auto-detected.")),
 		mcp.WithString("end", mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 	)
 

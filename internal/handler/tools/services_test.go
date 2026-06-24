@@ -81,3 +81,51 @@ func TestHandleListServices_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 		t.Fatalf("end = %q, want explicit end", capturedEnd)
 	}
 }
+
+// TestHandleListServices_NanosecondBackwardCompat pins that a legacy caller
+// passing nanosecond timestamps to list_services still gets nanoseconds at the
+// client boundary after the ms→auto-detect migration.
+func TestHandleListServices_NanosecondBackwardCompat(t *testing.T) {
+	var capturedStart, capturedEnd string
+	mock := &client.MockClient{
+		ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
+			capturedStart, capturedEnd = start, end
+			return json.RawMessage(`[]`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_services", map[string]any{
+		"start": "1711123200000000000",
+		"end":   "1711130400000000000",
+	})
+	if _, err := h.handleListServices(testCtx(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedStart != "1711123200000000000" || capturedEnd != "1711130400000000000" {
+		t.Fatalf("ns values must round-trip to the services client unchanged: start=%s end=%s", capturedStart, capturedEnd)
+	}
+}
+
+// TestHandleGetServiceTopOperations_NanosecondBackwardCompat pins the same ns
+// backward-compat contract for the top-operations service tool.
+func TestHandleGetServiceTopOperations_NanosecondBackwardCompat(t *testing.T) {
+	var capturedStart, capturedEnd string
+	mock := &client.MockClient{
+		GetServiceTopOperationsFn: func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
+			capturedStart, capturedEnd = start, end
+			return json.RawMessage(`[]`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_get_service_top_operations", map[string]any{
+		"service": "frontend",
+		"start":   "1711123200000000000",
+		"end":     "1711130400000000000",
+	})
+	if _, err := h.handleGetServiceTopOperations(testCtx(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedStart != "1711123200000000000" || capturedEnd != "1711130400000000000" {
+		t.Fatalf("ns values must round-trip to the top-operations client unchanged: start=%s end=%s", capturedStart, capturedEnd)
+	}
+}

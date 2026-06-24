@@ -89,3 +89,82 @@ func TestGetTimestampsWithDefaultsTimeRangeUsedForIncompleteExplicitWindow(t *te
 		t.Fatalf("delta = %dms, want about 1h", delta)
 	}
 }
+
+// TestNormalizeEpochToUnit pins the magnitude auto-detect bands directly. A
+// fixed instant (2024-03-22T16:00:00Z) is expressed at every magnitude and must
+// normalize back to the same canonical value.
+func TestNormalizeEpochToUnit(t *testing.T) {
+	const (
+		sec    = int64(1711123200)          // seconds
+		millis = int64(1711123200000)       // ms
+		micros = int64(1711123200000000)    // µs
+		nanos  = int64(1711123200000000000) // ns
+	)
+
+	tests := []struct {
+		name    string
+		raw     int64
+		unit    string
+		want    int64
+		comment string
+	}{
+		{"seconds->ms", sec, UnitMillis, millis, "10-digit epoch is seconds"},
+		{"millis->ms", millis, UnitMillis, millis, "13-digit epoch is already ms"},
+		{"micros->ms", micros, UnitMillis, millis, "16-digit epoch is micros"},
+		{"nanos->ms", nanos, UnitMillis, millis, "19-digit epoch is nanos"},
+		{"seconds->ns", sec, UnitNanos, nanos, "seconds widen to ns"},
+		{"millis->ns", millis, UnitNanos, nanos, "ms widen to ns"},
+		{"micros->ns", micros, UnitNanos, nanos, "micros widen to ns"},
+		{"nanos->ns", nanos, UnitNanos, nanos, "ns unchanged"},
+		{"zero", 0, UnitMillis, 0, "non-positive unchanged"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeEpochToUnit(tt.raw, tt.unit); got != tt.want {
+				t.Fatalf("normalizeEpochToUnit(%d, %q) = %d, want %d (%s)", tt.raw, tt.unit, got, tt.want, tt.comment)
+			}
+		})
+	}
+}
+
+// TestGetTimestampsWithDefaultsAutoDetectsMagnitude verifies that an explicit
+// start/end pair given in any magnitude is normalized to the canonical unit.
+func TestGetTimestampsWithDefaultsAutoDetectsMagnitude(t *testing.T) {
+	tests := []struct {
+		name               string
+		start, end         any
+		unit               string
+		wantStart, wantEnd string
+	}{
+		{"seconds in ms tool", "1711123200", "1711130400", UnitMillis, "1711123200000", "1711130400000"},
+		{"ms in ms tool", "1711123200000", "1711130400000", UnitMillis, "1711123200000", "1711130400000"},
+		{"nanos in ms tool", "1711123200000000000", "1711130400000000000", UnitMillis, "1711123200000", "1711130400000"},
+		{"seconds in ns tool", "1711123200", "1711130400", UnitNanos, "1711123200000000000", "1711130400000000000"},
+		{"nanos in ns tool", "1711123200000000000", "1711130400000000000", UnitNanos, "1711123200000000000", "1711130400000000000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end := GetTimestampsWithDefaults(map[string]any{"start": tt.start, "end": tt.end}, tt.unit)
+			if start != tt.wantStart {
+				t.Fatalf("start = %q, want %q", start, tt.wantStart)
+			}
+			if end != tt.wantEnd {
+				t.Fatalf("end = %q, want %q", end, tt.wantEnd)
+			}
+		})
+	}
+}
+
+// TestGetTimestampsWithDefaultsNanoBackwardCompat pins the contract that the two
+// service tools (which historically passed ns) keep resolving ns values
+// correctly through the shared helper after the ms→auto-detect migration.
+func TestGetTimestampsWithDefaultsNanoBackwardCompat(t *testing.T) {
+	args := map[string]any{
+		"start": "1711123200000000000",
+		"end":   "1711130400000000000",
+	}
+	start, end := GetTimestampsWithDefaults(args, UnitNanos)
+	if start != "1711123200000000000" || end != "1711130400000000000" {
+		t.Fatalf("ns values should round-trip unchanged on a ns tool: start=%s end=%s", start, end)
+	}
+}

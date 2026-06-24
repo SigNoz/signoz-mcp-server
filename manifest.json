@@ -27,7 +27,7 @@
   "tools": [
     {
       "name": "signoz_list_metrics",
-      "description": "Search and list available metrics from SigNoz. Set source=\"meter\" to list Cost Meter (usage/billing) metrics"
+      "description": "Search and list available metrics from SigNoz over a time range (timeRange default 1h). Set source=\"meter\" to list Cost Meter (usage/billing) metrics"
     },
     {
       "name": "signoz_query_metrics",
@@ -55,11 +55,11 @@
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get an alert rule definition by ID via GET /api/v2/rules/{ruleId}. Response shape differs by server version (v2 Rule vs v1 GettableRule)"
+      "description": "Get an alert rule definition by id (param 'id'; legacy 'ruleId' still accepted) via GET /api/v2/rules/{id}. Response shape differs by server version (v2 Rule vs v1 GettableRule)"
     },
     {
       "name": "signoz_get_alert_history",
-      "description": "Get alert state history timeline for a specific rule with optional state filter"
+      "description": "Get alert state history timeline for a specific rule (param 'id'; legacy 'ruleId' still accepted) with optional state filter"
     },
     {
       "name": "signoz_create_alert",
@@ -67,11 +67,11 @@
     },
     {
       "name": "signoz_update_alert",
-      "description": "Update an existing alert rule by UUIDv7 via PUT /api/v2/rules/{ruleId}"
+      "description": "Update an existing alert rule by UUIDv7 (param 'id'; legacy 'ruleId' still accepted) via PUT /api/v2/rules/{id}"
     },
     {
       "name": "signoz_delete_alert",
-      "description": "Delete an alert rule by UUIDv7 via DELETE /api/v2/rules/{ruleId}"
+      "description": "Delete an alert rule by UUIDv7 (param 'id'; legacy 'ruleId' still accepted) via DELETE /api/v2/rules/{id}"
     },
     {
       "name": "signoz_list_dashboards",
@@ -79,7 +79,7 @@
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get full dashboard configuration by UUID"
+      "description": "Get full dashboard configuration by id (param 'id'; legacy 'uuid' still accepted)"
     },
     {
       "name": "signoz_create_dashboard",
@@ -87,11 +87,11 @@
     },
     {
       "name": "signoz_update_dashboard",
-      "description": "Update an existing dashboard by UUID"
+      "description": "Update an existing dashboard by id (param 'id'; legacy 'uuid' still accepted)"
     },
     {
       "name": "signoz_delete_dashboard",
-      "description": "Delete a dashboard by UUID"
+      "description": "Delete a dashboard by id (param 'id'; legacy 'uuid' still accepted)"
     },
     {
       "name": "signoz_import_dashboard",
@@ -115,7 +115,7 @@
     },
     {
       "name": "signoz_get_view",
-      "description": "Get a single SigNoz saved view by UUID"
+      "description": "Get a single SigNoz saved view by id (param 'id'; legacy 'viewId' still accepted)"
     },
     {
       "name": "signoz_search_docs",
@@ -131,15 +131,15 @@
     },
     {
       "name": "signoz_update_view",
-      "description": "Replace an existing SigNoz saved view (full-body PUT)"
+      "description": "Replace an existing SigNoz saved view (full-body PUT; param 'id'; legacy 'viewId' still accepted)"
     },
     {
       "name": "signoz_delete_view",
-      "description": "Delete a SigNoz saved view by UUID"
+      "description": "Delete a SigNoz saved view by id (param 'id'; legacy 'viewId' still accepted)"
     },
     {
       "name": "signoz_aggregate_logs",
-      "description": "Aggregate logs to compute statistics (count, avg, sum, min, max, percentiles) with canonical filter expressions; see signoz://logs/query-builder-guide"
+      "description": "Aggregate logs to compute statistics (count, avg, sum, min, max, percentiles) with canonical filter expressions; requestType scalar (default) or time_series; see signoz://logs/query-builder-guide"
     },
     {
       "name": "signoz_search_logs",
@@ -147,7 +147,7 @@
     },
     {
       "name": "signoz_aggregate_traces",
-      "description": "Aggregate traces to compute statistics over spans, optionally grouped by fields, with canonical filter expressions; see signoz://traces/query-builder-guide"
+      "description": "Aggregate traces to compute statistics over spans, optionally grouped by fields, with canonical filter expressions; requestType scalar (default) or time_series; see signoz://traces/query-builder-guide"
     },
     {
       "name": "signoz_search_traces",

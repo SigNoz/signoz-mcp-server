@@ -222,7 +222,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 
 func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_notification_channels")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -283,7 +283,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

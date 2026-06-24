@@ -51,6 +51,9 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRequestType(stringArg(args, "requestType")); err != nil {
+		return nil, err
+	}
 
 	req := &metricsQueryRequest{
 		MetricName:       metricName,

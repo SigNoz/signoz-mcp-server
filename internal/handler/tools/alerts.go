@@ -52,8 +52,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get the rule definition for a specific alert rule by ruleId (GET /api/v2/rules/{ruleId}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
-		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID (UUIDv7 on v2 servers).")),
+		mcp.WithDescription("Get the rule definition for a specific alert rule by id (GET /api/v2/rules/{id}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Alert rule ID (UUIDv7 on v2 servers). The legacy parameter name \"ruleId\" is still accepted.")),
 	)
 	addTool(s, getAlertTool, h.handleGetAlert)
 
@@ -62,14 +62,14 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
-		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Alert rule ID. The legacy parameter name \"ruleId\" is still accepted.")),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Default: 6h.")),
+		mcp.WithString("start", mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
+		mcp.WithString("end", mcp.Description("End timestamp in unix milliseconds (optional, defaults to now). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
 		mcp.WithString("state", mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
-		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
-		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
-		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
+		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Offset for pagination (default: 0)")),
+		mcp.WithString("limit", mcp.DefaultString("20"), mcp.Description("Limit number of results (default: 20)")),
+		mcp.WithString("order", mcp.DefaultString("asc"), mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
 	addTool(s, alertHistoryTool, h.handleGetAlertHistory)
 
@@ -117,8 +117,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_delete_alert",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("ruleId", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to delete. The server validates the UUID format and returns invalid_input on bad values.")),
-		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{ruleId}). Irreversible. Confirm with the user before calling."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to delete. The legacy parameter name \"ruleId\" is still accepted. The server validates the UUID format and returns invalid_input on bad values.")),
+		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{id}). Irreversible. Confirm with the user before calling."),
 	)
 	addTool(s, deleteAlertTool, h.handleDeleteAlert)
 
@@ -139,7 +139,7 @@ func parseBoolParam(args map[string]any, key string) *bool {
 func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_alerts")
 	args := req.GetArguments()
-	limit, offset := paginate.ParseParams(args)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(args)
 
 	params := types.ListAlertsParams{
 		Active:    parseBoolParam(args, "active"),
@@ -202,12 +202,12 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_alert_rules")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -267,21 +267,17 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ruleID, ok := req.GetArguments()["ruleId"].(string)
-	if !ok {
-		h.logger.WarnContext(ctx, "Invalid ruleId parameter type", slog.Any("type", req.Params.Arguments))
-		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
-	}
+	ruleID := readResourceID(req.GetArguments(), "ruleId")
 	if ruleID == "" {
-		h.logger.WarnContext(ctx, "Empty ruleId parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" cannot be empty. Provide a valid alert rule ID (UUID format)`), nil
+		h.logger.WarnContext(ctx, "Empty id parameter")
+		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 	}
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("ruleId", ruleID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("id", ruleID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -307,10 +303,10 @@ func enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	ruleID, ok := args["ruleId"].(string)
-	if !ok || ruleID == "" {
-		h.logger.WarnContext(ctx, "Invalid or empty ruleId parameter", slog.Any("ruleId", args["ruleId"]))
-		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" must be a non-empty string. Example: {"ruleId": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
+	ruleID := readResourceID(args, "ruleId")
+	if ruleID == "" {
+		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args["ruleId"]))
+		return mcp.NewToolResultError(`Parameter validation failed: "id" must be a non-empty string. Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
 	startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -327,14 +323,13 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	_, offset := paginate.ParseParams(args)
 
-	limit := 20
-	if limitStr, ok := args["limit"].(string); ok && limitStr != "" {
-		if limitInt, err := strconv.Atoi(limitStr); err != nil {
-			h.logger.WarnContext(ctx, "Invalid limit format", slog.String("limit", limitStr), logpkg.ErrAttr(err))
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "limit" value: "%s". Expected integer between 1-1000 (e.g., "20", "50", "100")`, limitStr)), nil
-		} else if limitInt > 0 {
-			limit = limitInt
-		}
+	// Route the limit through the shared loose parser (number-or-string), with
+	// this tool's documented default of 20. The old bespoke re-parse advertised
+	// a fictional "1-1000" bound that was never enforced — dropped here.
+	limit, err := intArg(args, "limit", 20)
+	if err != nil {
+		h.logger.WarnContext(ctx, "Invalid limit format", slog.Any("limit", args["limit"]), logpkg.ErrAttr(err))
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	order := "asc"
@@ -426,13 +421,14 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
 	}
 
-	ruleID, _ := rawConfig["ruleId"].(string)
+	ruleID := readResourceID(rawConfig, "ruleId")
 	if ruleID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" is required. Provide the UUIDv7 of the rule to update.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required. Provide the UUIDv7 of the rule to update.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "ruleId": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
+		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
 	}
+	delete(rawConfig, "id")
 	delete(rawConfig, "ruleId")
 
 	cleanJSON, errResult := h.validateAlertPayload(ctx, rawConfig)
@@ -457,17 +453,17 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError(`Parameter validation failed: expected an arguments object with "ruleId".`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: expected an arguments object with "id".`), nil
 	}
-	ruleID, _ := args["ruleId"].(string)
+	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "ruleId" is required.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "ruleId": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil
+		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil
 	}
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_delete_alert", slog.String("ruleId", ruleID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_delete_alert", slog.String("id", ruleID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

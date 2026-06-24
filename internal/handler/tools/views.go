@@ -59,7 +59,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Fetch a single SigNoz saved view by UUID. Use the returned object as the base for signoz_update_view — the update is a full-body replace."),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs.")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. The legacy parameter name \"viewId\" is still accepted.")),
 	)
 	addTool(s, getTool, h.handleGetView)
 
@@ -93,12 +93,12 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
 				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
 				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics/meter\n\n"+
-				"Pass the view's UUID as viewId and the full SavedView body as view. "+
+				"Pass the view's UUID as id and the full SavedView body as view. "+
 				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
 				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
-				"Do not send id/createdAt/createdBy/updatedAt/updatedBy — the server ignores them.",
+				"Do not send id/createdAt/createdBy/updatedAt/updatedBy inside `view` — the server ignores them.",
 		),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("UUID of the view to replace.")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("UUID of the view to replace. The legacy parameter name \"viewId\" is still accepted.")),
 		mcp.WithObject("view",
 			mcp.Required(),
 			mcp.Properties(savedViewSchemaProperties()),
@@ -113,7 +113,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("UUID of the view to delete.")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("UUID of the view to delete. The legacy parameter name \"viewId\" is still accepted.")),
 	)
 	addTool(s, deleteTool, h.handleDeleteView)
 
@@ -354,7 +354,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	}
 	name, _ := args["name"].(string)
 	category, _ := args["category"].(string)
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_views",
 		slog.String("sourcePage", sourcePage),
@@ -396,7 +396,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -404,12 +404,12 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
 	}
-	viewID, _ := args["viewId"].(string)
+	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		h.logger.WarnContext(ctx, "get_view missing viewId")
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
+		h.logger.WarnContext(ctx, "get_view missing id")
+		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
 	}
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_view", slog.String("viewId", viewID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_view", slog.String("id", viewID))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -471,9 +471,9 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
 	}
 
-	viewID, _ := args["viewId"].(string)
+	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Use signoz_list_views to find the UUID.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Use signoz_list_views to find the UUID.`), nil
 	}
 
 	// The canonical shape (per input schema) wraps the body under "view".
@@ -487,7 +487,9 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	} else {
 		view = map[string]any{}
 		for k, v := range args {
-			if k == "viewId" || k == "searchContext" || k == "view" {
+			// Skip the MCP-level fields and the top-level id/viewId path param;
+			// the SavedView body's own id is server-populated and stripped later.
+			if k == "id" || k == "viewId" || k == "searchContext" || k == "view" {
 				continue
 			}
 			view[k] = v
@@ -555,11 +557,11 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	if !ok {
 		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
 	}
-	viewID, _ := args["viewId"].(string)
+	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Use signoz_list_views to find the UUID.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Use signoz_list_views to find the UUID.`), nil
 	}
-	h.logger.DebugContext(ctx, "Tool called: signoz_delete_view", slog.String("viewId", viewID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_delete_view", slog.String("id", viewID))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {

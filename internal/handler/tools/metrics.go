@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"log/slog"
-	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -19,11 +18,12 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source. Use searchText to find metrics by name."),
+		mcp.WithDescription("Search and list available metrics from SigNoz. Supports filtering by name substring, time range, and source. Use searchText to find metrics by name. Defaults to the last 1 hour if no time is specified."),
 		mcp.WithString("searchText", mcp.Description("Filter metrics by name substring (optional). Example: 'cpu', 'memory', 'http_requests'.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of metrics to return (optional, default 50).")),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional).")),
-		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional).")),
+		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of metrics to return (optional). Default: 50.")),
+		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description("Relative time range (optional). Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Default: 1h. Ignored when both start and end are provided.")),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange. Other magnitudes (seconds/micros/nanos) are auto-detected.")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("source", mcp.Description("Optional data-source filter. Use \"meter\" to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume). Omit for the default SigNoz metrics store.")),
 	)
 
@@ -49,11 +49,11 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 		mcp.WithString("spaceAggregation", mcp.Description("Aggregation across series/dimensions. Auto-defaulted based on metricType. Valid: sum, avg, min, max, count, p50, p75, p90, p95, p99 (type-dependent).")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated field names to group by. fieldContext is auto-detected (k8s.*, container.*, host.* → resource; others → attribute). Example: 'k8s.namespace.name,k8s.pod.name'.")),
 		mcp.WithString("filter", mcp.Description("Filter expression. Example: \"k8s.cluster.name = 'prod' AND service.name = 'frontend'\".")),
-		mcp.WithString("timeRange", mcp.Description("Relative time range: 30m, 1h, 6h, 24h, 7d. Default: 1h. Ignored when both start and end are provided.")),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description("Relative time range: 30m, 1h, 6h, 24h, 7d. Default: 1h. Ignored when both start and end are provided.")),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange. Other magnitudes (seconds/micros/nanos) are auto-detected.")),
 		mcp.WithString("end", mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 		mcp.WithString("stepInterval", mcp.Description("Step interval in seconds. Auto-calculated (~300 data points, min 60s) if not provided.")),
-		mcp.WithString("requestType", mcp.Description("Response format: time_series (default) or scalar.")),
+		mcp.WithString("requestType", mcp.DefaultString("time_series"), mcp.Enum("scalar", "time_series"), mcp.Description("Response format: time_series (default, one value per time bucket) or scalar (one aggregate value over the whole range).")),
 		mcp.WithString("reduceTo", mcp.Description("For requestType=scalar only. Reduces time series to a single value: sum, count, avg, min, max, last, median. Auto-defaulted by metricType.")),
 		mcp.WithString("formula", mcp.Description("Formula expression over named queries. Example: 'A / B * 100'. The primary metric becomes query 'A'. Additional queries are defined in formulaQueries.")),
 		mcp.WithString("formulaQueries", mcp.Description("JSON array of additional named metric queries for formula. Each object: {\"name\":\"B\", \"metricName\":\"...\", \"metricType\":\"...\", \"isMonotonic\":true, \"temporality\":\"...\", \"timeAggregation\":\"...\", \"spaceAggregation\":\"...\", \"groupBy\":[\"...\"], \"filter\":\"...\"}. All fields except name and metricName are optional.")),
@@ -85,30 +85,23 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 
 func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
+	if args == nil {
+		args = map[string]any{}
+	}
 
 	searchText, _ := args["searchText"].(string)
 	source, _ := args["source"].(string)
 
-	var limit int
-	if l, ok := args["limit"].(string); ok && l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
-			limit = v
-		}
-	}
-	if limit == 0 {
-		limit = 50
+	limit, err := intArg(args, "limit", 50)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	var start, end int64
-	if s, ok := args["start"].(string); ok && s != "" {
-		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-			start = v
-		}
-	}
-	if e, ok := args["end"].(string); ok && e != "" {
-		if v, err := strconv.ParseInt(e, 10, 64); err == nil {
-			end = v
-		}
+	// Route timestamps through the shared helper: standard 1h default window,
+	// magnitude auto-detect, and string-typed start/end. Returns canonical ms.
+	start, end, err := resolveTimestamps(args, "1h")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_metrics", slog.String("searchText", searchText))

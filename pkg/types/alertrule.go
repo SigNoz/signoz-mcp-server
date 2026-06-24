@@ -25,7 +25,7 @@ type CreateAlertInput struct {
 }
 
 type UpdateAlertInput struct {
-	RuleID string `json:"ruleId" jsonschema:"required" jsonschema_extras:"description=UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
+	ID string `json:"id" jsonschema:"required" jsonschema_extras:"description=UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert. The legacy field name 'ruleId' is still accepted."`
 	AlertRule
 	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }

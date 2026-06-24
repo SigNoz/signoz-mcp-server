@@ -153,6 +153,9 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	}
 
 	requestType, _ := args["requestType"].(string)
+	if err := validateRequestType(requestType); err != nil {
+		return nil, err
+	}
 	if requestType == "" {
 		requestType = "scalar"
 	}
@@ -195,21 +198,6 @@ func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, 
 		return 0, 0, fmt.Errorf("invalid end timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
 	}
 	return startTime, endTime, nil
-}
-
-func intArg(args map[string]any, key string, defaultVal int) (int, error) {
-	str, _ := args[key].(string)
-	if str == "" {
-		return defaultVal, nil
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil {
-		return 0, fmt.Errorf("invalid %q value %q: must be a number", key, str)
-	}
-	if num <= 0 {
-		return defaultVal, nil
-	}
-	return num, nil
 }
 
 // MaxRawResultLimit caps how many raw rows search_logs / search_traces will

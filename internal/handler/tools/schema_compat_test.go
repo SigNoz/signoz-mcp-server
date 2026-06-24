@@ -68,7 +68,7 @@ func TestWriteToolInputSchemasExposeSearchContext(t *testing.T) {
 		{
 			name:       "update dashboard",
 			tool:       mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]()),
-			wantFields: []string{"uuid", "dashboard", "searchContext"},
+			wantFields: []string{"id", "dashboard", "searchContext"},
 		},
 		{
 			name:       "create alert",
@@ -78,7 +78,7 @@ func TestWriteToolInputSchemasExposeSearchContext(t *testing.T) {
 		{
 			name:       "update alert",
 			tool:       mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]()),
-			wantFields: []string{"ruleId", "alert", "alertType", "ruleType", "condition", "searchContext"},
+			wantFields: []string{"id", "alert", "alertType", "ruleType", "condition", "searchContext"},
 		},
 	}
 
