@@ -102,7 +102,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 //
 // NOTE(family-b-merge): once Family B's shared validationError(field, reason)
 // helper lands, route this through it for the canonical envelope.
-const tagsValidationError = `Parameter validation failed: "tags" must be an array of strings (e.g. {"tags": ["env=prod"]}); null elements, numbers, and other non-string elements are not allowed.`
+const tagsValidationError = `parameter validation failed: "tags" must be an array of strings (e.g. {"tags": ["env=prod"]}); null elements, numbers, and other non-string elements are not allowed`
 
 // parseTagsParam normalizes the optional "tags" argument into a JSON array
 // body for the upstream call. It enforces a strict array-of-STRINGS contract on
