@@ -15,14 +15,10 @@ import (
 // user/parameter mistake (fix and re-call) apart from an upstream SigNoz
 // failure (retryable).
 //
-// Family C (#365) layers a light, machine-readable `code` taxonomy on top of
-// these helpers, surfaced via the result's StructuredContent ({"code": ...}).
-// The human-readable text block is left unchanged — the code is purely additive
-// so an MCP client/LLM can branch on a stable token (e.g. retry an
-// UPSTREAM_ERROR vs fix args on a VALIDATION_FAILED) instead of string-matching
-// the prose. This mirrors the docs tools' existing {code,message} error pattern
-// (internal/docs/errors.go). The code is derived from the helper that produced
-// the result, so call sites need no changes.
+// Error results also carry a machine-readable `code` via StructuredContent
+// ({"code": ...}), leaving the text block unchanged, so clients can branch on a
+// stable token instead of string-matching the prose. The code is derived from
+// the helper that produced the result, so call sites need no changes.
 
 const (
 	// validationErrorPrefix is the canonical prefix for all parameter/validation failures.
@@ -53,21 +49,15 @@ const (
 	// without changing arguments. Emitted by upstreamError.
 	CodeUpstreamError = "UPSTREAM_ERROR"
 
-	// CodeNotFound marks a referenced resource that does not exist (e.g. a bad
-	// id/uuid). Callers should not blindly retry — re-discover the id first.
-	//
-	// RESERVED for now: the backend signals "not found" only via prose in the
-	// error body, and distinguishing it from other upstream failures would
-	// require brittle string-matching, which #365 deliberately avoids. Upstream
-	// 404s currently surface as UPSTREAM_ERROR. notFoundError + this code are
-	// kept as the stable home for a future, robust not-found signal (e.g. a
-	// typed status code from the client layer).
+	// CodeNotFound marks a missing resource (bad id/uuid) — re-discover the id
+	// rather than blindly retry. RESERVED: upstream 404s currently surface as
+	// UPSTREAM_ERROR (the backend signals not-found only via prose, which #365
+	// won't string-match); kept as the stable home for a future typed signal.
 	CodeNotFound = "NOT_FOUND"
 )
 
-// errorWithCode builds an error result whose text block is message (unchanged,
-// human-readable) and whose StructuredContent carries {"code": code} so clients
-// can branch on a stable token. This is the single shaping point for all
+// errorWithCode builds an error result whose text block is message and whose
+// StructuredContent carries {"code": code} — the single shaping point for all
 // coded error results.
 func errorWithCode(code, message string) *mcp.CallToolResult {
 	res := mcp.NewToolResultError(message)
@@ -171,52 +161,28 @@ func notFoundError(message string) *mcp.CallToolResult {
 	return errorWithCode(CodeNotFound, message)
 }
 
-// structuredResult is the shared success-path wrapper for tools whose output
-// JSON shape is CODE-CONTROLLED — i.e. this server builds the JSON envelope, so
-// an outputSchema/structuredContent contract is stable and worth advertising.
+// structuredResult is the success-path wrapper for tools whose output JSON is
+// CODE-CONTROLLED — this server builds the envelope, so the same JSON is carried
+// in BOTH the text block (block 0, for back-compat) and StructuredContent. Raw
+// QB passthrough tools (search/aggregate/query_metrics) instead return the
+// backend's variable, upstream-owned JSON verbatim and stay text-only.
 //
-// Two-tier rule (Family C #365):
-//   - Code-controlled tools (paginate.Wrap list/summary tools, single-resource
-//     get_*, and mutation results that return synthesized JSON) carry the same
-//     JSON in BOTH the text block (block 0, for back-compat) and
-//     StructuredContent, via this helper.
-//   - Raw QB passthrough tools (search_logs/search_traces/aggregate_logs/
-//     aggregate_traces/query_metrics) return the backend's JSON verbatim. Its
-//     shape is variable/upstream-owned, so an outputSchema there would be
-//     brittle and drift out from under us — those stay text-only (see
-//     resultWithNotes / rawSearchResult / aggregateResult).
-//
-// SCOPE NOTE: several mutation results deliberately stay text-only and do NOT
-// route through this helper — the create/update passthrough bodies
-// (create_alert in alerts.go, create_dashboard in dashboards.go, create_view /
-// update_view in views.go) and the plain-text update/delete dashboard
-// acknowledgements ("dashboard updated" / "dashboard deleted" in dashboards.go).
-// Standardizing those mutation success envelopes is OUT OF SCOPE for #365 and
-// tracked at SigNoz/nerve-pod#4; here we only added structuredContent to
-// mutations that ALREADY return synthesized JSON.
-//
-// jsonPayload must be the exact bytes also placed in the text block so the two
-// representations never diverge. It is decoded into a generic value for the
-// StructuredContent field using a json.Number-mode decoder so large SigNoz
-// integers (epoch nanos, big ids/counts > 2^53) are preserved EXACTLY. A plain
-// json.Unmarshal into `any` routes every number through float64, which silently
-// rounds values above 2^53 and would make StructuredContent disagree with the
-// byte-faithful text block.
+// jsonPayload must be the exact bytes placed in the text block so the two
+// representations never diverge. It is decoded with a json.Number-mode decoder
+// so large SigNoz integers (> 2^53) are preserved exactly — a plain unmarshal
+// into `any` routes numbers through float64 and would silently round them,
+// making StructuredContent disagree with the byte-faithful text block.
 func structuredResult(jsonPayload []byte) *mcp.CallToolResult {
 	dec := json.NewDecoder(bytes.NewReader(jsonPayload))
 	dec.UseNumber()
 	var structured any
 	if err := dec.Decode(&structured); err != nil {
-		// Fail open: if the payload isn't valid JSON (should not happen for a
-		// code-controlled tool), fall back to a plain text result so the caller
-		// still gets the data rather than an error.
+		// Fail open: invalid JSON (shouldn't happen for a code-controlled tool)
+		// falls back to a plain text result rather than erroring.
 		return mcp.NewToolResultText(string(jsonPayload))
 	}
-	// The text block carries the WHOLE payload, so StructuredContent must
-	// represent the whole payload too — exactly one JSON value with nothing
-	// after it. If there is trailing junk or a second value, the decoded
-	// `structured` only covers the first value and would silently disagree with
-	// block 0; fail open to text-only rather than advertise a divergent shape.
+	// Require exactly one JSON value: trailing junk or a second value would make
+	// `structured` cover only part of block 0, so fail open to text-only.
 	if err := dec.Decode(new(any)); err != io.EOF {
 		return mcp.NewToolResultText(string(jsonPayload))
 	}

@@ -54,8 +54,8 @@ func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	}
 }
 
-// TestHandleQueryMetrics_JSONFirstWithSeparateDecisionsNote pins the Family C
-// (#365) JSON-first contract for query_metrics: the raw backend payload is
+// TestHandleQueryMetrics_JSONFirstWithSeparateDecisionsNote pins the JSON-first
+// contract for query_metrics: the raw backend payload is
 // content block 0 (independently json.Unmarshal-able, matching the
 // search/aggregate siblings), and the decisions + backend-warning advisory is a
 // SEPARATE trailing block — never prepended into the JSON. query_metrics is a

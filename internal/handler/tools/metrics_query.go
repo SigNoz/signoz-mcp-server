@@ -191,12 +191,10 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
 
-	// JSON-first contract (Family C #365): the raw backend payload is content
-	// block 0 so it is independently parseable, matching the search/aggregate
-	// siblings (see resultWithNotes, aggregate_helper.go). The decisions and
-	// warnings that used to be prepended into the same block now go into a
-	// SEPARATE note block. query_metrics is a raw QB passthrough, so the JSON
-	// stays text-only (no structuredContent) — its upstream shape is variable.
+	// JSON-first: the raw backend payload is block 0 (matching the search/
+	// aggregate siblings); decisions/warnings go into a SEPARATE note block
+	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
+	// text-only (no structuredContent) — its upstream shape is variable.
 	note := buildMetricsDecisionsNote(decisions, resolved.Warnings, backendWarnings)
 	return resultWithNotes(result, note), nil
 }

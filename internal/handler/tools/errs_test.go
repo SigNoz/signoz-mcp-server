@@ -29,8 +29,8 @@ func resultText(t *testing.T, r *mcp.CallToolResult) string {
 }
 
 // resultCode extracts the machine-readable error code from an error result's
-// StructuredContent ({"code": ...}). Family C (#365) makes this a contract: an
-// MCP client branches on the code (retry vs fix args), so it must always be set.
+// StructuredContent ({"code": ...}). This is a contract: an MCP client branches
+// on the code (retry vs fix args), so it must always be set.
 func resultCode(t *testing.T, r *mcp.CallToolResult) string {
 	t.Helper()
 	if r == nil {

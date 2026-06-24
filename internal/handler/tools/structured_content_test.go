@@ -13,7 +13,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
-// Family C (#365) two-tier rule:
+// Two-tier structuredContent rule:
 //   - Code-controlled tools (paginate.Wrap list/summary, single-resource get_*,
 //     and synthesized-JSON mutations) carry structuredContent.
 //   - Raw QB passthrough tools (search/aggregate/query_metrics) do NOT, because

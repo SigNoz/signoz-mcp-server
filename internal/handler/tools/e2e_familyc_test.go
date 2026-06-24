@@ -1,7 +1,7 @@
 //go:build e2e
 
-// Package tools live E2E verification for the Family C (#365) output-envelope
-// changes: structuredContent on code-controlled tools, its ABSENCE on raw QB
+// Package tools live E2E verification for the output-envelope changes:
+// structuredContent on code-controlled tools, its ABSENCE on raw QB
 // passthrough tools, the JSON-first query_metrics envelope, and the error-code
 // taxonomy — all asserted against a real SigNoz instance.
 //
@@ -29,12 +29,12 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-// e2eHandlerC builds the Family C live handler by delegating to the shared
-// e2eHandler (defined in e2e_familyb_test.go — same package + build tag, so
-// the client/auth construction lives in one place) and then stamping the
-// SigNoz instance URL into the context. The URL is required for the per-row /
-// single-resource webUrl enrichment that several Family C tools run; B's helper
-// returns a bare context.Background(), so Family C adds it here.
+// e2eHandlerC builds the live handler by delegating to the shared e2eHandler
+// (defined in e2e_familyb_test.go — same package + build tag, so the client/auth
+// construction lives in one place) and then stamping the SigNoz instance URL
+// into the context. The URL is required for the per-row / single-resource webUrl
+// enrichment that several of these tools run; e2eHandler returns a bare
+// context.Background(), so e2eHandlerC adds it here.
 func e2eHandlerC(t *testing.T) (*Handler, context.Context) {
 	t.Helper()
 	h, ctx := e2eHandler(t) // skips when SIGNOZ_E2E_URL / SIGNOZ_E2E_TOKEN are unset
@@ -70,7 +70,7 @@ func firstText(r *mcp.CallToolResult) string {
 
 // assertStructuredMatchesText asserts the result carries StructuredContent that
 // round-trips to the SAME JSON value as the text block (block 0). This is the
-// core Family C contract for code-controlled tools.
+// core contract for code-controlled tools.
 func assertStructuredMatchesText(t *testing.T, name string, r *mcp.CallToolResult) {
 	t.Helper()
 	if r.StructuredContent == nil {
