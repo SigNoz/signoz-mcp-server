@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -22,7 +24,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific service, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
 		mcp.WithString("limit", mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
@@ -37,10 +39,10 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get top operations for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
-		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
+		mcp.WithArray("tags", mcp.WithStringItems(), mcp.Description("Optional list of tag filter strings. A JSON-array string (e.g. \"[\\\"k=v\\\"]\") is also accepted for back-compat.")),
 	)
 
 	addTool(s, getOpsTool, h.handleGetServiceTopOperations)
@@ -94,6 +96,38 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
+// parseTagsParam normalizes the optional "tags" argument into a JSON array
+// body for the upstream call. It accepts the canonical real array (the
+// declared WithArray-of-strings schema) as well as a legacy JSON-array string
+// for back-compat. An empty/absent value yields an empty array. Anything that
+// cannot be represented as a JSON array is rejected with a validation error.
+func parseTagsParam(v any) (json.RawMessage, error) {
+	switch t := v.(type) {
+	case nil:
+		return json.RawMessage("[]"), nil
+	case string:
+		trimmed := strings.TrimSpace(t)
+		if trimmed == "" {
+			return json.RawMessage("[]"), nil
+		}
+		// Legacy form: a JSON-array literal passed as a string.
+		var probe []any
+		if err := json.Unmarshal([]byte(trimmed), &probe); err != nil {
+			return nil, fmt.Errorf(`Parameter validation failed: "tags" must be an array of strings (or a JSON-array string). Example: {"tags": ["env=prod"]}`)
+		}
+		return json.RawMessage(trimmed), nil
+	case []any:
+		// Canonical form: a real JSON array (e.g. []string from the schema).
+		b, err := json.Marshal(t)
+		if err != nil {
+			return nil, fmt.Errorf(`Parameter validation failed: "tags" could not be encoded as a JSON array`)
+		}
+		return json.RawMessage(b), nil
+	default:
+		return nil, fmt.Errorf(`Parameter validation failed: "tags" must be an array of strings (or a JSON-array string). Example: {"tags": ["env=prod"]}`)
+	}
+}
+
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
@@ -109,11 +143,10 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
 
-	var tags json.RawMessage
-	if t, ok := args["tags"].(string); ok && t != "" {
-		tags = json.RawMessage(t)
-	} else {
-		tags = json.RawMessage("[]")
+	tags, err := parseTagsParam(args["tags"])
+	if err != nil {
+		h.logger.WarnContext(ctx, "Invalid tags parameter", slog.Any("type", args["tags"]))
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_service_top_operations",

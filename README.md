@@ -414,10 +414,10 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
   - `groupBy` (optional) - Comma-separated field names
   - `filter` (optional) - Filter expression
-  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
-  - `requestType` (optional) - time_series (default) or scalar
+  - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
@@ -428,7 +428,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. Use this to identify which metrics are driving the most ingestion volume and cost. Wraps `POST /api/v2/metrics/treemap`. Response fields: `metricName`, `percentage` (share of total sample volume), `totalValue` (absolute sample count).
 
 - **Parameters**:
-  - `timeRange` (optional) - Relative range (e.g. 24h, 3d, 7d, 30d; default: 7d; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '1h', '24h', '3d', '7d', '30d'; default: '7d'; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
 #### `signoz_list_alerts`
@@ -506,7 +506,7 @@ Updates an existing dashboard.
 Lists all services within a time range.
 
 - **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
 
@@ -516,10 +516,10 @@ Gets top operations for a specific service.
 
 - **Parameters**:
   - `service` (required) - Service name
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
-  - `tags` (optional) - JSON array of tags
+  - `tags` (optional) - List of tag filter strings (a JSON-array string is also accepted for back-compat)
 
 #### `signoz_get_alert_history`
 
@@ -527,12 +527,13 @@ Gets alert history timeline for a specific rule.
 
 - **Parameters**:
   - `ruleId` (required) - Alert rule ID
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
   - `end` (optional) - End timestamp in milliseconds (defaults to now)
+  - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
   - `offset` (optional) - Offset for pagination (default: 0)
   - `limit` (optional) - Limit number of results (default: 20)
-  - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
+  - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
 
 #### `signoz_list_views`
 
@@ -556,7 +557,7 @@ Get a single saved view by UUID.
 Search official SigNoz documentation with BM25 over indexed markdown content.
 
 - **Parameters**:
-  - `query` (required) - Natural-language or keyword query
+  - `searchText` (required) - Natural-language or keyword query (legacy alias: `query`, still accepted silently for backward compatibility)
   - `limit` (optional) - Maximum results to return (default: 10, max: 25)
   - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
   - `searchContext` - User's original question
@@ -619,7 +620,7 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
 #### `signoz_search_logs`
@@ -631,7 +632,7 @@ Search logs with flexible filtering across all services.
   - `service` (optional) - Service name to filter by
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
@@ -641,7 +642,7 @@ Search logs with flexible filtering across all services.
 Get available field keys for a given signal (metrics, traces, or logs).
 
 - **Parameters**:
-  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
   - `fieldContext` (optional) - Restrict to a field context: `resource`, `attribute` (alias `tag`), `scope`, `log`/`span`/`metric` (intrinsic/built-in columns), or `body` (JSON log body). Distinguishes intrinsic columns from user attributes.
@@ -653,7 +654,7 @@ Get available field keys for a given signal (metrics, traces, or logs).
 Get possible values for a specific field key for a given signal.
 
 - **Parameters**:
-  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
   - `searchText` (optional) - Filter values by substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
@@ -671,7 +672,7 @@ Search traces/spans with flexible filtering.
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status ('true' or 'false')
   - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
   - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
@@ -690,7 +691,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
 
 #### `signoz_get_trace_details`
@@ -699,7 +700,7 @@ Gets trace information including all spans and metadata.
 
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information (true/false, default: true)

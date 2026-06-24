@@ -39,6 +39,24 @@ const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
+// timeRangeDesc builds a single accurate description for the "timeRange"
+// param. All time-windowed tools share one parser (timeutil.ParseTimeRange),
+// so the accepted grammar is identical everywhere — only the per-tool default
+// window differs. defaultDesc is the trailing sentence stating that default
+// (e.g. `Defaults to '1h'.` or `Defaults to last 6 hours if not provided.`).
+func timeRangeDesc(defaultDesc string) string {
+	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
+		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
+		"Ignored when both start and end are provided. " + defaultDesc
+}
+
+// stepIntervalDesc is the single accurate description for the "stepInterval"
+// param wherever it appears as a seconds value with backend auto-selection.
+const stepIntervalDesc = "Time bucket size in seconds for time_series mode (optional). " +
+	"When omitted, the backend auto-selects an appropriate interval. " +
+	"Only set this if the user explicitly requests a specific granularity. " +
+	"Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
+
 // readFilterExpr returns the QB filter expression, accepting the canonical
 // "filter" key and the legacy "query" alias. TrimSpace is used only to decide
 // presence/equality; the returned expression preserves the caller's original

@@ -30,9 +30,9 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with a ruleId for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Default: 50.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
-		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. Default: true.")),
-		mcp.WithString("silenced", mcp.Description("Include silenced alerts. Values: 'true' or 'false'. Default: true.")),
-		mcp.WithString("inhibited", mcp.Description("Include inhibited alerts. Values: 'true' or 'false'. Default: true.")),
+		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. When omitted, defers to the Alertmanager default (true).")),
+		mcp.WithString("silenced", mcp.Description("Include silenced alerts. Values: 'true' or 'false'. When omitted, defers to the Alertmanager default (true).")),
+		mcp.WithString("inhibited", mcp.Description("Include inhibited alerts. Values: 'true' or 'false'. When omitted, defers to the Alertmanager default (true).")),
 		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
@@ -63,13 +63,13 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
 		mcp.WithString("ruleId", mcp.Required(), mcp.Description("Alert rule ID")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
+		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start timestamp in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End timestamp in milliseconds (optional, defaults to now)")),
-		mcp.WithString("state", mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
+		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
 		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.Description("Limit number of results (default: 20)")),
-		mcp.WithString("order", mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
+		mcp.WithString("order", mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
 	addTool(s, alertHistoryTool, h.handleGetAlertHistory)
 
