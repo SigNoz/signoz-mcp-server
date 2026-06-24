@@ -35,7 +35,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with service/operation/error/duration params using AND.")),
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
 		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
-		mcp.WithString("error", mcp.Description("Shortcut filter for error spans ('true' or 'false'). Equivalent to adding hasError = true/false to filter.")),
+		mcp.WithBoolean("error", mcp.Description("Shortcut filter for error spans (true or false). Equivalent to adding hasError = true/false to filter.")),
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
@@ -60,7 +60,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with shortcut params using AND.")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
 		mcp.WithString("operation", mcp.Description("Operation/span name to filter by.")),
-		mcp.WithString("error", mcp.Description("Filter by error status ('true' or 'false').")),
+		mcp.WithBoolean("error", mcp.Description("Filter by error status (true or false).")),
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to '1h'."))),
@@ -81,7 +81,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-		mcp.WithString("includeSpans", mcp.Description("Include detailed span information (true/false, default: true)")),
+		mcp.WithBoolean("includeSpans", mcp.Description("Include detailed span information (default: true).")),
 	)
 
 	addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)
@@ -90,12 +90,15 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	reqData, err := parseAggregateTracesArgs(args)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if reqData.StepIntervalWarning != "" {
+		h.logger.WarnContext(ctx, "aggregate_traces stepInterval dropped", slog.String("reason", reqData.StepIntervalWarning))
 	}
 
 	queryPayload := types.BuildAggregateQueryPayload("traces",
@@ -122,7 +125,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to aggregate traces", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped), nil
@@ -131,7 +134,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	reqData, err := parseSearchTracesArgs(args)
@@ -157,34 +160,39 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to search traces", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	result = h.enrichSearchTracesWebURL(ctx, result)
-	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.LimitClamped), nil
+	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped), nil
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
-	traceID, ok := args["traceId"].(string)
-	if !ok || traceID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "traceId" must be a non-empty string. Example: {"traceId": "abc123def456", "includeSpans": "true", "timeRange": "1h"}`), nil
+	traceID, errResult := requireStringArg(args, "traceId")
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 	includeSpans := true
-	if includeStr, ok := args["includeSpans"].(string); ok && includeStr != "" {
-		includeSpans = includeStr == "true"
+	if v, present, err := parseBoolArg(args, "includeSpans"); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	} else if present {
+		includeSpans = v
 	}
 
 	var startTime, endTime int64
 	if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+		return validationErrorf("start", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, start), nil
 	}
 	if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+		return validationErrorf("end", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, end), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
@@ -195,10 +203,10 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get trace details", slog.String("traceId", traceID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	result = enrichTraceWebURL(ctx, result, traceID)
-	return mcp.NewToolResultText(string(result)), nil
+	return structuredResult(result), nil
 }
 
 // enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough

@@ -62,7 +62,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	result, err := client.ListServices(ctx, start, end)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list services", slog.String("start", start), slog.String("end", end), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var services []any
@@ -93,7 +93,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 // tagsValidationError is the single canonical validation message for a
@@ -168,16 +168,15 @@ func validateAndMarshalTags(arr []any) (json.RawMessage, error) {
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
-
-	service, ok := args["service"].(string)
-	if !ok {
-		h.logger.WarnContext(ctx, "Invalid service parameter type", slog.Any("type", args["service"]))
-		return mcp.NewToolResultError(`Parameter validation failed: "service" must be a string. Example: {"service": "frontend-api", "timeRange": "1h"}`), nil
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
 	}
-	if service == "" {
-		h.logger.WarnContext(ctx, "Empty service parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
+
+	service, errResult := requireStringArg(args, "service")
+	if errResult != nil {
+		h.logger.WarnContext(ctx, "Invalid service parameter", slog.Any("type", args["service"]))
+		return errResult, nil
 	}
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
@@ -204,7 +203,7 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 			slog.String("end", end),
 			slog.String("service", service),
 			logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }

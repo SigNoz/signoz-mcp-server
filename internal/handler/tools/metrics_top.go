@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -49,11 +50,28 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 		slog.Int64("start", startTime),
 		slog.Int64("end", endTime))
 
-	result, err := client.GetTopMetrics(ctx, startTime, endTime, 100)
+	const topMetricsLimit = 100
+	result, err := client.GetTopMetrics(ctx, startTime, endTime, topMetricsLimit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get top metrics", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(string(result)), nil
+	// Completeness signal: this tool returns a fixed top-N (no offset paging), so
+	// the note tells the caller whether the list was truncated at the cap rather
+	// than suggesting offset pagination.
+	returnedRows, rowsKnown := countDataArrayRows(result, "samples")
+	var note string
+	if rowsKnown && returnedRows >= topMetricsLimit {
+		note = fmt.Sprintf(
+			"note: showing the top %d metrics by ingested sample volume; more metrics exist beyond this cap (hasMore=true). Narrow the time range to compare a different window.",
+			topMetricsLimit)
+	} else if rowsKnown {
+		note = fmt.Sprintf(
+			"note: returned %d metrics (top %d cap) — all ranked metrics returned for this window (hasMore=false).",
+			returnedRows, topMetricsLimit)
+	} else {
+		note = fmt.Sprintf("note: showing up to the top %d metrics by ingested sample volume.", topMetricsLimit)
+	}
+	return resultWithNotes(result, note), nil
 }

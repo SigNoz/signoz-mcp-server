@@ -55,7 +55,7 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 	}
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 	// Canonical param is "searchText"; "query" is a permanent legacy alias
 	// (the param was renamed for cross-tool consistency, #367). Read the
@@ -65,7 +65,7 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 		query, _ = args["query"].(string)
 	}
 	if query == "" {
-		return mcp.NewToolResultError(`parameter validation failed: "searchText" is required`), nil
+		return validationError("searchText", "is required"), nil
 	}
 	sectionSlug, _ := args["section_slug"].(string)
 	limit := parseLimit(args["limit"], 10)
@@ -104,11 +104,11 @@ func (h *Handler) handleFetchDoc(ctx context.Context, req mcp.CallToolRequest) (
 	}
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 	rawURL, _ := args["url"].(string)
 	if rawURL == "" {
-		return mcp.NewToolResultError(`parameter validation failed: "url" is required`), nil
+		return validationError("url", "is required"), nil
 	}
 	heading, _ := args["heading"].(string)
 	h.logger.DebugContext(ctx, "Tool called: signoz_fetch_doc",
