@@ -353,24 +353,43 @@ func resultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
 // open: it returns (0, false) on any shape it cannot walk so a completeness
 // note is simply omitted rather than wrong.
 func countQueryRangeRows(payload []byte) (int, bool) {
-	var resp struct {
+	// Walk with json.RawMessage at each level so we can distinguish a MISSING /
+	// null / non-array leaf from a genuinely-empty array. A missing or null
+	// "results"/"rows" key means we could not locate the rows — we must NOT
+	// claim count=0 (which would assert a misleading hasMore=false); fail open
+	// to (0, false) so the caller emits the generic "more may exist" note.
+	var envelope struct {
 		Data struct {
 			Data struct {
-				Results []struct {
-					Rows []json.RawMessage `json:"rows"`
-				} `json:"results"`
+				Results json.RawMessage `json:"results"`
 			} `json:"data"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(payload, &resp); err != nil {
+	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return 0, false
 	}
-	if resp.Data.Data.Results == nil {
+	results, ok := decodeNonNilArray(envelope.Data.Data.Results)
+	if !ok {
 		return 0, false
 	}
 	total := 0
-	for _, r := range resp.Data.Data.Results {
-		total += len(r.Rows)
+	for _, rawResult := range results {
+		var result struct {
+			// Use RawMessage (not []json.RawMessage) so a missing/null "rows"
+			// key on any single result is detectable rather than silently 0.
+			Rows json.RawMessage `json:"rows"`
+		}
+		if err := json.Unmarshal(rawResult, &result); err != nil {
+			return 0, false
+		}
+		rows, ok := decodeNonNilArray(result.Rows)
+		if !ok {
+			// A result object without a readable rows[] array — the v5 contract
+			// always emits "rows", so this is drift. Fail open rather than
+			// undercount and falsely report completeness.
+			return 0, false
+		}
+		total += len(rows)
 	}
 	return total, true
 }
@@ -378,8 +397,9 @@ func countQueryRangeRows(payload []byte) (int, bool) {
 // countDataArrayRows counts the elements of a JSON array nested at data.<key>
 // in a passthrough body (e.g. data.items for alert history, data.metrics for
 // list_metrics, data.samples for top_metrics). It fails open: it returns
-// (0, false) on any shape it cannot walk so a completeness note is omitted
-// rather than wrong.
+// (0, false) when the expected leaf is absent, null, or not an array, so a
+// completeness note is omitted (or falls back to the generic note) rather than
+// asserting a misleading hasMore=false.
 func countDataArrayRows(payload []byte, key string) (int, bool) {
 	var resp struct {
 		Data map[string]json.RawMessage `json:"data"`
@@ -387,15 +407,33 @@ func countDataArrayRows(payload []byte, key string) (int, bool) {
 	if err := json.Unmarshal(payload, &resp); err != nil {
 		return 0, false
 	}
-	raw, ok := resp.Data[key]
+	raw, present := resp.Data[key]
+	if !present {
+		return 0, false
+	}
+	arr, ok := decodeNonNilArray(raw)
 	if !ok {
 		return 0, false
 	}
+	return len(arr), true
+}
+
+// decodeNonNilArray reports whether raw is present and decodes as a NON-NIL JSON
+// array, returning its elements. A missing field (nil/empty raw), a literal
+// JSON null, or a non-array value all return (nil, false) so callers can treat
+// "couldn't locate the array" distinctly from "located an empty array".
+func decodeNonNilArray(raw json.RawMessage) ([]json.RawMessage, bool) {
+	if len(raw) == 0 {
+		return nil, false // key absent
+	}
 	var arr []json.RawMessage
 	if err := json.Unmarshal(raw, &arr); err != nil {
-		return 0, false
+		return nil, false // not an array
 	}
-	return len(arr), true
+	if arr == nil {
+		return nil, false // literal null
+	}
+	return arr, true
 }
 
 // completenessNote builds a pagination/completeness advisory for raw-passthrough

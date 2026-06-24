@@ -291,16 +291,193 @@ func TestHandleExecuteBuilderQuery_NoWarningSingleBlock(t *testing.T) {
 // --- N4: completeness notes ---
 
 func TestCountQueryRangeRows(t *testing.T) {
-	payload := []byte(`{"data":{"data":{"results":[{"rows":[{"data":{}},{"data":{}}]},{"rows":[{"data":{}}]}]}}}`)
-	n, ok := countQueryRangeRows(payload)
-	if !ok || n != 3 {
-		t.Fatalf("got (n=%d ok=%v), want (3, true)", n, ok)
+	tests := []struct {
+		name    string
+		payload string
+		wantN   int
+		wantOK  bool
+	}{
+		{
+			name:    "two results with rows",
+			payload: `{"data":{"data":{"results":[{"rows":[{"data":{}},{"data":{}}]},{"rows":[{"data":{}}]}]}}}`,
+			wantN:   3, wantOK: true,
+		},
+		{
+			name:    "genuinely empty results array is known-zero",
+			payload: `{"data":{"data":{"results":[]}}}`,
+			wantN:   0, wantOK: true,
+		},
+		{
+			name:    "result present with empty rows array is known-zero",
+			payload: `{"data":{"data":{"results":[{"rows":[]}]}}}`,
+			wantN:   0, wantOK: true,
+		},
+		// --- the should-fix cases: missing / null leaf must NOT count as 0 ---
+		{
+			name:    "result object missing rows key -> fail open",
+			payload: `{"data":{"data":{"results":[{}]}}}`,
+			wantOK:  false,
+		},
+		{
+			name:    "result object with null rows -> fail open",
+			payload: `{"data":{"data":{"results":[{"rows":null}]}}}`,
+			wantOK:  false,
+		},
+		{
+			name:    "results key missing -> fail open",
+			payload: `{"data":{"data":{}}}`,
+			wantOK:  false,
+		},
+		{
+			name:    "results null -> fail open",
+			payload: `{"data":{"data":{"results":null}}}`,
+			wantOK:  false,
+		},
+		{
+			name:    "results not an array -> fail open",
+			payload: `{"data":{"data":{"results":{}}}}`,
+			wantOK:  false,
+		},
+		{
+			name:    "rows not an array -> fail open",
+			payload: `{"data":{"data":{"results":[{"rows":{}}]}}}`,
+			wantOK:  false,
+		},
+		{
+			name:    "non-QB shape -> fail open",
+			payload: `{"data":[]}`,
+			wantOK:  false,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, ok := countQueryRangeRows([]byte(tt.payload))
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v (n=%d)", ok, tt.wantOK, n)
+			}
+			if tt.wantOK && n != tt.wantN {
+				t.Fatalf("n = %d, want %d", n, tt.wantN)
+			}
+		})
+	}
+}
 
-	// not the expected shape -> fail open
-	if _, ok := countQueryRangeRows([]byte(`{"data":[]}`)); ok {
-		t.Fatal("expected rowsKnown=false for non-QB shape")
+func TestCountDataArrayRows(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		key     string
+		wantN   int
+		wantOK  bool
+	}{
+		{name: "two items", payload: `{"data":{"items":[{},{}]}}`, key: "items", wantN: 2, wantOK: true},
+		{name: "empty array is known-zero", payload: `{"data":{"metrics":[]}}`, key: "metrics", wantN: 0, wantOK: true},
+		// --- the should-fix cases ---
+		{name: "key absent -> fail open", payload: `{"data":{}}`, key: "items", wantOK: false},
+		{name: "key null -> fail open", payload: `{"data":{"metrics":null}}`, key: "metrics", wantOK: false},
+		{name: "key not an array -> fail open", payload: `{"data":{"samples":{}}}`, key: "samples", wantOK: false},
+		{name: "data missing -> fail open", payload: `{"status":"success"}`, key: "items", wantOK: false},
+		{name: "data null -> fail open", payload: `{"data":null}`, key: "items", wantOK: false},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, ok := countDataArrayRows([]byte(tt.payload), tt.key)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v (n=%d)", ok, tt.wantOK, n)
+			}
+			if tt.wantOK && n != tt.wantN {
+				t.Fatalf("n = %d, want %d", n, tt.wantN)
+			}
+		})
+	}
+}
+
+// When the row count can't be located, the per-tool handlers must emit the
+// generic "limit N applied" note instead of a misleading hasMore=false.
+func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
+	t.Run("search_logs missing rows key", func(t *testing.T) {
+		mock := &client.MockClient{
+			QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+				// result object present but no rows[] -> cannot count
+				return json.RawMessage(`{"status":"success","data":{"data":{"results":[{}]}}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", map[string]any{"limit": "100"}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if strings.Contains(note, "hasMore=false") {
+			t.Fatalf("must not assert hasMore=false on un-countable body; note=%q", note)
+		}
+		if !strings.Contains(note, "limit 100 applied") {
+			t.Fatalf("expected generic fallback note, got %q", note)
+		}
+	})
+
+	t.Run("list_metrics null metrics", func(t *testing.T) {
+		mock := &client.MockClient{
+			ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
+				return json.RawMessage(`{"status":"success","data":{"metrics":null}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleListMetrics(testCtx(), makeToolRequest("signoz_list_metrics", map[string]any{"limit": "50"}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if strings.Contains(note, "hasMore=false") {
+			t.Fatalf("must not assert hasMore=false on null metrics; note=%q", note)
+		}
+		if !strings.Contains(note, "limit 50 applied") {
+			t.Fatalf("expected generic fallback note, got %q", note)
+		}
+	})
+
+	t.Run("get_alert_history missing items", func(t *testing.T) {
+		mock := &client.MockClient{
+			GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+				return json.RawMessage(`{"data":{}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
+			"ruleId": "rule-x", "limit": "20",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if strings.Contains(note, "hasMore=false") {
+			t.Fatalf("must not assert hasMore=false on missing items; note=%q", note)
+		}
+		if !strings.Contains(note, "limit 20 applied") {
+			t.Fatalf("expected generic fallback note, got %q", note)
+		}
+	})
+
+	t.Run("get_top_metrics null samples", func(t *testing.T) {
+		mock := &client.MockClient{
+			GetTopMetricsFn: func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+				return json.RawMessage(`{"status":"success","data":{"samples":null}}`), nil
+			},
+		}
+		h := newTestHandler(mock)
+		res, err := h.handleGetTopMetrics(testCtx(), makeToolRequest("signoz_get_top_metrics", map[string]any{}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		note := res.Content[1].(mcp.TextContent).Text
+		if strings.Contains(note, "hasMore=false") {
+			t.Fatalf("must not assert hasMore=false on null samples; note=%q", note)
+		}
+		// top_metrics generic branch: "showing up to the top 100"
+		if !strings.Contains(note, "up to the top 100") {
+			t.Fatalf("expected top-metrics generic fallback note, got %q", note)
+		}
+	})
 }
 
 func TestCompletenessNote_HasMore(t *testing.T) {
