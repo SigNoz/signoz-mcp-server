@@ -32,6 +32,8 @@ const (
 	secondsUpperBound = int64(1e11)
 	millisUpperBound  = int64(1e14)
 	microsUpperBound  = int64(1e17)
+
+	maxInt64 = int64(^uint64(0) >> 1) // 9223372036854775807
 )
 
 // ParseTimeRange parses time range strings like "2h", "2d", "30m", "7d"
@@ -54,32 +56,52 @@ func ParseTimeRange(timeRange string) (time.Duration, error) {
 
 // normalizeEpochToUnit takes a raw positive epoch integer, auto-detects whether
 // it is expressed in seconds / millis / micros / nanos by magnitude, and
-// converts it to the requested canonical unit ("ms" or "ns"). Non-positive
-// values are returned unchanged.
+// converts it DIRECTLY to the requested canonical unit ("ms" or "ns").
+// Non-positive values are returned unchanged.
+//
+// We convert source→target directly (no nanosecond intermediate) so a large
+// in-band value cannot overflow int64. For example a seconds value near the
+// 1e11 band ceiling, scaled by 1e9 to reach nanos, would overflow; converting
+// straight to ms (×1e3) or, for a ns target, scaling by the exact source→ns
+// factor keeps every realistic timestamp well within int64.
 func normalizeEpochToUnit(raw int64, unit string) int64 {
 	if raw <= 0 {
 		return raw
 	}
 
-	// Convert the detected magnitude to nanoseconds first, then down to the
-	// requested unit. This keeps the band logic in one place.
-	var nanos int64
+	// Detect the source unit by magnitude.
+	var sourceUnitNanos int64 // how many nanoseconds one unit of the source equals
 	switch {
 	case raw < secondsUpperBound:
-		nanos = raw * int64(time.Second)
+		sourceUnitNanos = int64(time.Second) // seconds → 1e9 ns
 	case raw < millisUpperBound:
-		nanos = raw * int64(time.Millisecond)
+		sourceUnitNanos = int64(time.Millisecond) // millis  → 1e6 ns
 	case raw < microsUpperBound:
-		nanos = raw * int64(time.Microsecond)
+		sourceUnitNanos = int64(time.Microsecond) // micros  → 1e3 ns
 	default:
-		nanos = raw
+		sourceUnitNanos = 1 // nanos → 1 ns
 	}
 
 	switch unit {
 	case UnitNanos:
-		return nanos
-	default: // UnitMillis
-		return nanos / int64(time.Millisecond)
+		// Scale source→ns by the exact factor, guarding against int64 overflow
+		// for absurdly far-future inputs (clamp rather than wrap negative).
+		if raw <= maxInt64/sourceUnitNanos {
+			return raw * sourceUnitNanos
+		}
+		return maxInt64
+	default: // UnitMillis — divide ns-per-source by ns-per-ms to get the ms factor.
+		const nsPerMs = int64(time.Millisecond)
+		if sourceUnitNanos >= nsPerMs {
+			// source is coarser than (or equal to) ms: multiply.
+			factor := sourceUnitNanos / nsPerMs // 1 (ms) or 1000 (s)
+			if raw <= maxInt64/factor {
+				return raw * factor
+			}
+			return maxInt64
+		}
+		// source is finer than ms (micros or nanos): divide.
+		return raw / (nsPerMs / sourceUnitNanos)
 	}
 }
 

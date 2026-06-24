@@ -352,6 +352,10 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 			req := makeToolRequest("signoz_update_view", map[string]any{
 				key: "v1",
 				"view": map[string]any{
+					// Server-populated "id" is included to prove it gets stripped
+					// from the outgoing body (matches the signoz_get_view shape a
+					// caller is told to paste back under "view").
+					"id":         "v1",
 					"name":       "My View",
 					"sourcePage": "logs",
 					"compositeQuery": map[string]any{
@@ -375,10 +379,15 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 			if capturedID != "v1" {
 				t.Fatalf("backend viewID = %q, want v1 (via %q)", capturedID, key)
 			}
-			// The top-level id/viewId path param must not leak into the body.
+			// Neither the canonical "id" nor the legacy "viewId" path param may
+			// leak into the marshalled view body (id is also a server-populated
+			// SavedView field that must be stripped).
 			var parsed map[string]any
 			if err := json.Unmarshal(capturedBody, &parsed); err != nil {
 				t.Fatalf("parse body: %v", err)
+			}
+			if _, present := parsed["id"]; present {
+				t.Error(`"id" should not leak into the view body`)
 			}
 			if _, present := parsed["viewId"]; present {
 				t.Error(`"viewId" should not leak into the view body`)

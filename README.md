@@ -344,27 +344,27 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
-| `signoz_get_alert` | Get an alert rule definition by ID via GET /api/v2/rules/{ruleId} |
-| `signoz_get_alert_history` | Get alert state history timeline for a rule |
+| `signoz_get_alert` | Get an alert rule definition by `id` (legacy `ruleId` accepted) via GET /api/v2/rules/{id} |
+| `signoz_get_alert_history` | Get alert state history timeline for a rule (`id`; legacy `ruleId` accepted) |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
-| `signoz_update_alert` | Update an alert rule by UUIDv7 via PUT /api/v2/rules/{ruleId} |
-| `signoz_delete_alert` | Delete an alert rule by UUIDv7 via DELETE /api/v2/rules/{ruleId} |
+| `signoz_update_alert` | Update an alert rule by UUIDv7 `id` (legacy `ruleId` accepted) via PUT /api/v2/rules/{id} |
+| `signoz_delete_alert` | Delete an alert rule by UUIDv7 `id` (legacy `ruleId` accepted) via DELETE /api/v2/rules/{id} |
 | `signoz_list_dashboards` | List all dashboards with summaries |
-| `signoz_get_dashboard` | Get full dashboard configuration |
+| `signoz_get_dashboard` | Get full dashboard configuration by `id` (legacy `uuid` accepted) |
 | `signoz_create_dashboard` | Create a new dashboard |
-| `signoz_update_dashboard` | Update an existing dashboard |
-| `signoz_delete_dashboard` | Delete a dashboard by UUID |
+| `signoz_update_dashboard` | Update an existing dashboard by `id` (legacy `uuid` accepted) |
+| `signoz_delete_dashboard` | Delete a dashboard by `id` (legacy `uuid` accepted) |
 | `signoz_import_dashboard` | Create a dashboard from a curated SigNoz/dashboards template by path |
 | `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics/meter) |
-| `signoz_get_view` | Get a saved view by UUID |
+| `signoz_get_view` | Get a saved view by `id` (legacy `viewId` accepted) |
 | `signoz_search_docs` | Search official SigNoz docs for product, setup, instrumentation, config, API, deployment, or troubleshooting questions |
 | `signoz_fetch_doc` | Fetch full markdown for one official SigNoz docs page or heading |
 | `signoz_create_view` | Create a new saved Explorer view |
-| `signoz_update_view` | Replace an existing saved view (full-body PUT) |
-| `signoz_delete_view` | Delete a saved view by UUID |
+| `signoz_update_view` | Replace an existing saved view (full-body PUT; `id`, legacy `viewId` accepted) |
+| `signoz_delete_view` | Delete a saved view by `id` (legacy `viewId` accepted) |
 | `signoz_aggregate_logs` | Aggregate logs (count, avg, p99, etc.) with grouping |
 | `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_traces` | Aggregate trace statistics with grouping |

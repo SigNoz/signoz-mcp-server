@@ -38,8 +38,8 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 				"Results are paginated. Use 'limit' and 'offset' to page through large result sets. "+
 				"The response includes pagination metadata: total count, hasMore flag, and nextOffset for the next page.",
 		),
-		mcp.WithString("limit", mcp.Description("Maximum number of channels to return per page. Default: 50.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of channels to return per page. Default: 50, max: 1000 (higher values are clamped).")),
+		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
 	)
 
 	addTool(s, listChannelsTool, h.handleListNotificationChannels)

@@ -127,6 +127,59 @@ func TestNormalizeEpochToUnit(t *testing.T) {
 	}
 }
 
+// TestNormalizeEpochToUnit_BandCeilingsNoOverflow pins that values near each
+// band ceiling (1e11 seconds / 1e14 millis / 1e17 micros) convert without
+// int64 overflow, for both ms and ns targets. The seconds-near-ceiling × 1e9
+// case is the one that overflowed when conversion went through a nanosecond
+// intermediate; it must now produce a correct, positive result (ms) or a
+// clamped, still-positive value (ns).
+func TestNormalizeEpochToUnit_BandCeilingsNoOverflow(t *testing.T) {
+	// Just below each ceiling — these stay in the lower band.
+	secNearCeil := secondsUpperBound - 1 // detected as seconds
+	msNearCeil := millisUpperBound - 1   // detected as millis
+	usNearCeil := microsUpperBound - 1   // detected as micros
+
+	tests := []struct {
+		name string
+		raw  int64
+		unit string
+		want int64
+	}{
+		// seconds → ms: ×1000, no overflow.
+		{"sec ceiling -> ms", secNearCeil, UnitMillis, secNearCeil * 1000},
+		// millis → ms: identity.
+		{"ms ceiling -> ms", msNearCeil, UnitMillis, msNearCeil},
+		// micros → ms: /1000.
+		{"us ceiling -> ms", usNearCeil, UnitMillis, usNearCeil / 1000},
+		// millis → ns: ×1e6, stays in int64 (1e14×1e6 = 1e20 > maxInt64 → clamp).
+		{"ms ceiling -> ns clamps", msNearCeil, UnitNanos, maxInt64},
+		// micros → ns: ×1e3 (1e17×1e3 = 1e20 > maxInt64 → clamp).
+		{"us ceiling -> ns clamps", usNearCeil, UnitNanos, maxInt64},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeEpochToUnit(tt.raw, tt.unit)
+			if got != tt.want {
+				t.Fatalf("normalizeEpochToUnit(%d, %q) = %d, want %d", tt.raw, tt.unit, got, tt.want)
+			}
+			if got < 0 {
+				t.Fatalf("normalizeEpochToUnit(%d, %q) = %d is negative (overflow wrap)", tt.raw, tt.unit, got)
+			}
+		})
+	}
+
+	// The specific reviewer case: a seconds value near the 1e11 ceiling, which
+	// previously overflowed when scaled to nanos first. On the ms target it must
+	// be exact; on the ns target it overflows the int64 range and must clamp
+	// (never wrap negative).
+	if got := normalizeEpochToUnit(secNearCeil, UnitMillis); got != secNearCeil*1000 || got < 0 {
+		t.Fatalf("seconds-near-ceiling -> ms = %d, want %d (positive, exact)", got, secNearCeil*1000)
+	}
+	if got := normalizeEpochToUnit(secNearCeil, UnitNanos); got < 0 {
+		t.Fatalf("seconds-near-ceiling -> ns = %d, must not wrap negative", got)
+	}
+}
+
 // TestGetTimestampsWithDefaultsAutoDetectsMagnitude verifies that an explicit
 // start/end pair given in any magnitude is normalized to the canonical unit.
 func TestGetTimestampsWithDefaultsAutoDetectsMagnitude(t *testing.T) {
