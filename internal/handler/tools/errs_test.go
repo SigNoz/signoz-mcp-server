@@ -28,11 +28,37 @@ func resultText(t *testing.T, r *mcp.CallToolResult) string {
 	return tc.Text
 }
 
+// resultCode extracts the machine-readable error code from an error result's
+// StructuredContent ({"code": ...}). This is a contract: an MCP client branches
+// on the code (retry vs fix args), so it must always be set.
+func resultCode(t *testing.T, r *mcp.CallToolResult) string {
+	t.Helper()
+	if r == nil {
+		t.Fatal("nil result")
+	}
+	if r.StructuredContent == nil {
+		t.Fatal("error result is missing StructuredContent")
+	}
+	m, ok := r.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("StructuredContent is %T, want map[string]any", r.StructuredContent)
+	}
+	code, ok := m["code"].(string)
+	if !ok {
+		t.Fatalf("StructuredContent has no string \"code\": %#v", r.StructuredContent)
+	}
+	return code
+}
+
 func TestValidationError_CanonicalForm(t *testing.T) {
-	got := resultText(t, validationError("ruleId", "must be a string"))
+	res := validationError("ruleId", "must be a string")
+	got := resultText(t, res)
 	want := `Parameter validation failed: "ruleId" must be a string`
 	if got != want {
 		t.Fatalf("validationError = %q, want %q", got, want)
+	}
+	if code := resultCode(t, res); code != CodeValidationFailed {
+		t.Fatalf("validationError code = %q, want %q", code, CodeValidationFailed)
 	}
 }
 
@@ -212,9 +238,49 @@ func TestNotAConfigObjectError_CanonicalForm(t *testing.T) {
 }
 
 func TestUpstreamError_UniformPrefix(t *testing.T) {
-	got := resultText(t, upstreamError(errors.New("connection refused")))
+	res := upstreamError(errors.New("connection refused"))
+	got := resultText(t, res)
 	want := "SigNoz API error: connection refused"
 	if got != want {
 		t.Fatalf("upstreamError = %q, want %q", got, want)
 	}
+	if code := resultCode(t, res); code != CodeUpstreamError {
+		t.Fatalf("upstreamError code = %q, want %q", code, CodeUpstreamError)
+	}
+}
+
+// TestErrorHelpers_StructuredCodes pins the full code taxonomy each helper
+// emits in StructuredContent. The text block stays unchanged (covered by the
+// per-helper tests above); this asserts the additive machine-readable code.
+func TestErrorHelpers_StructuredCodes(t *testing.T) {
+	cases := []struct {
+		name string
+		res  *mcp.CallToolResult
+		want string
+	}{
+		{"validationError", validationError("f", "is bad"), CodeValidationFailed},
+		{"validationErrorf", validationErrorf("f", "got %q", "x"), CodeValidationFailed},
+		{"requireStringArg-wrong-type", mustErr(requireStringArg(map[string]any{"id": 1}, "id")), CodeValidationFailed},
+		{"requireStringArg-empty", mustErr(requireStringArg(map[string]any{}, "id")), CodeValidationFailed},
+		{"notAJSONObjectError", notAJSONObjectError(), CodeValidationFailed},
+		{"notAConfigObjectError", notAConfigObjectError(), CodeValidationFailed},
+		{"upstreamError", upstreamError(errors.New("boom")), CodeUpstreamError},
+		{"notFoundError", notFoundError("no such alert"), CodeNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resultCode(t, tc.res); got != tc.want {
+				t.Fatalf("%s code = %q, want %q", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+// mustErr unwraps the (value, *CallToolResult) return of requireStringArg,
+// asserting the error result is non-nil so it can be used inline in a table.
+func mustErr(_ string, r *mcp.CallToolResult) *mcp.CallToolResult {
+	if r == nil {
+		panic("expected a non-nil error result")
+	}
+	return r
 }

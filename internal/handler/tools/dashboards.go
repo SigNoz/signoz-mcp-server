@@ -210,7 +210,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -235,7 +235,7 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 		return upstreamError(err), nil
 	}
 	data = enrichDashboardWebURL(ctx, data, uuid)
-	return mcp.NewToolResultText(string(data)), nil
+	return structuredResult(data), nil
 }
 
 // enrichDashboardWebURL injects a webUrl deep link into a single-dashboard

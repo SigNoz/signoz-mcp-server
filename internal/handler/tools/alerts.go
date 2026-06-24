@@ -218,7 +218,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -283,7 +283,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -309,7 +309,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	}
 
 	respJSON = enrichAlertWebURL(ctx, respJSON, ruleID)
-	return mcp.NewToolResultText(string(respJSON)), nil
+	return structuredResult(respJSON), nil
 }
 
 // enrichAlertWebURL injects a webUrl deep link into a single-alert passthrough
@@ -475,7 +475,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID)), nil
+	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID))), nil
 }
 
 func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -502,7 +502,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID)), nil
+	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID))), nil
 }
 
 // validateAlertPayload runs the alert validation pipeline and the

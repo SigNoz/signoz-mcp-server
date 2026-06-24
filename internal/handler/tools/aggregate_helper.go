@@ -393,6 +393,21 @@ func resultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
 	return res
 }
 
+// structuredResultWithNotes is structuredResult plus trailing advisory note
+// blocks (as resultWithNotes appends them). For code-controlled tools that must
+// surface a human-readable warning (e.g. a post-create test-send failure)
+// without dropping the stable StructuredContent shape.
+func structuredResultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
+	res := structuredResult(payload)
+	for _, note := range notes {
+		if strings.TrimSpace(note) == "" {
+			continue
+		}
+		res.Content = append(res.Content, mcp.NewTextContent(note))
+	}
+	return res
+}
+
 // countQueryRangeRows sums the number of rows across all results in a QB v5
 // query_range passthrough body. The expected nesting is
 // data.data.results[].rows[] (a render.Success envelope wrapping a

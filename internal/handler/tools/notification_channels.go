@@ -200,7 +200,7 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 		h.logger.ErrorContext(ctx, "Failed to get notification channel", slog.String("id", id), logpkg.ErrAttr(err))
 		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(resp)), nil
+	return structuredResult(resp), nil
 }
 
 func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -223,7 +223,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 		h.logger.ErrorContext(ctx, "Failed to delete notification channel", slog.String("id", id), logpkg.ErrAttr(err))
 		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","id":%q}`, id)), nil
+	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","id":%q}`, id))), nil
 }
 
 func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -297,7 +297,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -383,7 +383,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	// Fail OPEN: the channel WAS created, so we do not flip IsError (avoids a
 	// misleading error and a duplicate-create retry). The test-send failure is
 	// surfaced as a prominent advisory note alongside the structured body.
-	return resultWithNotes(resultJSON, testFailureNote), nil
+	return structuredResultWithNotes(resultJSON, testFailureNote), nil
 }
 
 // testNotificationWarningNote formats the prominent advisory shown when a
@@ -492,7 +492,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 
 	// Fail OPEN: the channel WAS updated, so we do not flip IsError. The
 	// test-send failure is surfaced as a prominent advisory note.
-	return resultWithNotes(resultJSON, testFailureNote), nil
+	return structuredResultWithNotes(resultJSON, testFailureNote), nil
 }
 
 func getStringParam(args map[string]any, key string) string {

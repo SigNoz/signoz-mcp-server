@@ -396,7 +396,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -420,7 +420,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 		h.logger.ErrorContext(ctx, "Failed to get view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
 		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(data)), nil
+	return structuredResult(data), nil
 }
 
 func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

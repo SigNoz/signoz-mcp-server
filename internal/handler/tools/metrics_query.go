@@ -191,22 +191,30 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
 
-	// Build response with decisions block
-	var response strings.Builder
-	response.WriteString("[Decisions applied]\n")
+	// JSON-first: the raw backend payload is block 0 (matching the search/
+	// aggregate siblings); decisions/warnings go into a SEPARATE note block
+	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
+	// text-only (no structuredContent) — its upstream shape is variable.
+	note := buildMetricsDecisionsNote(decisions, resolved.Warnings, backendWarnings)
+	return resultWithNotes(result, note), nil
+}
+
+// buildMetricsDecisionsNote renders the decisions/warnings advisory block that
+// query_metrics surfaces alongside (not prepended into) its JSON payload. It is
+// emitted as a separate content block via resultWithNotes.
+func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []string) string {
+	var b strings.Builder
+	b.WriteString("[Decisions applied]\n")
 	for _, d := range decisions {
-		response.WriteString(fmt.Sprintf("  %s\n", d))
+		b.WriteString(fmt.Sprintf("  %s\n", d))
 	}
-	for _, w := range resolved.Warnings {
-		response.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
+	for _, w := range defaultWarnings {
+		b.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
 	}
 	for _, w := range backendWarnings {
-		response.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
+		b.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
 	}
-	response.WriteString("---\n")
-	response.WriteString(string(result))
-
-	return mcp.NewToolResultText(response.String()), nil
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // fetchMetricMetadata calls ListMetrics to get type/temporality/isMonotonic for a metric.
