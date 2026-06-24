@@ -313,6 +313,13 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("Parameter validation failed: " + err.Error()), nil
+	}
+
 	startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 	var start, end int64

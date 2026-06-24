@@ -21,6 +21,22 @@ func TestResolveTimestampsEndOnlyUsesDefaultRange(t *testing.T) {
 	}
 }
 
+// TestResolveTimestampsMalformedStartErrorsLoudly pins that a present-but-malformed
+// start/end propagates an error out of resolveTimestamps instead of silently
+// falling back to the default window (the silent-failure anti-pattern).
+func TestResolveTimestampsMalformedStartErrorsLoudly(t *testing.T) {
+	if _, _, err := resolveTimestamps(map[string]any{"start": "yesterday"}, "1h"); err == nil {
+		t.Fatal("resolveTimestamps with malformed start = nil error, want loud validation error")
+	}
+	if _, _, err := resolveTimestamps(map[string]any{"end": "soon"}, "1h"); err == nil {
+		t.Fatal("resolveTimestamps with malformed end = nil error, want loud validation error")
+	}
+	// Sanity: a valid explicit window still succeeds.
+	if _, _, err := resolveTimestamps(map[string]any{"start": "1711123200000", "end": "1711130400000"}, "1h"); err != nil {
+		t.Fatalf("resolveTimestamps with valid window: unexpected error: %v", err)
+	}
+}
+
 func TestParseAggregateArgs_LimitClamped(t *testing.T) {
 	over, err := parseAggregateArgs(map[string]any{
 		"aggregation": "count",

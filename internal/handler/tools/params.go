@@ -94,6 +94,21 @@ func parseLimit(v any, fallback int) int {
 	return int(value)
 }
 
+// intOrStringType overrides a property's JSON-Schema "type" with the union
+// ["integer","string"]. We need this because parseLimit (and looseInt) accept a
+// limit as EITHER a JSON number or a string, but mcp.WithString advertises only
+// "string". A schema-validating MCP client that naturally sends {"limit": 3}
+// (a JSON number — totally normal for a limit) would then be rejected before the
+// handler runs. Advertising the union keeps the schema honest about what the
+// parser already accepts. Apply it AFTER mcp.WithString so it overwrites the
+// "string" type the option set. It serializes to a JSON-Schema type array
+// (`"type": ["integer","string"]`), which is valid Draft-07/2020-12.
+func intOrStringType() mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["type"] = []string{"integer", "string"}
+	}
+}
+
 // validRequestTypes maps the user-facing requestType values accepted by the
 // aggregate and metrics tools to true. This is an MCP-owned, stable enum (not a
 // backend-evolving set), so we hard-validate it at the arg layer and reject

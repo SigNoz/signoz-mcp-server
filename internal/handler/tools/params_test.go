@@ -37,6 +37,57 @@ func TestParseLimit_NumberAndString(t *testing.T) {
 	}
 }
 
+// TestIntOrStringType_DocsLimitAdvertisesUnion pins that search_docs's limit
+// property advertises the JSON-Schema union ["integer","string"] so a
+// schema-validating client may send {"limit": 3} (a JSON number) without being
+// rejected before the handler runs — matching parseLimit's number-or-string
+// acceptance. It serializes the same way the wire schema does.
+func TestIntOrStringType_DocsLimitAdvertisesUnion(t *testing.T) {
+	tool := mcp.NewTool("signoz_search_docs",
+		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum results to return.")),
+	)
+
+	b, err := json.Marshal(tool)
+	if err != nil {
+		t.Fatalf("marshal tool: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal tool JSON: %v", err)
+	}
+	inputSchema, ok := doc["inputSchema"].(map[string]any)
+	if !ok {
+		t.Fatalf("inputSchema = %#v, want object", doc["inputSchema"])
+	}
+	props, ok := inputSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("inputSchema.properties = %#v, want object", inputSchema["properties"])
+	}
+	limit, ok := props["limit"].(map[string]any)
+	if !ok {
+		t.Fatalf("limit property = %#v, want object", props["limit"])
+	}
+	gotType, ok := limit["type"].([]any)
+	if !ok {
+		t.Fatalf("limit.type = %#v, want JSON array (type union)", limit["type"])
+	}
+	if len(gotType) != 2 || gotType[0] != "integer" || gotType[1] != "string" {
+		t.Fatalf("limit.type = %#v, want [\"integer\",\"string\"]", gotType)
+	}
+	// The DefaultString must survive alongside the union override.
+	if limit["default"] != "10" {
+		t.Fatalf("limit.default = %#v, want \"10\"", limit["default"])
+	}
+
+	// And parseLimit (what the handler uses) accepts both forms.
+	if got := parseLimit(float64(3), 10); got != 3 {
+		t.Fatalf("parseLimit(number 3) = %d, want 3", got)
+	}
+	if got := parseLimit("3", 10); got != 3 {
+		t.Fatalf("parseLimit(string \"3\") = %d, want 3", got)
+	}
+}
+
 // TestIntArg_NumberOrString pins the shared loose int parser used by limit/offset.
 func TestIntArg_NumberOrString(t *testing.T) {
 	cases := []struct {

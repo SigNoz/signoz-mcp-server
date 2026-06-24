@@ -172,6 +172,13 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(`Parameter validation failed: "traceId" must be a non-empty string. Example: {"traceId": "abc123def456", "includeSpans": "true", "timeRange": "1h"}`), nil
 	}
 
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("Parameter validation failed: " + err.Error()), nil
+	}
+
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 	includeSpans := true

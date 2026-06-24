@@ -183,6 +183,12 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 }
 
 func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
+	// Reject a present-but-malformed start/end LOUDLY before falling through to
+	// the default window. GetTimestampsWithDefaults silently defaults on a bad
+	// value, which would hand back the wrong time range with no error.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		return 0, 0, err
+	}
 	if _, ok := args["timeRange"]; !ok {
 		_, hasStart := args["start"]
 		if !hasStart {

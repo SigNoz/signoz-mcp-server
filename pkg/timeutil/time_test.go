@@ -258,3 +258,45 @@ func TestGetTimestampsWithDefaultsNanoBackwardCompat(t *testing.T) {
 		t.Fatalf("ns values should round-trip unchanged on a ns tool: start=%s end=%s", start, end)
 	}
 }
+
+// TestValidateExplicitTimestamps pins that a PRESENT-but-malformed start/end is
+// rejected loudly, while ABSENT and EMPTY-STRING (both mean "use the default
+// window") return nil. This guards the silent-failure regression where
+// GetTimestampsWithDefaults silently falls back to the default window for a
+// malformed value, handing back the wrong time range with no error.
+func TestValidateExplicitTimestamps(t *testing.T) {
+	const maxExactFloat = float64(1<<53 - 1)
+
+	tests := []struct {
+		name    string
+		args    map[string]any
+		wantErr bool
+	}{
+		{"malformed string start", map[string]any{"start": "yesterday"}, true},
+		{"malformed string end", map[string]any{"end": "soon"}, true},
+		{"valid string start", map[string]any{"start": "1711130400000"}, false},
+		{"valid string pair", map[string]any{"start": "1711123200000", "end": "1711130400000"}, false},
+		{"absent", map[string]any{}, false},
+		{"empty string start", map[string]any{"start": ""}, false},
+		{"empty string end", map[string]any{"end": ""}, false},
+		{"nil value", map[string]any{"start": nil}, false},
+		{"valid json.Number", map[string]any{"start": json.Number("1711130400000")}, false},
+		{"malformed json.Number", map[string]any{"start": json.Number("12.5")}, true},
+		{"valid float64", map[string]any{"start": float64(1711130400000)}, false},
+		{"non-integral float64", map[string]any{"start": float64(1711130400000.5)}, true},
+		{"precision-lost float64", map[string]any{"start": maxExactFloat + 2}, true},
+		{"valid int", map[string]any{"start": 1711130400000}, false},
+		{"unsupported type bool", map[string]any{"start": true}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateExplicitTimestamps(tt.args)
+			if tt.wantErr && err == nil {
+				t.Fatalf("ValidateExplicitTimestamps(%#v) = nil, want error", tt.args)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("ValidateExplicitTimestamps(%#v) = %v, want nil", tt.args, err)
+			}
+		})
+	}
+}

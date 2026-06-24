@@ -49,6 +49,13 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("Parameter validation failed: " + err.Error()), nil
+	}
+
 	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
@@ -105,6 +112,13 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 	if service == "" {
 		h.logger.WarnContext(ctx, "Empty service parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
+	}
+
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return mcp.NewToolResultError("Parameter validation failed: " + err.Error()), nil
 	}
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)

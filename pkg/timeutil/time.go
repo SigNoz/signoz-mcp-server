@@ -172,60 +172,108 @@ func formatInt(v int64) string {
 // types. A float64 is accepted ONLY when it is integral and within the exact
 // float53 range — a larger float has already lost precision, so we treat it as
 // absent rather than emit a silently-truncated timestamp.
+//
+// NOTE: this returns (0, false) for BOTH "absent" and "present-but-unparseable".
+// GetTimestampsWithDefaults intentionally collapses both into "use the default
+// window" so it can never fail. Callers that must reject a present-but-malformed
+// value LOUDLY (the silent-failure anti-pattern) should pre-validate with
+// ValidateExplicitTimestamps, which distinguishes the two cases.
 func timestampArgInt(args map[string]any, key string) (int64, bool) {
 	v, ok := args[key]
 	if !ok {
 		return 0, false
 	}
+	n, _, ok := parseEpochArg(v)
+	return n, ok
+}
 
+// parseEpochArg classifies a single timestamp argument value into three states:
+//   - present=false: the value is absent (nil) or an empty string → caller uses default
+//   - present=true, ok=false: the value is present but cannot be parsed as an
+//     exact integer epoch → malformed, caller should error
+//   - present=true, ok=true: the value parsed to a valid epoch int64
+//
+// This is the single parse used by BOTH timestampArgInt (which ignores the
+// present/malformed distinction and defaults) and ValidateExplicitTimestamps
+// (which surfaces present+malformed as an error), so the two can never drift.
+func parseEpochArg(v any) (value int64, present bool, ok bool) {
 	switch value := v.(type) {
+	case nil:
+		return 0, false, false
 	case string:
 		if value == "" {
-			return 0, false
+			return 0, false, false
 		}
 		n, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return 0, false
+			return 0, true, false
 		}
-		return n, true
+		return n, true, true
 	case json.Number:
 		n, err := value.Int64()
 		if err != nil {
-			return 0, false
+			return 0, true, false
 		}
-		return n, true
+		return n, true, true
 	case int:
-		return int64(value), true
+		return int64(value), true, true
 	case int8:
-		return int64(value), true
+		return int64(value), true, true
 	case int16:
-		return int64(value), true
+		return int64(value), true, true
 	case int32:
-		return int64(value), true
+		return int64(value), true, true
 	case int64:
-		return value, true
+		return value, true, true
 	case uint:
-		return int64(value), true
+		return int64(value), true, true
 	case uint8:
-		return int64(value), true
+		return int64(value), true, true
 	case uint16:
-		return int64(value), true
+		return int64(value), true, true
 	case uint32:
-		return int64(value), true
+		return int64(value), true, true
 	case uint64:
-		return int64(value), true
+		return int64(value), true, true
 	case float64:
 		// Reject values that have lost precision as a float64 (> 2^53) or are
 		// non-integral. The canonical schema is string-typed; this path only
 		// guards stray numeric JSON.
 		const maxExactFloat = float64(1<<53 - 1)
 		if value < 0 || value > maxExactFloat || float64(int64(value)) != value {
-			return 0, false
+			return 0, true, false
 		}
-		return int64(value), true
+		return int64(value), true, true
 	default:
-		return 0, false
+		return 0, true, false
 	}
+}
+
+// ValidateExplicitTimestamps returns a descriptive error when args["start"] or
+// args["end"] is PRESENT and non-empty but cannot be parsed as an exact integer
+// epoch (e.g. {"start":"yesterday"} or a non-integral / precision-lost float).
+// Absent keys and empty strings return nil — those legitimately mean "use the
+// default window", which GetTimestampsWithDefaults handles.
+//
+// This exists because GetTimestampsWithDefaults has no error channel and
+// silently falls back to the default window for a malformed start/end, handing
+// the user the WRONG time range with no signal. Handlers call this first to fail
+// loudly. It lives in pkg/timeutil (not the tools package) and returns a plain
+// error so the handler can wrap it in the tools package's validation-error
+// shape; timeutil must not import the tools package.
+func ValidateExplicitTimestamps(args map[string]any) error {
+	for _, key := range []string{"start", "end"} {
+		v, ok := args[key]
+		if !ok {
+			continue
+		}
+		if _, present, parsed := parseEpochArg(v); present && !parsed {
+			return fmt.Errorf(
+				"invalid %q timestamp %v: must be a unix epoch integer (e.g. milliseconds like \"1711130400000\") or omitted; for a relative window use timeRange (e.g. \"1h\", \"24h\")",
+				key, v)
+		}
+	}
+	return nil
 }
 
 // NowMillis returns the current time in unix milliseconds.
