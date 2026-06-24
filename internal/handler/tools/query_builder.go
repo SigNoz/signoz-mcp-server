@@ -77,13 +77,13 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid arguments payload type", slog.Any("type", req.Params.Arguments))
-		return mcp.NewToolResultError("invalid arguments payload"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	queryObj, ok := args["query"].(map[string]any)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid query parameter type", slog.Any("type", args["query"]))
-		return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		return validationError("query", "must be a JSON object"), nil
 	}
 
 	queryJSON, err := json.Marshal(queryObj)
@@ -116,7 +116,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to execute query builder v5", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")

@@ -22,7 +22,10 @@ type metricMetadata struct {
 }
 
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	mqr, err := parseMetricsQueryArgs(args)
 	if err != nil {
@@ -46,11 +49,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(
-				"Failed to auto-fetch metric metadata for %q: %s\n"+
-					"Please provide metricType, temporality, and isMonotonic manually "+
-					"(get them from signoz_list_metrics).",
-				mqr.MetricName, fetchErr.Error())), nil
+			return upstreamError(fmt.Errorf(
+				"could not auto-fetch metric metadata for %q: %w. "+
+					"Provide metricType, temporality, and isMonotonic manually "+
+					"(get them from signoz_list_metrics)",
+				mqr.MetricName, fetchErr)), nil
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType
@@ -131,6 +134,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	for _, fq := range mqr.FormulaQueries {
 		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, mqr.Source, &decisions)
 		if subErr != nil {
+			// Upstream metadata-fetch failures get the uniform prefix; local
+			// validation errors ("metric not found"/"validation error") stay raw.
+			if res, ok := asUpstreamResult(subErr); ok {
+				return res, nil
+			}
 			return mcp.NewToolResultError(subErr.Error()), nil
 		}
 
@@ -171,7 +179,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Metrics query failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	// Extract backend-determined stepInterval from response if caller didn't provide one
@@ -308,7 +316,10 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 	if metricType == "" {
 		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName, source)
 		if err != nil {
-			return nil, fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
+			// Upstream (ListMetrics) failure — tag it so the caller surfaces the
+			// uniform "SigNoz API error:" prefix. The "metric not found" and
+			// "validation error" paths below are local and stay untagged.
+			return nil, markUpstream(fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err))
 		}
 		if meta != nil {
 			metricType = meta.MetricType

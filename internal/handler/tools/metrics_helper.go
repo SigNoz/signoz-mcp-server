@@ -45,7 +45,7 @@ type formulaSubQuery struct {
 func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	metricName, _ := args["metricName"].(string)
 	if metricName == "" {
-		return nil, fmt.Errorf("\"metricName\" is required. Use signoz_list_metrics to find available metrics")
+		return nil, fmt.Errorf(`%s "metricName" is required. Use signoz_list_metrics to find available metrics`, validationErrorPrefix)
 	}
 	filter, err := readFilterExpr(args)
 	if err != nil {

@@ -126,23 +126,23 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	aggregation, _ := args["aggregation"].(string)
 	if aggregation == "" {
 		return nil, fmt.Errorf(
-			"\"aggregation\" is required. Supported values: %s. "+
+			"%s \"aggregation\" is required. Supported values: %s. "+
 				"Tip: for simple totals use {\"aggregation\": \"count\", \"groupBy\": \"service.name\"}",
-			allowedAggregations)
+			validationErrorPrefix, allowedAggregations)
 	}
 	if !validAggregations[aggregation] {
 		return nil, fmt.Errorf(
-			"invalid aggregation %q. Supported values: %s. "+
+			"%s \"aggregation\" is invalid (%q). Supported values: %s. "+
 				"Tip: for counting use \"count\", for averages use \"avg\"",
-			aggregation, allowedAggregations)
+			validationErrorPrefix, aggregation, allowedAggregations)
 	}
 
 	aggregateOn, _ := args["aggregateOn"].(string)
 	if !aggregationsWithoutField[aggregation] && aggregateOn == "" {
 		return nil, fmt.Errorf(
-			"\"aggregateOn\" is required for %q aggregation. Specify the field to aggregate, "+
+			"%s \"aggregateOn\" is required for %q aggregation. Specify the field to aggregate, "+
 				"e.g. {\"aggregation\": \"%s\", \"aggregateOn\": \"duration\"}",
-			aggregation, aggregation)
+			validationErrorPrefix, aggregation, aggregation)
 	}
 
 	var aggregationExpr string

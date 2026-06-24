@@ -36,13 +36,16 @@ func TestHandlers_NilArguments_NoPanic(t *testing.T) {
 	}{
 		{"signoz_get_alert", h.handleGetAlert},
 		{"signoz_get_alert_history", h.handleGetAlertHistory},
+		{"signoz_delete_alert", h.handleDeleteAlert},
 		{"signoz_get_dashboard", h.handleGetDashboard},
 		{"signoz_delete_dashboard", h.handleDeleteDashboard},
 		{"signoz_get_trace_details", h.handleGetTraceDetails},
 		{"signoz_get_service_top_operations", h.handleGetServiceTopOperations},
 		{"signoz_query_metrics", h.handleQueryMetrics},
 		{"signoz_create_notification_channel", h.handleCreateNotificationChannel},
+		{"signoz_get_notification_channel", h.handleGetNotificationChannel},
 		{"signoz_update_notification_channel", h.handleUpdateNotificationChannel},
+		{"signoz_delete_notification_channel", h.handleDeleteNotificationChannel},
 	}
 
 	for _, tc := range cases {
@@ -57,6 +60,16 @@ func TestHandlers_NilArguments_NoPanic(t *testing.T) {
 			}
 			if !result.IsError {
 				t.Fatalf("expected a validation error result for missing arguments, got a success result")
+			}
+			// These tools all require at least one argument, so a no-arguments
+			// call must surface the SPECIFIC missing-parameter message (e.g.
+			// `"ruleId" cannot be empty`), NOT the generic JSON-object guard.
+			// requireArgsMap maps the untyped-nil payload to an empty map so the
+			// per-field check owns the diagnosis; this assertion locks that in
+			// (a bare IsError check passes for the generic guard too, which is
+			// why the production regression slipped past it).
+			if msg := resultText(t, result); msg == notAJSONObjectMessage {
+				t.Fatalf("no-arguments call returned the generic JSON-object guard %q; want a specific per-field validation message", msg)
 			}
 		})
 	}

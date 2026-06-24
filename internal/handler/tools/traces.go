@@ -90,7 +90,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	reqData, err := parseAggregateTracesArgs(args)
@@ -125,7 +125,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to aggregate traces", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped), nil
@@ -134,7 +134,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	reqData, err := parseSearchTracesArgs(args)
@@ -160,7 +160,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to search traces", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	result = h.enrichSearchTracesWebURL(ctx, result)
@@ -168,11 +168,14 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
-	traceID, ok := args["traceId"].(string)
-	if !ok || traceID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "traceId" must be a non-empty string. Example: {"traceId": "abc123def456", "includeSpans": "true", "timeRange": "1h"}`), nil
+	traceID, errResult := requireStringArg(args, "traceId")
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -186,10 +189,10 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 
 	var startTime, endTime int64
 	if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "start" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, start)), nil
+		return validationErrorf("start", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, start), nil
 	}
 	if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Internal error: Invalid "end" timestamp format: %s. Use "timeRange" parameter instead (e.g., "1h", "24h")`, end)), nil
+		return validationErrorf("end", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, end), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
@@ -200,7 +203,7 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get trace details", slog.String("traceId", traceID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	result = enrichTraceWebURL(ctx, result, traceID)
 	return mcp.NewToolResultText(string(result)), nil

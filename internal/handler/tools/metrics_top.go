@@ -54,7 +54,7 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 	result, err := client.GetTopMetrics(ctx, startTime, endTime, topMetricsLimit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get top metrics", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	// Completeness signal: this tool returns a fixed top-N (no offset paging), so

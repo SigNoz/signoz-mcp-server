@@ -180,10 +180,13 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 }
 
 func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := req.Params.Arguments.(map[string]any)
-	id, _ := args["id"].(string)
-	if id == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required.`), nil
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	id, errResult := requireStringArg(args, "id")
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_notification_channel", slog.String("id", id))
@@ -195,16 +198,19 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 	resp, err := client.GetNotificationChannel(ctx, id)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get notification channel", slog.String("id", id), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(resp)), nil
 }
 
 func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := req.Params.Arguments.(map[string]any)
-	id, _ := args["id"].(string)
-	if id == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required.`), nil
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	id, errResult := requireStringArg(args, "id")
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_notification_channel", slog.String("id", id))
@@ -215,7 +221,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 
 	if err := client.DeleteNotificationChannel(ctx, id); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to delete notification channel", slog.String("id", id), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","id":%q}`, id)), nil
 }
@@ -232,7 +238,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 	result, err := client.ListNotificationChannels(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list notification channels", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var response map[string]any
@@ -297,20 +303,23 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_notification_channel")
 
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	// Validate required fields
-	channelType, _ := args["type"].(string)
-	if channelType == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "type" is required. Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`), nil
+	channelType, err := requireStringField(args, "type", ". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if !validChannelTypes[channelType] {
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid channel type: "%s". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`, channelType)), nil
 	}
 
-	name, _ := args["name"].(string)
-	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "name" is required. Provide a unique name for the notification channel.`), nil
+	name, err := requireStringField(args, "name", ". Provide a unique name for the notification channel")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	sendResolved := true
@@ -336,7 +345,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	createResp, err := client.CreateNotificationChannel(ctx, receiverJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to create notification channel", slog.String("type", channelType), slog.String("name", name), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to create notification channel: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	h.logger.InfoContext(ctx, "Notification channel created", slog.String("type", channelType), slog.String("name", name))
@@ -389,26 +398,29 @@ func testNotificationWarningNote(name, action string, testErr error) string {
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_notification_channel")
 
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	// Validate id
-	id, _ := args["id"].(string)
-	if id == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required. Provide the UUID of the notification channel to update.`), nil
+	id, err := requireStringField(args, "id", ". Provide the UUID of the notification channel to update")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Validate required fields
-	channelType, _ := args["type"].(string)
-	if channelType == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "type" is required. Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`), nil
+	channelType, err := requireStringField(args, "type", ". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if !validChannelTypes[channelType] {
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid channel type: "%s". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`, channelType)), nil
 	}
 
-	name, _ := args["name"].(string)
-	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "name" is required. Provide a unique name for the notification channel.`), nil
+	name, err := requireStringField(args, "name", ". Provide a unique name for the notification channel")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	sendResolved := true
@@ -433,7 +445,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// Step 1: Update the channel (204 No Content on success)
 	if err := client.UpdateNotificationChannel(ctx, id, receiverJSON); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update notification channel", slog.String("type", channelType), slog.String("name", name), slog.String("id", id), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to update notification channel: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	h.logger.InfoContext(ctx, "Notification channel updated", slog.String("type", channelType), slog.String("name", name), slog.String("id", id))
@@ -493,9 +505,9 @@ func buildReceiverJSON(channelType, name string, sendResolved bool, args map[str
 
 	switch channelType {
 	case "slack":
-		apiURL := getStringParam(args, "slack_api_url")
-		if apiURL == "" {
-			return nil, fmt.Errorf(`parameter validation failed: "slack_api_url" is required when type=slack. Provide the Slack incoming webhook URL`)
+		apiURL, err := requireStringField(args, "slack_api_url", " when type=slack. Provide the Slack incoming webhook URL")
+		if err != nil {
+			return nil, err
 		}
 		cfg := types.SlackConfig{
 			SendResolved: sendResolved,
@@ -507,9 +519,9 @@ func buildReceiverJSON(channelType, name string, sendResolved bool, args map[str
 		receiver.SlackConfigs = []types.SlackConfig{cfg}
 
 	case "webhook":
-		webhookURL := getStringParam(args, "webhook_url")
-		if webhookURL == "" {
-			return nil, fmt.Errorf(`parameter validation failed: "webhook_url" is required when type=webhook. Provide the webhook endpoint URL`)
+		webhookURL, err := requireStringField(args, "webhook_url", " when type=webhook. Provide the webhook endpoint URL")
+		if err != nil {
+			return nil, err
 		}
 		cfg := types.WebhookConfig{
 			SendResolved: sendResolved,
@@ -528,9 +540,9 @@ func buildReceiverJSON(channelType, name string, sendResolved bool, args map[str
 		receiver.WebhookConfigs = []types.WebhookConfig{cfg}
 
 	case "pagerduty":
-		routingKey := getStringParam(args, "pagerduty_routing_key")
-		if routingKey == "" {
-			return nil, fmt.Errorf(`parameter validation failed: "pagerduty_routing_key" is required when type=pagerduty. Provide the PagerDuty integration/routing key`)
+		routingKey, err := requireStringField(args, "pagerduty_routing_key", " when type=pagerduty. Provide the PagerDuty integration/routing key")
+		if err != nil {
+			return nil, err
 		}
 		cfg := types.PagerdutyConfig{
 			SendResolved: sendResolved,
@@ -541,9 +553,9 @@ func buildReceiverJSON(channelType, name string, sendResolved bool, args map[str
 		receiver.PagerdutyConfigs = []types.PagerdutyConfig{cfg}
 
 	case "email":
-		to := getStringParam(args, "email_to")
-		if to == "" {
-			return nil, fmt.Errorf(`parameter validation failed: "email_to" is required when type=email. Provide comma-separated email addresses`)
+		to, err := requireStringField(args, "email_to", " when type=email. Provide comma-separated email addresses")
+		if err != nil {
+			return nil, err
 		}
 		cfg := types.EmailConfig{
 			SendResolved: sendResolved,
@@ -553,9 +565,9 @@ func buildReceiverJSON(channelType, name string, sendResolved bool, args map[str
 		receiver.EmailConfigs = []types.EmailConfig{cfg}
 
 	case "opsgenie":
-		apiKey := getStringParam(args, "opsgenie_api_key")
-		if apiKey == "" {
-			return nil, fmt.Errorf(`parameter validation failed: "opsgenie_api_key" is required when type=opsgenie. Provide the OpsGenie API key`)
+		apiKey, err := requireStringField(args, "opsgenie_api_key", " when type=opsgenie. Provide the OpsGenie API key")
+		if err != nil {
+			return nil, err
 		}
 		cfg := types.OpsgenieConfig{
 			SendResolved: sendResolved,
@@ -567,9 +579,9 @@ func buildReceiverJSON(channelType, name string, sendResolved bool, args map[str
 		receiver.OpsgenieConfigs = []types.OpsgenieConfig{cfg}
 
 	case "msteams":
-		webhookURL := getStringParam(args, "msteams_webhook_url")
-		if webhookURL == "" {
-			return nil, fmt.Errorf(`parameter validation failed: "msteams_webhook_url" is required when type=msteams. Provide the MS Teams incoming webhook URL`)
+		webhookURL, err := requireStringField(args, "msteams_webhook_url", " when type=msteams. Provide the MS Teams incoming webhook URL")
+		if err != nil {
+			return nil, err
 		}
 		cfg := types.MSTeamsV2Config{
 			SendResolved: sendResolved,
