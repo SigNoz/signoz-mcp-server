@@ -57,9 +57,8 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 	if !ok {
 		return notAJSONObjectError(), nil
 	}
-	// Canonical param is "searchText"; "query" is a permanent legacy alias
-	// (the param was renamed for cross-tool consistency, #367). Read the
-	// canonical key first and silently fall back to the legacy alias.
+	// Canonical param is "searchText"; "query" is a permanent legacy alias (#367).
+	// Read the canonical key first, then fall back to the alias.
 	query, _ := args["searchText"].(string)
 	if query == "" {
 		query, _ = args["query"].(string)

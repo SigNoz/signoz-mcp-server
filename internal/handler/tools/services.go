@@ -96,21 +96,16 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	return structuredResult(resultJSON), nil
 }
 
-// tagsValidationError is the single canonical validation message for a
-// malformed "tags" argument. Kept as one constant so the real-array and
-// legacy-string paths report identically.
-//
-// NOTE(family-b-merge): once Family B's shared validationError(field, reason)
-// helper lands, route this through it for the canonical envelope.
+// tagsValidationError is the single canonical "tags" validation message, shared
+// by the real-array and legacy-string paths so they report identically. It is
+// lowercased (rather than reusing validationErrorPrefix) because it is used with
+// errors.New, which staticcheck ST1005 requires to start lowercase.
 const tagsValidationError = `parameter validation failed: "tags" must be an array of strings (e.g. {"tags": ["env=prod"]}); null elements, numbers, and other non-string elements are not allowed`
 
-// parseTagsParam normalizes the optional "tags" argument into a JSON array
-// body for the upstream call. It enforces a strict array-of-STRINGS contract on
-// both the canonical real array (the declared WithArray-of-strings schema) and
-// the legacy JSON-array-string form: null elements, numbers, and any other
-// non-string element are rejected. An empty/absent value yields an empty array.
-// The returned body is always re-marshaled from the validated []string, so the
-// upstream call receives a clean, canonical JSON array regardless of input form.
+// parseTagsParam normalizes the optional "tags" argument into a JSON array body.
+// Both the canonical real array and the legacy JSON-array-string form are held to
+// a strict array-of-strings contract (null/number/other elements rejected); an
+// empty/absent value yields "[]".
 func parseTagsParam(v any) (json.RawMessage, error) {
 	switch t := v.(type) {
 	case nil:
@@ -120,11 +115,9 @@ func parseTagsParam(v any) (json.RawMessage, error) {
 		if trimmed == "" {
 			return json.RawMessage("[]"), nil
 		}
-		// Legacy form: a JSON-array literal passed as a string. Decode to a
-		// generic value and run it through the SAME element validator as the
-		// real-array path — decoding straight into []string is too lenient
-		// (the JSON literal `null` decodes to a nil slice, and a `null` element
-		// silently becomes ""), so we must reject those explicitly.
+		// Legacy form: a JSON-array literal as a string. Decode to a generic
+		// value and reuse the array-path validator — decoding into []string is
+		// too lenient (a `null` element silently becomes "").
 		var decoded any
 		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
 			return nil, errors.New(tagsValidationError)
@@ -143,11 +136,10 @@ func parseTagsParam(v any) (json.RawMessage, error) {
 	}
 }
 
-// validateAndMarshalTags enforces the strict array-of-STRINGS contract on a
-// decoded JSON array and re-marshals it as a canonical JSON array body. Every
-// element must be a non-null string: a JSON null decodes to a nil interface and
-// numbers/bools/objects decode to their own Go types, so the type assertion
-// rejects all of them. An empty array yields "[]" (not "null").
+// validateAndMarshalTags enforces the array-of-strings contract on a decoded
+// JSON array and re-marshals it canonically. Every element must be a non-null
+// string (the type assertion rejects null/number/bool/object); an empty array
+// yields "[]" (not "null").
 func validateAndMarshalTags(arr []any) (json.RawMessage, error) {
 	tags := make([]string, 0, len(arr))
 	for _, el := range arr {

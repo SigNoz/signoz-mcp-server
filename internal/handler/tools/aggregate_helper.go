@@ -39,17 +39,11 @@ const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
-// timeRangeDesc builds a single accurate description for the "timeRange"
-// param. All time-windowed tools share one parser (timeutil.ParseTimeRange),
-// so the accepted grammar is identical everywhere — only the per-tool default
-// window differs. defaultDesc is the trailing sentence stating that default
-// (e.g. `Defaults to '1h'.` or `Defaults to last 6 hours if not provided.`).
-//
-// The recommended form is <number><unit> with unit m/h/d. The underlying
-// parser is Go's time.ParseDuration (plus an 'Nd' days extension), so it also
-// accepts other duration forms (e.g. '90s', '1.5h', '1h30m'); we advertise the
-// m/h/d subset because it covers every realistic observability window and keeps
-// the surface predictable across tools.
+// timeRangeDesc builds the shared "timeRange" description. All time-windowed
+// tools use one parser (timeutil.ParseTimeRange), so only the per-tool default
+// window differs — defaultDesc is that trailing sentence (e.g. "Defaults to
+// '1h'."). The full Go-duration grammar is accepted; we advertise the m/h/d
+// subset because it covers every realistic observability window.
 func timeRangeDesc(defaultDesc string) string {
 	return "Relative time range. Recommended format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
 		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
@@ -57,8 +51,8 @@ func timeRangeDesc(defaultDesc string) string {
 		"Ignored when both start and end are provided. " + defaultDesc
 }
 
-// stepIntervalDesc is the single accurate description for the "stepInterval"
-// param wherever it appears as a seconds value with backend auto-selection.
+// stepIntervalDesc is the shared "stepInterval" description (seconds value with
+// backend auto-selection).
 const stepIntervalDesc = "Time bucket size in seconds for time_series mode (optional). " +
 	"When omitted, the backend auto-selects an appropriate interval. " +
 	"Only set this if the user explicitly requests a specific granularity. " +
