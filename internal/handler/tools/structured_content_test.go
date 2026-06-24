@@ -1,9 +1,11 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -52,22 +54,68 @@ func TestStructuredResult_CarriesSameJSONInBothRepresentations(t *testing.T) {
 	if got := textContent(t, res); got != string(payload) {
 		t.Fatalf("text block = %q, want %q", got, string(payload))
 	}
-	// StructuredContent decodes to the same value as the original payload.
-	// Compare via re-decode (not marshaled bytes) so map key ordering doesn't
-	// make an equal value look different.
-	var wantVal, gotVal any
-	if err := json.Unmarshal(payload, &wantVal); err != nil {
-		t.Fatalf("failed to decode want payload: %v", err)
+	// StructuredContent must decode to the same value as the original payload.
+	// Compare with json.Number on BOTH sides so a precision-losing float64
+	// decode (the bug Codex caught) would surface as a mismatch rather than be
+	// masked by both sides rounding identically. Re-decode (not raw bytes) so
+	// map key ordering doesn't make an equal value look different.
+	if !sameJSONValue(t, payload, res.StructuredContent) {
+		gotBytes, _ := json.Marshal(res.StructuredContent)
+		t.Fatalf("structured content does not match payload\npayload=%s\nstructured=%s", payload, gotBytes)
 	}
+}
+
+// sameJSONValue reports whether the StructuredContent value re-marshals to the
+// same JSON *value* as wantJSON, comparing with json.Number so large integers
+// (>2^53) are compared by exact literal rather than lossy float64.
+func sameJSONValue(t *testing.T, wantJSON []byte, structured any) bool {
+	t.Helper()
+	decodeNum := func(b []byte) any {
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.UseNumber()
+		var v any
+		if err := dec.Decode(&v); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return v
+	}
+	gotBytes, err := json.Marshal(structured)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	return reflect.DeepEqual(decodeNum(wantJSON), decodeNum(gotBytes))
+}
+
+// TestStructuredResult_PreservesLargeIntegers pins the fix for the precision
+// blocker: SigNoz integers above 2^53 (epoch nanos, big ids/counts) must appear
+// byte-for-byte identically in StructuredContent and the text block. A naive
+// json.Unmarshal into `any` would route them through float64 and round them.
+func TestStructuredResult_PreservesLargeIntegers(t *testing.T) {
+	// 9007199254740993 = 2^53 + 1, the smallest integer float64 cannot represent
+	// exactly (it rounds to 9007199254740992).
+	const bigInt = "9007199254740993"
+	payload := []byte(`{"id":"x","timestampNano":` + bigInt + `,"count":` + bigInt + `}`)
+	res := structuredResult(payload)
+
+	if res.StructuredContent == nil {
+		t.Fatalf("structuredResult must populate StructuredContent")
+	}
+	// Text block must be byte-faithful.
+	if got := textContent(t, res); got != string(payload) {
+		t.Fatalf("text block = %q, want %q", got, string(payload))
+	}
+	// StructuredContent must re-marshal with the EXACT large literal, not a
+	// rounded value (no 9007199254740992, no 9.007199254740993e+15).
 	gotBytes, err := json.Marshal(res.StructuredContent)
 	if err != nil {
-		t.Fatalf("failed to marshal structured content: %v", err)
+		t.Fatalf("marshal structured content: %v", err)
 	}
-	if err := json.Unmarshal(gotBytes, &gotVal); err != nil {
-		t.Fatalf("failed to decode structured content: %v", err)
+	got := string(gotBytes)
+	if !strings.Contains(got, bigInt) {
+		t.Fatalf("StructuredContent lost integer precision: %s (want literal %s)", got, bigInt)
 	}
-	if !reflect.DeepEqual(gotVal, wantVal) {
-		t.Fatalf("structured content = %#v, want %#v", gotVal, wantVal)
+	if strings.Contains(got, "9007199254740992") || strings.Contains(got, "e+") || strings.Contains(got, "E+") {
+		t.Fatalf("StructuredContent rounded/exponential-formatted the big integer: %s", got)
 	}
 }
 

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,13 @@ const (
 
 	// CodeNotFound marks a referenced resource that does not exist (e.g. a bad
 	// id/uuid). Callers should not blindly retry — re-discover the id first.
+	//
+	// RESERVED for now: the backend signals "not found" only via prose in the
+	// error body, and distinguishing it from other upstream failures would
+	// require brittle string-matching, which #365 deliberately avoids. Upstream
+	// 404s currently surface as UPSTREAM_ERROR. notFoundError + this code are
+	// kept as the stable home for a future, robust not-found signal (e.g. a
+	// typed status code from the client layer).
 	CodeNotFound = "NOT_FOUND"
 )
 
@@ -208,12 +216,27 @@ func notFoundError(message string) *mcp.CallToolResult {
 //     brittle and drift out from under us — those stay text-only (see
 //     resultWithNotes / rawSearchResult / aggregateResult).
 //
+// SCOPE NOTE: several mutation results deliberately stay text-only and do NOT
+// route through this helper — the create/update passthrough bodies
+// (create_alert in alerts.go, create_dashboard in dashboards.go, create_view /
+// update_view in views.go) and the plain-text update/delete dashboard
+// acknowledgements ("dashboard updated" / "dashboard deleted" in dashboards.go).
+// Standardizing those mutation success envelopes is OUT OF SCOPE for #365 and
+// tracked at SigNoz/nerve-pod#4; here we only added structuredContent to
+// mutations that ALREADY return synthesized JSON.
+//
 // jsonPayload must be the exact bytes also placed in the text block so the two
-// representations never diverge. It is re-decoded into a generic value for the
-// StructuredContent field (MCP serializes that separately).
+// representations never diverge. It is decoded into a generic value for the
+// StructuredContent field using a json.Number-mode decoder so large SigNoz
+// integers (epoch nanos, big ids/counts > 2^53) are preserved EXACTLY. A plain
+// json.Unmarshal into `any` routes every number through float64, which silently
+// rounds values above 2^53 and would make StructuredContent disagree with the
+// byte-faithful text block.
 func structuredResult(jsonPayload []byte) *mcp.CallToolResult {
+	dec := json.NewDecoder(bytes.NewReader(jsonPayload))
+	dec.UseNumber()
 	var structured any
-	if err := json.Unmarshal(jsonPayload, &structured); err != nil {
+	if err := dec.Decode(&structured); err != nil {
 		// Fail open: if the payload isn't valid JSON (should not happen for a
 		// code-controlled tool), fall back to a plain text result so the caller
 		// still gets the data rather than an error.
