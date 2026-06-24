@@ -88,16 +88,35 @@ func notAJSONObjectError() *mcp.CallToolResult {
 	return mcp.NewToolResultError(notAJSONObjectMessage)
 }
 
-// requireArgsMap asserts that the raw MCP arguments payload is a JSON object and
-// returns it. On a non-object payload (including an untyped nil, which is what
-// the framework delivers when a tool is called with no "arguments" at all) it
-// returns the shared JSON-object guard result. Use this before requireStringArg
-// so a non-object payload yields the JSON-object guard rather than a misleading
-// "<field> cannot be empty".
+// requireArgsMap normalizes the raw MCP arguments payload into a JSON object map.
+//
+// A nil payload is NOT an error: the framework delivers an untyped nil when a
+// tool is called with no "arguments" object at all, which is the common case of
+// an omitted required parameter (or a legitimate no-args call to an all-optional
+// tool). Treating nil as an EMPTY map lets the downstream per-field checks own
+// the diagnosis — requireStringArg then emits the specific, actionable
+// `"<field>" cannot be empty` (e.g. naming the missing ruleId/id), and a tool
+// whose params are all optional simply proceeds with its defaults. Mapping nil
+// to the generic "expected JSON object" guard instead would both mis-describe an
+// omitted-arg call as malformed JSON and wrongly reject valid no-args list calls.
+//
+// A genuinely malformed payload — a non-nil value that is NOT an object (a JSON
+// array, string, or scalar) — still returns the shared JSON-object guard, since
+// no per-field check can run against it.
 func requireArgsMap(raw any) (map[string]any, *mcp.CallToolResult) {
+	if raw == nil {
+		return map[string]any{}, nil
+	}
 	args, ok := raw.(map[string]any)
 	if !ok {
 		return nil, notAJSONObjectError()
+	}
+	if args == nil {
+		// A typed nil map (e.g. JSON "arguments": null decoded into a
+		// map[string]any) is not the untyped-nil case above; normalize it to a
+		// non-nil empty map so the helper's success contract is uniform and
+		// callers never have to special-case a nil map.
+		return map[string]any{}, nil
 	}
 	return args, nil
 }

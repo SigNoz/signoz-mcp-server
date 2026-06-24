@@ -121,7 +121,22 @@ func TestRequireArgsMap(t *testing.T) {
 			t.Fatalf("got = %#v, want passthrough of input map", got)
 		}
 	})
-	for _, raw := range []any{nil, "string-not-object", 42, []any{"x"}} {
+	t.Run("nil payload becomes an empty map (no error)", func(t *testing.T) {
+		// A nil/untyped-nil payload means "no arguments object" — the common
+		// case of an omitted required param or a no-args call to an all-optional
+		// tool. It must NOT be the JSON-object guard: downstream per-field checks
+		// own the specific diagnosis (e.g. `"ruleId" cannot be empty`).
+		got, errResult := requireArgsMap(nil)
+		if errResult != nil {
+			t.Fatalf("requireArgsMap(nil) = error %v, want empty map + no error", errResult.Content)
+		}
+		if got == nil || len(got) != 0 {
+			t.Fatalf("requireArgsMap(nil) = %#v, want empty non-nil map", got)
+		}
+	})
+	// A genuinely malformed payload — non-nil and not an object — still returns
+	// the shared JSON-object guard, since no per-field check can run against it.
+	for _, raw := range []any{"string-not-object", 42, []any{"x"}} {
 		_, errResult := requireArgsMap(raw)
 		if errResult == nil {
 			t.Fatalf("requireArgsMap(%#v) = no error, want JSON-object guard", raw)
