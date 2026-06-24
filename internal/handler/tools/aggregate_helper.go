@@ -196,23 +196,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		requestType = "scalar"
 	}
 
-	// stepInterval: accept either a JSON number or a numeric string via
-	// parseIntLoose (matching query_metrics). A string-only assertion silently
-	// dropped a real JSON number. A present-but-unparseable value (<= 0 or
-	// garbage) is surfaced as a warning rather than silently ignored.
-	var stepInterval *int64
-	var stepIntervalWarning string
-	if raw, present := args["stepInterval"]; present && raw != nil {
-		if s, isStr := raw.(string); !isStr || strings.TrimSpace(s) != "" {
-			if n := parseIntLoose(raw); n > 0 {
-				stepInterval = &n
-			} else {
-				stepIntervalWarning = fmt.Sprintf(
-					"stepInterval %v could not be parsed as a positive integer (seconds); letting the backend auto-select the bucket size",
-					raw)
-			}
-		}
-	}
+	stepInterval, stepIntervalWarning := parseStepInterval(args["stepInterval"])
 
 	return &AggregateRequest{
 		AggregationExpr:     aggregationExpr,
@@ -261,6 +245,46 @@ func intArg(args map[string]any, key string, defaultVal int) (int, error) {
 		return defaultVal, nil
 	}
 	return num, nil
+}
+
+// parseStepInterval parses an optional stepInterval (seconds) argument for the
+// aggregate tools. It accepts a real JSON number OR a string that is ENTIRELY a
+// positive integer. It deliberately does NOT use parseIntLoose for the string
+// case: parseIntLoose scans a numeric prefix via Sscanf("%d"), so "1h"/"60s"
+// would silently become 1/60 — a wrong bucket size. A present-but-invalid value
+// (non-numeric, suffixed, or <= 0) yields a nil interval and a warning so the
+// backend auto-selects rather than applying a silently-wrong granularity.
+//
+// Returns (nil, "") when the argument is absent or an empty string.
+func parseStepInterval(raw any) (*int64, string) {
+	if raw == nil {
+		return nil, ""
+	}
+	warn := func() (*int64, string) {
+		return nil, fmt.Sprintf(
+			"stepInterval %v could not be parsed as a positive integer number of seconds; letting the backend auto-select the bucket size",
+			raw)
+	}
+	switch v := raw.(type) {
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil, "" // treat empty string as not set
+		}
+		// Require the ENTIRE string to be a base-10 integer (no "1h"/"60s"/hex).
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n <= 0 {
+			return warn()
+		}
+		return &n, ""
+	default:
+		// JSON number (float64), json.Number, or int — parseIntLoose handles
+		// these correctly (no prefix-scan ambiguity for non-string types).
+		if n := parseIntLoose(raw); n > 0 {
+			return &n, ""
+		}
+		return warn()
+	}
 }
 
 // MaxRawResultLimit caps how many raw rows search_logs / search_traces will
@@ -453,6 +477,28 @@ func completenessNote(returnedRows, limit, offset int, rowsKnown bool) string {
 		return fmt.Sprintf(
 			"note: returned %d rows (limit %d) — more results likely exist (hasMore=true). Fetch the next page with offset=%d.",
 			returnedRows, limit, nextOffset)
+	}
+	return fmt.Sprintf(
+		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",
+		returnedRows, limit)
+}
+
+// limitOnlyCompletenessNote is the completeness advisory for list tools that
+// expose a `limit` but NO offset pagination (e.g. signoz_list_metrics). It must
+// not tell callers to "fetch the next page with offset" — there is no offset
+// param, so the caller would loop on the same page. Instead it advises
+// narrowing the result set (searchText / time range / source). narrowHint names
+// the concrete params for the tool.
+func limitOnlyCompletenessNote(returnedRows, limit int, rowsKnown bool, narrowHint string) string {
+	if !rowsKnown {
+		return fmt.Sprintf(
+			"note: limit %d applied; this tool cannot count returned rows, so more results may exist. Narrow the result set (%s) to be sure.",
+			limit, narrowHint)
+	}
+	if limit > 0 && returnedRows >= limit {
+		return fmt.Sprintf(
+			"note: returned %d rows (limit %d) — more results likely exist (hasMore=true). This tool has no offset paging; narrow the result set (%s) to surface the rest.",
+			returnedRows, limit, narrowHint)
 	}
 	return fmt.Sprintf(
 		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",

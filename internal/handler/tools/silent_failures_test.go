@@ -207,6 +207,102 @@ func TestParseAggregateArgs_StepIntervalNumericAndString(t *testing.T) {
 	}
 }
 
+// N2 (regression): a suffixed string like "1h"/"60s" must NOT be accepted as a
+// numeric prefix (1/60); it must warn + auto-select instead of applying a
+// silently-wrong bucket size. Direct parseStepInterval coverage + via the
+// aggregate parser.
+func TestParseStepInterval_RejectsSuffixedStrings(t *testing.T) {
+	tests := []struct {
+		name     string
+		in       any
+		wantNil  bool
+		wantWarn bool
+		wantVal  int64
+	}{
+		{name: "whole-int string", in: "60", wantVal: 60},
+		{name: "json number", in: float64(120), wantVal: 120},
+		{name: "duration 1h rejected", in: "1h", wantNil: true, wantWarn: true},
+		{name: "duration 60s rejected", in: "60s", wantNil: true, wantWarn: true},
+		{name: "garbage abc rejected", in: "abc", wantNil: true, wantWarn: true},
+		{name: "hex-ish rejected", in: "0x10", wantNil: true, wantWarn: true},
+		{name: "negative rejected", in: "-5", wantNil: true, wantWarn: true},
+		{name: "zero rejected", in: "0", wantNil: true, wantWarn: true},
+		{name: "empty string -> not set, no warn", in: "", wantNil: true, wantWarn: false},
+		{name: "absent (nil) -> not set, no warn", in: nil, wantNil: true, wantWarn: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			si, warn := parseStepInterval(tt.in)
+			if tt.wantNil && si != nil {
+				t.Fatalf("expected nil interval, got %d", *si)
+			}
+			if !tt.wantNil {
+				if si == nil {
+					t.Fatalf("expected interval %d, got nil", tt.wantVal)
+				}
+				if *si != tt.wantVal {
+					t.Fatalf("interval = %d, want %d", *si, tt.wantVal)
+				}
+			}
+			if tt.wantWarn && warn == "" {
+				t.Fatalf("expected a warning for %v", tt.in)
+			}
+			if !tt.wantWarn && warn != "" {
+				t.Fatalf("unexpected warning for %v: %q", tt.in, warn)
+			}
+		})
+	}
+
+	// End-to-end through the aggregate parser: "1h" must not yield 1.
+	req, err := parseAggregateArgs(map[string]any{
+		"aggregation":  "count",
+		"timeRange":    "1h",
+		"stepInterval": "1h",
+	}, "logs", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.StepInterval != nil {
+		t.Fatalf(`"1h" must be rejected, not parsed as %d`, *req.StepInterval)
+	}
+	if req.StepIntervalWarning == "" {
+		t.Fatal(`expected a warning for "1h"`)
+	}
+}
+
+// Comment-1 regression: the list_metrics completeness note must NOT instruct
+// callers to paginate by offset (the tool has no offset param).
+func TestHandleListMetrics_NoteDoesNotClaimOffset(t *testing.T) {
+	// 5 rows at limit 5 -> hasMore=true branch, the one that previously said
+	// "fetch the next page with offset=".
+	mock := &client.MockClient{
+		ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"metrics":[{},{},{},{},{}]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	res, err := h.handleListMetrics(testCtx(), makeToolRequest("signoz_list_metrics", map[string]any{"limit": "5"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	note := res.Content[1].(mcp.TextContent).Text
+	// Must NOT instruct the caller to paginate by offset (no offset param). The
+	// clarifying phrase "no offset paging" is fine; an "offset=" page-fetch
+	// instruction or "next page" directive is not.
+	if strings.Contains(note, "offset=") {
+		t.Fatalf("list_metrics note must not give an offset= page-fetch instruction; got %q", note)
+	}
+	if strings.Contains(strings.ToLower(note), "next page") {
+		t.Fatalf("list_metrics note must not say 'next page' (no offset paging); got %q", note)
+	}
+	if !strings.Contains(note, "hasMore=true") {
+		t.Fatalf("expected hasMore=true in note, got %q", note)
+	}
+	if !strings.Contains(strings.ToLower(note), "narrow") {
+		t.Fatalf("expected a narrow-the-result-set hint, got %q", note)
+	}
+}
+
 // --- N1: execute_builder_query surfaces backend warnings ---
 
 func TestHandleExecuteBuilderQuery_SurfacesBackendWarning(t *testing.T) {

@@ -122,10 +122,10 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Completeness signal: list_metrics is a raw passthrough with a limit but no
-	// offset paging. Count the data.metrics[] rows and append a hasMore note so
-	// the caller knows when the limit truncated the list (narrow with searchText).
+	// Completeness signal: list_metrics is a raw passthrough with a limit but NO
+	// offset paging — so the note must advise narrowing rather than claim
+	// offset pagination (a caller following an offset hint would loop the page).
 	returnedRows, rowsKnown := countDataArrayRows(result, "metrics")
-	note := completenessNote(returnedRows, limit, 0, rowsKnown)
+	note := limitOnlyCompletenessNote(returnedRows, limit, rowsKnown, `searchText, a tighter time range, or source`)
 	return resultWithNotes(result, note), nil
 }
