@@ -28,8 +28,8 @@ type UpdateAlertInput struct {
 	// id and ruleId are both optional properties (json ",omitempty", neither
 	// required) so additionalProperties:false accepts either key; the handler
 	// requires exactly one via readResourceID (canonical "id" wins).
-	ID           string `json:"id,omitempty" jsonschema:"UUIDv7 of the alert rule to update (required). Provide either this or the legacy field name 'ruleId'. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
-	LegacyRuleID string `json:"ruleId,omitempty" jsonschema:"Deprecated alias for 'id'. Accepted for backward compatibility; prefer 'id'."`
+	ID           string `json:"id,omitempty" jsonschema:"UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."`
+	LegacyRuleID string `json:"ruleId,omitempty" jsonschema:"Deprecated alias for 'id'."`
 	AlertRule
 	SearchContext string `json:"searchContext,omitempty" jsonschema:"The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }

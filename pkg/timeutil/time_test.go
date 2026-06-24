@@ -285,10 +285,16 @@ func TestValidateExplicitTimestamps(t *testing.T) {
 		{"empty string start", map[string]any{"start": ""}, false},
 		{"empty string end", map[string]any{"end": ""}, false},
 		{"empty timeRange", map[string]any{"timeRange": ""}, false},
-		{"non-string timeRange ignored", map[string]any{"timeRange": true}, false},
+		{"non-string (bool) timeRange rejected", map[string]any{"timeRange": true}, true},
+		{"non-string (numeric) timeRange rejected", map[string]any{"timeRange": 24}, true},
 		{
 			"malformed timeRange ignored when start end override",
 			map[string]any{"timeRange": "24hours", "start": "1711123200000", "end": "1711130400000"},
+			false,
+		},
+		{
+			"non-string timeRange ignored when start end override",
+			map[string]any{"timeRange": true, "start": "1711123200000", "end": "1711130400000"},
 			false,
 		},
 		{"nil value", map[string]any{"start": nil}, false},

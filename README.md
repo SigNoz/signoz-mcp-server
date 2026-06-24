@@ -344,27 +344,27 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
-| `signoz_get_alert` | Get an alert rule definition by `id` (legacy `ruleId` accepted) via GET /api/v2/rules/{id} |
-| `signoz_get_alert_history` | Get alert state history timeline for a rule (`id`; legacy `ruleId` accepted) |
+| `signoz_get_alert` | Get an alert rule definition by `id` via GET /api/v2/rules/{id} |
+| `signoz_get_alert_history` | Get alert state history timeline for a rule (`id`) |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
-| `signoz_update_alert` | Update an alert rule by UUIDv7 `id` (legacy `ruleId` accepted) via PUT /api/v2/rules/{id} |
-| `signoz_delete_alert` | Delete an alert rule by UUIDv7 `id` (legacy `ruleId` accepted) via DELETE /api/v2/rules/{id} |
+| `signoz_update_alert` | Update an alert rule by UUIDv7 `id` via PUT /api/v2/rules/{id} |
+| `signoz_delete_alert` | Delete an alert rule by UUIDv7 `id` via DELETE /api/v2/rules/{id} |
 | `signoz_list_dashboards` | List all dashboards with summaries |
-| `signoz_get_dashboard` | Get full dashboard configuration by `id` (legacy `uuid` accepted) |
+| `signoz_get_dashboard` | Get full dashboard configuration by `id` |
 | `signoz_create_dashboard` | Create a new dashboard |
-| `signoz_update_dashboard` | Update an existing dashboard by `id` (legacy `uuid` accepted) |
-| `signoz_delete_dashboard` | Delete a dashboard by `id` (legacy `uuid` accepted) |
+| `signoz_update_dashboard` | Update an existing dashboard by `id` |
+| `signoz_delete_dashboard` | Delete a dashboard by `id` |
 | `signoz_import_dashboard` | Create a dashboard from a curated SigNoz/dashboards template by path |
 | `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics/meter) |
-| `signoz_get_view` | Get a saved view by `id` (legacy `viewId` accepted) |
+| `signoz_get_view` | Get a saved view by `id` |
 | `signoz_search_docs` | Search official SigNoz docs for product, setup, instrumentation, config, API, deployment, or troubleshooting questions |
 | `signoz_fetch_doc` | Fetch full markdown for one official SigNoz docs page or heading |
 | `signoz_create_view` | Create a new saved Explorer view |
-| `signoz_update_view` | Replace an existing saved view (full-body PUT; `id`, legacy `viewId` accepted) |
-| `signoz_delete_view` | Delete a saved view by `id` (legacy `viewId` accepted) |
+| `signoz_update_view` | Replace an existing saved view (full-body PUT; `id`) |
+| `signoz_delete_view` | Delete a saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate logs (count, avg, p99, etc.) with grouping |
 | `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_traces` | Aggregate trace statistics with grouping |
@@ -398,7 +398,7 @@ Search and list available metrics from SigNoz. Supports filtering by name substr
   - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
-  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) so a `limit`-truncated list is never mistaken for the full set; narrow with `searchText` for more specificity
 
@@ -416,7 +416,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `groupBy` (optional) - Comma-separated field names
   - `filter` (optional) - Filter expression
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
-  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
@@ -435,7 +435,7 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
 
 #### `signoz_list_alerts`
 
-Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with an `id` (legacy `ruleId` also accepted) for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with an `id` for one full rule definition, or `signoz_get_alert_history` for the state timeline.
 
 - **Parameters**:
   - `limit` (optional) - Maximum number of alerts per page (default: 50)
@@ -456,7 +456,7 @@ Lists configured alert rules from `GET /api/v2/rules`, including inactive/OK and
 
 Gets the rule definition for an alert (`GET /api/v2/rules/{id}`).
 
-- **Parameters**: `id` (required) - Alert rule ID (UUIDv7 on v2-capable servers). The legacy parameter name `ruleId` is still accepted.
+- **Parameters**: `id` (required) - Alert rule ID (UUIDv7 on v2-capable servers).
 - **Note**: Response shape depends on the SigNoz server version. Post-#10997 servers return the canonical `Rule` type with `createdAt/updatedAt/createdBy/updatedBy`; older servers return `GettableRule` with `createAt/updateAt/createBy/updateBy` (no 'd').
 
 #### `signoz_list_dashboards`
@@ -467,7 +467,7 @@ Lists all dashboards with summaries (name, UUID, description, tags).
 
 Gets complete dashboard configuration.
 
-- **Parameters**: `id` (required) - Dashboard UUID (legacy parameter name `uuid` is still accepted)
+- **Parameters**: `id` (required) - Dashboard UUID
 
 #### `signoz_create_dashboard`
 
@@ -501,7 +501,7 @@ Returns the full bundled catalog of curated SigNoz dashboard templates (id, titl
 Updates an existing dashboard.
 
 - **Parameters:**
-  - `id` (required) – Unique identifier of the dashboard to update (legacy field name `uuid` is still accepted)
+  - `id` (required) – Unique identifier of the dashboard to update
   - `dashboard` (required) – Complete dashboard object representing the post-update state
     - `title` (required) – Dashboard name
     - `description` (optional) – Short summary of what the dashboard shows
@@ -516,7 +516,7 @@ Lists all services within a time range.
 
 - **Parameters**:
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected, so legacy nanosecond values still work.
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip for pagination (default: 0)
@@ -528,7 +528,7 @@ Gets top operations for a specific service.
 - **Parameters**:
   - `service` (required) - Service name
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected, so legacy nanosecond values still work.
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `tags` (optional) - Raw JSON array of tag filters, passed through to the SigNoz API as-is (advanced; the backend expects structured tag-filter objects)
 
@@ -537,9 +537,9 @@ Gets top operations for a specific service.
 Gets alert history timeline for a specific rule.
 
 - **Parameters**:
-  - `id` (required) - Alert rule ID (legacy parameter name `ruleId` is still accepted)
+  - `id` (required) - Alert rule ID
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
   - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
   - `offset` (optional) - Offset for pagination (default: 0)
@@ -562,7 +562,7 @@ List SigNoz saved Explorer views for a given sourcePage. Supports pagination; re
 
 Get a single saved view by UUID.
 
-- **Parameters**: `id` (required) - Saved view UUID (legacy parameter name `viewId` is still accepted)
+- **Parameters**: `id` (required) - Saved view UUID
 
 #### `signoz_search_docs`
 
@@ -607,7 +607,7 @@ Create a new saved Explorer view.
 Replace an existing saved view (full-body PUT).
 
 - **Parameters**:
-  - `id` (required) - UUID of the view to replace (legacy parameter name `viewId` is still accepted)
+  - `id` (required) - UUID of the view to replace
   - `view` (required) - Full `SavedView` object (`name`, `sourcePage`, `compositeQuery`, plus any of `category`, `tags`, `extraData`)
 - **Tip**: Read MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing payloads. Call `signoz_get_view` first, pass its `data` object under `view` with whichever fields changed. Partial bodies wipe unspecified fields.
 
@@ -615,7 +615,7 @@ Replace an existing saved view (full-body PUT).
 
 Delete a saved view by UUID.
 
-- **Parameters**: `id` (required) - Saved view UUID (legacy parameter name `viewId` is still accepted)
+- **Parameters**: `id` (required) - Saved view UUID
 
 
 
@@ -633,7 +633,7 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
 
@@ -647,7 +647,7 @@ Search logs with flexible filtering across all services.
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
@@ -688,7 +688,7 @@ Search traces/spans with flexible filtering.
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
@@ -708,7 +708,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
 
@@ -719,7 +719,7 @@ Gets trace information including all spans and metadata.
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
 
@@ -740,7 +740,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 Update an existing alert rule via `PUT /api/v2/rules/{id}`. Replaces the full rule configuration — fetch the current rule with `signoz_get_alert` first and merge changes on top of it.
 
 - **Parameters**:
-  - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`). The legacy field name `ruleId` is still accepted.
+  - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
   - Plus all fields of the alert rule schema (same shape as `signoz_create_alert`).
 
 #### `signoz_delete_alert`
@@ -748,13 +748,13 @@ Update an existing alert rule via `PUT /api/v2/rules/{id}`. Replaces the full ru
 Delete an alert rule via `DELETE /api/v2/rules/{id}`. Irreversible — confirm with the user first.
 
 - **Parameters**:
-  - `id` (required) - UUIDv7 of the rule to delete (legacy parameter name `ruleId` is still accepted). The server rejects non-UUIDv7 values with `invalid_input`.
+  - `id` (required) - UUIDv7 of the rule to delete. The server rejects non-UUIDv7 values with `invalid_input`.
 
 #### `signoz_delete_dashboard`
 
 Delete a dashboard by ID.
 
-- **Parameters**: `id` (required) - Dashboard UUID to delete (legacy parameter name `uuid` is still accepted)
+- **Parameters**: `id` (required) - Dashboard UUID to delete
 
 #### `signoz_list_notification_channels`
 

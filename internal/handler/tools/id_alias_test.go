@@ -408,44 +408,43 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 
 	cases := []struct {
-		name    string
-		call    func() (*mcp.CallToolResult, error)
-		wantMsg string // a legacy-alias mention we expect in the error
+		name string
+		call func() (*mcp.CallToolResult, error)
 	}{
 		{"get_alert", func() (*mcp.CallToolResult, error) {
 			return h.handleGetAlert(testCtx(), makeToolRequest("signoz_get_alert", map[string]any{}))
-		}, "ruleId"},
+		}},
 		{"delete_alert", func() (*mcp.CallToolResult, error) {
 			return h.handleDeleteAlert(testCtx(), makeToolRequest("signoz_delete_alert", map[string]any{}))
-		}, "ruleId"},
+		}},
 		{"get_alert_history", func() (*mcp.CallToolResult, error) {
 			return h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{"timeRange": "1h"}))
-		}, "ruleId"},
+		}},
 		{"update_alert", func() (*mcp.CallToolResult, error) {
 			return h.handleUpdateAlert(testCtx(), makeToolRequest("signoz_update_alert", map[string]any{"alert": "x"}))
-		}, "ruleId"},
+		}},
 		{"get_dashboard", func() (*mcp.CallToolResult, error) {
 			return h.handleGetDashboard(testCtx(), makeToolRequest("signoz_get_dashboard", map[string]any{}))
-		}, "uuid"},
+		}},
 		{"delete_dashboard", func() (*mcp.CallToolResult, error) {
 			return h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{}))
-		}, "uuid"},
+		}},
 		{"update_dashboard", func() (*mcp.CallToolResult, error) {
 			return h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", map[string]any{
 				"dashboard": map[string]any{"title": "T", "layout": []any{}, "widgets": []any{}},
 			}))
-		}, "uuid"},
+		}},
 		{"get_view", func() (*mcp.CallToolResult, error) {
 			return h.handleGetView(testCtx(), makeToolRequest("signoz_get_view", map[string]any{}))
-		}, "viewId"},
+		}},
 		{"delete_view", func() (*mcp.CallToolResult, error) {
 			return h.handleDeleteView(testCtx(), makeToolRequest("signoz_delete_view", map[string]any{}))
-		}, "viewId"},
+		}},
 		{"update_view", func() (*mcp.CallToolResult, error) {
 			return h.handleUpdateView(testCtx(), makeToolRequest("signoz_update_view", map[string]any{
 				"view": map[string]any{"name": "n", "sourcePage": "logs", "compositeQuery": map[string]any{}},
 			}))
-		}, "viewId"},
+		}},
 	}
 
 	for _, tc := range cases {
@@ -464,8 +463,10 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 			if !strings.Contains(text.Text, `"id"`) {
 				t.Fatalf("error should mention the canonical \"id\" param, got: %s", text.Text)
 			}
-			if !strings.Contains(text.Text, tc.wantMsg) {
-				t.Fatalf("error should mention the accepted legacy alias %q, got: %s", tc.wantMsg, text.Text)
+			// The legacy alias is a SILENT back-compat fallback: the error must
+			// steer callers to the canonical "id" and must NOT advertise the alias.
+			if strings.Contains(strings.ToLower(text.Text), "legacy") {
+				t.Fatalf("error must not advertise a legacy alias, got: %s", text.Text)
 			}
 		})
 	}

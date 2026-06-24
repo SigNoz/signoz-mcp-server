@@ -56,7 +56,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		// valid call for schema-aware clients that validate args against the
 		// advertised inputSchema. The handler validates that one of id/ruleId is
 		// present. See readResourceID.
-		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required — provide either this or the legacy parameter name \"ruleId\".")),
+		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required.")),
 	)
 	addTool(s, getAlertTool, h.handleGetAlert)
 
@@ -65,10 +65,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
-		mcp.WithString("id", mcp.Description("Alert rule ID. Required — provide either this or the legacy parameter name \"ruleId\".")),
+		mcp.WithString("id", mcp.Description("Alert rule ID. Required.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
-		mcp.WithString("end", mcp.Description("End timestamp in unix milliseconds (optional, defaults to now). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
+		mcp.WithString("start", mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
+		mcp.WithString("end", mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
 		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.DefaultString("20"), mcp.Description("Limit number of results (default: 20)")),
@@ -120,7 +120,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_delete_alert",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("id", mcp.Description("UUIDv7 of the alert rule to delete. Required — provide either this or the legacy parameter name \"ruleId\". The server validates the UUID format and returns invalid_input on bad values.")),
+		mcp.WithString("id", mcp.Description("UUIDv7 of the alert rule to delete. Required. The server validates the UUID format and returns invalid_input on bad values.")),
 		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{id}). Irreversible. Confirm with the user before calling."),
 	)
 	addTool(s, deleteAlertTool, h.handleDeleteAlert)
@@ -297,7 +297,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("id", ruleID))
@@ -332,14 +332,14 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args["ruleId"]))
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
 	// Reject a present-but-malformed start/end loudly; otherwise
 	// GetTimestampsWithDefaults silently falls back to the default window.
 	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
 		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("Parameter validation failed: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
 	}
 
 	startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -347,11 +347,11 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	var start, end int64
 	if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
 		h.logger.WarnContext(ctx, "Invalid start timestamp format", slog.String("start", startStr), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "start" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697385600000") or use "timeRange" parameter instead (e.g., "24h")`, startStr)), nil
 	}
 	if _, err := fmt.Sscanf(endStr, "%d", &end); err != nil {
 		h.logger.WarnContext(ctx, "Invalid end timestamp format", slog.String("end", endStr), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 	}
 
 	_, offset := paginate.ParseParams(args)
@@ -461,10 +461,10 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	ruleID := readResourceID(rawConfig, "ruleId")
 	if ruleID == "" {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy field name "ruleId" is also accepted). Provide the UUIDv7 of the rule to update.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide the UUIDv7 of the rule to update.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
 	}
 	delete(rawConfig, "id")
 	delete(rawConfig, "ruleId")
@@ -495,10 +495,10 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	}
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted).`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_alert", slog.String("id", ruleID))

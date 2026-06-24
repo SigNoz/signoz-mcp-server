@@ -89,7 +89,7 @@ func TestE2EFamilyB_ValidationStrings(t *testing.T) {
 				r, _ := h.handleGetAlert(ctx, makeToolRequest("signoz_get_alert", map[string]any{}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted)`,
+			wantSub: `Parameter validation failed: "id" is required`,
 		},
 		{
 			// readResourceID treats a non-string legacy value as absent, so a
@@ -99,7 +99,7 @@ func TestE2EFamilyB_ValidationStrings(t *testing.T) {
 				r, _ := h.handleGetAlert(ctx, makeToolRequest("signoz_get_alert", map[string]any{"ruleId": 12345}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted)`,
+			wantSub: `Parameter validation failed: "id" is required`,
 		},
 		{
 			name: "get_dashboard missing id/uuid -> id required",
@@ -107,7 +107,7 @@ func TestE2EFamilyB_ValidationStrings(t *testing.T) {
 				r, _ := h.handleGetDashboard(ctx, makeToolRequest("signoz_get_dashboard", map[string]any{}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted)`,
+			wantSub: `Parameter validation failed: "id" is required`,
 		},
 		{
 			name: "get_dashboard wrong-typed uuid -> treated as absent, id required",
@@ -115,7 +115,7 @@ func TestE2EFamilyB_ValidationStrings(t *testing.T) {
 				r, _ := h.handleGetDashboard(ctx, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": true}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted)`,
+			wantSub: `Parameter validation failed: "id" is required`,
 		},
 		{
 			name: "get_view missing id/viewId -> id required",
@@ -123,7 +123,7 @@ func TestE2EFamilyB_ValidationStrings(t *testing.T) {
 				r, _ := h.handleGetView(ctx, makeToolRequest("signoz_get_view", map[string]any{}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted)`,
+			wantSub: `Parameter validation failed: "id" is required`,
 		},
 		{
 			name: "get_notification_channel missing id -> cannot be empty",

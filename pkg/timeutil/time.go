@@ -290,12 +290,36 @@ func ValidateExplicitTimestamps(args map[string]any) error {
 		return nil
 	}
 
-	if timeRange, ok := args["timeRange"].(string); ok && timeRange != "" {
-		if _, err := ParseTimeRange(timeRange); err != nil {
-			return fmt.Errorf("invalid \"timeRange\" %q: must use a relative window like \"1h\", \"30m\", \"24h\", or \"7d\"; omit it to use the default window", timeRange)
+	// A present timeRange must be a string relative window. A present-but-non-string
+	// value (e.g. {"timeRange": 24}) is rejected loudly rather than silently ignored,
+	// so a wrong-typed window cannot quietly fall back to the default. An absent key
+	// or empty string legitimately means "use the default window".
+	if v, present := args["timeRange"]; present && v != nil {
+		timeRange, isString := v.(string)
+		if !isString {
+			return fmt.Errorf("invalid \"timeRange\" %v: must be a string relative window like \"1h\", \"30m\", \"24h\", or \"7d\"; omit it to use the default window", v)
+		}
+		if timeRange != "" {
+			if _, err := ParseTimeRange(timeRange); err != nil {
+				return fmt.Errorf("invalid \"timeRange\" %q: must use a relative window like \"1h\", \"30m\", \"24h\", or \"7d\"; omit it to use the default window", timeRange)
+			}
 		}
 	}
 	return nil
+}
+
+// HasUsableTimestamp reports whether args[key] is present AND parses to a valid
+// epoch integer — i.e. an explicit timestamp the caller actually supplied. An
+// absent key, an empty string, or a malformed value all return false. Callers use
+// this to decide whether to inject a default window without duplicating the
+// epoch-parsing rules (see parseEpochArg).
+func HasUsableTimestamp(args map[string]any, key string) bool {
+	v, ok := args[key]
+	if !ok {
+		return false
+	}
+	_, present, parsed := parseEpochArg(v)
+	return present && parsed
 }
 
 // NowMillis returns the current time in unix milliseconds.

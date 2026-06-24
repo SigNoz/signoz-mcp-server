@@ -55,11 +55,11 @@
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get an alert rule definition by id (param 'id'; legacy 'ruleId' still accepted) via GET /api/v2/rules/{id}. Response shape differs by server version (v2 Rule vs v1 GettableRule)"
+      "description": "Get an alert rule definition by id (param 'id') via GET /api/v2/rules/{id}. Response shape differs by server version (v2 Rule vs v1 GettableRule)"
     },
     {
       "name": "signoz_get_alert_history",
-      "description": "Get alert state history timeline for a specific rule (param 'id'; legacy 'ruleId' still accepted) with optional state filter"
+      "description": "Get alert state history timeline for a specific rule (param 'id') with optional state filter"
     },
     {
       "name": "signoz_create_alert",
@@ -67,11 +67,11 @@
     },
     {
       "name": "signoz_update_alert",
-      "description": "Update an existing alert rule by UUIDv7 (param 'id'; legacy 'ruleId' still accepted) via PUT /api/v2/rules/{id}"
+      "description": "Update an existing alert rule by UUIDv7 (param 'id') via PUT /api/v2/rules/{id}"
     },
     {
       "name": "signoz_delete_alert",
-      "description": "Delete an alert rule by UUIDv7 (param 'id'; legacy 'ruleId' still accepted) via DELETE /api/v2/rules/{id}"
+      "description": "Delete an alert rule by UUIDv7 (param 'id') via DELETE /api/v2/rules/{id}"
     },
     {
       "name": "signoz_list_dashboards",
@@ -79,7 +79,7 @@
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get full dashboard configuration by id (param 'id'; legacy 'uuid' still accepted)"
+      "description": "Get full dashboard configuration by id (param 'id')"
     },
     {
       "name": "signoz_create_dashboard",
@@ -87,11 +87,11 @@
     },
     {
       "name": "signoz_update_dashboard",
-      "description": "Update an existing dashboard by id (param 'id'; legacy 'uuid' still accepted)"
+      "description": "Update an existing dashboard by id (param 'id')"
     },
     {
       "name": "signoz_delete_dashboard",
-      "description": "Delete a dashboard by id (param 'id'; legacy 'uuid' still accepted)"
+      "description": "Delete a dashboard by id (param 'id')"
     },
     {
       "name": "signoz_import_dashboard",
@@ -115,7 +115,7 @@
     },
     {
       "name": "signoz_get_view",
-      "description": "Get a single SigNoz saved view by id (param 'id'; legacy 'viewId' still accepted)"
+      "description": "Get a single SigNoz saved view by id (param 'id')"
     },
     {
       "name": "signoz_search_docs",
@@ -131,11 +131,11 @@
     },
     {
       "name": "signoz_update_view",
-      "description": "Replace an existing SigNoz saved view (full-body PUT; param 'id'; legacy 'viewId' still accepted)"
+      "description": "Replace an existing SigNoz saved view (full-body PUT; param 'id')"
     },
     {
       "name": "signoz_delete_view",
-      "description": "Delete a SigNoz saved view by id (param 'id'; legacy 'viewId' still accepted)"
+      "description": "Delete a SigNoz saved view by id (param 'id')"
     },
     {
       "name": "signoz_aggregate_logs",

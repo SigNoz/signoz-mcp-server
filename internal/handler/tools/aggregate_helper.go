@@ -242,9 +242,14 @@ func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, 
 	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
 		return 0, 0, err
 	}
-	if _, ok := args["timeRange"]; !ok {
-		_, hasStart := args["start"]
-		if !hasStart {
+	// Inject the tool's advertised default window when there is no usable explicit
+	// time input — no usable timeRange string AND no usable explicit start. A
+	// present-but-empty start (which timeutil treats as absent) must NOT block the
+	// default, or GetTimestampsWithDefaults silently falls back to its generic 6h
+	// window. A present-but-non-string timeRange is already rejected loudly by
+	// ValidateExplicitTimestamps above; an empty-string timeRange means "use default".
+	if tr, ok := args["timeRange"].(string); !ok || tr == "" {
+		if !timeutil.HasUsableTimestamp(args, "start") {
 			args["timeRange"] = defaultRange
 		}
 	}

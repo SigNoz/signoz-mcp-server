@@ -212,7 +212,7 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 		// deep path through a slice element (queries -> items -> spec -> filter -> expression)
 		{"create alert", []string{"condition", "compositeQuery", "queries", "[]", "spec", "filter", "expression"}, "Filter expression using field operators. Example: service.name = frontend AND http.status_code >= 500. Use empty string for no filter."},
 		// direct named field on UpdateAlertInput (id is canonical; ruleId is a legacy alias)
-		{"update alert", []string{"id"}, "UUIDv7 of the alert rule to update (required). Provide either this or the legacy field name 'ruleId'. Obtain it from signoz_list_alert_rules or signoz_get_alert."},
+		{"update alert", []string{"id"}, "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."},
 		// dashboard: slice element (widgets -> items -> id)
 		{"create dashboard", []string{"widgets", "[]", "id"}, "ID for the widget"},
 		// dashboard: map value schema (variables -> additionalProperties -> name)
