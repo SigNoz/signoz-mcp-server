@@ -362,7 +362,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		for k, v := range s.customHeaders {
 			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
 				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
-					slog.String("header", k), slog.String("value", v))
+					slog.String("header", k))
 				continue
 			}
 			req.Header.Set(k, v)

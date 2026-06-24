@@ -1709,6 +1709,7 @@ func TestNewClient_EmptyHeaders(t *testing.T) {
 }
 
 func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
+	var logs bytes.Buffer
 	customHeaders := map[string]string{
 		"Content-Type":        "text/plain",
 		"SIGNOZ-API-KEY":      "overridden-key",
@@ -1728,11 +1729,17 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := logpkg.New("debug")
+	logger := newBufferedLogger(&logs, slog.LevelDebug)
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)
+
+	logOutput := logs.String()
+	assert.Contains(t, logOutput, "Custom header overrides a reserved header")
+	assert.Contains(t, logOutput, "SIGNOZ-API-KEY")
+	assert.NotContains(t, logOutput, "overridden-key")
+	assert.NotContains(t, logOutput, "text/plain")
 }
 
 func TestCreateAlertRule_v2Returns201(t *testing.T) {
