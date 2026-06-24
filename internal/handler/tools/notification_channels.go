@@ -63,7 +63,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true. Accepts a boolean or the strings \"true\"/\"false\"."), boolOrStringType()),
+		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),
@@ -125,7 +125,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true. Accepts a boolean or the strings \"true\"/\"false\"."), boolOrStringType()),
+		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),

@@ -43,7 +43,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 				"TIP: Call signoz_list_metrics first to get the metric's type, temporality, and isMonotonic."),
 		mcp.WithString("metricName", mcp.Required(), mcp.Description("Name of the metric to query. Example: 'container.cpu.utilization', 'http_requests_total'.")),
 		mcp.WithString("metricType", mcp.Description("Metric type: gauge, sum, histogram, or exponential_histogram. Auto-fetched from signoz_list_metrics if not provided.")),
-		mcp.WithBoolean("isMonotonic", mcp.Description("Whether the metric is monotonically increasing. Only relevant for type=sum. Auto-fetched if not provided. Accepts a boolean or the strings \"true\"/\"false\"."), boolOrStringType()),
+		mcp.WithBoolean("isMonotonic", mcp.Description("Whether the metric is monotonically increasing (true or false). Only relevant for type=sum. Auto-fetched if not provided.")),
 		mcp.WithString("temporality", mcp.Description("Metric temporality: cumulative, delta, or unspecified. Auto-fetched if not provided.")),
 		mcp.WithString("timeAggregation", mcp.Description("Aggregation over time buckets. Auto-defaulted based on metricType. Valid: latest, sum, avg, min, max, count, count_distinct, rate, increase (type-dependent).")),
 		mcp.WithString("spaceAggregation", mcp.Description("Aggregation across series/dimensions. Auto-defaulted based on metricType. Valid: sum, avg, min, max, count, p50, p75, p90, p95, p99 (type-dependent).")),

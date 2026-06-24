@@ -9,7 +9,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // --- N3: shared boolean parser ---
@@ -909,88 +908,3 @@ func TestHandleUpdateNotificationChannel_TestFailWarningNote(t *testing.T) {
 type errTestSend string
 
 func (e errTestSend) Error() string { return string(e) }
-
-// Codex round-3 P2: WithBoolean params parsed by parseBoolArg accept a real
-// bool OR the strings "true"/"false", but a plain WithBoolean advertised only
-// type:"boolean" — narrower than the handler accepts, so strict schema-
-// validating clients sending {"isMonotonic":"false"} were rejected before the
-// lenient parser ran. boolOrStringType() widens the advertised schema to the
-// union ["boolean","string"] so the schema matches the handler.
-func TestBoolOrStringType_AdvertisesUnionSchema(t *testing.T) {
-	tool := mcp.NewTool("union_probe",
-		mcp.WithBoolean("isMonotonic",
-			mcp.Description(`Accepts a boolean or the strings "true"/"false".`),
-			boolOrStringType(),
-		),
-	)
-
-	// The in-memory property schema "type" is the concrete []string we set.
-	prop, ok := tool.InputSchema.Properties["isMonotonic"].(map[string]any)
-	if !ok {
-		t.Fatalf("isMonotonic property = %#v, want map", tool.InputSchema.Properties["isMonotonic"])
-	}
-	gotType, ok := prop["type"].([]string)
-	if !ok {
-		t.Fatalf("isMonotonic type = %#v, want []string", prop["type"])
-	}
-	if len(gotType) != 2 || gotType[0] != "boolean" || gotType[1] != "string" {
-		t.Fatalf("isMonotonic type = %v, want [boolean string] (boolean primary)", gotType)
-	}
-
-	// And it round-trips through JSON as a valid JSON-Schema type array, which
-	// is what a schema-validating MCP client actually consumes.
-	b, err := json.Marshal(tool)
-	if err != nil {
-		t.Fatalf("marshal tool: %v", err)
-	}
-	if !strings.Contains(string(b), `"type":["boolean","string"]`) {
-		t.Fatalf("marshaled tool missing union type array; got %s", b)
-	}
-
-	var doc map[string]any
-	if err := json.Unmarshal(b, &doc); err != nil {
-		t.Fatalf("unmarshal tool JSON: %v", err)
-	}
-	props := doc["inputSchema"].(map[string]any)["properties"].(map[string]any)
-	typeArr, ok := props["isMonotonic"].(map[string]any)["type"].([]any)
-	if !ok {
-		t.Fatalf("round-tripped type = %#v, want JSON array", props["isMonotonic"])
-	}
-	if len(typeArr) != 2 || typeArr[0] != "boolean" || typeArr[1] != "string" {
-		t.Fatalf("round-tripped type = %v, want [boolean string]", typeArr)
-	}
-}
-
-// Family A regression: aggregate stepInterval accepts a JSON integer number or
-// a string in parseStepInterval, so the advertised schema must admit both forms
-// for strict schema-validating MCP clients.
-func TestNumberOrStringType_StepIntervalAdvertisesUnion(t *testing.T) {
-	h := newTestHandler(nil)
-	s := server.NewMCPServer("test", "test")
-	h.RegisterLogsHandlers(s)
-
-	serverTool := s.GetTool("signoz_aggregate_logs")
-	if serverTool == nil {
-		t.Fatal("signoz_aggregate_logs was not registered")
-	}
-
-	prop, ok := serverTool.Tool.InputSchema.Properties["stepInterval"].(map[string]any)
-	if !ok {
-		t.Fatalf("stepInterval property = %#v, want map", serverTool.Tool.InputSchema.Properties["stepInterval"])
-	}
-	gotType, ok := prop["type"].([]string)
-	if !ok {
-		t.Fatalf("stepInterval type = %#v, want []string", prop["type"])
-	}
-	if len(gotType) != 2 || gotType[0] != "integer" || gotType[1] != "string" {
-		t.Fatalf("stepInterval type = %v, want [integer string] (integer primary)", gotType)
-	}
-
-	b, err := json.Marshal(serverTool.Tool)
-	if err != nil {
-		t.Fatalf("marshal aggregate logs tool: %v", err)
-	}
-	if !strings.Contains(string(b), `"type":["integer","string"]`) {
-		t.Fatalf("marshaled aggregate logs tool missing union type array; got %s", b)
-	}
-}

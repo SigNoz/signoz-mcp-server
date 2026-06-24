@@ -101,48 +101,6 @@ func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
 	}
 }
 
-// boolOrStringType is an mcp.PropertyOption that widens a boolean property's
-// advertised JSON Schema "type" from "boolean" to the union ["boolean","string"].
-//
-// WHY: these params are parsed by parseBoolArg, which intentionally accepts a
-// real JSON bool OR the case-insensitive strings "true"/"false" (back-compat for
-// JSON-as-strings clients). A plain mcp.WithBoolean advertises only
-// type:"boolean", which is NARROWER than what the handler accepts — so a
-// strict, schema-validating MCP client that sends {"isMonotonic":"false"} (a
-// string) gets rejected before the request ever reaches our lenient parser.
-// Appending this option lets the advertised schema admit the string form
-// parseBoolArg accepts so those clients aren't broken. The schema is
-// deliberately a touch wider than the parser (it admits any string at
-// validation time, then parseBoolArg still rejects anything other than
-// empty/"true"/"false" with a correctable error) — the standard, safe way to
-// express bool-or-string in JSON Schema. mcp.PropertyOption is func(map[string]any) and
-// the property "type" is stored as any, so overriding it with a []string{...}
-// serializes to a valid JSON-Schema type array (e.g. "type":["boolean","string"]).
-// Keep mcp.WithBoolean as the base so "boolean" stays the primary/first type.
-func boolOrStringType() mcp.PropertyOption {
-	return func(schema map[string]any) {
-		schema["type"] = []string{"boolean", "string"}
-	}
-}
-
-// numberOrStringType is an mcp.PropertyOption that widens an integer-like
-// string property's advertised JSON Schema "type" from "string" to the union
-// ["integer","string"].
-//
-// WHY: aggregate stepInterval is parsed by parseStepInterval, which accepts a
-// JSON integer number OR a decimal string while rejecting fractional values. A
-// plain mcp.WithString advertises only type:"string", so strict schema-
-// validating MCP clients sending {"stepInterval":60} can reject the call before
-// it reaches the lenient handler. Use "integer" rather than "number" because
-// parseStepInterval rejects fractional values. mcp.PropertyOption is
-// func(map[string]any) and the property "type" is stored as any, so overriding
-// it with []string{...} serializes to a valid JSON-Schema type array.
-func numberOrStringType() mcp.PropertyOption {
-	return func(schema map[string]any) {
-		schema["type"] = []string{"integer", "string"}
-	}
-}
-
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
 	AggregationExpr  string
