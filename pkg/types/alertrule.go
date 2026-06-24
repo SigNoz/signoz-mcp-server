@@ -25,10 +25,14 @@ type CreateAlertInput struct {
 }
 
 type UpdateAlertInput struct {
-	// Not jsonschema:"required": the legacy alias 'ruleId' must remain a valid
-	// call for schema-aware clients that validate args against the advertised
-	// inputSchema. The handler validates that one of id/ruleId is present.
-	ID string `json:"id,omitempty" jsonschema_extras:"description=UUIDv7 of the alert rule to update (required). Provide either this or the legacy field name 'ruleId'. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
+	// ID / LegacyRuleID: both are advertised as OPTIONAL properties (no
+	// jsonschema:"required", json ",omitempty") so the typed schema's
+	// additionalProperties:false does not reject a schema-aware client that
+	// sends EITHER key. Exactly one must be supplied; the handler validates
+	// presence and reads via readResourceID (canonical "id" wins), then strips
+	// both keys from the body before forwarding upstream.
+	ID           string `json:"id,omitempty" jsonschema_extras:"description=UUIDv7 of the alert rule to update (required). Provide either this or the legacy field name 'ruleId'. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
+	LegacyRuleID string `json:"ruleId,omitempty" jsonschema_extras:"description=Deprecated alias for 'id'. Accepted for backward compatibility; prefer 'id'."`
 	AlertRule
 	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }

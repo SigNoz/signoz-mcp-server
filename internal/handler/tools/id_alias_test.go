@@ -472,16 +472,21 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 }
 
 // TestUpdateStructs_IDNotSchemaRequired pins that the typed update_alert /
-// update_dashboard input schemas do NOT mark the resource id as required, so a
-// schema-aware client validating against the advertised inputSchema can still
-// issue a legacy-only (ruleId/uuid) call. The id remains an advertised property.
+// update_dashboard input schemas advertise BOTH the canonical "id" and the
+// legacy alias key (ruleId/uuid) as OPTIONAL (non-required) properties. This is
+// the schema-aware-client contract: WithInputSchema emits
+// additionalProperties:false, so unless the legacy key is itself an advertised
+// property, a legacy-only call would be rejected before readResourceID's
+// runtime fallback ever runs. Neither key may be in the required list (exactly
+// one is supplied; the handler validates presence).
 func TestUpdateStructs_IDNotSchemaRequired(t *testing.T) {
 	cases := []struct {
-		name string
-		tool mcp.Tool
+		name      string
+		legacyKey string
+		tool      mcp.Tool
 	}{
-		{"update_alert", mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]())},
-		{"update_dashboard", mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]())},
+		{"update_alert", "ruleId", mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]())},
+		{"update_dashboard", "uuid", mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]())},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -489,9 +494,15 @@ func TestUpdateStructs_IDNotSchemaRequired(t *testing.T) {
 			if _, ok := props["id"]; !ok {
 				t.Fatalf("%s: id must remain an advertised property: %#v", tc.name, props)
 			}
+			if _, ok := props[tc.legacyKey]; !ok {
+				t.Fatalf("%s: legacy alias %q must be an advertised property so additionalProperties:false does not reject a legacy-only call: %#v", tc.name, tc.legacyKey, props)
+			}
 			required := inputSchemaRequiredFields(t, tc.tool)
 			if containsString(required, "id") {
 				t.Fatalf("%s: id must NOT be in the required list (legacy-only calls must stay schema-valid), got: %#v", tc.name, required)
+			}
+			if containsString(required, tc.legacyKey) {
+				t.Fatalf("%s: legacy alias %q must NOT be required, got: %#v", tc.name, tc.legacyKey, required)
 			}
 		})
 	}

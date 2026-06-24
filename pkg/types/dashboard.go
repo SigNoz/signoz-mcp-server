@@ -1,9 +1,14 @@
 package types
 
 type UpdateDashboardInput struct {
-	// Not jsonschema:"required": the legacy alias 'uuid' must remain a valid call
-	// for schema-aware clients. The handler validates that one of id/uuid is present.
+	// ID / LegacyUUID: both advertised as OPTIONAL properties (no
+	// jsonschema:"required", json ",omitempty") so the typed schema's
+	// additionalProperties:false does not reject a schema-aware client sending
+	// EITHER key. Exactly one must be supplied; the handler validates presence
+	// and reads via readResourceID (canonical "id" wins), then strips both keys
+	// before forwarding upstream.
 	ID            string    `json:"id,omitempty" jsonschema_extras:"description=Dashboard UUID to update (required). Provide either this or the legacy field name 'uuid'."`
+	LegacyUUID    string    `json:"uuid,omitempty" jsonschema_extras:"description=Deprecated alias for 'id'. Accepted for backward compatibility; prefer 'id'."`
 	Dashboard     Dashboard `json:"dashboard" jsonschema:"required" jsonschema_extras:"description=Full dashboard configuration representing the complete post-update state."`
 	SearchContext string    `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }

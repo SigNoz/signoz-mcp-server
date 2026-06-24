@@ -180,6 +180,43 @@ func TestNormalizeEpochToUnit_BandCeilingsNoOverflow(t *testing.T) {
 	}
 }
 
+// TestNormalizeEpochToUnit_ExactBoundaries pins that each band ceiling is
+// EXCLUSIVE: a value EXACTLY equal to a boundary falls into the NEXT (finer)
+// band, because the magnitude switch uses strict `<`.
+//
+//	raw == secondsUpperBound (1e11) → millis band (NOT seconds)
+//	raw == millisUpperBound  (1e14) → micros band (NOT millis)
+//	raw == microsUpperBound  (1e17) → nanos  band (NOT micros)
+func TestNormalizeEpochToUnit_ExactBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  int64
+		unit string
+		want int64
+	}{
+		// 1e11 is treated as MILLIS → ms target is identity (NOT ×1000).
+		{"1e11 is millis -> ms identity", secondsUpperBound, UnitMillis, secondsUpperBound},
+		// If 1e11 were (wrongly) seconds, ms would be 1e14; assert it is NOT.
+		// 1e14 is treated as MICROS → ms target divides by 1000.
+		{"1e14 is micros -> ms /1000", millisUpperBound, UnitMillis, millisUpperBound / 1000},
+		// 1e17 is treated as NANOS → ms target divides by 1e6, ns is identity.
+		{"1e17 is nanos -> ms /1e6", microsUpperBound, UnitMillis, microsUpperBound / 1_000_000},
+		{"1e17 is nanos -> ns identity", microsUpperBound, UnitNanos, microsUpperBound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeEpochToUnit(tt.raw, tt.unit); got != tt.want {
+				t.Fatalf("normalizeEpochToUnit(%d, %q) = %d, want %d (boundary is exclusive → next band)", tt.raw, tt.unit, got, tt.want)
+			}
+		})
+	}
+
+	// Explicit anti-assertion: 1e11 must NOT be treated as seconds (×1000).
+	if got := normalizeEpochToUnit(secondsUpperBound, UnitMillis); got == secondsUpperBound*1000 {
+		t.Fatalf("1e11 was treated as seconds (got %d); boundary must be exclusive → millis band", got)
+	}
+}
+
 // TestGetTimestampsWithDefaultsAutoDetectsMagnitude verifies that an explicit
 // start/end pair given in any magnitude is normalized to the canonical unit.
 func TestGetTimestampsWithDefaultsAutoDetectsMagnitude(t *testing.T) {

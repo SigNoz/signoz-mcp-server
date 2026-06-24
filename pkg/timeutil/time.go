@@ -69,7 +69,11 @@ func normalizeEpochToUnit(raw int64, unit string) int64 {
 		return raw
 	}
 
-	// Detect the source unit by magnitude.
+	// Detect the source unit by magnitude. Each band boundary is EXCLUSIVE on
+	// the upper end (strict <): a value exactly equal to a band ceiling falls
+	// into the NEXT (finer) band — e.g. raw == secondsUpperBound (1e11) is
+	// treated as millis, == millisUpperBound (1e14) as micros, == microsUpperBound
+	// (1e17) as nanos.
 	var sourceUnitNanos int64 // how many nanoseconds one unit of the source equals
 	switch {
 	case raw < secondsUpperBound:

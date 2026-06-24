@@ -433,7 +433,7 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
 
 #### `signoz_list_alerts`
 
-Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with a `ruleId` for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with an `id` (legacy `ruleId` also accepted) for one full rule definition, or `signoz_get_alert_history` for the state timeline.
 
 #### `signoz_list_alert_rules`
 
