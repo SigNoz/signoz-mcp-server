@@ -51,14 +51,17 @@ func TestParseSearchTracesArgs_LimitClamped(t *testing.T) {
 func TestRawSearchResult_NoteIsSeparateBlock(t *testing.T) {
 	payload := []byte(`{"status":"success","data":[]}`)
 
-	notClamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, false)
-	if len(notClamped.Content) != 1 {
-		t.Fatalf("not-clamped: want 1 content block, got %d", len(notClamped.Content))
+	// rawSearchResult always appends a completeness note (hasMore inference), so
+	// even an un-clamped result carries the JSON block plus one note block.
+	notClamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, 100, 0, false)
+	if len(notClamped.Content) != 2 {
+		t.Fatalf("not-clamped: want 2 content blocks (JSON + completeness note), got %d", len(notClamped.Content))
 	}
 
-	clamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, true)
-	if len(clamped.Content) != 2 {
-		t.Fatalf("clamped: want 2 content blocks, got %d", len(clamped.Content))
+	// Clamped: JSON block + clamp note + completeness note.
+	clamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, 100, 0, true)
+	if len(clamped.Content) != 3 {
+		t.Fatalf("clamped: want 3 content blocks, got %d", len(clamped.Content))
 	}
 	block0, ok := clamped.Content[0].(mcp.TextContent)
 	if !ok {
@@ -70,7 +73,7 @@ func TestRawSearchResult_NoteIsSeparateBlock(t *testing.T) {
 	}
 	block1, ok := clamped.Content[1].(mcp.TextContent)
 	if !ok || !strings.Contains(block1.Text, "result limited to") {
-		t.Fatalf("clamped: block 1 should be the pagination note, got %#v", clamped.Content[1])
+		t.Fatalf("clamped: block 1 should be the clamp note, got %#v", clamped.Content[1])
 	}
 }
 
