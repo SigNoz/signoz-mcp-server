@@ -110,6 +110,76 @@ func TestRequireStringArg(t *testing.T) {
 	}
 }
 
+func TestRequireArgsMap(t *testing.T) {
+	t.Run("object passes through", func(t *testing.T) {
+		in := map[string]any{"a": 1}
+		got, errResult := requireArgsMap(in)
+		if errResult != nil {
+			t.Fatalf("unexpected error result: %v", errResult.Content)
+		}
+		if got == nil || got["a"] != 1 {
+			t.Fatalf("got = %#v, want passthrough of input map", got)
+		}
+	})
+	for _, raw := range []any{nil, "string-not-object", 42, []any{"x"}} {
+		_, errResult := requireArgsMap(raw)
+		if errResult == nil {
+			t.Fatalf("requireArgsMap(%#v) = no error, want JSON-object guard", raw)
+		}
+		if got := resultText(t, errResult); got != "invalid arguments format: expected JSON object" {
+			t.Fatalf("requireArgsMap(%#v) text = %q, want JSON-object guard", raw, got)
+		}
+	}
+}
+
+func TestRequireStringField(t *testing.T) {
+	cases := []struct {
+		name      string
+		args      map[string]any
+		reason    string
+		wantVal   string
+		wantErrIs string
+	}{
+		{name: "valid", args: map[string]any{"type": "slack"}, wantVal: "slack"},
+		{
+			name:      "wrong type -> must be a string",
+			args:      map[string]any{"type": 7},
+			wantErrIs: `Parameter validation failed: "type" must be a string`,
+		},
+		{
+			name:      "empty -> is required with reason",
+			args:      map[string]any{"type": ""},
+			reason:    ". Must be one of: slack, webhook",
+			wantErrIs: `Parameter validation failed: "type" is required. Must be one of: slack, webhook`,
+		},
+		{
+			name:      "missing -> is required",
+			args:      map[string]any{},
+			wantErrIs: `Parameter validation failed: "type" is required`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			val, err := requireStringField(tc.args, "type", tc.reason)
+			if tc.wantErrIs != "" {
+				if err == nil {
+					t.Fatalf("expected error, got val=%q", val)
+				}
+				if err.Error() != tc.wantErrIs {
+					t.Fatalf("err = %q, want %q", err.Error(), tc.wantErrIs)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if val != tc.wantVal {
+				t.Fatalf("val = %q, want %q", val, tc.wantVal)
+			}
+		})
+	}
+}
+
 func TestNotAJSONObjectError_CanonicalForm(t *testing.T) {
 	got := resultText(t, notAJSONObjectError())
 	want := "invalid arguments format: expected JSON object"

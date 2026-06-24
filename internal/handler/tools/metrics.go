@@ -119,7 +119,7 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 	result, err := client.ListMetrics(ctx, start, end, limit, searchText, source)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list metrics", slog.String("searchText", searchText), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }

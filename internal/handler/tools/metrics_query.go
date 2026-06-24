@@ -46,11 +46,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(
-				"Failed to auto-fetch metric metadata for %q: %s\n"+
-					"Please provide metricType, temporality, and isMonotonic manually "+
-					"(get them from signoz_list_metrics).",
-				mqr.MetricName, fetchErr.Error())), nil
+			return upstreamError(fmt.Errorf(
+				"could not auto-fetch metric metadata for %q: %w. "+
+					"Provide metricType, temporality, and isMonotonic manually "+
+					"(get them from signoz_list_metrics)",
+				mqr.MetricName, fetchErr)), nil
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType

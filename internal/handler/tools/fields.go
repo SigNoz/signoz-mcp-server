@@ -79,7 +79,7 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 	result, err := client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get field keys", slog.String("signal", signal), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }
@@ -113,7 +113,7 @@ func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequ
 	result, err := client.GetFieldValues(ctx, signal, name, metricName, searchText, fieldContext, source)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get field values", slog.String("signal", signal), slog.String("name", name), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }

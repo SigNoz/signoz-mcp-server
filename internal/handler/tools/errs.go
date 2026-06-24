@@ -87,6 +87,39 @@ func notAJSONObjectError() *mcp.CallToolResult {
 	return mcp.NewToolResultError(notAJSONObjectMessage)
 }
 
+// requireArgsMap asserts that the raw MCP arguments payload is a JSON object and
+// returns it. On a non-object payload (including an untyped nil, which is what
+// the framework delivers when a tool is called with no "arguments" at all) it
+// returns the shared JSON-object guard result. Use this before requireStringArg
+// so a non-object payload yields the JSON-object guard rather than a misleading
+// "<field> cannot be empty".
+func requireArgsMap(raw any) (map[string]any, *mcp.CallToolResult) {
+	args, ok := raw.(map[string]any)
+	if !ok {
+		return nil, notAJSONObjectError()
+	}
+	return args, nil
+}
+
+// requireStringField is the error-returning sibling of requireStringArg, for
+// helpers that propagate a plain error (e.g. notification-channel receiver
+// builders) rather than a tool result. It applies the same two-tier rule —
+// "must be a string" for a wrong-typed value, "is required" for a missing or
+// empty one — so wrong-type and absence are not conflated. reason is appended
+// after the "is required" clause to carry per-field guidance.
+func requireStringField(args map[string]any, key, requiredReason string) (string, error) {
+	if raw, present := args[key]; present {
+		s, ok := raw.(string)
+		if !ok {
+			return "", fmt.Errorf(`%s %q must be a string`, validationErrorPrefix, key)
+		}
+		if s != "" {
+			return s, nil
+		}
+	}
+	return "", fmt.Errorf(`%s %q is required%s`, validationErrorPrefix, key, requiredReason)
+}
+
 // notAConfigObjectError is the body-carrying-tool variant of the arguments
 // guard (create/update tools whose payload is the resource body).
 func notAConfigObjectError() *mcp.CallToolResult {

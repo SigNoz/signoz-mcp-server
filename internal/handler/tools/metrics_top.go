@@ -52,7 +52,7 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 	result, err := client.GetTopMetrics(ctx, startTime, endTime, 100)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get top metrics", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	return mcp.NewToolResultText(string(result)), nil

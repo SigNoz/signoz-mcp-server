@@ -165,7 +165,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	result, err := client.ListDashboards(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list dashboards", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var dashboards map[string]any
@@ -206,7 +206,11 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid, errResult := requireStringArg(req.GetArguments(), "uuid")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	uuid, errResult := requireStringArg(args, "uuid")
 	if errResult != nil {
 		h.logger.WarnContext(ctx, "Invalid or empty uuid parameter", slog.Any("type", req.Params.Arguments))
 		return errResult, nil
@@ -220,7 +224,7 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	data, err := client.GetDashboard(ctx, uuid)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	data = enrichDashboardWebURL(ctx, data, uuid)
 	return mcp.NewToolResultText(string(data)), nil
@@ -401,7 +405,11 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 }
 
 func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid, errResult := requireStringArg(req.GetArguments(), "uuid")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	uuid, errResult := requireStringArg(args, "uuid")
 	if errResult != nil {
 		h.logger.WarnContext(ctx, "Invalid or empty uuid parameter", slog.Any("type", req.Params.Arguments))
 		return errResult, nil

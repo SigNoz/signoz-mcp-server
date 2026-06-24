@@ -164,7 +164,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list alerts", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var apiResponse types.APIAlertsResponse
@@ -216,7 +216,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	rules, err := client.ListAlertRules(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list alert rules", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var apiResponse types.APIAlertRulesResponse
@@ -271,7 +271,11 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ruleID, errResult := requireStringArg(req.GetArguments(), "ruleId")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	ruleID, errResult := requireStringArg(args, "ruleId")
 	if errResult != nil {
 		h.logger.WarnContext(ctx, "Invalid or empty ruleId parameter", slog.Any("type", req.Params.Arguments))
 		return errResult, nil
@@ -285,7 +289,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get alert", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	respJSON = enrichAlertWebURL(ctx, respJSON, ruleID)
@@ -382,7 +386,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		h.logger.ErrorContext(ctx, "Failed to get alert history",
 			slog.String("ruleId", ruleID),
 			logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(respJSON)), nil
 }
@@ -451,7 +455,10 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 }
 
 func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := req.Params.Arguments.(map[string]any)
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 	ruleID, errResult := requireStringArg(args, "ruleId")
 	if errResult != nil {
 		return errResult, nil
@@ -495,7 +502,7 @@ func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string
 	availableChannels, err := fetchChannelNames(ctx, client)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to fetch notification channels for validation", logpkg.ErrAttr(err))
-		return nil, mcp.NewToolResultError(fmt.Sprintf("Failed to fetch notification channels: %s", err.Error()))
+		return nil, upstreamError(fmt.Errorf("could not fetch notification channels for alert validation: %w", err))
 	}
 
 	referencedChannels := extractReferencedChannels(rawConfig)

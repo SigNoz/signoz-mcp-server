@@ -164,7 +164,10 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	traceID, errResult := requireStringArg(args, "traceId")
 	if errResult != nil {
@@ -194,7 +197,7 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get trace details", slog.String("traceId", traceID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	result = enrichTraceWebURL(ctx, result, traceID)
 	return mcp.NewToolResultText(string(result)), nil

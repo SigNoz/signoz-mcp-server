@@ -369,7 +369,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	result, err := client.ListViews(ctx, sourcePage, name, category)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list views", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var parsed map[string]any
@@ -418,7 +418,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	data, err := client.GetView(ctx, viewID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
