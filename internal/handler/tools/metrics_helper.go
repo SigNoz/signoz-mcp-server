@@ -66,12 +66,12 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		Source:           stringArg(args, "source"),
 	}
 
-	// isMonotonic — accept bool or string
-	switch v := args["isMonotonic"].(type) {
-	case bool:
+	// isMonotonic — accept a real bool or "true"/"false"; hard-error on garbage
+	// (rather than treating any non-"true" string as false).
+	if v, present, err := parseBoolArg(args, "isMonotonic"); err != nil {
+		return nil, err
+	} else if present {
 		req.IsMonotonic = v
-	case string:
-		req.IsMonotonic = strings.EqualFold(v, "true")
 	}
 
 	// groupBy — accept []string, []any, or comma-separated string
