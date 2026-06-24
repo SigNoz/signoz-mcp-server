@@ -336,7 +336,7 @@ func TestFilterAlias_FalseFriendHandlersUnaffected(t *testing.T) {
 			t.Fatal("expected error result")
 		}
 		body := noteText(t, result, 0)
-		if !strings.Contains(body, "query parameter must be a JSON object") {
+		if !strings.Contains(body, `Parameter validation failed: "query" must be a JSON object`) {
 			t.Fatalf("error body = %q, want query-object validation", body)
 		}
 	})

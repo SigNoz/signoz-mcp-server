@@ -97,14 +97,10 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	service, ok := args["service"].(string)
-	if !ok {
-		h.logger.WarnContext(ctx, "Invalid service parameter type", slog.Any("type", args["service"]))
-		return mcp.NewToolResultError(`Parameter validation failed: "service" must be a string. Example: {"service": "frontend-api", "timeRange": "1h"}`), nil
-	}
-	if service == "" {
-		h.logger.WarnContext(ctx, "Empty service parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
+	service, errResult := requireStringArg(args, "service")
+	if errResult != nil {
+		h.logger.WarnContext(ctx, "Invalid service parameter", slog.Any("type", args["service"]))
+		return errResult, nil
 	}
 
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")

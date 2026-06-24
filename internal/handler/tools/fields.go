@@ -57,15 +57,12 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	signal, ok := args["signal"].(string)
-	if !ok || signal == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
-	}
-	if signal != "metrics" && signal != "traces" && signal != "logs" {
-		return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
+	if !ok || signal == "" || (signal != "metrics" && signal != "traces" && signal != "logs") {
+		return validationError("signal", `must be one of: "metrics", "traces", "logs"`), nil
 	}
 
 	searchText, _ := args["searchText"].(string)
@@ -90,20 +87,17 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	signal, ok := args["signal"].(string)
-	if !ok || signal == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
-	}
-	if signal != "metrics" && signal != "traces" && signal != "logs" {
-		return mcp.NewToolResultError(`Parameter validation failed: "signal" must be one of: "metrics", "traces", "logs"`), nil
+	if !ok || signal == "" || (signal != "metrics" && signal != "traces" && signal != "logs") {
+		return validationError("signal", `must be one of: "metrics", "traces", "logs"`), nil
 	}
 
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "name" must be a non-empty string. Example: "service.name", "http.status_code"`), nil
+		return validationError("name", `must be a non-empty string. Example: "service.name", "http.status_code"`), nil
 	}
 
 	searchText, _ := args["searchText"].(string)

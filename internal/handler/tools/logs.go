@@ -69,7 +69,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	reqData, err := parseAggregateLogsArgs(args)
@@ -101,7 +101,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to aggregate logs", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped), nil
@@ -110,7 +110,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	reqData, err := parseSearchLogsArgs(args)
@@ -139,7 +139,7 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to search logs", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.LimitClamped), nil
