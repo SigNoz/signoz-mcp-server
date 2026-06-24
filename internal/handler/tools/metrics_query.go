@@ -146,7 +146,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			if res, ok := asUpstreamResult(subErr); ok {
 				return res, nil
 			}
-			return mcp.NewToolResultError(subErr.Error()), nil
+			return errorWithCode(CodeValidationFailed, subErr.Error()), nil
 		}
 
 		subGroupBy := buildGroupByFields(fq.GroupBy)

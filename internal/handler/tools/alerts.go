@@ -150,15 +150,15 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 
 	active, err := parseTriStateBool(args, "active")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
 	}
 	inhibited, err := parseTriStateBool(args, "inhibited")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
 	}
 	silenced, err := parseTriStateBool(args, "silenced")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
 	}
 	params := types.ListAlertsParams{
 		Active:    active,
@@ -362,7 +362,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	limit, err := intArg(args, "limit", 20)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Invalid limit format", slog.Any("limit", args["limit"]), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	order := "asc"
@@ -371,7 +371,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 			order = orderStr
 		} else {
 			h.logger.WarnContext(ctx, "Invalid order value", slog.String("order", orderStr))
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderStr)), nil
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderStr)), nil
 		}
 	}
 
@@ -379,7 +379,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	if stateStr, ok := args["state"].(string); ok && stateStr != "" {
 		if stateStr != "firing" && stateStr != "inactive" {
 			h.logger.WarnContext(ctx, "Invalid state value", slog.String("state", stateStr))
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "state" value: "%s". Must be either "firing" or "inactive"`, stateStr)), nil
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "state" value: "%s". Must be either "firing" or "inactive"`, stateStr)), nil
 		}
 		state = stateStr
 	}
