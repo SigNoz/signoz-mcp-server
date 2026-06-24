@@ -120,5 +120,15 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	}
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")
-	return mcp.NewToolResultText(string(data)), nil
+
+	// Surface non-fatal backend warnings as a note + WARN log, matching the five
+	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
+	// Returning the body verbatim previously dropped them entirely.
+	var notes []string
+	warnings := extractBackendWarningMessages(data)
+	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
+	if len(warnings) > 0 {
+		notes = append(notes, backendWarningsNote(warnings))
+	}
+	return resultWithNotes(data, notes...), nil
 }

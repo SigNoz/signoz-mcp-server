@@ -76,6 +76,9 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	if reqData.StepIntervalWarning != "" {
+		h.logger.WarnContext(ctx, "aggregate_logs stepInterval dropped", slog.String("reason", reqData.StepIntervalWarning))
+	}
 
 	queryPayload := types.BuildAggregateQueryPayload("logs",
 		reqData.StartTime, reqData.EndTime, reqData.AggregationExpr,
@@ -142,5 +145,5 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 		return upstreamError(err), nil
 	}
 
-	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.LimitClamped), nil
+	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped), nil
 }

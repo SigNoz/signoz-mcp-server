@@ -443,13 +443,17 @@ func TestBackendWarnings_SurfaceInToolResultAndWarnLog(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if len(result.Content) != 2 {
-		t.Fatalf("content block count = %d, want raw JSON + warning note", len(result.Content))
+	// raw JSON + completeness note (hasMore) + backend warning note
+	if len(result.Content) != 3 {
+		t.Fatalf("content block count = %d, want raw JSON + completeness note + warning note", len(result.Content))
 	}
 	if block0 := noteText(t, result, 0); block0 != string(response) {
 		t.Fatalf("block 0 = %q, want raw response unchanged", block0)
 	}
-	if note := noteText(t, result, 1); !strings.Contains(note, warningMessage) {
+	if completeness := noteText(t, result, 1); !strings.Contains(completeness, "hasMore") {
+		t.Fatalf("block 1 = %q, want completeness note", completeness)
+	}
+	if note := noteText(t, result, 2); !strings.Contains(note, warningMessage) {
 		t.Fatalf("warning note = %q, want backend warning message", note)
 	}
 	if gotLogs := logs.String(); !strings.Contains(gotLogs, "SigNoz query builder returned non-fatal warnings") || !strings.Contains(gotLogs, "warningCount=1") {
@@ -462,9 +466,9 @@ func TestBackendWarnings_ComposeWithClampNote(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, true)
-	if len(result.Content) != 3 {
-		t.Fatalf("content block count = %d, want raw JSON + clamp note + warning note", len(result.Content))
+	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, true)
+	if len(result.Content) != 4 {
+		t.Fatalf("content block count = %d, want raw JSON + clamp note + completeness note + warning note", len(result.Content))
 	}
 	if block0 := noteText(t, result, 0); block0 != string(payload) {
 		t.Fatalf("block 0 = %q, want raw response unchanged", block0)
@@ -472,8 +476,11 @@ func TestBackendWarnings_ComposeWithClampNote(t *testing.T) {
 	if clampNote := noteText(t, result, 1); !strings.Contains(clampNote, "result limited to") {
 		t.Fatalf("block 1 = %q, want clamp note", clampNote)
 	}
-	if warningNote := noteText(t, result, 2); !strings.Contains(warningNote, "ambiguous key") {
-		t.Fatalf("block 2 = %q, want warning note", warningNote)
+	if completenessNote := noteText(t, result, 2); !strings.Contains(completenessNote, "hasMore") {
+		t.Fatalf("block 2 = %q, want completeness note", completenessNote)
+	}
+	if warningNote := noteText(t, result, 3); !strings.Contains(warningNote, "ambiguous key") {
+		t.Fatalf("block 3 = %q, want warning note", warningNote)
 	}
 }
 
