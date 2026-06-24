@@ -66,6 +66,41 @@ func stringValue(v any) string {
 	return s
 }
 
+// parseBoolArg parses a boolean tool argument. It accepts a real JSON bool, or
+// the case-insensitive strings "true"/"false" (so legacy string-typed callers
+// keep working after the schema is declared as a real boolean). Any other
+// non-empty value is a typed error so the LLM gets a correctable message rather
+// than the value being silently dropped.
+//
+// Returns (value, present, error):
+//   - present is false when the key is absent or an empty string (treat as "not set")
+//   - error is non-nil only when a present value cannot be interpreted as a bool
+func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
+	raw, exists := args[key]
+	if !exists || raw == nil {
+		return false, false, nil
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true, nil
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return false, false, nil
+		}
+		switch strings.ToLower(s) {
+		case "true":
+			return true, true, nil
+		case "false":
+			return false, true, nil
+		default:
+			return false, false, fmt.Errorf(`invalid %q value %q: must be a boolean (true or false)`, key, v)
+		}
+	default:
+		return false, false, fmt.Errorf(`invalid %q value: must be a boolean (true or false)`, key)
+	}
+}
+
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
 	AggregationExpr  string
@@ -79,6 +114,10 @@ type AggregateRequest struct {
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
 	StepInterval     *int64 // nil = let backend auto-select
+	// StepIntervalWarning is set when a stepInterval value was provided but could
+	// not be parsed as a positive integer. The handler logs it (WARN) so a
+	// silently-dropped value is detectable rather than vanishing.
+	StepIntervalWarning string
 }
 
 // parseAggregateArgs validates and parses  aggregate arguments.
@@ -157,25 +196,37 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		requestType = "scalar"
 	}
 
+	// stepInterval: accept either a JSON number or a numeric string via
+	// parseIntLoose (matching query_metrics). A string-only assertion silently
+	// dropped a real JSON number. A present-but-unparseable value (<= 0 or
+	// garbage) is surfaced as a warning rather than silently ignored.
 	var stepInterval *int64
-	if v, ok := args["stepInterval"].(string); ok && v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			stepInterval = &n
+	var stepIntervalWarning string
+	if raw, present := args["stepInterval"]; present && raw != nil {
+		if s, isStr := raw.(string); !isStr || strings.TrimSpace(s) != "" {
+			if n := parseIntLoose(raw); n > 0 {
+				stepInterval = &n
+			} else {
+				stepIntervalWarning = fmt.Sprintf(
+					"stepInterval %v could not be parsed as a positive integer (seconds); letting the backend auto-select the bucket size",
+					raw)
+			}
 		}
 	}
 
 	return &AggregateRequest{
-		AggregationExpr:  aggregationExpr,
-		FilterExpression: filterExpr,
-		GroupBy:          groupByFields,
-		OrderExpr:        orderExpr,
-		OrderDir:         orderDir,
-		Limit:            limit,
-		LimitClamped:     limitClamped,
-		StartTime:        startTime,
-		EndTime:          endTime,
-		RequestType:      requestType,
-		StepInterval:     stepInterval,
+		AggregationExpr:     aggregationExpr,
+		FilterExpression:    filterExpr,
+		GroupBy:             groupByFields,
+		OrderExpr:           orderExpr,
+		OrderDir:            orderDir,
+		Limit:               limit,
+		LimitClamped:        limitClamped,
+		StartTime:           startTime,
+		EndTime:             endTime,
+		RequestType:         requestType,
+		StepInterval:        stepInterval,
+		StepIntervalWarning: stepIntervalWarning,
 	}, nil
 }
 
@@ -295,15 +346,94 @@ func resultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
 	return res
 }
 
+// countQueryRangeRows sums the number of rows across all results in a QB v5
+// query_range passthrough body. The expected nesting is
+// data.data.results[].rows[] (a render.Success envelope wrapping a
+// QueryRangeResponse), the same shape util.InjectRowsWebURL walks. It fails
+// open: it returns (0, false) on any shape it cannot walk so a completeness
+// note is simply omitted rather than wrong.
+func countQueryRangeRows(payload []byte) (int, bool) {
+	var resp struct {
+		Data struct {
+			Data struct {
+				Results []struct {
+					Rows []json.RawMessage `json:"rows"`
+				} `json:"results"`
+			} `json:"data"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return 0, false
+	}
+	if resp.Data.Data.Results == nil {
+		return 0, false
+	}
+	total := 0
+	for _, r := range resp.Data.Data.Results {
+		total += len(r.Rows)
+	}
+	return total, true
+}
+
+// countDataArrayRows counts the elements of a JSON array nested at data.<key>
+// in a passthrough body (e.g. data.items for alert history, data.metrics for
+// list_metrics, data.samples for top_metrics). It fails open: it returns
+// (0, false) on any shape it cannot walk so a completeness note is omitted
+// rather than wrong.
+func countDataArrayRows(payload []byte, key string) (int, bool) {
+	var resp struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return 0, false
+	}
+	raw, ok := resp.Data[key]
+	if !ok {
+		return 0, false
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		return 0, false
+	}
+	return len(arr), true
+}
+
+// completenessNote builds a pagination/completeness advisory for raw-passthrough
+// tools that accept limit/offset but expose no hasMore signal of their own. When
+// the returned row count is known it infers hasMore from returnedRows == limit
+// and reports the nextOffset; otherwise it falls back to a generic "limit
+// applied; more may exist" note so the LLM is never left assuming completeness.
+func completenessNote(returnedRows, limit, offset int, rowsKnown bool) string {
+	if !rowsKnown {
+		return fmt.Sprintf(
+			"note: limit %d applied; this tool cannot count returned rows, so more results may exist. Paginate with \"offset\" (or narrow the query) to be sure.",
+			limit)
+	}
+	hasMore := limit > 0 && returnedRows >= limit
+	nextOffset := offset + returnedRows
+	if hasMore {
+		return fmt.Sprintf(
+			"note: returned %d rows (limit %d) — more results likely exist (hasMore=true). Fetch the next page with offset=%d.",
+			returnedRows, limit, nextOffset)
+	}
+	return fmt.Sprintf(
+		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",
+		returnedRows, limit)
+}
+
 // rawSearchResult is the result wrapper for raw row tools (search_logs /
-// search_traces), which support offset pagination.
-func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool) *mcp.CallToolResult {
+// search_traces), which support offset pagination. It appends a completeness
+// note (hasMore + nextOffset) inferred from the returned row count so callers
+// never silently assume a truncated page is complete.
+func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool) *mcp.CallToolResult {
 	var notes []string
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
 			MaxRawResultLimit))
 	}
+	returnedRows, rowsKnown := countQueryRangeRows(payload)
+	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
 	if len(warnings) > 0 {

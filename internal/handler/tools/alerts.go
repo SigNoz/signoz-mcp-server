@@ -30,9 +30,9 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with a ruleId for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.Description("Maximum number of alerts to return per page. Default: 50.")),
 		mcp.WithString("offset", mcp.Description("Number of results to skip for pagination. Default: 0.")),
-		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. Default: true.")),
-		mcp.WithString("silenced", mcp.Description("Include silenced alerts. Values: 'true' or 'false'. Default: true.")),
-		mcp.WithString("inhibited", mcp.Description("Include inhibited alerts. Values: 'true' or 'false'. Default: true.")),
+		mcp.WithBoolean("active", mcp.Description("Include active (firing) alerts. Default: true (server-side). Accepts a boolean or the strings \"true\"/\"false\".")),
+		mcp.WithBoolean("silenced", mcp.Description("Include silenced alerts. Default: true (server-side). Accepts a boolean or the strings \"true\"/\"false\".")),
+		mcp.WithBoolean("inhibited", mcp.Description("Include inhibited alerts. Default: true (server-side). Accepts a boolean or the strings \"true\"/\"false\".")),
 		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
@@ -126,14 +126,18 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.registerAlertResources(s)
 }
 
-func parseBoolParam(args map[string]any, key string) *bool {
-	if v, ok := args[key].(string); ok && v != "" {
-		b, err := strconv.ParseBool(v)
-		if err == nil {
-			return &b
-		}
+// parseTriStateBool reads an optional boolean filter that must stay nil when
+// absent (so the backend applies its own default) but hard-errors on a garbage
+// value rather than silently dropping it (which previously widened results).
+func parseTriStateBool(args map[string]any, key string) (*bool, error) {
+	v, present, err := parseBoolArg(args, key)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	if !present {
+		return nil, nil
+	}
+	return &v, nil
 }
 
 func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -141,10 +145,22 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	args := req.GetArguments()
 	limit, offset := paginate.ParseParams(args)
 
+	active, err := parseTriStateBool(args, "active")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	}
+	inhibited, err := parseTriStateBool(args, "inhibited")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	}
+	silenced, err := parseTriStateBool(args, "silenced")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	}
 	params := types.ListAlertsParams{
-		Active:    parseBoolParam(args, "active"),
-		Inhibited: parseBoolParam(args, "inhibited"),
-		Silenced:  parseBoolParam(args, "silenced"),
+		Active:    active,
+		Inhibited: inhibited,
+		Silenced:  silenced,
 	}
 	if receiver, ok := args["receiver"].(string); ok && receiver != "" {
 		params.Receiver = receiver
@@ -388,7 +404,12 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 			logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	return mcp.NewToolResultText(string(respJSON)), nil
+
+	// Completeness signal: alert history is a raw passthrough with limit/offset
+	// but no hasMore of its own. Count the data.items[] rows and append a note.
+	returnedRows, rowsKnown := countDataArrayRows(respJSON, "items")
+	note := completenessNote(returnedRows, limit, offset, rowsKnown)
+	return resultWithNotes(respJSON, note), nil
 }
 
 func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -63,7 +63,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithString("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Values: 'true' or 'false'. Default: 'true'")),
+		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true. Accepts a boolean or the strings \"true\"/\"false\".")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),
@@ -125,7 +125,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithString("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Values: 'true' or 'false'. Default: 'true'")),
+		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true. Accepts a boolean or the strings \"true\"/\"false\".")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),
@@ -241,10 +241,18 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
-	data, ok := response["data"].([]any)
-	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid notification channels response format", slog.String("data", logpkg.TruncAny(response["data"])))
-		return mcp.NewToolResultError("invalid response format: expected data array"), nil
+	// Upstream returns `data: null`, omits `data`, or returns an empty
+	// object/scalar when there are no channels. Treat any non-array shape as zero
+	// rows rather than surfacing a format error (mirrors the list_views
+	// coerce-to-empty-page pattern).
+	var data []any
+	if raw, present := response["data"]; present && raw != nil {
+		if arr, ok := raw.([]any); ok {
+			data = arr
+		} else {
+			h.logger.DebugContext(ctx, "notification channels response data was not an array; treating as empty",
+				slog.String("data", logpkg.TruncAny(raw)))
+		}
 	}
 
 	// Summarize each channel to essential fields only (id, name, type, timestamps).
@@ -306,12 +314,10 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	}
 
 	sendResolved := true
-	if sr, ok := args["send_resolved"].(string); ok && sr != "" {
-		if sr == "false" {
-			sendResolved = false
-		} else if sr != "true" {
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "send_resolved" value: "%s". Must be "true" or "false"`, sr)), nil
-		}
+	if v, present, err := parseBoolArg(args, "send_resolved"); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	} else if present {
+		sendResolved = v
 	}
 
 	// Build receiver JSON based on type
@@ -343,6 +349,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 		"channel": json.RawMessage(createResp),
 	}
 
+	var testFailureNote string
 	if testErr != nil {
 		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
 		result["test_notification"] = map[string]any{
@@ -350,6 +357,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 			"error":   testErr.Error(),
 			"message": fmt.Sprintf("Channel '%s' was created but the test notification failed: %s. Please verify the channel configuration.", name, testErr.Error()),
 		}
+		testFailureNote = testNotificationWarningNote(name, "created", testErr)
 	} else {
 		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{
@@ -363,7 +371,19 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	// Fail OPEN: the channel WAS created, so we do not flip IsError (avoids a
+	// misleading error and a duplicate-create retry). The test-send failure is
+	// surfaced as a prominent advisory note alongside the structured body.
+	return resultWithNotes(resultJSON, testFailureNote), nil
+}
+
+// testNotificationWarningNote formats the prominent advisory shown when a
+// channel was created/updated successfully but its verification test-send
+// failed. Kept uniform with the other "note:" advisory blocks.
+func testNotificationWarningNote(name, action string, testErr error) string {
+	return fmt.Sprintf(
+		"note: WARNING — notification channel %q was %s successfully, but the verification test notification FAILED: %s. The channel exists but may not deliver alerts; verify its configuration (URL/key/credentials) and re-test.",
+		name, action, testErr.Error())
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -392,12 +412,10 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	}
 
 	sendResolved := true
-	if sr, ok := args["send_resolved"].(string); ok && sr != "" {
-		if sr == "false" {
-			sendResolved = false
-		} else if sr != "true" {
-			return mcp.NewToolResultError(fmt.Sprintf(`Invalid "send_resolved" value: "%s". Must be "true" or "false"`, sr)), nil
-		}
+	if v, present, err := parseBoolArg(args, "send_resolved"); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	} else if present {
+		sendResolved = v
 	}
 
 	// Build receiver JSON based on type
@@ -438,6 +456,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		result["channel"] = json.RawMessage(channelResp)
 	}
 
+	var testFailureNote string
 	if testErr != nil {
 		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
 		result["test_notification"] = map[string]any{
@@ -445,6 +464,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 			"error":   testErr.Error(),
 			"message": fmt.Sprintf("Channel '%s' was updated but the test notification failed: %s. Please verify the channel configuration.", name, testErr.Error()),
 		}
+		testFailureNote = testNotificationWarningNote(name, "updated", testErr)
 	} else {
 		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{
@@ -458,7 +478,9 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	// Fail OPEN: the channel WAS updated, so we do not flip IsError. The
+	// test-send failure is surfaced as a prominent advisory note.
+	return resultWithNotes(resultJSON, testFailureNote), nil
 }
 
 func getStringParam(args map[string]any, key string) string {

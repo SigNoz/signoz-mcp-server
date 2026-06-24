@@ -43,7 +43,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 				"TIP: Call signoz_list_metrics first to get the metric's type, temporality, and isMonotonic."),
 		mcp.WithString("metricName", mcp.Required(), mcp.Description("Name of the metric to query. Example: 'container.cpu.utilization', 'http_requests_total'.")),
 		mcp.WithString("metricType", mcp.Description("Metric type: gauge, sum, histogram, or exponential_histogram. Auto-fetched from signoz_list_metrics if not provided.")),
-		mcp.WithString("isMonotonic", mcp.Description("Whether the metric is monotonically increasing (true/false). Only relevant for type=sum. Auto-fetched if not provided.")),
+		mcp.WithBoolean("isMonotonic", mcp.Description("Whether the metric is monotonically increasing. Only relevant for type=sum. Auto-fetched if not provided. Accepts a boolean or the strings \"true\"/\"false\".")),
 		mcp.WithString("temporality", mcp.Description("Metric temporality: cumulative, delta, or unspecified. Auto-fetched if not provided.")),
 		mcp.WithString("timeAggregation", mcp.Description("Aggregation over time buckets. Auto-defaulted based on metricType. Valid: latest, sum, avg, min, max, count, count_distinct, rate, increase (type-dependent).")),
 		mcp.WithString("spaceAggregation", mcp.Description("Aggregation across series/dimensions. Auto-defaulted based on metricType. Valid: sum, avg, min, max, count, p50, p75, p90, p95, p99 (type-dependent).")),
@@ -121,5 +121,11 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 		h.logger.ErrorContext(ctx, "Failed to list metrics", slog.String("searchText", searchText), logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	return mcp.NewToolResultText(string(result)), nil
+
+	// Completeness signal: list_metrics is a raw passthrough with a limit but no
+	// offset paging. Count the data.metrics[] rows and append a hasMore note so
+	// the caller knows when the limit truncated the list (narrow with searchText).
+	returnedRows, rowsKnown := countDataArrayRows(result, "metrics")
+	note := completenessNote(returnedRows, limit, 0, rowsKnown)
+	return resultWithNotes(result, note), nil
 }
