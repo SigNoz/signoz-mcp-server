@@ -35,7 +35,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with service/operation/error/duration params using AND.")),
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
 		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
-		mcp.WithBoolean("error", mcp.Description("Shortcut filter for error spans (true or false). Equivalent to adding hasError = true/false to filter. Accepts a boolean or the strings \"true\"/\"false\".")),
+		mcp.WithBoolean("error", mcp.Description("Shortcut filter for error spans (true or false). Equivalent to adding hasError = true/false to filter. Accepts a boolean or the strings \"true\"/\"false\"."), boolOrStringType()),
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
@@ -60,7 +60,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with shortcut params using AND.")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
 		mcp.WithString("operation", mcp.Description("Operation/span name to filter by.")),
-		mcp.WithBoolean("error", mcp.Description("Filter by error status (true or false). Accepts a boolean or the strings \"true\"/\"false\".")),
+		mcp.WithBoolean("error", mcp.Description("Filter by error status (true or false). Accepts a boolean or the strings \"true\"/\"false\"."), boolOrStringType()),
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("timeRange", mcp.Description("Time range string. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '6h', '24h', '7d'. Defaults to '1h'.")),
@@ -81,7 +81,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
 		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
 		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
-		mcp.WithBoolean("includeSpans", mcp.Description("Include detailed span information (default: true). Accepts a boolean or the strings \"true\"/\"false\".")),
+		mcp.WithBoolean("includeSpans", mcp.Description("Include detailed span information (default: true). Accepts a boolean or the strings \"true\"/\"false\"."), boolOrStringType()),
 	)
 
 	addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)
