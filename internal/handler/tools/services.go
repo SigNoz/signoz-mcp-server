@@ -91,7 +91,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

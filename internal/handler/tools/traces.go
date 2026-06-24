@@ -200,7 +200,7 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 	result = enrichTraceWebURL(ctx, result, traceID)
-	return mcp.NewToolResultText(string(result)), nil
+	return structuredResult(result), nil
 }
 
 // enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough

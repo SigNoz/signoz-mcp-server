@@ -191,22 +191,32 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
 
-	// Build response with decisions block
-	var response strings.Builder
-	response.WriteString("[Decisions applied]\n")
+	// JSON-first contract (Family C #365): the raw backend payload is content
+	// block 0 so it is independently parseable, matching the search/aggregate
+	// siblings (see resultWithNotes, aggregate_helper.go). The decisions and
+	// warnings that used to be prepended into the same block now go into a
+	// SEPARATE note block. query_metrics is a raw QB passthrough, so the JSON
+	// stays text-only (no structuredContent) — its upstream shape is variable.
+	note := buildMetricsDecisionsNote(decisions, resolved.Warnings, backendWarnings)
+	return resultWithNotes(result, note), nil
+}
+
+// buildMetricsDecisionsNote renders the decisions/warnings advisory block that
+// query_metrics surfaces alongside (not prepended into) its JSON payload. It is
+// emitted as a separate content block via resultWithNotes.
+func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []string) string {
+	var b strings.Builder
+	b.WriteString("[Decisions applied]\n")
 	for _, d := range decisions {
-		response.WriteString(fmt.Sprintf("  %s\n", d))
+		b.WriteString(fmt.Sprintf("  %s\n", d))
 	}
-	for _, w := range resolved.Warnings {
-		response.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
+	for _, w := range defaultWarnings {
+		b.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
 	}
 	for _, w := range backendWarnings {
-		response.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
+		b.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
 	}
-	response.WriteString("---\n")
-	response.WriteString(string(result))
-
-	return mcp.NewToolResultText(response.String()), nil
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // fetchMetricMetadata calls ListMetrics to get type/temporality/isMonotonic for a metric.

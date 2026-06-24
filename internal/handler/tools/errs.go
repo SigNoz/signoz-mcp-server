@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -13,10 +14,14 @@ import (
 // (fixable by re-calling with corrected args) apart from an upstream SigNoz
 // failure (retryable).
 //
-// Design note for Family C (#365): these helpers are intentionally shaped so a
-// structured `code` taxonomy (e.g. VALIDATION_FAILED, UPSTREAM_ERROR) can be
-// layered on later without changing call sites — the code would be derived from
-// the helper that produced the result. Do NOT add codes here yet.
+// Family C (#365) layers a light, machine-readable `code` taxonomy on top of
+// these helpers, surfaced via the result's StructuredContent ({"code": ...}).
+// The human-readable text block is left unchanged — the code is purely additive
+// so an MCP client/LLM can branch on a stable token (e.g. retry an
+// UPSTREAM_ERROR vs fix args on a VALIDATION_FAILED) instead of string-matching
+// the prose. This mirrors the docs tools' existing {code,message} error pattern
+// (internal/docs/errors.go). The code is derived from the helper that produced
+// the result, so call sites need no changes.
 
 const (
 	// validationErrorPrefix is the canonical capital-P prefix for all
@@ -40,13 +45,41 @@ const (
 	notAConfigObjectMessage = `Parameter validation failed: the configuration object is empty or improperly formatted.`
 )
 
+// Error-code taxonomy surfaced in StructuredContent on error results. Keep this
+// set small and stable — it is a contract MCP clients branch on. Values mirror
+// the docs tools' {code,...} pattern (internal/docs/errors.go).
+const (
+	// CodeValidationFailed marks a fixable parameter/validation mistake: the
+	// caller should correct the arguments and retry. Emitted by
+	// validationError/validationErrorf and the arguments-guard helpers.
+	CodeValidationFailed = "VALIDATION_FAILED"
+
+	// CodeUpstreamError marks a SigNoz backend failure: typically retryable
+	// without changing arguments. Emitted by upstreamError.
+	CodeUpstreamError = "UPSTREAM_ERROR"
+
+	// CodeNotFound marks a referenced resource that does not exist (e.g. a bad
+	// id/uuid). Callers should not blindly retry — re-discover the id first.
+	CodeNotFound = "NOT_FOUND"
+)
+
+// errorWithCode builds an error result whose text block is message (unchanged,
+// human-readable) and whose StructuredContent carries {"code": code} so clients
+// can branch on a stable token. This is the single shaping point for all
+// coded error results.
+func errorWithCode(code, message string) *mcp.CallToolResult {
+	res := mcp.NewToolResultError(message)
+	res.StructuredContent = map[string]any{"code": code}
+	return res
+}
+
 // validationError builds a canonical parameter-validation error result of the
 // form: Parameter validation failed: "<field>" <reason>
 //
 // reason should read as a clause that follows the quoted field name, e.g.
 // "must be a string" or "is required. Use signoz_list_metrics to find metrics".
 func validationError(field, reason string) *mcp.CallToolResult {
-	return mcp.NewToolResultError(fmt.Sprintf(`%s %q %s`, validationErrorPrefix, field, reason))
+	return errorWithCode(CodeValidationFailed, fmt.Sprintf(`%s %q %s`, validationErrorPrefix, field, reason))
 }
 
 // validationErrorf is a convenience wrapper for validationError whose reason is
@@ -85,7 +118,7 @@ func requireStringArg(args map[string]any, key string) (string, *mcp.CallToolRes
 // notAJSONObjectError is the shared guard result for read-only tools whose
 // arguments payload is not a JSON object.
 func notAJSONObjectError() *mcp.CallToolResult {
-	return mcp.NewToolResultError(notAJSONObjectMessage)
+	return errorWithCode(CodeValidationFailed, notAJSONObjectMessage)
 }
 
 // requireArgsMap normalizes the raw MCP arguments payload into a JSON object map.
@@ -143,14 +176,50 @@ func requireStringField(args map[string]any, key, requiredReason string) (string
 // notAConfigObjectError is the body-carrying-tool variant of the arguments
 // guard (create/update tools whose payload is the resource body).
 func notAConfigObjectError() *mcp.CallToolResult {
-	return mcp.NewToolResultError(notAConfigObjectMessage)
+	return errorWithCode(CodeValidationFailed, notAConfigObjectMessage)
 }
 
 // upstreamError wraps an error returned by a SigNoz backend client call in the
 // uniform upstream prefix. Use this for every upstream API failure so the LLM
 // can distinguish a backend problem (retry) from a parameter problem (fix).
 func upstreamError(err error) *mcp.CallToolResult {
-	return mcp.NewToolResultError(fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+	return errorWithCode(CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+}
+
+// notFoundError marks a referenced resource that does not exist. The message is
+// the human-readable explanation; the NOT_FOUND code lets clients avoid a blind
+// retry and re-discover the id instead.
+func notFoundError(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeNotFound, message)
+}
+
+// structuredResult is the shared success-path wrapper for tools whose output
+// JSON shape is CODE-CONTROLLED — i.e. this server builds the JSON envelope, so
+// an outputSchema/structuredContent contract is stable and worth advertising.
+//
+// Two-tier rule (Family C #365):
+//   - Code-controlled tools (paginate.Wrap list/summary tools, single-resource
+//     get_*, and mutation results that return synthesized JSON) carry the same
+//     JSON in BOTH the text block (block 0, for back-compat) and
+//     StructuredContent, via this helper.
+//   - Raw QB passthrough tools (search_logs/search_traces/aggregate_logs/
+//     aggregate_traces/query_metrics) return the backend's JSON verbatim. Its
+//     shape is variable/upstream-owned, so an outputSchema there would be
+//     brittle and drift out from under us — those stay text-only (see
+//     resultWithNotes / rawSearchResult / aggregateResult).
+//
+// jsonPayload must be the exact bytes also placed in the text block so the two
+// representations never diverge. It is re-decoded into a generic value for the
+// StructuredContent field (MCP serializes that separately).
+func structuredResult(jsonPayload []byte) *mcp.CallToolResult {
+	var structured any
+	if err := json.Unmarshal(jsonPayload, &structured); err != nil {
+		// Fail open: if the payload isn't valid JSON (should not happen for a
+		// code-controlled tool), fall back to a plain text result so the caller
+		// still gets the data rather than an error.
+		return mcp.NewToolResultText(string(jsonPayload))
+	}
+	return mcp.NewToolResultStructured(structured, string(jsonPayload))
 }
 
 // upstreamFetchError tags an error as originating from an upstream SigNoz client

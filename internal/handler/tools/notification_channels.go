@@ -200,7 +200,7 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 		h.logger.ErrorContext(ctx, "Failed to get notification channel", slog.String("id", id), logpkg.ErrAttr(err))
 		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(resp)), nil
+	return structuredResult(resp), nil
 }
 
 func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -223,7 +223,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 		h.logger.ErrorContext(ctx, "Failed to delete notification channel", slog.String("id", id), logpkg.ErrAttr(err))
 		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","id":%q}`, id)), nil
+	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","id":%q}`, id))), nil
 }
 
 func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -289,7 +289,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -372,7 +372,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -470,7 +470,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return structuredResult(resultJSON), nil
 }
 
 func getStringParam(args map[string]any, key string) string {
