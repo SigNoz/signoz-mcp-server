@@ -82,44 +82,48 @@ func TestE2EFamilyB_ValidationStrings(t *testing.T) {
 		wantNoIn string // substring that must NOT appear
 	}{
 		{
-			name: "get_alert missing ruleId -> cannot be empty",
+			// K5: id is canonical; ruleId is a legacy alias read via readResourceID.
+			// A missing id/ruleId yields the coded "id is required" message.
+			name: "get_alert missing id/ruleId -> id required",
 			run: func() (string, bool) {
 				r, _ := h.handleGetAlert(ctx, makeToolRequest("signoz_get_alert", map[string]any{}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "ruleId" cannot be empty`,
+			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted)`,
 		},
 		{
-			name: "get_alert wrong-typed ruleId -> must be a string",
+			// readResourceID treats a non-string legacy value as absent, so a
+			// wrong-typed ruleId falls through to the same "id is required" error.
+			name: "get_alert wrong-typed ruleId -> treated as absent, id required",
 			run: func() (string, bool) {
 				r, _ := h.handleGetAlert(ctx, makeToolRequest("signoz_get_alert", map[string]any{"ruleId": 12345}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "ruleId" must be a string`,
+			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted)`,
 		},
 		{
-			name: "get_dashboard missing uuid -> cannot be empty",
+			name: "get_dashboard missing id/uuid -> id required",
 			run: func() (string, bool) {
 				r, _ := h.handleGetDashboard(ctx, makeToolRequest("signoz_get_dashboard", map[string]any{}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "uuid" cannot be empty`,
+			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted)`,
 		},
 		{
-			name: "get_dashboard wrong-typed uuid -> must be a string",
+			name: "get_dashboard wrong-typed uuid -> treated as absent, id required",
 			run: func() (string, bool) {
 				r, _ := h.handleGetDashboard(ctx, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": true}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "uuid" must be a string`,
+			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted)`,
 		},
 		{
-			name: "get_view missing viewId -> cannot be empty",
+			name: "get_view missing id/viewId -> id required",
 			run: func() (string, bool) {
 				r, _ := h.handleGetView(ctx, makeToolRequest("signoz_get_view", map[string]any{}))
 				return textContent(t, r), r.IsError
 			},
-			wantSub: `Parameter validation failed: "viewId" cannot be empty`,
+			wantSub: `Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted)`,
 		},
 		{
 			name: "get_notification_channel missing id -> cannot be empty",

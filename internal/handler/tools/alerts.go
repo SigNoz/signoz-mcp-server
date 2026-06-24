@@ -297,7 +297,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("id", ruleID))
@@ -332,7 +332,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args["ruleId"]))
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
 	// Reject a present-but-malformed start/end loudly; otherwise
@@ -461,7 +461,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	ruleID := readResourceID(rawConfig, "ruleId")
 	if ruleID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy field name "ruleId" is also accepted). Provide the UUIDv7 of the rule to update.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy field name "ruleId" is also accepted). Provide the UUIDv7 of the rule to update.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
@@ -495,7 +495,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	}
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted).`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted).`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil

@@ -409,7 +409,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
 		h.logger.WarnContext(ctx, "get_view missing id")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_view", slog.String("id", viewID))
 
@@ -475,7 +475,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Use signoz_list_views to find the UUID.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Use signoz_list_views to find the UUID.`), nil
 	}
 
 	// The canonical shape (per input schema) wraps the body under "view".
@@ -561,7 +561,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Use signoz_list_views to find the UUID.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Use signoz_list_views to find the UUID.`), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_view", slog.String("id", viewID))
 

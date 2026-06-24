@@ -223,7 +223,7 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	uuid := readResourceID(args, "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_dashboard", slog.String("id", uuid))
@@ -383,7 +383,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	uuid := readResourceID(rawConfig, "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy field name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy field name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
 
 	// Extract the dashboard sub-object for validation.
@@ -422,7 +422,7 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 	uuid := readResourceID(args, "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_dashboard", slog.String("id", uuid))
