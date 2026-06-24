@@ -25,7 +25,10 @@ type CreateAlertInput struct {
 }
 
 type UpdateAlertInput struct {
-	ID string `json:"id" jsonschema:"required" jsonschema_extras:"description=UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert. The legacy field name 'ruleId' is still accepted."`
+	// Not jsonschema:"required": the legacy alias 'ruleId' must remain a valid
+	// call for schema-aware clients that validate args against the advertised
+	// inputSchema. The handler validates that one of id/ruleId is present.
+	ID string `json:"id,omitempty" jsonschema_extras:"description=UUIDv7 of the alert rule to update (required). Provide either this or the legacy field name 'ruleId'. Obtain it from signoz_list_alert_rules or signoz_get_alert."`
 	AlertRule
 	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }

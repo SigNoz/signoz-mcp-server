@@ -56,7 +56,9 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get full details of a specific dashboard by ID (returns complete dashboard configuration with all panels and queries)"),
-		mcp.WithString("id", mcp.Required(), mcp.Description("Dashboard UUID. The legacy parameter name \"uuid\" is still accepted.")),
+		// Not mcp.Required(): the legacy alias "uuid" must remain a valid call for
+		// schema-aware clients. The handler validates id/uuid presence.
+		mcp.WithString("id", mcp.Description("Dashboard UUID. Required — provide either this or the legacy parameter name \"uuid\".")),
 	)
 
 	addTool(s, getDashboardTool, h.handleGetDashboard)
@@ -113,7 +115,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Delete a dashboard by its ID. This action is irreversible. Use signoz_list_dashboards to find dashboard IDs."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("Dashboard UUID to delete. The legacy parameter name \"uuid\" is still accepted.")),
+		mcp.WithString("id", mcp.Description("Dashboard UUID to delete. Required — provide either this or the legacy parameter name \"uuid\".")),
 	)
 
 	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
@@ -209,7 +211,7 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	uuid := readResourceID(req.GetArguments(), "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_dashboard", slog.String("id", uuid))
@@ -369,7 +371,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	uuid := readResourceID(rawConfig, "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy field name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
 
 	// Extract the dashboard sub-object for validation.
@@ -404,7 +406,7 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 	uuid := readResourceID(req.GetArguments(), "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_dashboard", slog.String("id", uuid))

@@ -59,7 +59,9 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Fetch a single SigNoz saved view by UUID. Use the returned object as the base for signoz_update_view — the update is a full-body replace."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. The legacy parameter name \"viewId\" is still accepted.")),
+		// Not mcp.Required(): the legacy alias "viewId" must remain a valid call
+		// for schema-aware clients. The handler validates id/viewId presence.
+		mcp.WithString("id", mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. Required — provide either this or the legacy parameter name \"viewId\".")),
 	)
 	addTool(s, getTool, h.handleGetView)
 
@@ -98,7 +100,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
 				"Do not send id/createdAt/createdBy/updatedAt/updatedBy inside `view` — the server ignores them.",
 		),
-		mcp.WithString("id", mcp.Required(), mcp.Description("UUID of the view to replace. The legacy parameter name \"viewId\" is still accepted.")),
+		mcp.WithString("id", mcp.Description("UUID of the view to replace. Required — provide either this or the legacy parameter name \"viewId\".")),
 		mcp.WithObject("view",
 			mcp.Required(),
 			mcp.Properties(savedViewSchemaProperties()),
@@ -113,7 +115,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("UUID of the view to delete. The legacy parameter name \"viewId\" is still accepted.")),
+		mcp.WithString("id", mcp.Description("UUID of the view to delete. Required — provide either this or the legacy parameter name \"viewId\".")),
 	)
 	addTool(s, deleteTool, h.handleDeleteView)
 
@@ -407,7 +409,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
 		h.logger.WarnContext(ctx, "get_view missing id")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_view", slog.String("id", viewID))
 
@@ -473,7 +475,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Use signoz_list_views to find the UUID.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Use signoz_list_views to find the UUID.`), nil
 	}
 
 	// The canonical shape (per input schema) wraps the body under "view".
@@ -559,7 +561,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Use signoz_list_views to find the UUID.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "viewId" is also accepted). Use signoz_list_views to find the UUID.`), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_view", slog.String("id", viewID))
 

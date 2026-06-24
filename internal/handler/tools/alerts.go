@@ -53,7 +53,11 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get the rule definition for a specific alert rule by id (GET /api/v2/rules/{id}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("Alert rule ID (UUIDv7 on v2 servers). The legacy parameter name \"ruleId\" is still accepted.")),
+		// Not declared mcp.Required(): the legacy alias "ruleId" must remain a
+		// valid call for schema-aware clients that validate args against the
+		// advertised inputSchema. The handler validates that one of id/ruleId is
+		// present. See readResourceID.
+		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required — provide either this or the legacy parameter name \"ruleId\".")),
 	)
 	addTool(s, getAlertTool, h.handleGetAlert)
 
@@ -62,7 +66,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("Alert rule ID. The legacy parameter name \"ruleId\" is still accepted.")),
+		mcp.WithString("id", mcp.Description("Alert rule ID. Required — provide either this or the legacy parameter name \"ruleId\".")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Default: 6h.")),
 		mcp.WithString("start", mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
 		mcp.WithString("end", mcp.Description("End timestamp in unix milliseconds (optional, defaults to now). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
@@ -117,7 +121,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_delete_alert",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("id", mcp.Required(), mcp.Description("UUIDv7 of the alert rule to delete. The legacy parameter name \"ruleId\" is still accepted. The server validates the UUID format and returns invalid_input on bad values.")),
+		mcp.WithString("id", mcp.Description("UUIDv7 of the alert rule to delete. Required — provide either this or the legacy parameter name \"ruleId\". The server validates the UUID format and returns invalid_input on bad values.")),
 		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{id}). Irreversible. Confirm with the user before calling."),
 	)
 	addTool(s, deleteAlertTool, h.handleDeleteAlert)
@@ -274,7 +278,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	ruleID := readResourceID(req.GetArguments(), "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "id" cannot be empty. Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("id", ruleID))
@@ -306,7 +310,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Invalid or empty id parameter", slog.Any("id", args["id"]), slog.Any("ruleId", args["ruleId"]))
-		return mcp.NewToolResultError(`Parameter validation failed: "id" must be a non-empty string. Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
 	startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
@@ -423,7 +427,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	ruleID := readResourceID(rawConfig, "ruleId")
 	if ruleID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required. Provide the UUIDv7 of the rule to update.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy field name "ruleId" is also accepted). Provide the UUIDv7 of the rule to update.`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. Obtain the rule ID from signoz_list_alert_rules or signoz_get_alert.`, ruleID)), nil
@@ -457,7 +461,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	}
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "id" is required.`), nil
+		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted).`), nil
 	}
 	if !util.IsUUIDv7(ruleID) {
 		return mcp.NewToolResultError(fmt.Sprintf(`Invalid "id": %q is not a UUIDv7. The SigNoz API will reject this with invalid_input.`, ruleID)), nil

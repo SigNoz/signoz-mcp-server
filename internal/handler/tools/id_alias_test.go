@@ -3,10 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // These tests pin the K5 contract: every CRUD resource id is read from the
@@ -391,6 +393,105 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 			}
 			if _, present := parsed["viewId"]; present {
 				t.Error(`"viewId" should not leak into the view body`)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Neither id nor legacy key supplied → a clean "id is required" validation
+// error (NOT a panic, NOT a silent backend call). Pins the handler-side
+// presence check that replaces the dropped schema-level `required`.
+// ---------------------------------------------------------------------------
+
+func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+
+	cases := []struct {
+		name    string
+		call    func() (*mcp.CallToolResult, error)
+		wantMsg string // a legacy-alias mention we expect in the error
+	}{
+		{"get_alert", func() (*mcp.CallToolResult, error) {
+			return h.handleGetAlert(testCtx(), makeToolRequest("signoz_get_alert", map[string]any{}))
+		}, "ruleId"},
+		{"delete_alert", func() (*mcp.CallToolResult, error) {
+			return h.handleDeleteAlert(testCtx(), makeToolRequest("signoz_delete_alert", map[string]any{}))
+		}, "ruleId"},
+		{"get_alert_history", func() (*mcp.CallToolResult, error) {
+			return h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{"timeRange": "1h"}))
+		}, "ruleId"},
+		{"update_alert", func() (*mcp.CallToolResult, error) {
+			return h.handleUpdateAlert(testCtx(), makeToolRequest("signoz_update_alert", map[string]any{"alert": "x"}))
+		}, "ruleId"},
+		{"get_dashboard", func() (*mcp.CallToolResult, error) {
+			return h.handleGetDashboard(testCtx(), makeToolRequest("signoz_get_dashboard", map[string]any{}))
+		}, "uuid"},
+		{"delete_dashboard", func() (*mcp.CallToolResult, error) {
+			return h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{}))
+		}, "uuid"},
+		{"update_dashboard", func() (*mcp.CallToolResult, error) {
+			return h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", map[string]any{
+				"dashboard": map[string]any{"title": "T", "layout": []any{}, "widgets": []any{}},
+			}))
+		}, "uuid"},
+		{"get_view", func() (*mcp.CallToolResult, error) {
+			return h.handleGetView(testCtx(), makeToolRequest("signoz_get_view", map[string]any{}))
+		}, "viewId"},
+		{"delete_view", func() (*mcp.CallToolResult, error) {
+			return h.handleDeleteView(testCtx(), makeToolRequest("signoz_delete_view", map[string]any{}))
+		}, "viewId"},
+		{"update_view", func() (*mcp.CallToolResult, error) {
+			return h.handleUpdateView(testCtx(), makeToolRequest("signoz_update_view", map[string]any{
+				"view": map[string]any{"name": "n", "sourcePage": "logs", "compositeQuery": map[string]any{}},
+			}))
+		}, "viewId"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := tc.call()
+			if err != nil {
+				t.Fatalf("transport error: %v", err)
+			}
+			if res == nil || !res.IsError {
+				t.Fatalf("expected an error result when neither id nor legacy key supplied, got: %+v", res)
+			}
+			text, ok := mcp.AsTextContent(res.Content[0])
+			if !ok {
+				t.Fatalf("error content is not text")
+			}
+			if !strings.Contains(text.Text, `"id"`) {
+				t.Fatalf("error should mention the canonical \"id\" param, got: %s", text.Text)
+			}
+			if !strings.Contains(text.Text, tc.wantMsg) {
+				t.Fatalf("error should mention the accepted legacy alias %q, got: %s", tc.wantMsg, text.Text)
+			}
+		})
+	}
+}
+
+// TestUpdateStructs_IDNotSchemaRequired pins that the typed update_alert /
+// update_dashboard input schemas do NOT mark the resource id as required, so a
+// schema-aware client validating against the advertised inputSchema can still
+// issue a legacy-only (ruleId/uuid) call. The id remains an advertised property.
+func TestUpdateStructs_IDNotSchemaRequired(t *testing.T) {
+	cases := []struct {
+		name string
+		tool mcp.Tool
+	}{
+		{"update_alert", mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]())},
+		{"update_dashboard", mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]())},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			props := inputSchemaProperties(t, tc.tool)
+			if _, ok := props["id"]; !ok {
+				t.Fatalf("%s: id must remain an advertised property: %#v", tc.name, props)
+			}
+			required := inputSchemaRequiredFields(t, tc.tool)
+			if containsString(required, "id") {
+				t.Fatalf("%s: id must NOT be in the required list (legacy-only calls must stay schema-valid), got: %#v", tc.name, required)
 			}
 		})
 	}
