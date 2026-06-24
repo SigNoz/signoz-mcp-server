@@ -131,6 +131,18 @@ func parseTagsParam(v any) (json.RawMessage, error) {
 	case []any:
 		// Canonical form: a real JSON array.
 		return validateAndMarshalTags(t)
+	case []string:
+		// Native []string: in-process / programmatic Go callers may pass the
+		// array-of-strings schema this way rather than the []any JSON yields.
+		// It is already correctly typed, so marshal it directly.
+		if len(t) == 0 {
+			return json.RawMessage("[]"), nil
+		}
+		b, err := json.Marshal(t)
+		if err != nil {
+			return nil, errors.New(tagsValidationError)
+		}
+		return json.RawMessage(b), nil
 	default:
 		return nil, errors.New(tagsValidationError)
 	}

@@ -314,6 +314,8 @@ func TestTagsParamAcceptsArrayAndJSONString(t *testing.T) {
 		want string
 	}{
 		{"real array", []any{"env=prod", "team=payments"}, `["env=prod","team=payments"]`},
+		{"native []string", []string{"env=prod", "team=payments"}, `["env=prod","team=payments"]`},
+		{"empty []string", []string{}, `[]`},
 		{"legacy json string", `["env=prod"]`, `["env=prod"]`},
 		{"empty string", "", `[]`},
 		{"absent (nil)", nil, `[]`},
