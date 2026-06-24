@@ -352,6 +352,52 @@ func TestE2EFamilyC_MutationStructuredContent(t *testing.T) {
 
 	name := fmt.Sprintf("mcp-e2e-c-%d", rand.Int63())
 
+	// chID is captured BY REFERENCE in the cleanup closure below: the cleanup
+	// reads whatever value it holds at teardown time, regardless of where in the
+	// test we resolved it. `deleted` is flipped only after the explicit delete
+	// is confirmed, to guard against a double-delete.
+	var chID string
+	deleted := false
+
+	// Register the cleanup backstop BEFORE the create call even returns its
+	// success/failure verdict. handleCreateNotificationChannel can reach the
+	// backend and create the channel yet still return a transport error (e.g. a
+	// read timeout after the create) OR an IsError result (e.g. the post-create
+	// json.Marshal failing) — in either case the channel is live on the real
+	// instance. Registering here, before the err/IsError fatals and the
+	// id-recovery list call below, guarantees NO t.Fatalf can run between a
+	// (possibly successful) create and cleanup registration, so an mcp-e2e-c-*
+	// webhook can never be orphaned (the same orphan pattern fixed in Family E's
+	// view CRUD test).
+	//
+	// The cleanup is robust to id-recovery failing: it resolves the channel id
+	// at cleanup time — using chID if known, otherwise doing a best-effort
+	// NON-fatal list (the handler directly, NOT callOK) and matching by name —
+	// then deletes by id. It is strictly best-effort: errors are swallowed, but
+	// a t.Logf fires if it cannot find/delete so a human knows a manual cleanup
+	// may be needed. Registering this for a create that never reached the
+	// backend is harmless: the by-name lookup simply finds nothing and logs the
+	// (false) warning, which is far cheaper than an orphan.
+	t.Cleanup(func() {
+		if deleted {
+			return
+		}
+		id := chID
+		if id == "" {
+			// Best-effort, NON-fatal id recovery by name. Never t.Fatalf here.
+			if lc, lerr := h.handleListNotificationChannels(ctx, makeToolRequest("signoz_list_notification_channels", map[string]any{"limit": "1000"})); lerr == nil && lc != nil && !lc.IsError {
+				id = channelIDByName(firstText(lc), name)
+			}
+		}
+		if id == "" {
+			t.Logf("CLEANUP: no channel %q found to delete (create may not have reached the backend); if it was created, MANUAL CLEANUP MAY BE REQUIRED", name)
+			return
+		}
+		if dr, derr := h.handleDeleteNotificationChannel(ctx, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": id})); derr != nil || (dr != nil && dr.IsError) {
+			t.Logf("CLEANUP WARN: failed to delete channel %q (id=%s) — MANUAL CLEANUP MAY BE REQUIRED", name, id)
+		}
+	})
+
 	// Create a webhook channel (no external side effects; the test-send may fail
 	// fail-open but the channel is still created).
 	createRes, err := h.handleCreateNotificationChannel(ctx, makeToolRequest("signoz_create_notification_channel", map[string]any{
@@ -360,36 +406,24 @@ func TestE2EFamilyC_MutationStructuredContent(t *testing.T) {
 		"webhook_url": "https://example.com/mcp-e2e-c-webhook",
 	}))
 	if err != nil {
-		t.Fatalf("create channel: transport error: %v", err)
+		t.Fatalf("create channel: transport error: %v — cleanup backstop will delete by name", err)
 	}
 	if createRes.IsError {
-		t.Fatalf("create channel failed: %s", firstText(createRes))
+		t.Fatalf("create channel failed: %s — cleanup backstop will delete by name", firstText(createRes))
 	}
 
-	// Recover the created channel id and register the cleanup backstop
-	// IMMEDIATELY after a successful create, BEFORE any assertion that can
-	// t.Fatalf. Otherwise a structuredContent regression in the assertion below
-	// would abort the test with the channel still live, orphaning an
-	// mcp-e2e-c-* webhook on the real instance (the same orphan pattern fixed
-	// in Family E's view CRUD test). The `deleted` flag guards against a
-	// double-delete when the explicit delete below already succeeded.
-	chID := createdChannelID(firstText(createRes))
+	// Recover the created id for the explicit lifecycle assertions below. This
+	// list call is NON-fatal for the id itself: if it fails, the cleanup
+	// registered above still deletes the channel by name, so a list error here
+	// cannot orphan it.
+	chID = createdChannelID(firstText(createRes))
 	if chID == "" {
-		// Fall back to listing and matching by name.
-		lc := callOK(t, h.handleListNotificationChannels, ctx, "signoz_list_notification_channels", map[string]any{"limit": "1000"})
-		chID = channelIDByName(firstText(lc), name)
-	}
-	deleted := false
-	if chID != "" {
-		t.Cleanup(func() {
-			if deleted {
-				return
-			}
-			_, _ = h.handleDeleteNotificationChannel(ctx, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": chID}))
-		})
+		if lc, lerr := h.handleListNotificationChannels(ctx, makeToolRequest("signoz_list_notification_channels", map[string]any{"limit": "1000"})); lerr == nil && lc != nil && !lc.IsError {
+			chID = channelIDByName(firstText(lc), name)
+		}
 	}
 	if chID == "" {
-		t.Fatalf("could not determine created channel id for cleanup (name=%s) — MANUAL CLEANUP REQUIRED", name)
+		t.Fatalf("could not determine created channel id for explicit delete (name=%s) — cleanup backstop will delete by name", name)
 	}
 
 	// Mutation result is synthesized JSON -> must carry structuredContent.
