@@ -147,7 +147,11 @@ func TestFamilyD_E2E_SearchDocsParamAndAlias(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// get_service_top_operations: tags as real array AND legacy JSON-string (N14)
+// get_service_top_operations: tags is passed through to the backend verbatim.
+// The backend's /api/v1/service/top_operations expects a structured
+// []TagQueryParam array, so this verifies that the empty filter and a real
+// structured filter both round-trip without a tool error. (N14's array-of-strings
+// form was reverted — it produced ["k=v"], which the backend rejects with a 400.)
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_ServiceTopOperationsTags(t *testing.T) {
@@ -171,38 +175,38 @@ func TestFamilyD_E2E_ServiceTopOperationsTags(t *testing.T) {
 	}
 	mustNoToolError(t, resBase, "tags-empty")
 
-	// Real array form (the new canonical schema). Empty array filters nothing,
-	// so it must round-trip to the same successful shape.
-	resArr, err := h.handleGetServiceTopOperations(ctx, makeToolRequest("signoz_get_service_top_operations", map[string]any{
-		"service":   service,
-		"timeRange": "6h",
-		"tags":      []any{},
-	}))
-	if err != nil {
-		t.Fatalf("array-tags call error: %v", err)
-	}
-	mustNoToolError(t, resArr, "tags-array")
-
-	// Legacy JSON-array string form (back-compat).
-	resStr, err := h.handleGetServiceTopOperations(ctx, makeToolRequest("signoz_get_service_top_operations", map[string]any{
+	// Empty JSON-array string passes through to "[]".
+	resEmpty, err := h.handleGetServiceTopOperations(ctx, makeToolRequest("signoz_get_service_top_operations", map[string]any{
 		"service":   service,
 		"timeRange": "6h",
 		"tags":      "[]",
 	}))
 	if err != nil {
-		t.Fatalf("string-tags call error: %v", err)
+		t.Fatalf("empty-string-tags call error: %v", err)
 	}
-	mustNoToolError(t, resStr, "tags-json-string")
+	mustNoToolError(t, resEmpty, "tags-empty-string")
 
-	// Both tag shapes must produce a parseable top-operations payload.
-	for label, res := range map[string]*mcp.CallToolResult{"array": resArr, "json-string": resStr} {
+	// A real structured tag filter (the backend's TagQueryParam shape) passed
+	// through as raw JSON must be accepted by the backend (no 400).
+	resStructured, err := h.handleGetServiceTopOperations(ctx, makeToolRequest("signoz_get_service_top_operations", map[string]any{
+		"service":   service,
+		"timeRange": "6h",
+		"tags":      `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`,
+	}))
+	if err != nil {
+		t.Fatalf("structured-tags call error: %v", err)
+	}
+	mustNoToolError(t, resStructured, "tags-structured")
+
+	// Responses must be parseable top-operations payloads.
+	for label, res := range map[string]*mcp.CallToolResult{"empty-string": resEmpty, "structured": resStructured} {
 		body := firstTextD(t, res)
 		var probe any
 		if err := json.Unmarshal([]byte(body), &probe); err != nil {
 			t.Fatalf("%s tags: response not valid JSON: %v", label, err)
 		}
 	}
-	t.Logf("get_service_top_operations: array and JSON-string tag shapes both succeeded and round-tripped")
+	t.Logf("get_service_top_operations: empty and structured tag passthrough both succeeded")
 }
 
 func firstLiveServiceName(t *testing.T, h *Handler, ctx context.Context) string {

@@ -528,7 +528,7 @@ Gets top operations for a specific service.
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
   - `end` (optional) - End time in nanoseconds (defaults to now)
-  - `tags` (optional) - List of tag filter strings (a JSON-array string is also accepted for back-compat)
+  - `tags` (optional) - Raw JSON array of tag filters, passed through to the SigNoz API as-is (advanced; the backend expects structured tag-filter objects)
 
 #### `signoz_get_alert_history`
 

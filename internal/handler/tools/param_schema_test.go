@@ -304,21 +304,23 @@ func appendTrimmed(out []string, s string) []string {
 	return append(out, s[start:end])
 }
 
-// TestTagsParamAcceptsArrayAndJSONString verifies the get_service_top_operations
-// "tags" handler accepts BOTH the canonical real array (the WithArray schema)
-// and a legacy JSON-array string (N14 back-compat).
-func TestTagsParamAcceptsArrayAndJSONString(t *testing.T) {
+// TestTagsParamPassthrough verifies the reverted (pre-N14) tags behavior on
+// get_service_top_operations: a "tags" string is forwarded to the backend
+// verbatim (the backend's /api/v1/service/top_operations expects a structured
+// []TagQueryParam array, which the caller supplies as raw JSON), and an absent
+// or non-string value defaults to an empty "[]" filter. Friendlier typed tags
+// are tracked as a nerve-pod follow-up.
+func TestTagsParamPassthrough(t *testing.T) {
 	cases := []struct {
 		name string
 		tags any
 		want string
 	}{
-		{"real array", []any{"env=prod", "team=payments"}, `["env=prod","team=payments"]`},
-		{"native []string", []string{"env=prod", "team=payments"}, `["env=prod","team=payments"]`},
-		{"empty []string", []string{}, `[]`},
-		{"legacy json string", `["env=prod"]`, `["env=prod"]`},
-		{"empty string", "", `[]`},
 		{"absent (nil)", nil, `[]`},
+		{"empty string", "", `[]`},
+		{"non-string defaults to empty", []any{"ignored"}, `[]`},
+		{"structured array forwarded verbatim", `[{"key":"http.method","operator":"In","stringValues":["GET"]}]`, `[{"key":"http.method","operator":"In","stringValues":["GET"]}]`},
+		{"arbitrary string forwarded verbatim", `["env=prod"]`, `["env=prod"]`},
 	}
 
 	for _, tc := range cases {
@@ -350,127 +352,16 @@ func TestTagsParamAcceptsArrayAndJSONString(t *testing.T) {
 	}
 }
 
-// TestTagsParamRejectsBadValue verifies that anything that is not a strict
-// array-of-strings is rejected with a validation error rather than silently
-// forwarded — covering the real-array path (null/number/mixed elements, wrong
-// outer type) and the legacy JSON-string path (non-array, null/number/mixed
-// elements). The upstream client must never be called for an invalid value.
-func TestTagsParamRejectsBadValue(t *testing.T) {
-	cases := []struct {
-		name string
-		tags any
-	}{
-		// real-array path
-		{"array with number element", []any{"ok", 1}},
-		{"array with null element", []any{"ok", nil}},
-		{"array with bool element", []any{true}},
-		{"array with nested array", []any{[]any{"x"}}},
-		{"array all numbers", []any{1, 2, 3}},
-		// wrong outer type
-		{"number scalar", float64(5)},
-		{"bool scalar", true},
-		// legacy JSON-string path
-		{"json string not an array", "not-a-json-array"},
-		{"json string array of numbers", "[1, 2]"},
-		{"json string mixed elements", `["x", 1]`},
-		{"json string with null element", `["x", null]`},
-		{"json string of null literal", "null"},
-		{"json string of object", `{"a":"b"}`},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			mock := &signozclient.MockClient{
-				GetServiceTopOperationsFn: func(_ context.Context, _, _, _ string, _ json.RawMessage) (json.RawMessage, error) {
-					t.Fatal("client should not be called on invalid tags")
-					return nil, nil
-				},
-			}
-			h := newTestHandler(mock)
-			req := makeToolRequest("signoz_get_service_top_operations", map[string]any{
-				"service": "frontend",
-				"tags":    tc.tags,
-			})
-			res, err := h.handleGetServiceTopOperations(testCtx(), req)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !res.IsError {
-				t.Fatalf("expected validation error for tags=%#v, got success", tc.tags)
-			}
-		})
-	}
-}
-
-// TestParseTagsParamUnit directly exercises parseTagsParam to pin the strict
-// array-of-strings contract and the canonical output, independent of the
-// handler plumbing.
-func TestParseTagsParamUnit(t *testing.T) {
-	t.Run("valid forms", func(t *testing.T) {
-		cases := []struct {
-			name string
-			in   any
-			want string
-		}{
-			{"nil", nil, "[]"},
-			{"empty string", "", "[]"},
-			{"empty real array", []any{}, "[]"},
-			{"empty json-string array", "[]", "[]"},
-			{"real array", []any{"a", "b"}, `["a","b"]`},
-			{"json-string array", `["a","b"]`, `["a","b"]`},
-			{"json-string normalizes whitespace", `[ "a" , "b" ]`, `["a","b"]`},
-		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				got, err := parseTagsParam(tc.in)
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if string(got) != tc.want {
-					t.Fatalf("parseTagsParam(%#v) = %q, want %q", tc.in, string(got), tc.want)
-				}
-			})
-		}
-	})
-
-	t.Run("rejected forms", func(t *testing.T) {
-		bad := []any{
-			[]any{"ok", 1},
-			[]any{"ok", nil},
-			[]any{true},
-			float64(5),
-			true,
-			"null",
-			"[1,2]",
-			`["x", 1]`,
-			`["x", null]`,
-			"not-json",
-		}
-		for i, in := range bad {
-			if _, err := parseTagsParam(in); err == nil {
-				t.Fatalf("case %d: parseTagsParam(%#v) = nil error, want rejection", i, in)
-			}
-		}
-	})
-}
-
-// TestTagsSchemaIsArrayOfStrings pins the get_service_top_operations "tags"
-// param to a real array-of-strings schema (N14), not the old WithString form.
-func TestTagsSchemaIsArrayOfStrings(t *testing.T) {
+// TestTagsSchemaIsString pins the reverted "tags" param to a plain string schema
+// (raw JSON passthrough), not the array-of-strings form (N14 reverted).
+func TestTagsSchemaIsString(t *testing.T) {
 	props := registeredToolProps(t, "signoz_get_service_top_operations")
 	prop, ok := props["tags"].(map[string]any)
 	if !ok {
 		t.Fatalf("tags property = %#v, want object", props["tags"])
 	}
-	if prop["type"] != "array" {
-		t.Fatalf("tags.type = %v, want \"array\"", prop["type"])
-	}
-	items, ok := prop["items"].(map[string]any)
-	if !ok {
-		t.Fatalf("tags.items = %#v, want object", prop["items"])
-	}
-	if items["type"] != "string" {
-		t.Fatalf("tags.items.type = %v, want \"string\"", items["type"])
+	if prop["type"] != "string" {
+		t.Fatalf("tags.type = %v, want \"string\"", prop["type"])
 	}
 }
 
