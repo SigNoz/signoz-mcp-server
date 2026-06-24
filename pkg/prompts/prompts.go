@@ -140,8 +140,8 @@ func handleIncidentTriage(_ context.Context, req mcp.GetPromptRequest) (*mcp.Get
 					Type: "text",
 					Text: fmt.Sprintf(`Triage the alert with rule ID "%s". Follow these steps:
 
-1. Use signoz_get_alert with ruleId="%s" to get the alert configuration and understand what it monitors.
-2. Use signoz_get_alert_history with ruleId="%s" and timeRange="6h" to see when it started firing.
+1. Use signoz_get_alert with id="%s" to get the alert configuration and understand what it monitors.
+2. Use signoz_get_alert_history with id="%s" and timeRange="6h" to see when it started firing.
 3. Based on the alert's signal type:
    - If logs-based: use signoz_search_logs to find related error logs around the alert trigger time.
    - If traces-based: use signoz_aggregate_traces to analyze error rates or latency around the trigger time.

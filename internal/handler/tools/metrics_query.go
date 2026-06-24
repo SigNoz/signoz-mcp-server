@@ -29,7 +29,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	mqr, err := parseMetricsQueryArgs(args)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_query_metrics",
@@ -78,7 +78,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Resolve timestamps
 	startTime, endTime, err := resolveTimestamps(args, mqr.TimeRange)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	// Step interval: use caller-provided value or let the backend decide
@@ -86,6 +86,13 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	callerProvidedStep := stepInterval > 0
 	if callerProvidedStep {
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (caller-provided)", stepInterval))
+	} else if mqr.StepIntervalInvalid != "" {
+		// Present but not a plain positive integer of seconds (e.g. "1h", "60s",
+		// "abc"). Don't coerce it to a wrong bucket size — fall back to backend
+		// auto-select and tell the caller why.
+		decisions = append(decisions, fmt.Sprintf(
+			"stepInterval: ignored invalid value %q (must be a positive integer count of seconds, e.g. 60); using backend auto-select",
+			mqr.StepIntervalInvalid))
 	}
 
 	// Apply defaults for primary query
@@ -98,7 +105,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		ReduceTo:         mqr.ReduceTo,
 	}, mqr.RequestType)
 	if err != nil {
-		return mcp.NewToolResultError(formatValidationError(err)), nil
+		return errorWithCode(CodeValidationFailed, formatValidationError(err)), nil
 	}
 
 	decisions = append(decisions, resolved.Decisions...)

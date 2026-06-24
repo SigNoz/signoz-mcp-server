@@ -38,8 +38,8 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 				"Results are paginated. Use 'limit' and 'offset' to page through large result sets. "+
 				"The response includes pagination metadata: total count, hasMore flag, and nextOffset for the next page.",
 		),
-		mcp.WithString("limit", mcp.Description("Maximum number of channels to return per page. Default: 50.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of channels to return per page. Default: 50, max: 1000 (higher values are clamped).")),
+		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
 	)
 
 	addTool(s, listChannelsTool, h.handleListNotificationChannels)
@@ -228,7 +228,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 
 func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_notification_channels")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -297,7 +297,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return structuredResult(resultJSON), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

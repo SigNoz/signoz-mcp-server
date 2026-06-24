@@ -22,9 +22,9 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 	wantPrefix := "SigNoz API error:"
 
 	cases := []struct {
-		name    string
-		mock    *client.MockClient
-		invoke  func(*Handler) (isErr bool, text string)
+		name   string
+		mock   *client.MockClient
+		invoke func(*Handler) (isErr bool, text string)
 	}{
 		{
 			name: "list_dashboards",

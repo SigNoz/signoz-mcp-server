@@ -22,7 +22,7 @@ func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
 				"Use this for questions like 'which metrics cost the most?', 'top metrics by sample count', "+
 				"'what is driving my metrics ingestion volume?', 'metrics by ingestion cost'."),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to '7d' (a cost-analysis window); if the query times out, retry with '3d', then '24h'."))),
+		mcp.WithString("timeRange", mcp.DefaultString("7d"), mcp.Description(timeRangeDesc("Defaults to '7d' (a cost-analysis window); if the query times out, retry with '3d', then '24h'."))),
 		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 	)
@@ -38,7 +38,7 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 
 	startTime, endTime, err := resolveTimestamps(args, "7d")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	client, err := h.GetClient(ctx)

@@ -210,6 +210,9 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	}
 
 	requestType, _ := args["requestType"].(string)
+	if err := validateRequestType(requestType); err != nil {
+		return nil, err
+	}
 	if requestType == "" {
 		requestType = "scalar"
 	}
@@ -233,9 +236,20 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 }
 
 func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
-	if _, ok := args["timeRange"]; !ok {
-		_, hasStart := args["start"]
-		if !hasStart {
+	// Reject a present-but-malformed start/end LOUDLY before falling through to
+	// the default window. GetTimestampsWithDefaults silently defaults on a bad
+	// value, which would hand back the wrong time range with no error.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		return 0, 0, err
+	}
+	// Inject the tool's advertised default window when there is no usable explicit
+	// time input — no usable timeRange string AND no usable explicit start. A
+	// present-but-empty start (which timeutil treats as absent) must NOT block the
+	// default, or GetTimestampsWithDefaults silently falls back to its generic 6h
+	// window. A present-but-non-string timeRange is already rejected loudly by
+	// ValidateExplicitTimestamps above; an empty-string timeRange means "use default".
+	if tr, ok := args["timeRange"].(string); !ok || tr == "" {
+		if !timeutil.HasUsableTimestamp(args, "start") {
 			args["timeRange"] = defaultRange
 		}
 	}
@@ -248,21 +262,6 @@ func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, 
 		return 0, 0, fmt.Errorf("invalid end timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
 	}
 	return startTime, endTime, nil
-}
-
-func intArg(args map[string]any, key string, defaultVal int) (int, error) {
-	str, _ := args[key].(string)
-	if str == "" {
-		return defaultVal, nil
-	}
-	num, err := strconv.Atoi(str)
-	if err != nil {
-		return 0, fmt.Errorf("invalid %q value %q: must be a number", key, str)
-	}
-	if num <= 0 {
-		return defaultVal, nil
-	}
-	return num, nil
 }
 
 // parseStepInterval parses an optional stepInterval (seconds) argument for the

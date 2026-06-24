@@ -233,8 +233,16 @@ func (q *QueryPayload) Validate() error {
 
 		switch signal {
 		case "metrics":
-			if q.RequestType != "time_series" && q.RequestType != "scalar" {
+			// Default an unset requestType, but reject an explicit unknown value
+			// instead of silently coercing it (a coerced value can return a
+			// different result shape than the caller asked for).
+			switch q.RequestType {
+			case "":
 				q.RequestType = "time_series"
+			case "time_series", "scalar":
+				// ok
+			default:
+				return fmt.Errorf("%s: unsupported requestType %q for metrics; use \"time_series\" or \"scalar\"", queryName, q.RequestType)
 			}
 
 		case "traces":

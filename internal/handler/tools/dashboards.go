@@ -45,8 +45,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific dashboard, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("limit", mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
 	addTool(s, tool, h.handleListDashboards)
@@ -55,8 +55,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get full details of a specific dashboard by UUID (returns complete dashboard configuration with all panels and queries)"),
-		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID")),
+		mcp.WithDescription("Get full details of a specific dashboard by ID (returns complete dashboard configuration with all panels and queries)"),
+		// Not mcp.Required(): the legacy alias "uuid" must remain a valid call for
+		// schema-aware clients. The handler validates id/uuid presence.
+		mcp.WithString("id", mcp.Description("Dashboard UUID. Required.")),
 	)
 
 	addTool(s, getDashboardTool, h.handleGetDashboard)
@@ -112,8 +114,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Delete a dashboard by its UUID. This action is irreversible. Use signoz_list_dashboards to find dashboard UUIDs."),
-		mcp.WithString("uuid", mcp.Required(), mcp.Description("Dashboard UUID to delete")),
+		mcp.WithDescription("Delete a dashboard by its ID. This action is irreversible. Use signoz_list_dashboards to find dashboard IDs."),
+		mcp.WithString("id", mcp.Description("Dashboard UUID to delete. Required.")),
 	)
 
 	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
@@ -156,7 +158,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboards")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -210,7 +212,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return structuredResult(resultJSON), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -218,13 +220,13 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	if errResult != nil {
 		return errResult, nil
 	}
-	uuid, errResult := requireStringArg(args, "uuid")
-	if errResult != nil {
-		h.logger.WarnContext(ctx, "Invalid or empty uuid parameter", slog.Any("type", req.Params.Arguments))
-		return errResult, nil
+	uuid := readResourceID(args, "uuid")
+	if uuid == "" {
+		h.logger.WarnContext(ctx, "Empty id parameter")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 	}
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_dashboard", slog.String("uuid", uuid))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_dashboard", slog.String("id", uuid))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -377,11 +379,11 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return notAConfigObjectError(), nil
 	}
 
-	// Extract UUID before validation (it's at the top level, not inside dashboard data).
-	uuid, errResult := requireStringArg(rawConfig, "uuid")
-	if errResult != nil {
-		h.logger.WarnContext(ctx, "Invalid or empty uuid parameter")
-		return errResult, nil
+	// Extract id before validation (it's at the top level, not inside dashboard data).
+	uuid := readResourceID(rawConfig, "uuid")
+	if uuid == "" {
+		h.logger.WarnContext(ctx, "Empty id parameter")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
 
 	// Extract the dashboard sub-object for validation.
@@ -417,13 +419,13 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 	if errResult != nil {
 		return errResult, nil
 	}
-	uuid, errResult := requireStringArg(args, "uuid")
-	if errResult != nil {
-		h.logger.WarnContext(ctx, "Invalid or empty uuid parameter", slog.Any("type", req.Params.Arguments))
-		return errResult, nil
+	uuid := readResourceID(args, "uuid")
+	if uuid == "" {
+		h.logger.WarnContext(ctx, "Empty id parameter")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
 	}
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_delete_dashboard", slog.String("uuid", uuid))
+	h.logger.DebugContext(ctx, "Tool called: signoz_delete_dashboard", slog.String("id", uuid))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

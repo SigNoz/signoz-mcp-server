@@ -39,11 +39,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of groups to return (default: 10, max: 10000; higher values are clamped)")),
-		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to '1h'."))),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("requestType", mcp.Enum("scalar", "time_series"), mcp.Description("Controls whether to return a single aggregate or a time-series. Choose based on the user's question — do NOT ask the user to set this.\n\n\"scalar\" (default) — Returns one aggregate value computed over the entire time range. Use when the answer is a single number or a ranked/grouped table: \"how many errors today?\", \"what is the p99 latency of checkout?\", \"which service has the most errors?\", \"top 10 slowest endpoints\".\n\n\"time_series\" — Returns one value per time bucket so you can see changes over time. Use ONLY when the user's question is about WHEN something happened, HOW a metric changed, or to find SPIKES/TRENDS across time: \"when did errors spike?\", \"how did p99 change hour by hour?\", \"show error count per hour\", \"at what time is traffic highest?\".\n\nIf the intent is ambiguous (e.g. \"show latency over 24h\" could mean either), ask the user to clarify before calling this tool.\n\nIMPORTANT: If the question has ANY temporal component (spike, trend, change over time, \"when did X happen\"), always use \"time_series\" — it answers both the count AND the timing in one call. Never call this tool twice for the same question.\nExample: \"get error count and find when it spiked\" → \"time_series\".")),
+		mcp.WithString("limit", mcp.DefaultString("10"), mcp.Description("Maximum number of groups to return (default: 10, max: 10000; higher values are clamped)")),
+		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("requestType", mcp.DefaultString("scalar"), mcp.Enum("scalar", "time_series"), mcp.Description("Controls whether to return a single aggregate or a time-series. Choose based on the user's question — do NOT ask the user to set this.\n\n\"scalar\" (default) — Returns one aggregate value computed over the entire time range. Use when the answer is a single number or a ranked/grouped table: \"how many errors today?\", \"what is the p99 latency of checkout?\", \"which service has the most errors?\", \"top 10 slowest endpoints\".\n\n\"time_series\" — Returns one value per time bucket so you can see changes over time. Use ONLY when the user's question is about WHEN something happened, HOW a metric changed, or to find SPIKES/TRENDS across time: \"when did errors spike?\", \"how did p99 change hour by hour?\", \"show error count per hour\", \"at what time is traffic highest?\".\n\nIf the intent is ambiguous (e.g. \"show latency over 24h\" could mean either), ask the user to clarify before calling this tool.\n\nIMPORTANT: If the question has ANY temporal component (spike, trend, change over time, \"when did X happen\"), always use \"time_series\" — it answers both the count AND the timing in one call. Never call this tool twice for the same question.\nExample: \"get error count and find when it spiked\" → \"time_series\".")),
 		mcp.WithString("stepInterval", mcp.Description(stepIntervalDesc)),
 	)
 
@@ -63,11 +63,11 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithBoolean("error", mcp.Description("Filter by error status (true or false).")),
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
-		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to '1h'."))),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.Description("Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with offset)")),
-		mcp.WithString("offset", mcp.Description("Offset for pagination (default: 0)")),
+		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("limit", mcp.DefaultString("100"), mcp.Description("Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with offset)")),
+		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Offset for pagination (default: 0)")),
 	)
 
 	addTool(s, searchTracesTool, h.handleSearchTraces)
@@ -78,9 +78,9 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get comprehensive trace information including all spans, metadata, and span hierarchy/relationships. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
-		mcp.WithString("timeRange", mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", mcp.Description("Start time in milliseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in milliseconds (optional, defaults to now)")),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
 		mcp.WithBoolean("includeSpans", mcp.Description("Include detailed span information (default: true).")),
 	)
 
@@ -95,7 +95,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 
 	reqData, err := parseAggregateTracesArgs(args)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	if reqData.StepIntervalWarning != "" {
 		h.logger.WarnContext(ctx, "aggregate_traces stepInterval dropped", slog.String("reason", reqData.StepIntervalWarning))
@@ -139,7 +139,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	reqData, err := parseSearchTracesArgs(args)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	queryPayload := types.BuildTracesQueryPayload(reqData.StartTime, reqData.EndTime, reqData.FilterExpression, reqData.Limit, reqData.Offset)
@@ -178,11 +178,18 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		return errResult, nil
 	}
 
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	}
+
 	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 	includeSpans := true
 	if v, present, err := parseBoolArg(args, "includeSpans"); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
 	} else if present {
 		includeSpans = v
 	}

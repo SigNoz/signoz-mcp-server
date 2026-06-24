@@ -68,7 +68,7 @@ func TestWriteToolInputSchemasExposeSearchContext(t *testing.T) {
 		{
 			name:       "update dashboard",
 			tool:       mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]()),
-			wantFields: []string{"uuid", "dashboard", "searchContext"},
+			wantFields: []string{"id", "dashboard", "searchContext"},
 		},
 		{
 			name:       "create alert",
@@ -78,7 +78,7 @@ func TestWriteToolInputSchemasExposeSearchContext(t *testing.T) {
 		{
 			name:       "update alert",
 			tool:       mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]()),
-			wantFields: []string{"ruleId", "alert", "alertType", "ruleType", "condition", "searchContext"},
+			wantFields: []string{"id", "alert", "alertType", "ruleType", "condition", "searchContext"},
 		},
 	}
 
@@ -211,8 +211,8 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 		{"create alert", []string{"searchContext"}, "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."},
 		// deep path through a slice element (queries -> items -> spec -> filter -> expression)
 		{"create alert", []string{"condition", "compositeQuery", "queries", "[]", "spec", "filter", "expression"}, "Filter expression using field operators. Example: service.name = frontend AND http.status_code >= 500. Use empty string for no filter."},
-		// direct named field on UpdateAlertInput
-		{"update alert", []string{"ruleId"}, "UUIDv7 of the alert rule to update. Obtain it from signoz_list_alert_rules or signoz_get_alert."},
+		// direct named field on UpdateAlertInput (id is canonical; ruleId is a legacy alias)
+		{"update alert", []string{"id"}, "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."},
 		// dashboard: slice element (widgets -> items -> id)
 		{"create dashboard", []string{"widgets", "[]", "id"}, "ID for the widget"},
 		// dashboard: map value schema (variables -> additionalProperties -> name)

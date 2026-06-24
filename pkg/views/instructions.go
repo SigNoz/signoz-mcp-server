@@ -85,7 +85,7 @@ rename or tweak one field:
 2. Take the **data** object from that response.
 3. Strip server-populated fields (id, createdAt, createdBy, updatedAt, updatedBy).
 4. Modify the field(s) you want to change.
-5. Call signoz_update_view with { "viewId": "<id>", "view": <modified data> }.
+5. Call signoz_update_view with { "id": "<id>", "view": <modified data> }.
 
 (The MCP server strips server-populated fields for you if you forget, but
 omitting them up front is clearer.)

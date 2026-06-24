@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -25,7 +24,11 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Search official SigNoz documentation with BM25 over full markdown content. Use this for ANY SigNoz product question: how-to, feature usage, setup, config, API, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Call before data tools for ambiguous how-to questions, and after data tools when live telemetry results are confusing. Do not use for fetching actual telemetry, live alert state, or dashboard contents."),
 		mcp.WithString("searchText", mcp.Required(), mcp.Description("Natural-language or keyword query to search in official SigNoz docs.")),
-		mcp.WithNumber("limit", mcp.Description("Maximum results to return. Default 10, max 25.")),
+		// limit advertises the ["integer","string"] union via intOrStringType() since
+		// parseLimit also accepts a JSON number — a schema-validating client sending
+		// {"limit": 3} must not be rejected. The 25 ceiling bounds the in-process bleve
+		// index's per-result memory hydration on the shared multi-tenant pod.
+		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum results to return. Default: 10, max: 25 (capped to bound the docs index's memory footprint).")),
 		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents".`)),
 	)
 	addTool(s, searchTool, h.handleSearchDocs)
@@ -160,23 +163,4 @@ func structuredToolResult(v any) (*mcp.CallToolResult, error) {
 		return nil, err
 	}
 	return mcp.NewToolResultStructured(v, string(b)), nil
-}
-
-func parseLimit(v any, fallback int) int {
-	switch typed := v.(type) {
-	case nil:
-		return fallback
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case string:
-		parsed, err := strconv.Atoi(typed)
-		if err == nil {
-			return parsed
-		}
-	}
-	return fallback
 }

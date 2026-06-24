@@ -1,7 +1,11 @@
 package types
 
 type UpdateDashboardInput struct {
-	UUID          string    `json:"uuid" jsonschema:"Dashboard UUID to update."`
+	// id and uuid are both optional properties (json ",omitempty", neither
+	// required) so additionalProperties:false accepts either key; the handler
+	// requires exactly one via readResourceID (canonical "id" wins).
+	ID            string    `json:"id,omitempty" jsonschema:"Dashboard UUID to update (required)."`
+	LegacyUUID    string    `json:"uuid,omitempty" jsonschema:"Deprecated alias for 'id'."`
 	Dashboard     Dashboard `json:"dashboard" jsonschema:"Full dashboard configuration representing the complete post-update state."`
 	SearchContext string    `json:"searchContext,omitempty" jsonschema:"The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
