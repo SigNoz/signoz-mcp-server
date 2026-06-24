@@ -310,22 +310,24 @@ func TestE2EFamilyC_ErrorCodes(t *testing.T) {
 	}
 	t.Logf("PASS validation error: get_dashboard(no uuid) -> %s", CodeValidationFailed)
 
-	// UPSTREAM_ERROR: well-formed UUIDv7 ruleId that does not exist. delete_alert
-	// wraps the backend failure in upstreamError -> UPSTREAM_ERROR.
+	// UPSTREAM_ERROR: a well-formed-but-nonexistent UUIDv7 ruleId. Use the
+	// NON-DESTRUCTIVE get_alert read (never a delete) so the probe cannot touch
+	// real user data even if the id ever collides with a live rule. get_alert
+	// wraps the backend 404 in upstreamError -> UPSTREAM_ERROR.
 	const ghostRule = "0196634d-5d66-75c4-b778-e317f49dab7a"
-	dres, err := h.handleDeleteAlert(ctx, makeToolRequest("signoz_delete_alert", map[string]any{"ruleId": ghostRule}))
+	gres, err := h.handleGetAlert(ctx, makeToolRequest("signoz_get_alert", map[string]any{"ruleId": ghostRule}))
 	if err != nil {
-		t.Fatalf("delete_alert(ghost): transport error: %v", err)
+		t.Fatalf("get_alert(ghost): transport error: %v", err)
 	}
-	if !dres.IsError {
-		// A non-error here means the rule somehow existed; treat as inconclusive
-		// rather than a false failure.
-		t.Logf("WARN delete_alert(ghost) returned success unexpectedly; skipping upstream-code assertion")
+	if !gres.IsError {
+		// A non-error means the id somehow existed; treat as inconclusive (a
+		// read is harmless) rather than a false failure.
+		t.Logf("WARN get_alert(ghost) returned success unexpectedly; skipping upstream-code assertion")
 	} else {
-		if code := codeOf(t, dres); code != CodeUpstreamError {
-			t.Fatalf("delete_alert(ghost): code = %q, want %q (text=%s)", code, CodeUpstreamError, firstText(dres))
+		if code := codeOf(t, gres); code != CodeUpstreamError {
+			t.Fatalf("get_alert(ghost): code = %q, want %q (text=%s)", code, CodeUpstreamError, firstText(gres))
 		}
-		t.Logf("PASS upstream error: delete_alert(ghost ruleId) -> %s", CodeUpstreamError)
+		t.Logf("PASS upstream error: get_alert(ghost ruleId) -> %s", CodeUpstreamError)
 	}
 }
 
@@ -403,17 +405,20 @@ func TestE2EFamilyC_MutationStructuredContent(t *testing.T) {
 	if delRes.IsError {
 		t.Fatalf("delete channel %s failed: %s — cleanup backstop will retry", chID, firstText(delRes))
 	}
-	deleted = true
 	assertStructuredMatchesText(t, "delete_notification_channel", delRes)
 
-	// Confirm gone: get_notification_channel should now error.
+	// Confirm gone: get_notification_channel should now error. Only flip
+	// `deleted` AFTER this confirms the resource is actually gone — a delete
+	// that returned a false success would otherwise disable the cleanup
+	// backstop and orphan the channel.
 	getRes, err := h.handleGetNotificationChannel(ctx, makeToolRequest("signoz_get_notification_channel", map[string]any{"id": chID}))
 	if err != nil {
-		t.Fatalf("confirm-gone get: transport error: %v", err)
+		t.Fatalf("confirm-gone get: transport error: %v — cleanup backstop will retry", chID)
 	}
 	if !getRes.IsError {
-		t.Fatalf("channel %s still exists after delete — MANUAL CLEANUP REQUIRED", chID)
+		t.Fatalf("channel %s still exists after delete — cleanup backstop will retry", chID)
 	}
+	deleted = true
 	t.Logf("PASS mutation lifecycle: created %q (id=%s), structuredContent present on create+delete, confirmed deleted", name, chID)
 }
 

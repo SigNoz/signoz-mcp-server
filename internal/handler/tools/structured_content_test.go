@@ -119,6 +119,37 @@ func TestStructuredResult_PreservesLargeIntegers(t *testing.T) {
 	}
 }
 
+// TestStructuredResult_PreservesNestedLargeIntegers extends the precision
+// guard to nested objects and array elements — real SigNoz payloads carry big
+// integers (epoch nanos, counts) inside rows[] and meta, not just at the top
+// level.
+func TestStructuredResult_PreservesNestedLargeIntegers(t *testing.T) {
+	const bigInt = "9007199254740993" // 2^53 + 1, the smallest float64-inexact int
+	payload := []byte(`{"rows":[{"ts":` + bigInt + `}],"meta":{"count":` + bigInt + `}}`)
+	res := structuredResult(payload)
+
+	if res.StructuredContent == nil {
+		t.Fatalf("structuredResult must populate StructuredContent")
+	}
+	if got := textContent(t, res); got != string(payload) {
+		t.Fatalf("text block = %q, want %q", got, string(payload))
+	}
+	gotBytes, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	got := string(gotBytes)
+	// Both the array-element ts and the nested meta.count must keep the exact
+	// literal — count the occurrences so a single surviving copy can't mask a
+	// rounded sibling.
+	if n := strings.Count(got, bigInt); n != 2 {
+		t.Fatalf("nested large ints not preserved: found %d of literal %s in %s", n, bigInt, got)
+	}
+	if strings.Contains(got, "9007199254740992") || strings.Contains(got, "e+") || strings.Contains(got, "E+") {
+		t.Fatalf("StructuredContent rounded/exponential-formatted a nested big integer: %s", got)
+	}
+}
+
 func TestStructuredResult_FailsOpenOnInvalidJSON(t *testing.T) {
 	// Should never happen for a code-controlled tool, but must not error out.
 	res := structuredResult([]byte(`not json`))
@@ -130,6 +161,43 @@ func TestStructuredResult_FailsOpenOnInvalidJSON(t *testing.T) {
 	}
 	if got := textContent(t, res); got != "not json" {
 		t.Fatalf("text block = %q, want raw payload", got)
+	}
+}
+
+// TestStructuredResult_FailsOpenOnTrailingData guards that a payload with a
+// valid first value but trailing junk / a second value does NOT advertise a
+// StructuredContent that only covers the first value (which would silently
+// disagree with the whole-payload text block 0). It must fail open to text-only.
+func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		{"trailing junk", `{"id":"a"} garbage`},
+		{"two values", `{"id":"a"}{"id":"b"}`},
+		{"value then array", `{"id":"a"} [1,2,3]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := structuredResult([]byte(tc.payload))
+			if res.IsError {
+				t.Fatalf("should fail open, not error")
+			}
+			if res.StructuredContent != nil {
+				t.Fatalf("trailing data must NOT populate StructuredContent, got %#v", res.StructuredContent)
+			}
+			// Text block still carries the whole raw payload.
+			if got := textContent(t, res); got != tc.payload {
+				t.Fatalf("text block = %q, want raw payload %q", got, tc.payload)
+			}
+		})
+	}
+
+	// A single value with only trailing whitespace is still valid and MUST keep
+	// structuredContent (the EOF check must not reject benign whitespace).
+	res := structuredResult([]byte("{\"id\":\"a\"}\n  \t"))
+	if res.StructuredContent == nil {
+		t.Fatalf("single value with trailing whitespace must keep StructuredContent")
 	}
 }
 

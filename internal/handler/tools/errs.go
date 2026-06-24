@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -240,6 +241,14 @@ func structuredResult(jsonPayload []byte) *mcp.CallToolResult {
 		// Fail open: if the payload isn't valid JSON (should not happen for a
 		// code-controlled tool), fall back to a plain text result so the caller
 		// still gets the data rather than an error.
+		return mcp.NewToolResultText(string(jsonPayload))
+	}
+	// The text block carries the WHOLE payload, so StructuredContent must
+	// represent the whole payload too — exactly one JSON value with nothing
+	// after it. If there is trailing junk or a second value, the decoded
+	// `structured` only covers the first value and would silently disagree with
+	// block 0; fail open to text-only rather than advertise a divergent shape.
+	if err := dec.Decode(new(any)); err != io.EOF {
 		return mcp.NewToolResultText(string(jsonPayload))
 	}
 	return mcp.NewToolResultStructured(structured, string(jsonPayload))
