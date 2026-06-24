@@ -400,9 +400,9 @@ func TestCoerceHavingInQueryMaps_MalformedObjectUntouched(t *testing.T) {
 
 func TestCoerceHavingInQueryMaps_MissingOrNil(t *testing.T) {
 	entries := []map[string]any{
-		{"queryName": "A"},                    // no having key
-		{"queryName": "B", "having": nil},     // explicit nil
-		nil,                                   // nil entry
+		{"queryName": "A"},                // no having key
+		{"queryName": "B", "having": nil}, // explicit nil
+		nil,                               // nil entry
 	}
 	coerceHavingInQueryMaps(entries)
 	if _, exists := entries[0]["having"]; exists {
@@ -452,7 +452,7 @@ func TestNormalizeFilterItems_HealsMalformedKey(t *testing.T) {
 				"op": "AND",
 				"items": []any{
 					map[string]any{
-						"id":  "f52f479c-f6ad-41b4-951f-9a03d982d30c",
+						"id": "f52f479c-f6ad-41b4-951f-9a03d982d30c",
 						"key": map[string]any{
 							"id":   "k8s.node.name",
 							"key":  "k8s.node.name",
@@ -621,15 +621,15 @@ func TestNormalizeFilterItems_MissingOrNil(t *testing.T) {
 
 func TestFilterItemsSlice(t *testing.T) {
 	cases := []struct {
-		name string
-		in   any
-		want int // length; nil → 0
+		name        string
+		in          any
+		want        int // length; nil → 0
 		nilExpected bool
 	}{
 		{"nil input", nil, 0, true},
 		{"empty []any", []any{}, 0, false},
 		{"populated []any", []any{map[string]any{"op": "IN"}}, 1, false},
-		{"[]map[string]any", []map[string]any{{"op": "IN"}, {"op": "=" }}, 2, false},
+		{"[]map[string]any", []map[string]any{{"op": "IN"}, {"op": "="}}, 2, false},
 		{"wrong type string", "oops", 0, true},
 		{"wrong type map", map[string]any{"a": 1}, 0, true},
 		{"empty []map[string]any", []map[string]any{}, 0, false},
@@ -704,16 +704,16 @@ func TestNormalizeFilterItemsInQueryMaps_TypedSliceLiteral(t *testing.T) {
 
 func TestUppercaseFilterOpsInQueryMaps_MissingOrNil(t *testing.T) {
 	entries := []map[string]any{
-		nil,                               // nil entry
-		{"queryName": "A"},                // no filters key
-		{"queryName": "B", "filters": nil}, // explicit nil
+		nil,                                   // nil entry
+		{"queryName": "A"},                    // no filters key
+		{"queryName": "B", "filters": nil},    // explicit nil
 		{"queryName": "C", "filters": "oops"}, // wrong type
-		{"queryName": "D", "filters": map[string]any{"op": "AND"}}, // no items
+		{"queryName": "D", "filters": map[string]any{"op": "AND"}},     // no items
 		{"queryName": "E", "filters": map[string]any{"items": "oops"}}, // wrong items type
 		{"queryName": "F", "filters": map[string]any{"items": []any{
-			"not-a-map",                        // non-map item
-			map[string]any{},                   // item without op
-			map[string]any{"op": 123},          // non-string op
+			"not-a-map",               // non-map item
+			map[string]any{},          // item without op
+			map[string]any{"op": 123}, // non-string op
 		}}},
 	}
 	// Should not panic and should leave non-normalizable entries untouched.
