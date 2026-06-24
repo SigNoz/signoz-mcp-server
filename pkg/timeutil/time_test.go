@@ -259,9 +259,9 @@ func TestGetTimestampsWithDefaultsNanoBackwardCompat(t *testing.T) {
 	}
 }
 
-// TestValidateExplicitTimestamps pins that a PRESENT-but-malformed start/end is
-// rejected loudly, while ABSENT and EMPTY-STRING (both mean "use the default
-// window") return nil. This guards the silent-failure regression where
+// TestValidateExplicitTimestamps pins that a PRESENT-but-malformed start/end or
+// timeRange is rejected loudly, while ABSENT and EMPTY-STRING (both mean "use
+// the default window") return nil. This guards the silent-failure regression where
 // GetTimestampsWithDefaults silently falls back to the default window for a
 // malformed value, handing back the wrong time range with no error.
 func TestValidateExplicitTimestamps(t *testing.T) {
@@ -276,9 +276,21 @@ func TestValidateExplicitTimestamps(t *testing.T) {
 		{"malformed string end", map[string]any{"end": "soon"}, true},
 		{"valid string start", map[string]any{"start": "1711130400000"}, false},
 		{"valid string pair", map[string]any{"start": "1711123200000", "end": "1711130400000"}, false},
+		{"malformed timeRange", map[string]any{"timeRange": "24hours"}, true},
+		{"valid hour timeRange", map[string]any{"timeRange": "1h"}, false},
+		{"valid six hour timeRange", map[string]any{"timeRange": "6h"}, false},
+		{"valid minute timeRange", map[string]any{"timeRange": "30m"}, false},
+		{"valid day timeRange", map[string]any{"timeRange": "7d"}, false},
 		{"absent", map[string]any{}, false},
 		{"empty string start", map[string]any{"start": ""}, false},
 		{"empty string end", map[string]any{"end": ""}, false},
+		{"empty timeRange", map[string]any{"timeRange": ""}, false},
+		{"non-string timeRange ignored", map[string]any{"timeRange": true}, false},
+		{
+			"malformed timeRange ignored when start end override",
+			map[string]any{"timeRange": "24hours", "start": "1711123200000", "end": "1711130400000"},
+			false,
+		},
 		{"nil value", map[string]any{"start": nil}, false},
 		{"valid json.Number", map[string]any{"start": json.Number("1711130400000")}, false},
 		{"malformed json.Number", map[string]any{"start": json.Number("12.5")}, true},

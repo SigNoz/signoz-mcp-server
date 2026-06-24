@@ -251,26 +251,48 @@ func parseEpochArg(v any) (value int64, present bool, ok bool) {
 
 // ValidateExplicitTimestamps returns a descriptive error when args["start"] or
 // args["end"] is PRESENT and non-empty but cannot be parsed as an exact integer
-// epoch (e.g. {"start":"yesterday"} or a non-integral / precision-lost float).
-// Absent keys and empty strings return nil — those legitimately mean "use the
-// default window", which GetTimestampsWithDefaults handles.
+// epoch (e.g. {"start":"yesterday"} or a non-integral / precision-lost float),
+// or when args["timeRange"] is PRESENT and non-empty but cannot be parsed as a
+// relative window. Absent keys and empty strings return nil — those legitimately
+// mean "use the default window", which GetTimestampsWithDefaults handles. A
+// complete valid start/end pair takes precedence over timeRange, so malformed
+// timeRange is ignored in that override case.
 //
 // This exists because GetTimestampsWithDefaults has no error channel and
-// silently falls back to the default window for a malformed start/end, handing
-// the user the WRONG time range with no signal. Handlers call this first to fail
-// loudly. It lives in pkg/timeutil (not the tools package) and returns a plain
-// error so the handler can wrap it in the tools package's validation-error
+// silently falls back to the default window for a malformed start/end/timeRange,
+// handing the user the WRONG time range with no signal. Handlers call this first
+// to fail loudly. It lives in pkg/timeutil (not the tools package) and returns a
+// plain error so the handler can wrap it in the tools package's validation-error
 // shape; timeutil must not import the tools package.
 func ValidateExplicitTimestamps(args map[string]any) error {
+	var hasValidStart, hasValidEnd bool
 	for _, key := range []string{"start", "end"} {
 		v, ok := args[key]
 		if !ok {
 			continue
 		}
-		if _, present, parsed := parseEpochArg(v); present && !parsed {
+		_, present, parsed := parseEpochArg(v)
+		if present && !parsed {
 			return fmt.Errorf(
 				"invalid %q timestamp %v: must be a unix epoch integer (e.g. milliseconds like \"1711130400000\") or omitted; for a relative window use timeRange (e.g. \"1h\", \"24h\")",
 				key, v)
+		}
+		if present && parsed {
+			switch key {
+			case "start":
+				hasValidStart = true
+			case "end":
+				hasValidEnd = true
+			}
+		}
+	}
+	if hasValidStart && hasValidEnd {
+		return nil
+	}
+
+	if timeRange, ok := args["timeRange"].(string); ok && timeRange != "" {
+		if _, err := ParseTimeRange(timeRange); err != nil {
+			return fmt.Errorf("invalid \"timeRange\" %q: must use a relative window like \"1h\", \"30m\", \"24h\", or \"7d\"; omit it to use the default window", timeRange)
 		}
 	}
 	return nil
