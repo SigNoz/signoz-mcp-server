@@ -1,0 +1,53 @@
+# Feature: Typed-struct tool field descriptions — Context & Discussion
+
+## Original Prompt
+> Is this fixed? https://github.com/SigNoz/signoz-ai-assistant/issues/359
+> (follow-up) yes, implement the fix and then ask for codex xhigh 5.5 review
+
+## Reference Links
+- [Issue #359](https://github.com/SigNoz/signoz-ai-assistant/issues/359) — Typed-struct tools drop per-field descriptions: jsonschema-go ignores `jsonschema_extras` tags
+- [PR #213](https://github.com/SigNoz/signoz-mcp-server/pull/213) — filter/query work where #359 was discovered and spun off
+
+## Key Decisions & Discussion Log
+### 2026-06-24 — verified #359 still reproduces on main
+- Issue #359 is NOT the filter/`query` issue (that was #315, fixed by merged PR #213). #359 is a spun-off follow-up, still OPEN.
+- Ran the issue's own repro against `main` (b517f0d): generated `mcp.WithInputSchema[types.CreateAlertInput]()` schema, inspected `properties[*].description`. Result: 4 `jsonschema:"required"` fields (alert, alertType, condition, ruleType) emit the literal `"required"` as description; 13 fields empty; 0 fields carry the authored `jsonschema_extras` prose. Confirmed bug live.
+- Root cause confirmed: `google/jsonschema-go v0.4.2` (indirect, via `mcp-go v0.49.0` `mcp.WithInputSchema[T]`) reads only the `jsonschema` struct tag and uses its value as the field description; it never reads `jsonschema_extras`, and `jsonschema:"required"` is not a directive (requiredness comes from absence of `omitempty` in the `json` tag).
+
+### 2026-06-24 — schema shape investigation drove fix design
+- Dumped the generated schema: jsonschema-go **fully inlines** the nested struct tree — there are **no `$defs`/`$ref`** (confirmed grep count 0 for both alert and dashboard inputs). The types are non-recursive, so inlining is total.
+- Consequence: property names repeat across nested types (`name`, `expression`, `filter`, `query`, …) with different meanings, so a flat `name→description` map would inject the wrong text. Chosen approach must be **path-aware**.
+- Decision: implement **fix direction #2** from the issue (post-process the generated `RawInputSchema`), but make it a **reflection-guided parallel walk** of the Go type tree and the JSON schema tree rather than a flat map. For each struct field: resolve its JSON key (`json` tag), set `description` from the field's `jsonschema_extras:"description=…"`, and — when a field has no authored prose but jsonschema-go left `description:"required"` — delete that spurious description. Recurse into nested structs, slice/array element schemas (`items`), and map value schemas (`additionalProperties`). Anonymous embedded structs (e.g. `AlertRule` in `CreateAlertInput`, `Dashboard` in `CreateDashboardInput`) are promoted into the same object node, matching encoding/json + jsonschema-go behavior.
+- Why not fix direction #1 (move prose into the `jsonschema` tag): the `jsonschema` tag value is consumed wholesale as the description and the prose contains commas/`=`/quotes; it also collides with the existing `jsonschema:"required"` usage. The reflection post-process keeps the readable `jsonschema_extras` tags as the single source of truth and auto-neutralizes the `"required"` garbage.
+- Recursion is **JSON-gated** (we only descend where a matching JSON node exists), so it terminates even if a future type became recursive (jsonschema-go would emit `$ref`, which has no `properties`, halting descent). No visited-set needed.
+- `extrasDescription` parsing intentionally does NOT comma-split the `jsonschema_extras` value (descriptions contain commas); it takes everything after the single `description=` key, preserving commas/`=`/quotes verbatim.
+- Fail-open: parse/marshal errors return the schema unchanged (cross-boundary parsing per CLAUDE.md). Detectability: a unit test asserts the contract (authored prose present, `"required"` never appears as a description) so silent regression fails a test.
+- Out of scope (kept diff focused): leaving the now-ineffective `jsonschema:"required"` struct tags in place (the post-process neutralizes their bad description side-effect); requiredness itself already works correctly via `omitempty` and is unchanged.
+
+### 2026-06-24 — docs/metadata sync check
+- README.md / manifest.json / docs/ do NOT enumerate these per-field typed-struct descriptions (grep for a sample description string returned nothing). No doc/manifest change required; the only surface affected is the runtime-generated input schema.
+
+### 2026-06-24 — implemented + Codex (gpt-5.5/xhigh) review
+- Implemented the reflection-guided injection (`schema_descriptions.go`), switched the 4 sites to `addTypedTool`, added unit tests. Measured before→after across all 4 tools: literal-"required" descriptions 26/27/43/45 → **0/0/0/0**; authored descriptions 0/0/0/0 → **89/90/197/199**. `go build`, `go vet`, full `go test ./...` green.
+- Ran Codex gpt-5.5 xhigh read-only review of the diff. Verdict: 0 blockers. Two should-fix, two nice-to-have. Codex's area checks (reflection walk, jsonFieldName, extrasDescription, termination/safety, normalize-before-inject) all came back "OK for current structs".
+- **Acted on should-fix #1 (test the real registration path):** the unit tests exercised the helper pipeline but didn't assert the registration *sites* use `addTypedTool` — a revert to `addTool` would still pass. Added `TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription` in `internal/mcp-server/integration_test.go`: lists tools via the in-process client and asserts NO field description anywhere in ANY registered tool equals "required", plus that `signoz_create_alert .alert` carries its authored prose end-to-end. This also covers nice-to-have #4 (a future `WithInputSchema` tool registered via the wrong helper now fails this test).
+- **Acted on should-fix #2 (fail-open was fail-silent, violating CLAUDE.md):** `injectStructDescriptions` now returns `(json.RawMessage, error)`; `addTypedTool` takes the handler's `*slog.Logger` and logs a WARN ("…descriptions may be degraded", tool name + err) on failure while still registering the tool. Added `TestInjectStructDescriptionsFailsOpenLoudly` asserting the error is surfaced and the input is returned unchanged.
+- **Acted on nice-to-have #3 (document encoding/json subset):** added a doc comment on `describeStruct` noting it models only the field-selection subset these input structs use (exported fields + anonymous struct embeds), not full dominance/anonymous-non-struct semantics.
+- **Declined to act now:** removing the now-ineffective `jsonschema:"required"` struct tags (nice-to-have, ~60 fields, orthogonal churn; the post-process neutralizes their only bad effect and the new integration test guards against leakage). Noted as a possible follow-up cleanup.
+
+### 2026-06-24 — pivoted PR #214 to the NATIVE jsonschema-tag approach (the ideal)
+- Researched the stack from source (not memory). `mcp.WithInputSchema[T]` calls `jsonschema.For[T]` from `google/jsonschema-go`; confirmed latest mcp-go **v0.55.0** (we're on v0.49.0) STILL does this unchanged — upgrading mcp-go does not fix #359. jsonschema-go's `infer.go` documents the intended contract: **the `jsonschema` tag value IS the field description** (assigned whole, commas safe), and it rejects tag values matching `^[^ \t\n]*=` (a `WORD=` prefix reserved for future use). `jsonschema_extras` is a DIFFERENT library's convention (`invopop/jsonschema`) that google/jsonschema-go never reads — root cause is a tag-dialect mismatch.
+- Decision (user-directed): the **native** fix is ideal and consistent (mirrors option-style `mcp.Description`, no runtime reflection, no inlining coupling). Migrated all field tags in `pkg/types/alertrule.go` + `pkg/types/dashboard.go`: `jsonschema_extras:"description=X"` → `jsonschema:"X"`; dropped all `jsonschema:"required"` (63 of them — inert; requiredness is from `omitempty`). Verified all 192 descriptions pass the `WORD=` rule (none start with `token=`).
+- **Proof requiredness preserved:** dumped each of the 4 normalized schemas before vs after migration and compared with all `description` keys stripped — byte-identical structure (incl. every `required` array) for all 4. Only descriptions changed (89/90/197/199 added; 0 literal-"required" remain).
+- Reverted the 4 registration sites from `addTypedTool` back to `addTool`; **deleted `internal/handler/tools/schema_descriptions.go`** entirely (the post-process is unnecessary with native tags); dropped the inject-specific unit test/helpers; kept the description-presence + no-"required" unit tests (now reading the native normalized schema) and the registration-boundary integration test (now the sole guard, valid regardless of mechanism). `go build`, `go vet`, full `go test ./...` green.
+- Net vs the post-process version: simpler (no reflection walk, no `$defs`/inlining coupling, less code), and consistent with how the library is meant to be used. The `WORD=` constraint is the one caveat the integration test + future awareness cover.
+
+### 2026-06-24 — Codex (gpt-5.5/xhigh) review #2 of the native approach
+- Verdict: 0 blockers. Codex confirmed the migration is correct: authored text preserved exactly as `jsonschema:"…"`, no `json` tags changed, no empty/duplicate `jsonschema` tags, no remaining `jsonschema_extras`, no first-token `WORD=` violations, PromQL escaped quotes valid, and dropping `jsonschema:"required"` is safe (the two standalone ones — AlertOrderField.Key, FilterSet.Items — still infer required from their `json` tags; no former-required field carries `omitempty`).
+- should-fix (actioned): the registration-boundary guard "overclaims" — it only rejects the exact string "required" and spot-checks one field, so a *silently missing* description elsewhere would pass. Added `TestTypedToolSchemasDescriptionCoverage`: asserts each tool exposes ≥ its current description count (89/90/197/199), so wholesale/partial description loss fails CI. (Note: a brand-new field added with NO `jsonschema` tag is still a code-review matter — many fields legitimately have no description, so an "every field described" rule would false-positive.)
+- nice-to-have (actioned): fixed a stale `// …authored via jsonschema_extras` comment to say native `jsonschema`.
+
+## Open Questions
+- [x] Does jsonschema-go use `$defs`/`$ref` for these types? — No, fully inlined (non-recursive). Walk is positional/path-aware.
+- [x] Inject before or after `normalizeToolSchemas`? — After: normalize converts `interface{}` `true` schemas to `{}`, so `description` can be set on `any`-typed fields (Target, Value, ThresholdValue, …).
+- [x] Do README/manifest need updating? — No (descriptions not duplicated there).

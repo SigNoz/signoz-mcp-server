@@ -174,10 +174,18 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
-	data, ok := dashboards["data"].([]any)
-	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid dashboards response format", slog.String("data", logpkg.TruncAny(dashboards["data"])))
-		return mcp.NewToolResultError("invalid response format: expected data array"), nil
+	// Upstream returns `data: null`, omits `data`, or — on some deployments —
+	// returns an empty object/scalar when there are no dashboards. Treat any
+	// non-array shape as zero rows rather than surfacing a format error (mirrors
+	// the list_views coerce-to-empty-page pattern).
+	var data []any
+	if raw, present := dashboards["data"]; present && raw != nil {
+		if arr, ok := raw.([]any); ok {
+			data = arr
+		} else {
+			h.logger.DebugContext(ctx, "dashboards response data was not an array; treating as empty",
+				slog.String("data", logpkg.TruncAny(raw)))
+		}
 	}
 
 	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
