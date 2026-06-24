@@ -176,41 +176,13 @@ func TestE2EFamilyC_StructuredContentOnGetTools(t *testing.T) {
 		t.Log("SKIP get_notification_channel: no channels on instance")
 	}
 
-	// get_trace_details — traceId from a recent search_traces.
-	st := callOK(t, h.handleSearchTraces, ctx, "signoz_search_traces", map[string]any{"timeRange": "1h", "limit": "1"})
-	if tid := firstTraceID(firstText(st)); tid != "" {
-		assertStructuredMatchesText(t, "get_trace_details", callOK(t, h.handleGetTraceDetails, ctx, "signoz_get_trace_details", map[string]any{"traceId": tid, "timeRange": "1h"}))
+	// get_trace_details — traceId from a recent search_traces. Reuse the shared
+	// finder, which walks the correct data.data.results[].rows[] envelope.
+	if tid := e2eFindTraceID(t, h, ctx); tid != "" {
+		assertStructuredMatchesText(t, "get_trace_details", callOK(t, h.handleGetTraceDetails, ctx, "signoz_get_trace_details", map[string]any{"traceId": tid, "timeRange": "6h"}))
 	} else {
-		t.Log("SKIP get_trace_details: no traces in last hour")
+		t.Log("SKIP get_trace_details: no traces found")
 	}
-}
-
-// firstTraceID walks a QB v5 search_traces response for the first traceID value.
-func firstTraceID(text string) string {
-	var env struct {
-		Data struct {
-			Results []struct {
-				Rows []struct {
-					Data map[string]any `json:"data"`
-				} `json:"rows"`
-			} `json:"results"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal([]byte(text), &env); err != nil {
-		return ""
-	}
-	for _, r := range env.Data.Results {
-		for _, row := range r.Rows {
-			for _, k := range []string{"traceID", "trace_id", "traceId"} {
-				if v, ok := row.Data[k]; ok {
-					if s, ok := v.(string); ok && s != "" {
-						return s
-					}
-				}
-			}
-		}
-	}
-	return ""
 }
 
 func TestE2EFamilyC_NoStructuredOnPassthrough(t *testing.T) {
