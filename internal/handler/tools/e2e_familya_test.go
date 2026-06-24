@@ -215,11 +215,11 @@ func TestE2E_N4_AlertHistory_Path(t *testing.T) {
 		t.Fatalf("get_alert_history error: %s", firstTextBlock(t, res))
 	}
 	body := firstTextBlock(t, res)
-	n, ok := countDataArrayRows([]byte(body), "items")
+	n, ok := countAlertHistoryRows([]byte(body))
 	if !ok {
-		t.Errorf("N4 DRIFT: get_alert_history data.items[] path not found. Body prefix: %s", truncForLog(body))
+		t.Errorf("N4 DRIFT: get_alert_history data[] or data.items[] path not found. Body prefix: %s", truncForLog(body))
 	} else {
-		t.Logf("get_alert_history: counted %d rows via data.items[]", n)
+		t.Logf("get_alert_history: counted %d rows via data[] or data.items[]", n)
 	}
 	if !strings.Contains(noteBlocks(res), "hasMore") {
 		t.Errorf("expected completeness note with hasMore on get_alert_history")

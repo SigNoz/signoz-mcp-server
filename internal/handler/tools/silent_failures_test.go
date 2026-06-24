@@ -497,6 +497,35 @@ func TestCountDataArrayRows(t *testing.T) {
 	}
 }
 
+func TestCountAlertHistoryRowsFamilyADataShapes(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		wantN   int
+		wantOK  bool
+	}{
+		{name: "top-level data array counts", payload: `{"status":"success","data":[{},{}]}`, wantN: 2, wantOK: true},
+		{name: "data items array counts", payload: `{"status":"success","data":{"items":[{}, {}, {}]}}`, wantN: 3, wantOK: true},
+		{name: "present data null is known zero", payload: `{"status":"success","data":null}`, wantN: 0, wantOK: true},
+		{name: "present items null is known zero", payload: `{"status":"success","data":{"items":null}}`, wantN: 0, wantOK: true},
+		{name: "missing data fails open", payload: `{"status":"success"}`, wantOK: false},
+		{name: "data object without items fails open", payload: `{"status":"success","data":{}}`, wantOK: false},
+		{name: "data string fails open", payload: `{"status":"success","data":"unexpected"}`, wantOK: false},
+		{name: "items object fails open", payload: `{"status":"success","data":{"items":{}}}`, wantOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, ok := countAlertHistoryRows([]byte(tt.payload))
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v (n=%d)", ok, tt.wantOK, n)
+			}
+			if tt.wantOK && n != tt.wantN {
+				t.Fatalf("n = %d, want %d", n, tt.wantN)
+			}
+		})
+	}
+}
+
 // When the row count can't be located, the per-tool handlers must emit the
 // generic "limit N applied" note instead of a misleading hasMore=false.
 func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
@@ -680,6 +709,36 @@ func TestCompletenessNote_HasMore(t *testing.T) {
 	note = completenessNote(0, 100, 0, false)
 	if !strings.Contains(note, "limit 100 applied") {
 		t.Fatalf("expected generic note when row count unknown, got %q", note)
+	}
+}
+
+func TestHandleGetAlertHistoryFamilyA_TopLevelDataArrayCompletenessNote(t *testing.T) {
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":[{"state":"firing"},{"state":"inactive"}]}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	result, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId": "rule-x",
+		"limit":  "2",
+		"offset": "5",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if len(result.Content) != 2 {
+		t.Fatalf("content block count = %d, want JSON + completeness note", len(result.Content))
+	}
+	note := result.Content[1].(mcp.TextContent).Text
+	if strings.Contains(note, "cannot count returned rows") {
+		t.Fatalf("must count top-level data[] alert history rows; note=%q", note)
+	}
+	if !strings.Contains(note, "returned 2 rows") || !strings.Contains(note, "hasMore=true") || !strings.Contains(note, "offset=7") {
+		t.Fatalf("completeness note = %q, want 2 rows / hasMore=true / offset=7", note)
 	}
 }
 

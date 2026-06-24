@@ -490,13 +490,45 @@ func countQueryRangeRows(payload []byte) (int, bool) {
 	return total, true
 }
 
+// countAlertHistoryRows counts the alert history rows in either response shape
+// returned by /api/v1/rules/{id}/history/timeline: data[] or data.items[]. A
+// present null at data or data.items is a known empty collection; missing or
+// unrecognized shapes fail open.
+func countAlertHistoryRows(payload []byte) (int, bool) {
+	var resp struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return 0, false
+	}
+	if len(resp.Data) == 0 {
+		return 0, false // data key absent
+	}
+	if arr, ok := decodeArrayOrNull(resp.Data); ok {
+		return len(arr), true // data[] or data:null
+	}
+
+	var dataObj map[string]json.RawMessage
+	if err := json.Unmarshal(resp.Data, &dataObj); err != nil {
+		return 0, false // data present but neither array nor object
+	}
+	raw, present := dataObj["items"]
+	if !present || len(raw) == 0 {
+		return 0, false // items key absent
+	}
+	arr, ok := decodeArrayOrNull(raw)
+	if !ok {
+		return 0, false // items present but neither array nor null
+	}
+	return len(arr), true
+}
+
 // countDataArrayRows counts the elements of a JSON array nested at data.<key>
-// in a passthrough body (e.g. data.items for alert history, data.metrics for
-// list_metrics, data.samples for top_metrics). A present-but-null leaf counts
-// as zero rows (a normal empty collection). It fails open — returns
-// (0, false) — only when the key is ABSENT or its value is neither an array
-// nor null, so a misleading hasMore=false is never asserted on an uncountable
-// shape.
+// in a passthrough body (e.g. data.metrics for list_metrics, data.samples for
+// top_metrics). A present-but-null leaf counts as zero rows (a normal empty
+// collection). It fails open — returns (0, false) — only when the key is ABSENT
+// or its value is neither an array nor null, so a misleading hasMore=false is
+// never asserted on an uncountable shape.
 func countDataArrayRows(payload []byte, key string) (int, bool) {
 	var resp struct {
 		Data map[string]json.RawMessage `json:"data"`

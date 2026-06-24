@@ -406,8 +406,8 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// Completeness signal: alert history is a raw passthrough with limit/offset
-	// but no hasMore of its own. Count the data.items[] rows and append a note.
-	returnedRows, rowsKnown := countDataArrayRows(respJSON, "items")
+	// but no hasMore of its own. Count rows across both known history shapes.
+	returnedRows, rowsKnown := countAlertHistoryRows(respJSON)
 	note := completenessNote(returnedRows, limit, offset, rowsKnown)
 	return resultWithNotes(respJSON, note), nil
 }
