@@ -1,40 +1,37 @@
 package types
 
 type UpdateDashboardInput struct {
-	// ID / LegacyUUID: both advertised as OPTIONAL properties (no
-	// jsonschema:"required", json ",omitempty") so the typed schema's
-	// additionalProperties:false does not reject a schema-aware client sending
-	// EITHER key. Exactly one must be supplied; the handler validates presence
-	// and reads via readResourceID (canonical "id" wins), then strips both keys
-	// before forwarding upstream.
-	ID            string    `json:"id,omitempty" jsonschema_extras:"description=Dashboard UUID to update (required). Provide either this or the legacy field name 'uuid'."`
-	LegacyUUID    string    `json:"uuid,omitempty" jsonschema_extras:"description=Deprecated alias for 'id'. Accepted for backward compatibility; prefer 'id'."`
-	Dashboard     Dashboard `json:"dashboard" jsonschema:"required" jsonschema_extras:"description=Full dashboard configuration representing the complete post-update state."`
-	SearchContext string    `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	// id and uuid are both optional properties (json ",omitempty", neither
+	// required) so additionalProperties:false accepts either key; the handler
+	// requires exactly one via readResourceID (canonical "id" wins).
+	ID            string    `json:"id,omitempty" jsonschema:"Dashboard UUID to update (required). Provide either this or the legacy field name 'uuid'."`
+	LegacyUUID    string    `json:"uuid,omitempty" jsonschema:"Deprecated alias for 'id'. Accepted for backward compatibility; prefer 'id'."`
+	Dashboard     Dashboard `json:"dashboard" jsonschema:"Full dashboard configuration representing the complete post-update state."`
+	SearchContext string    `json:"searchContext,omitempty" jsonschema:"The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
 
 type CreateDashboardInput struct {
 	Dashboard
-	SearchContext string `json:"searchContext,omitempty" jsonschema_extras:"description=The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string `json:"searchContext,omitempty" jsonschema:"The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
 }
 
 type Dashboard struct {
-	Title       string              `json:"title" jsonschema:"required" jsonschema_extras:"description=The display name of the dashboard."`
-	Description string              `json:"description,omitempty" jsonschema_extras:"description=A brief explanation of what the dashboard shows."`
-	Tags        []string            `json:"tags,omitempty" jsonschema_extras:"description=Keywords for categorization e.g performance latency."`
-	Layout      []LayoutItem        `json:"layout" jsonschema:"required" jsonschema_extras:"description=Defines the grid positioning and size for each widget."`
-	Variables   map[string]Variable `json:"variables,omitempty" jsonschema_extras:"description=Key-value map of template variables available for queries."`
-	Widgets     []Widget            `json:"widgets" jsonschema:"required" jsonschema_extras:"description=The list of all graphical components displayed on the dashboard."`
+	Title       string              `json:"title" jsonschema:"The display name of the dashboard."`
+	Description string              `json:"description,omitempty" jsonschema:"A brief explanation of what the dashboard shows."`
+	Tags        []string            `json:"tags,omitempty" jsonschema:"Keywords for categorization e.g performance latency."`
+	Layout      []LayoutItem        `json:"layout" jsonschema:"Defines the grid positioning and size for each widget."`
+	Variables   map[string]Variable `json:"variables,omitempty" jsonschema:"Key-value map of template variables available for queries."`
+	Widgets     []Widget            `json:"widgets" jsonschema:"The list of all graphical components displayed on the dashboard."`
 }
 
 type LayoutItem struct {
-	X           int    `json:"x" jsonschema:"required" jsonschema_extras:"description=X coordinate for the layout"`
-	Y           int    `json:"y" jsonschema:"required" jsonschema_extras:"description=Y coordinate for the layout"`
-	W           int    `json:"w" jsonschema:"required" jsonschema_extras:"description=Width for the layout"`
-	H           int    `json:"h" jsonschema:"required" jsonschema_extras:"description=Height for the layout"`
-	I           string `json:"i" jsonschema:"required" jsonschema_extras:"description=ID for the layout"`
-	Moved       bool   `json:"moved,omitempty" jsonschema_extras:"description=Whether the layout is moved or not"`
-	Static      bool   `json:"static,omitempty" jsonschema_extras:"description=Whether the layout is static or not"`
+	X           int    `json:"x" jsonschema:"X coordinate for the layout"`
+	Y           int    `json:"y" jsonschema:"Y coordinate for the layout"`
+	W           int    `json:"w" jsonschema:"Width for the layout"`
+	H           int    `json:"h" jsonschema:"Height for the layout"`
+	I           string `json:"i" jsonschema:"ID for the layout"`
+	Moved       bool   `json:"moved,omitempty" jsonschema:"Whether the layout is moved or not"`
+	Static      bool   `json:"static,omitempty" jsonschema:"Whether the layout is static or not"`
 	MaxH        int    `json:"maxH,omitempty"`
 	MinH        int    `json:"minH,omitempty"`
 	MinW        int    `json:"minW,omitempty"`
@@ -42,19 +39,19 @@ type LayoutItem struct {
 }
 
 type Variable struct {
-	ID                        string       `json:"id,omitempty" jsonschema_extras:"description=ID for the variable"`
-	Name                      string       `json:"name,omitempty" jsonschema_extras:"description=Name for the variable"`
-	Description               string       `json:"description,omitempty" jsonschema_extras:"description=Description for the variable"`
-	Key                       string       `json:"key,omitempty" jsonschema_extras:"description=Key for the variable, use same as name"`
-	Type                      VariableType `json:"type,omitempty" jsonschema_extras:"description=Type for the variable"`
-	QueryValue                string       `json:"queryValue,omitempty" jsonschema_extras:"description=Query for the variable"`
-	AllSelected               bool         `json:"allSelected,omitempty" jsonschema_extras:"description=Whether all the values are selected or not"`
-	CustomValue               string       `json:"customValue,omitempty" jsonschema_extras:"description=Custom value for the variable"`
-	MultiSelect               bool         `json:"multiSelect,omitempty" jsonschema_extras:"description=Whether the variable is multi select or not"`
-	Order                     int          `json:"order,omitempty" jsonschema_extras:"description=Order for the variable"`
-	ShowALLOption             bool         `json:"showALLOption,omitempty" jsonschema_extras:"description=Whether to show all option or not"`
-	Sort                      VariableSort `json:"sort,omitempty" jsonschema_extras:"description=Sort for the variable"`
-	TextboxValue              string       `json:"textboxValue,omitempty" jsonschema_extras:"description=Textbox value for the variable"`
+	ID                        string       `json:"id,omitempty" jsonschema:"ID for the variable"`
+	Name                      string       `json:"name,omitempty" jsonschema:"Name for the variable"`
+	Description               string       `json:"description,omitempty" jsonschema:"Description for the variable"`
+	Key                       string       `json:"key,omitempty" jsonschema:"Key for the variable, use same as name"`
+	Type                      VariableType `json:"type,omitempty" jsonschema:"Type for the variable"`
+	QueryValue                string       `json:"queryValue,omitempty" jsonschema:"Query for the variable"`
+	AllSelected               bool         `json:"allSelected,omitempty" jsonschema:"Whether all the values are selected or not"`
+	CustomValue               string       `json:"customValue,omitempty" jsonschema:"Custom value for the variable"`
+	MultiSelect               bool         `json:"multiSelect,omitempty" jsonschema:"Whether the variable is multi select or not"`
+	Order                     int          `json:"order,omitempty" jsonschema:"Order for the variable"`
+	ShowALLOption             bool         `json:"showALLOption,omitempty" jsonschema:"Whether to show all option or not"`
+	Sort                      VariableSort `json:"sort,omitempty" jsonschema:"Sort for the variable"`
+	TextboxValue              string       `json:"textboxValue,omitempty" jsonschema:"Textbox value for the variable"`
 	ModificationUUID          string       `json:"modificationUUID,omitempty"`
 	SelectedValue             interface{}  `json:"selectedValue,omitempty"`
 	DefaultValue              string       `json:"defaultValue,omitempty"`
@@ -64,16 +61,16 @@ type Variable struct {
 }
 
 type Widget struct {
-	ID                    string             `json:"id" jsonschema:"required" jsonschema_extras:"description=ID for the widget"`
-	Description           string             `json:"description,omitempty" jsonschema_extras:"description=Description for the widget"`
-	IsStacked             bool               `json:"isStacked,omitempty" jsonschema_extras:"description=Whether the widget is stacked or not"`
-	NullZeroValues        string             `json:"nullZeroValues,omitempty" jsonschema_extras:"description=Whether the widget has null zero values or not"`
-	Opacity               string             `json:"opacity,omitempty" jsonschema_extras:"description=Opacity for the widget"`
-	PanelTypes            PanelType          `json:"panelTypes" jsonschema:"required" jsonschema_extras:"description=Panel type for the widget."`
-	TimePreferance        TimePreferance     `json:"timePreferance,omitempty" jsonschema_extras:"description=Time preferance for the widget"`
-	Title                 string             `json:"title" jsonschema:"required" jsonschema_extras:"description=Title for the widget"`
-	YAxisUnit             string             `json:"yAxisUnit,omitempty" jsonschema_extras:"description=Y axis unit for the widget"`
-	Query                 WidgetQuery        `json:"query" jsonschema:"required" jsonschema_extras:"description=Query for the widget."`
+	ID                    string             `json:"id" jsonschema:"ID for the widget"`
+	Description           string             `json:"description,omitempty" jsonschema:"Description for the widget"`
+	IsStacked             bool               `json:"isStacked,omitempty" jsonschema:"Whether the widget is stacked or not"`
+	NullZeroValues        string             `json:"nullZeroValues,omitempty" jsonschema:"Whether the widget has null zero values or not"`
+	Opacity               string             `json:"opacity,omitempty" jsonschema:"Opacity for the widget"`
+	PanelTypes            PanelType          `json:"panelTypes" jsonschema:"Panel type for the widget."`
+	TimePreferance        TimePreferance     `json:"timePreferance,omitempty" jsonschema:"Time preferance for the widget"`
+	Title                 string             `json:"title" jsonschema:"Title for the widget"`
+	YAxisUnit             string             `json:"yAxisUnit,omitempty" jsonschema:"Y axis unit for the widget"`
+	Query                 WidgetQuery        `json:"query" jsonschema:"Query for the widget."`
 	BucketCount           int                `json:"bucketCount,omitempty"`
 	BucketWidth           int                `json:"bucketWidth,omitempty"`
 	ColumnUnits           map[string]string  `json:"columnUnits,omitempty"`
@@ -100,17 +97,17 @@ type ContextLinks struct {
 }
 
 type Threshold struct {
-	Index                 string      `json:"index,omitempty" jsonschema_extras:"description=Stable identifier for this threshold within the widget."`
+	Index                 string      `json:"index,omitempty" jsonschema:"Stable identifier for this threshold within the widget."`
 	IsEditEnabled         bool        `json:"isEditEnabled,omitempty"`
 	KeyIndex              int         `json:"keyIndex,omitempty"`
 	SelectedGraph         string      `json:"selectedGraph,omitempty"`
-	ThresholdColor        string      `json:"thresholdColor,omitempty" jsonschema_extras:"description=Hex color for the threshold (e.g. #FF0000)."`
-	ThresholdFormat       string      `json:"thresholdFormat,omitempty" jsonschema_extras:"description=How the threshold is rendered. Allowed values: 'Text' or 'Background'. SigNoz does NOT support a Grafana-style 'Line' marker; do not use 'Line'. 'Background' tints the panel area when the operator+value condition holds; 'Text' colors the threshold value label only."`
-	ThresholdLabel        string      `json:"thresholdLabel,omitempty" jsonschema_extras:"description=Optional display label for the threshold."`
-	ThresholdOperator     string      `json:"thresholdOperator,omitempty" jsonschema_extras:"description=Comparison operator. Allowed values: '>', '<', '>=', '<=', '='."`
+	ThresholdColor        string      `json:"thresholdColor,omitempty" jsonschema:"Hex color for the threshold (e.g. #FF0000)."`
+	ThresholdFormat       string      `json:"thresholdFormat,omitempty" jsonschema:"How the threshold is rendered. Allowed values: 'Text' or 'Background'. SigNoz does NOT support a Grafana-style 'Line' marker; do not use 'Line'. 'Background' tints the panel area when the operator+value condition holds; 'Text' colors the threshold value label only."`
+	ThresholdLabel        string      `json:"thresholdLabel,omitempty" jsonschema:"Optional display label for the threshold."`
+	ThresholdOperator     string      `json:"thresholdOperator,omitempty" jsonschema:"Comparison operator. Allowed values: '>', '<', '>=', '<=', '='."`
 	ThresholdTableOptions string      `json:"thresholdTableOptions,omitempty"`
-	ThresholdUnit         string      `json:"thresholdUnit,omitempty" jsonschema_extras:"description=Unit for the threshold value (should match the panel's yAxisUnit)."`
-	ThresholdValue        interface{} `json:"thresholdValue,omitempty" jsonschema_extras:"description=Numeric value the operator is compared against."`
+	ThresholdUnit         string      `json:"thresholdUnit,omitempty" jsonschema:"Unit for the threshold value (should match the panel's yAxisUnit)."`
+	ThresholdValue        interface{} `json:"thresholdValue,omitempty" jsonschema:"Numeric value the operator is compared against."`
 }
 
 type SelectedLogField struct {
@@ -126,56 +123,56 @@ type SelectedLogField struct {
 }
 
 type WidgetQuery struct {
-	QueryType     QueryType             `json:"queryType" jsonschema:"required" jsonschema_extras:"description=Query type for the widget"`
-	PromQL        []PromQL              `json:"promql" jsonschema_extras:"description=PromQL for the widget"`
-	ClickHouseSQL []ClickHouseSQL       `json:"clickhouse_sql" jsonschema_extras:"description=Clickhouse SQL for the widget"`
-	Builder       BuilderQueryDashboard `json:"builder" jsonschema_extras:"description=Builder query for the widget"`
+	QueryType     QueryType             `json:"queryType" jsonschema:"Query type for the widget"`
+	PromQL        []PromQL              `json:"promql" jsonschema:"PromQL for the widget"`
+	ClickHouseSQL []ClickHouseSQL       `json:"clickhouse_sql" jsonschema:"Clickhouse SQL for the widget"`
+	Builder       BuilderQueryDashboard `json:"builder" jsonschema:"Builder query for the widget"`
 	ID            string                `json:"id,omitempty"`
 }
 
 type PromQL struct {
-	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=PromQL query expression. For OTel metrics with dots in the name use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data in SigNoz. Read signoz://promql/instructions for the full guide."`
-	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
-	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the PromQL query is disabled or not"`
-	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend template for naming PromQL series. Use {{label_name}} placeholders matching labels returned by the query. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{instance}}. Without legend charts show generic series names."`
+	Query    string `json:"query" jsonschema:"PromQL query expression. For OTel metrics with dots in the name use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data in SigNoz. Read signoz://promql/instructions for the full guide."`
+	Name     string `json:"name" jsonschema:"Name for the query"`
+	Disabled bool   `json:"disabled" jsonschema:"Whether the PromQL query is disabled or not"`
+	Legend   string `json:"legend,omitempty" jsonschema:"Legend template for naming PromQL series. Use {{label_name}} placeholders matching labels returned by the query. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{instance}}. Without legend charts show generic series names."`
 }
 
 type ClickHouseSQL struct {
-	Query    string `json:"query" jsonschema:"required" jsonschema_extras:"description=Clickhouse SQL query for the widget"`
-	Name     string `json:"name" jsonschema:"required" jsonschema_extras:"description=Name for the query"`
-	Disabled bool   `json:"disabled" jsonschema:"required" jsonschema_extras:"description=Whether the Clickhouse SQL is disabled or not"`
-	Legend   string `json:"legend,omitempty" jsonschema_extras:"description=Legend template for naming ClickHouse query series. Use {{column_name}} placeholders for label columns returned by the query result. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{http_method}}. Only columns present in the result can be used in the legend."`
+	Query    string `json:"query" jsonschema:"Clickhouse SQL query for the widget"`
+	Name     string `json:"name" jsonschema:"Name for the query"`
+	Disabled bool   `json:"disabled" jsonschema:"Whether the Clickhouse SQL is disabled or not"`
+	Legend   string `json:"legend,omitempty" jsonschema:"Legend template for naming ClickHouse query series. Use {{column_name}} placeholders for label columns returned by the query result. REQUIRED for grouped or multi-series charts. Example: {{service_name}} or {{service_name}} - {{http_method}}. Only columns present in the result can be used in the legend."`
 }
 
 type BuilderQueryDashboard struct {
-	QueryData          []BuilderQuery `json:"queryData" jsonschema_extras:"description=Query data for the widget. Populate with non-formula queries."`
-	QueryFormulas      []BuilderQuery `json:"queryFormulas" jsonschema_extras:"description=Query formulas for the widget. Populate with formula queries."`
+	QueryData          []BuilderQuery `json:"queryData" jsonschema:"Query data for the widget. Populate with non-formula queries."`
+	QueryFormulas      []BuilderQuery `json:"queryFormulas" jsonschema:"Query formulas for the widget. Populate with formula queries."`
 	QueryTraceOperator []interface{}  `json:"queryTraceOperator,omitempty"`
 }
 
 type BuilderQuery struct {
-	QueryName          string            `json:"queryName" jsonschema:"required" jsonschema_extras:"description=Name of the query"`
-	StepInterval       *int64            `json:"stepInterval" jsonschema:"required" jsonschema_extras:"description=Step/Aggregation interval for the query in seconds."`
-	DataSource         DataSource        `json:"dataSource" jsonschema:"required" jsonschema_extras:"description=Data source for the query"`
-	AggregateOperator  AggregateOperator `json:"aggregateOperator,omitempty" jsonschema_extras:"description=Aggregate operator for the query"`
+	QueryName          string            `json:"queryName" jsonschema:"Name of the query"`
+	StepInterval       *int64            `json:"stepInterval" jsonschema:"Step/Aggregation interval for the query in seconds."`
+	DataSource         DataSource        `json:"dataSource" jsonschema:"Data source for the query"`
+	AggregateOperator  AggregateOperator `json:"aggregateOperator,omitempty" jsonschema:"Aggregate operator for the query"`
 	AggregateAttribute AttributeKey      `json:"aggregateAttribute,omitempty"`
-	Temporality        Temporality       `json:"temporality,omitempty" jsonschema_extras:"description=Temporality for metrics data"`
+	Temporality        Temporality       `json:"temporality,omitempty" jsonschema:"Temporality for metrics data"`
 	Filters            FilterSet         `json:"filters,omitempty"`
-	GroupBy            []AttributeKey    `json:"groupBy" jsonschema_extras:"description=Group by attributes for the query"`
-	Expression         string            `json:"expression" jsonschema:"required" jsonschema_extras:"description=Expression for the query"`
-	Disabled           bool              `json:"disabled,omitempty" jsonschema_extras:"description=Whether the query is disabled"`
-	Having             interface{}       `json:"having,omitempty" jsonschema_extras:"description=Having clauses for the query"`
-	Legend             string            `json:"legend,omitempty" jsonschema_extras:"description=Legend template for labeling grouped chart series. Use {{attribute_name}} placeholders that exactly match groupBy keys. REQUIRED when this query uses groupBy and is rendered as a multi-series chart for timeseries/graph or bar or pie or histogram. Example: if groupBy includes service.name then set legend to {{service.name}}. For multiple keys use {{service.name}} - {{http.method}}. Without legend SigNoz shows raw query identifiers such as A."`
-	Limit              uint64            `json:"limit,omitempty" jsonschema_extras:"description=Limit for the query"`
-	Offset             uint64            `json:"offset,omitempty" jsonschema_extras:"description=Offset for the query"`
-	PageSize           uint64            `json:"pageSize,omitempty" jsonschema_extras:"description=Page size for the query"`
-	OrderBy            []OrderBy         `json:"orderBy" jsonschema_extras:"description=Order by for the query"`
-	ReduceTo           ReduceToOperator  `json:"reduceTo,omitempty" jsonschema_extras:"description=Reduce to operator for the query"`
-	SelectColumns      []AttributeKey    `json:"selectColumns" jsonschema_extras:"description=Select columns for the query. Required for list panel types."`
-	TimeAggregation    TimeAggregation   `json:"timeAggregation,omitempty" jsonschema_extras:"description=Time aggregation for metrics queries"`
-	SpaceAggregation   SpaceAggregation  `json:"spaceAggregation,omitempty" jsonschema_extras:"description=Space aggregation for metrics queries"`
-	SeriesAggregation  string            `json:"seriesAggregation,omitempty" jsonschema_extras:"description=Series aggregation for metrics queries with group by"`
-	Functions          []Function        `json:"functions" jsonschema_extras:"description=Functions to apply to the query result"`
+	GroupBy            []AttributeKey    `json:"groupBy" jsonschema:"Group by attributes for the query"`
+	Expression         string            `json:"expression" jsonschema:"Expression for the query"`
+	Disabled           bool              `json:"disabled,omitempty" jsonschema:"Whether the query is disabled"`
+	Having             interface{}       `json:"having,omitempty" jsonschema:"Having clauses for the query"`
+	Legend             string            `json:"legend,omitempty" jsonschema:"Legend template for labeling grouped chart series. Use {{attribute_name}} placeholders that exactly match groupBy keys. REQUIRED when this query uses groupBy and is rendered as a multi-series chart for timeseries/graph or bar or pie or histogram. Example: if groupBy includes service.name then set legend to {{service.name}}. For multiple keys use {{service.name}} - {{http.method}}. Without legend SigNoz shows raw query identifiers such as A."`
+	Limit              uint64            `json:"limit,omitempty" jsonschema:"Limit for the query"`
+	Offset             uint64            `json:"offset,omitempty" jsonschema:"Offset for the query"`
+	PageSize           uint64            `json:"pageSize,omitempty" jsonschema:"Page size for the query"`
+	OrderBy            []OrderBy         `json:"orderBy" jsonschema:"Order by for the query"`
+	ReduceTo           ReduceToOperator  `json:"reduceTo,omitempty" jsonschema:"Reduce to operator for the query"`
+	SelectColumns      []AttributeKey    `json:"selectColumns" jsonschema:"Select columns for the query. Required for list panel types."`
+	TimeAggregation    TimeAggregation   `json:"timeAggregation,omitempty" jsonschema:"Time aggregation for metrics queries"`
+	SpaceAggregation   SpaceAggregation  `json:"spaceAggregation,omitempty" jsonschema:"Space aggregation for metrics queries"`
+	SeriesAggregation  string            `json:"seriesAggregation,omitempty" jsonschema:"Series aggregation for metrics queries with group by"`
+	Functions          []Function        `json:"functions" jsonschema:"Functions to apply to the query result"`
 	Aggregations       []Aggregation     `json:"aggregations"`
 	Filter             *QueryFilter      `json:"filter,omitempty"`
 	Source             string            `json:"source,omitempty"`
@@ -195,46 +192,46 @@ type QueryFilter struct {
 }
 
 type AttributeKey struct {
-	Key           string `json:"key,omitempty" jsonschema_extras:"description=Key for the attribute"`
-	Name          string `json:"name,omitempty" jsonschema_extras:"description=Name for the attribute (alternative to key)"`
-	DataType      string `json:"dataType,omitempty" jsonschema_extras:"description=Data type of the attribute"`
-	Type          string `json:"type,omitempty" jsonschema_extras:"description=Type of the attribute (tag, resource, log, etc.)"`
-	IsColumn      bool   `json:"isColumn,omitempty" jsonschema_extras:"description=Whether the attribute is a materialized column or not"`
-	IsJSON        bool   `json:"isJSON,omitempty" jsonschema_extras:"description=Whether the attribute is a JSON or not"`
+	Key           string `json:"key,omitempty" jsonschema:"Key for the attribute"`
+	Name          string `json:"name,omitempty" jsonschema:"Name for the attribute (alternative to key)"`
+	DataType      string `json:"dataType,omitempty" jsonschema:"Data type of the attribute"`
+	Type          string `json:"type,omitempty" jsonschema:"Type of the attribute (tag, resource, log, etc.)"`
+	IsColumn      bool   `json:"isColumn,omitempty" jsonschema:"Whether the attribute is a materialized column or not"`
+	IsJSON        bool   `json:"isJSON,omitempty" jsonschema:"Whether the attribute is a JSON or not"`
 	ID            string `json:"id,omitempty"`
-	FieldContext  string `json:"fieldContext,omitempty" jsonschema_extras:"description=Field context (resource, span, log, etc.) - Required for selectColumns"`
-	FieldDataType string `json:"fieldDataType,omitempty" jsonschema_extras:"description=Field data type"`
-	Signal        string `json:"signal,omitempty" jsonschema_extras:"description=Signal type (traces, logs, metrics) - Required for selectColumns"`
+	FieldContext  string `json:"fieldContext,omitempty" jsonschema:"Field context (resource, span, log, etc.) - Required for selectColumns"`
+	FieldDataType string `json:"fieldDataType,omitempty" jsonschema:"Field data type"`
+	Signal        string `json:"signal,omitempty" jsonschema:"Signal type (traces, logs, metrics) - Required for selectColumns"`
 }
 
 type FilterSet struct {
-	Items []FilterItem `json:"items" jsonschema:"required"`
-	Op    string       `json:"op" jsonschema:"required" jsonschema_extras:"description=Operator for combining filter items."`
+	Items []FilterItem `json:"items"`
+	Op    string       `json:"op" jsonschema:"Operator for combining filter items."`
 }
 
 type FilterItem struct {
-	Key   AttributeKey `json:"key" jsonschema:"required" jsonschema_extras:"description=Key for the filter"`
-	Value interface{}  `json:"value" jsonschema:"required" jsonschema_extras:"description=Value for the filter"`
-	Op    string       `json:"op" jsonschema:"required" jsonschema_extras:"description=Filter operator"`
+	Key   AttributeKey `json:"key" jsonschema:"Key for the filter"`
+	Value interface{}  `json:"value" jsonschema:"Value for the filter"`
+	Op    string       `json:"op" jsonschema:"Filter operator"`
 	ID    string       `json:"id,omitempty"`
 }
 
 type HavingClause struct {
-	ColumnName string      `json:"columnName" jsonschema:"required" jsonschema_extras:"description=Column name for the having clause."`
-	Op         string      `json:"op" jsonschema:"required" jsonschema_extras:"description=Operator for the having clause"`
-	Value      interface{} `json:"value" jsonschema:"required" jsonschema_extras:"description=Value for the having clause."`
+	ColumnName string      `json:"columnName" jsonschema:"Column name for the having clause."`
+	Op         string      `json:"op" jsonschema:"Operator for the having clause"`
+	Value      interface{} `json:"value" jsonschema:"Value for the having clause."`
 	Expression string      `json:"expression,omitempty"`
 }
 
 type OrderBy struct {
-	ColumnName string `json:"columnName" jsonschema:"required" jsonschema_extras:"description=Column name for the order by."`
-	Order      string `json:"order" jsonschema:"required" jsonschema_extras:"description=Order direction"`
+	ColumnName string `json:"columnName" jsonschema:"Column name for the order by."`
+	Order      string `json:"order" jsonschema:"Order direction"`
 }
 
 type Function struct {
-	Name      string                 `json:"name" jsonschema:"required" jsonschema_extras:"description=Function name"`
-	Args      []interface{}          `json:"args" jsonschema_extras:"description=Function arguments"`
-	NamedArgs map[string]interface{} `json:"namedArgs,omitempty" jsonschema_extras:"description=Named arguments for the function"`
+	Name      string                 `json:"name" jsonschema:"Function name"`
+	Args      []interface{}          `json:"args" jsonschema:"Function arguments"`
+	NamedArgs map[string]interface{} `json:"namedArgs,omitempty" jsonschema:"Named arguments for the function"`
 }
 
 type VariableType string

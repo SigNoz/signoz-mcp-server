@@ -22,7 +22,10 @@ type metricMetadata struct {
 }
 
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	mqr, err := parseMetricsQueryArgs(args)
 	if err != nil {
@@ -46,11 +49,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(
-				"Failed to auto-fetch metric metadata for %q: %s\n"+
-					"Please provide metricType, temporality, and isMonotonic manually "+
-					"(get them from signoz_list_metrics).",
-				mqr.MetricName, fetchErr.Error())), nil
+			return upstreamError(fmt.Errorf(
+				"could not auto-fetch metric metadata for %q: %w. "+
+					"Provide metricType, temporality, and isMonotonic manually "+
+					"(get them from signoz_list_metrics)",
+				mqr.MetricName, fetchErr)), nil
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType
@@ -138,6 +141,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	for _, fq := range mqr.FormulaQueries {
 		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, mqr.Source, &decisions)
 		if subErr != nil {
+			// Upstream metadata-fetch failures get the uniform prefix; local
+			// validation errors ("metric not found"/"validation error") stay raw.
+			if res, ok := asUpstreamResult(subErr); ok {
+				return res, nil
+			}
 			return mcp.NewToolResultError(subErr.Error()), nil
 		}
 
@@ -178,7 +186,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Metrics query failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	// Extract backend-determined stepInterval from response if caller didn't provide one
@@ -190,22 +198,30 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
 
-	// Build response with decisions block
-	var response strings.Builder
-	response.WriteString("[Decisions applied]\n")
+	// JSON-first: the raw backend payload is block 0 (matching the search/
+	// aggregate siblings); decisions/warnings go into a SEPARATE note block
+	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
+	// text-only (no structuredContent) — its upstream shape is variable.
+	note := buildMetricsDecisionsNote(decisions, resolved.Warnings, backendWarnings)
+	return resultWithNotes(result, note), nil
+}
+
+// buildMetricsDecisionsNote renders the decisions/warnings advisory block that
+// query_metrics surfaces alongside (not prepended into) its JSON payload. It is
+// emitted as a separate content block via resultWithNotes.
+func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []string) string {
+	var b strings.Builder
+	b.WriteString("[Decisions applied]\n")
 	for _, d := range decisions {
-		response.WriteString(fmt.Sprintf("  %s\n", d))
+		b.WriteString(fmt.Sprintf("  %s\n", d))
 	}
-	for _, w := range resolved.Warnings {
-		response.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
+	for _, w := range defaultWarnings {
+		b.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
 	}
 	for _, w := range backendWarnings {
-		response.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
+		b.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
 	}
-	response.WriteString("---\n")
-	response.WriteString(string(result))
-
-	return mcp.NewToolResultText(response.String()), nil
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // fetchMetricMetadata calls ListMetrics to get type/temporality/isMonotonic for a metric.
@@ -315,7 +331,10 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 	if metricType == "" {
 		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName, source)
 		if err != nil {
-			return nil, fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
+			// Upstream (ListMetrics) failure — tag it so the caller surfaces the
+			// uniform "SigNoz API error:" prefix. The "metric not found" and
+			// "validation error" paths below are local and stay untagged.
+			return nil, markUpstream(fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err))
 		}
 		if meta != nil {
 			metricType = meta.MetricType

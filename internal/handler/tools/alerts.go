@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -27,12 +26,12 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with an id for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active='true', silenced='false', inhibited='false'\n- To see only silenced alerts: silenced='true', active='false'\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50 (max 1000, clamped), offset=0."),
+		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with an id for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active=true, silenced=false, inhibited=false\n- To see only silenced alerts: silenced=true, active=false\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50 (max 1000, clamped), offset=0."),
 		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of alerts to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip for pagination. Default: 0.")),
-		mcp.WithString("active", mcp.Description("Include active (firing) alerts. Values: 'true' or 'false'. Default: true.")),
-		mcp.WithString("silenced", mcp.Description("Include silenced alerts. Values: 'true' or 'false'. Default: true.")),
-		mcp.WithString("inhibited", mcp.Description("Include inhibited alerts. Values: 'true' or 'false'. Default: true.")),
+		mcp.WithBoolean("active", mcp.Description("Include active (firing) alerts. Default: true (server-side).")),
+		mcp.WithBoolean("silenced", mcp.Description("Include silenced alerts. Default: true (server-side).")),
+		mcp.WithBoolean("inhibited", mcp.Description("Include inhibited alerts. Default: true (server-side).")),
 		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
@@ -67,10 +66,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
 		mcp.WithString("id", mcp.Description("Alert rule ID. Required — provide either this or the legacy parameter name \"ruleId\".")),
-		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Default: 6h.")),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
 		mcp.WithString("end", mcp.Description("End timestamp in unix milliseconds (optional, defaults to now). Other magnitudes (seconds/micros/nanos) are auto-detected.")),
-		mcp.WithString("state", mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
+		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
 		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.DefaultString("20"), mcp.Description("Limit number of results (default: 20)")),
 		mcp.WithString("order", mcp.DefaultString("asc"), mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
@@ -106,7 +105,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_update_alert",
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithDescription(
-			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{ruleId}). Replaces the full rule configuration.\n\n"+
+			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{id}). Replaces the full rule configuration.\n\n"+
 				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
 				"When ruleType=promql_rule, also read signoz://promql/instructions — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form. "+
 				"Always fetch the current rule with signoz_get_alert first and merge changes on top of it — PUT replaces the full rule.\n\n"+
@@ -130,14 +129,18 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.registerAlertResources(s)
 }
 
-func parseBoolParam(args map[string]any, key string) *bool {
-	if v, ok := args[key].(string); ok && v != "" {
-		b, err := strconv.ParseBool(v)
-		if err == nil {
-			return &b
-		}
+// parseTriStateBool reads an optional boolean filter that must stay nil when
+// absent (so the backend applies its own default) but hard-errors on a garbage
+// value rather than silently dropping it (which previously widened results).
+func parseTriStateBool(args map[string]any, key string) (*bool, error) {
+	v, present, err := parseBoolArg(args, key)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	if !present {
+		return nil, nil
+	}
+	return &v, nil
 }
 
 func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -145,10 +148,22 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	args := req.GetArguments()
 	limit, offset, limitClamped := paginate.ParseParamsClamped(args)
 
+	active, err := parseTriStateBool(args, "active")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	}
+	inhibited, err := parseTriStateBool(args, "inhibited")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	}
+	silenced, err := parseTriStateBool(args, "silenced")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+	}
 	params := types.ListAlertsParams{
-		Active:    parseBoolParam(args, "active"),
-		Inhibited: parseBoolParam(args, "inhibited"),
-		Silenced:  parseBoolParam(args, "silenced"),
+		Active:    active,
+		Inhibited: inhibited,
+		Silenced:  silenced,
 	}
 	if receiver, ok := args["receiver"].(string); ok && receiver != "" {
 		params.Receiver = receiver
@@ -168,7 +183,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list alerts", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var apiResponse types.APIAlertsResponse
@@ -220,7 +235,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	rules, err := client.ListAlertRules(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list alert rules", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var apiResponse types.APIAlertRulesResponse
@@ -275,7 +290,11 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ruleID := readResourceID(req.GetArguments(), "ruleId")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "ruleId" is also accepted). Provide a valid alert rule ID (UUID format). Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a"}`), nil
@@ -289,11 +308,11 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get alert", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	respJSON = enrichAlertWebURL(ctx, respJSON, ruleID)
-	return mcp.NewToolResultText(string(respJSON)), nil
+	return structuredResult(respJSON), nil
 }
 
 // enrichAlertWebURL injects a webUrl deep link into a single-alert passthrough
@@ -305,7 +324,10 @@ func enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
 }
 
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
@@ -392,9 +414,14 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		h.logger.ErrorContext(ctx, "Failed to get alert history",
 			slog.String("ruleId", ruleID),
 			logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(respJSON)), nil
+
+	// Completeness signal: alert history is a raw passthrough with limit/offset
+	// but no hasMore of its own. Count rows across both known history shapes.
+	returnedRows, rowsKnown := countAlertHistoryRows(respJSON)
+	note := completenessNote(returnedRows, limit, offset, rowsKnown)
+	return resultWithNotes(respJSON, note), nil
 }
 
 func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -402,7 +429,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	if !ok || len(rawConfig) == 0 {
 		h.logger.WarnContext(ctx, "Received empty or invalid arguments map for create alert.")
-		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
+		return notAConfigObjectError(), nil
 	}
 
 	cleanJSON, errResult := h.validateAlertPayload(ctx, rawConfig)
@@ -419,7 +446,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 	data, err := client.CreateAlertRule(ctx, cleanJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to create alert rule in SigNoz", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	return mcp.NewToolResultText(string(data)), nil
@@ -429,7 +456,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 	rawConfig, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(rawConfig) == 0 {
 		h.logger.WarnContext(ctx, "Received empty or invalid arguments map for update alert.")
-		return mcp.NewToolResultError(`Parameter validation failed: The alert configuration object is empty or improperly formatted.`), nil
+		return notAConfigObjectError(), nil
 	}
 
 	ruleID := readResourceID(rawConfig, "ruleId")
@@ -455,16 +482,16 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	if err := client.UpdateAlertRule(ctx, ruleID, cleanJSON); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update alert rule in SigNoz", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID)), nil
+	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID))), nil
 }
 
 func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, ok := req.Params.Arguments.(map[string]any)
-	if !ok {
-		return mcp.NewToolResultError(`Parameter validation failed: expected an arguments object with "id".`), nil
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
 	}
 	ruleID := readResourceID(args, "ruleId")
 	if ruleID == "" {
@@ -482,10 +509,10 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 
 	if err := client.DeleteAlertRule(ctx, ruleID); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to delete alert rule in SigNoz", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID)), nil
+	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","ruleId":%q}`, ruleID))), nil
 }
 
 // validateAlertPayload runs the alert validation pipeline and the
@@ -509,7 +536,7 @@ func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string
 	availableChannels, err := fetchChannelNames(ctx, client)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to fetch notification channels for validation", logpkg.ErrAttr(err))
-		return nil, mcp.NewToolResultError(fmt.Sprintf("Failed to fetch notification channels: %s", err.Error()))
+		return nil, upstreamError(fmt.Errorf("could not fetch notification channels for alert validation: %w", err))
 	}
 
 	referencedChannels := extractReferencedChannels(rawConfig)

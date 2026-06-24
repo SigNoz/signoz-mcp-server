@@ -39,6 +39,24 @@ const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
+// timeRangeDesc builds the shared "timeRange" description. All time-windowed
+// tools use one parser (timeutil.ParseTimeRange), so only the per-tool default
+// window differs — defaultDesc is that trailing sentence (e.g. "Defaults to
+// '1h'."). The full Go-duration grammar is accepted; we advertise the m/h/d
+// subset because it covers every realistic observability window.
+func timeRangeDesc(defaultDesc string) string {
+	return "Relative time range. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). " +
+		"Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. " +
+		"Ignored when both start and end are provided. " + defaultDesc
+}
+
+// stepIntervalDesc is the shared "stepInterval" description (seconds value with
+// backend auto-selection).
+const stepIntervalDesc = "Time bucket size in seconds for time_series mode (optional). " +
+	"When omitted, the backend auto-selects an appropriate interval. " +
+	"Only set this if the user explicitly requests a specific granularity. " +
+	"Examples: '60' (1 min), '3600' (1 hour), '86400' (1 day)."
+
 // readFilterExpr returns the QB filter expression, accepting the canonical
 // "filter" key and the legacy "query" alias. TrimSpace is used only to decide
 // presence/equality; the returned expression preserves the caller's original
@@ -66,6 +84,41 @@ func stringValue(v any) string {
 	return s
 }
 
+// parseBoolArg parses a boolean tool argument. It accepts a real JSON bool, or
+// the case-insensitive strings "true"/"false" (so legacy string-typed callers
+// keep working after the schema is declared as a real boolean). Any other
+// non-empty value is a typed error so the LLM gets a correctable message rather
+// than the value being silently dropped.
+//
+// Returns (value, present, error):
+//   - present is false when the key is absent or an empty string (treat as "not set")
+//   - error is non-nil only when a present value cannot be interpreted as a bool
+func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
+	raw, exists := args[key]
+	if !exists || raw == nil {
+		return false, false, nil
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true, nil
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return false, false, nil
+		}
+		switch strings.ToLower(s) {
+		case "true":
+			return true, true, nil
+		case "false":
+			return false, true, nil
+		default:
+			return false, false, fmt.Errorf(`invalid %q value %q: must be a boolean (true or false)`, key, v)
+		}
+	default:
+		return false, false, fmt.Errorf(`invalid %q value: must be a boolean (true or false)`, key)
+	}
+}
+
 // AggregateRequest keeps parameters for any aggregation query.
 type AggregateRequest struct {
 	AggregationExpr  string
@@ -79,6 +132,10 @@ type AggregateRequest struct {
 	EndTime          int64
 	RequestType      string // "scalar" (default) or "time_series"
 	StepInterval     *int64 // nil = let backend auto-select
+	// StepIntervalWarning is set when a stepInterval value was provided but could
+	// not be parsed as a positive integer. The handler logs it (WARN) so a
+	// silently-dropped value is detectable rather than vanishing.
+	StepIntervalWarning string
 }
 
 // parseAggregateArgs validates and parses  aggregate arguments.
@@ -87,23 +144,23 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	aggregation, _ := args["aggregation"].(string)
 	if aggregation == "" {
 		return nil, fmt.Errorf(
-			"\"aggregation\" is required. Supported values: %s. "+
+			"%s \"aggregation\" is required. Supported values: %s. "+
 				"Tip: for simple totals use {\"aggregation\": \"count\", \"groupBy\": \"service.name\"}",
-			allowedAggregations)
+			validationErrorPrefix, allowedAggregations)
 	}
 	if !validAggregations[aggregation] {
 		return nil, fmt.Errorf(
-			"invalid aggregation %q. Supported values: %s. "+
+			"%s \"aggregation\" is invalid (%q). Supported values: %s. "+
 				"Tip: for counting use \"count\", for averages use \"avg\"",
-			aggregation, allowedAggregations)
+			validationErrorPrefix, aggregation, allowedAggregations)
 	}
 
 	aggregateOn, _ := args["aggregateOn"].(string)
 	if !aggregationsWithoutField[aggregation] && aggregateOn == "" {
 		return nil, fmt.Errorf(
-			"\"aggregateOn\" is required for %q aggregation. Specify the field to aggregate, "+
+			"%s \"aggregateOn\" is required for %q aggregation. Specify the field to aggregate, "+
 				"e.g. {\"aggregation\": \"%s\", \"aggregateOn\": \"duration\"}",
-			aggregation, aggregation)
+			validationErrorPrefix, aggregation, aggregation)
 	}
 
 	var aggregationExpr string
@@ -160,25 +217,21 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		requestType = "scalar"
 	}
 
-	var stepInterval *int64
-	if v, ok := args["stepInterval"].(string); ok && v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			stepInterval = &n
-		}
-	}
+	stepInterval, stepIntervalWarning := parseStepInterval(args["stepInterval"])
 
 	return &AggregateRequest{
-		AggregationExpr:  aggregationExpr,
-		FilterExpression: filterExpr,
-		GroupBy:          groupByFields,
-		OrderExpr:        orderExpr,
-		OrderDir:         orderDir,
-		Limit:            limit,
-		LimitClamped:     limitClamped,
-		StartTime:        startTime,
-		EndTime:          endTime,
-		RequestType:      requestType,
-		StepInterval:     stepInterval,
+		AggregationExpr:     aggregationExpr,
+		FilterExpression:    filterExpr,
+		GroupBy:             groupByFields,
+		OrderExpr:           orderExpr,
+		OrderDir:            orderDir,
+		Limit:               limit,
+		LimitClamped:        limitClamped,
+		StartTime:           startTime,
+		EndTime:             endTime,
+		RequestType:         requestType,
+		StepInterval:        stepInterval,
+		StepIntervalWarning: stepIntervalWarning,
 	}, nil
 }
 
@@ -204,6 +257,69 @@ func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, 
 		return 0, 0, fmt.Errorf("invalid end timestamp: use timeRange instead (e.g., \"1h\", \"24h\")")
 	}
 	return startTime, endTime, nil
+}
+
+// parseStepInterval parses an optional stepInterval (seconds) argument for the
+// aggregate tools. It accepts a real JSON number OR a string that is ENTIRELY a
+// positive integer. It deliberately does NOT use parseIntLoose for the string
+// case: parseIntLoose scans a numeric prefix via Sscanf("%d"), so "1h"/"60s"
+// would silently become 1/60 — a wrong bucket size. A present-but-invalid value
+// (non-numeric, suffixed, or <= 0) yields a nil interval and a warning so the
+// backend auto-selects rather than applying a silently-wrong granularity.
+//
+// Returns (nil, "") when the argument is absent or an empty string.
+func parseStepInterval(raw any) (*int64, string) {
+	if raw == nil {
+		return nil, ""
+	}
+	warn := func() (*int64, string) {
+		return nil, fmt.Sprintf(
+			"stepInterval %v could not be parsed as a positive integer number of seconds; letting the backend auto-select the bucket size",
+			raw)
+	}
+	switch v := raw.(type) {
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil, "" // treat empty string as not set
+		}
+		// Require the ENTIRE string to be a base-10 integer (no "1h"/"60s"/hex).
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n <= 0 {
+			return warn()
+		}
+		return &n, ""
+	case float64:
+		// JSON numbers decode as float64. Reject non-integral values (e.g.
+		// 60.9) rather than truncating to 60 — the contract is "positive
+		// integer seconds", so a fractional value is invalid → auto-select.
+		if v != float64(int64(v)) || v <= 0 {
+			return warn()
+		}
+		n := int64(v)
+		return &n, ""
+	case json.Number:
+		// A json.Number preserves the literal; require it parse as a positive
+		// integer (Int64 errors on a fractional literal like "60.9").
+		n, err := v.Int64()
+		if err != nil || n <= 0 {
+			return warn()
+		}
+		return &n, ""
+	case int:
+		if v <= 0 {
+			return warn()
+		}
+		n := int64(v)
+		return &n, ""
+	case int64:
+		if v <= 0 {
+			return warn()
+		}
+		return &v, ""
+	default:
+		return warn()
+	}
 }
 
 // MaxRawResultLimit caps how many raw rows search_logs / search_traces will
@@ -289,15 +405,225 @@ func resultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
 	return res
 }
 
+// structuredResultWithNotes is structuredResult plus trailing advisory note
+// blocks (as resultWithNotes appends them). For code-controlled tools that must
+// surface a human-readable warning (e.g. a post-create test-send failure)
+// without dropping the stable StructuredContent shape.
+func structuredResultWithNotes(payload []byte, notes ...string) *mcp.CallToolResult {
+	res := structuredResult(payload)
+	for _, note := range notes {
+		if strings.TrimSpace(note) == "" {
+			continue
+		}
+		res.Content = append(res.Content, mcp.NewTextContent(note))
+	}
+	return res
+}
+
+// countQueryRangeRows sums the number of rows across all results in a QB v5
+// query_range passthrough body. The expected nesting is
+// data.data.results[].rows[] (a render.Success envelope wrapping a
+// QueryRangeResponse), the same shape util.InjectRowsWebURL walks. It fails
+// open: it returns (0, false) on any shape it cannot walk so a completeness
+// note is simply omitted rather than wrong.
+func countQueryRangeRows(payload []byte) (int, bool) {
+	// Walk with json.RawMessage at each level so we can distinguish a MISSING /
+	// null / non-array leaf from a genuinely-empty array. A missing or null
+	// "results"/"rows" key means we could not locate the rows — we must NOT
+	// claim count=0 (which would assert a misleading hasMore=false); fail open
+	// to (0, false) so the caller emits the generic "more may exist" note.
+	var envelope struct {
+		Data struct {
+			Data struct {
+				Results json.RawMessage `json:"results"`
+			} `json:"data"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return 0, false
+	}
+	// A present-but-null "results" is a normal empty response (matching the
+	// InjectRowsWebURL contract), so count it as zero. Only a MISSING or
+	// non-array, non-null "results" is uncountable drift.
+	results, ok := decodeArrayOrNull(envelope.Data.Data.Results)
+	if !ok {
+		return 0, false
+	}
+	total := 0
+	for _, rawResult := range results {
+		var result struct {
+			// Use RawMessage (not []json.RawMessage) so a missing "rows" key on
+			// any single result is detectable rather than silently 0.
+			Rows json.RawMessage `json:"rows"`
+		}
+		if err := json.Unmarshal(rawResult, &result); err != nil {
+			return 0, false
+		}
+		// A present "rows":null is a normal empty result per the v5 /
+		// InjectRowsWebURL contract — count it as zero rows. Only a MISSING
+		// "rows" key (always emitted by the contract) or a non-array, non-null
+		// value is drift → fail open.
+		if len(result.Rows) == 0 {
+			return 0, false // "rows" key absent — contract drift
+		}
+		rows, ok := decodeArrayOrNull(result.Rows)
+		if !ok {
+			return 0, false // "rows" present but not an array or null — drift
+		}
+		total += len(rows)
+	}
+	return total, true
+}
+
+// countAlertHistoryRows counts the alert history rows in either response shape
+// returned by /api/v1/rules/{id}/history/timeline: data[] or data.items[]. A
+// present null at data or data.items is a known empty collection; missing or
+// unrecognized shapes fail open.
+func countAlertHistoryRows(payload []byte) (int, bool) {
+	var resp struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return 0, false
+	}
+	if len(resp.Data) == 0 {
+		return 0, false // data key absent
+	}
+	if arr, ok := decodeArrayOrNull(resp.Data); ok {
+		return len(arr), true // data[] or data:null
+	}
+
+	var dataObj map[string]json.RawMessage
+	if err := json.Unmarshal(resp.Data, &dataObj); err != nil {
+		return 0, false // data present but neither array nor object
+	}
+	raw, present := dataObj["items"]
+	if !present || len(raw) == 0 {
+		return 0, false // items key absent
+	}
+	arr, ok := decodeArrayOrNull(raw)
+	if !ok {
+		return 0, false // items present but neither array nor null
+	}
+	return len(arr), true
+}
+
+// countDataArrayRows counts the elements of a JSON array nested at data.<key>
+// in a passthrough body (e.g. data.metrics for list_metrics, data.samples for
+// top_metrics). A present-but-null leaf counts as zero rows (a normal empty
+// collection). It fails open — returns (0, false) — only when the key is ABSENT
+// or its value is neither an array nor null, so a misleading hasMore=false is
+// never asserted on an uncountable shape.
+func countDataArrayRows(payload []byte, key string) (int, bool) {
+	var resp struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return 0, false
+	}
+	raw, present := resp.Data[key]
+	if !present || len(raw) == 0 {
+		return 0, false // key absent
+	}
+	arr, ok := decodeArrayOrNull(raw)
+	if !ok {
+		return 0, false // present but neither array nor null
+	}
+	return len(arr), true
+}
+
+// decodeArrayOrNull decodes raw as a JSON array OR a literal null, returning the
+// elements (nil for null) and true. A present null is a NORMAL empty collection
+// (matching the InjectRowsWebURL contract), so it counts as zero rows rather
+// than as uncountable drift. It returns (nil, false) only when raw is
+// absent/empty or is a non-array, non-null value. Callers handle the
+// absent-key case separately (len(raw)==0) when "missing" must be distinguished
+// from "present null".
+func decodeArrayOrNull(raw json.RawMessage) ([]json.RawMessage, bool) {
+	if len(raw) == 0 {
+		return nil, false // key absent
+	}
+	if string(bytesTrimSpace(raw)) == "null" {
+		return nil, true // literal null == normal empty collection
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		return nil, false // not an array
+	}
+	if arr == nil {
+		// Defensive: json.Unmarshal into a slice leaves it nil for "null",
+		// which we already handled above; any other nil here is treated as
+		// empty so a genuinely-empty array is never mistaken for drift.
+		return nil, true
+	}
+	return arr, true
+}
+
+// bytesTrimSpace trims ASCII whitespace from a json.RawMessage without
+// allocating a new string, so the "null" literal check tolerates surrounding
+// whitespace.
+func bytesTrimSpace(b json.RawMessage) json.RawMessage {
+	return json.RawMessage(strings.TrimSpace(string(b)))
+}
+
+// completenessNote builds a pagination/completeness advisory for raw-passthrough
+// tools that accept limit/offset but expose no hasMore signal of their own. When
+// the returned row count is known it infers hasMore from returnedRows == limit
+// and reports the nextOffset; otherwise it falls back to a generic "limit
+// applied; more may exist" note so the LLM is never left assuming completeness.
+func completenessNote(returnedRows, limit, offset int, rowsKnown bool) string {
+	if !rowsKnown {
+		return fmt.Sprintf(
+			"note: limit %d applied; this tool cannot count returned rows, so more results may exist. Paginate with \"offset\" (or narrow the query) to be sure.",
+			limit)
+	}
+	hasMore := limit > 0 && returnedRows >= limit
+	nextOffset := offset + returnedRows
+	if hasMore {
+		return fmt.Sprintf(
+			"note: returned %d rows (limit %d) — more results likely exist (hasMore=true). Fetch the next page with offset=%d.",
+			returnedRows, limit, nextOffset)
+	}
+	return fmt.Sprintf(
+		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",
+		returnedRows, limit)
+}
+
+// limitOnlyCompletenessNote is the completeness advisory for list tools that
+// expose a `limit` but NO offset pagination (e.g. signoz_list_metrics). It must
+// not tell callers to "fetch the next page with offset" — there is no offset
+// param, so the caller would loop on the same page. Instead it advises
+// narrowing the result set (searchText / time range / source). narrowHint names
+// the concrete params for the tool.
+func limitOnlyCompletenessNote(returnedRows, limit int, rowsKnown bool, narrowHint string) string {
+	if !rowsKnown {
+		return fmt.Sprintf(
+			"note: limit %d applied; this tool cannot count returned rows, so more results may exist. Narrow the result set (%s) to be sure.",
+			limit, narrowHint)
+	}
+	if limit > 0 && returnedRows >= limit {
+		return fmt.Sprintf(
+			"note: returned %d rows (limit %d) — more results likely exist (hasMore=true). This tool has no offset paging; narrow the result set (%s) to surface the rest.",
+			returnedRows, limit, narrowHint)
+	}
+	return fmt.Sprintf(
+		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",
+		returnedRows, limit)
+}
+
 // rawSearchResult is the result wrapper for raw row tools (search_logs /
-// search_traces), which support offset pagination.
-func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limitClamped bool) *mcp.CallToolResult {
+// search_traces), which support offset pagination. It appends a completeness
+// note (hasMore + nextOffset) inferred from the returned row count so callers
+// never silently assume a truncated page is complete.
+func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, limit, offset int, limitClamped bool) *mcp.CallToolResult {
 	var notes []string
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
 			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range/filters) for more.",
 			MaxRawResultLimit))
 	}
+	returnedRows, rowsKnown := countQueryRangeRows(payload)
+	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
 	if len(warnings) > 0 {

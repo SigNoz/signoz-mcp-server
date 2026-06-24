@@ -10,15 +10,15 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// listResult wraps a paginated list payload as a tool result, appending a clamp
-// note when the requested per-page limit exceeded paginate.MaxLimit. The JSON
-// payload is always content block 0; the note (if any) is a separate trailing
-// block — same contract as rawSearchResult/aggregateResult.
+// listResult wraps a paginated list payload (a code-controlled envelope) as a
+// structured tool result, so list tools keep StructuredContent alongside the
+// text block. When the requested per-page limit was clamped to paginate.MaxLimit
+// it appends a trailing advisory note.
 func listResult(payload []byte, limitClamped bool) *mcp.CallToolResult {
 	if !limitClamped {
-		return mcp.NewToolResultText(string(payload))
+		return structuredResult(payload)
 	}
-	return resultWithNotes(payload, fmt.Sprintf(
+	return structuredResultWithNotes(payload, fmt.Sprintf(
 		"note: limit clamped to %d per page to bound server memory; use \"offset\" to page through more results.",
 		paginate.MaxLimit))
 }

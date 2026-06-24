@@ -400,6 +400,7 @@ Search and list available metrics from SigNoz. Supports filtering by name substr
   - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) so a `limit`-truncated list is never mistaken for the full set; narrow with `searchText` for more specificity
 
 #### `signoz_query_metrics`
 
@@ -408,16 +409,16 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 - **Parameters**:
   - `metricName` (required) - Metric name to query
   - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
-  - `isMonotonic` (optional) - true/false (auto-fetched if absent)
+  - `isMonotonic` (optional) - Boolean (or the strings `"true"`/`"false"`); auto-fetched if absent. An invalid value is rejected rather than silently treated as false
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
   - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
   - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
   - `groupBy` (optional) - Comma-separated field names
   - `filter` (optional) - Filter expression
-  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
-  - `requestType` (optional) - time_series (default) or scalar. Unknown values are rejected.
+  - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
@@ -428,12 +429,20 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. Use this to identify which metrics are driving the most ingestion volume and cost. Wraps `POST /api/v2/metrics/treemap`. Response fields: `metricName`, `percentage` (share of total sample volume), `totalValue` (absolute sample count).
 
 - **Parameters**:
-  - `timeRange` (optional) - Relative range (e.g. 24h, 3d, 7d, 30d; default: 7d; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '1h', '24h', '3d', '7d', '30d'; default: '7d'; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
+  - **Completeness note**: returns a fixed top 100 by ingested sample volume; the response appends a note flagging whether the list was truncated at that cap (`hasMore`)
 
 #### `signoz_list_alerts`
 
 Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with an `id` (legacy `ruleId` also accepted) for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+
+- **Parameters**:
+  - `limit` (optional) - Maximum number of alerts per page (default: 50)
+  - `offset` (optional) - Number of results to skip for pagination (default: 0)
+  - `active` / `silenced` / `inhibited` (optional) - Tri-state filters. Boolean (or the strings `"true"`/`"false"`). Omit to defer to the backend default (all states included). An invalid value is rejected rather than silently dropped
+  - `filter` (optional) - Comma-separated Prometheus matcher expressions (e.g., `alertname="HighCPU",severity="critical"`)
+  - `receiver` (optional) - Regex to filter alerts by receiver name
 
 #### `signoz_list_alert_rules`
 
@@ -506,7 +515,7 @@ Updates an existing dashboard.
 Lists all services within a time range.
 
 - **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (default: 6h; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected, so legacy nanosecond values still work.
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
@@ -518,10 +527,10 @@ Gets top operations for a specific service.
 
 - **Parameters**:
   - `service` (required) - Service name
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (default: 6h; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected, so legacy nanosecond values still work.
   - `end` (optional) - End time in unix milliseconds (defaults to now)
-  - `tags` (optional) - JSON array of tags
+  - `tags` (optional) - Raw JSON array of tag filters, passed through to the SigNoz API as-is (advanced; the backend expects structured tag-filter objects)
 
 #### `signoz_get_alert_history`
 
@@ -529,12 +538,14 @@ Gets alert history timeline for a specific rule.
 
 - **Parameters**:
   - `id` (required) - Alert rule ID (legacy parameter name `ruleId` is still accepted)
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (default: 6h; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
+  - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
   - `offset` (optional) - Offset for pagination (default: 0)
   - `limit` (optional) - Limit number of results (default: 20)
-  - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
+  - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch
 
 #### `signoz_list_views`
 
@@ -558,7 +569,7 @@ Get a single saved view by UUID.
 Search official SigNoz documentation with BM25 over indexed markdown content.
 
 - **Parameters**:
-  - `query` (required) - Natural-language or keyword query
+  - `searchText` (required) - Natural-language or keyword query to search official SigNoz docs
   - `limit` (optional) - Maximum results to return as a string (default: 10, max: 25; a numeric value is also accepted). The 25 ceiling is deliberate — each result hydrates document text out of the in-process docs index, so a larger limit inflates this server's resident memory.
   - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
   - `searchContext` - User's original question
@@ -621,10 +632,10 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
-  - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode (backend auto-selects when omitted)
+  - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
 
 #### `signoz_search_logs`
 
@@ -635,17 +646,18 @@ Search logs with flexible filtering across all services.
   - `service` (optional) - Service name to filter by
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
 
 #### `signoz_get_field_keys`
 
 Get available field keys for a given signal (metrics, traces, or logs).
 
 - **Parameters**:
-  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
   - `fieldContext` (optional) - Restrict to a field context: `resource`, `attribute` (alias `tag`), `scope`, `log`/`span`/`metric` (intrinsic/built-in columns), or `body` (JSON log body). Distinguishes intrinsic columns from user attributes.
@@ -657,7 +669,7 @@ Get available field keys for a given signal (metrics, traces, or logs).
 Get possible values for a specific field key for a given signal.
 
 - **Parameters**:
-  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
   - `searchText` (optional) - Filter values by substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
@@ -673,12 +685,13 @@ Search traces/spans with flexible filtering.
   - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (hasError = true OR responseStatusCode >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
-  - `error` (optional) - Filter by error status ('true' or 'false')
+  - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
 
 #### `signoz_aggregate_traces`
 
@@ -691,13 +704,13 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `operation` (optional) - Shortcut filter for span/operation name
-  - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
+  - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`. Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
-  - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode (backend auto-selects when omitted)
+  - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
 
 #### `signoz_get_trace_details`
 
@@ -705,10 +718,10 @@ Gets trace information including all spans and metadata.
 
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (default: 6h; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago). Other magnitudes (seconds/micros/nanos) are auto-detected.
   - `end` (optional) - End time in unix milliseconds (defaults to now)
-  - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
+  - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
 
 
 
@@ -758,7 +771,9 @@ Create a notification channel and send a test notification.
 - **Parameters**:
   - `type` (required) - Channel type: slack, webhook, pagerduty, email, opsgenie, msteams
   - `name` (required) - Channel name
+  - `send_resolved` (optional) - Send notifications when alerts resolve. Boolean (or the strings `"true"`/`"false"`), default: true
   - Type-specific fields (required by channel type), such as `slack_api_url`, `webhook_url`, `pagerduty_routing_key`, `email_to`, `opsgenie_api_key`, or `msteams_webhook_url`
+- **Test-send behavior**: the channel is created first, then a test notification is sent. If the test fails, the tool still returns success (the channel WAS created) but appends a prominent warning note so the failure is not buried — verify the configuration and re-test.
 
 #### `signoz_update_notification_channel`
 
@@ -768,7 +783,9 @@ Update an existing notification channel and send a test notification.
   - `id` (required) - Notification channel UUID
   - `type` (required) - Channel type
   - `name` (required) - Channel name
+  - `send_resolved` (optional) - Send notifications when alerts resolve. Boolean (or the strings `"true"`/`"false"`), default: true
   - Full channel configuration fields for the selected channel type
+- **Test-send behavior**: same as create — a failed verification test-send surfaces a prominent warning note instead of flipping the result to an error.
 
 #### `signoz_get_notification_channel`
 
@@ -794,6 +811,7 @@ Executes a SigNoz Query Builder v5 query.
   - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql` — `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql` — `{name, query, disabled, legend?}`.
+- **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 
 </details>

@@ -167,7 +167,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	result, err := client.ListDashboards(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list dashboards", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var dashboards map[string]any
@@ -176,10 +176,18 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
 	}
 
-	data, ok := dashboards["data"].([]any)
-	if !ok {
-		h.logger.ErrorContext(ctx, "Invalid dashboards response format", slog.String("data", logpkg.TruncAny(dashboards["data"])))
-		return mcp.NewToolResultError("invalid response format: expected data array"), nil
+	// Upstream returns `data: null`, omits `data`, or — on some deployments —
+	// returns an empty object/scalar when there are no dashboards. Treat any
+	// non-array shape as zero rows rather than surfacing a format error (mirrors
+	// the list_views coerce-to-empty-page pattern).
+	var data []any
+	if raw, present := dashboards["data"]; present && raw != nil {
+		if arr, ok := raw.([]any); ok {
+			data = arr
+		} else {
+			h.logger.DebugContext(ctx, "dashboards response data was not an array; treating as empty",
+				slog.String("data", logpkg.TruncAny(raw)))
+		}
 	}
 
 	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
@@ -208,7 +216,11 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid := readResourceID(req.GetArguments(), "uuid")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	uuid := readResourceID(args, "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
@@ -222,10 +234,10 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	data, err := client.GetDashboard(ctx, uuid)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	data = enrichDashboardWebURL(ctx, data, uuid)
-	return mcp.NewToolResultText(string(data)), nil
+	return structuredResult(data), nil
 }
 
 // enrichDashboardWebURL injects a webUrl deep link into a single-dashboard
@@ -241,7 +253,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	if !ok || len(rawConfig) == 0 {
 		h.logger.WarnContext(ctx, "Received empty or invalid arguments map.")
-		return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
+		return notAConfigObjectError(), nil
 	}
 	delete(rawConfig, "searchContext")
 
@@ -261,7 +273,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to create dashboard in SigNoz", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	return mcp.NewToolResultText(string(data)), nil
@@ -270,15 +282,15 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError(`Parameter validation failed: arguments must be an object with a "path" string field.`), nil
+		return notAJSONObjectError(), nil
 	}
 	path, ok := args["path"].(string)
 	if !ok || strings.TrimSpace(path) == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a non-empty string, e.g. "hostmetrics/hostmetrics.json". Use signoz_list_dashboard_templates to discover available paths.`), nil
+		return validationError("path", `must be a non-empty string, e.g. "hostmetrics/hostmetrics.json". Use signoz_list_dashboard_templates to discover available paths.`), nil
 	}
 	path = strings.TrimSpace(path)
 	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		return mcp.NewToolResultError(`Parameter validation failed: "path" must be a relative template path within the SigNoz/dashboards repo (e.g. "hostmetrics/hostmetrics.json"), not an absolute path or URL.`), nil
+		return validationError("path", `must be a relative template path within the SigNoz/dashboards repo (e.g. "hostmetrics/hostmetrics.json"), not an absolute path or URL.`), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_import_dashboard", slog.String("path", path))
@@ -311,7 +323,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to create dashboard from template", slog.String("path", path), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	return mcp.NewToolResultText(string(data)), nil
@@ -364,7 +376,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	if !ok || len(rawConfig) == 0 {
 		h.logger.WarnContext(ctx, "Received empty or invalid arguments map from Claude.")
-		return mcp.NewToolResultError(`Parameter validation failed: The dashboard configuration object is empty or improperly formatted.`), nil
+		return notAConfigObjectError(), nil
 	}
 
 	// Extract id before validation (it's at the top level, not inside dashboard data).
@@ -377,7 +389,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	// Extract the dashboard sub-object for validation.
 	dashboardRaw, ok := rawConfig["dashboard"].(map[string]any)
 	if !ok || len(dashboardRaw) == 0 {
-		return mcp.NewToolResultError(`Parameter validation failed: "dashboard" field is required and must be a valid object.`), nil
+		return validationError("dashboard", "is required and must be a valid object."), nil
 	}
 
 	// Validate and normalize via the dashboardbuilder + panelbuilder pipeline.
@@ -396,14 +408,18 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update dashboard in SigNoz", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	return mcp.NewToolResultText("dashboard updated"), nil
 }
 
 func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	uuid := readResourceID(req.GetArguments(), "uuid")
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
+	uuid := readResourceID(args, "uuid")
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return mcp.NewToolResultError(`Parameter validation failed: "id" is required (the legacy parameter name "uuid" is also accepted). Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards. Example: {"id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`), nil
@@ -417,7 +433,7 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 	err = client.DeleteDashboard(ctx, uuid)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to delete dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("SigNoz API Error: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText("dashboard deleted"), nil
 }

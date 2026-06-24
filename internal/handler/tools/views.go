@@ -27,10 +27,10 @@ var validSourcePages = map[string]struct{}{
 
 func validateSourcePage(sp string) error {
 	if sp == "" {
-		return fmt.Errorf(`parameter validation failed: "sourcePage" is required. Must be one of: "traces", "logs", "metrics", "meter"`)
+		return fmt.Errorf(`%s "sourcePage" is required. Must be one of: "traces", "logs", "metrics", "meter"`, validationErrorPrefix)
 	}
 	if _, ok := validSourcePages[sp]; !ok {
-		return fmt.Errorf(`parameter validation failed: "sourcePage" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, sp)
+		return fmt.Errorf(`%s "sourcePage" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, validationErrorPrefix, sp)
 	}
 	return nil
 }
@@ -347,7 +347,7 @@ func unwrapViewEnvelope(args map[string]any) {
 func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 	sourcePage, _ := args["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
@@ -371,7 +371,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	result, err := client.ListViews(ctx, sourcePage, name, category)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list views", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var parsed map[string]any
@@ -404,7 +404,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
@@ -420,21 +420,21 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	data, err := client.GetView(ctx, viewID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(data)), nil
+	return structuredResult(data), nil
 }
 
 func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(args) == 0 {
-		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
+		return notAConfigObjectError(), nil
 	}
 	unwrapViewEnvelope(args)
 
-	name, _ := args["name"].(string)
-	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "name" is required and cannot be empty.`), nil
+	name, errResult := requireStringArg(args, "name")
+	if errResult != nil {
+		return errResult, nil
 	}
 	sourcePage, _ := args["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
@@ -462,7 +462,7 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	data, err := client.CreateView(ctx, body)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to create view", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
@@ -470,7 +470,7 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(args) == 0 {
-		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
+		return notAConfigObjectError(), nil
 	}
 
 	viewID := readResourceID(args, "viewId")
@@ -549,7 +549,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	data, err := client.UpdateView(ctx, viewID, body)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
@@ -557,7 +557,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
@@ -572,7 +572,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	data, err := client.DeleteView(ctx, viewID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to delete view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
