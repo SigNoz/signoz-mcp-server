@@ -20,34 +20,27 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-// e2eHandler builds a Handler wired to a real SigNoz client using a bearer JWT.
-// It skips the test if the required env vars are not set, so the committed test
-// carries no secret and is inert in CI without credentials.
-func e2eHandler(t *testing.T) (*Handler, context.Context) {
+// e2eHandlerC builds the Family C live handler by delegating to the shared
+// e2eHandler (defined in e2e_familyb_test.go — same package + build tag, so
+// the client/auth construction lives in one place) and then stamping the
+// SigNoz instance URL into the context. The URL is required for the per-row /
+// single-resource webUrl enrichment that several Family C tools run; B's helper
+// returns a bare context.Background(), so Family C adds it here.
+func e2eHandlerC(t *testing.T) (*Handler, context.Context) {
 	t.Helper()
-	baseURL := os.Getenv("SIGNOZ_E2E_URL")
-	token := os.Getenv("SIGNOZ_E2E_TOKEN")
-	if baseURL == "" || token == "" {
-		t.Skip("SIGNOZ_E2E_URL / SIGNOZ_E2E_TOKEN not set; skipping live Family C E2E")
+	h, ctx := e2eHandler(t) // skips when SIGNOZ_E2E_URL / SIGNOZ_E2E_TOKEN are unset
+	if baseURL := strings.TrimRight(os.Getenv("SIGNOZ_E2E_URL"), "/"); baseURL != "" {
+		ctx = util.SetSigNozURL(ctx, baseURL)
 	}
-	// Bearer JWT: the client sets the auth header verbatim, so the apiKey value
-	// must include the "Bearer " prefix and authHeaderName is "Authorization".
-	client := signozclient.NewClient(logpkg.New("error"), baseURL, "Bearer "+token, "Authorization", nil)
-	h := &Handler{
-		logger:         logpkg.New("error"),
-		clientOverride: client,
-	}
-	ctx := util.SetSigNozURL(context.Background(), baseURL)
 	return h, ctx
 }
 
@@ -131,7 +124,7 @@ func firstDataID(text string, keys ...string) string {
 }
 
 func TestE2EFamilyC_StructuredContentOnListTools(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerC(t)
 
 	// list_* tools — all paginate.Wrap, all code-controlled.
 	assertStructuredMatchesText(t, "list_services", callOK(t, h.handleListServices, ctx, "signoz_list_services", map[string]any{"timeRange": "1h"}))
@@ -143,7 +136,7 @@ func TestE2EFamilyC_StructuredContentOnListTools(t *testing.T) {
 }
 
 func TestE2EFamilyC_StructuredContentOnGetTools(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerC(t)
 
 	// get_dashboard — id from list_dashboards.
 	dl := callOK(t, h.handleListDashboards, ctx, "signoz_list_dashboards", map[string]any{})
@@ -221,7 +214,7 @@ func firstTraceID(text string) string {
 }
 
 func TestE2EFamilyC_NoStructuredOnPassthrough(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerC(t)
 
 	assertNoStructured(t, "search_logs", callOK(t, h.handleSearchLogs, ctx, "signoz_search_logs", map[string]any{"timeRange": "1h", "limit": "1"}))
 	assertNoStructured(t, "search_traces", callOK(t, h.handleSearchTraces, ctx, "signoz_search_traces", map[string]any{"timeRange": "1h", "limit": "1"}))
@@ -233,7 +226,7 @@ func TestE2EFamilyC_NoStructuredOnPassthrough(t *testing.T) {
 // parseable JSON, the decisions/warnings are a SEPARATE note block, and the
 // result carries no structuredContent (passthrough).
 func TestE2EFamilyC_QueryMetricsJSONFirst(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerC(t)
 
 	// Find a real metric to query.
 	ml, err := h.GetClient(ctx)
@@ -302,7 +295,7 @@ func firstMetricName(raw []byte) string {
 // behavior: a missing required arg yields VALIDATION_FAILED locally, and a
 // well-formed but nonexistent id yields an UPSTREAM_ERROR from the backend.
 func TestE2EFamilyC_ErrorCodes(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerC(t)
 
 	// VALIDATION_FAILED: missing required "uuid" on get_dashboard (local guard).
 	vres, err := h.handleGetDashboard(ctx, makeToolRequest("signoz_get_dashboard", map[string]any{}))
@@ -353,7 +346,7 @@ func codeOf(t *testing.T, r *mcp.CallToolResult) string {
 // (prefixed mcp-e2e-c-<rand>), asserts the create result carries
 // structuredContent, then DELETES it and confirms it is gone.
 func TestE2EFamilyC_MutationStructuredContent(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerC(t)
 
 	name := fmt.Sprintf("mcp-e2e-c-%d", rand.Int63())
 
@@ -370,28 +363,47 @@ func TestE2EFamilyC_MutationStructuredContent(t *testing.T) {
 	if createRes.IsError {
 		t.Fatalf("create channel failed: %s", firstText(createRes))
 	}
-	// Mutation result is synthesized JSON -> must carry structuredContent.
-	assertStructuredMatchesText(t, "create_notification_channel", createRes)
 
-	// Recover the created channel id so we can delete it.
+	// Recover the created channel id and register the cleanup backstop
+	// IMMEDIATELY after a successful create, BEFORE any assertion that can
+	// t.Fatalf. Otherwise a structuredContent regression in the assertion below
+	// would abort the test with the channel still live, orphaning an
+	// mcp-e2e-c-* webhook on the real instance (the same orphan pattern fixed
+	// in Family E's view CRUD test). The `deleted` flag guards against a
+	// double-delete when the explicit delete below already succeeded.
 	chID := createdChannelID(firstText(createRes))
 	if chID == "" {
 		// Fall back to listing and matching by name.
 		lc := callOK(t, h.handleListNotificationChannels, ctx, "signoz_list_notification_channels", map[string]any{"limit": "1000"})
 		chID = channelIDByName(firstText(lc), name)
 	}
+	deleted := false
+	if chID != "" {
+		t.Cleanup(func() {
+			if deleted {
+				return
+			}
+			_, _ = h.handleDeleteNotificationChannel(ctx, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": chID}))
+		})
+	}
 	if chID == "" {
 		t.Fatalf("could not determine created channel id for cleanup (name=%s) — MANUAL CLEANUP REQUIRED", name)
 	}
 
-	// Delete it.
+	// Mutation result is synthesized JSON -> must carry structuredContent.
+	// Safe to assert now: the cleanup backstop above guarantees deletion even
+	// if this fails.
+	assertStructuredMatchesText(t, "create_notification_channel", createRes)
+
+	// Delete it explicitly to exercise the delete path + assert its envelope.
 	delRes, err := h.handleDeleteNotificationChannel(ctx, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": chID}))
 	if err != nil {
-		t.Fatalf("delete channel %s: transport error: %v — MANUAL CLEANUP REQUIRED", chID, err)
+		t.Fatalf("delete channel %s: transport error: %v — cleanup backstop will retry", chID, err)
 	}
 	if delRes.IsError {
-		t.Fatalf("delete channel %s failed: %s — MANUAL CLEANUP REQUIRED", chID, firstText(delRes))
+		t.Fatalf("delete channel %s failed: %s — cleanup backstop will retry", chID, firstText(delRes))
 	}
+	deleted = true
 	assertStructuredMatchesText(t, "delete_notification_channel", delRes)
 
 	// Confirm gone: get_notification_channel should now error.
