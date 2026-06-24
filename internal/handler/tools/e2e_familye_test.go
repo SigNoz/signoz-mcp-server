@@ -40,10 +40,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// e2eEnv reads the live instance URL + token from the environment, skipping the
+// e2eEnvE reads the live instance URL + token from the environment, skipping the
 // test (never failing) when either is missing. The token is returned only for
 // in-memory use; it is never logged.
-func e2eEnv(t *testing.T) (baseURL, token string) {
+func e2eEnvE(t *testing.T) (baseURL, token string) {
 	t.Helper()
 	baseURL = strings.TrimRight(os.Getenv("SIGNOZ_E2E_URL"), "/")
 	token = os.Getenv("SIGNOZ_E2E_TOKEN")
@@ -53,12 +53,12 @@ func e2eEnv(t *testing.T) (baseURL, token string) {
 	return baseURL, token
 }
 
-// e2eHandler builds a Handler whose GetClient returns a live SigNoz client
+// e2eHandlerE builds a Handler whose GetClient returns a live SigNoz client
 // authenticated with the bearer JWT, plus a context carrying the instance URL
 // for webUrl enrichment.
-func e2eHandler(t *testing.T) (*Handler, context.Context) {
+func e2eHandlerE(t *testing.T) (*Handler, context.Context) {
 	t.Helper()
-	baseURL, token := e2eEnv(t)
+	baseURL, token := e2eEnvE(t)
 	// JWT session auth: header name "Authorization", value "Bearer <token>".
 	live := signozclient.NewClient(logpkg.New("error"), baseURL, "Bearer "+token, "Authorization", nil)
 	h := &Handler{logger: logpkg.New("error"), clientOverride: live}
@@ -90,7 +90,7 @@ func e2eText(t *testing.T, r *mcp.CallToolResult) string {
 // ~1h window expressed as seconds, millis, and nanos. Auto-detect should make
 // all three resolve to the same window and return without error.
 func TestE2EFamilyE_K1_TimestampAutoDetect(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerE(t)
 
 	now := time.Now()
 	endMs := now.UnixMilli()
@@ -132,7 +132,7 @@ func TestE2EFamilyE_K1_TimestampAutoDetect(t *testing.T) {
 // get_service_top_operations still work with ns AND ms windows after the
 // ms→auto-detect migration, and that list_metrics works with the new timeRange.
 func TestE2EFamilyE_K1_ServicesNsAndMs(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerE(t)
 
 	now := time.Now()
 	endMs := now.UnixMilli()
@@ -217,7 +217,7 @@ func firstServiceName(body string) string {
 // self-contained, in-process index — no live SigNoz call needed).
 func TestE2EFamilyE_K3_DocsLimitNumberAndString(t *testing.T) {
 	// Still env-gated for consistency with the rest of the e2e suite.
-	e2eEnv(t)
+	e2eEnvE(t)
 
 	h, cleanup := newDocsTestHandler(t)
 	defer cleanup()
@@ -239,7 +239,7 @@ func TestE2EFamilyE_K3_DocsLimitNumberAndString(t *testing.T) {
 // TestE2EFamilyE_K3_ListClamp asks a list tool for limit > 1000 and asserts the
 // clamp note is surfaced and the effective page size is MaxLimit.
 func TestE2EFamilyE_K3_ListClamp(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerE(t)
 
 	res, err := h.handleListAlertRules(ctx, makeToolRequest("signoz_list_alert_rules", map[string]any{
 		"limit": "999999",
@@ -275,7 +275,7 @@ func TestE2EFamilyE_K3_ListClamp(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EFamilyE_K4_RequestTypeValidation(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerE(t)
 
 	t.Run("aggregate_logs_valid_scalar", func(t *testing.T) {
 		res, err := h.handleAggregateLogs(ctx, makeToolRequest("signoz_aggregate_logs", map[string]any{
@@ -335,7 +335,7 @@ func TestE2EFamilyE_K4_RequestTypeValidation(t *testing.T) {
 // dashboard (if any) by the canonical "id" param AND the legacy key, confirming
 // both alias paths reach the backend.
 func TestE2EFamilyE_K5_ReadByIDAndLegacy(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerE(t)
 
 	// Alert rule: list, pick the first ruleId, get by id + ruleId.
 	rulesRes, err := h.handleListAlertRules(ctx, makeToolRequest("signoz_list_alert_rules", map[string]any{}))
@@ -398,7 +398,7 @@ func firstField(body, fieldName string) string {
 // gone. A t.Cleanup guarantees deletion even on failure. If no existing view is
 // found on any sourcePage, the CRUD subtest is skipped (never hand-crafted).
 func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
-	h, ctx := e2eHandler(t)
+	h, ctx := e2eHandlerE(t)
 
 	// 1. Find a real existing view to clone its shape from. Try each sourcePage.
 	srcViewID, srcSourcePage := findExistingView(t, h, ctx)
