@@ -305,7 +305,10 @@ func enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
 }
 
 func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	ruleID, errResult := requireStringArg(args, "ruleId")
 	if errResult != nil {

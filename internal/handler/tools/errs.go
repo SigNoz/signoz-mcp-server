@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -131,4 +132,36 @@ func notAConfigObjectError() *mcp.CallToolResult {
 // can distinguish a backend problem (retry) from a parameter problem (fix).
 func upstreamError(err error) *mcp.CallToolResult {
 	return mcp.NewToolResultError(fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+}
+
+// upstreamFetchError tags an error as originating from an upstream SigNoz client
+// call inside a helper that otherwise returns a plain error mixing upstream and
+// local-validation failures (e.g. resolveFormulaSubQuery, whose metadata
+// auto-fetch hits the backend but whose "metric not found"/"validation error"
+// paths are local). Wrapping only the upstream path lets the caller route it
+// through upstreamError() for the uniform prefix while leaving the local
+// validation errors raw.
+type upstreamFetchError struct{ err error }
+
+func (e *upstreamFetchError) Error() string { return e.err.Error() }
+func (e *upstreamFetchError) Unwrap() error { return e.err }
+
+// markUpstream tags err as an upstream-client failure so a caller can detect it
+// via asUpstreamResult. Returns nil when err is nil.
+func markUpstream(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &upstreamFetchError{err: err}
+}
+
+// asUpstreamResult returns a uniform upstreamError result (and true) when err's
+// chain contains an upstreamFetchError; otherwise (nil, false) so the caller can
+// surface the error as a plain/local validation message.
+func asUpstreamResult(err error) (*mcp.CallToolResult, bool) {
+	var ufe *upstreamFetchError
+	if errors.As(err, &ufe) {
+		return upstreamError(err), true
+	}
+	return nil, false
 }

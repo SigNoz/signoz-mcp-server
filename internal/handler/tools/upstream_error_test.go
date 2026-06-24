@@ -105,6 +105,95 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 	}
 }
 
+// TestUpstreamErrorPrefix_FormulaMetadataFetchFailure pins the round-2 fix:
+// resolveFormulaSubQuery's metadata auto-fetch (client.ListMetrics) is an
+// upstream call, so when it fails the tool result must carry the uniform
+// "SigNoz API error:" prefix — even though sibling error paths in the same
+// function ("metric not found"/"validation error") are local and stay raw.
+//
+// The primary metric "A" provides metricType so it does NOT auto-fetch; only
+// the formula sub-query "B" triggers the ListMetrics call, which we fail.
+func TestUpstreamErrorPrefix_FormulaMetadataFetchFailure(t *testing.T) {
+	mock := &client.MockClient{
+		ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
+			return nil, fmt.Errorf("connection refused")
+		},
+		// QueryBuilderV5 must never be reached — the sub-query resolution fails first.
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			t.Fatal("QueryBuilderV5 should not be called when formula metadata fetch fails")
+			return nil, nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_query_metrics", map[string]any{
+		"metricName":  "system.cpu.time",
+		"metricType":  "gauge", // primary "A" provided -> no auto-fetch
+		"timeRange":   "1h",
+		"requestType": "time_series",
+		"formula":     "A / B",
+		"formulaQueries": []any{map[string]any{
+			"name":       "B",
+			"metricName": "system.memory.usage",
+			// metricType omitted -> triggers the auto-fetch (ListMetrics) that fails
+		}},
+	})
+
+	result, err := h.handleQueryMetrics(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected transport error: %v", err)
+	}
+	text := textContent(t, result)
+	if !result.IsError {
+		t.Fatalf("expected an error result, got success: %s", text)
+	}
+	if !strings.HasPrefix(text, "SigNoz API error:") {
+		t.Fatalf("formula metadata-fetch failure should carry the upstream prefix; got %q", text)
+	}
+	if !strings.Contains(text, "connection refused") {
+		t.Fatalf("error should preserve the underlying upstream message; got %q", text)
+	}
+}
+
+// TestQueryMetrics_FormulaMetricNotFoundStaysLocal is the inverse guard: when
+// the metadata fetch SUCCEEDS but the metric is absent from the response, that
+// is a local "metric not found" validation error and must NOT be relabeled as
+// an upstream failure.
+func TestQueryMetrics_FormulaMetricNotFoundStaysLocal(t *testing.T) {
+	mock := &client.MockClient{
+		ListMetricsFn: func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
+			// Successful upstream response, but no metrics -> meta == nil -> local error.
+			return json.RawMessage(`{"status":"success","data":{"metrics":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_query_metrics", map[string]any{
+		"metricName":  "system.cpu.time",
+		"metricType":  "gauge",
+		"timeRange":   "1h",
+		"requestType": "time_series",
+		"formula":     "A / B",
+		"formulaQueries": []any{map[string]any{
+			"name":       "B",
+			"metricName": "does.not.exist",
+		}},
+	})
+
+	result, err := h.handleQueryMetrics(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected transport error: %v", err)
+	}
+	text := textContent(t, result)
+	if !result.IsError {
+		t.Fatalf("expected an error result, got success: %s", text)
+	}
+	if strings.HasPrefix(text, "SigNoz API error:") {
+		t.Fatalf("a local 'metric not found' error must NOT carry the upstream prefix; got %q", text)
+	}
+	if !strings.Contains(text, "not found") {
+		t.Fatalf("expected a 'metric not found' local error; got %q", text)
+	}
+}
+
 // TestUpstreamErrorPrefix_NotForLocalErrors confirms the inverse: a local
 // validation failure (missing required arg) does NOT get the upstream prefix —
 // it stays on the "Parameter validation failed:" prefix so the LLM can tell a
