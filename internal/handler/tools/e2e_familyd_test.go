@@ -33,9 +33,15 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// e2eEnv returns the staging base URL and a ready-to-use Authorization header
+// The e2e helpers below carry a "D" suffix (e2eEnvD / e2eHandlerD / firstTextD)
+// so they stay unique within the shared `tools` test package once every family
+// branch's e2e_family*_test.go file lands on main — sibling branches declare
+// their own e2eEnv/e2eHandler/firstText, which would otherwise be duplicate
+// top-level declarations in the same package.
+
+// e2eEnvD returns the staging base URL and a ready-to-use Authorization header
 // value ("Bearer <jwt>"), or skips the test when either env var is absent.
-func e2eEnv(t *testing.T) (baseURL, authValue string) {
+func e2eEnvD(t *testing.T) (baseURL, authValue string) {
 	t.Helper()
 	baseURL = strings.TrimSpace(os.Getenv("SIGNOZ_E2E_URL"))
 	token := strings.TrimSpace(os.Getenv("SIGNOZ_E2E_TOKEN"))
@@ -48,11 +54,11 @@ func e2eEnv(t *testing.T) (baseURL, authValue string) {
 	return baseURL, "Bearer " + token
 }
 
-// e2eHandler builds a Handler backed by a real SigNoz client speaking to the
+// e2eHandlerD builds a Handler backed by a real SigNoz client speaking to the
 // staging instance with a session-JWT Authorization header.
-func e2eHandler(t *testing.T) *Handler {
+func e2eHandlerD(t *testing.T) *Handler {
 	t.Helper()
-	baseURL, authValue := e2eEnv(t)
+	baseURL, authValue := e2eEnvD(t)
 	client := signozclient.NewClient(logpkg.New("error"), baseURL, authValue, "Authorization", nil)
 	return &Handler{
 		logger:         logpkg.New("error"),
@@ -71,11 +77,11 @@ func mustNoToolError(t *testing.T, res *mcp.CallToolResult, label string) {
 		t.Fatalf("%s: nil result", label)
 	}
 	if res.IsError {
-		t.Fatalf("%s: tool returned error: %s", label, firstText(t, res))
+		t.Fatalf("%s: tool returned error: %s", label, firstTextD(t, res))
 	}
 }
 
-func firstText(t *testing.T, res *mcp.CallToolResult) string {
+func firstTextD(t *testing.T, res *mcp.CallToolResult) string {
 	t.Helper()
 	if len(res.Content) == 0 {
 		return ""
@@ -145,7 +151,7 @@ func TestFamilyD_E2E_SearchDocsParamAndAlias(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_ServiceTopOperationsTags(t *testing.T) {
-	h := e2eHandler(t)
+	h := e2eHandlerD(t)
 	ctx, cancel := e2eCtx(t)
 	defer cancel()
 
@@ -190,7 +196,7 @@ func TestFamilyD_E2E_ServiceTopOperationsTags(t *testing.T) {
 
 	// Both tag shapes must produce a parseable top-operations payload.
 	for label, res := range map[string]*mcp.CallToolResult{"array": resArr, "json-string": resStr} {
-		body := firstText(t, res)
+		body := firstTextD(t, res)
 		var probe any
 		if err := json.Unmarshal([]byte(body), &probe); err != nil {
 			t.Fatalf("%s tags: response not valid JSON: %v", label, err)
@@ -213,7 +219,7 @@ func firstLiveServiceName(t *testing.T, h *Handler, ctx context.Context) string 
 	var wrapper struct {
 		Data []map[string]any `json:"data"`
 	}
-	if err := json.Unmarshal([]byte(firstText(t, res)), &wrapper); err != nil {
+	if err := json.Unmarshal([]byte(firstTextD(t, res)), &wrapper); err != nil {
 		t.Fatalf("list_services: parse paginated response: %v", err)
 	}
 	for _, m := range wrapper.Data {
@@ -230,7 +236,7 @@ func firstLiveServiceName(t *testing.T, h *Handler, ctx context.Context) string 
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_RequestTypeEnumValues(t *testing.T) {
-	h := e2eHandler(t)
+	h := e2eHandlerD(t)
 	ctx, cancel := e2eCtx(t)
 	defer cancel()
 
@@ -268,7 +274,7 @@ func (h *Handler) callAggregate(ctx context.Context, tool string, args map[strin
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_SignalEnumValues(t *testing.T) {
-	h := e2eHandler(t)
+	h := e2eHandlerD(t)
 	ctx, cancel := e2eCtx(t)
 	defer cancel()
 
@@ -290,7 +296,7 @@ func TestFamilyD_E2E_SignalEnumValues(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_AlertHistoryEnums(t *testing.T) {
-	h := e2eHandler(t)
+	h := e2eHandlerD(t)
 	ctx, cancel := e2eCtx(t)
 	defer cancel()
 
@@ -337,7 +343,7 @@ func firstLiveRuleID(t *testing.T, h *Handler, ctx context.Context) string {
 	var wrapper struct {
 		Data []map[string]any `json:"data"`
 	}
-	if err := json.Unmarshal([]byte(firstText(t, res)), &wrapper); err != nil {
+	if err := json.Unmarshal([]byte(firstTextD(t, res)), &wrapper); err != nil {
 		t.Fatalf("list_alert_rules: parse paginated response: %v", err)
 	}
 	for _, m := range wrapper.Data {
@@ -356,7 +362,7 @@ func firstLiveRuleID(t *testing.T, h *Handler, ctx context.Context) string {
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_AggregationSetMatchesBackend(t *testing.T) {
-	h := e2eHandler(t)
+	h := e2eHandlerD(t)
 	ctx, cancel := e2eCtx(t)
 	defer cancel()
 
@@ -378,7 +384,7 @@ func TestFamilyD_E2E_AggregationSetMatchesBackend(t *testing.T) {
 			t.Fatalf("aggregate_traces agg=%s transport error: %v", agg, err)
 		}
 		if res.IsError {
-			t.Logf("DRIFT: aggregation %q rejected by backend: %s", agg, firstText(t, res))
+			t.Logf("DRIFT: aggregation %q rejected by backend: %s", agg, firstTextD(t, res))
 			rejected = append(rejected, agg)
 		}
 	}
@@ -398,7 +404,7 @@ func TestFamilyD_E2E_AggregationSetMatchesBackend(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFamilyD_E2E_TimeRangeAndStepIntervalGrammar(t *testing.T) {
-	h := e2eHandler(t)
+	h := e2eHandlerD(t)
 	ctx, cancel := e2eCtx(t)
 	defer cancel()
 
