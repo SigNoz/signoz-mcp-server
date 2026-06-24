@@ -438,19 +438,29 @@ func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 	if createRes.IsError {
 		t.Fatalf("create_view (cloned shape) error: %s", e2eText(t, createRes))
 	}
-	viewID := extractViewID(e2eText(t, createRes))
-	if viewID == "" {
-		t.Fatalf("could not extract created view id from: %s", e2eText(t, createRes))
-	}
+	// create_view returns {"status":"success","data":"<id>"} — data is the new
+	// view id as a STRING (not an object like get_view). Use the create-specific
+	// extractor so the id is recovered and the cleanup below can fire.
+	viewID := extractCreatedViewID(e2eText(t, createRes))
 
-	// Guaranteed cleanup + gone-confirmation.
+	// Register the cleanup backstop IMMEDIATELY after a successful create, before
+	// any further assertion can fail. A previous orphan happened because id
+	// extraction failed (string vs object) and t.Fatalf ran before any cleanup
+	// was registered. Now: if we have an id, guarantee its deletion regardless of
+	// what fails later; if we somehow don't, fail loudly (nothing was created we
+	// can clean, or the response shape drifted).
 	deleted := false
-	t.Cleanup(func() {
-		if deleted {
-			return
-		}
-		_, _ = h.handleDeleteView(ctx, makeToolRequest("signoz_delete_view", map[string]any{"id": viewID}))
-	})
+	if viewID != "" {
+		t.Cleanup(func() {
+			if deleted {
+				return
+			}
+			_, _ = h.handleDeleteView(ctx, makeToolRequest("signoz_delete_view", map[string]any{"id": viewID}))
+		})
+	}
+	if viewID == "" {
+		t.Fatalf("could not extract created view id from create_view response: %s", e2eText(t, createRes))
+	}
 
 	// Read back via BOTH the canonical id and the legacy viewId.
 	for _, key := range []string{"id", "viewId"} {
@@ -484,6 +494,27 @@ func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 	if !goneRes.IsError {
 		t.Fatalf("view %s should be gone after delete, but get_view succeeded: %s", viewID, e2eText(t, goneRes))
 	}
+}
+
+// extractCreatedViewID parses the create_view success response, where the new
+// view id is returned as a STRING under "data": {"status":"success","data":"<id>"}.
+// It falls back to the object/top-level shapes for robustness against drift.
+func extractCreatedViewID(body string) string {
+	// Primary shape: data is a string id.
+	var asString struct {
+		Data string `json:"data"`
+		ID   string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &asString); err == nil {
+		if asString.Data != "" {
+			return asString.Data
+		}
+		if asString.ID != "" {
+			return asString.ID
+		}
+	}
+	// Fallback: data is an object carrying an id (get_view-style envelope).
+	return extractViewID(body)
 }
 
 func extractViewID(body string) string {
