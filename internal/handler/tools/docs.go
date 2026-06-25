@@ -23,7 +23,9 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Search official SigNoz documentation with BM25 over full markdown content. Use this for ANY SigNoz product question: how-to, feature usage, setup, config, API, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Call before data tools for ambiguous how-to questions, and after data tools when live telemetry results are confusing. Do not use for fetching actual telemetry, live alert state, or dashboard contents."),
-		mcp.WithString("searchText", mcp.Required(), mcp.Description("Natural-language or keyword query to search in official SigNoz docs.")),
+		// Not Required() so the legacy "query" alias (#367) stays valid for
+		// schema-validating clients; the handler still enforces "is required".
+		mcp.WithString("searchText", mcp.Description("Natural-language or keyword query to search in official SigNoz docs.")),
 		// limit advertises the ["integer","string"] union via intOrStringType() since
 		// parseLimit also accepts a JSON number — a schema-validating client sending
 		// {"limit": 3} must not be rejected. The 25 ceiling bounds the in-process bleve

@@ -31,7 +31,9 @@ func TestValidationErrorsCarryCode(t *testing.T) {
 			return h.handleGetServiceTopOperations(testCtx(), makeToolRequest("signoz_get_service_top_operations", map[string]any{"service": "frontend", "start": "yesterday"}))
 		}},
 		{"aggregate_logs malformed timeRange", func() (*mcp.CallToolResult, error) {
-			return h.handleAggregateLogs(testCtx(), makeToolRequest("signoz_aggregate_logs", map[string]any{"timeRange": "24hours", "aggregation": "count()"}))
+			// Valid aggregation ("count", not "count()") so the malformed timeRange is
+			// what trips validation — exercising the resolveTimestamps->coded path.
+			return h.handleAggregateLogs(testCtx(), makeToolRequest("signoz_aggregate_logs", map[string]any{"timeRange": "24hours", "aggregation": "count"}))
 		}},
 	}
 	for _, tc := range cases {

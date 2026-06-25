@@ -94,13 +94,15 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 
 	var queryPayload types.QueryPayload
 	if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
+		// User-input structural mistake: code as VALIDATION_FAILED, not a marshal error.
 		h.logger.ErrorContext(ctx, "Failed to unmarshal query payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "invalid query payload structure: "+err.Error()), nil
 	}
 
 	if err := queryPayload.Validate(); err != nil {
+		// Validate() rejects user-input mistakes: route through VALIDATION_FAILED.
 		h.logger.ErrorContext(ctx, "Query validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("query validation error: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "query validation error: "+err.Error()), nil
 	}
 
 	finalQueryJSON, err := json.Marshal(queryPayload)
@@ -127,6 +129,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	var notes []string
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}

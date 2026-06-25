@@ -1,12 +1,12 @@
 # Plan: Read-Tool Parameter Consistency Cleanup (#360)
 
 ## Status
-Planning — decisions FINALIZED & filed as tracking issues; implementation not yet started. Scope: FULL harmonization; breaking changes ALLOWED (agent-skills updated alongside).
+Done — Families A–E shipped (signoz-mcp-server #217–#221) + a follow-up correctness PR (#222, from the 2026-06-25 post-merge review). ONE item DEFERRED, not done: **N14** typed `tags` (tracked in SigNoz/nerve-pod#8 — see the N14 entry below and the 2026-06-25 entry in the .context.md). Scope was FULL harmonization with breaking changes allowed (agent-skills updated alongside).
 
 ## Tracking issues (one sub-issue per PR)
 - Master: SigNoz/signoz-ai-assistant#360 (body holds the finalized plan + checklist)
 - #363 Family A (silent-failures) · #364 Family B (error/validation helpers) · #365 Family C (output/structured content, depends on #364) · #366 Family E (original K1-K5) · #367 Family D (schema/types/descriptions + skills PR)
-- De-scoped: SigNoz/nerve-pod#4 (N20 mutation envelope; also documents N13/N16 ordering), SigNoz/nerve-pod#5 (N7 groupBy field-context)
+- De-scoped: SigNoz/nerve-pod#4 (N20 mutation envelope; also documents N13/N16 ordering), SigNoz/nerve-pod#5 (N7 groupBy field-context), SigNoz/nerve-pod#8 (N14 typed `tags`)
 
 ## Decisions Log (locked)
 
@@ -35,7 +35,7 @@ Introduce a small shared error helper set (e.g. `internal/handler/tools/errs.go`
 
 ### Family D — param schema & description harmonization (decided 2026-06-24)
 - **N12** free-text naming: rename `search_docs` `query`→`searchText` + PERMANENT `query` alias. Requires a coordinated agent-skills PR (docs-search skill names the param).
-- **N14** `tags`: declare `WithArray` of strings everywhere (fix get_service_top_operations's JSON-string form); accept a JSON-string for back-compat.
+- **N14** `tags`: DEFERRED (tracked SigNoz/nerve-pod#8) — keep `get_service_top_operations`'s `WithString` JSON-string passthrough. The planned `WithArray` of strings was abandoned during Family D: the backend expects structured `[]TagQueryParam`, not `[]string`, so an array-of-strings round-trips to a masking empty `[]`. Typed-`tags` is follow-up work, NOT shipped in this batch.
 - **N15** schema enums — SPLIT to avoid backend↔MCP drift (per user's drift question):
   - Hard `enum` only on STABLE/MCP-owned sets: `requestType` (scalar/time_series), `sourcePage` (traces/logs/metrics/meter), `order` (asc/desc), alert `state`, `signal`.
   - Backend-owned/EVOLVING sets (`aggregation` operators, channel `type`, panel `type`, `DataSource`): keep documented free-strings (values in description, backend validates) + add a live/periodic test pinning the MCP-advertised set against the backend's accepted set so drift fails a test, not a user. (User may override to hard-enum-everything.)

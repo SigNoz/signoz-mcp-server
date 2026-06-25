@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -209,7 +210,10 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		return nil, err
 	}
 
-	requestType, _ := args["requestType"].(string)
+	requestType, err := readRequestType(args)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateRequestType(requestType); err != nil {
 		return nil, err
 	}
@@ -393,6 +397,47 @@ func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName stri
 		"SigNoz query builder returned non-fatal warnings",
 		slog.String("tool", toolName),
 		slog.Int("warningCount", len(messages)),
+	)
+}
+
+// warnUnparsedWarningEnvelope detects QB warning-envelope drift: it counts
+// data.warning.warnings entries and warns only when entries exist but zero
+// messages were extracted (a renamed message field). Empty/absent envelopes
+// stay silent. Fails open.
+func warnUnparsedWarningEnvelope(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, extractedCount int) {
+	if extractedCount > 0 {
+		return
+	}
+	var probe struct {
+		Data struct {
+			Warning struct {
+				Warnings []json.RawMessage `json:"warnings"`
+			} `json:"warning"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return
+	}
+	entries := 0
+	for _, raw := range probe.Data.Warning.Warnings {
+		switch string(bytes.TrimSpace(raw)) {
+		case "", "null", "{}":
+			continue // empty/degenerate entry — not drift
+		}
+		entries++
+	}
+	if entries == 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.WarnContext(ctx,
+		"qb warning envelope unparsed",
+		slog.String("tool", toolName),
 	)
 }
 
@@ -616,6 +661,35 @@ func limitOnlyCompletenessNote(returnedRows, limit int, rowsKnown bool, narrowHi
 		returnedRows, limit)
 }
 
+// isTrivialBody reports whether a payload is effectively empty ("", {}, [], null)
+// so the drift WARN doesn't fire on a legitimately empty response.
+func isTrivialBody(payload []byte) bool {
+	switch string(bytes.TrimSpace(payload)) {
+	case "", "{}", "[]", "null":
+		return true
+	default:
+		return false
+	}
+}
+
+// warnRowCountUnknown warns when the row counter couldn't locate the rows array
+// on a non-trivial body (likely a renamed "rows" field). Fails open.
+func warnRowCountUnknown(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, rowsKnown bool) {
+	if rowsKnown || isTrivialBody(payload) {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.WarnContext(ctx,
+		"row count unknown on non-empty body",
+		slog.String("tool", toolName),
+	)
+}
+
 // rawSearchResult is the result wrapper for raw row tools (search_logs /
 // search_traces), which support offset pagination. It appends a completeness
 // note (hasMore + nextOffset) inferred from the returned row count so callers
@@ -628,9 +702,11 @@ func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, 
 			MaxRawResultLimit))
 	}
 	returnedRows, rowsKnown := countQueryRangeRows(payload)
+	warnRowCountUnknown(ctx, logger, toolName, payload, rowsKnown)
 	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
+	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}
@@ -648,6 +724,7 @@ func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, 
 	}
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
+	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}

@@ -292,6 +292,13 @@ func TestFilterAliasConflict_HandlerErrorsAllFilterTools(t *testing.T) {
 			if !strings.Contains(body, conflictingFilterAliasError) {
 				t.Fatalf("error body = %q, want conflict message", body)
 			}
+			// The conflict is a validation error: each handler surfaces the
+			// parser error via errorWithCode(CodeValidationFailed, ...). Pin the
+			// code so the downstream-contract regression (uncoded error) fails
+			// here, not just the message substring.
+			if code := resultCode(t, result); code != CodeValidationFailed {
+				t.Fatalf("%s: conflict code = %q, want %q", tt.name, code, CodeValidationFailed)
+			}
 		})
 	}
 }
@@ -338,6 +345,10 @@ func TestFilterAlias_FalseFriendHandlersUnaffected(t *testing.T) {
 		body := noteText(t, result, 0)
 		if !strings.Contains(body, `Parameter validation failed: "query" must be a JSON object`) {
 			t.Fatalf("error body = %q, want query-object validation", body)
+		}
+		// validationError() (query_builder.go) -> errorWithCode(CodeValidationFailed).
+		if code := resultCode(t, result); code != CodeValidationFailed {
+			t.Fatalf("query-object validation code = %q, want %q", code, CodeValidationFailed)
 		}
 	})
 

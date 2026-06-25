@@ -106,6 +106,12 @@ func TestHandleListAlerts_GarbageBoolErrors(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected error result for garbage active value")
 	}
+	// The bool validation now goes through the coded path (handleListAlerts wraps
+	// the parse error with errorWithCode(CodeValidationFailed, ...)). Pin the
+	// machine-readable code so a silent regression to an uncoded error fails here.
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("garbage active value code = %q, want %q", code, CodeValidationFailed)
+	}
 }
 
 // N3: list_alerts accepts a real JSON bool for the tri-state filters.

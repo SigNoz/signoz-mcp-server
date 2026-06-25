@@ -56,7 +56,14 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateRequestType(stringArg(args, "requestType")); err != nil {
+	// Read requestType once, rejecting a present-but-non-string value loudly
+	// (instead of stringArg's silent drop to ""), then validate the enum and
+	// reuse the value for RequestType below.
+	requestType, err := readRequestType(args)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRequestType(requestType); err != nil {
 		return nil, err
 	}
 
@@ -69,7 +76,7 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		ReduceTo:         stringArg(args, "reduceTo"),
 		Filter:           filter,
 		TimeRange:        stringArg(args, "timeRange"),
-		RequestType:      stringArg(args, "requestType"),
+		RequestType:      requestType,
 		Formula:          stringArg(args, "formula"),
 		Source:           stringArg(args, "source"),
 	}

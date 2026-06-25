@@ -31,6 +31,10 @@ plans/
 - Create GitHub issues in `SigNoz/nerve-pod` by default. Only use another repo when the user explicitly asks for that specific repo.
 - Keep PR body in sync with actual changes.
 
+## Code Style
+
+- Avoid long inline code comments unless needed; keep comments concise and non-redundant.
+
 ## Documentation & Metadata Sync Checklist
 
 When adding, renaming, or removing MCP tools/resources/configuration, update docs and metadata in the same PR.
