@@ -329,9 +329,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 		sendResolved = v
 	}
 
-	// Build receiver JSON based on type. Errors here are per-type required-field
-	// validation failures (e.g. missing slack_api_url) — coded so the caller fixes
-	// args and retries.
+	// Errors here are per-type required-field validation failures, coded for retry.
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
@@ -432,9 +430,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		sendResolved = v
 	}
 
-	// Build receiver JSON based on type. Errors here are per-type required-field
-	// validation failures (e.g. missing slack_api_url) — coded so the caller fixes
-	// args and retries.
+	// Errors here are per-type required-field validation failures, coded for retry.
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
@@ -460,9 +456,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	var readBackNote string
 	if getErr != nil {
 		h.logger.WarnContext(ctx, "Channel updated but follow-up GET failed", slog.String("id", id), logpkg.ErrAttr(getErr))
-		// Fail OPEN: the update itself succeeded, so we do not flip IsError. But
-		// the client/LLM must not read a clean success as a verified read-back —
-		// surface the unverified state as an advisory note alongside the body.
+		// Fail OPEN: update succeeded; surface the unverified read-back as a note.
 		readBackNote = fmt.Sprintf(
 			"note: read-back after update failed: %s; the update itself succeeded but the returned channel state could not be re-fetched and may be stale.",
 			getErr.Error())
@@ -501,9 +495,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	// Fail OPEN: the channel WAS updated, so we do not flip IsError. The
-	// test-send failure and any read-back failure are surfaced as advisory notes
-	// (blank notes are skipped by structuredResultWithNotes).
+	// Fail OPEN: channel was updated; test-send and read-back failures become notes.
 	return structuredResultWithNotes(resultJSON, testFailureNote, readBackNote), nil
 }
 

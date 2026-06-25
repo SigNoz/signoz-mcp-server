@@ -364,8 +364,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "Invalid limit format", slog.Any("limit", args["limit"]), logpkg.ErrAttr(err))
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
-	// Clamp before forwarding upstream — like every sibling raw tool — so an
-	// oversized limit can't bypass the per-request memory/token guard.
+	// Clamp before forwarding so an oversized limit can't bypass the memory guard.
 	limit, limitClamped := clampLimit(limit)
 
 	order := "asc"

@@ -16,11 +16,8 @@ import (
 
 // metricMetadata holds the parsed metadata from signoz_list_metrics response.
 //
-// TemporalityMissing / IsMonotonicMissing record that the metric row WAS matched
-// (named metric found with a non-empty type) but the named companion field was
-// absent/empty in the upstream payload. They drive both the partial-field-drift
-// WARN and the honest "unknown/assumed" phrasing in the [Decisions applied] note,
-// so a guessed default is never reported to the agent as authoritative fact.
+// TemporalityMissing / IsMonotonicMissing flag that a matched row lacked the
+// field; they drive the drift WARN and the "unknown/assumed" decision note.
 type metricMetadata struct {
 	MetricType         string
 	IsMonotonic        bool
@@ -29,10 +26,7 @@ type metricMetadata struct {
 	IsMonotonicMissing bool
 }
 
-// metricMetadataDriftMarker is the distinctive static log marker emitted when a
-// matched metric row is missing an expected companion field (temporality, or
-// isMonotonic on a sum). Grep this exact string to detect upstream metadata
-// field drift in production logs.
+// metricMetadataDriftMarker is the static log marker for partial-field drift; grep it in prod logs.
 const metricMetadataDriftMarker = "metric metadata partial-field drift"
 
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -74,9 +68,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			mqr.IsMonotonic = meta.IsMonotonic
 			mqr.Temporality = meta.Temporality
 			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched via signoz_list_metrics)", mqr.MetricType))
-			// When a companion field was absent from the fetched metadata, report
-			// it as unknown/assumed rather than authoritative — the value is a
-			// fallback default, not a fact returned by the backend.
+			// Absent fields are reported as unknown/assumed, not authoritative.
 			if meta.TemporalityMissing {
 				decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", mqr.Temporality))
 			} else {
@@ -88,8 +80,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
 			}
 		} else {
-			// User-correctable (wrong metric name); code it like the formula
-			// sub-query's not-found path so the same class carries the same code.
+			// User-correctable (wrong metric name); coded like the formula not-found path.
 			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
 				"Metric %q not found via signoz_list_metrics. "+
 					"Check the metric name or provide metricType manually.",
@@ -270,10 +261,8 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	if err != nil {
 		return nil, err
 	}
-	// Fail open, but never fail silent: a matched row missing an expected
-	// companion field means upstream renamed/dropped it, and we are about to
-	// apply a possibly-wrong default. Emit a detectable WARN so the drift is
-	// observable even though no per-PR fixture test can catch it against real data.
+	// Fail open, but never fail silent: a matched row missing a field signals
+	// upstream drift before we apply a possibly-wrong default, so WARN on it.
 	if meta != nil {
 		if meta.TemporalityMissing {
 			h.logger.WarnContext(ctx, metricMetadataDriftMarker,
@@ -292,9 +281,7 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 }
 
 // metricMetadataRow mirrors one entry of a ListMetrics response. IsMonotonic is
-// a *bool so an ABSENT field is distinguishable from a present `false` — that
-// distinction is what lets us flag partial upstream-field drift (a renamed/
-// dropped isMonotonic) instead of silently assuming non-monotonic.
+// a *bool so an ABSENT field differs from a present `false`, enabling drift detection.
 type metricMetadataRow struct {
 	MetricName  string `json:"metricName"`
 	Type        string `json:"type"`
@@ -303,9 +290,7 @@ type metricMetadataRow struct {
 }
 
 // metricMetadataFromRow builds metricMetadata from a matched row, recording
-// which companion fields were missing so callers can WARN and phrase the
-// decision honestly. Drift flags only apply when the row genuinely matched
-// (non-empty type) — a not-found / typeless row is a different failure mode.
+// missing fields. Drift flags only apply to a genuine match (non-empty type).
 func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 	mt := normalizeMetricType(m.Type)
 	isMono := m.IsMonotonic != nil && *m.IsMonotonic
@@ -316,8 +301,7 @@ func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 	}
 	if mt != "" {
 		meta.TemporalityMissing = m.Temporality == ""
-		// isMonotonic is only meaningful for sums; only treat its absence as
-		// drift there (gauges/histograms legitimately omit it).
+		// isMonotonic is only meaningful for sums; only its absence there is drift.
 		meta.IsMonotonicMissing = mt == "sum" && m.IsMonotonic == nil
 	}
 	return meta
@@ -391,8 +375,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 			isMonotonic = meta.IsMonotonic
 			temporality = meta.Temporality
 			*decisions = append(*decisions, fmt.Sprintf("query %s (%s): metricType=%s (auto-fetched)", fq.Name, fq.MetricName, metricType))
-			// Mirror the primary path: when a companion field was absent from the
-			// fetched metadata, disclose the applied value as assumed, not authoritative.
+			// Mirror the primary path: absent fields are disclosed as assumed.
 			if meta.TemporalityMissing {
 				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): temporality unknown (not returned by metadata; assumed %q)", fq.Name, fq.MetricName, temporality))
 			}

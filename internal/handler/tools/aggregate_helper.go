@@ -400,21 +400,10 @@ func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName stri
 	)
 }
 
-// warnUnparsedWarningEnvelope (FIX D1) makes QB warning-envelope drift
-// detectable instead of silent. extractBackendWarningMessages pulls messages
-// from data.warning.warnings[].message; if the backend renames the per-entry
-// "message" field, extraction returns zero messages and the drift is silent.
-//
-// To flag that WITHOUT false positives we count the warning ENTRIES the same way
-// extraction locates them (data.warning.warnings), ignoring the inner field
-// names. We warn only when the envelope carries one or more NON-EMPTY entry
-// objects yet we extracted zero messages from them — i.e. entries are present
-// but their message field drifted. A normal empty warnings array ([]), an absent
-// envelope, or degenerate empty entries ({}) yield zero countable entries and do
-// NOT warn, so a routine no-warnings response is silent. We never scan row /
-// telemetry contents (which legitimately contain the word "warning"). Fails open.
-// (A wholesale rename of the "warning"/"warnings" keys is intentionally not
-// flagged — detecting it would require a body scan that spams on user telemetry.)
+// warnUnparsedWarningEnvelope detects QB warning-envelope drift: it counts
+// data.warning.warnings entries and warns only when entries exist but zero
+// messages were extracted (a renamed message field). Empty/absent envelopes
+// stay silent. Fails open.
 func warnUnparsedWarningEnvelope(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, extractedCount int) {
 	if extractedCount > 0 {
 		return
@@ -672,11 +661,8 @@ func limitOnlyCompletenessNote(returnedRows, limit int, rowsKnown bool, narrowHi
 		returnedRows, limit)
 }
 
-// isTrivialBody reports whether a passthrough payload is effectively empty —
-// blank, or just an empty JSON object/array ("{}"/"[]") — so the row-count
-// drift WARN (FIX D2) does NOT fire on a legitimately empty response. Anything
-// with real content is "non-trivial" and an uncountable row array there is
-// genuine envelope drift worth flagging.
+// isTrivialBody reports whether a payload is effectively empty ("", {}, [], null)
+// so the drift WARN doesn't fire on a legitimately empty response.
 func isTrivialBody(payload []byte) bool {
 	switch string(bytes.TrimSpace(payload)) {
 	case "", "{}", "[]", "null":
@@ -686,12 +672,8 @@ func isTrivialBody(payload []byte) bool {
 	}
 }
 
-// warnRowCountUnknown (FIX D2) makes an uncountable rows array detectable
-// instead of silent. The row counters return rowsKnown=false when they cannot
-// locate the rows array (e.g. the backend renamed "rows"); on a non-trivial
-// body that is contract drift, not a normal empty response. Emit a single WARN
-// with a distinctive marker so it surfaces in telemetry. Fails open — the
-// caller still returns the payload (with the generic "more may exist" note).
+// warnRowCountUnknown warns when the row counter couldn't locate the rows array
+// on a non-trivial body (likely a renamed "rows" field). Fails open.
 func warnRowCountUnknown(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, rowsKnown bool) {
 	if rowsKnown || isTrivialBody(payload) {
 		return
