@@ -49,8 +49,8 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics", "meter". Cost Meter views are filed under "meter" (not "metrics").`)),
 		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name (applied server-side).")),
 		mcp.WithString("category", mcp.Description("Optional partial-match filter on view category (applied server-side).")),
-		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
-		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
 	)
 	addTool(s, listTool, h.handleListViews)
 

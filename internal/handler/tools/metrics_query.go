@@ -222,6 +222,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	}
 	backendWarnings := extractBackendWarningMessages(result)
 	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_query_metrics", result, len(backendWarnings))
 
 	// JSON-first: the raw backend payload is block 0 (matching the search/
 	// aggregate siblings); decisions/warnings go into a SEPARATE note block

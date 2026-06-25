@@ -134,6 +134,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	var notes []string
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}
