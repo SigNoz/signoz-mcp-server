@@ -88,7 +88,9 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
 			}
 		} else {
-			return mcp.NewToolResultError(fmt.Sprintf(
+			// User-correctable (wrong metric name); code it like the formula
+			// sub-query's not-found path so the same class carries the same code.
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
 				"Metric %q not found via signoz_list_metrics. "+
 					"Check the metric name or provide metricType manually.",
 				mqr.MetricName)), nil
@@ -389,6 +391,14 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 			isMonotonic = meta.IsMonotonic
 			temporality = meta.Temporality
 			*decisions = append(*decisions, fmt.Sprintf("query %s (%s): metricType=%s (auto-fetched)", fq.Name, fq.MetricName, metricType))
+			// Mirror the primary path: when a companion field was absent from the
+			// fetched metadata, disclose the applied value as assumed, not authoritative.
+			if meta.TemporalityMissing {
+				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): temporality unknown (not returned by metadata; assumed %q)", fq.Name, fq.MetricName, temporality))
+			}
+			if meta.IsMonotonicMissing {
+				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): isMonotonic unknown (not returned by metadata; assumed %t)", fq.Name, fq.MetricName, isMonotonic))
+			}
 		} else {
 			return nil, fmt.Errorf("metric %q not found for formula query %q. Check the metric name", fq.MetricName, fq.Name)
 		}
