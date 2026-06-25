@@ -41,8 +41,8 @@ subgraph HTTPPath["HTTP Transport — Multi Tenant"]
     APIKEY -->|Yes + OAuth enabled| TRYDECRYPT["Try decrypt as OAuth token"]
     TRYDECRYPT -->|Success| OAUTHCTX["Extract apiKey + signozURL<br/>from encrypted token"]
     TRYDECRYPT -->|Expired| EXPIRED["401 + WWW-Authenticate challenge"]
-    TRYDECRYPT -->|Not OAuth format| RAWKEY["Treat as raw API key<br/>(backward compatible)"]
-    APIKEY -->|Yes + OAuth disabled| PARSE["Extract apiKey<br/>(Bearer or raw token)"]
+    TRYDECRYPT -->|Not OAuth format| RAWKEY["Forward token upstream<br/>as Authorization: Bearer"]
+    APIKEY -->|Yes + OAuth disabled| PARSE["Forward token upstream<br/>as Authorization: Bearer"]
     APIKEY -->|No + OAuth enabled| CHALLENGE["401 + WWW-Authenticate<br/>resource_metadata URL"]
     APIKEY -->|No + env set| ENVKEY["Use config.APIKey"]
     APIKEY -->|No + no env| DENY["401 Unauthorized"]
@@ -167,6 +167,13 @@ Each blob is prefixed with a type byte to prevent cross-type confusion:
 
 Since tokens are self-contained encrypted blobs, any server instance with the same `OAUTH_TOKEN_SECRET` can validate any token. No sticky sessions or shared state needed. The only requirement is that all instances share the same encryption key.
 
-### Backward Compatibility
+### Credential header routing
 
-The auth middleware tries OAuth token decryption first. If decryption fails (e.g., the Bearer token is a plain SigNoz API key), it falls back to the legacy `Authorization` header + `X-SigNoz-URL` header approach. Existing integrations continue to work without changes.
+The auth middleware forwards each credential upstream on the **header the client used** — SigNoz classifies credentials by header name, not token shape:
+
+- `SIGNOZ-API-KEY: <key>` → forwarded as `SIGNOZ-API-KEY` (service-account API keys).
+- `Authorization: [Bearer] <token>` → forwarded as `Authorization: Bearer <token>` (user/session tokens, JWT **or** opaque).
+
+When OAuth is enabled, the middleware first tries to decrypt an `Authorization` Bearer token as a server-issued OAuth access token; a valid one unwraps to a stored API key forwarded via `SIGNOZ-API-KEY`. Only if decryption fails (and a SigNoz URL is available) is the token treated as a direct credential and forwarded on `Authorization`.
+
+> **Removed (breaking):** earlier versions used a shape heuristic (`isJWTToken`) to reroute non-JWT `Authorization` tokens to `SIGNOZ-API-KEY`. That heuristic misrouted opaque user/session tokens (which SigNoz only accepts on `Authorization`) and has been removed. Clients sending a service-account API key must use the `SIGNOZ-API-KEY` header, not `Authorization`.
