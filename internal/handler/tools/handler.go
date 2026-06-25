@@ -78,7 +78,7 @@ func (h *Handler) GetClient(ctx context.Context) (signozclient.Client, error) {
 		authHeader = "SIGNOZ-API-KEY"
 	}
 
-	cacheKey := util.HashTenantKey(apiKey, signozURL)
+	cacheKey := util.HashTenantKey(authHeader, apiKey, signozURL)
 
 	if cachedClient, ok := h.clientCache.Get(cacheKey); ok {
 		return cachedClient, nil

@@ -374,35 +374,117 @@ func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareFallsBackToRawAPIKey(t *testing.T) {
+// TestAuthMiddlewareHonorsAuthorizationIngress verifies an Authorization token
+// is forwarded upstream as Authorization: Bearer regardless of shape — opaque
+// and JWT-shaped tokens must behave identically.
+func TestAuthMiddlewareHonorsAuthorizationIngress(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:     true,
 		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	req.Header.Set("Authorization", "Bearer raw-api-key")
-	req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
-
-	rr := httptest.NewRecorder()
-	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiKey, _ := util.GetAPIKey(r.Context())
-		signozURL, _ := util.GetSigNozURL(r.Context())
-		w.Header().Set("X-API-Key", apiKey)
-		w.Header().Set("X-SigNoz-URL", signozURL)
-		w.WriteHeader(http.StatusOK)
-	})).ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	// authHeader is the raw Authorization value; wantAPIKey is what must be
+	// forwarded upstream. The "Bearer " scheme is stripped case-insensitively
+	// and always re-added, so opaque, JWT-shaped, prefix-less, and lowercase
+	// inputs all converge on a single canonical "Bearer <token>" form.
+	cases := []struct {
+		name       string
+		authHeader string
+		wantAPIKey string
+	}{
+		{name: "opaque token", authHeader: "Bearer opaque-session-token", wantAPIKey: "Bearer opaque-session-token"},
+		{name: "jwt-shaped token", authHeader: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig", wantAPIKey: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig"},
+		{name: "opaque token starting with eyJ", authHeader: "Bearer eyJ-not-a-jwt", wantAPIKey: "Bearer eyJ-not-a-jwt"},
+		{name: "no Bearer prefix", authHeader: "opaque-session-token", wantAPIKey: "Bearer opaque-session-token"},
+		{name: "lowercase bearer scheme", authHeader: "bearer opaque-session-token", wantAPIKey: "Bearer opaque-session-token"},
 	}
-	if rr.Header().Get("X-API-Key") != "raw-api-key" {
-		t.Fatalf("api key = %q, want %q", rr.Header().Get("X-API-Key"), "raw-api-key")
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", tc.authHeader)
+			req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+
+			rr := httptest.NewRecorder()
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				apiKey, _ := util.GetAPIKey(r.Context())
+				authHeader, _ := util.GetAuthHeader(r.Context())
+				signozURL, _ := util.GetSigNozURL(r.Context())
+				w.Header().Set("X-API-Key", apiKey)
+				w.Header().Set("X-Auth-Header", authHeader)
+				w.Header().Set("X-SigNoz-URL", signozURL)
+				w.WriteHeader(http.StatusOK)
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if got := rr.Header().Get("X-API-Key"); got != tc.wantAPIKey {
+				t.Fatalf("api key = %q, want %q", got, tc.wantAPIKey)
+			}
+			if got := rr.Header().Get("X-Auth-Header"); got != "Authorization" {
+				t.Fatalf("auth header = %q, want %q", got, "Authorization")
+			}
+			if got := rr.Header().Get("X-SigNoz-URL"); got != "https://1.1.1.1" {
+				t.Fatalf("signoz URL = %q, want %q", got, "https://1.1.1.1")
+			}
+		})
 	}
-	if rr.Header().Get("X-SigNoz-URL") != "https://1.1.1.1" {
-		t.Fatalf("signoz URL = %q, want %q", rr.Header().Get("X-SigNoz-URL"), "https://1.1.1.1")
+}
+
+// TestAuthMiddlewareHonorsAuthorizationWithConfigURL pins the two non-customURL
+// Authorization branches: a bearer token that is not a server-issued OAuth
+// token is honored as Authorization when a SigNoz URL comes from config,
+// whether OAuth is enabled (decrypt-fail path) or disabled.
+func TestAuthMiddlewareHonorsAuthorizationWithConfigURL(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  config.Config
+	}{
+		{
+			name: "oauth disabled",
+			cfg:  config.Config{URL: "https://signoz.example.com"},
+		},
+		{
+			name: "oauth enabled, non-oauth bearer token",
+			cfg: config.Config{
+				OAuthEnabled:     true,
+				OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+				OAuthIssuerURL:   "https://mcp.example.com",
+				URL:              "https://signoz.example.com",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg
+			server := &MCPServer{logger: logpkg.New("error"), config: &cfg, analytics: noopanalytics.New()}
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer opaque-session-token")
+			// No X-SigNoz-URL: forces the config-URL branches.
+
+			rr := httptest.NewRecorder()
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				apiKey, _ := util.GetAPIKey(r.Context())
+				authHeader, _ := util.GetAuthHeader(r.Context())
+				w.Header().Set("X-API-Key", apiKey)
+				w.Header().Set("X-Auth-Header", authHeader)
+				w.WriteHeader(http.StatusOK)
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if got := rr.Header().Get("X-API-Key"); got != "Bearer opaque-session-token" {
+				t.Fatalf("api key = %q, want %q", got, "Bearer opaque-session-token")
+			}
+			if got := rr.Header().Get("X-Auth-Header"); got != "Authorization" {
+				t.Fatalf("auth header = %q, want %q", got, "Authorization")
+			}
+		})
 	}
 }
 
@@ -753,7 +835,7 @@ func TestAuthMiddlewareAuthFailureTelemetryBranches(t *testing.T) {
 			},
 			wantStatus: http.StatusBadRequest,
 			wantReason: authFailureInvalidSignozURL,
-			wantMode:   authModeAuthorizationAPIKey,
+			wantMode:   authModeAuthorizationBearer,
 		},
 		{
 			name: "missing SigNoz URL",
