@@ -33,7 +33,7 @@ plans/
 
 ## Code Style
 
-- Avoid long inline code comments unless genuinely needed (i.e. the rationale isn't obvious from the code itself). When revising code, update the existing comment in place rather than stacking new ones — keep comments concise and non-redundant.
+- Avoid long inline code comments unless needed; update existing ones.
 
 ## Documentation & Metadata Sync Checklist
 
