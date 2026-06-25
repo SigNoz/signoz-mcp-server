@@ -216,6 +216,15 @@ func TestParseMetricMetadataFromResponse_PartialFieldDrift(t *testing.T) {
 			wantMonoMissing: false,
 		},
 		{
+			name:            "explicit empty temporality is present, NOT drift",
+			body:            `{"status":"success","data":{"metrics":[{"metricName":"system.cpu.utilization","type":"gauge","temporality":""}]}}`,
+			wantType:        "gauge",
+			wantTemporality: "",
+			wantTempMissing: false,
+			wantMonotonic:   false,
+			wantMonoMissing: false,
+		},
+		{
 			name:            "gauge omitting isMonotonic is NOT drift (only temporality flagged)",
 			body:            `{"status":"success","data":{"metrics":[{"metricName":"system.cpu.utilization","type":"gauge"}]}}`,
 			wantType:        "gauge",

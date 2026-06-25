@@ -280,13 +280,14 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	return meta, nil
 }
 
-// metricMetadataRow mirrors one entry of a ListMetrics response. IsMonotonic is
-// a *bool so an ABSENT field differs from a present `false`, enabling drift detection.
+// metricMetadataRow mirrors one entry of a ListMetrics response. IsMonotonic and
+// Temporality are pointers so an ABSENT field differs from a present empty/false
+// value, enabling drift detection without flagging legitimate empty values.
 type metricMetadataRow struct {
-	MetricName  string `json:"metricName"`
-	Type        string `json:"type"`
-	IsMonotonic *bool  `json:"isMonotonic"`
-	Temporality string `json:"temporality"`
+	MetricName  string  `json:"metricName"`
+	Type        string  `json:"type"`
+	IsMonotonic *bool   `json:"isMonotonic"`
+	Temporality *string `json:"temporality"`
 }
 
 // metricMetadataFromRow builds metricMetadata from a matched row, recording
@@ -294,13 +295,18 @@ type metricMetadataRow struct {
 func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 	mt := normalizeMetricType(m.Type)
 	isMono := m.IsMonotonic != nil && *m.IsMonotonic
+	temporality := ""
+	if m.Temporality != nil {
+		temporality = *m.Temporality
+	}
 	meta := &metricMetadata{
 		MetricType:  mt,
 		IsMonotonic: isMono,
-		Temporality: m.Temporality,
+		Temporality: temporality,
 	}
 	if mt != "" {
-		meta.TemporalityMissing = m.Temporality == ""
+		// Absent (nil), not present-but-empty: an explicit "" is a legitimate value.
+		meta.TemporalityMissing = m.Temporality == nil
 		// isMonotonic is only meaningful for sums; only its absence there is drift.
 		meta.IsMonotonicMissing = mt == "sum" && m.IsMonotonic == nil
 	}
