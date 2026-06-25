@@ -30,7 +30,10 @@ plans/
   `chore(rate-limits): centralize override defaults`.
 - Create GitHub issues in `SigNoz/nerve-pod` by default. Only use another repo when the user explicitly asks for that specific repo.
 - Keep PR body in sync with actual changes.
-- On PR review comments (including automated/bot reviews): avoid posting long inline comments unless genuinely needed. Prefer updating/replying to the existing comment thread over opening new ones, and let the fix commit speak for itself.
+
+## Code Style
+
+- Avoid long inline code comments unless genuinely needed (i.e. the rationale isn't obvious from the code itself). When revising code, update the existing comment in place rather than stacking new ones — keep comments concise and non-redundant.
 
 ## Documentation & Metadata Sync Checklist
 
