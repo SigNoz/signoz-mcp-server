@@ -339,3 +339,62 @@ func joinPath(steps []string) string {
 	}
 	return out
 }
+
+// TestNumericParamsAdvertiseIntegerStringUnion pins the schema-honesty fix:
+// limit/offset/stepInterval are registered with mcp.WithString but their parsers
+// (paginate.ParseParams[Clamped], intArg/parseLimit, parseStepInterval) ALSO
+// accept a JSON number, so a schema-validating client sending {"limit": 50}
+// (a JSON number — the natural form) must not be rejected before the handler
+// runs. intOrStringType() overrides the advertised type to the union
+// ["integer","string"]; this test asserts a representative sample of tools
+// advertise BOTH on each numeric param. It reuses registeredToolProps (defined
+// in param_schema_test.go), which builds the schema exactly as advertised.
+func TestNumericParamsAdvertiseIntegerStringUnion(t *testing.T) {
+	cases := []struct {
+		tool  string
+		param string
+	}{
+		{"signoz_search_logs", "limit"},
+		{"signoz_search_logs", "offset"},
+		{"signoz_query_metrics", "stepInterval"},
+		{"signoz_list_services", "limit"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.tool+"/"+tc.param, func(t *testing.T) {
+			props := registeredToolProps(t, tc.tool)
+			gotType := propTypeUnion(t, props, tc.param)
+			if !containsString(gotType, "integer") || !containsString(gotType, "string") {
+				t.Fatalf("%s.%s type = %v, want a union containing both \"integer\" and \"string\"", tc.tool, tc.param, gotType)
+			}
+		})
+	}
+}
+
+// propTypeUnion returns the JSON-Schema "type" of a property as a string slice,
+// accepting either a single string ("string") or a type array
+// (["integer","string"]). It fails if the property is absent or carries no type.
+func propTypeUnion(t *testing.T, props map[string]any, name string) []string {
+	t.Helper()
+	prop, ok := props[name].(map[string]any)
+	if !ok {
+		t.Fatalf("property %q = %#v, want object", name, props[name])
+	}
+	switch v := prop["type"].(type) {
+	case string:
+		return []string{v}
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				t.Fatalf("type entry %#v on %q is not a string", e, name)
+			}
+			out = append(out, s)
+		}
+		return out
+	default:
+		t.Fatalf("property %q has no usable type: %#v", name, prop["type"])
+		return nil
+	}
+}

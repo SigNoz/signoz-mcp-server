@@ -25,8 +25,8 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
-		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Must be greater than 0.")),
-		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Must be greater than 0.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
 	addTool(s, listTool, h.handleListServices)

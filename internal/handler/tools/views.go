@@ -244,20 +244,20 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 			// Cost Meter views are queried as metrics against the meter store.
 			if signal == "" {
 				return fmt.Errorf(
-					`parameter validation failed: compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
-					i,
+					`%s compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
+					validationErrorPrefix, i,
 				)
 			}
 			if signal != "metrics" {
 				return fmt.Errorf(
-					`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
-					i, signal,
+					`%s compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
+					validationErrorPrefix, i, signal,
 				)
 			}
 			if source != "meter" {
 				return fmt.Errorf(
-					`parameter validation failed: compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
-					i, source,
+					`%s compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
+					validationErrorPrefix, i, source,
 				)
 			}
 			continue
@@ -265,21 +265,21 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 
 		if signal == "" {
 			return fmt.Errorf(
-				`parameter validation failed: compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
-				i, sourcePage,
+				`%s compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
+				validationErrorPrefix, i, sourcePage,
 			)
 		}
 		if signal != sourcePage {
 			return fmt.Errorf(
-				`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
-				i, signal, sourcePage,
+				`%s compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
+				validationErrorPrefix, i, signal, sourcePage,
 			)
 		}
 		// A Cost Meter query (source="meter") must live on the "meter" page.
 		if source == "meter" {
 			return fmt.Errorf(
-				`parameter validation failed: compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
-				i, sourcePage,
+				`%s compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
+				validationErrorPrefix, i, sourcePage,
 			)
 		}
 	}
@@ -352,7 +352,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	sourcePage, _ := args["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
 		h.logger.WarnContext(ctx, "list_views validation failed", slog.String("sourcePage", sourcePage))
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	name, _ := args["name"].(string)
 	category, _ := args["category"].(string)
@@ -438,14 +438,14 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	sourcePage, _ := args["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	cq, present := args["compositeQuery"]
 	if !present {
-		return mcp.NewToolResultError(`Parameter validation failed: "compositeQuery" is required. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "compositeQuery" is required. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
 	}
 	if err := validateBuilderSignal(cq, sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	body, err := marshalViewBody(args)
@@ -499,23 +499,23 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		unwrapViewEnvelope(view)
 	}
 	if len(view) == 0 {
-		return mcp.NewToolResultError(`Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
 	}
 
 	name, _ := view["name"].(string)
 	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "view.name" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view.name" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
 	}
 	sourcePage, _ := view["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	cq, present := view["compositeQuery"]
 	if !present {
-		return mcp.NewToolResultError(`Parameter validation failed: "view.compositeQuery" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view.compositeQuery" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
 	}
 	if err := validateBuilderSignal(cq, sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	stripNonBodyFields(view)
@@ -540,7 +540,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 			} `json:"data"`
 		}
 		if jerr := json.Unmarshal(existing, &probe); jerr == nil && probe.Data.SourcePage != "" && probe.Data.SourcePage != sourcePage {
-			return mcp.NewToolResultError(fmt.Sprintf(
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
 				`Parameter validation failed: cannot change sourcePage on update (existing=%q, new=%q). Saved views are scoped to an Explorer; delete and re-create to move across Explorers.`,
 				probe.Data.SourcePage, sourcePage,
 			)), nil

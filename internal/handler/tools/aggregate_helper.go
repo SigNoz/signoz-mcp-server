@@ -402,17 +402,40 @@ func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName stri
 
 // warnUnparsedWarningEnvelope (FIX D1) makes QB warning-envelope drift
 // detectable instead of silent. extractBackendWarningMessages walks a fixed
-// path (data.warning.warnings[].message); if the backend renames any of those
-// fields the extraction returns zero messages and nothing is logged. When the
-// raw body still mentions "warning" (case-insensitive) but we extracted none,
-// emit a single WARN carrying a distinctive static marker so the contract drift
-// surfaces in telemetry. It fails open (callers still return the payload) and
-// stays cheap — one substring scan over the bytes.
+// path (data.warning.warnings[].message); if the backend renames a field within
+// that envelope the extraction returns zero messages and nothing is logged.
+//
+// To detect that drift WITHOUT false positives, we inspect only the TOP-LEVEL
+// keys of the "data" object — where the warning envelope lives — never the row
+// contents. Raw search/aggregate payloads carry user telemetry (log bodies,
+// severity labels like "warning", group-by values) that legitimately contain
+// the word "warning"; a whole-body substring scan would spam this WARN and make
+// the signal useless. So we fire only when "data" has a present, non-empty key
+// whose name contains "warning" yet we extracted no messages from it. Fails open
+// (callers still return the payload) and stays cheap (a shallow decode of data).
 func warnUnparsedWarningEnvelope(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, extractedCount int) {
 	if extractedCount > 0 {
 		return
 	}
-	if !bytes.Contains(bytes.ToLower(payload), []byte("warning")) {
+	var probe struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return
+	}
+	hasEnvelope := false
+	for key, raw := range probe.Data {
+		if !strings.Contains(strings.ToLower(key), "warning") {
+			continue
+		}
+		switch string(bytes.TrimSpace(raw)) {
+		case "", "null", "{}", "[]":
+			continue // present but empty — not drift
+		}
+		hasEnvelope = true
+		break
+	}
+	if !hasEnvelope {
 		return
 	}
 	if ctx == nil {
