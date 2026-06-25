@@ -33,7 +33,7 @@ plans/
 
 ## Code Style
 
-- Avoid long inline code comments unless needed; update existing ones.
+- Avoid long inline code comments unless needed; keep comments concise and non-redundant.
 
 ## Documentation & Metadata Sync Checklist
 
