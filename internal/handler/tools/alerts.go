@@ -364,6 +364,9 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "Invalid limit format", slog.Any("limit", args["limit"]), logpkg.ErrAttr(err))
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
+	// Clamp before forwarding upstream — like every sibling raw tool — so an
+	// oversized limit can't bypass the per-request memory/token guard.
+	limit, limitClamped := clampLimit(limit)
 
 	order := "asc"
 	if orderStr, ok := args["order"].(string); ok && orderStr != "" {
@@ -420,8 +423,14 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	// Completeness signal: alert history is a raw passthrough with limit/offset
 	// but no hasMore of its own. Count rows across both known history shapes.
 	returnedRows, rowsKnown := countAlertHistoryRows(respJSON)
-	note := completenessNote(returnedRows, limit, offset, rowsKnown)
-	return resultWithNotes(respJSON, note), nil
+	var notes []string
+	if limitClamped {
+		notes = append(notes, fmt.Sprintf(
+			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range) for more.",
+			MaxRawResultLimit))
+	}
+	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
+	return resultWithNotes(respJSON, notes...), nil
 }
 
 func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

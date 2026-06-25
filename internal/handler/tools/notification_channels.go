@@ -311,29 +311,31 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	// Validate required fields
 	channelType, err := requireStringField(args, "type", ". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	if !validChannelTypes[channelType] {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid channel type: "%s". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`, channelType)), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid channel type: "%s". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`, channelType)), nil
 	}
 
 	name, err := requireStringField(args, "name", ". Provide a unique name for the notification channel")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	sendResolved := true
 	if v, present, err := parseBoolArg(args, "send_resolved"); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
 	} else if present {
 		sendResolved = v
 	}
 
-	// Build receiver JSON based on type
+	// Build receiver JSON based on type. Errors here are per-type required-field
+	// validation failures (e.g. missing slack_api_url) — coded so the caller fixes
+	// args and retries.
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	client, err := h.GetClient(ctx)
@@ -406,35 +408,37 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// Validate id
 	id, err := requireStringField(args, "id", ". Provide the UUID of the notification channel to update")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	// Validate required fields
 	channelType, err := requireStringField(args, "type", ". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	if !validChannelTypes[channelType] {
-		return mcp.NewToolResultError(fmt.Sprintf(`Invalid channel type: "%s". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`, channelType)), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid channel type: "%s". Must be one of: slack, webhook, pagerduty, email, opsgenie, msteams`, channelType)), nil
 	}
 
 	name, err := requireStringField(args, "name", ". Provide a unique name for the notification channel")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	sendResolved := true
 	if v, present, err := parseBoolArg(args, "send_resolved"); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Parameter validation failed: %s`, err.Error())), nil
 	} else if present {
 		sendResolved = v
 	}
 
-	// Build receiver JSON based on type
+	// Build receiver JSON based on type. Errors here are per-type required-field
+	// validation failures (e.g. missing slack_api_url) — coded so the caller fixes
+	// args and retries.
 	receiverJSON, err := buildReceiverJSON(channelType, name, sendResolved, args)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to build receiver JSON", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	client, err := h.GetClient(ctx)
@@ -453,8 +457,15 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// Follow up with a GET so the tool result carries the current channel state —
 	// the PUT returns 204 with no body in the new API.
 	channelResp, getErr := client.GetNotificationChannel(ctx, id)
+	var readBackNote string
 	if getErr != nil {
 		h.logger.WarnContext(ctx, "Channel updated but follow-up GET failed", slog.String("id", id), logpkg.ErrAttr(getErr))
+		// Fail OPEN: the update itself succeeded, so we do not flip IsError. But
+		// the client/LLM must not read a clean success as a verified read-back —
+		// surface the unverified state as an advisory note alongside the body.
+		readBackNote = fmt.Sprintf(
+			"note: read-back after update failed: %s; the update itself succeeded but the returned channel state could not be re-fetched and may be stale.",
+			getErr.Error())
 	}
 
 	// Step 2: Test the channel
@@ -491,8 +502,9 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	}
 
 	// Fail OPEN: the channel WAS updated, so we do not flip IsError. The
-	// test-send failure is surfaced as a prominent advisory note.
-	return structuredResultWithNotes(resultJSON, testFailureNote), nil
+	// test-send failure and any read-back failure are surfaced as advisory notes
+	// (blank notes are skipped by structuredResultWithNotes).
+	return structuredResultWithNotes(resultJSON, testFailureNote, readBackNote), nil
 }
 
 func getStringParam(args map[string]any, key string) string {

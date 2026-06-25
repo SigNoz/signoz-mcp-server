@@ -118,6 +118,28 @@ var validRequestTypes = map[string]bool{
 	"time_series": true,
 }
 
+// readRequestType reads the optional "requestType" argument, rejecting a
+// present-but-non-string value (e.g. true, 123) LOUDLY rather than letting the
+// failed type assertion coerce it to "" and silently default to "scalar". A
+// missing or nil value yields ("", nil) so the caller applies its per-signal
+// default; a present string is returned verbatim (validateRequestType then
+// checks it against the enum). The returned error is threaded the same way
+// validateRequestType's error is — the handler boundary wraps it as a
+// CodeValidationFailed result.
+func readRequestType(args map[string]any) (string, error) {
+	raw, present := args["requestType"]
+	if !present || raw == nil {
+		return "", nil
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf(
+			`%s "requestType" must be a string ("scalar" or "time_series")`,
+			validationErrorPrefix)
+	}
+	return s, nil
+}
+
 // validateRequestType returns an error for an unknown requestType value. An
 // empty value is allowed (the caller applies its per-signal default).
 func validateRequestType(requestType string) error {

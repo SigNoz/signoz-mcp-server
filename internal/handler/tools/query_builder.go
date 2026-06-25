@@ -94,13 +94,20 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 
 	var queryPayload types.QueryPayload
 	if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
+		// Decoding the caller-supplied query object into the typed payload is a
+		// user-input structural mistake (fixable), so it carries the same
+		// VALIDATION_FAILED code as the Validate() path below — distinct from the
+		// marshal errors above/below, which are our own serialization.
 		h.logger.ErrorContext(ctx, "Failed to unmarshal query payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "invalid query payload structure: "+err.Error()), nil
 	}
 
 	if err := queryPayload.Validate(); err != nil {
+		// Validate() rejects user-input mistakes (e.g. an unsupported metrics
+		// requestType); route it through the shared VALIDATION_FAILED code like
+		// the sibling tools instead of returning a bare, code-less error.
 		h.logger.ErrorContext(ctx, "Query validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("query validation error: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "query validation error: "+err.Error()), nil
 	}
 
 	finalQueryJSON, err := json.Marshal(queryPayload)

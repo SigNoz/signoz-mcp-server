@@ -15,11 +15,25 @@ import (
 )
 
 // metricMetadata holds the parsed metadata from signoz_list_metrics response.
+//
+// TemporalityMissing / IsMonotonicMissing record that the metric row WAS matched
+// (named metric found with a non-empty type) but the named companion field was
+// absent/empty in the upstream payload. They drive both the partial-field-drift
+// WARN and the honest "unknown/assumed" phrasing in the [Decisions applied] note,
+// so a guessed default is never reported to the agent as authoritative fact.
 type metricMetadata struct {
-	MetricType  string
-	IsMonotonic bool
-	Temporality string
+	MetricType         string
+	IsMonotonic        bool
+	Temporality        string
+	TemporalityMissing bool
+	IsMonotonicMissing bool
 }
+
+// metricMetadataDriftMarker is the distinctive static log marker emitted when a
+// matched metric row is missing an expected companion field (temporality, or
+// isMonotonic on a sum). Grep this exact string to detect upstream metadata
+// field drift in production logs.
+const metricMetadataDriftMarker = "metric metadata partial-field drift"
 
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, errResult := requireArgsMap(req.Params.Arguments)
@@ -60,8 +74,19 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			mqr.IsMonotonic = meta.IsMonotonic
 			mqr.Temporality = meta.Temporality
 			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched via signoz_list_metrics)", mqr.MetricType))
-			decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
-			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
+			// When a companion field was absent from the fetched metadata, report
+			// it as unknown/assumed rather than authoritative — the value is a
+			// fallback default, not a fact returned by the backend.
+			if meta.TemporalityMissing {
+				decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", mqr.Temporality))
+			} else {
+				decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
+			}
+			if meta.IsMonotonicMissing {
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", mqr.IsMonotonic))
+			} else {
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
+			}
 		} else {
 			return mcp.NewToolResultError(fmt.Sprintf(
 				"Metric %q not found via signoz_list_metrics. "+
@@ -242,7 +267,57 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	if err != nil {
 		return nil, err
 	}
+	// Fail open, but never fail silent: a matched row missing an expected
+	// companion field means upstream renamed/dropped it, and we are about to
+	// apply a possibly-wrong default. Emit a detectable WARN so the drift is
+	// observable even though no per-PR fixture test can catch it against real data.
+	if meta != nil {
+		if meta.TemporalityMissing {
+			h.logger.WarnContext(ctx, metricMetadataDriftMarker,
+				slog.String("metricName", metricName),
+				slog.String("missingField", "temporality"),
+				slog.String("metricType", meta.MetricType))
+		}
+		if meta.IsMonotonicMissing {
+			h.logger.WarnContext(ctx, metricMetadataDriftMarker,
+				slog.String("metricName", metricName),
+				slog.String("missingField", "isMonotonic"),
+				slog.String("metricType", meta.MetricType))
+		}
+	}
 	return meta, nil
+}
+
+// metricMetadataRow mirrors one entry of a ListMetrics response. IsMonotonic is
+// a *bool so an ABSENT field is distinguishable from a present `false` — that
+// distinction is what lets us flag partial upstream-field drift (a renamed/
+// dropped isMonotonic) instead of silently assuming non-monotonic.
+type metricMetadataRow struct {
+	MetricName  string `json:"metricName"`
+	Type        string `json:"type"`
+	IsMonotonic *bool  `json:"isMonotonic"`
+	Temporality string `json:"temporality"`
+}
+
+// metricMetadataFromRow builds metricMetadata from a matched row, recording
+// which companion fields were missing so callers can WARN and phrase the
+// decision honestly. Drift flags only apply when the row genuinely matched
+// (non-empty type) — a not-found / typeless row is a different failure mode.
+func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
+	mt := normalizeMetricType(m.Type)
+	isMono := m.IsMonotonic != nil && *m.IsMonotonic
+	meta := &metricMetadata{
+		MetricType:  mt,
+		IsMonotonic: isMono,
+		Temporality: m.Temporality,
+	}
+	if mt != "" {
+		meta.TemporalityMissing = m.Temporality == ""
+		// isMonotonic is only meaningful for sums; only treat its absence as
+		// drift there (gauges/histograms legitimately omit it).
+		meta.IsMonotonicMissing = mt == "sum" && m.IsMonotonic == nil
+	}
+	return meta
 }
 
 // parseMetricMetadataFromResponse extracts metric metadata from the ListMetrics response.
@@ -251,56 +326,28 @@ func parseMetricMetadataFromResponse(data json.RawMessage, metricName string) (*
 	var wrapper struct {
 		Status string `json:"status"`
 		Data   struct {
-			Metrics []struct {
-				MetricName  string `json:"metricName"`
-				Type        string `json:"type"`
-				IsMonotonic bool   `json:"isMonotonic"`
-				Temporality string `json:"temporality"`
-			} `json:"metrics"`
+			Metrics []metricMetadataRow `json:"metrics"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper.Data.Metrics) > 0 {
 		for _, m := range wrapper.Data.Metrics {
 			if m.MetricName == metricName {
-				return &metricMetadata{
-					MetricType:  normalizeMetricType(m.Type),
-					IsMonotonic: m.IsMonotonic,
-					Temporality: m.Temporality,
-				}, nil
+				return metricMetadataFromRow(m), nil
 			}
 		}
 		// If exact match not found, return the first result if search was specific
-		m := wrapper.Data.Metrics[0]
-		return &metricMetadata{
-			MetricType:  normalizeMetricType(m.Type),
-			IsMonotonic: m.IsMonotonic,
-			Temporality: m.Temporality,
-		}, nil
+		return metricMetadataFromRow(wrapper.Data.Metrics[0]), nil
 	}
 
 	// Try format: [{"metricName":"...", "type":"...", ...}]
-	var metrics []struct {
-		MetricName  string `json:"metricName"`
-		Type        string `json:"type"`
-		IsMonotonic bool   `json:"isMonotonic"`
-		Temporality string `json:"temporality"`
-	}
+	var metrics []metricMetadataRow
 	if err := json.Unmarshal(data, &metrics); err == nil && len(metrics) > 0 {
 		for _, m := range metrics {
 			if m.MetricName == metricName {
-				return &metricMetadata{
-					MetricType:  normalizeMetricType(m.Type),
-					IsMonotonic: m.IsMonotonic,
-					Temporality: m.Temporality,
-				}, nil
+				return metricMetadataFromRow(m), nil
 			}
 		}
-		m := metrics[0]
-		return &metricMetadata{
-			MetricType:  normalizeMetricType(m.Type),
-			IsMonotonic: m.IsMonotonic,
-			Temporality: m.Temporality,
-		}, nil
+		return metricMetadataFromRow(metrics[0]), nil
 	}
 
 	return nil, nil

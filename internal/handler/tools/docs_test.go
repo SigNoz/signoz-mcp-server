@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
 )
 
@@ -125,6 +127,32 @@ func TestDocsHandlers(t *testing.T) {
 		require.Equal(t, docsindex.DocsSitemapURI, text.URI)
 		require.Contains(t, text.Text, "Send logs to SigNoz")
 	})
+}
+
+// TestSearchDocs_SearchTextNotSchemaRequired pins the schema-aware-client
+// contract for the docs search tool: "searchText" must be an advertised
+// property but must NOT appear in the required list. The handler enforces "one
+// of searchText/query is present" itself; marking searchText mcp.Required()
+// would reject a legacy "query"-only call at the schema layer before the
+// handler's alias fallback ever runs (the alias would be dead for validating
+// clients). Mirrors TestUpdateStructs_IDNotSchemaRequired for the id-alias
+// tools.
+func TestSearchDocs_SearchTextNotSchemaRequired(t *testing.T) {
+	h := newTestHandler(&signozclient.MockClient{})
+	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	h.RegisterDocsHandlers(s)
+
+	tools := s.ListTools()
+	st, ok := tools["signoz_search_docs"]
+	require.True(t, ok, "signoz_search_docs not registered")
+
+	props := inputSchemaProperties(t, st.Tool)
+	_, ok = props["searchText"]
+	require.True(t, ok, "searchText must remain an advertised property: %#v", props)
+
+	required := inputSchemaRequiredFields(t, st.Tool)
+	require.False(t, containsString(required, "searchText"),
+		"searchText must NOT be schema-required (would make the legacy query alias unusable for validating clients), got: %#v", required)
 }
 
 func newDocsTestHandler(t *testing.T) (*Handler, func()) {
