@@ -543,7 +543,7 @@ Gets alert history timeline for a specific rule.
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
   - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
   - `offset` (optional) - Offset for pagination (default: 0)
-  - `limit` (optional) - Limit number of results (default: 20)
+  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `offset`)
   - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch
 
