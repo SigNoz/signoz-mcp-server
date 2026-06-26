@@ -22,9 +22,10 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 				"Returns raw usage references per metric — dashboards and alerts only. "+
 				"Use this to understand metric dependencies before making drop or reduction decisions."),
 		mcp.WithString("searchContext",
-			mcp.Description("The user's original question or search text that triggered this tool call.")),
+			mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithArray("metricNames",
 			mcp.Required(),
+			mcp.WithStringItems(),
 			mcp.Description("Array of metric name strings to check. Example: [\"system.disk.io\", \"k8s.node.condition\"]."),
 		),
 	)

@@ -30,6 +30,7 @@ type metricAlertRef struct {
 type MetricUsage struct {
 	Dashboards []string `json:"dashboards"`
 	Alerts     []string `json:"alerts"`
+	Error      string   `json:"error,omitempty"`
 }
 
 // CheckMetricUsage returns dashboard and alert references for each metric in
@@ -38,7 +39,13 @@ type MetricUsage struct {
 // one metric, sequentially. A 404 from either endpoint is treated as an empty
 // result, not an error. Dashboard names are deduplicated (one metric can appear
 // in multiple widgets of the same dashboard).
+//
+// Errors are stored per-metric in MetricUsage.Error rather than aborting the
+// whole batch — a transient 5xx on one metric must not discard results for the
+// rest.
 func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error) {
+	ctx = s.ensureTenantContext(ctx)
+
 	// Deduplicate and filter empty strings to avoid malformed URLs and redundant API calls.
 	seen := make(map[string]struct{})
 	var filtered []string
@@ -68,16 +75,20 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 		g.Go(func() error {
 			usage, err := s.fetchMetricUsage(gctx, name)
 			if err != nil {
-				return err
+				// Store per-metric error instead of cancelling the whole batch.
+				results[i] = result{name: name, usage: MetricUsage{
+					Dashboards: []string{},
+					Alerts:     []string{},
+					Error:      err.Error(),
+				}}
+				return nil
 			}
 			results[i] = result{name: name, usage: usage}
 			return nil
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
+	g.Wait() // always nil — goroutines never return errors
 
 	out := make(map[string]MetricUsage, len(names))
 	for _, r := range results {
@@ -103,7 +114,7 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		// 404 = metric not tracked → empty dashboards
 	} else {
 		// Fail-open contract check: warn if the expected shape is absent so silent
-		// degradation is detectable in production (see CONTRIBUTING.md §Testing across
+		// degradation is detectable in production (see CLAUDE.md §Testing across
 		// external contracts).
 		var dashProbe struct {
 			Data *struct {

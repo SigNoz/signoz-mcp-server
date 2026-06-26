@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -146,25 +148,64 @@ func TestCheckMetricUsage_ContractCheckDashboards(t *testing.T) {
 
 // --- CheckMetricUsage integration ---
 
-func TestCheckMetricUsage_Route404DoesNotSilentlySucceed(t *testing.T) {
+func TestCheckMetricUsage_Route404StoredAsPerMetricError(t *testing.T) {
+	// Route-level 404 (plain text) must not be silently swallowed as empty usage.
+	// With per-metric error storage it surfaces in MetricUsage.Error, not as a
+	// batch-level error return.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("404 page not found\n"))
 	}))
 	defer srv.Close()
 
-	var buf bytes.Buffer
-	logger := newBufferedLogger(&buf, -4)
-	c := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, result["system.cpu.time"].Error, "route-level 404 must surface as per-metric error")
+}
 
-	_, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
-	assert.Error(t, err, "route-level 404 must propagate as error, not be swallowed")
+func TestCheckMetricUsage_5xxStoredAsPerMetricError(t *testing.T) {
+	// A transient 5xx on one metric must not discard results for the rest.
+	var callCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
+	require.NoError(t, err, "5xx must not propagate as batch-level error")
+	assert.NotEmpty(t, result["system.cpu.time"].Error, "5xx must surface as per-metric error")
+}
+
+func TestCheckMetricUsage_PartialFailureRetainsOtherResults(t *testing.T) {
+	// When one metric's request fails, other metrics' results must still be returned.
+	// Failure is keyed on URL path (not call order) so the test is goroutine-order independent.
+	okBody, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}, "alerts": []any{}}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "metric.fail") {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"oops"}`))
+		} else {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(okBody)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := c.CheckMetricUsage(context.Background(), []string{"metric.fail", "metric.ok"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, result["metric.fail"].Error, "failed metric must have error set")
+	assert.Empty(t, result["metric.ok"].Error, "successful metric must have no error")
 }
 
 func TestCheckMetricUsage_DeduplicatesInputNames(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 		w.WriteHeader(http.StatusOK)
 		if r.URL.Path[len(r.URL.Path)-len("dashboards"):] == "dashboards" {
 			body, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}}})
@@ -180,5 +221,5 @@ func TestCheckMetricUsage_DeduplicatesInputNames(t *testing.T) {
 	_, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time", "system.cpu.time", ""})
 	require.NoError(t, err)
 	// Deduplicated to 1 unique name, blank filtered — so 2 API calls (dashboards + alerts)
-	assert.Equal(t, 2, callCount)
+	assert.Equal(t, int32(2), callCount.Load())
 }

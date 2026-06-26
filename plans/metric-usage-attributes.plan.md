@@ -74,7 +74,7 @@ type metricDashboardRef struct {
 
 ---
 
-### Tool 2: `signoz_get_metric_attributes`
+### Tool 2: `signoz_check_metric_cardinality` (shipped on PR #208, not this PR)
 
 **Purpose:** Return label/attribute keys for a single metric with their cardinality counts, sorted
 highest-first. Called AFTER `signoz_check_metric_usage` confirms the metric is in use — attribute
