@@ -41,7 +41,7 @@ func ResourceWebURL(base, resourceType, id string) (string, bool) {
 //
 // The body is decoded only one level deep (two for the {"data": {...}} wrap)
 // into map[string]json.RawMessage, so everything below the injection level —
-// span trees, large int64 fields like durationNano, number formatting, key
+// span trees, large int64 fields like duration_nano, number formatting, key
 // order — passes through as verbatim bytes rather than being re-encoded. On
 // any failure — empty base, unsupported type, or a body that is not a JSON
 // object — it returns the original bytes unchanged so enrichment can never
@@ -112,16 +112,17 @@ type InjectRowsResult struct {
 // many rows it saw versus enriched.
 //
 // The expected nesting (a render.Success envelope wrapping a QueryRangeResponse)
-// is data.data.results[].rows[].data, with the id under rows[].data[idKey]; for
-// traces that is data.traceID. Like InjectWebURL it decodes only as deep as each
-// mutated level, leaving siblings — large int64 fields like durationNano, number
+// is data.data.results[].rows[].data, with the id under the first matching
+// rows[].data[idKeys] entry; for traces that is data.trace_id, with legacy
+// fallback keys during migration. Like InjectWebURL it decodes only as deep as each
+// mutated level, leaving siblings — large int64 fields like duration_nano, number
 // formatting, key order — as verbatim json.RawMessage. Rows whose id is missing,
 // empty, or non-string are left untouched. On any failure — empty base or a body
 // that does not match the expected shape — it returns the original bytes
 // unchanged so enrichment can never corrupt a working response.
-func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, InjectRowsResult) {
+func InjectRowsWebURL(data []byte, base, resourceType string, idKeys ...string) ([]byte, InjectRowsResult) {
 	var res InjectRowsResult
-	if strings.TrimSpace(base) == "" {
+	if strings.TrimSpace(base) == "" || len(idKeys) == 0 {
 		return data, res
 	}
 
@@ -167,7 +168,7 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, In
 		rowsChanged := false
 		for i, rawRow := range rows {
 			res.RowsSeen++
-			injected, ok := injectRowWebURL(rawRow, base, resourceType, idKey)
+			injected, ok := injectRowWebURL(rawRow, base, resourceType, idKeys)
 			if !ok {
 				continue
 			}
@@ -213,10 +214,11 @@ func InjectRowsWebURL(data []byte, base, resourceType, idKey string) ([]byte, In
 }
 
 // injectRowWebURL adds a webUrl sibling to a single raw row's inner "data"
-// object using rows[].data[idKey] as the resource id. ok is false (and the row
+// object using the first non-empty rows[].data[idKeys] string as the resource id.
+// ok is false (and the row
 // is left untouched) when the row shape is unexpected, the id is missing/empty,
 // or no link can be built for the type.
-func injectRowWebURL(rawRow json.RawMessage, base, resourceType, idKey string) (json.RawMessage, bool) {
+func injectRowWebURL(rawRow json.RawMessage, base, resourceType string, idKeys []string) (json.RawMessage, bool) {
 	row, ok := decodeShallowObject(rawRow)
 	if !ok {
 		return nil, false
@@ -226,8 +228,8 @@ func injectRowWebURL(rawRow json.RawMessage, base, resourceType, idKey string) (
 		return nil, false
 	}
 
-	var id string
-	if err := json.Unmarshal(rowData[idKey], &id); err != nil {
+	id, ok := firstStringValue(rowData, idKeys)
+	if !ok {
 		return nil, false
 	}
 	webURL, ok := ResourceWebURL(base, resourceType, id)
@@ -250,6 +252,22 @@ func injectRowWebURL(rawRow json.RawMessage, base, resourceType, idKey string) (
 		return nil, false
 	}
 	return rowJSON, true
+}
+
+func firstStringValue(obj map[string]json.RawMessage, keys []string) (string, bool) {
+	for _, key := range keys {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		var value string
+		if err := json.Unmarshal(obj[key], &value); err != nil {
+			continue
+		}
+		if strings.TrimSpace(value) != "" {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 // remarshalUp re-encodes the queryData -> qrr -> envelope nesting after results

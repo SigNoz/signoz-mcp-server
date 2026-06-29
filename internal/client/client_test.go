@@ -1251,6 +1251,31 @@ func TestQueryBuilderV5(t *testing.T) {
 	}
 }
 
+func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
+	var captured []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/v5/query_range", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		captured = body
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
+	}))
+	defer server.Close()
+
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.GetTraceDetails(context.Background(), "abc123", true, 1711123200000, 1711130400000)
+	require.NoError(t, err)
+
+	payload := string(captured)
+	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
+	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
+}
+
 func TestCreateDashboard(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
