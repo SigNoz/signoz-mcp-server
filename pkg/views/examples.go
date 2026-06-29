@@ -53,7 +53,7 @@ Meter Explorer views (sourcePage "meter" + signal "metrics" + source "meter").
             "signal": "traces",
             "source": "",
             "stepInterval": 0,
-            "filter": { "expression": "hasError = true" },
+            "filter": { "expression": "has_error = true" },
             "having": { "expression": "" }
           }
         }]

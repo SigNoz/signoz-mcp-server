@@ -57,31 +57,31 @@ func TestParseBoolArg(t *testing.T) {
 // N3: the `error` trace filter must hard-error on garbage rather than silently
 // dropping the filter (which widened results).
 func TestParseSearchTracesArgs_ErrorFilter(t *testing.T) {
-	// real bool true -> hasError = true
+	// real bool true -> has_error = true
 	reqTrue, err := parseSearchTracesArgs(map[string]any{"error": true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(reqTrue.FilterExpression, "hasError = true") {
-		t.Fatalf("expected hasError = true in filter, got %q", reqTrue.FilterExpression)
+	if !strings.Contains(reqTrue.FilterExpression, "has_error = true") {
+		t.Fatalf("expected has_error = true in filter, got %q", reqTrue.FilterExpression)
 	}
 
-	// string "false" -> hasError = false
+	// string "false" -> has_error = false
 	reqFalse, err := parseSearchTracesArgs(map[string]any{"error": "false"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(reqFalse.FilterExpression, "hasError = false") {
-		t.Fatalf("expected hasError = false in filter, got %q", reqFalse.FilterExpression)
+	if !strings.Contains(reqFalse.FilterExpression, "has_error = false") {
+		t.Fatalf("expected has_error = false in filter, got %q", reqFalse.FilterExpression)
 	}
 
-	// absent -> no hasError clause
+	// absent -> no generated error clause
 	reqAbsent, err := parseSearchTracesArgs(map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.Contains(reqAbsent.FilterExpression, "hasError") {
-		t.Fatalf("expected no hasError clause when absent, got %q", reqAbsent.FilterExpression)
+	if strings.Contains(reqAbsent.FilterExpression, "has_error") {
+		t.Fatalf("expected no has_error clause when absent, got %q", reqAbsent.FilterExpression)
 	}
 
 	// garbage -> hard error (previously silently dropped + widened results)

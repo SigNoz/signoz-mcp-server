@@ -623,8 +623,8 @@ func e2eFindTraceID(t *testing.T, h *Handler, ctx context.Context) string {
 		return ""
 	}
 	body := firstTextBlock(t, res)
-	// Walk data.data.results[].rows[].data.traceID (the same shape the row
-	// counter uses); fall back to a loose scan for any "traceID"/"trace_id".
+	// Walk data.data.results[].rows[].data trace id fields. Prefer the
+	// canonical trace_id key, with legacy fallbacks for older raw responses.
 	var env struct {
 		Data struct {
 			Data struct {
@@ -639,7 +639,7 @@ func e2eFindTraceID(t *testing.T, h *Handler, ctx context.Context) string {
 	if err := json.Unmarshal([]byte(body), &env); err == nil {
 		for _, r := range env.Data.Data.Results {
 			for _, row := range r.Rows {
-				for _, k := range []string{"traceID", "trace_id", "traceId"} {
+				for _, k := range []string{"trace_id", "traceID", "traceId"} {
 					if v, ok := row.Data[k].(string); ok && v != "" {
 						return v
 					}

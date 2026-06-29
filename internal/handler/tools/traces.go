@@ -15,7 +15,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND hasError = true\", \"httpMethod = 'POST' AND (responseStatusCode >= 500 OR durationNano > 1000000000)\"."
+const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key>, resource.<key>, or span.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano > 1000000000)\"."
 
 func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering traces handlers")
@@ -30,15 +30,15 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 			"Also use this for error analysis — set error='true' and groupBy='service.name' to analyze error patterns across services. "+
 			"Defaults to last 1 hour if no time specified."),
 		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
-		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'durationNano'). Required for all aggregations except count and rate.")),
+		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'duration_nano'). Required for all aggregations except count and rate.")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.")),
 		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with service/operation/error/duration params using AND.")),
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
 		mcp.WithString("operation", mcp.Description("Shortcut filter for span/operation name. Equivalent to adding name = '<value>' to filter.")),
-		mcp.WithBoolean("error", mcp.Description("Shortcut filter for error spans (true or false). Equivalent to adding hasError = true/false to filter.")),
+		mcp.WithBoolean("error", mcp.Description("Shortcut filter for error spans (true or false). Equivalent to adding has_error = true/false to filter.")),
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
-		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(durationNano) asc'. Defaults to the aggregation expression descending.")),
+		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the aggregation expression descending.")),
 		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 10, max: 10000; higher values are clamped)")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
@@ -218,16 +218,17 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 
 // enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough
 // body. Delegates to util.InjectWebURL, which preserves large int64 fields
-// (e.g. durationNano) and fails open on unparseable input.
+// (e.g. duration_nano) and fails open on unparseable input.
 func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte {
 	base, _ := util.GetSigNozURL(ctx)
 	return util.InjectWebURL(data, base, "trace", traceID)
 }
 
 // enrichSearchTracesWebURL injects a per-row webUrl deep link into a search
-// traces passthrough body, one per result row keyed off each row's traceID.
+// traces passthrough body, one per result row keyed off each row's trace_id
+// (with legacy traceID/traceId fallbacks during migration).
 // Delegates to util.InjectRowsWebURL, which preserves large int64 fields
-// (e.g. durationNano) and fails open on unparseable input.
+// (e.g. duration_nano) and fails open on unparseable input.
 //
 // Enrichment is fail-open, so a change to the upstream response would silently
 // stop producing links. The handler only runs on a 2xx /api/v5/query_range body
@@ -242,7 +243,7 @@ func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []b
 		return data // no instance URL on the request — nothing to enrich, nothing to warn about
 	}
 
-	out, res := util.InjectRowsWebURL(data, base, "trace", "traceID")
+	out, res := util.InjectRowsWebURL(data, base, "trace", "trace_id", "traceID", "traceId")
 	switch {
 	case !res.ResultsReached:
 		h.logger.WarnContext(ctx,
@@ -251,10 +252,11 @@ func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []b
 		h.logger.WarnContext(ctx,
 			"search_traces webUrl enrichment found result objects but no readable rows[] array; the per-result rows key may have changed",
 			slog.Int("resultCount", res.ResultCount))
-	case res.RowsSeen > 0 && res.RowsEnriched == 0:
+	case res.RowsSeen > res.RowsEnriched:
 		h.logger.WarnContext(ctx,
-			"search_traces webUrl enrichment found rows but enriched none; the traceID column alias may have changed",
-			slog.Int("rowsSeen", res.RowsSeen))
+			"search_traces webUrl enrichment found rows without supported trace id columns trace_id/traceID/traceId",
+			slog.Int("rowsSeen", res.RowsSeen),
+			slog.Int("rowsEnriched", res.RowsEnriched))
 	}
 	return out
 }

@@ -92,16 +92,16 @@ func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPr
 	}
 	if errorPresent {
 		if errorFilter {
-			parts = append(parts, "hasError = true")
+			parts = append(parts, "has_error = true")
 		} else {
-			parts = append(parts, "hasError = false")
+			parts = append(parts, "has_error = false")
 		}
 	}
 	if minDuration != "" {
-		parts = append(parts, fmt.Sprintf("durationNano >= %s", minDuration))
+		parts = append(parts, fmt.Sprintf("duration_nano >= %s", minDuration))
 	}
 	if maxDuration != "" {
-		parts = append(parts, fmt.Sprintf("durationNano <= %s", maxDuration))
+		parts = append(parts, fmt.Sprintf("duration_nano <= %s", maxDuration))
 	}
 	return strings.Join(parts, " AND ")
 }
