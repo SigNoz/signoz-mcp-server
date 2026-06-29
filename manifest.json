@@ -90,6 +90,10 @@
       "description": "Update an existing dashboard by id (param 'id')"
     },
     {
+      "name": "signoz_patch_dashboard",
+      "description": "Apply an RFC 6902 JSON Patch to a dashboard by id (partial update without re-sending the whole dashboard)"
+    },
+    {
       "name": "signoz_delete_dashboard",
       "description": "Delete a dashboard by id (param 'id')"
     },

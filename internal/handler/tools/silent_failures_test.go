@@ -770,13 +770,16 @@ func TestHandleSearchLogs_AppendsCompletenessNote(t *testing.T) {
 // --- N5: empty/non-array data coerced to empty page ---
 
 func TestHandleListDashboards_NullDataEmptyPage(t *testing.T) {
+	// v2 list is a pass-through of the ListableDashboardV2 body — degenerate or
+	// empty responses are forwarded verbatim without erroring (no client-side
+	// coercion to a "data" array, which the v1 list used to do).
 	for _, body := range []string{
-		`{"status":"success","data":null}`,
-		`{"status":"success"}`,
-		`{"status":"success","data":{}}`,
+		`{"dashboards":null,"tags":[],"total":0}`,
+		`{}`,
+		`{"dashboards":[],"tags":[],"total":0}`,
 	} {
 		mock := &client.MockClient{
-			ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
+			ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
 				return json.RawMessage(body), nil
 			},
 		}
@@ -787,16 +790,11 @@ func TestHandleListDashboards_NullDataEmptyPage(t *testing.T) {
 			t.Fatalf("body=%s unexpected error: %v", body, err)
 		}
 		if result.IsError {
-			t.Fatalf("body=%s expected empty page, got error result: %v", body, result.Content)
+			t.Fatalf("body=%s expected success, got error result: %v", body, result.Content)
 		}
 		text := textContent(t, result)
-		var resp map[string]any
-		if err := json.Unmarshal([]byte(text), &resp); err != nil {
-			t.Fatalf("body=%s response not JSON: %v", body, err)
-		}
-		data, ok := resp["data"].([]any)
-		if !ok || len(data) != 0 {
-			t.Fatalf("body=%s expected empty data array, got %v", body, resp["data"])
+		if !json.Valid([]byte(text)) {
+			t.Fatalf("body=%s response not forwarded as JSON: %s", body, text)
 		}
 	}
 }

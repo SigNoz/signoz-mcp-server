@@ -1,1344 +1,614 @@
 package dashboard
 
 const WidgetExamples = `
-=== SIGNOZ DASHBOARD CREATION GUIDELINES ===
-
-CRITICAL: Use NEW Query Builder Format ONLY DO NOT mix old and new query builder formats in the same dashboard.
-
-=== QUERY BUILDER FORMAT ===
-
---- CORRECT Format (NEW - V5) ---
-
-Use this format for ALL widgets:
-
-queryData:
-
-queryName: A dataSource: traces expression: A stepInterval: 60 aggregations:
-expression: count() filter: expression: service.name in $service_name groupBy:
-key: service.name dataType: string type: resource legend: {{service.name}}
---- INCORRECT Format (OLD - DEPRECATED) ---
-
-DO NOT USE these fields: aggregateOperator: count aggregateAttribute: key: duration_nano dataType: float64
-
-ERROR: If you use aggregateOperator or aggregateAttribute, the dashboard may not work correctly. SOLUTION: Always use aggregations array with expression strings instead.
-
-=== FIELD NAMING CONVENTIONS ===
-
---- selectColumns (for list panels) ---
-
-CORRECT: selectColumns: - name: service.name # Use 'name' not 'key' fieldContext: resource # REQUIRED fieldDataType: string # REQUIRED signal: traces # REQUIRED - name: duration_nano fieldContext: span signal: traces
-
-INCORRECT: selectColumns: - key: service.name # ERROR: Should be 'name' dataType: string
-
-ERROR: Using 'key' instead of 'name' in selectColumns causes frontend crash. ERROR: Missing fieldContext or signal causes rendering errors. SOLUTION: Always use 'name' field and include fieldContext, signal for selectColumns.
-
---- groupBy (for graph, bar, histogram, pie, table panels) ---
-
-CORRECT: groupBy: - key: llm.model_name # Use 'key' not 'name' dataType: string type: tag
-
-INCORRECT: groupBy: - name: llm.model_name # ERROR: Should be 'key' dataType: string
-
-ERROR: Using 'name' instead of 'key' in groupBy causes query errors. SOLUTION: Always use 'key' field in groupBy.
-
---- having (write-shape) ---
-
-CORRECT (write): having: []  OR  having: [{columnName: count, op: '>', value: 10}]
-
-INCORRECT (write): having: {expression: ""}  # this is the GET-response shape; sending it back on write fails.
-
-ERROR: Sending the object form {expression: ""} to POST/PUT is rejected. SOLUTION: Use the array form. The server auto-coerces the empty object form to [] when round-tripping a GET payload, but prefer sending [] directly.
-
---- filters.items (structured filters) ---
-
-CORRECT: filters: op: AND items: - key: key: service.name # Use 'key' not 'name' dataType: string op: IN value: $service_name
-
-INCORRECT: filters: items: - key: name: service.name # ERROR: Should be 'key' op: IN value: $service_name
-
-ERROR: Using 'name' in filter items causes filter parsing errors. SOLUTION: Always use 'key' field in filters.items[].key.
-
---- filters.items[].key (write-shape for edit-modal hydration) ---
-
-CORRECT (write):
-  filters.items[0].key = {key: k8s.node.name, dataType: string, type: "", id: "k8s.node.name--string--"}
-
-INCORRECT (write):
-  filters.items[0].key = {key: k8s.node.name, type: ""}                              # missing dataType, malformed id
-  filters.items[0].key = {key: k8s.node.name, dataType: string, id: "k8s.node.name"}  # id missing --<dataType>--<type> suffix
-
-Canonical id form is <key>--<dataType>--<type> (trailing "--" is correct when type is empty). The SigNoz edit modal reverse-maps the key back to the autocomplete dropdown by this id; a malformed id makes the filter row fail to hydrate even though the list/graph renders fine (it uses the top-level filter.expression string).
-
-For variable references on IN filters, always send value as a plain string like "$var", not a single-element array like ["$var"]. The array form causes the form row to misrender.
-
-The server auto-heals all three cases (fills dataType, rebuilds malformed id, unwraps single-$var arrays) so a GET-echoed payload round-trips cleanly — but prefer sending the canonical shape directly.
-
---- filters.items[].op (write-shape casing) ---
-
-CORRECT (write): op: IN  OR  op: NOT_IN  OR  op: LIKE  OR  op: EXISTS  OR  op: =  OR  op: !=
-
-INCORRECT (write): op: in  OR  op: Not_In  OR  op: like  # lowercase/mixed-case as returned by some GET responses
-
-Canonical operators (uppercase word ops; symbol ops unaffected by case): IN, NOT_IN, LIKE, NOT_LIKE, ILIKE, NOT_ILIKE, REGEX, NOT_REGEX, EXISTS, NOT_EXISTS, CONTAINS, NOT_CONTAINS, HAS, NHAS, =, !=, >=, >, <=, <.
-
-ERROR: Sending lowercase or mixed-case word operators to POST/PUT is rejected by panel validation. SOLUTION: Use uppercase. The server trims + uppercases filter operators when round-tripping a GET payload, but prefer sending uppercase directly.
-
-=== PANEL TYPE REQUIREMENTS ===
-
---- graph Panel ---
-
-REQUIRED FIELDS:
-
-aggregations
-filter or filters
-queryName
-dataSource
-expression
-OPTIONAL FIELDS:
-
-groupBy (for multiple series)
-legend (REQUIRED when groupBy is used - use {{attribute_name}} syntax matching groupBy keys)
-EXAMPLE: panelTypes: graph query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name
-
-ERROR: Missing aggregations causes "No data" error. ERROR: Missing filter may show unfiltered data.
-
---- list Panel ---
-
-REQUIRED FIELDS:
-
-aggregations
-selectColumns (CRITICAL!)
-orderBy
-pageSize
-queryName
-dataSource
-expression
-EXAMPLE: panelTypes: list query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() filter: expression: has_error = true orderBy: - columnName: timestamp order: desc pageSize: 10 selectColumns: - name: service.name fieldContext: resource fieldDataType: string signal: traces - name: duration_nano fieldContext: span signal: traces
-
-ERROR: Missing selectColumns causes FRONTEND CRASH when opening dashboard editor. ERROR: selectColumns with 'key' instead of 'name' causes rendering errors. ERROR: Missing fieldContext or signal in selectColumns causes column display errors. ERROR: Missing orderBy causes unpredictable row ordering. SOLUTION: ALWAYS include selectColumns with proper structure for list panels.
-
---- pie Panel ---
-
-REQUIRED FIELDS:
-
-aggregations
-groupBy (CRITICAL!)
-legend
-queryName
-dataSource
-expression
-EXAMPLE: panelTypes: pie query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() filter: expression: service.name in $service_name groupBy: - key: llm.model_name dataType: string type: tag legend: {{llm.model_name}}
-
-ERROR: Missing groupBy causes "No data" or single slice. ERROR: Missing legend causes unlabeled slices. ERROR: Using 'name' instead of 'key' in groupBy causes query errors. SOLUTION: Always include groupBy with 'key' field and legend with template variables.
-
---- table Panel ---
-
-REQUIRED FIELDS:
-
-aggregations
-groupBy (CRITICAL!)
-queryName
-dataSource
-expression
-EXAMPLE: panelTypes: table query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() as 'Requests' avg(duration_nano) as 'Latency' filter: expression: service.name in $service_name groupBy: - key: service.name dataType: string type: resource isColumn: true
-
-ERROR: Missing groupBy causes single row output. ERROR: Missing 'as' aliases in aggregations causes unclear column names. SOLUTION: Always include groupBy and use aliases in aggregation expressions.
-
---- value Panel ---
-
-REQUIRED FIELDS:
-
-aggregations
-queryName
-dataSource
-expression
-EXAMPLE: panelTypes: value query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: sum(llm.token_count.prompt) filter: expression: service.name in $service_name
-
-ERROR: Missing aggregations causes "No data". ERROR: Using groupBy causes multiple values instead of single value. SOLUTION: Do not use groupBy for value panels.
-
---- row Panel ---
-
-REQUIRED FIELDS:
-
-title
-EXAMPLE: panelTypes: row title: Performance Metrics
-
-NOTE: Row panels are just section headers, no query needed.
-
-=== AGGREGATION EXPRESSIONS ===
-
---- Supported Expressions ---
-
-Count: expression: count()
-
-Percentiles: expression: p50(duration_nano) expression: p95(duration_nano) expression: p99(duration_nano)
-
-Statistical: expression: avg(duration_nano) expression: sum(llm.token_count.prompt) expression: min(duration_nano) expression: max(duration_nano)
-
-With Aliases (for tables): expression: count() as 'Total Requests' expression: avg(duration_nano) as 'Avg Latency'
-
-Multiple in One Query (for tables): expression: count() as 'Requests' avg(duration_nano) as 'Latency'
-
-ERROR: Invalid function names cause query errors. ERROR: Missing parentheses causes syntax errors. ERROR: Typos in field names cause "field not found" errors.
-
-=== FILTER EXPRESSIONS ===
-
---- String Expression Format (Recommended) ---
-
-Simple: filter: expression: service.name in $service_name
-
-Multiple Conditions: filter: expression: service.name in $service_name AND has_error = true
-
-With Variables: filter: expression: service.name in $service_name telemetry.sdk.language in $language
-
-Existence Check: filter: expression: llm.model_name EXISTS
-
---- Structured Filter Format (Optional) ---
-
-filters: op: AND items: - key: key: service.name dataType: string op: IN value: $service_name - key: key: has_error op: = value: true
-
-NOTE: You can use BOTH filter.expression AND filters.items together for compatibility. When you do, they MUST stay consistent: every key.key in filters.items must appear in filter.expression. The MCP server REJECTS dashboards where a filter item's key is missing from the expression — even though the SigNoz backend would accept the payload. Rationale: the list/graph renderer reads filter.expression directly, while the edit-modal's expression-reconstruction path walks filters.items[]. A mismatch causes the two to execute different queries, silently dropping predicates in the list view and breaking edit-modal hydration. If the two must differ intentionally, send only one side (leave filter.expression empty OR leave filters.items unset).
-
-ERROR: Invalid operators cause filter errors. ERROR: Missing $ prefix for variables causes literal string matching. ERROR: Typo in field names causes no data.
-
-=== FORMULA QUERIES ===
-
-For calculated metrics (like error rate):
-
-builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = 'true' - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' queryFormulas: - queryName: F1 expression: A / (A+B)
-
-ERROR: Not disabling base queries shows multiple series. ERROR: Invalid formula syntax causes calculation errors. SOLUTION: Always set disabled: true for base queries when using formulas.
-
-=== COMMON ERRORS AND SOLUTIONS ===
-
---- Error: Frontend Crash on Dashboard Editor ---
-
-CAUSE: Missing selectColumns in list panel SYMPTOM: Dashboard loads but crashes when clicking "Edit" SOLUTION: Add selectColumns with name, fieldContext, signal fields
-
-INCORRECT: panelTypes: list queryData: - aggregations: [...] # Missing selectColumns
-
-CORRECT: panelTypes: list queryData: - aggregations: [...] selectColumns: - name: service.name fieldContext: resource signal: traces
-
---- Error: No Data Displayed ---
-
-CAUSE 1: Missing aggregations SOLUTION: Add aggregations array with expression
-
-CAUSE 2: Missing groupBy for pie/table panels SOLUTION: Add groupBy array
-
-CAUSE 3: Invalid filter expression SOLUTION: Check field names and operators
-
-CAUSE 4: Wrong dataSource SOLUTION: Verify dataSource matches signal type (traces/logs/metrics)
-
---- Error: Wrong Column Names in Table ---
-
-CAUSE: Missing aliases in aggregation expressions SOLUTION: Use 'as' to name columns
-
-INCORRECT: aggregations: - expression: count()
-
-CORRECT: aggregations: - expression: count() as 'Total Requests'
-
---- Error: Multiple Values in Value Panel ---
-
-CAUSE: Using groupBy in value panel SOLUTION: Remove groupBy for value panels
-
---- Error: Query Parsing Errors ---
-
-CAUSE 1: Using 'name' instead of 'key' in groupBy SOLUTION: Use 'key' field in groupBy
-
-CAUSE 2: Using 'key' instead of 'name' in selectColumns SOLUTION: Use 'name' field in selectColumns
-
-CAUSE 3: Invalid aggregation function SOLUTION: Use supported functions (count, avg, sum, p50, p95, p99, min, max)
-
---- Error: Variables Not Working ---
-
-CAUSE: Missing $ prefix SOLUTION: Use $variable_name format
-
-INCORRECT: filter: expression: service.name in service_name
-
-CORRECT: filter: expression: service.name in $service_name
-
-=== VALIDATION CHECKLIST ===
-
-Before creating a dashboard, verify:
-
-[ ] Using aggregations array (NOT aggregateOperator) [ ] Using filter.expression for filters [ ] List panels have selectColumns with name, fieldContext, signal [ ] Graph/bar/histogram/pie/table panels use groupBy with key field when needed [ ] Queries with groupBy have legend set using {{attribute_name}} syntax matching groupBy keys [ ] Value panels do NOT have groupBy [ ] All variables use $ prefix [ ] All field names are spelled correctly [ ] All aggregation functions are valid [ ] stepInterval is present (can be null) [ ] queryName, dataSource, expression are present
-
-=== COMPLETE WORKING EXAMPLES ===
-
---- Graph: Latency P95 ---
-
-panelTypes: graph title: Latency (P95) by Service yAxisUnit: ns query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name groupBy: - key: service.name dataType: string type: resource legend: {{service.name}}
-
---- List: Error Traces ---
-
-panelTypes: list title: Error Traces query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() filter: expression: has_error = true orderBy: - columnName: timestamp order: desc pageSize: 10 selectColumns: - name: service.name fieldContext: resource fieldDataType: string signal: traces - name: name fieldContext: span fieldDataType: string signal: traces - name: duration_nano fieldContext: span signal: traces
-
---- Pie: Service Distribution ---
-
-panelTypes: pie title: Service Distribution query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() groupBy: - key: service.name dataType: string type: resource legend: {{service.name}}
-
---- Table: Service Metrics ---
-
-panelTypes: table title: Service Metrics query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() as 'Requests' avg(duration_nano) as 'Latency' groupBy: - key: service.name dataType: string type: resource isColumn: true
-
---- Value: Total Requests ---
-
-panelTypes: value title: Total Requests query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() filter: expression: service.name in $service_name
-
---- Value: Error Rate (with Formula) ---
-
-panelTypes: value title: Error Rate yAxisUnit: percentunit query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A disabled: true aggregations: - expression: count() filter: expression: has_error = 'true' - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' queryFormulas: - queryName: F1 expression: A / (A+B)
-
-
-=== WIDGET TYPES ===
-
---- graph Widgets ---
-
-Example: Token Usage (from Anthropic API)
-  bucketCount: 30
-  customLegendColors:
-    F1: #eccd03
-  legendPosition: bottom
-  panelTypes: graph
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: sum(llm.token_count.prompt) ) )
-          dataSource: traces
-          disabled: true
-          expression: A
-          filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          queryName: A
-        -
-          aggregations:
-            -
-              expression: sum(llm.token_count.completion)
-          dataSource: traces
-          disabled: true
-          expression: B
-          filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          queryName: B
-      queryFormulas:
-        -
-          expression: A + B
-          queryName: F1
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Token Usage
-  yAxisUnit: none
-
-Example: Latency (P95) (from Anthropic API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: graph
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: p95(duration_nano)
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Latency (P95)
-  yAxisUnit: ns
-
-Example: Number of Requests (from Anthropic API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: graph
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model llm.provider = 'anthropic'
-          groupBy:
-            -
-              dataType: string
-              key: service.name
-              type: resource
-          legend: {{service.name}}
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Number of Requests
-  yAxisUnit: none
+Worked v6 (Perses) dashboard examples. Every payload below is a real widget created against a live SigNoz instance and read back (GET), so each field is server-accepted, not guessed. Each block is one panel — the object you place in the spec.panels map under a panel id (shown unkeyed here). Copy the structure, not the literal attribute names.
+
+For the rules behind these — which panel and query type to choose, layout, legends, the one-query-per-panel constraint, and variables — read signoz://dashboard/instructions and signoz://dashboard/widgets-instructions. For the exact field set, use the create/update tool's JSON Schema.
+
+Quick reference (all illustrated below):
+- Aggregations: count(), p50/p95/p99(field), avg/sum/min/max(field). Name a column with the aggregation's "alias" field (NOT "as '...'" inside the expression). Multiple aggregations = multiple entries in the aggregations[] array.
+- Filters: a single filter.expression string. Operators include =, !=, IN, AND, EXISTS. Reference variables as $name (omit the $ and it matches the literal string instead).
+
+=== EXAMPLES ===
+
+--- timeseries Widgets ---
+
+Example: Token Usage (Timeseries with a formula over disabled base queries)
+
+A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token-usage"); a layout item links to it via content.$ref. It is a signoz/TimeSeriesPanel whose signoz/CompositeQuery sums prompt + completion tokens: two builder_query entries (A, B) marked "disabled": true and a builder_formula F1 ("A + B") left enabled, so only the summed series renders (the pattern for any computed series). Filters reference $service_name / $language / $llm_model, which are DynamicVariables declared at the dashboard level — see signoz://dashboard/instructions for variable wiring.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Token Usage", "description": "Total LLM tokens (prompt + completion) over time" },
+    "plugin": {
+      "kind": "signoz/TimeSeriesPanel",
+      "spec": { "legend": { "position": "bottom", "customColors": { "F1": "#eccd03" } } }
+    },
+    "queries": [
+      {
+        "kind": "time_series",
+        "spec": {
+          "name": "token_usage",
+          "plugin": {
+            "kind": "signoz/CompositeQuery",
+            "spec": {
+              "queries": [
+                {
+                  "type": "builder_query",
+                  "spec": {
+                    "signal": "traces",
+                    "name": "A",
+                    "disabled": true,
+                    "aggregations": [ { "expression": "sum(llm.token_count.prompt)", "alias": "prompt_tokens" } ],
+                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+                  }
+                },
+                {
+                  "type": "builder_query",
+                  "spec": {
+                    "signal": "traces",
+                    "name": "B",
+                    "disabled": true,
+                    "aggregations": [ { "expression": "sum(llm.token_count.completion)", "alias": "completion_tokens" } ],
+                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+                  }
+                },
+                {
+                  "type": "builder_formula",
+                  "spec": { "name": "F1", "expression": "A + B", "legend": "F1", "disabled": false }
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Latency (P95) (single builder query — direct, no CompositeQuery)
+
+A timeseries widget with just one query and no formula, so the panel's single query sets its plugin directly to signoz/BuilderQuery — no signoz/CompositeQuery wrapper (contrast Example 1, which uses CompositeQuery to combine two builder queries + a formula). Shows a p95(duration_nano) aggregation with an alias, a static per-query legend ("P95"), and the y-axis unit via the panel plugin's formatting.unit ("ns"). Filters reference the same dashboard-level DynamicVariables as Example 1.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Latency (P95)", "description": "95th-percentile request duration over time" },
+    "plugin": {
+      "kind": "signoz/TimeSeriesPanel",
+      "spec": { "legend": { "position": "bottom" }, "formatting": { "unit": "ns" } }
+    },
+    "queries": [
+      {
+        "kind": "time_series",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "p95(duration_nano)", "alias": "p95_latency" } ],
+              "legend": "P95",
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Number of Requests (single builder query with groupBy — per-series legend)
+
+A timeseries widget that groups a count() of trace spans by the service.name resource attribute, so each service renders as its own line. Like Example 2 it has a single query and no formula, so the query's plugin is signoz/BuilderQuery directly (no signoz/CompositeQuery wrapper). The groupBy entry uses "name" (the v6 field — NOT the old "key") alongside fieldContext/fieldDataType/signal, and legend "{{service.name}}" templates each series label from that groupBy key (set legend whenever a series-producing panel has a groupBy, else SigNoz shows raw query ids). The filter combines dashboard-level DynamicVariables ($service_name / $language / $llm_model) with a static condition (llm.provider = 'anthropic'). Legend sits at the bottom via the panel plugin; y-axis unit and soft min/max are left to server defaults.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Number of Requests", "description": "Request count over time, grouped by service (Anthropic LLM calls)" },
+    "plugin": {
+      "kind": "signoz/TimeSeriesPanel",
+      "spec": { "legend": { "position": "bottom" } }
+    },
+    "queries": [
+      {
+        "kind": "time_series",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "count()" } ],
+              "groupBy": [ { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" } ],
+              "legend": "{{service.name}}",
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model AND llm.provider = 'anthropic'" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
 --- list Widgets ---
 
-Example: Errors (from Anthropic API)
-  bucketCount: 30
-  columnWidths:
-    date: 145
-    duration_nano: 145
-    http_method: 145
-    name: 145
-    response_status_code: 145
-    service.name: 145
-  legendPosition: bottom
-  panelTypes: list
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          expression: A
-          filter:
-            expression: has_error = true service.name IN $service_name
-          orderBy:
-            -
-              columnName: timestamp
-              order: desc
-          pageSize: 10
-          queryName: A
-          selectColumns:
-            -
-              fieldContext: resource
-              fieldDataType: string
-              name: service.name
-              signal: traces
-            -
-              fieldContext: span
-              fieldDataType: string
-              name: name
-              signal: traces
-            -
-              fieldContext: span
-              name: duration_nano
-              signal: traces
-            -
-              fieldContext: span
-              name: http_method
-              signal: traces
-            -
-              fieldContext: span
-              name: response_status_code
-              signal: traces
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Errors
-  yAxisUnit: none
+Example: Errors (list panel — raw trace rows, newest first)
 
-Example: Errors (from Autogen)
-  bucketCount: 30
-  columnWidths:
-    date: 145
-    duration_nano: 145
-    http_method: 145
-    name: 145
-    response_status_code: 145
-    service.name: 145
-  legendPosition: bottom
-  panelTypes: list
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          expression: A
-          filter:
-            expression: has_error = true service.name IN $service_name
-          filters:
-            items:
-              -
-                key:
-                  dataType: string
-                  key: service.name
-                op: IN
-                value: $service_name
-              -
-                key:
-                  key: has_error
-                op: =
-                value: true
-            op: AND
-          orderBy:
-            -
-              columnName: timestamp
-              order: desc
-          pageSize: 10
-          queryName: A
-          selectColumns:
-            -
-              fieldContext: resource
-              fieldDataType: string
-              name: service.name
-              signal: traces
-            -
-              fieldContext: span
-              fieldDataType: string
-              name: name
-              signal: traces
-            -
-              fieldContext: span
-              name: duration_nano
-              signal: traces
-            -
-              fieldContext: span
-              name: http_method
-              signal: traces
-            -
-              fieldContext: span
-              name: response_status_code
-              signal: traces
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Errors
-  yAxisUnit: none
+A list widget rendering raw error spans with no aggregation: the panel plugin is signoz/ListPanel and the query's request type is "raw" (not time_series). selectFields on the ListPanel spec defines the displayed columns; the raw builder query selects the same fields, filters has_error together with the $service_name DynamicVariable, orders by timestamp desc, and caps rows with limit (the old "pageSize"). The old columnWidths / selectedLogFields / soft min-max / yAxisUnit have no v6 equivalent here and are dropped.
 
-Example: Logs (from Autogen)
-  bucketCount: 30
-  columnWidths:
-    body: 350
-    timestamp: 100
-  legendPosition: bottom
-  panelTypes: list
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: logs
-          expression: A
-          filter:
-            expression: service.name IN $service_name
-          orderBy:
-            -
-              columnName: timestamp
-              order: desc
-            -
-              columnName: id
-              order: desc
-          pageSize: 10
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Logs
-  yAxisUnit: none
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Errors", "description": "Recent error spans (Anthropic API)" },
+    "plugin": {
+      "kind": "signoz/ListPanel",
+      "spec": {
+        "selectFields": [
+          { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" },
+          { "name": "name", "fieldContext": "span", "fieldDataType": "string", "signal": "traces" },
+          { "name": "duration_nano", "fieldContext": "span", "signal": "traces" },
+          { "name": "http_method", "fieldContext": "span", "signal": "traces" },
+          { "name": "response_status_code", "fieldContext": "span", "signal": "traces" }
+        ]
+      }
+    },
+    "queries": [
+      {
+        "kind": "raw",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "filter": { "expression": "has_error = true AND service.name IN $service_name" },
+              "selectFields": [
+                { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" },
+                { "name": "name", "fieldContext": "span", "fieldDataType": "string", "signal": "traces" },
+                { "name": "duration_nano", "fieldContext": "span", "signal": "traces" },
+                { "name": "http_method", "fieldContext": "span", "signal": "traces" },
+                { "name": "response_status_code", "fieldContext": "span", "signal": "traces" }
+              ],
+              "order": [ { "key": { "name": "timestamp" }, "direction": "desc" } ],
+              "limit": 10
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Errors (list panel — same shape, structured filter collapsed to an expression)
+
+Identical in structure to the previous list example. Worth noting: the v1 source carried BOTH a free-text filter and a structured filters.items block; v6 has only filter.expression, so the two conditions (has_error and the $service_name DynamicVariable) collapse into one expression. Display columns and the raw query mirror the previous example.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Errors", "description": "Recent error spans (Autogen)" },
+    "plugin": {
+      "kind": "signoz/ListPanel",
+      "spec": {
+        "selectFields": [
+          { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" },
+          { "name": "name", "fieldContext": "span", "fieldDataType": "string", "signal": "traces" },
+          { "name": "duration_nano", "fieldContext": "span", "signal": "traces" },
+          { "name": "http_method", "fieldContext": "span", "signal": "traces" },
+          { "name": "response_status_code", "fieldContext": "span", "signal": "traces" }
+        ]
+      }
+    },
+    "queries": [
+      {
+        "kind": "raw",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "filter": { "expression": "service.name IN $service_name AND has_error = true" },
+              "selectFields": [
+                { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" },
+                { "name": "name", "fieldContext": "span", "fieldDataType": "string", "signal": "traces" },
+                { "name": "duration_nano", "fieldContext": "span", "signal": "traces" },
+                { "name": "http_method", "fieldContext": "span", "signal": "traces" },
+                { "name": "response_status_code", "fieldContext": "span", "signal": "traces" }
+              ],
+              "order": [ { "key": { "name": "timestamp" }, "direction": "desc" } ],
+              "limit": 10
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Logs (list panel on the logs signal — multi-key ordering)
+
+A list widget over logs rather than traces: signal is "logs" and selectFields use fieldContext "log" (timestamp, body). The raw query orders by two keys — timestamp desc then id desc — to keep ordering stable when timestamps tie. Filter references the $service_name DynamicVariable (declared with signal "logs" so its dropdown derives from log data).
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Logs", "description": "Recent logs (Autogen)" },
+    "plugin": {
+      "kind": "signoz/ListPanel",
+      "spec": {
+        "selectFields": [
+          { "name": "timestamp", "fieldContext": "log", "signal": "logs" },
+          { "name": "body", "fieldContext": "log", "fieldDataType": "string", "signal": "logs" }
+        ]
+      }
+    },
+    "queries": [
+      {
+        "kind": "raw",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "logs",
+              "name": "A",
+              "filter": { "expression": "service.name IN $service_name" },
+              "selectFields": [
+                { "name": "timestamp", "fieldContext": "log", "signal": "logs" },
+                { "name": "body", "fieldContext": "log", "fieldDataType": "string", "signal": "logs" }
+              ],
+              "order": [
+                { "key": { "name": "timestamp" }, "direction": "desc" },
+                { "key": { "name": "id" }, "direction": "desc" }
+              ],
+              "limit": 10
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
 --- pie Widgets ---
 
-Example: Model Distribution (from Anthropic API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: pie
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          expression: A
-          filter:
-            expression: llm.model_name EXISTS service.name in $service_name AND llm.provider = 'anthropic' AND llm.model_name EXISTS
-          groupBy:
-            -
-              dataType: string
-              key: llm.model_name
-              type: tag
-          legend: {{llm.model_name}}
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Model Distribution
-  yAxisUnit: none
+Example: Model Distribution (pie panel — scalar count grouped by an attribute)
 
-Example: Model Distribution (from Autogen)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: pie
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name gen_ai.request.model EXISTS
-          groupBy:
-            -
-              dataType: string
-              key: gen_ai.request.model
-              type: tag
-          legend: {{gen_ai.request.model}}
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Model Distribution
-  yAxisUnit: none
+A pie widget showing each model's share of requests. The panel plugin is signoz/PieChartPanel and the query's request type is "scalar" (one aggregated value per group — contrast time_series for graphs and raw for lists). count() is grouped by the llm.model_name attribute (fieldContext "attribute" — the v6 mapping of the old "tag" type), and legend "{{llm.model_name}}" labels each slice. The filter keeps the $service_name DynamicVariable plus static llm.provider and an EXISTS guard so requests without a model name are excluded (the v1 source had a duplicated/garbled EXISTS that collapses to one).
 
-Example: Model Distribution (from Azure OpenAI API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: pie
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          expression: A
-          filter:
-            expression: llm.model_name EXISTS service.name in $service_name AND llm.model_name EXISTS
-          groupBy:
-            -
-              dataType: string
-              key: llm.model_name
-              type: tag
-          legend: {{llm.model_name}}
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Model Distribution
-  yAxisUnit: none
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Model Distribution", "description": "Share of requests per model (Anthropic API)" },
+    "plugin": {
+      "kind": "signoz/PieChartPanel",
+      "spec": { "legend": { "position": "bottom" } }
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "count()" } ],
+              "groupBy": [ { "name": "llm.model_name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
+              "legend": "{{llm.model_name}}",
+              "filter": { "expression": "service.name IN $service_name AND llm.provider = 'anthropic' AND llm.model_name EXISTS" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
---- row Widgets ---
+Example: Model Distribution (pie panel — different grouping attribute)
 
-Example: Machine (from Fly.io — Fly App (SigNoz))
-  panelTypes: row
-  title: Machine
+Same pie shape as the previous example, but Autogen records the model under the gen_ai.request.model attribute, so both the groupBy key and the legend template change accordingly. Filter keeps $service_name and an EXISTS guard on the grouping attribute.
 
-Example: TCP (from Fly.io — Fly App (SigNoz))
-  panelTypes: row
-  title: TCP
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Model Distribution", "description": "Share of requests per model (Autogen)" },
+    "plugin": {
+      "kind": "signoz/PieChartPanel",
+      "spec": { "legend": { "position": "bottom" } }
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "count()" } ],
+              "groupBy": [ { "name": "gen_ai.request.model", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
+              "legend": "{{gen_ai.request.model}}",
+              "filter": { "expression": "service.name IN $service_name AND gen_ai.request.model EXISTS" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
-Example: Memory (from Fly.io — Fly App (SigNoz))
-  panelTypes: row
-  title: Memory
+Example: Model Distribution (pie panel — Azure OpenAI, same llm.model_name attribute)
+
+Same pie shape again. Azure OpenAI also records the model under llm.model_name, so this matches the Anthropic example minus the provider-specific static filter — just $service_name plus an EXISTS guard on llm.model_name.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Model Distribution", "description": "Share of requests per model (Azure OpenAI API)" },
+    "plugin": {
+      "kind": "signoz/PieChartPanel",
+      "spec": { "legend": { "position": "bottom" } }
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "count()" } ],
+              "groupBy": [ { "name": "llm.model_name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
+              "legend": "{{llm.model_name}}",
+              "filter": { "expression": "service.name IN $service_name AND llm.model_name EXISTS" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
 --- table Widgets ---
 
-Example: Services and Languages (from Anthropic API)
-  bucketCount: 30
-  columnWidths:
-    A: 145
-    service.name: 145
-    telemetry.sdk.language: 145
-  legendPosition: bottom
-  panelTypes: table
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count() as 'Count of Spans'
-          dataSource: traces
-          expression: A
-          filter:
-            expression: llm.provider = 'anthropic' AND telemetry.sdk.language EXISTS
-          groupBy:
-            -
-              dataType: string
-              isColumn: true
-              key: service.name
-              type: resource
-            -
-              dataType: string
-              key: telemetry.sdk.language
-              type: resource
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Services and Languages
-  yAxisUnit: none
+Example: Services and Languages (table panel — multi-key groupBy, aliased aggregation, no variables)
 
-Example: Agents (from Autogen)
-  bucketCount: 30
-  columnUnits:
-    A.avg(duration_nano): ns
-  columnWidths:
-    A.avg(duration_nano): 145
-    A.count(): 145
-    gen_ai.agent.name: 145
-  legendPosition: bottom
-  panelTypes: table
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count() as 'Requests' avg(duration_nano) as 'Latency'
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name gen_ai.agent.name EXISTS gen_ai.operation.name = 'invoke_agent'
-          groupBy:
-            -
-              dataType: string
-              key: gen_ai.agent.name
-              type: tag
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Agents
-  yAxisUnit: none
+A table widget counting spans per (service.name, SDK language) pair. The panel plugin is signoz/TablePanel and the query's request type is "scalar". The single aggregation carries an alias via the {expression, alias} object (count() → "Count of Spans") instead of the v1 "count() as '…'" string. groupBy lists both columns; the old "isColumn" flag has no v6 equivalent and is dropped. This panel takes no dashboard variables.
 
-Example: Tools (from Autogen)
-  bucketCount: 30
-  columnUnits:
-    A.avg(duration_nano): ns
-  columnWidths:
-    A.avg(duration_nano): 145
-    A.count(): 145
-    gen_ai.tool.name: 145
-  legendPosition: bottom
-  panelTypes: table
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count() as 'Requests' avg(duration_nano) as 'Latency'
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name gen_ai.tool.name EXISTS gen_ai.operation.name = 'execute_tool'
-          groupBy:
-            -
-              dataType: string
-              key: gen_ai.tool.name
-              type: tag
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Tools
-  yAxisUnit: none
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Services and Languages", "description": "Span counts per service and SDK language (Anthropic API)" },
+    "plugin": {
+      "kind": "signoz/TablePanel",
+      "spec": {}
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "count()", "alias": "Count of Spans" } ],
+              "groupBy": [
+                { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" },
+                { "name": "telemetry.sdk.language", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" }
+              ],
+              "filter": { "expression": "llm.provider = 'anthropic' AND telemetry.sdk.language EXISTS" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Agents (table panel — two aggregations in one query + column units)
+
+A table widget with two aggregations per row: count() aliased "Requests" and avg(duration_nano) aliased "Latency". In v6 these are TWO entries in the aggregations array (the v1 source crammed both into one "… as … … as …" string). Column units live under the panel plugin's formatting.columnUnits, keyed by the aggregation ALIAS ("Latency": "ns"). groupBy is the gen_ai.agent.name attribute, and the filter combines $service_name with EXISTS and an operation guard.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Agents", "description": "Per-agent request count and average latency (Autogen)" },
+    "plugin": {
+      "kind": "signoz/TablePanel",
+      "spec": { "formatting": { "columnUnits": { "Latency": "ns" } } }
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [
+                { "expression": "count()", "alias": "Requests" },
+                { "expression": "avg(duration_nano)", "alias": "Latency" }
+              ],
+              "groupBy": [ { "name": "gen_ai.agent.name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
+              "filter": { "expression": "service.name IN $service_name AND gen_ai.agent.name EXISTS AND gen_ai.operation.name = 'invoke_agent'" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Tools (table panel — same two-aggregation shape, tool dimension)
+
+Same table shape as Agents. Autogen records tool calls under the gen_ai.tool.name attribute and the operation gen_ai.operation.name = 'execute_tool', so only the groupBy key and the filter's EXISTS/operation conditions change; the two aliased aggregations and the "Latency": "ns" column unit are identical.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Tools", "description": "Per-tool request count and average latency (Autogen)" },
+    "plugin": {
+      "kind": "signoz/TablePanel",
+      "spec": { "formatting": { "columnUnits": { "Latency": "ns" } } }
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [
+                { "expression": "count()", "alias": "Requests" },
+                { "expression": "avg(duration_nano)", "alias": "Latency" }
+              ],
+              "groupBy": [ { "name": "gen_ai.tool.name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
+              "filter": { "expression": "service.name IN $service_name AND gen_ai.tool.name EXISTS AND gen_ai.operation.name = 'execute_tool'" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
 --- value Widgets ---
 
-Example: Input Tokens (from Anthropic API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: value
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: sum(llm.token_count.prompt) )
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Input Tokens
-  yAxisUnit: none
+Example: Input Tokens (value panel — single scalar aggregation)
 
-Example: Output Tokens (from Anthropic API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: value
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: sum(llm.token_count.completion) )
-          dataSource: traces
-          expression: A
-          filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          queryName: A
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Output Tokens
-  yAxisUnit: none
+A value/KPI widget reducing a series to one number. The panel plugin is signoz/NumberPanel and the query's request type is "scalar". A single sum(llm.token_count.prompt) aggregation, filtered by the three DynamicVariables ($service_name / $language / $llm_model). No legend or unit needed (count of tokens is unitless).
 
-Example: Error Rate (from Anthropic API)
-  bucketCount: 30
-  legendPosition: bottom
-  panelTypes: value
-  query:
-    builder:
-      queryData:
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          disabled: true
-          expression: A
-          filter:
-            expression: has_error = 'true' service.name in $service_name
-          queryName: A
-        -
-          aggregations:
-            -
-              expression: count()
-          dataSource: traces
-          disabled: true
-          expression: B
-          filter:
-            expression: has_error = 'false' service.name in $service_name
-          queryName: B
-      queryFormulas:
-        -
-          expression: A / (A+B)
-          queryName: F1
-    queryType: builder
-  selectedLogFields:
-    -
-      fieldContext: log
-      name: timestamp
-      signal: logs
-      type: log
-    -
-      fieldContext: log
-      name: body
-      signal: logs
-      type: log
-  selectedTracesFields:
-    -
-      fieldContext: resource
-      fieldDataType: string
-      name: service.name
-      signal: traces
-    -
-      fieldContext: span
-      fieldDataType: string
-      name: name
-      signal: traces
-    -
-      fieldContext: span
-      name: duration_nano
-      signal: traces
-    -
-      fieldContext: span
-      name: http_method
-      signal: traces
-    -
-      fieldContext: span
-      name: response_status_code
-      signal: traces
-  softMax: 0
-  softMin: 0
-  title: Error Rate
-  yAxisUnit: percentunit
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Input Tokens", "description": "Total prompt tokens (Anthropic API)" },
+    "plugin": {
+      "kind": "signoz/NumberPanel",
+      "spec": {}
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "sum(llm.token_count.prompt)" } ],
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Output Tokens (value panel — same shape, completion tokens)
+
+Identical to the Input Tokens value panel, summing llm.token_count.completion instead of llm.token_count.prompt. Same NumberPanel, scalar request type, and the same three DynamicVariables in the filter.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Output Tokens", "description": "Total completion tokens (Anthropic API)" },
+    "plugin": {
+      "kind": "signoz/NumberPanel",
+      "spec": {}
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "sum(llm.token_count.completion)" } ],
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+Example: Error Rate (value panel — composite query with a ratio formula)
+
+A value widget computing errored ÷ total as a single percentage. Because it combines two queries with a formula, the query uses signoz/CompositeQuery (like the Token Usage graph): builder_query A (errored, disabled) and B (non-errored, disabled), plus builder_formula F1 = "A / (A + B)" left enabled so only the ratio renders. The panel is a signoz/NumberPanel with formatting.unit "percentunit". has_error is a boolean, so the filters use unquoted true/false.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Error Rate", "description": "Share of errored spans (Anthropic API)" },
+    "plugin": {
+      "kind": "signoz/NumberPanel",
+      "spec": { "formatting": { "unit": "percentunit" } }
+    },
+    "queries": [
+      {
+        "kind": "scalar",
+        "spec": {
+          "name": "error_rate",
+          "plugin": {
+            "kind": "signoz/CompositeQuery",
+            "spec": {
+              "queries": [
+                {
+                  "type": "builder_query",
+                  "spec": {
+                    "signal": "traces",
+                    "name": "A",
+                    "disabled": true,
+                    "aggregations": [ { "expression": "count()" } ],
+                    "filter": { "expression": "has_error = true AND service.name IN $service_name" }
+                  }
+                },
+                {
+                  "type": "builder_query",
+                  "spec": {
+                    "signal": "traces",
+                    "name": "B",
+                    "disabled": true,
+                    "aggregations": [ { "expression": "count()" } ],
+                    "filter": { "expression": "has_error = false AND service.name IN $service_name" }
+                  }
+                },
+                {
+                  "type": "builder_formula",
+                  "spec": { "name": "F1", "expression": "A / (A + B)", "legend": "Error Rate", "disabled": false }
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
 `

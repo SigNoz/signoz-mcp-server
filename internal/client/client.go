@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -504,74 +505,29 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-// ListDashboards filters data as it returns too much data even the ui tags
-// so we filter and only return required information which might help to get
-// detailed info of a dashboard.
-func (s *SigNoz) ListDashboards(ctx context.Context) (json.RawMessage, error) {
+// ListDashboards returns the v2 dashboard list (GET /api/v2/dashboards). The v2
+// API paginates server-side, so limit/offset are forwarded as query params and
+// the ListableDashboardV2 response ({dashboards, tags, total}) is passed through
+// verbatim.
+func (s *SigNoz) ListDashboards(ctx context.Context, limit, offset int) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
-	s.logger.DebugContext(ctx, "Fetching dashboards from SigNoz")
-
-	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
-	if err != nil {
-		return nil, err
+	params := url.Values{}
+	if limit > 0 {
+		params.Set("limit", strconv.Itoa(limit))
 	}
-
-	var rawResponse map[string]interface{}
-	if err := json.Unmarshal(body, &rawResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if offset > 0 {
+		params.Set("offset", strconv.Itoa(offset))
 	}
-
-	data, ok := rawResponse["data"].([]interface{})
-	if !ok {
-		return body, nil
+	reqURL := fmt.Sprintf("%s/api/v2/dashboards", s.baseURL)
+	if enc := params.Encode(); enc != "" {
+		reqURL += "?" + enc
 	}
-
-	simplifiedDashboards := make([]map[string]interface{}, 0, len(data))
-	for _, dashboard := range data {
-		dash, ok := dashboard.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		var (
-			name any
-			desc any
-			tags any
-		)
-		if v, ok := dash["data"].(map[string]interface{}); ok {
-			name = v["title"]
-			desc = v["description"]
-			tags = v["tags"]
-		}
-
-		simplifiedDashboards = append(simplifiedDashboards, map[string]interface{}{
-			"uuid":        dash["id"],
-			"name":        name,
-			"description": desc,
-			"tags":        tags,
-			"createdAt":   dash["createdAt"],
-			"updatedAt":   dash["updatedAt"],
-			"createdBy":   dash["createdBy"],
-			"updatedBy":   dash["updatedBy"],
-		})
-	}
-
-	simplifiedResponse := map[string]interface{}{
-		"status": rawResponse["status"],
-		"data":   simplifiedDashboards,
-	}
-
-	simplifiedJSON, err := json.Marshal(simplifiedResponse)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal simplified response: %w", err)
-	}
-
-	s.logger.DebugContext(ctx, "Successfully retrieved and simplified dashboards", slog.Int("count", len(simplifiedDashboards)))
-	return simplifiedJSON, nil
+	s.logger.DebugContext(ctx, "Fetching dashboards from SigNoz (v2)")
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(uuid))
+	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(uuid))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching dashboard details", slog.String("uuid", uuid))
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
@@ -744,48 +700,35 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	return s.QueryBuilderV5(ctx, queryJSON)
 }
 
-func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
-	dashboardJSON, err := json.Marshal(dashboard)
-	if err != nil {
-		return nil, fmt.Errorf("marshal dashboard: %w", err)
-	}
-
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
-}
-
-func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
-	dashboardJSON, err := json.Marshal(dashboard)
-	if err != nil {
-		return fmt.Errorf("marshal dashboard: %w", err)
-	}
-
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard", slog.String("id", id))
-	_, err = s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
-	return err
-}
-
-// CreateDashboardRaw creates a dashboard from pre-validated JSON bytes,
-// avoiding a round-trip through types.Dashboard.
+// CreateDashboardRaw creates a v2 (Perses) dashboard from raw JSON bytes.
+// The MCP server is a pass-through: the v2 API validates the payload
+// (schemaVersion, DisallowUnknownFields, panel/query rules), so the bytes are
+// forwarded as-is to POST /api/v2/dashboards.
 func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
+	reqURL := fmt.Sprintf("%s/api/v2/dashboards", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard (raw)")
 	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
 }
 
-// UpdateDashboardRaw updates a dashboard from pre-validated JSON bytes,
-// avoiding a round-trip through types.Dashboard.
-func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+// UpdateDashboardRaw replaces a v2 dashboard via PUT /api/v2/dashboards/{id}.
+// The body is the full UpdatableDashboardV2 post-update state; the v2 API
+// rejects locked dashboards and treats name as immutable.
+func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard (raw)", slog.String("id", id))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
-	return err
+	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+}
+
+// PatchDashboardRaw applies an RFC 6902 JSON Patch to a v2 dashboard via
+// PATCH /api/v2/dashboards/{id}. The body is the JSON Patch operation array.
+func (s *SigNoz) PatchDashboardRaw(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Patching dashboard (raw)", slog.String("id", id))
+	return s.doRequest(ctx, http.MethodPatch, reqURL, bytes.NewBuffer(patchJSON), DashboardWriteTimeout)
 }
 
 func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
-	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
+	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting dashboard", slog.String("id", id))
 	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
 	return err

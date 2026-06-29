@@ -159,7 +159,7 @@ func withTemplateServer(t *testing.T, srv *httptest.Server) {
 }
 
 func TestHandleImportDashboard_Success(t *testing.T) {
-	template := `{"title":"Host Metrics","tags":["hostmetrics"],"layout":[],"widgets":[]}`
+	template := `{"schemaVersion":"v6","tags":[{"key":"category","value":"hostmetrics"}],"spec":{"display":{"name":"Host Metrics","description":"Host CPU and memory"}}}`
 
 	var receivedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -205,8 +205,16 @@ func TestHandleImportDashboard_Success(t *testing.T) {
 	if err := json.Unmarshal(gotBody, &parsed); err != nil {
 		t.Fatalf("payload should be JSON: %v", err)
 	}
-	if parsed["title"] != "Host Metrics" {
-		t.Errorf("title = %v, want Host Metrics", parsed["title"])
+	if parsed["schemaVersion"] != "v6" {
+		t.Errorf("schemaVersion = %v, want v6", parsed["schemaVersion"])
+	}
+	if parsed["generateName"] != true {
+		t.Errorf("generateName = %v, want true (template has no top-level name)", parsed["generateName"])
+	}
+	// Import returns the created dashboard via structuredResult (JSON-first +
+	// structuredContent), consistent with create.
+	if result.StructuredContent == nil {
+		t.Error("import result must populate structuredContent")
 	}
 }
 
@@ -307,8 +315,8 @@ func TestHandleImportDashboard_NotFound(t *testing.T) {
 
 func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":[{"uuid":"abc-123","name":"Hosts"}]}`), nil
+		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
 		},
 	}
 	h := newTestHandler(mock)
@@ -329,8 +337,8 @@ func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 
 func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":[{"uuid":"abc-123","name":"Hosts"}]}`), nil
+		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
 		},
 	}
 	h := newTestHandler(mock)

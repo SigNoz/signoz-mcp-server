@@ -209,11 +209,14 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
 			return json.RawMessage(`[{"serviceName":"frontend"}]`), nil
 		},
-		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[{"uuid":"d1","title":"X"}]}`), nil
+		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+			return json.RawMessage(`{"dashboards":[{"id":"d1","name":"x"}],"tags":[],"total":1}`), nil
 		},
 		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":{"uuid":"d1","title":"X"}}`), nil
+		},
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"id":"d-new","name":"x-abc123","spec":{"display":{"name":"X"}}}`), nil
 		},
 		ListViewsFn: func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":[{"id":"v1","name":"V"}]}`), nil
@@ -243,6 +246,8 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		{"list_services", h.handleListServices, makeToolRequest("signoz_list_services", map[string]any{})},
 		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
 		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "d1"})},
+		{"create_dashboard", h.handleCreateDashboard, makeToolRequest("signoz_create_dashboard", map[string]any{"spec": map[string]any{"display": map[string]any{"name": "X"}}})},
+		{"list_dashboard_templates", h.handleListDashboardTemplates, makeToolRequest("signoz_list_dashboard_templates", map[string]any{})},
 		{"list_views", h.handleListViews, makeToolRequest("signoz_list_views", map[string]any{"sourcePage": "logs"})},
 		{"get_view", h.handleGetView, makeToolRequest("signoz_get_view", map[string]any{"viewId": "v1"})},
 		{"list_notification_channels", h.handleListNotificationChannels, makeToolRequest("signoz_list_notification_channels", map[string]any{})},

@@ -353,6 +353,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_dashboard` | Get full dashboard configuration by `id` |
 | `signoz_create_dashboard` | Create a new dashboard |
 | `signoz_update_dashboard` | Update an existing dashboard by `id` |
+| `signoz_patch_dashboard` | Apply an RFC 6902 JSON Patch to a dashboard (partial update) |
 | `signoz_delete_dashboard` | Delete a dashboard by `id` |
 | `signoz_import_dashboard` | Create a dashboard from a curated SigNoz/dashboards template by path |
 | `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
@@ -471,19 +472,17 @@ Gets complete dashboard configuration.
 
 #### `signoz_create_dashboard`
 
-Creates a dashboard.
+Creates a dashboard. The full input shape is described by the tool's JSON Schema; key fields:
 
 - **Parameters:**
-  - `title` (required) – Dashboard name
-  - `description` (optional) – Short summary of what the dashboard shows
-  - `tags` (optional) – List of tags
-  - `layout` (required) – Widget positioning grid
-  - `variables` (optional) – Map of variables available for use in queries
-  - `widgets` (required) – List of widgets added to the dashboard
+  - `schemaVersion` (required) – Must be `"v6"`
+  - `name` (DNS-1123 label) or `generateName: true` to derive it from `spec.display.name`
+  - `tags` (required) – Array of key/value tags (may be empty)
+  - `spec` (required) – Perses spec: `display`, `variables` (array), `panels` (map keyed by panel id), `layouts` (array)
 
 #### `signoz_import_dashboard`
 
-Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (`main` branch). The server fetches the template JSON, validates it, and creates the dashboard in one call.
+Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (`main` branch). The server fetches the template JSON and creates the dashboard in one call.
 
 To discover available paths, call `signoz_list_dashboard_templates` first and let the model pick the best match.
 
@@ -498,17 +497,19 @@ Returns the full bundled catalog of curated SigNoz dashboard templates (id, titl
 
 #### `signoz_update_dashboard`
 
-Updates an existing dashboard.
+Replaces an existing dashboard (PUT semantics). `name` is immutable; change the human title via `spec.display.name`. Locked dashboards are rejected.
 
 - **Parameters:**
-  - `id` (required) – Unique identifier of the dashboard to update
-  - `dashboard` (required) – Complete dashboard object representing the post-update state
-    - `title` (required) – Dashboard name
-    - `description` (optional) – Short summary of what the dashboard shows
-    - `tags` (optional) – List of tags applied to the dashboard
-    - `layout` (required) – Full widget positioning grid
-    - `variables` (optional) – Map of variables available for use in queries
-    - `widgets` (required) – Complete set of widgets defining the updated dashboard
+  - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
+  - `schemaVersion`, `name`, `tags`, `spec` – the complete post-update state (see the tool's JSON Schema)
+
+#### `signoz_patch_dashboard`
+
+Applies an RFC 6902 JSON Patch to a dashboard — a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable).
+
+- **Parameters:**
+  - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
+  - `patch` (required) – Array of `{op, path, value}` operations; paths are JSON Pointers into the dashboard's postable shape, e.g. `/spec/display/name`, `/spec/panels/<panelId>`, `/tags/-`
 
 #### `signoz_list_services`
 
