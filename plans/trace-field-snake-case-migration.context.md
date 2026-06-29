@@ -70,10 +70,23 @@
 - One reviewer noted `messaging.system` was documented as a trace tag but missing from the aggregate metadata map; implementation added it before commit.
 - Reviewers confirmed the direct CI failures are addressed, while noting the new aggregate metadata map duplicates the raw trace select-field list and should be kept in sync with future trace field changes.
 
+### 2026-06-29 - Live E2E Coverage
+- User requested live E2E verification against `https://app.us.staging.signoz.cloud` for the updated trace-field migration cases.
+- Added a read-only `e2e`-tagged trace-field migration test that uses existing trace data and creates no resources.
+- The live matrix covers canonical `search_traces` row keys and `webUrl`, canonical shortcut filters, legacy free-form `durationNano` pass-through, `aggregate_traces` with `duration_nano`, `aggregate_traces` grouped by `service.name`, and `get_trace_details` using a trace discovered from search.
+- Credential handling remains env-only in the test; credentials are not hardcoded, logged, or persisted.
+
+### 2026-06-29 - Live E2E Result
+- Local non-credentialed compile/skip check passed for `go test -tags=e2e -run '^TestE2ETraceFields_SnakeCaseMigration$' -v ./internal/handler/tools/`.
+- Focused local packages passed: `go test ./internal/handler/tools ./pkg/types ./internal/client ./pkg/util`.
+- Delegated staging run initially exposed a test-parser issue: scalar aggregate responses return `columns` + `data`, not raw `rows[].data`. The test was updated to assert `service.name` in aggregate columns and non-empty grouped data rows.
+- A subsequent delegated staging run briefly hit HTTP 503 while the staging workspace was updating, then passed on retry.
+- Verified live fields/behaviors: canonical `search_traces` row fields `trace_id`, `span_id`, `duration_nano`, `has_error`, `service.name`, and `webUrl`; canonical shortcut filters using `has_error` and `duration_nano`; legacy free-form `durationNano` pass-through; `aggregate_traces` with `duration_nano`; `aggregate_traces groupBy=service.name`; and `get_trace_details` via a trace discovered from canonical `trace_id`.
+
 ## Open Questions
 - [x] Should `search_traces` web URL enrichment accept both `trace_id` and `traceID` during rollout, or should it switch directly to `trace_id` with drift warnings covering old responses? Resolved 2026-06-27: use `trace_id` as the primary key and support `traceID` / `traceId` fallback, warning when rows are present and any row cannot be enriched.
 - [x] Should the default raw trace select list replace `rpcMethod` with the tag field `rpc.method`, omit it, or keep it temporarily for response-shape compatibility? Resolved 2026-06-27: replace `rpcMethod` with `rpc.method` using `fieldContext: "tag"` and document that the raw row key changes.
 - [x] Does `SigNoz/agent-skills` teach any of the old trace field names, requiring a companion PR? Resolved 2026-06-27: yes; a companion PR is required because published skills still teach `durationNano` / `hasError`.
 - [x] Are raw `signoz_search_traces` row keys a public downstream contract that needs a temporary response-compatibility layer, or is the snake_case output-key migration acceptable with explicit PR/release notes? Resolved 2026-06-27: accept the snake_case output-key migration and document it in README plus PR/release notes; do not duplicate legacy aliases in this pass.
 - [x] Should the current numeric `kind` select field be kept as `kind` with `fieldContext: "span"` and numeric type, or dropped in favor of `kind_string` only? Resolved 2026-06-27: keep numeric `kind` and also select `kind_string`.
-- [ ] Which backend versions/environments must pass live verification before rollout?
+- [x] Which backend versions/environments must pass live verification before rollout? Resolved 2026-06-29: run this PR's live trace-field verification against US staging (`https://app.us.staging.signoz.cloud`) using existing trace data; no live resource creation is needed for this read-only migration check.

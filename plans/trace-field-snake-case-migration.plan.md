@@ -76,6 +76,7 @@ Migrate server-authored trace field names to canonical snake_case while preservi
 - `pkg/util/weburl.go` - comments and, if needed, helper support for multi-key row ID lookup.
 - `manifest.json` and `docs/` - review for stale trace-field metadata.
 - Tests under `pkg/types`, `internal/handler/tools`, `internal/client`, `pkg/util`, and live E2E families as needed.
+- `internal/handler/tools/e2e_trace_fields_test.go` - read-only live E2E coverage for the trace-field migration matrix.
 - Companion `SigNoz/agent-skills` - matching update needed because published skills still teach deprecated trace field names.
 
 ## Verification
@@ -87,6 +88,7 @@ Migrate server-authored trace field names to canonical snake_case while preservi
 - Add `internal/client` coverage that captures the `GetTraceDetails` `/api/v5/query_range` body and asserts `trace_id = '...'`.
 - Add mixed-row `webUrl` enrichment fixtures for `trace_id`, `traceID`, and `traceId`, preferring `trace_id` and warning when rows are present but one or more rows cannot be enriched.
 - Update live E2E contract coverage to use canonical `duration_nano` for trace aggregation drift checks.
+- Add focused live E2E coverage for canonical trace raw row keys, `webUrl`, shortcut filters, legacy free-form pass-through, aggregate `duration_nano`, aggregate `service.name` groupBy, and `get_trace_details` using a trace discovered from search.
 - Run focused tests when Go is available: `go test ./pkg/types ./internal/handler/tools ./internal/client ./pkg/util`.
 - Run `rg` for deprecated trace names after implementation and review remaining hits intentionally.
 - For live SigNoz verification, delegate to a subagent: run read-only trace search/aggregate/detail checks against a real instance, confirm canonical fields round-trip server-side, do not print or persist credentials, and report any fields that fail.
