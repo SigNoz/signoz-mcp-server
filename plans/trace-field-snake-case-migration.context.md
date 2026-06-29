@@ -83,6 +83,12 @@
 - A subsequent delegated staging run briefly hit HTTP 503 while the staging workspace was updating, then passed on retry.
 - Verified live fields/behaviors: canonical `search_traces` row fields `trace_id`, `span_id`, `duration_nano`, `has_error`, `service.name`, and `webUrl`; canonical shortcut filters using `has_error` and `duration_nano`; legacy free-form `durationNano` pass-through; `aggregate_traces` with `duration_nano`; `aggregate_traces groupBy=service.name`; and `get_trace_details` via a trace discovered from canonical `trace_id`.
 
+### 2026-06-29 - Field Metadata Contract Follow-up
+- User clarified that MCP cannot fully own query-builder field metadata because SigNoz supports custom attributes, and the same field-metadata problem can affect other tool inputs such as select fields and analogous tools beyond trace aggregate `groupBy`.
+- Decision: treat the current trace aggregate metadata map as a tactical compatibility fix for known fields only, not the ideal long-term design.
+- Long-term options are dynamic field metadata resolution through SigNoz/query-builder APIs, updating high-level MCP tool payloads so callers provide structured field descriptors, or a hybrid approach.
+- Created cross-repo tracking issue [SigNoz/nerve-pod#20](https://github.com/SigNoz/nerve-pod/issues/20) to cover `signoz-mcp-server`, `signoz`, `agent-skills`, and `signoz-ai-assistant` contract alignment.
+
 ## Open Questions
 - [x] Should `search_traces` web URL enrichment accept both `trace_id` and `traceID` during rollout, or should it switch directly to `trace_id` with drift warnings covering old responses? Resolved 2026-06-27: use `trace_id` as the primary key and support `traceID` / `traceId` fallback, warning when rows are present and any row cannot be enriched.
 - [x] Should the default raw trace select list replace `rpcMethod` with the tag field `rpc.method`, omit it, or keep it temporarily for response-shape compatibility? Resolved 2026-06-27: replace `rpcMethod` with `rpc.method` using `fieldContext: "tag"` and document that the raw row key changes.
@@ -90,3 +96,4 @@
 - [x] Are raw `signoz_search_traces` row keys a public downstream contract that needs a temporary response-compatibility layer, or is the snake_case output-key migration acceptable with explicit PR/release notes? Resolved 2026-06-27: accept the snake_case output-key migration and document it in README plus PR/release notes; do not duplicate legacy aliases in this pass.
 - [x] Should the current numeric `kind` select field be kept as `kind` with `fieldContext: "span"` and numeric type, or dropped in favor of `kind_string` only? Resolved 2026-06-27: keep numeric `kind` and also select `kind_string`.
 - [x] Which backend versions/environments must pass live verification before rollout? Resolved 2026-06-29: run this PR's live trace-field verification against US staging (`https://app.us.staging.signoz.cloud`) using existing trace data; no live resource creation is needed for this read-only migration check.
+- [x] Is expanding MCP-owned static field metadata the ideal solution for custom attributes and similar tool inputs? Resolved 2026-06-29: no; static metadata is tactical for known MCP-authored fields only. Dynamic resolution or a structured payload contract is tracked in [SigNoz/nerve-pod#20](https://github.com/SigNoz/nerve-pod/issues/20).

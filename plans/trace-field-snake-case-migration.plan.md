@@ -13,7 +13,7 @@ Migrate server-authored trace field names to canonical snake_case while preservi
    - Change shortcut filters in `buildTraceFilterExpr` from `hasError`/`durationNano` to `has_error`/`duration_nano`.
    - Change `GetTraceDetails`' generated trace lookup from `traceID = ...` to `trace_id = ...`.
    - Change `BuildTracesQueryPayload` `SelectFields` to canonical names with explicit field metadata. Prefer `fieldContext: "span"` for intrinsic/calculated fields so server-authored payloads do not rely on backend ambiguity resolution.
-   - Attach the same known trace field metadata to server-authored aggregate `groupBy` fields, so resource/span/tag fields such as `service.name` serialize with their expected `fieldContext` and `fieldDataType`.
+   - Attach the same known trace field metadata to server-authored aggregate `groupBy` fields, so resource/span/tag fields such as `service.name` serialize with their expected `fieldContext` and `fieldDataType`. Treat this as a tactical compatibility shim for known MCP-authored fields only; long-term handling for custom attributes and similar tool inputs is tracked in [SigNoz/nerve-pod#20](https://github.com/SigNoz/nerve-pod/issues/20).
    - Keep `name` and `timestamp` unchanged.
    - Replace deprecated `rpcMethod` with the canonical span/tag attribute `rpc.method` using `fieldContext: "tag"`.
    - Keep numeric span `kind` with `fieldContext: "span"` and `fieldDataType: "number"` while also selecting `kind_string`.
