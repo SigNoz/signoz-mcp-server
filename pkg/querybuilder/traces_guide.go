@@ -37,7 +37,7 @@ to make the built-in/span-column intent explicit:
   span_id              string    — span identifier
   parent_span_id       string    — parent span identifier
   name                 string    — span/operation name
-  timestamp            datetime  — span start timestamp
+  timestamp            number    — span start timestamp
   http_method          string    — HTTP method
   http_url             string    — HTTP URL
   kind_string          string    — 'Server', 'Client', 'Internal', 'Producer', 'Consumer'

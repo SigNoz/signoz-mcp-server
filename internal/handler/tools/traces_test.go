@@ -67,15 +67,9 @@ func TestHandleSearchTraces_ErrorAndDurationFilters(t *testing.T) {
 	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
 	}
-	payload := string(captured)
-	if !strings.Contains(payload, "has_error = true") {
-		t.Fatalf("expected canonical error filter, got: %s", payload)
-	}
-	if !strings.Contains(payload, "duration_nano >= 500000000") {
-		t.Fatalf("expected canonical min duration filter, got: %s", payload)
-	}
-	if !strings.Contains(payload, "duration_nano <= 2000000000") {
-		t.Fatalf("expected canonical max duration filter, got: %s", payload)
+	want := "has_error = true AND duration_nano >= 500000000 AND duration_nano <= 2000000000"
+	if got := payloadFilterExpression(t, captured); got != want {
+		t.Fatalf("payload filter = %q, want %q", got, want)
 	}
 }
 
@@ -132,12 +126,15 @@ func TestHandleAggregateTraces_CountByService(t *testing.T) {
 	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
 	}
-	payload := string(captured)
-	if !strings.Contains(payload, `"expression":"has_error = true"`) {
-		t.Fatalf("expected canonical error shortcut filter, got: %s", payload)
+	if got := payloadFilterExpression(t, captured); got != "has_error = true" {
+		t.Fatalf("payload filter = %q, want has_error = true", got)
 	}
-	if !strings.Contains(payload, `"name":"service.name"`) || !strings.Contains(payload, `"fieldContext":"resource"`) {
-		t.Fatalf("expected service.name resource groupBy, got: %s", payload)
+	groupBy := payloadGroupByFields(t, captured)
+	if len(groupBy) != 1 {
+		t.Fatalf("groupBy count = %d, want 1: %#v", len(groupBy), groupBy)
+	}
+	if got := groupBy[0]; got.Name != "service.name" || got.FieldContext != "resource" || got.FieldDataType != "string" {
+		t.Fatalf("groupBy[0] = %#v, want service.name resource string", got)
 	}
 }
 
@@ -229,10 +226,40 @@ func TestHandleSearchTraces_LegacyFreeFormFilterPassesThrough(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	payload := string(captured)
-	if !strings.Contains(payload, "hasError = true AND durationNano > 1000") {
-		t.Fatalf("legacy free-form filter was not preserved in payload: %s", payload)
+	want := "hasError = true AND durationNano > 1000"
+	if got := payloadFilterExpression(t, captured); got != want {
+		t.Fatalf("payload filter = %q, want %q", got, want)
 	}
+}
+
+type payloadSelectField struct {
+	Name          string `json:"name"`
+	FieldDataType string `json:"fieldDataType"`
+	Signal        string `json:"signal"`
+	FieldContext  string `json:"fieldContext"`
+}
+
+func payloadGroupByFields(t *testing.T, payload []byte) []payloadSelectField {
+	t.Helper()
+	if len(payload) == 0 {
+		t.Fatal("payload was not captured")
+	}
+	var decoded struct {
+		CompositeQuery struct {
+			Queries []struct {
+				Spec struct {
+					GroupBy []payloadSelectField `json:"groupBy"`
+				} `json:"spec"`
+			} `json:"queries"`
+		} `json:"compositeQuery"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if len(decoded.CompositeQuery.Queries) != 1 {
+		t.Fatalf("query count = %d, want 1", len(decoded.CompositeQuery.Queries))
+	}
+	return decoded.CompositeQuery.Queries[0].Spec.GroupBy
 }
 
 func TestHandleAggregateTraces_MissingAggregation(t *testing.T) {

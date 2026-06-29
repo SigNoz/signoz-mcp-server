@@ -13,6 +13,7 @@ Migrate server-authored trace field names to canonical snake_case while preservi
    - Change shortcut filters in `buildTraceFilterExpr` from `hasError`/`durationNano` to `has_error`/`duration_nano`.
    - Change `GetTraceDetails`' generated trace lookup from `traceID = ...` to `trace_id = ...`.
    - Change `BuildTracesQueryPayload` `SelectFields` to canonical names with explicit field metadata. Prefer `fieldContext: "span"` for intrinsic/calculated fields so server-authored payloads do not rely on backend ambiguity resolution.
+   - Attach the same known trace field metadata to server-authored aggregate `groupBy` fields, so resource/span/tag fields such as `service.name` serialize with their expected `fieldContext` and `fieldDataType`.
    - Keep `name` and `timestamp` unchanged.
    - Replace deprecated `rpcMethod` with the canonical span/tag attribute `rpc.method` using `fieldContext: "tag"`.
    - Keep numeric span `kind` with `fieldContext: "span"` and `fieldDataType: "number"` while also selecting `kind_string`.
@@ -63,6 +64,7 @@ Migrate server-authored trace field names to canonical snake_case while preservi
 - `pkg/querybuilder/traces_guide.go` - canonical trace field guide, selectFields examples, filter examples, quick reference.
 - `pkg/types/querybuilder.go` - canonical raw trace select fields and comments/examples.
 - `internal/handler/tools/traces_helper.go` - canonical shortcut filter clauses.
+- `internal/handler/tools/aggregate_helper.go` - trace aggregate `groupBy` field metadata for known canonical fields.
 - `internal/handler/tools/traces.go` - tool descriptions, enrichment key, warning text, comments.
 - `internal/handler/tools/query_builder.go` - Query Builder tool/resource metadata that currently says trace built-ins are camelCase.
 - `internal/client/client.go` - canonical `get_trace_details` trace lookup filter.
@@ -79,6 +81,7 @@ Migrate server-authored trace field names to canonical snake_case while preservi
 ## Verification
 - Add unit tests that assert `BuildTracesQueryPayload` selects canonical fields with expected `fieldContext`/`fieldDataType` metadata and omits deprecated aliases unless a legacy compatibility exception is documented.
 - Update shortcut parsing tests to expect generated `has_error` and `duration_nano` clauses.
+- Decode captured query payloads when asserting filter/groupBy fields so tests validate payload semantics rather than raw JSON escaping.
 - Add tests showing legacy free-form caller input still passes through unchanged: `filter`/`query` using `hasError`, `aggregateOn=durationNano`, and `orderBy=avg(durationNano) desc`.
 - Add or update client/handler tests to assert `get_trace_details` and `search_traces` emit canonical filters and row keys.
 - Add `internal/client` coverage that captures the `GetTraceDetails` `/api/v5/query_range` body and asserts `trace_id = '...'`.

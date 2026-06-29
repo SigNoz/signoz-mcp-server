@@ -59,6 +59,17 @@
 - Companion skills review via GitHub found `SigNoz/agent-skills` still teaches deprecated trace fields (`durationNano`, `hasError`) in published skills. Outcome: a matching agent-skills PR is required and should be linked from this PR summary.
 - Local verification is limited by missing `go`/`gofmt` binaries on PATH; `git diff --check` is clean.
 
+### 2026-06-28 - CI Failure Follow-up
+- GitHub Actions showed only `test / go` failing; `build`, `fmt`, `lint`, and `deps` passed on the previous PR head.
+- Two failures were brittle raw-JSON test assertions: `json.Marshal` escaped `>` / `<` as `\u003e` / `\u003c`, while the decoded filter expressions were correct.
+- The remaining failure exposed a trace aggregate payload gap: `groupBy=service.name` was emitted with only `name` and `signal`, missing the resource `fieldContext` and string `fieldDataType` documented in the trace guide.
+- Fix direction: decode captured query payloads in tests, attach known trace field metadata to aggregate `groupBy` fields, and align the trace guide's `timestamp` type with backend/MCP metadata (`number`).
+
+### 2026-06-28 - CI Fix Review
+- A follow-up multi-agent review found no blockers in the decoded test assertions or trace-scoped aggregate metadata path.
+- One reviewer noted `messaging.system` was documented as a trace tag but missing from the aggregate metadata map; implementation added it before commit.
+- Reviewers confirmed the direct CI failures are addressed, while noting the new aggregate metadata map duplicates the raw trace select-field list and should be kept in sync with future trace field changes.
+
 ## Open Questions
 - [x] Should `search_traces` web URL enrichment accept both `trace_id` and `traceID` during rollout, or should it switch directly to `trace_id` with drift warnings covering old responses? Resolved 2026-06-27: use `trace_id` as the primary key and support `traceID` / `traceId` fallback, warning when rows are present and any row cannot be enriched.
 - [x] Should the default raw trace select list replace `rpcMethod` with the tag field `rpc.method`, omit it, or keep it temporarily for response-shape compatibility? Resolved 2026-06-27: replace `rpcMethod` with `rpc.method` using `fieldContext: "tag"` and document that the raw row key changes.
