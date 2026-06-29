@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -38,6 +39,60 @@ var aggregationsWithoutField = map[string]bool{
 const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90, p95, p99, rate, sum"
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
+
+var traceGroupByFieldMetadata = map[string]types.SelectField{
+	"trace_id":             {Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"span_id":              {Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"parent_span_id":       {Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"name":                 {Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"duration_nano":        {Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	"timestamp":            {Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	"has_error":            {Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span"},
+	"status_code":          {Name: "status_code", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	"status_code_string":   {Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"http_method":          {Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"http_url":             {Name: "http_url", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"kind_string":          {Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"kind":                 {Name: "kind", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	"response_status_code": {Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	"status_message":       {Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+
+	"service.name":            {Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"cloud.account.id":        {Name: "cloud.account.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"cloud.platform":          {Name: "cloud.platform", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"cloud.provider":          {Name: "cloud.provider", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"cloud.region":            {Name: "cloud.region", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"deployment.environment":  {Name: "deployment.environment", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"host.name":               {Name: "host.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.cluster.name":        {Name: "k8s.cluster.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.namespace.name":      {Name: "k8s.namespace.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.node.name":           {Name: "k8s.node.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.pod.name":            {Name: "k8s.pod.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.pod.start_time":      {Name: "k8s.pod.start_time", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.pod.uid":             {Name: "k8s.pod.uid", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"k8s.statefulset.name":    {Name: "k8s.statefulset.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"service.version":         {Name: "service.version", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"signoz.deployment.tier":  {Name: "signoz.deployment.tier", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"signoz.workload":         {Name: "signoz.workload", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"signoz.workspace.key.id": {Name: "signoz.workspace.key.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+
+	"client.address":            {Name: "client.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"http.request.method":       {Name: "http.request.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"http.response.body.size":   {Name: "http.response.body.size", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"http.response.status_code": {Name: "http.response.status_code", FieldDataType: "number", Signal: "traces", FieldContext: "tag"},
+	"http.route":                {Name: "http.route", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"rpc.method":                {Name: "rpc.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"network.peer.address":      {Name: "network.peer.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"network.peer.port":         {Name: "network.peer.port", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"network.protocol.version":  {Name: "network.protocol.version", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"server.address":            {Name: "server.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"url.path":                  {Name: "url.path", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"url.scheme":                {Name: "url.scheme", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"db.operation":              {Name: "db.operation", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"db.statement":              {Name: "db.statement", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"db.system":                 {Name: "db.system", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"messaging.system":          {Name: "messaging.system", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+}
 
 // timeRangeDesc builds the shared "timeRange" description. All time-windowed
 // tools use one parser (timeutil.ParseTimeRange), so only the per-tool default
@@ -175,7 +230,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		for _, field := range strings.Split(groupByStr, ",") {
 			field = strings.TrimSpace(field)
 			if field != "" {
-				groupByFields = append(groupByFields, types.SelectField{Name: field, Signal: signal})
+				groupByFields = append(groupByFields, aggregateGroupByField(signal, field))
 			}
 		}
 	}
@@ -209,7 +264,10 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		return nil, err
 	}
 
-	requestType, _ := args["requestType"].(string)
+	requestType, err := readRequestType(args)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateRequestType(requestType); err != nil {
 		return nil, err
 	}
@@ -233,6 +291,15 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		StepInterval:        stepInterval,
 		StepIntervalWarning: stepIntervalWarning,
 	}, nil
+}
+
+func aggregateGroupByField(signal, name string) types.SelectField {
+	if signal == "traces" {
+		if field, ok := traceGroupByFieldMetadata[name]; ok {
+			return field
+		}
+	}
+	return types.SelectField{Name: name, Signal: signal}
 }
 
 func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
@@ -393,6 +460,47 @@ func warnBackendWarnings(ctx context.Context, logger *slog.Logger, toolName stri
 		"SigNoz query builder returned non-fatal warnings",
 		slog.String("tool", toolName),
 		slog.Int("warningCount", len(messages)),
+	)
+}
+
+// warnUnparsedWarningEnvelope detects QB warning-envelope drift: it counts
+// data.warning.warnings entries and warns only when entries exist but zero
+// messages were extracted (a renamed message field). Empty/absent envelopes
+// stay silent. Fails open.
+func warnUnparsedWarningEnvelope(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, extractedCount int) {
+	if extractedCount > 0 {
+		return
+	}
+	var probe struct {
+		Data struct {
+			Warning struct {
+				Warnings []json.RawMessage `json:"warnings"`
+			} `json:"warning"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return
+	}
+	entries := 0
+	for _, raw := range probe.Data.Warning.Warnings {
+		switch string(bytes.TrimSpace(raw)) {
+		case "", "null", "{}":
+			continue // empty/degenerate entry — not drift
+		}
+		entries++
+	}
+	if entries == 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.WarnContext(ctx,
+		"qb warning envelope unparsed",
+		slog.String("tool", toolName),
 	)
 }
 
@@ -616,6 +724,35 @@ func limitOnlyCompletenessNote(returnedRows, limit int, rowsKnown bool, narrowHi
 		returnedRows, limit)
 }
 
+// isTrivialBody reports whether a payload is effectively empty ("", {}, [], null)
+// so the drift WARN doesn't fire on a legitimately empty response.
+func isTrivialBody(payload []byte) bool {
+	switch string(bytes.TrimSpace(payload)) {
+	case "", "{}", "[]", "null":
+		return true
+	default:
+		return false
+	}
+}
+
+// warnRowCountUnknown warns when the row counter couldn't locate the rows array
+// on a non-trivial body (likely a renamed "rows" field). Fails open.
+func warnRowCountUnknown(ctx context.Context, logger *slog.Logger, toolName string, payload []byte, rowsKnown bool) {
+	if rowsKnown || isTrivialBody(payload) {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.WarnContext(ctx,
+		"row count unknown on non-empty body",
+		slog.String("tool", toolName),
+	)
+}
+
 // rawSearchResult is the result wrapper for raw row tools (search_logs /
 // search_traces), which support offset pagination. It appends a completeness
 // note (hasMore + nextOffset) inferred from the returned row count so callers
@@ -628,9 +765,11 @@ func rawSearchResult(ctx context.Context, logger *slog.Logger, toolName string, 
 			MaxRawResultLimit))
 	}
 	returnedRows, rowsKnown := countQueryRangeRows(payload)
+	warnRowCountUnknown(ctx, logger, toolName, payload, rowsKnown)
 	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
+	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}
@@ -648,6 +787,7 @@ func aggregateResult(ctx context.Context, logger *slog.Logger, toolName string, 
 	}
 	warnings := extractBackendWarningMessages(payload)
 	warnBackendWarnings(ctx, logger, toolName, warnings)
+	warnUnparsedWarningEnvelope(ctx, logger, toolName, payload, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}

@@ -781,7 +781,7 @@ Two disabled trace count queries (A = error spans, B = total spans) combined via
           "spec": {
             "name": "A", "signal": "traces", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "filter": {"expression": "service.name = 'search-api' AND hasError = true"},
+            "filter": {"expression": "service.name = 'search-api' AND has_error = true"},
             "groupBy": [
               {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
               {"name": "http.route", "fieldContext": "attribute", "fieldDataType": "string"}

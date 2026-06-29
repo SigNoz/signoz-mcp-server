@@ -372,7 +372,7 @@ func TestFamilyD_E2E_AggregationSetMatchesBackend(t *testing.T) {
 
 	// "count" and "rate" need no field; the rest need an aggregateOn. Use a
 	// field that exists on traces everywhere.
-	const numericField = "durationNano"
+	const numericField = "duration_nano"
 	var rejected []string
 	for agg := range validAggregations {
 		args := map[string]any{

@@ -68,6 +68,12 @@ func TestGetAlert_MissingID(t *testing.T) {
 	if result == nil || !result.IsError {
 		t.Fatal("expected error result for missing id")
 	}
+	// The missing-id presence check returns errorWithCode(CodeValidationFailed, ...).
+	// Pin the machine-readable code so a regression to an uncoded/wrong-class
+	// error is caught here, not just the IsError flag.
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("missing id code = %q, want %q", code, CodeValidationFailed)
+	}
 }
 
 func TestDeleteAlert_IDAndLegacyAlias(t *testing.T) {
@@ -476,6 +482,13 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 			}
 			if res == nil || !res.IsError {
 				t.Fatalf("expected an error result when neither id nor legacy key supplied, got: %+v", res)
+			}
+			// Every missing-id presence check returns
+			// errorWithCode(CodeValidationFailed, ...). Pin the code so a
+			// regression to an uncoded error (e.g. plain NewToolResultError) is
+			// caught, not just the IsError flag.
+			if code := resultCode(t, res); code != CodeValidationFailed {
+				t.Fatalf("%s: missing-id code = %q, want %q", tc.name, code, CodeValidationFailed)
 			}
 			text, ok := mcp.AsTextContent(res.Content[0])
 			if !ok {

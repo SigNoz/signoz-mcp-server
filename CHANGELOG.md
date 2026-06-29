@@ -13,6 +13,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.6.0] - 2026-06-25
+
+### Added
+- resolve K1-K5 — units, window, limit, requestType, id naming (Family E, #366) ([#221](https://github.com/SigNoz/signoz-mcp-server/pull/221))
+- harmonize param schema, types & descriptions (Family D, #367) ([#220](https://github.com/SigNoz/signoz-mcp-server/pull/220))
+- JSON-first output + structuredContent + error codes (Family C, #365) ([#219](https://github.com/SigNoz/signoz-mcp-server/pull/219))
+- fix silent-failures across read/write tools (Family A, #363) ([#217](https://github.com/SigNoz/signoz-mcp-server/pull/217))
+- add signoz_get_top_metrics tool for ingestion cost analysis ([#196](https://github.com/SigNoz/signoz-mcp-server/pull/196))
+- add per-row webUrl deep links to signoz_search_traces ([#206](https://github.com/SigNoz/signoz-mcp-server/pull/206))
+
+### Fixed
+- emit VALIDATION_FAILED on remaining read-tool validation paths ([#222](https://github.com/SigNoz/signoz-mcp-server/pull/222))
+- honor ingress header for user/session tokens ([#223](https://github.com/SigNoz/signoz-mcp-server/pull/223))
+- author typed-struct field descriptions in the native jsonschema tag ([#214](https://github.com/SigNoz/signoz-mcp-server/pull/214))
+- standardize filter-expression param on `filter` (accept legacy `query` alias) ([#213](https://github.com/SigNoz/signoz-mcp-server/pull/213))
+- prevent nil-Arguments panic in MCP tool handlers ([#207](https://github.com/SigNoz/signoz-mcp-server/pull/207))
+
+### Changed
+- converge error/validation strings onto shared helpers (Family B, #364) ([#218](https://github.com/SigNoz/signoz-mcp-server/pull/218))
+
+### Documentation
+- add agent-skills sync check and Git/PR conventions to CLAUDE.md ([#215](https://github.com/SigNoz/signoz-mcp-server/pull/215))
+
+### CI
+- auto-publish server.json to the MCP Registry on release ([#209](https://github.com/SigNoz/signoz-mcp-server/pull/209))
+
 ## [0.5.1] - 2026-06-17
 
 ### Other
@@ -246,3 +273,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.4.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.0...v0.4.1
 [0.5.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.2...v0.5.0
 [0.5.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.0...v0.5.1
+[0.6.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.1...v0.6.0

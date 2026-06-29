@@ -544,7 +544,7 @@ Gets alert history timeline for a specific rule.
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
   - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
   - `offset` (optional) - Offset for pagination (default: 0)
-  - `limit` (optional) - Limit number of results (default: 20)
+  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `offset`)
   - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch
 
@@ -683,7 +683,7 @@ Get possible values for a specific field key for a given signal.
 Search traces/spans with flexible filtering.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (hasError = true OR responseStatusCode >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
   - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
@@ -693,6 +693,7 @@ Search traces/spans with flexible filtering.
   - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
+  - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
 
 #### `signoz_aggregate_traces`
 
@@ -700,13 +701,13 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
 
 - **Parameters**:
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
-  - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
+  - `aggregateOn` (optional) - Field to aggregate on (e.g., 'duration_nano'). Required for all except count and rate
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
   - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
-  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
+  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.

@@ -24,7 +24,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		mcp.WithDescription(
 			"Execute a SigNoz Query Builder v5 query.\n\n"+
 				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
-				"It documents filter expression syntax, correct field names (camelCase vs dot notation), "+
+				"It documents filter expression syntax, canonical field names, field contexts, "+
 				"and complete working examples.\n\n"+
 				"When compositeQuery.queryType=\"promql\" ALSO read signoz://promql/instructions — "+
 				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
@@ -39,7 +39,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
 		"Traces Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax (string, not structured object), built-in span column names (camelCase, no fieldContext), resource/tag attribute naming (dot notation + fieldContext), and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax (string, not structured object), canonical built-in span column names (snake_case with fieldContext span), resource/tag attribute naming (dot notation + fieldContext), and complete working examples for raw, aggregation, and time series queries."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -94,13 +94,15 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 
 	var queryPayload types.QueryPayload
 	if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
+		// User-input structural mistake: code as VALIDATION_FAILED, not a marshal error.
 		h.logger.ErrorContext(ctx, "Failed to unmarshal query payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "invalid query payload structure: "+err.Error()), nil
 	}
 
 	if err := queryPayload.Validate(); err != nil {
+		// Validate() rejects user-input mistakes: route through VALIDATION_FAILED.
 		h.logger.ErrorContext(ctx, "Query validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("query validation error: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "query validation error: "+err.Error()), nil
 	}
 
 	finalQueryJSON, err := json.Marshal(queryPayload)
@@ -127,6 +129,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	var notes []string
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
 	if len(warnings) > 0 {
 		notes = append(notes, backendWarningsNote(warnings))
 	}

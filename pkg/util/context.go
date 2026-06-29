@@ -147,11 +147,13 @@ func GetAssistantExecutionID(ctx context.Context) (string, bool) {
 	return id, ok
 }
 
-// HashTenantKey returns a SHA-256 hash of apiKey and signozURL, suitable for
-// use as a cache/map key without exposing the raw API key in memory.
-// A null-byte separator is used to prevent collisions between different
-// (apiKey, signozURL) pairs that contain colons.
-func HashTenantKey(apiKey, signozURL string) string {
-	h := sha256.Sum256([]byte(apiKey + "\x00" + signozURL))
+// HashTenantKey returns a SHA-256 hash of authHeader, apiKey and signozURL,
+// suitable for use as a cache/map key without exposing the raw API key in
+// memory. The auth-header name is included so two requests carrying the same
+// raw token in different upstream modes (Authorization vs SIGNOZ-API-KEY)
+// never share a cached client. Null-byte separators prevent collisions
+// between different tuples whose fields contain colons.
+func HashTenantKey(authHeader, apiKey, signozURL string) string {
+	h := sha256.Sum256([]byte(authHeader + "\x00" + apiKey + "\x00" + signozURL))
 	return hex.EncodeToString(h[:])
 }

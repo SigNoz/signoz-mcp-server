@@ -306,6 +306,11 @@ func TestE2EFamilyE_K4_RequestTypeValidation(t *testing.T) {
 		if !strings.Contains(e2eText(t, res), "requestType") {
 			t.Fatalf("rejection should mention requestType, got: %s", e2eText(t, res))
 		}
+		// handleAggregateLogs wraps the parser error via
+		// errorWithCode(CodeValidationFailed, ...). Pin the machine-readable code.
+		if code := resultCode(t, res); code != CodeValidationFailed {
+			t.Fatalf("aggregate_logs unknown requestType code = %q, want %q", code, CodeValidationFailed)
+		}
 	})
 
 	t.Run("query_metrics_unknown_rejected", func(t *testing.T) {
@@ -322,6 +327,11 @@ func TestE2EFamilyE_K4_RequestTypeValidation(t *testing.T) {
 		}
 		if !strings.Contains(e2eText(t, res), "requestType") {
 			t.Fatalf("rejection should mention requestType, got: %s", e2eText(t, res))
+		}
+		// handleQueryMetrics wraps the parser error via
+		// errorWithCode(CodeValidationFailed, ...). Pin the machine-readable code.
+		if code := resultCode(t, res); code != CodeValidationFailed {
+			t.Fatalf("query_metrics unknown requestType code = %q, want %q", code, CodeValidationFailed)
 		}
 	})
 }

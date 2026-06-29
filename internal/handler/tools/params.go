@@ -118,6 +118,23 @@ var validRequestTypes = map[string]bool{
 	"time_series": true,
 }
 
+// readRequestType reads the optional "requestType", rejecting a present-but-non-string
+// value loudly instead of silently defaulting. Absent/nil yields ("", nil) so the
+// caller applies its per-signal default.
+func readRequestType(args map[string]any) (string, error) {
+	raw, present := args["requestType"]
+	if !present || raw == nil {
+		return "", nil
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf(
+			`%s "requestType" must be a string ("scalar" or "time_series")`,
+			validationErrorPrefix)
+	}
+	return s, nil
+}
+
 // validateRequestType returns an error for an unknown requestType value. An
 // empty value is allowed (the caller applies its per-signal default).
 func validateRequestType(requestType string) error {

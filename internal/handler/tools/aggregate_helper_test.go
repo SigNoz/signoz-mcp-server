@@ -1,8 +1,15 @@
 package tools
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
 func TestResolveTimestampsEndOnlyUsesDefaultRange(t *testing.T) {
@@ -113,4 +120,186 @@ func TestParseAggregateArgs_LimitClamped(t *testing.T) {
 	if under.Limit != 25 || under.LimitClamped {
 		t.Fatalf("under-cap aggregate: Limit=%d Clamped=%v, want 25 false", under.Limit, under.LimitClamped)
 	}
+}
+
+// TestParseAggregateArgs_NonStringRequestTypeErrors (FIX A3) pins that a
+// present-but-non-string requestType is rejected loudly at the parse layer
+// instead of the failed type assertion coercing it to "" and silently
+// defaulting to "scalar".
+func TestParseAggregateArgs_NonStringRequestTypeErrors(t *testing.T) {
+	for _, bad := range []any{true, 123, float64(1)} {
+		if _, err := parseAggregateArgs(map[string]any{
+			"aggregation": "count",
+			"timeRange":   "1h",
+			"requestType": bad,
+		}, "logs", ""); err == nil {
+			t.Fatalf("parseAggregateArgs with requestType=%v (%T) = nil error, want validation error", bad, bad)
+		}
+	}
+	// A valid string requestType still parses.
+	if _, err := parseAggregateArgs(map[string]any{
+		"aggregation": "count",
+		"timeRange":   "1h",
+		"requestType": "time_series",
+	}, "logs", ""); err != nil {
+		t.Fatalf("parseAggregateArgs with valid requestType: unexpected error: %v", err)
+	}
+}
+
+// TestHandleAggregateLogs_NonStringRequestTypeCoded (FIX A3) pins the end-to-end
+// contract: a bool requestType yields a CodeValidationFailed result and never
+// reaches the backend.
+func TestHandleAggregateLogs_NonStringRequestTypeCoded(t *testing.T) {
+	called := false
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			called = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_aggregate_logs", map[string]any{
+		"aggregation": "count",
+		"timeRange":   "1h",
+		"requestType": true,
+	})
+
+	result, err := h.handleAggregateLogs(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("requestType=true: code = %q, want %q", code, CodeValidationFailed)
+	}
+	if called {
+		t.Fatal("backend QueryBuilderV5 was called despite invalid requestType")
+	}
+}
+
+// TestParseMetricsQueryArgs_NonStringRequestTypeErrors (FIX A3) pins the same
+// loud-rejection contract for the metrics arg parser (stringArg previously
+// dropped a non-string value to "").
+func TestParseMetricsQueryArgs_NonStringRequestTypeErrors(t *testing.T) {
+	if _, err := parseMetricsQueryArgs(map[string]any{
+		"metricName":  "system.cpu.time",
+		"requestType": 123,
+	}); err == nil {
+		t.Fatal("parseMetricsQueryArgs with requestType=123 = nil error, want validation error")
+	}
+}
+
+// TestHandleQueryMetrics_NonStringRequestTypeCoded (FIX A3) pins the end-to-end
+// contract for query_metrics: a numeric requestType yields a
+// CodeValidationFailed result and never reaches the backend.
+func TestHandleQueryMetrics_NonStringRequestTypeCoded(t *testing.T) {
+	called := false
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			called = true
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_query_metrics", map[string]any{
+		"metricName":  "system.cpu.time",
+		"metricType":  "gauge",
+		"timeRange":   "1h",
+		"requestType": 123,
+	})
+
+	result, err := h.handleQueryMetrics(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("requestType=123: code = %q, want %q", code, CodeValidationFailed)
+	}
+	if called {
+		t.Fatal("backend QueryBuilderV5 was called despite invalid requestType")
+	}
+}
+
+// TestWarnUnparsedWarningEnvelope (FIX D1) pins that QB warning-envelope drift
+// is detectable: a body that mentions "warning" but from which we extract zero
+// structured messages emits a WARN with the distinctive marker. A body with no
+// "warning" substring, or one we parsed successfully, stays silent.
+func TestWarnUnparsedWarningEnvelope(t *testing.T) {
+	t.Run("entry present but message field drifted emits WARN", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		// The warnings array carries an entry, but its message field was renamed
+		// (message -> msg), so extraction returns nothing — genuine drift.
+		drifted := []byte(`{"data":{"warning":{"warnings":[{"msg":"deprecated key"}]}}}`)
+		warnUnparsedWarningEnvelope(context.Background(), logger, "signoz_search_logs", drifted, 0)
+		got := logs.String()
+		if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "qb warning envelope unparsed") || !strings.Contains(got, "signoz_search_logs") {
+			t.Fatalf("expected drift WARN with marker + tool, got %q", got)
+		}
+	})
+	t.Run("no warning envelope stays silent", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		warnUnparsedWarningEnvelope(context.Background(), logger, "signoz_search_logs", []byte(`{"data":{"results":[]}}`), 0)
+		if got := logs.String(); got != "" {
+			t.Fatalf("expected no WARN for warning-free body, got %q", got)
+		}
+	})
+	t.Run("empty or degenerate envelope stays silent", func(t *testing.T) {
+		// A normal no-warnings response (empty array), an empty warning object, or
+		// degenerate empty entries must NOT be mistaken for drift.
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		for _, body := range []string{
+			`{"data":{"warning":{"warnings":[]}}}`,
+			`{"data":{"warning":{}}}`,
+			`{"data":{"warning":{"warnings":[{}]}}}`,
+		} {
+			logs.Reset()
+			warnUnparsedWarningEnvelope(context.Background(), logger, "signoz_search_logs", []byte(body), 0)
+			if got := logs.String(); got != "" {
+				t.Fatalf("expected no WARN for empty envelope %q, got %q", body, got)
+			}
+		}
+	})
+	t.Run("extracted messages stay silent", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		warnUnparsedWarningEnvelope(context.Background(), logger, "signoz_search_logs", []byte(`{"data":{"warning":{"warnings":[{"message":"x"}]}}}`), 1)
+		if got := logs.String(); got != "" {
+			t.Fatalf("expected no WARN when messages were extracted, got %q", got)
+		}
+	})
+}
+
+// TestWarnRowCountUnknown (FIX D2) pins that an uncountable rows array on a
+// non-trivial body emits a WARN with the distinctive marker, while a countable
+// body or a trivially-empty body stays silent.
+func TestWarnRowCountUnknown(t *testing.T) {
+	t.Run("uncountable non-empty body emits WARN", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		warnRowCountUnknown(context.Background(), logger, "signoz_search_traces", []byte(`{"data":{"data":{"renamed":[]}}}`), false)
+		got := logs.String()
+		if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "row count unknown on non-empty body") || !strings.Contains(got, "signoz_search_traces") {
+			t.Fatalf("expected row-count WARN with marker + tool, got %q", got)
+		}
+	})
+	t.Run("rowsKnown stays silent", func(t *testing.T) {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		warnRowCountUnknown(context.Background(), logger, "signoz_search_traces", []byte(`{"data":{"data":{"results":[]}}}`), true)
+		if got := logs.String(); got != "" {
+			t.Fatalf("expected no WARN when rowsKnown, got %q", got)
+		}
+	})
+	t.Run("trivial body stays silent", func(t *testing.T) {
+		for _, body := range []string{"", "{}", "[]", "null", "  {}  "} {
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			warnRowCountUnknown(context.Background(), logger, "signoz_search_traces", []byte(body), false)
+			if got := logs.String(); got != "" {
+				t.Fatalf("expected no WARN for trivial body %q, got %q", body, got)
+			}
+		}
+	})
 }
