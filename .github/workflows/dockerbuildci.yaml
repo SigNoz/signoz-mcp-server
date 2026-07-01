@@ -23,3 +23,96 @@ jobs:
       DOCKER_DOCKERFILE_PATH: Dockerfile.multi-arch
       DOCKER_MANIFEST: true
       DOCKER_PROVIDERS: 'dockerhub gcp'
+
+  # Publish the committed server.json to the official MCP Registry (registry.modelcontextprotocol.io).
+  # The prereleaser (.github/workflows/pre-release.yaml) bumps server.json's version and pinned OCI
+  # image tag in a PR that is merged before tagging, so the tagged commit already carries the exact
+  # file to publish — this job publishes it as-is (it does not rewrite it).
+  # `needs: build` guarantees the multi-arch image manifest is pushed first — the registry verifies
+  # ownership by pulling the OCI image at the identifier tag and reading its
+  # io.modelcontextprotocol.server.name label, so the image must exist before we publish.
+  # Gated to stable v* tags: skips `main` branch pushes and pre-release tags (e.g. v1.2.3-rc.0)
+  # so release candidates do not land in the public registry listing.
+  publish-mcp-registry:
+    name: Publish to MCP Registry
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC auth — maps repo owner (SigNoz) to the io.github.SigNoz/* namespace
+      contents: read
+    steps:
+      - name: checkout tag
+        uses: actions/checkout@v4
+
+      - name: verify server.json matches the release tag
+        id: meta
+        run: |
+          set -euo pipefail
+          # Source of truth is the committed server.json (bumped by the prereleaser PR). Assert it
+          # matches the tag and fail loud — pointing at the prereleaser — rather than silently
+          # publishing a stale version if someone tagged without running it first.
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(jq -r '.version' server.json)"
+          IMAGE="$(jq -r '.packages[0].identifier' server.json)"
+          if [ "$VERSION" != "${TAG#v}" ]; then
+            echo "::error::server.json version '$VERSION' does not match tag '$TAG'. Run the prereleaser to bump server.json before tagging."
+            exit 1
+          fi
+          if [ "$IMAGE" != "docker.io/signoz/signoz-mcp-server:${TAG}" ]; then
+            echo "::error::server.json identifier '$IMAGE' is not pinned to 'docker.io/signoz/signoz-mcp-server:${TAG}'. Run the prereleaser to bump server.json before tagging."
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "image=$IMAGE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Publishing server.json:"
+          cat server.json
+
+      - name: verify image is published and pullable
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          # needs:build already finished, but allow for manifest/registry propagation lag
+          # before the registry pulls this image for ownership verification. Inspect the
+          # remote manifest (no pull); fail loudly if it never appears.
+          for i in 1 2 3 4 5 6; do
+            if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "found $IMAGE"
+              exit 0
+            fi
+            echo "attempt $i: $IMAGE not yet available, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::$IMAGE not found after retries; aborting publish."
+          exit 1
+
+      - name: skip if this version is already published
+        id: check
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          NAME: io.github.SigNoz/signoz-mcp-server
+        run: |
+          set -euo pipefail
+          # Fail open: only skip when we POSITIVELY confirm this version exists, so a query
+          # hiccup falls through to publish (which fails loudly on a true duplicate) rather
+          # than silently skipping a real release. Makes benign workflow re-runs green.
+          if curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=${NAME}" \
+               | jq -e --arg v "$VERSION" --arg n "$NAME" \
+                   '[.servers[]?.server | select(.name==$n and .version==$v)] | length > 0' >/dev/null 2>&1; then
+            echo "v${VERSION} already published; skipping publish."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: publish to MCP Registry
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          set -euo pipefail
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher validate
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

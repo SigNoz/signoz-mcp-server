@@ -67,6 +67,10 @@ func TestHandleSearchTraces_ErrorAndDurationFilters(t *testing.T) {
 	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
 	}
+	want := "has_error = true AND duration_nano >= 500000000 AND duration_nano <= 2000000000"
+	if got := payloadFilterExpression(t, captured); got != want {
+		t.Fatalf("payload filter = %q, want %q", got, want)
+	}
 }
 
 func TestHandleSearchTraces_OperationFilter(t *testing.T) {
@@ -97,10 +101,10 @@ func TestHandleSearchTraces_OperationFilter(t *testing.T) {
 }
 
 func TestHandleAggregateTraces_CountByService(t *testing.T) {
-	called := false
+	var captured []byte
 	mock := &client.MockClient{
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
+			captured = body
 			return json.RawMessage(`{"status":"success","result":[{"value":100}]}`), nil
 		},
 	}
@@ -119,23 +123,33 @@ func TestHandleAggregateTraces_CountByService(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if !called {
+	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
+	}
+	if got := payloadFilterExpression(t, captured); got != "has_error = true" {
+		t.Fatalf("payload filter = %q, want has_error = true", got)
+	}
+	groupBy := payloadGroupByFields(t, captured)
+	if len(groupBy) != 1 {
+		t.Fatalf("groupBy count = %d, want 1: %#v", len(groupBy), groupBy)
+	}
+	if got := groupBy[0]; got.Name != "service.name" || got.FieldContext != "resource" || got.FieldDataType != "string" {
+		t.Fatalf("groupBy[0] = %#v, want service.name resource string", got)
 	}
 }
 
 func TestHandleAggregateTraces_P99Latency(t *testing.T) {
-	called := false
+	var captured []byte
 	mock := &client.MockClient{
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
+			captured = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_aggregate_traces", map[string]any{
 		"aggregation": "p99",
-		"aggregateOn": "durationNano",
+		"aggregateOn": "duration_nano",
 		"service":     "checkout-svc",
 		"timeRange":   "6h",
 	})
@@ -147,9 +161,105 @@ func TestHandleAggregateTraces_P99Latency(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if !called {
+	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
 	}
+	payload := string(captured)
+	if !strings.Contains(payload, `"expression":"p99(duration_nano)"`) {
+		t.Fatalf("expected canonical p99 latency aggregation, got: %s", payload)
+	}
+	if !strings.Contains(payload, `"expression":"service.name = 'checkout-svc'"`) {
+		t.Fatalf("expected service shortcut filter, got: %s", payload)
+	}
+}
+
+func TestHandleAggregateTraces_LegacyFreeFormFieldsPassThrough(t *testing.T) {
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = body
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_aggregate_traces", map[string]any{
+		"aggregation": "avg",
+		"aggregateOn": "durationNano",
+		"filter":      "hasError = true",
+		"orderBy":     "avg(durationNano) asc",
+		"timeRange":   "6h",
+	})
+
+	result, err := h.handleAggregateTraces(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	payload := string(captured)
+	for _, want := range []string{"avg(durationNano)", "hasError = true"} {
+		if !strings.Contains(payload, want) {
+			t.Fatalf("legacy free-form value %q was not preserved in payload: %s", want, payload)
+		}
+	}
+}
+
+func TestHandleSearchTraces_LegacyFreeFormFilterPassesThrough(t *testing.T) {
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = body
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_search_traces", map[string]any{
+		"filter":    "hasError = true AND durationNano > 1000",
+		"timeRange": "1h",
+	})
+
+	result, err := h.handleSearchTraces(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	want := "hasError = true AND durationNano > 1000"
+	if got := payloadFilterExpression(t, captured); got != want {
+		t.Fatalf("payload filter = %q, want %q", got, want)
+	}
+}
+
+type payloadSelectField struct {
+	Name          string `json:"name"`
+	FieldDataType string `json:"fieldDataType"`
+	Signal        string `json:"signal"`
+	FieldContext  string `json:"fieldContext"`
+}
+
+func payloadGroupByFields(t *testing.T, payload []byte) []payloadSelectField {
+	t.Helper()
+	if len(payload) == 0 {
+		t.Fatal("payload was not captured")
+	}
+	var decoded struct {
+		CompositeQuery struct {
+			Queries []struct {
+				Spec struct {
+					GroupBy []payloadSelectField `json:"groupBy"`
+				} `json:"spec"`
+			} `json:"queries"`
+		} `json:"compositeQuery"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if len(decoded.CompositeQuery.Queries) != 1 {
+		t.Fatalf("query count = %d, want 1", len(decoded.CompositeQuery.Queries))
+	}
+	return decoded.CompositeQuery.Queries[0].Spec.GroupBy
 }
 
 func TestHandleAggregateTraces_MissingAggregation(t *testing.T) {
@@ -366,10 +476,10 @@ func TestHandleGetTraceDetails_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 
 // rawSearchTracesBody is a realistic query-builder v5 "raw" response (a
 // render.Success envelope wrapping QueryRangeResponse) with two rows. The second
-// row's durationNano exceeds float64's exact-integer range to guard precision.
+// row's duration_nano exceeds float64's exact-integer range to guard precision.
 const rawSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
-	`{"timestamp":"2026-06-19T10:00:00Z","data":{"traceID":"abc-123","durationNano":9007199254740993,"name":"GET /cart"}},` +
-	`{"timestamp":"2026-06-19T10:00:01Z","data":{"traceID":"def-456","durationNano":42,"name":"POST /checkout"}}` +
+	`{"timestamp":"2026-06-19T10:00:00Z","data":{"trace_id":"abc-123","duration_nano":9007199254740993,"name":"GET /cart"}},` +
+	`{"timestamp":"2026-06-19T10:00:01Z","data":{"trace_id":"def-456","duration_nano":42,"name":"POST /checkout"}}` +
 	`]}]},"meta":{}}}`
 
 func TestHandleSearchTraces_RowsGetWebURL(t *testing.T) {
@@ -395,9 +505,9 @@ func TestHandleSearchTraces_RowsGetWebURL(t *testing.T) {
 	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/trace/def-456"`) {
 		t.Fatalf("expected second row webUrl, got: %s", body)
 	}
-	// durationNano (> 2^53) must survive the enrichment round-trip exactly.
+	// duration_nano (> 2^53) must survive the enrichment round-trip exactly.
 	if !strings.Contains(body, "9007199254740993") {
-		t.Fatalf("durationNano lost precision: %s", body)
+		t.Fatalf("duration_nano lost precision: %s", body)
 	}
 }
 
@@ -420,11 +530,11 @@ func TestHandleSearchTraces_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	}
 }
 
-// driftSearchTracesBody is a v5 raw response whose rows carry "trace_id" instead
-// of the "traceID" key the enrichment looks for — i.e. a simulated upstream shape
-// change. Rows are present but none are enrichable.
+// driftSearchTracesBody is a v5 raw response whose rows carry no supported trace
+// id key — i.e. a simulated upstream shape change. Rows are present but none are
+// enrichable.
 const driftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
-	`{"timestamp":"t","data":{"trace_id":"abc-123","name":"GET /cart"}}` +
+	`{"timestamp":"t","data":{"trace_identifier":"abc-123","name":"GET /cart"}}` +
 	`]}]},"meta":{}}}`
 
 // emptySearchTracesBody is an ordinary "no data" response: results present, zero rows.
@@ -451,8 +561,21 @@ func searchTracesWithCapturedLogs(t *testing.T, responseBody string) string {
 func TestHandleSearchTraces_WarnsOnProbableShapeDrift(t *testing.T) {
 	// Rows present but none enrichable -> WARN so the silent fail-open is detectable.
 	out := searchTracesWithCapturedLogs(t, driftSearchTracesBody)
-	if !strings.Contains(out, "enriched none") || !strings.Contains(out, "rowsSeen=1") {
+	if !strings.Contains(out, "rows without supported trace id") || !strings.Contains(out, "rowsSeen=1") || !strings.Contains(out, "rowsEnriched=0") {
 		t.Fatalf("expected a shape-drift WARN with rowsSeen, got logs: %q", out)
+	}
+}
+
+func TestHandleSearchTraces_WarnsOnPartialRowEnrichment(t *testing.T) {
+	// Mixed rows where only some carry supported trace-id aliases should warn
+	// because fail-open enrichment would otherwise drop links silently.
+	body := `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","rows":[` +
+		`{"timestamp":"t","data":{"trace_id":"abc-123"}},` +
+		`{"timestamp":"t","data":{"trace_identifier":"missing"}}` +
+		`]}]},"meta":{}}}`
+	out := searchTracesWithCapturedLogs(t, body)
+	if !strings.Contains(out, "rows without supported trace id") || !strings.Contains(out, "rowsSeen=2") || !strings.Contains(out, "rowsEnriched=1") {
+		t.Fatalf("expected a partial-enrichment WARN with row counts, got logs: %q", out)
 	}
 }
 
@@ -468,7 +591,7 @@ func TestHandleSearchTraces_NoWarnWhenNoRows(t *testing.T) {
 // and non-empty, but the per-result "rows" key is renamed ("records") so no rows
 // array can be read — a simulated per-result shape change.
 const rowsKeyDriftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"results":[{"queryName":"A","records":[` +
-	`{"timestamp":"t","data":{"traceID":"abc-123"}}` +
+	`{"timestamp":"t","data":{"trace_id":"abc-123"}}` +
 	`]}]},"meta":{}}}`
 
 func TestHandleSearchTraces_WarnsWhenRowsKeyMissing(t *testing.T) {
@@ -483,7 +606,7 @@ func TestHandleSearchTraces_WarnsWhenRowsKeyMissing(t *testing.T) {
 // renamed ("rezults"), so the envelope can't be walked even though it carries
 // rows — a simulated upstream envelope-shape change.
 const envelopeDriftSearchTracesBody = `{"status":"success","data":{"type":"raw","data":{"rezults":[{"queryName":"A","rows":[` +
-	`{"timestamp":"t","data":{"traceID":"abc-123"}}` +
+	`{"timestamp":"t","data":{"trace_id":"abc-123"}}` +
 	`]}]},"meta":{}}}`
 
 func TestHandleSearchTraces_WarnsWhenEnvelopeUnwalkable(t *testing.T) {

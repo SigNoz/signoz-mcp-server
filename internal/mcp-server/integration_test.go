@@ -246,6 +246,175 @@ func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
 	}
 }
 
+// TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription guards
+// SigNoz/signoz-ai-assistant#359 at the real registration boundary: it lists
+// the registered tools (as a client would) and asserts that no field anywhere
+// in any tool's input schema has the literal description "required" — the
+// artifact google/jsonschema-go produces from a stray `jsonschema:"required"`
+// tag (it uses the `jsonschema` tag value as the field description).
+//
+// This complements the unit tests in internal/handler/tools: if a typed-struct
+// field ever regains a `jsonschema:"required"` tag, or a new field is added
+// without an authored `jsonschema` description, the leak surfaces here.
+func TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+
+	var sawCreateAlert bool
+	for _, tool := range toolsResult.Tools {
+		schema := inputSchema(t, tool)
+		for _, d := range collectSchemaDescriptions(schema) {
+			if d == "required" {
+				t.Errorf("%s inputSchema exposes a field description of %q (a stray jsonschema:\"required\" tag)", tool.Name, "required")
+			}
+		}
+		// End-to-end proof that authored descriptions reach the real
+		// registration output for at least one typed tool, not just in the
+		// unit harness.
+		if tool.Name == "signoz_create_alert" {
+			sawCreateAlert = true
+			props := schemaProperties(t, tool.Name, schema)
+			alert, _ := props["alert"].(map[string]any)
+			if alert == nil || alert["description"] != "Name of the alert rule. Must be unique and descriptive." {
+				t.Errorf("signoz_create_alert .alert description = %v, want authored prose", alert["description"])
+			}
+		}
+	}
+	if !sawCreateAlert {
+		t.Fatalf("signoz_create_alert was not registered; cannot verify descriptions")
+	}
+}
+
+// collectSchemaDescriptions returns every "description" string found anywhere in
+// a JSON-schema-shaped value.
+func collectSchemaDescriptions(node any) []string {
+	var out []string
+	switch v := node.(type) {
+	case map[string]any:
+		if d, ok := v["description"].(string); ok {
+			out = append(out, d)
+		}
+		for _, val := range v {
+			out = append(out, collectSchemaDescriptions(val)...)
+		}
+	case []any:
+		for _, val := range v {
+			out = append(out, collectSchemaDescriptions(val)...)
+		}
+	}
+	return out
+}
+
+func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "test-client",
+				Version: version.Version,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("ListTools failed: %v", err)
+	}
+	toolsByName := make(map[string]mcp.Tool, len(toolsResult.Tools))
+	for _, tool := range toolsResult.Tools {
+		toolsByName[tool.Name] = tool
+	}
+
+	for _, name := range []string{
+		"signoz_search_logs",
+		"signoz_search_traces",
+		"signoz_aggregate_logs",
+		"signoz_aggregate_traces",
+		"signoz_query_metrics",
+	} {
+		tool, ok := toolsByName[name]
+		if !ok {
+			t.Fatalf("tool %s not registered", name)
+		}
+		props := schemaProperties(t, name, inputSchema(t, tool))
+		if _, ok := props["filter"]; !ok {
+			t.Errorf("%s should advertise canonical filter param", name)
+		}
+		if _, ok := props["query"]; ok {
+			t.Errorf("%s should not advertise legacy query alias", name)
+		}
+	}
+
+	// "False friends": tools whose filter-ish param is a distinct, legitimate
+	// param that must stay advertised — NOT the canonical filter-expression
+	// alias the #213 sweep converged. Guards against a future query→filter
+	// rename wrongly touching them.
+	//   - signoz_list_alerts.filter      : Prometheus matcher expression
+	//   - signoz_execute_builder_query.query : the full QB v5 JSON object
+	falseFriends := map[string]string{
+		"signoz_list_alerts":           "filter",
+		"signoz_execute_builder_query": "query",
+	}
+	for name, param := range falseFriends {
+		tool, ok := toolsByName[name]
+		if !ok {
+			t.Fatalf("tool %s not registered", name)
+		}
+		props := schemaProperties(t, name, inputSchema(t, tool))
+		if _, ok := props[param]; !ok {
+			t.Errorf("%s should keep %q param", name, param)
+		}
+	}
+
+	// signoz_search_docs was renamed (#367): its free-text param is now the
+	// canonical "searchText". The legacy "query" key is still accepted by the
+	// handler as a PERMANENT silent alias but is no longer advertised in the
+	// schema. Pin both halves of that contract.
+	if tool, ok := toolsByName["signoz_search_docs"]; ok {
+		props := schemaProperties(t, "signoz_search_docs", inputSchema(t, tool))
+		if _, ok := props["searchText"]; !ok {
+			t.Errorf("signoz_search_docs should advertise canonical %q param", "searchText")
+		}
+		if _, ok := props["query"]; ok {
+			t.Errorf("signoz_search_docs should NOT advertise legacy %q param (handler-only alias)", "query")
+		}
+	} else {
+		t.Fatalf("tool signoz_search_docs not registered")
+	}
+}
+
 func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()

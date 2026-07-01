@@ -59,8 +59,8 @@ func TestE2E_GetAlert_NoArguments_ReturnsValidationError(t *testing.T) {
 	}
 
 	text := firstTextContent(t, res.Content)
-	if !strings.Contains(text, "ruleId") {
-		t.Fatalf("expected a ruleId validation message, got: %s", text)
+	if !strings.Contains(text, `"id"`) {
+		t.Fatalf("expected an id validation message, got: %s", text)
 	}
 	if strings.Contains(strings.ToLower(text), "panic") {
 		t.Fatalf("response still surfaces a panic instead of a clean validation error: %s", text)

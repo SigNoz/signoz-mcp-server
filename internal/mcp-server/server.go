@@ -1122,16 +1122,21 @@ func (m *MCPServer) runStdio(ctx context.Context, s *server.MCPServer) error {
 	return nil
 }
 
-func isJWTToken(token string) bool {
-	return strings.Count(token, ".") == 2 && strings.HasPrefix(token, "eyJ")
+// stripBearerPrefix removes a leading "Bearer " scheme token (case-insensitive,
+// per RFC 7235 — SigNoz parses the scheme the same way) and trims surrounding
+// whitespace, returning the bare token value.
+func stripBearerPrefix(authValue string) string {
+	const prefix = "Bearer "
+	if len(authValue) >= len(prefix) && strings.EqualFold(authValue[:len(prefix)], prefix) {
+		return strings.TrimSpace(authValue[len(prefix):])
+	}
+	return strings.TrimSpace(authValue)
 }
 
 const (
 	authModeNone                = "none"
 	authModeSignozAPIKeyHeader  = "signoz-api-key-header"
-	authModeAuthorizationAPIKey = "authorization-api-key"
 	authModeAuthorizationBearer = "authorization-bearer"
-	authModeAuthorizationJWT    = "authorization-jwt"
 	authModeOAuthAccessToken    = "oauth-access-token"
 	authModeConfigAPIKey        = "config-api-key"
 
@@ -1259,11 +1264,10 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
 		customURL := r.Header.Get("X-SigNoz-URL")
 
-		// Check for auth credentials from headers.
-		// Clients can provide either:
-		//   - SIGNOZ-API-KEY: <pat-token>
-		//   - Authorization: Bearer <token>  (JWT, PAT)
-		//   - Authorization: <token>         (legacy)
+		// SigNoz classifies credentials by header name, not token shape, so
+		// each is forwarded on the header the client used: SIGNOZ-API-KEY
+		// as-is, Authorization bearer tokens as Authorization (unless the
+		// bearer is a server-issued OAuth access token, handled below).
 		signozAPIKey := r.Header.Get("SIGNOZ-API-KEY")
 		authHeader := r.Header.Get("Authorization")
 
@@ -1274,27 +1278,21 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 
 		if signozAPIKey != "" {
 			// Explicit PAT via SIGNOZ-API-KEY header — forward as-is.
-			apiKey = strings.TrimPrefix(signozAPIKey, "Bearer ")
+			apiKey = stripBearerPrefix(signozAPIKey)
 			authMode = authModeSignozAPIKeyHeader
 
 			ctx = util.SetAPIKey(ctx, apiKey)
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 		} else if authHeader != "" {
-			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+			token := stripBearerPrefix(authHeader)
 			if customURL != "" {
-				if isJWTToken(token) {
-					// JWT token — forward via Authorization: Bearer <token>
-					apiKey = "Bearer " + token
-					authMode = authModeAuthorizationJWT
-					ctx = util.SetAPIKey(ctx, apiKey)
-					ctx = util.SetAuthHeader(ctx, "Authorization")
-				} else {
-					// PAT token — forward via SIGNOZ-API-KEY
-					apiKey = token
-					authMode = authModeAuthorizationAPIKey
-					ctx = util.SetAPIKey(ctx, apiKey)
-					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-				}
+				// Direct (non-OAuth) credential: honor the ingress header and
+				// forward as Authorization: Bearer regardless of token shape.
+				// Service-account API keys must use the SIGNOZ-API-KEY header.
+				apiKey = "Bearer " + token
+				authMode = authModeAuthorizationBearer
+				ctx = util.SetAPIKey(ctx, apiKey)
+				ctx = util.SetAuthHeader(ctx, "Authorization")
 			} else if m.config.OAuthEnabled {
 				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
 				switch {
@@ -1321,26 +1319,27 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 					http.Error(w, "OAuth access token expired", http.StatusUnauthorized)
 					return
 				default:
-					// Only fall back to legacy raw API key mode when the request also
-					// carries an explicit SigNoz URL (header or config). Otherwise a
-					// stale bearer token can mask the OAuth challenge flow.
+					// Not an OAuth token. Forward as a direct credential only
+					// when a SigNoz URL is available; otherwise a stale bearer
+					// token would mask the OAuth challenge flow.
 					if customURL == "" && m.config.URL == "" {
 						m.logAuthFailure(ctx, r, http.StatusUnauthorized, authFailureInvalidOAuthToken, authModeAuthorizationBearer, "Bearer token did not match OAuth token format and no SigNoz URL is available for legacy fallback")
 						m.setOAuthChallenge(w, `error="invalid_token", error_description="access token is invalid"`)
 						http.Error(w, "OAuth access token is invalid", http.StatusUnauthorized)
 						return
 					}
-					apiKey = token
-					authMode = authModeAuthorizationAPIKey
+					apiKey = "Bearer " + token
+					authMode = authModeAuthorizationBearer
 					ctx = util.SetAPIKey(ctx, apiKey)
-					ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
-					m.logger.DebugContext(ctx, "Bearer token did not match OAuth token format, falling back to raw API key")
+					ctx = util.SetAuthHeader(ctx, "Authorization")
+					m.logger.DebugContext(ctx, "Bearer token did not match OAuth token format, forwarding as Authorization")
 				}
 			} else {
-				apiKey = token
-				authMode = authModeAuthorizationAPIKey
+				// OAuth disabled: honor the ingress header (Authorization).
+				apiKey = "Bearer " + token
+				authMode = authModeAuthorizationBearer
 				ctx = util.SetAPIKey(ctx, apiKey)
-				ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+				ctx = util.SetAuthHeader(ctx, "Authorization")
 			}
 
 		} else if m.config.APIKey != "" {

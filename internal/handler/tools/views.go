@@ -27,10 +27,10 @@ var validSourcePages = map[string]struct{}{
 
 func validateSourcePage(sp string) error {
 	if sp == "" {
-		return fmt.Errorf(`parameter validation failed: "sourcePage" is required. Must be one of: "traces", "logs", "metrics", "meter"`)
+		return fmt.Errorf(`%s "sourcePage" is required. Must be one of: "traces", "logs", "metrics", "meter"`, validationErrorPrefix)
 	}
 	if _, ok := validSourcePages[sp]; !ok {
-		return fmt.Errorf(`parameter validation failed: "sourcePage" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, sp)
+		return fmt.Errorf(`%s "sourcePage" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, validationErrorPrefix, sp)
 	}
 	return nil
 }
@@ -49,8 +49,8 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics", "meter". Cost Meter views are filed under "meter" (not "metrics").`)),
 		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name (applied server-side).")),
 		mcp.WithString("category", mcp.Description("Optional partial-match filter on view category (applied server-side).")),
-		mcp.WithString("limit", mcp.Description("Maximum number of views to return per page. Default: 50.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
 	)
 	addTool(s, listTool, h.handleListViews)
 
@@ -59,7 +59,9 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Fetch a single SigNoz saved view by UUID. Use the returned object as the base for signoz_update_view — the update is a full-body replace."),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs.")),
+		// Not mcp.Required(): the legacy alias "viewId" must remain a valid call
+		// for schema-aware clients. The handler validates id/viewId presence.
+		mcp.WithString("id", mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. Required.")),
 	)
 	addTool(s, getTool, h.handleGetView)
 
@@ -93,12 +95,12 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
 				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
 				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics/meter\n\n"+
-				"Pass the view's UUID as viewId and the full SavedView body as view. "+
+				"Pass the view's UUID as id and the full SavedView body as view. "+
 				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
 				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
-				"Do not send id/createdAt/createdBy/updatedAt/updatedBy — the server ignores them.",
+				"Do not send id/createdAt/createdBy/updatedAt/updatedBy inside `view` — the server ignores them.",
 		),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("UUID of the view to replace.")),
+		mcp.WithString("id", mcp.Description("UUID of the view to replace. Required.")),
 		mcp.WithObject("view",
 			mcp.Required(),
 			mcp.Properties(savedViewSchemaProperties()),
@@ -113,7 +115,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
-		mcp.WithString("viewId", mcp.Required(), mcp.Description("UUID of the view to delete.")),
+		mcp.WithString("id", mcp.Description("UUID of the view to delete. Required.")),
 	)
 	addTool(s, deleteTool, h.handleDeleteView)
 
@@ -242,20 +244,20 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 			// Cost Meter views are queried as metrics against the meter store.
 			if signal == "" {
 				return fmt.Errorf(
-					`parameter validation failed: compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
-					i,
+					`%s compositeQuery.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
+					validationErrorPrefix, i,
 				)
 			}
 			if signal != "metrics" {
 				return fmt.Errorf(
-					`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
-					i, signal,
+					`%s compositeQuery.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
+					validationErrorPrefix, i, signal,
 				)
 			}
 			if source != "meter" {
 				return fmt.Errorf(
-					`parameter validation failed: compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
-					i, source,
+					`%s compositeQuery.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
+					validationErrorPrefix, i, source,
 				)
 			}
 			continue
@@ -263,21 +265,21 @@ func validateBuilderSignal(compositeQuery any, sourcePage string) error {
 
 		if signal == "" {
 			return fmt.Errorf(
-				`parameter validation failed: compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
-				i, sourcePage,
+				`%s compositeQuery.queries[%d].spec.signal is required and must equal sourcePage (%q)`,
+				validationErrorPrefix, i, sourcePage,
 			)
 		}
 		if signal != sourcePage {
 			return fmt.Errorf(
-				`parameter validation failed: compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
-				i, signal, sourcePage,
+				`%s compositeQuery.queries[%d].spec.signal = %q but sourcePage = %q, they must match`,
+				validationErrorPrefix, i, signal, sourcePage,
 			)
 		}
 		// A Cost Meter query (source="meter") must live on the "meter" page.
 		if source == "meter" {
 			return fmt.Errorf(
-				`parameter validation failed: compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
-				i, sourcePage,
+				`%s compositeQuery.queries[%d].spec.source = "meter" requires sourcePage "meter" (a Cost Meter view), but sourcePage = %q`,
+				validationErrorPrefix, i, sourcePage,
 			)
 		}
 	}
@@ -345,16 +347,16 @@ func unwrapViewEnvelope(args map[string]any) {
 func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
 	sourcePage, _ := args["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
 		h.logger.WarnContext(ctx, "list_views validation failed", slog.String("sourcePage", sourcePage))
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	name, _ := args["name"].(string)
 	category, _ := args["category"].(string)
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_views",
 		slog.String("sourcePage", sourcePage),
@@ -369,7 +371,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	result, err := client.ListViews(ctx, sourcePage, name, category)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list views", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var parsed map[string]any
@@ -396,20 +398,20 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
-	viewID, _ := args["viewId"].(string)
+	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		h.logger.WarnContext(ctx, "get_view missing viewId")
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
+		h.logger.WarnContext(ctx, "get_view missing id")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid saved view UUID. Use signoz_list_views to see available views.`), nil
 	}
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_view", slog.String("viewId", viewID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_view", slog.String("id", viewID))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -418,32 +420,32 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	data, err := client.GetView(ctx, viewID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to get view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
-	return mcp.NewToolResultText(string(data)), nil
+	return structuredResult(data), nil
 }
 
 func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(args) == 0 {
-		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
+		return notAConfigObjectError(), nil
 	}
 	unwrapViewEnvelope(args)
 
-	name, _ := args["name"].(string)
-	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "name" is required and cannot be empty.`), nil
+	name, errResult := requireStringArg(args, "name")
+	if errResult != nil {
+		return errResult, nil
 	}
 	sourcePage, _ := args["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	cq, present := args["compositeQuery"]
 	if !present {
-		return mcp.NewToolResultError(`Parameter validation failed: "compositeQuery" is required. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "compositeQuery" is required. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
 	}
 	if err := validateBuilderSignal(cq, sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	body, err := marshalViewBody(args)
@@ -460,7 +462,7 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	data, err := client.CreateView(ctx, body)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to create view", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
@@ -468,12 +470,12 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok || len(args) == 0 {
-		return mcp.NewToolResultError("parameter validation failed: request body is empty or not an object"), nil
+		return notAConfigObjectError(), nil
 	}
 
-	viewID, _ := args["viewId"].(string)
+	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Use signoz_list_views to find the UUID.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}
 
 	// The canonical shape (per input schema) wraps the body under "view".
@@ -487,7 +489,9 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	} else {
 		view = map[string]any{}
 		for k, v := range args {
-			if k == "viewId" || k == "searchContext" || k == "view" {
+			// Skip the MCP-level fields and the top-level id/viewId path param;
+			// the SavedView body's own id is server-populated and stripped later.
+			if k == "id" || k == "viewId" || k == "searchContext" || k == "view" {
 				continue
 			}
 			view[k] = v
@@ -495,23 +499,23 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		unwrapViewEnvelope(view)
 	}
 	if len(view) == 0 {
-		return mcp.NewToolResultError(`Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
 	}
 
 	name, _ := view["name"].(string)
 	if name == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "view.name" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view.name" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
 	}
 	sourcePage, _ := view["sourcePage"].(string)
 	if err := validateSourcePage(sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 	cq, present := view["compositeQuery"]
 	if !present {
-		return mcp.NewToolResultError(`Parameter validation failed: "view.compositeQuery" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view.compositeQuery" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
 	}
 	if err := validateBuilderSignal(cq, sourcePage); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	stripNonBodyFields(view)
@@ -536,7 +540,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 			} `json:"data"`
 		}
 		if jerr := json.Unmarshal(existing, &probe); jerr == nil && probe.Data.SourcePage != "" && probe.Data.SourcePage != sourcePage {
-			return mcp.NewToolResultError(fmt.Sprintf(
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
 				`Parameter validation failed: cannot change sourcePage on update (existing=%q, new=%q). Saved views are scoped to an Explorer; delete and re-create to move across Explorers.`,
 				probe.Data.SourcePage, sourcePage,
 			)), nil
@@ -545,7 +549,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	data, err := client.UpdateView(ctx, viewID, body)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to update view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }
@@ -553,13 +557,13 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
-		return mcp.NewToolResultError("invalid arguments format: expected JSON object"), nil
+		return notAJSONObjectError(), nil
 	}
-	viewID, _ := args["viewId"].(string)
+	viewID := readResourceID(args, "viewId")
 	if viewID == "" {
-		return mcp.NewToolResultError(`Parameter validation failed: "viewId" cannot be empty. Use signoz_list_views to find the UUID.`), nil
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_views to find the UUID.`), nil
 	}
-	h.logger.DebugContext(ctx, "Tool called: signoz_delete_view", slog.String("viewId", viewID))
+	h.logger.DebugContext(ctx, "Tool called: signoz_delete_view", slog.String("id", viewID))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -568,7 +572,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	data, err := client.DeleteView(ctx, viewID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to delete view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }

@@ -23,6 +23,18 @@ plans/
    - `In Progress` — implementation underway
    - `Done` — shipped
 
+## Git & PR
+
+- Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`.
+- PR titles must follow the same conventional-commit format, e.g.
+  `chore(rate-limits): centralize override defaults`.
+- Create GitHub issues in `SigNoz/nerve-pod` by default. Only use another repo when the user explicitly asks for that specific repo.
+- Keep PR body in sync with actual changes.
+
+## Code Style
+
+- Avoid long inline code comments unless needed; keep comments concise and non-redundant.
+
 ## Documentation & Metadata Sync Checklist
 
 When adding, renaming, or removing MCP tools/resources/configuration, update docs and metadata in the same PR.
@@ -31,6 +43,7 @@ When adding, renaming, or removing MCP tools/resources/configuration, update doc
 - Update `README.md` tool tables/parameter references to match current behavior.
 - Update `manifest.json` tool metadata (`tools`, descriptions, and related fields) to match registered handlers.
 - Review any user-facing docs under `docs/` for stale references.
+- Check whether the companion **SigNoz/agent-skills** repo needs a matching change. Skills (e.g. `signoz-creating-alerts`, `signoz-creating-dashboards`) deliberately defer field/schema detail to the MCP server, so they need updating only when a change alters the **tool contract they teach** — a renamed/removed tool or parameter, a changed payload shape, or changed documented behavior (as the `query`→`filter` rename did). Additive or internal changes that don't alter that contract (e.g. surfacing already-authored field descriptions) need no skills change. State the outcome of this check in the PR summary, and link the companion agent-skills PR when one is needed.
 - Mention these doc updates explicitly in the PR summary.
 
 ### File templates

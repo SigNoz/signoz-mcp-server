@@ -89,8 +89,8 @@ func handleLatencyAnalysis(_ context.Context, req mcp.GetPromptRequest) (*mcp.Ge
 					Type: "text",
 					Text: fmt.Sprintf(`Analyze p99 latency for the service "%s" over the last %s. Follow these steps:
 
-1. Use signoz_aggregate_traces with service="%s", aggregation="p99", aggregateOn="durationNano", groupBy="name", timeRange="%s" to find the slowest operations.
-2. Use signoz_aggregate_traces with service="%s", aggregation="p99", aggregateOn="durationNano", requestType="time_series", timeRange="%s" to see how latency has changed over time.
+1. Use signoz_aggregate_traces with service="%s", aggregation="p99", aggregateOn="duration_nano", groupBy="name", timeRange="%s" to find the slowest operations.
+2. Use signoz_aggregate_traces with service="%s", aggregation="p99", aggregateOn="duration_nano", requestType="time_series", timeRange="%s" to see how latency has changed over time.
 3. Use signoz_search_traces with service="%s", minDuration="1000000000", timeRange="%s" to find specific slow traces (>1s).
 4. For the slowest trace found, use signoz_get_trace_details to examine the span breakdown.
 5. Summarize: which operations are slow, whether latency is trending up, and what spans contribute most to latency.`, service, timeRange, service, timeRange, service, timeRange, service, timeRange),
@@ -140,8 +140,8 @@ func handleIncidentTriage(_ context.Context, req mcp.GetPromptRequest) (*mcp.Get
 					Type: "text",
 					Text: fmt.Sprintf(`Triage the alert with rule ID "%s". Follow these steps:
 
-1. Use signoz_get_alert with ruleId="%s" to get the alert configuration and understand what it monitors.
-2. Use signoz_get_alert_history with ruleId="%s" and timeRange="6h" to see when it started firing.
+1. Use signoz_get_alert with id="%s" to get the alert configuration and understand what it monitors.
+2. Use signoz_get_alert_history with id="%s" and timeRange="6h" to see when it started firing.
 3. Based on the alert's signal type:
    - If logs-based: use signoz_search_logs to find related error logs around the alert trigger time.
    - If traces-based: use signoz_aggregate_traces to analyze error rates or latency around the trigger time.

@@ -703,7 +703,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
 	params := url.Values{}
 	params.Set("signal", signal)
 	params.Set("name", name)
@@ -712,6 +712,9 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	}
 	if searchText != "" {
 		params.Set("searchText", searchText)
+	}
+	if fieldContext != "" {
+		params.Set("fieldContext", fieldContext)
 	}
 	if source != "" {
 		params.Set("source", source)
@@ -729,7 +732,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 		return nil, fmt.Errorf("start and end time parameters are required")
 	}
 
-	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
+	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
 	limit := 1000
 
 	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0)

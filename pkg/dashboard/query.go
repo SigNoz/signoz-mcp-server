@@ -506,7 +506,7 @@ Custom Interval (100ms):
 Group By Standard Attribute:
   SELECT toStartOfInterval(timestamp, INTERVAL 1 MINUTE) AS interval,
          attributes_string['http.method'] AS method,
-         toFloat64(avg(durationNano)) AS value
+         toFloat64(avg(duration_nano)) AS value
   FROM signoz_traces.distributed_signoz_index_v3
   WHERE attributes_string['http.method'] != ''
     AND timestamp > now() - INTERVAL 30 MINUTE
@@ -566,20 +566,20 @@ Extract Span Event Attributes:
 Latency Between Spans in Trace:
   SELECT interval, round(avg(time_diff), 2) AS avg_latency_ms
   FROM (
-      SELECT interval, traceID,
+      SELECT interval, trace_id,
              if(startTime1 != 0 AND startTime2 != 0,
                 (toUnixTimestamp64Nano(startTime2) - toUnixTimestamp64Nano(startTime1)) / 1000000,
                 nan) AS time_diff
       FROM (
           SELECT toStartOfInterval(timestamp, toIntervalMinute(1)) AS interval,
-                 traceID,
+                 trace_id,
                  minIf(timestamp, resource_string_service$$name='driver' AND name='/driver.DriverService/FindNearest') AS startTime1,
                  minIf(timestamp, resource_string_service$$name='route' AND name='HTTP GET /route') AS startTime2
           FROM signoz_traces.distributed_signoz_index_v3
           WHERE timestamp BETWEEN {{.start_datetime}} AND {{.end_datetime}}
             AND ts_bucket_start BETWEEN {{.start_timestamp}} - 1800 AND {{.end_timestamp}}
             AND resource_string_service$$name IN ('driver', 'route')
-          GROUP BY (interval, traceID)
+          GROUP BY (interval, trace_id)
       )
   )
   WHERE isNaN(time_diff) = 0
@@ -638,7 +638,7 @@ Common Fields:
   - has_error             - Boolean (span error status)
   - http_method           - String (GET, POST, etc.)
   - duration_nano         - UInt64 (span duration)
-  - traceID               - String (trace identifier)
+  - trace_id              - String (trace identifier)
   - resource_fingerprint  - UInt64 (for filtering)
   - events                - Array (span events)
 
