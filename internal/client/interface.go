@@ -16,12 +16,11 @@ type Client interface {
 	ListAlertRules(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
-	ListDashboards(ctx context.Context) (json.RawMessage, error)
-	GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error)
-	CreateDashboard(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error)
-	UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error
+	ListDashboards(ctx context.Context, limit, offset int) (json.RawMessage, error)
+	GetDashboard(ctx context.Context, id string) (json.RawMessage, error)
 	CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
-	UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error
+	UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error)
+	PatchDashboardRaw(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error)
 	DeleteDashboard(ctx context.Context, id string) error
 	ListServices(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)

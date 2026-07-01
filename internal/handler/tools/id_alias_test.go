@@ -260,20 +260,22 @@ func TestUpdateDashboard_IDAndLegacyAlias(t *testing.T) {
 	for _, key := range []string{"id", "uuid"} {
 		t.Run(key, func(t *testing.T) {
 			var capturedID string
+			var capturedBody []byte
 			mock := &client.MockClient{
-				UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) error {
+				UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
 					capturedID = id
-					return nil
+					capturedBody = append([]byte(nil), dashboardJSON...)
+					return json.RawMessage(`{"id":"d1"}`), nil
 				},
 			}
 			h := newTestHandler(mock)
 			req := makeToolRequest("signoz_update_dashboard", map[string]any{
-				key: "d1",
-				"dashboard": map[string]any{
-					"title":   "My Dashboard",
-					"layout":  []any{},
-					"widgets": []any{},
-				},
+				key:             "d1",
+				"searchContext": "update my dashboard",
+				"schemaVersion": "v6",
+				"name":          "my-dashboard",
+				"tags":          []any{map[string]any{"key": "team", "value": "infra"}},
+				"spec":          map[string]any{"display": map[string]any{"name": "My Dashboard"}},
 			})
 			result, err := h.handleUpdateDashboard(testCtx(), req)
 			if err != nil {
@@ -282,8 +284,27 @@ func TestUpdateDashboard_IDAndLegacyAlias(t *testing.T) {
 			if result.IsError {
 				t.Fatalf("error result: %v", result.Content)
 			}
+			// The id/uuid routes to the URL path...
 			if capturedID != "d1" {
 				t.Fatalf("backend id = %q, want d1 (via %q)", capturedID, key)
+			}
+			// ...and must NOT leak into the PUT body: id/uuid are MCP routing fields
+			// (the id lives in the path) and searchContext is MCP-only — the strict
+			// v2 API rejects any of them as an unknown field.
+			var body map[string]any
+			if err := json.Unmarshal(capturedBody, &body); err != nil {
+				t.Fatalf("forwarded body is not JSON: %v (%s)", err, capturedBody)
+			}
+			for _, stripped := range []string{"id", "uuid", "searchContext"} {
+				if _, present := body[stripped]; present {
+					t.Errorf("%q leaked into the v2 update body: %s", stripped, capturedBody)
+				}
+			}
+			// ...while the v6 dashboard fields are forwarded verbatim.
+			for _, want := range []string{"schemaVersion", "name", "tags", "spec"} {
+				if _, present := body[want]; !present {
+					t.Errorf("v6 field %q missing from forwarded body: %s", want, capturedBody)
+				}
 			}
 		})
 	}
@@ -500,7 +521,7 @@ func TestUpdateStructs_IDNotSchemaRequired(t *testing.T) {
 		tool      mcp.Tool
 	}{
 		{"update_alert", "ruleId", mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]())},
-		{"update_dashboard", "uuid", mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]())},
+		{"update_dashboard", "uuid", mcp.NewTool("signoz_update_dashboard", rawInputSchema(updateDashboardSchema))},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
