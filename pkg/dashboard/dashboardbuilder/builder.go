@@ -21,6 +21,11 @@
 //	        },
 //	    )).
 //	    BuildMap()
+//
+// Deprecated: this package modeled the v1 (flat title/widgets/layout) dashboard
+// shape. After the v2 (Perses) migration the dashboard tools are pass-throughs to
+// the v2 API, which validates server-side, so nothing in this repo calls it. It is
+// retained only pending removal.
 package dashboardbuilder
 
 import "github.com/google/uuid"

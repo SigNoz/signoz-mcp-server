@@ -27,6 +27,11 @@ import (
 //  3. Return normalized JSON bytes
 //
 // Errors from both layers are collected into a single error message.
+//
+// Deprecated: unused after the v2 (Perses) migration. Dashboard
+// create/update/import are now pass-throughs to the v2 API, which is the
+// authoritative validator. This function and the dashboardbuilder/panelbuilder
+// stack it drives are retained only pending removal.
 func Validate(jsonBytes []byte) ([]byte, error) {
 	// Step 1: structural parse + defaults + validation via dashboardbuilder.
 	dd, err := dashboardbuilder.ParseFromJSON(jsonBytes)

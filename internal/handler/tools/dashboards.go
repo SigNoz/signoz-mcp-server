@@ -199,9 +199,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboards")
-	// No client-side clamp (unlike the ParseParamsClamped tools): the v2 API
-	// paginates and bounds limit server-side, so we forward the raw value.
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -216,26 +214,14 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	// Inject a webUrl deep link into each "dashboards" entry (keyed by "id").
 	// Fails open: any parse problem or missing base URL leaves result unchanged.
 	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
-		var resp map[string]any
-		if err := json.Unmarshal(resultJSON, &resp); err == nil {
-			if list, ok := resp["dashboards"].([]any); ok {
-				for _, item := range list {
-					m, ok := item.(map[string]any)
-					if !ok {
-						continue
-					}
-					id, _ := m["id"].(string)
-					if webURL, ok := util.ResourceWebURL(base, "dashboard", id); ok {
-						m["webUrl"] = webURL
-					}
-				}
-				if out, err := json.Marshal(resp); err == nil {
-					resultJSON = out
-				}
-			}
-		}
+		resultJSON = util.InjectListWebURL(resultJSON, base, "dashboard", "dashboards", "id")
 	}
 
+	if limitClamped {
+		return structuredResultWithNotes(resultJSON, fmt.Sprintf(
+			"Requested limit exceeded the maximum of %d and was clamped. Use offset to page through the rest.",
+			paginate.MaxLimit)), nil
+	}
 	return structuredResult(resultJSON), nil
 }
 
@@ -270,6 +256,37 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 func enrichDashboardWebURL(ctx context.Context, data []byte, uuid string) []byte {
 	base, _ := util.GetSigNozURL(ctx)
 	return util.InjectWebURL(data, base, "dashboard", uuid)
+}
+
+// enrichCreatedDashboardWebURL injects webUrl into a create response whose id is
+// only known from the body (the server generates it). It reads just the id
+// (under a "data" envelope or at top level, "id" with a "uuid" fallback) with a
+// targeted probe that does not touch the body, then delegates the actual
+// injection to util.InjectWebURL (precision-preserving, fails open).
+func enrichCreatedDashboardWebURL(ctx context.Context, data []byte) []byte {
+	base, ok := util.GetSigNozURL(ctx)
+	if !ok || base == "" {
+		return data
+	}
+	var probe struct {
+		ID   string `json:"id"`
+		UUID string `json:"uuid"`
+		Data struct {
+			ID   string `json:"id"`
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(data, &probe)
+	id := probe.Data.ID
+	for _, cand := range []string{probe.Data.UUID, probe.ID, probe.UUID} {
+		if id == "" {
+			id = cand
+		}
+	}
+	if id == "" {
+		return data
+	}
+	return util.InjectWebURL(data, base, "dashboard", id)
 }
 
 func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -308,6 +325,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 
+	data = enrichCreatedDashboardWebURL(ctx, data)
 	return structuredResult(data), nil
 }
 
@@ -447,6 +465,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 
+	data = enrichDashboardWebURL(ctx, data, uuid)
 	return structuredResult(data), nil
 }
 
@@ -485,6 +504,7 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 		return upstreamError(err), nil
 	}
 
+	data = enrichDashboardWebURL(ctx, data, uuid)
 	return structuredResult(data), nil
 }
 

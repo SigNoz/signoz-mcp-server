@@ -94,12 +94,47 @@ def rewrite_refs(node):
         return [rewrite_refs(x) for x in node]
     return node
 
+def pin_discriminators(defs):
+    """Make OAS discriminated `oneOf` unions valid under plain JSON Schema.
+
+    OpenAPI relies on the `discriminator` keyword to pick a branch, but JSON
+    Schema validators ignore `discriminator` and evaluate `oneOf` as
+    exactly-one-match. When the branches are not mutually exclusive on their own
+    (e.g. Querybuildertypesv5QueryEnvelope, whose branches all type their
+    discriminator property with the *full* shared enum), a valid payload matches
+    several branches and `oneOf` fails. For every discriminated union we pin each
+    mapped branch's discriminator property to a single-value `const` (and require
+    it), which is exactly what the discriminator documents — restoring mutual
+    exclusivity. This is idempotent for branches upstream already narrowed
+    (the plugin `kind` unions), and it is what makes the CompositeQuery examples
+    validate against the emitted schema.
+    """
+    for node in defs.values():
+        if not (isinstance(node, dict) and 'oneOf' in node and isinstance(node.get('discriminator'), dict)):
+            continue
+        disc = node['discriminator']
+        prop = disc.get('propertyName')
+        mapping = disc.get('mapping')
+        if not prop or not isinstance(mapping, dict):
+            continue
+        for mapkey, ref in mapping.items():
+            if not (isinstance(ref, str) and ref.startswith('#/$defs/')):
+                continue
+            branch = defs.get(ref.rsplit('/', 1)[1])
+            if not isinstance(branch, dict):
+                continue
+            branch.setdefault('properties', {})[prop] = {"type": "string", "const": mapkey}
+            req = branch.setdefault('required', [])
+            if prop not in req:
+                req.append(prop)
+
 def build_defs(root_name):
     names = closure(root_name)
     names.discard(root_name)  # root inlined at top level; deps in $defs
     defs = {}
     for n in sorted(names):
         defs[n] = rewrite_refs(schemas[n])
+    pin_discriminators(defs)
     return defs
 
 SEARCH_CTX = {"type": "string", "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."}

@@ -38,11 +38,16 @@ func TestHandleDeleteDashboard_Success(t *testing.T) {
 
 	h := newTestHandler(mock)
 
-	// Step 1: create a dashboard
+	// Step 1: create a dashboard (v6/Perses shape)
 	createResult, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", map[string]any{
-		"title":   "Temp Dashboard",
-		"widgets": []any{},
-		"layout":  []any{},
+		"schemaVersion": "v6",
+		"tags":          []any{},
+		"spec": map[string]any{
+			"display":   map[string]any{"name": "Temp Dashboard"},
+			"variables": []any{},
+			"panels":    map[string]any{},
+			"layouts":   []any{},
+		},
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error on create: %v", err)
@@ -81,9 +86,14 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	h := newTestHandler(mock)
 	result, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", map[string]any{
 		"searchContext": "create a dashboard for service latency",
-		"title":         "Latency Dashboard",
-		"widgets":       []any{},
-		"layout":        []any{},
+		"schemaVersion": "v6",
+		"tags":          []any{},
+		"spec": map[string]any{
+			"display":   map[string]any{"name": "Latency Dashboard"},
+			"variables": []any{},
+			"panels":    map[string]any{},
+			"layouts":   []any{},
+		},
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -102,8 +112,12 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	if _, hasSearchContext := parsed["searchContext"]; hasSearchContext {
 		t.Errorf("searchContext should be stripped from the API payload: %s", gotBody)
 	}
-	if parsed["title"] != "Latency Dashboard" {
-		t.Errorf("title = %v, want Latency Dashboard", parsed["title"])
+	// The v6 dashboard fields are forwarded verbatim.
+	if parsed["schemaVersion"] != "v6" {
+		t.Errorf("schemaVersion = %v, want v6", parsed["schemaVersion"])
+	}
+	if _, ok := parsed["spec"].(map[string]any); !ok {
+		t.Errorf("spec should be forwarded as an object: %s", gotBody)
 	}
 }
 
@@ -332,6 +346,57 @@ func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	body := textContent(t, result)
 	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
 		t.Fatalf("expected webUrl in output, got: %s", body)
+	}
+}
+
+func TestHandleListDashboards_AddsWebURL_WrappedEnvelope(t *testing.T) {
+	// The v2 API wraps the list in a {"data": {...}} envelope; the webUrl
+	// injection must reach entries nested under it.
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_dashboards", map[string]any{})
+
+	result, err := h.handleListDashboards(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result")
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
+		t.Fatalf("expected webUrl in wrapped-envelope output, got: %s", body)
+	}
+}
+
+func TestHandleCreateDashboard_AddsWebURL(t *testing.T) {
+	// Create echoes back the server-generated dashboard (with its id); the handler
+	// injects a webUrl deep link discovered from that body.
+	mock := &client.MockClient{
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"new-id-1","name":"hosts"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_dashboard", map[string]any{
+		"schemaVersion": "v6",
+		"tags":          []any{},
+		"spec":          map[string]any{"display": map[string]any{"name": "Hosts"}},
+	})
+	result, err := h.handleCreateDashboard(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/new-id-1"`) {
+		t.Fatalf("expected webUrl on created dashboard, got: %s", body)
 	}
 }
 

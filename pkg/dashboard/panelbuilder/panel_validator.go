@@ -1,6 +1,11 @@
 // Package panelvalidator provides schema validation for SigNoz dashboard panels.
 // It validates the frontend JSON format used by the dashboard API (POST/PUT /api/v1/dashboards).
 // This package is standalone with zero external dependencies - copy it into any Go project.
+//
+// Deprecated: this package validates the v1 dashboard/panel shape. After the v2
+// (Perses) migration the dashboard tools are pass-throughs to the v2 API, which
+// validates server-side, so nothing in this repo calls it. It is retained only
+// pending removal.
 package panelvalidator
 
 import (

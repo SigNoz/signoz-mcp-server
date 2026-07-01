@@ -339,10 +339,8 @@
     "DashboardtypesDatasourcePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesSigNozDatasourceSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/Datasource"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/Datasource"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesSigNozDatasourceSpec"
@@ -452,10 +450,8 @@
     "DashboardtypesLayoutEnvelopeGithubComPersesSpecGoDashboardGridLayoutSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "Grid"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "Grid"
         },
         "spec": {
           "$ref": "#/$defs/DashboardGridLayoutSpec"
@@ -669,10 +665,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/BarChartPanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/BarChartPanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesBarChartPanelSpec"
@@ -687,10 +681,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/HistogramPanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/HistogramPanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesHistogramPanelSpec"
@@ -705,10 +697,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/ListPanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/ListPanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesListPanelSpec"
@@ -723,10 +713,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/NumberPanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/NumberPanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesNumberPanelSpec"
@@ -741,10 +729,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/PieChartPanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/PieChartPanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesPieChartPanelSpec"
@@ -759,10 +745,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/TablePanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/TablePanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesTablePanelSpec"
@@ -777,10 +761,8 @@
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/TimeSeriesPanel"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/TimeSeriesPanel"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesTimeSeriesPanelSpec"
@@ -897,10 +879,8 @@
     "DashboardtypesQueryPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBuilderQuerySpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/BuilderQuery"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/BuilderQuery"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesBuilderQuerySpec"
@@ -915,10 +895,8 @@
     "DashboardtypesQueryPluginVariantGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5ClickHouseQuery": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/ClickHouseSQL"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/ClickHouseSQL"
         },
         "spec": {
           "$ref": "#/$defs/Querybuildertypesv5ClickHouseQuery"
@@ -933,10 +911,8 @@
     "DashboardtypesQueryPluginVariantGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5CompositeQuery": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/CompositeQuery"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/CompositeQuery"
         },
         "spec": {
           "$ref": "#/$defs/Querybuildertypesv5CompositeQuery"
@@ -951,10 +927,8 @@
     "DashboardtypesQueryPluginVariantGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5PromQuery": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/PromQLQuery"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/PromQLQuery"
         },
         "spec": {
           "$ref": "#/$defs/Querybuildertypesv5PromQuery"
@@ -969,10 +943,8 @@
     "DashboardtypesQueryPluginVariantGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5QueryBuilderFormula": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/Formula"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/Formula"
         },
         "spec": {
           "$ref": "#/$defs/Querybuildertypesv5QueryBuilderFormula"
@@ -987,10 +959,8 @@
     "DashboardtypesQueryPluginVariantGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5QueryBuilderTraceOperator": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/TraceOperator"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/TraceOperator"
         },
         "spec": {
           "$ref": "#/$defs/Querybuildertypesv5QueryBuilderTraceOperator"
@@ -1270,10 +1240,8 @@
     "DashboardtypesVariableEnvelopeGithubComSigNozSignozPkgTypesDashboardtypesListVariableSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "ListVariable"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "ListVariable"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesListVariableSpec"
@@ -1288,10 +1256,8 @@
     "DashboardtypesVariableEnvelopeGithubComSigNozSignozPkgTypesDashboardtypesTextVariableSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "TextVariable"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "TextVariable"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesTextVariableSpec"
@@ -1328,10 +1294,8 @@
     "DashboardtypesVariablePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesCustomVariableSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/CustomVariable"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/CustomVariable"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesCustomVariableSpec"
@@ -1346,10 +1310,8 @@
     "DashboardtypesVariablePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesDynamicVariableSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/DynamicVariable"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/DynamicVariable"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesDynamicVariableSpec"
@@ -1364,10 +1326,8 @@
     "DashboardtypesVariablePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesQueryVariableSpec": {
       "properties": {
         "kind": {
-          "enum": [
-            "signoz/QueryVariable"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "signoz/QueryVariable"
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesQueryVariableSpec"
@@ -1802,10 +1762,8 @@
           "type": "array"
         },
         "signal": {
-          "enum": [
-            "logs"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "logs"
         },
         "source": {
           "$ref": "#/$defs/TelemetrytypesSource"
@@ -1885,10 +1843,8 @@
           "type": "array"
         },
         "signal": {
-          "enum": [
-            "metrics"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "metrics"
         },
         "source": {
           "$ref": "#/$defs/TelemetrytypesSource"
@@ -1968,10 +1924,8 @@
           "type": "array"
         },
         "signal": {
-          "enum": [
-            "traces"
-          ],
-          "type": "string"
+          "type": "string",
+          "const": "traces"
         },
         "source": {
           "$ref": "#/$defs/TelemetrytypesSource"
@@ -2089,7 +2043,8 @@
           "$ref": "#/$defs/Querybuildertypesv5BuilderQuerySpec"
         },
         "type": {
-          "$ref": "#/$defs/Querybuildertypesv5QueryType"
+          "type": "string",
+          "const": "builder_query"
         }
       },
       "required": [
@@ -2103,7 +2058,8 @@
           "$ref": "#/$defs/Querybuildertypesv5ClickHouseQuery"
         },
         "type": {
-          "$ref": "#/$defs/Querybuildertypesv5QueryType"
+          "type": "string",
+          "const": "clickhouse_sql"
         }
       },
       "required": [
@@ -2117,7 +2073,8 @@
           "$ref": "#/$defs/Querybuildertypesv5QueryBuilderFormula"
         },
         "type": {
-          "$ref": "#/$defs/Querybuildertypesv5QueryType"
+          "type": "string",
+          "const": "builder_formula"
         }
       },
       "required": [
@@ -2131,7 +2088,8 @@
           "$ref": "#/$defs/Querybuildertypesv5PromQuery"
         },
         "type": {
-          "$ref": "#/$defs/Querybuildertypesv5QueryType"
+          "type": "string",
+          "const": "promql"
         }
       },
       "required": [
@@ -2145,7 +2103,8 @@
           "$ref": "#/$defs/Querybuildertypesv5QueryBuilderTraceOperator"
         },
         "type": {
-          "$ref": "#/$defs/Querybuildertypesv5QueryType"
+          "type": "string",
+          "const": "builder_trace_operator"
         }
       },
       "required": [
