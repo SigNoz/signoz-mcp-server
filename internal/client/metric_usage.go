@@ -204,10 +204,13 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 // SigNoz API, as opposed to a route-level 404 from the HTTP router.
 //
 // doRequest formats non-2xx errors as "unexpected status NNN: <body>".
-// A SigNoz API 404 (metric not tracked) has a JSON body starting with '{'.
+// A SigNoz API 404 (metric not tracked) returns a JSON body with
+// {"status":"error",...} — the standard SigNoz API error envelope.
 // A router-level 404 (endpoint not registered — e.g. SigNoz < v0.105.0)
 // returns plain text ("404 page not found"), which must NOT be silently
 // treated as empty usage, as it would incorrectly mark all metrics safe to drop.
+// A generic JSON proxy 404 (e.g. {"error":"not found"} without a "status" field)
+// is also rejected — only the SigNoz-specific envelope is accepted.
 func isMetricNotFound404(err error) bool {
 	if err == nil {
 		return false
@@ -217,7 +220,13 @@ func isMetricNotFound404(err error) bool {
 		return false
 	}
 	body := strings.TrimSpace(strings.TrimPrefix(msg, "unexpected status 404: "))
-	return strings.HasPrefix(body, "{")
+	var envelope struct {
+		Status string `json:"status"`
+	}
+	if jsonErr := json.Unmarshal([]byte(body), &envelope); jsonErr != nil {
+		return false
+	}
+	return envelope.Status == "error"
 }
 
 // parseDashboardNames extracts and deduplicates dashboard names from the

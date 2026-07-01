@@ -27,8 +27,9 @@ func TestIsMetricNotFound404(t *testing.T) {
 		{name: "nil error", err: nil, want: false},
 		{name: "non-404 error", err: fmt.Errorf("unexpected status 500: internal error"), want: false},
 		{name: "route-level 404 (plain text)", err: fmt.Errorf("unexpected status 404: 404 page not found\n"), want: false},
-		{name: "metric-level 404 (JSON body)", err: fmt.Errorf(`unexpected status 404: {"status":"error","error":"metric not found"}`), want: true},
-		{name: "metric-level 404 with leading brace", err: fmt.Errorf(`unexpected status 404: {"id":"abc"}`), want: true},
+		{name: "metric-level 404 (SigNoz envelope)", err: fmt.Errorf(`unexpected status 404: {"status":"error","error":"metric not found"}`), want: true},
+		{name: "proxy JSON 404 without status field", err: fmt.Errorf(`unexpected status 404: {"error":"not found"}`), want: false},
+		{name: "proxy JSON 404 with wrong status", err: fmt.Errorf(`unexpected status 404: {"status":"fail","error":"not found"}`), want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
