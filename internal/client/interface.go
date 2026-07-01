@@ -12,6 +12,7 @@ import (
 type Client interface {
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRules(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
@@ -37,11 +38,11 @@ type Client interface {
 	CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRule(ctx context.Context, ruleID string) error
+	CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error)
 	ListNotificationChannels(ctx context.Context) (json.RawMessage, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
 	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error
 	DeleteNotificationChannel(ctx context.Context, id string) error
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
-	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 }

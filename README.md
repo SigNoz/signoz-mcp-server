@@ -206,6 +206,7 @@ The binary is at `./bin/signoz-mcp-server`.
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
+- SigNoz v0.105.0 or newer for `signoz_check_metric_usage`
 - SigNoz v0.120.0 or newer for alert rule tools that use the `/api/v2/rules` APIs
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
@@ -331,7 +332,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected alert-rule tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/{name}/dashboards` and `/api/v2/metrics/{name}/alerts`, available in SigNoz v0.105.0 and newer. Alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -339,7 +340,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
-| `signoz_get_top_metrics` | Rank metrics by ingested sample count for cost analysis |
+| `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
+| `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -432,6 +434,15 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '1h', '24h', '3d', '7d', '30d'; default: '7d'; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
   - **Completeness note**: returns a fixed top 100 by ingested sample volume; the response appends a note flagging whether the list was truncated at that cap (`hasMore`)
+
+#### `signoz_check_metric_usage`
+
+Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/{name}/dashboards` and `/api/v2/metrics/{name}/alerts` per metric. Requires SigNoz v0.105.0+.
+
+- **Parameters**:
+  - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
+- **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric), `error` (non-empty when the lookup failed — do not treat the metric as unused in that case)
+- **Limits**: Maximum 50 metrics per call; 30-second overall timeout (partial results returned on expiry)
 
 #### `signoz_list_alerts`
 

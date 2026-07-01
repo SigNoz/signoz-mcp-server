@@ -38,6 +38,10 @@
       "description": "Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis"
     },
     {
+      "name": "signoz_check_metric_usage",
+      "description": "Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one. Each result has dashboards, alerts, and error fields — a non-empty error means the lookup failed and the empty lists are unreliable"
+    },
+    {
       "name": "signoz_get_field_keys",
       "description": "Get available field keys for metrics, traces, or logs"
     },
