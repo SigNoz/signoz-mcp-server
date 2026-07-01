@@ -8,8 +8,20 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	// MaxMetricUsageNames is the per-call soft cap on metric names.
+	// Each name makes 2 sequential HTTP calls, so N names → 2N backend requests.
+	// Callers with more names should batch into groups of this size.
+	MaxMetricUsageNames = 50
+
+	// metricUsageTotalTimeout is the overall deadline for a CheckMetricUsage call.
+	// On expiry the call returns whatever results have been collected so far.
+	metricUsageTotalTimeout = 30 * time.Second
 )
 
 // metricDashboardRef is the per-widget reference returned by
@@ -60,6 +72,26 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 	}
 	names = filtered
 
+	// Soft cap: each metric makes 2 sequential HTTP calls, so N names → 2N backend
+	// requests. Reject batches that exceed MaxMetricUsageNames so one tool call cannot
+	// saturate the SigNoz backend. Callers should split large lists into smaller batches.
+	if len(names) > MaxMetricUsageNames {
+		return nil, fmt.Errorf(
+			"too many metric names: %d exceeds the per-call limit of %d — split into batches of %d and merge results",
+			len(names), MaxMetricUsageNames, MaxMetricUsageNames,
+		)
+	}
+
+	// Overall deadline — return partial results instead of nothing on expiry.
+	// The per-request DefaultQueryTimeout guards individual calls; this guards the
+	// aggregate so the MCP client is not left waiting indefinitely.
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > metricUsageTotalTimeout {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, metricUsageTotalTimeout)
+		defer cancel()
+	}
+
 	type result struct {
 		name  string
 		usage MetricUsage
@@ -76,6 +108,9 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 			usage, err := s.fetchMetricUsage(gctx, name)
 			if err != nil {
 				// Store per-metric error instead of cancelling the whole batch.
+				// Context cancellation (overall deadline) is treated the same way:
+				// metrics that did not finish surface with an error rather than being
+				// silently dropped, so callers can distinguish "not used" from "timed out".
 				results[i] = result{name: name, usage: MetricUsage{
 					Dashboards: []string{},
 					Alerts:     []string{},

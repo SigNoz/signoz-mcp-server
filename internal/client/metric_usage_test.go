@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -200,6 +201,55 @@ func TestCheckMetricUsage_PartialFailureRetainsOtherResults(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, result["metric.fail"].Error, "failed metric must have error set")
 	assert.Empty(t, result["metric.ok"].Error, "successful metric must have no error")
+}
+
+func TestCheckMetricUsage_SoftCapRejectsOversizedBatch(t *testing.T) {
+	// Batches exceeding MaxMetricUsageNames must be rejected without hitting the backend.
+	var callCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	names := make([]string, MaxMetricUsageNames+1)
+	for i := range names {
+		names[i] = fmt.Sprintf("metric.%d", i)
+	}
+
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := c.CheckMetricUsage(context.Background(), names)
+	require.Error(t, err, "oversized batch must be rejected")
+	assert.Contains(t, err.Error(), "too many metric names")
+	assert.Equal(t, int32(0), callCount.Load(), "no backend calls must be made for oversized batch")
+}
+
+func TestCheckMetricUsage_OverallDeadlineReturnsPartialResults(t *testing.T) {
+	// When the overall deadline fires, already-completed metrics must be returned
+	// and in-flight metrics must surface with an error — not silently dropped.
+	okBody, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}, "alerts": []any{}}})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "metric.slow") {
+			// Block until the request context is cancelled (simulates a slow backend).
+			<-r.Context().Done()
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(okBody)
+	}))
+	defer srv.Close()
+
+	// Very short timeout so the test does not block.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := c.CheckMetricUsage(ctx, []string{"metric.fast", "metric.slow"})
+	require.NoError(t, err, "deadline must not propagate as a batch-level error")
+	assert.Empty(t, result["metric.fast"].Error, "fast metric must succeed")
+	assert.NotEmpty(t, result["metric.slow"].Error, "slow metric must surface deadline as per-metric error")
 }
 
 func TestCheckMetricUsage_DeduplicatesInputNames(t *testing.T) {

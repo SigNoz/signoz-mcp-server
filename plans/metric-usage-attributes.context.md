@@ -43,3 +43,14 @@
   - `g.SetLimit(10)` means at most 10 goroutines active at once; each does dashboards → alerts sequentially per metric
   - Primary consumer (telemetry-optimisation skill) works with top 100 metrics from treemap — all processed in one call
   - Pattern is consistent with `errgroup` already used in `internal/docs/refresh.go`
+
+### 2026-07-01 — Reinstated soft cap (50) + added overall deadline (30s) — PR #205
+- Reviewer (makeavish) flagged [consider]: no input cap means one AI call can fire 2N unbounded requests; `SetLimit(10)` is per-process not per-tenant
+- Decision: reinstate soft cap at 50 (up from earlier 20) with a clear error directing callers to batch
+  - Does not limit functionality — callers batch into groups of 50 and merge results
+  - Makes reliability predictable and the choice to send a large batch explicit and observable
+  - Primary consumer (telemetry-optimisation skill) can batch 100 metrics as two calls of 50
+- Also added 30-second overall deadline derived from ctx — returns partial results on expiry instead of nothing
+  - Individual requests still use `DefaultQueryTimeout`; this guards the aggregate op
+  - Metrics that did not finish before deadline surface with a per-metric error (not silently dropped)
+- Both constants exported (`MaxMetricUsageNames`, `metricUsageTotalTimeout`) for discoverability

@@ -18,7 +18,7 @@ The agent decides whether a metric is safe to drop based on this data combined w
 reasoning (infra metric exclusions, skill rules, business context).
 
 **Input:**
-- `metricNames` (required) — JSON array of metric name strings. No hard cap — bounded concurrency via `errgroup.SetLimit(10)` controls load on SigNoz.
+- `metricNames` (required) — JSON array of metric name strings. Soft cap of 50 per call — callers with more names should split into batches of 50 and merge results. Bounded concurrency via `errgroup.SetLimit(10)` also controls in-flight requests.
 - `searchContext` (optional) — user's original question
 
 **Output:** Compact map — raw reference data, no server-side drop verdict:
@@ -47,10 +47,11 @@ No IDs, no widget names — those are navigation aids, not decision inputs. Keep
   regex to avoid substring false positives (e.g. `cluster.upstream_rq` matching `cluster.upstream_rq_xx`)
 
 **Key implementation notes:**
-- Use `errgroup` with `g.SetLimit(10)` — bounded concurrency, not a hard input cap
-  - No limit on number of metric names the caller can pass
+- Soft cap: reject batches > `MaxMetricUsageNames` (50) with a clear error directing callers to batch
+- Overall deadline: 30s (`metricUsageTotalTimeout`) derived from ctx — returns partial results on expiry; metrics that didn't finish surface with a per-metric error
+- Use `errgroup` with `g.SetLimit(10)` — bounded concurrency
   - At most 10 goroutines in-flight at once; each goroutine fetches dashboards then alerts sequentially
-  - Protects SigNoz from thundering herd; self-regulates without forcing the agent to batch
+  - Protects SigNoz from thundering herd
   - Consistent with `golang.org/x/sync/errgroup` already used in `internal/docs/refresh.go`
 - Deduplicate dashboard names (one metric can appear in multiple widgets of the same dashboard)
 - HTTP 404 = metric not tracked → treat as empty result `{dashboards:[], alerts:[]}`, not an error

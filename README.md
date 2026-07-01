@@ -341,7 +341,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
-| `signoz_check_metric_usage` | Given a list of metric names, return which dashboards and alerts reference each one |
+| `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -438,8 +438,9 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
 Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/{name}/dashboards` and `/api/v2/metrics/{name}/alerts` per metric. Requires SigNoz v0.105.0+.
 
 - **Parameters**:
-  - `metricNames` (required) - Array of metric name strings to check. Example: `["system.disk.io", "k8s.node.condition"]`
-- **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric)
+  - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
+- **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric), `error` (non-empty when the lookup failed — do not treat the metric as unused in that case)
+- **Limits**: Maximum 50 metrics per call; 30-second overall timeout (partial results returned on expiry)
 
 #### `signoz_list_alerts`
 

@@ -19,7 +19,10 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription(
 			"Given a list of metric names, return which dashboards and alerts reference each one. "+
-				"Returns raw usage references per metric — dashboards and alerts only. "+
+				"Accepts up to 50 metric names per call — split larger lists into batches of 50 and merge results. "+
+				"Each result entry contains dashboards (list), alerts (list), and error (string). "+
+				"When error is non-empty, the lookup for that metric failed (e.g. older SigNoz version or transient 5xx) "+
+				"and the dashboards/alerts lists are empty but unreliable — do not treat the metric as unused. "+
 				"Use this to understand metric dependencies before making drop or reduction decisions."),
 		mcp.WithString("searchContext",
 			mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
