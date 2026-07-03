@@ -265,7 +265,7 @@ func firstMetricName(raw []byte) string {
 
 // TestE2EFamilyC_ErrorCodes verifies the error-code taxonomy against live
 // behavior: a missing required arg yields VALIDATION_FAILED locally, and a
-// well-formed but nonexistent id yields an UPSTREAM_ERROR from the backend.
+// well-formed but nonexistent id yields NOT_FOUND from the backend.
 func TestE2EFamilyC_ErrorCodes(t *testing.T) {
 	h, ctx := e2eHandlerC(t)
 
@@ -282,10 +282,10 @@ func TestE2EFamilyC_ErrorCodes(t *testing.T) {
 	}
 	t.Logf("PASS validation error: get_dashboard(no uuid) -> %s", CodeValidationFailed)
 
-	// UPSTREAM_ERROR: a well-formed-but-nonexistent UUIDv7 ruleId. Use the
+	// NOT_FOUND: a well-formed-but-nonexistent UUIDv7 ruleId. Use the
 	// NON-DESTRUCTIVE get_alert read (never a delete) so the probe cannot touch
 	// real user data even if the id ever collides with a live rule. get_alert
-	// wraps the backend 404 in upstreamError -> UPSTREAM_ERROR.
+	// wraps the backend 404 in upstreamError -> NOT_FOUND.
 	const ghostRule = "0196634d-5d66-75c4-b778-e317f49dab7a"
 	gres, err := h.handleGetAlert(ctx, makeToolRequest("signoz_get_alert", map[string]any{"ruleId": ghostRule}))
 	if err != nil {
@@ -296,10 +296,10 @@ func TestE2EFamilyC_ErrorCodes(t *testing.T) {
 		// read is harmless) rather than a false failure.
 		t.Logf("WARN get_alert(ghost) returned success unexpectedly; skipping upstream-code assertion")
 	} else {
-		if code := codeOf(t, gres); code != CodeUpstreamError {
-			t.Fatalf("get_alert(ghost): code = %q, want %q (text=%s)", code, CodeUpstreamError, firstText(gres))
+		if code := codeOf(t, gres); code != CodeNotFound {
+			t.Fatalf("get_alert(ghost): code = %q, want %q (text=%s)", code, CodeNotFound, firstText(gres))
 		}
-		t.Logf("PASS upstream error: get_alert(ghost ruleId) -> %s", CodeUpstreamError)
+		t.Logf("PASS upstream not found: get_alert(ghost ruleId) -> %s", CodeNotFound)
 	}
 }
 

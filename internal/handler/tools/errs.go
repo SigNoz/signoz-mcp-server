@@ -6,19 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 // Shared error/validation string helpers used across the MCP tool handlers.
 // Converging on these keeps the strings uniform so the AI assistant can tell a
 // user/parameter mistake (fix and re-call) apart from an upstream SigNoz
-// failure (retryable).
+// failure (inspect status/code before retrying).
 //
 // Error results also carry a machine-readable `code` via StructuredContent
-// ({"code": ...}), leaving the text block unchanged, so clients can branch on a
-// stable token instead of string-matching the prose. The code is derived from
-// the helper that produced the result, so call sites need no changes.
+// (and sometimes extra fields like status), leaving the text block unchanged,
+// so clients can branch on stable fields instead of string-matching prose.
 
 const (
 	// validationErrorPrefix is the canonical prefix for all parameter/validation failures.
@@ -41,27 +45,73 @@ const (
 // the docs tools' {code,...} pattern (internal/docs/errors.go).
 const (
 	// CodeValidationFailed marks a fixable parameter/validation mistake: the
-	// caller should correct the arguments and retry. Emitted by
-	// validationError/validationErrorf and the arguments-guard helpers.
+	// caller should correct the arguments and retry. Emitted by local
+	// validation helpers and upstream HTTP 400 responses.
 	CodeValidationFailed = "VALIDATION_FAILED"
 
-	// CodeUpstreamError marks a SigNoz backend failure: typically retryable
-	// without changing arguments. Emitted by upstreamError.
+	// CodeUpstreamError marks a generic SigNoz backend failure. Emitted by
+	// upstreamError when no more precise status-derived code applies.
 	CodeUpstreamError = "UPSTREAM_ERROR"
 
+	// CodeUnauthorized marks a SigNoz backend 401. The caller should re-authenticate
+	// or provide valid credentials rather than blindly retrying.
+	CodeUnauthorized = "UNAUTHORIZED"
+
+	// CodePermissionDenied marks a SigNoz backend 403. The caller should ask for
+	// permissions or use an account with the required role.
+	CodePermissionDenied = "PERMISSION_DENIED"
+
 	// CodeNotFound marks a missing resource (bad id/uuid) — re-discover the id
-	// rather than blindly retry. RESERVED: upstream 404s currently surface as
-	// UPSTREAM_ERROR (the backend signals not-found only via prose, which #365
-	// won't string-match); kept as the stable home for a future typed signal.
+	// rather than blindly retry. Emitted by local guards and upstream HTTP 404s.
 	CodeNotFound = "NOT_FOUND"
+
+	// CodeConflict marks an upstream HTTP 409.
+	CodeConflict = "CONFLICT"
+
+	// CodeRateLimited marks an upstream HTTP 429.
+	CodeRateLimited = "RATE_LIMITED"
+
+	// CodeUnsupported marks an upstream HTTP 501.
+	CodeUnsupported = "UNSUPPORTED"
+
+	// CodeLicenseUnavailable marks an upstream HTTP 451.
+	CodeLicenseUnavailable = "LICENSE_UNAVAILABLE"
+
+	// CodeCanceled marks an upstream/client-closed HTTP 499.
+	CodeCanceled = "CANCELED"
+
+	// CodeTimeout marks an upstream HTTP timeout response.
+	CodeTimeout = "TIMEOUT"
 )
+
+const statusClientClosedConnection = 499
+
+var assistantAuthEnvelopeCodes = map[string]struct{}{
+	"forbidden":       {},
+	"token_expired":   {},
+	"unauthenticated": {},
+}
 
 // errorWithCode builds an error result whose text block is message and whose
 // StructuredContent carries {"code": code} — the single shaping point for all
 // coded error results.
 func errorWithCode(code, message string) *mcp.CallToolResult {
+	return errorWithStructuredContent(code, message, nil)
+}
+
+func errorWithStructuredContent(code, message string, fields map[string]any) *mcp.CallToolResult {
 	res := mcp.NewToolResultError(message)
-	res.StructuredContent = map[string]any{"code": code}
+	structured := map[string]any{"code": code}
+	for key, value := range fields {
+		if key == "code" || value == nil {
+			continue
+		}
+		if text, ok := value.(string); ok && text == "" {
+			continue
+		}
+		structured[key] = value
+	}
+	res.StructuredContent = structured
 	return res
 }
 
@@ -147,11 +197,140 @@ func notAConfigObjectError() *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, notAConfigObjectMessage)
 }
 
-// upstreamError wraps a SigNoz backend client error in the uniform upstream
-// prefix, so the LLM can distinguish a backend problem (retry) from a parameter
-// problem (fix).
+// upstreamError wraps a SigNoz backend client error with the uniform text prefix
+// and the most specific structured code we can derive from the HTTP response.
 func upstreamError(err error) *mcp.CallToolResult {
-	return errorWithCode(CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+	var statusErr *signozclient.HTTPStatusError
+	if !errors.As(err, &statusErr) {
+		return errorWithCode(CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+	}
+
+	upstreamCode, upstreamMessage, upstreamType, parsedUpstreamBody := parseUpstreamErrorBody(statusErr.Body)
+	message := upstreamHTTPErrorMessage(err, statusErr, upstreamMessage, parsedUpstreamBody)
+	fields := map[string]any{
+		"status": statusErr.StatusCode,
+	}
+	if upstreamCode != "" {
+		fields["upstreamCode"] = upstreamCode
+	}
+	if upstreamMessage != "" {
+		fields["upstreamMessage"] = boundedErrorDetail(upstreamMessage)
+	}
+	if upstreamType != "" {
+		fields["upstreamType"] = upstreamType
+	}
+	if statusErr.StatusCode == http.StatusUnauthorized {
+		if _, ok := assistantAuthEnvelopeCodes[upstreamCode]; ok {
+			fields["upstreamAuth"] = map[string]string{"code": upstreamCode}
+		}
+	}
+
+	return errorWithStructuredContent(upstreamCodeForStatus(statusErr.StatusCode, upstreamType), message, fields)
+}
+
+func upstreamCodeForStatus(status int, upstreamType string) string {
+	switch status {
+	case http.StatusBadRequest:
+		return CodeValidationFailed
+	case http.StatusUnauthorized:
+		return CodeUnauthorized
+	case http.StatusForbidden:
+		return CodePermissionDenied
+	case http.StatusNotFound:
+		return CodeNotFound
+	case http.StatusConflict:
+		return CodeConflict
+	case http.StatusTooManyRequests:
+		return CodeRateLimited
+	case http.StatusNotImplemented:
+		return CodeUnsupported
+	case http.StatusUnavailableForLegalReasons:
+		return CodeLicenseUnavailable
+	case statusClientClosedConnection:
+		return CodeCanceled
+	case http.StatusGatewayTimeout:
+		return CodeTimeout
+	default:
+		if status == http.StatusServiceUnavailable {
+			switch upstreamType {
+			case "canceled":
+				return CodeCanceled
+			case "timeout":
+				return CodeTimeout
+			}
+		}
+		return CodeUpstreamError
+	}
+}
+
+func upstreamHTTPErrorMessage(err error, statusErr *signozclient.HTTPStatusError, upstreamMessage string, parsedUpstreamBody bool) string {
+	statusText := upstreamHTTPStatusText(statusErr, upstreamMessage, parsedUpstreamBody)
+	rawMessage := err.Error()
+	if rawStatusText := statusErr.Error(); rawStatusText != "" && strings.Contains(rawMessage, rawStatusText) {
+		rawMessage = strings.Replace(rawMessage, rawStatusText, statusText, 1)
+	} else {
+		rawMessage = statusText
+	}
+	return fmt.Sprintf("%s %s", upstreamErrorPrefix, rawMessage)
+}
+
+func upstreamHTTPStatusText(statusErr *signozclient.HTTPStatusError, upstreamMessage string, parsedUpstreamBody bool) string {
+	message := fmt.Sprintf("unexpected status %d", statusErr.StatusCode)
+	detail := upstreamMessage
+	if detail == "" && !parsedUpstreamBody {
+		detail = statusErr.Body
+	}
+	if detail = boundedErrorDetail(detail); detail != "" {
+		return fmt.Sprintf("%s: %s", message, detail)
+	}
+	return message
+}
+
+func boundedErrorDetail(detail string) string {
+	return logpkg.TruncBody([]byte(strings.TrimSpace(detail)))
+}
+
+func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstreamType string, parsed bool) {
+	var envelope struct {
+		Error     json.RawMessage `json:"error"`
+		ErrorType string          `json:"errorType"`
+		Type      string          `json:"type"`
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+		return "", "", "", false
+	}
+	if len(envelope.Error) > 0 && string(envelope.Error) != "null" {
+		var nested struct {
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(envelope.Error, &nested); err == nil {
+			upstreamType = nested.Type
+			upstreamCode = nested.Code
+			upstreamMessage = nested.Message
+		} else {
+			var message string
+			if err := json.Unmarshal(envelope.Error, &message); err == nil {
+				upstreamMessage = message
+			}
+		}
+	}
+	if upstreamType == "" {
+		upstreamType = envelope.Type
+	}
+	if upstreamType == "" {
+		upstreamType = envelope.ErrorType
+	}
+	if upstreamCode == "" {
+		upstreamCode = envelope.Code
+	}
+	if upstreamMessage == "" {
+		upstreamMessage = envelope.Message
+	}
+	return upstreamCode, upstreamMessage, upstreamType, true
 }
 
 // notFoundError marks a referenced resource that does not exist. The message is

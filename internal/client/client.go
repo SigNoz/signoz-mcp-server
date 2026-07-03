@@ -40,6 +40,20 @@ const (
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
 
+// HTTPStatusError preserves status and response details from a non-2xx SigNoz API response.
+type HTTPStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
+}
+
+func (e *HTTPStatusError) truncatedBody() string {
+	return logpkg.TruncBody([]byte(e.Body))
+}
+
 // AnalyticsIdentity is the identity tuple used for analytics attribution.
 // UserID holds the service-account ID for API-key sessions, or the SigNoz
 // user ID for auth-token sessions. Name is the service-account name or the
@@ -413,13 +427,13 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 
 		// Retry on transient server errors.
 		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
-			truncatedBody := logpkg.TruncBody(respBody)
-			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+			statusErr := newHTTPStatusError(resp.StatusCode, respBody)
+			lastErr = statusErr
 			s.logger.DebugContext(ctx, "Retryable status, will retry",
 				slog.String("url", reqURL),
 				slog.Int("status", resp.StatusCode),
 				slog.Int("attempt", attempt+1),
-				slog.String("response", truncatedBody))
+				slog.String("response", statusErr.truncatedBody()))
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("retry aborted: %w", lastErr)
@@ -430,22 +444,29 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		retryable := isRetryableStatus(resp.StatusCode)
-		truncatedBody := logpkg.TruncBody(respBody)
+		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 		attrs := []any{
 			slog.String("url", reqURL),
 			slog.Int("status", resp.StatusCode),
 			slog.Int("attempt", attempt+1),
 			slog.Bool("retryable", retryable),
-			slog.String("response", truncatedBody),
+			slog.String("response", statusErr.truncatedBody()),
 		}
 		if retryable {
 			attrs = append(attrs, slog.Bool("retries_exhausted", true))
 		}
 		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status", attrs...)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+		return nil, statusErr
 	}
 
 	return nil, lastErr
+}
+
+func newHTTPStatusError(statusCode int, respBody []byte) *HTTPStatusError {
+	return &HTTPStatusError{
+		StatusCode: statusCode,
+		Body:       string(respBody),
+	}
 }
 
 func isRetryableStatus(code int) bool {

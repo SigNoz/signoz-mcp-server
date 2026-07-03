@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -553,6 +554,67 @@ func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
 
 	assert.False(t, sawRetryDebug, "did not expect retry log for non-retryable status")
 	assert.True(t, sawTerminalWarn, "expected terminal non-retryable warning log")
+}
+
+func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	require.Error(t, err)
+
+	var statusErr *HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.Contains(t, statusErr.Body, "authz_forbidden")
+	assert.Contains(t, err.Error(), "unexpected status 403")
+}
+
+func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
+	var logBuf bytes.Buffer
+	longMessage := strings.Repeat("x", 5000) + "tail"
+	responseBody, err := json.Marshal(map[string]any{
+		"status": "error",
+		"error": map[string]any{
+			"type":    "forbidden",
+			"code":    "forbidden",
+			"message": longMessage,
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write(responseBody)
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	require.Error(t, err)
+
+	var statusErr *HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.True(t, json.Valid([]byte(statusErr.Body)), "stored body should remain parseable JSON")
+	assert.Contains(t, statusErr.Body, longMessage)
+	assert.Contains(t, err.Error(), "...(truncated)")
+	assert.NotContains(t, err.Error(), "tail")
+
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	require.NotEmpty(t, lines)
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &rec))
+	assert.Equal(t, "SigNoz request returned unexpected status", rec["msg"])
+	response, _ := rec["response"].(string)
+	assert.Contains(t, response, "...(truncated)")
+	assert.NotContains(t, response, "tail")
 }
 
 func TestListMetricKeys(t *testing.T) {
