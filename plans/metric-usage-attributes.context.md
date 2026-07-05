@@ -69,3 +69,7 @@
 - Multi-agent review found plan-only stale wording around `searchContext`, 404 semantics, and the resolved metric cardinality question.
 - Current plan now avoids describing `searchContext` as optional and distinguishes usage API metric-not-found responses from route-level 404s on unsupported SigNoz versions.
 - The metric cardinality open question is marked resolved inline above to keep the checklist state aligned with the discussion log.
+
+### 2026-07-05 — SigNoz version compatibility — PR #205
+- Verified against `SigNoz/signoz` tags: the exact query-param routes used by this tool (`/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`) first ship in SigNoz v0.131.0.
+- Decision: do not add fallback support for older backend route shapes; document `signoz_check_metric_usage` as requiring SigNoz v0.131.0+.

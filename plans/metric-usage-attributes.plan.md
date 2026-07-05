@@ -40,6 +40,8 @@ No IDs, no widget names — those are navigation aids, not decision inputs. Keep
 - `GET /api/v2/metrics/dashboards?metricName={name}`
 - `GET /api/v2/metrics/alerts?metricName={name}`
 
+These query-param routes require SigNoz v0.131.0 or newer.
+
 **Why per-metric API over bulk fetch:**
 - Server handles both builder-query and PromQL dashboard matching — no custom regex logic in handler
 - Response is trimmed to just names before returning — context window stays small
