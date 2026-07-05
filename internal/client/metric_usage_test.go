@@ -24,11 +24,24 @@ func TestIsMetricNotFound404(t *testing.T) {
 		want bool
 	}{
 		{name: "nil error", err: nil, want: false},
-		{name: "non-404 error", err: fmt.Errorf("unexpected status 500: internal error"), want: false},
-		{name: "route-level 404 (plain text)", err: fmt.Errorf("unexpected status 404: 404 page not found\n"), want: false},
-		{name: "metric-level 404 (SigNoz envelope)", err: fmt.Errorf(`unexpected status 404: {"status":"error","error":"metric not found"}`), want: true},
-		{name: "proxy JSON 404 without status field", err: fmt.Errorf(`unexpected status 404: {"error":"not found"}`), want: false},
-		{name: "proxy JSON 404 with wrong status", err: fmt.Errorf(`unexpected status 404: {"status":"fail","error":"not found"}`), want: false},
+		{name: "non-status error", err: fmt.Errorf("unexpected status 404: generic string"), want: false},
+		{name: "non-404 status", err: &HTTPStatusError{StatusCode: 500, Body: `{"status":"error"}`}, want: false},
+		{name: "route-level 404 (plain text)", err: &HTTPStatusError{StatusCode: 404, Body: "404 page not found\n"}, want: false},
+		{
+			name: "metric-level 404 (live SigNoz envelope)",
+			err: &HTTPStatusError{
+				StatusCode: 404,
+				Body:       `{"status":"error","error":{"code":"not_found","errors":[],"message":"metric not found: \"mcp.pr205.nonexistent\"","suggestions":[],"type":"not-found"}}`,
+			},
+			want: true,
+		},
+		{name: "old loose SigNoz-shaped 404", err: &HTTPStatusError{StatusCode: 404, Body: `{"status":"error","error":"metric not found"}`}, want: false},
+		{name: "proxy JSON 404 without status field", err: &HTTPStatusError{StatusCode: 404, Body: `{"error":"not found"}`}, want: false},
+		{name: "proxy JSON 404 with wrong status", err: &HTTPStatusError{StatusCode: 404, Body: `{"status":"fail","error":"not found"}`}, want: false},
+		{name: "proxy JSON 404 with generic error object", err: &HTTPStatusError{StatusCode: 404, Body: `{"status":"error","error":{"code":"not_found","type":"not-found","message":"route not found"}}`}, want: false},
+		{name: "metric 404 with wrong code", err: &HTTPStatusError{StatusCode: 404, Body: `{"status":"error","error":{"code":"unknown","type":"not-found","message":"metric not found: \"x\""}}`}, want: false},
+		{name: "metric 404 with wrong type", err: &HTTPStatusError{StatusCode: 404, Body: `{"status":"error","error":{"code":"not_found","type":"not_found","message":"metric not found: \"x\""}}`}, want: false},
+		{name: "metric 404 without message prefix", err: &HTTPStatusError{StatusCode: 404, Body: `{"status":"error","error":{"code":"not_found","type":"not-found","message":"metric missing: \"x\""}}`}, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

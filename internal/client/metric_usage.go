@@ -218,30 +218,34 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 // isMetricNotFound404 reports whether err is a metric-level 404 from the
 // SigNoz API, as opposed to a route-level 404 from the HTTP router.
 //
-// doRequest formats non-2xx errors as "unexpected status NNN: <body>".
-// A SigNoz API 404 (metric not tracked) returns a JSON body with
-// {"status":"error",...} — the standard SigNoz API error envelope.
-// A router-level 404 (endpoint not registered — e.g. SigNoz < v0.105.0)
-// returns plain text ("404 page not found"), which must NOT be silently
-// treated as empty usage, as it would incorrectly mark all metrics safe to drop.
-// A generic JSON proxy 404 (e.g. {"error":"not found"} without a "status" field)
-// is also rejected — only the SigNoz-specific envelope is accepted.
+// A SigNoz API 404 (metric not tracked) returns the standard JSON error
+// envelope with status=error, error.code=not_found, error.type=not-found, and
+// an error message beginning with "metric not found:".
+// Router/proxy-level 404s must NOT be silently treated as empty usage, even
+// when they also return JSON, as that would incorrectly mark all metrics unused.
 func isMetricNotFound404(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	if !strings.HasPrefix(msg, "unexpected status 404") {
+	var statusErr *HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusNotFound {
 		return false
 	}
-	body := strings.TrimSpace(strings.TrimPrefix(msg, "unexpected status 404: "))
 	var envelope struct {
 		Status string `json:"status"`
+		Error  struct {
+			Code    string `json:"code"`
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	if jsonErr := json.Unmarshal([]byte(body), &envelope); jsonErr != nil {
+	if jsonErr := json.Unmarshal([]byte(statusErr.Body), &envelope); jsonErr != nil {
 		return false
 	}
-	return envelope.Status == "error"
+	return envelope.Status == "error" &&
+		envelope.Error.Code == "not_found" &&
+		envelope.Error.Type == "not-found" &&
+		strings.HasPrefix(envelope.Error.Message, "metric not found:")
 }
 
 // parseDashboardNames extracts and deduplicates dashboard names from the
