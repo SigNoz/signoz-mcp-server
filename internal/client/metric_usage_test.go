@@ -66,6 +66,24 @@ func TestParseDashboardNames_EmptyArray(t *testing.T) {
 	assert.Equal(t, []string{}, names)
 }
 
+func TestParseDashboardNames_AllowsEmptyDashboardName(t *testing.T) {
+	body := `{"status":"success","data":{"dashboards":[
+		{"dashboardName":"","dashboardId":"1","widgetId":"w1","widgetName":"CPU"}
+	]}}`
+	names, err := parseDashboardNames([]byte(body))
+	require.NoError(t, err)
+	assert.Equal(t, []string{""}, names)
+}
+
+func TestParseDashboardNames_MissingDashboardName(t *testing.T) {
+	body := `{"status":"success","data":{"dashboards":[
+		{"dashboardId":"1","widgetId":"w1","widgetName":"CPU"}
+	]}}`
+	_, err := parseDashboardNames([]byte(body))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dashboardName")
+}
+
 func TestParseDashboardNames_MalformedJSON(t *testing.T) {
 	_, err := parseDashboardNames([]byte(`not json`))
 	assert.Error(t, err)
@@ -86,6 +104,24 @@ func TestParseAlertNames_EmptyArray(t *testing.T) {
 	names, err := parseAlertNames([]byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, []string{}, names)
+}
+
+func TestParseAlertNames_AllowsEmptyAlertName(t *testing.T) {
+	body := `{"status":"success","data":{"alerts":[
+		{"alertName":"","alertId":"a1"}
+	]}}`
+	names, err := parseAlertNames([]byte(body))
+	require.NoError(t, err)
+	assert.Equal(t, []string{""}, names)
+}
+
+func TestParseAlertNames_MissingAlertName(t *testing.T) {
+	body := `{"status":"success","data":{"alerts":[
+		{"alertId":"a1"}
+	]}}`
+	_, err := parseAlertNames([]byte(body))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "alertName")
 }
 
 func TestCheckMetricUsage_ContractCheckDashboards(t *testing.T) {
@@ -150,6 +186,26 @@ func TestCheckMetricUsage_ContractCheckDashboards(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckMetricUsage_MissingDashboardNameStoredAsPerMetricError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		switch r.URL.Path {
+		case "/api/v2/metrics/dashboards":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[{"dashboardId":"d1","widgetId":"w1","widgetName":"CPU"}]}}`))
+		case "/api/v2/metrics/alerts":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"alerts":[]}}`))
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
+	require.NoError(t, err)
+	assert.Contains(t, result["system.cpu.time"].Error, "dashboardName")
 }
 
 func TestCheckMetricUsage_Route404StoredAsPerMetricError(t *testing.T) {

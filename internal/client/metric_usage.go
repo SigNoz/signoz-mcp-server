@@ -25,13 +25,13 @@ const (
 )
 
 type metricDashboardRef struct {
-	DashboardName string `json:"dashboardName"`
-	DashboardID   string `json:"dashboardId"`
+	DashboardName *string `json:"dashboardName"`
+	DashboardID   string  `json:"dashboardId"`
 }
 
 type metricAlertRef struct {
-	AlertName string `json:"alertName"`
-	AlertID   string `json:"alertId"`
+	AlertName *string `json:"alertName"`
+	AlertID   string  `json:"alertId"`
 }
 
 // MetricUsage is the compact usage summary returned to the caller for each metric.
@@ -225,9 +225,12 @@ func parseDashboardNames(body []byte) ([]string, error) {
 	seen := make(map[string]struct{})
 	var names []string
 	for _, ref := range resp.Data.Dashboards {
-		if _, ok := seen[ref.DashboardName]; !ok {
-			seen[ref.DashboardName] = struct{}{}
-			names = append(names, ref.DashboardName)
+		if ref.DashboardName == nil {
+			return nil, errors.New("dashboardName missing from dashboard ref")
+		}
+		if _, ok := seen[*ref.DashboardName]; !ok {
+			seen[*ref.DashboardName] = struct{}{}
+			names = append(names, *ref.DashboardName)
 		}
 	}
 	if names == nil {
@@ -247,7 +250,10 @@ func parseAlertNames(body []byte) ([]string, error) {
 	}
 	names := make([]string, 0, len(resp.Data.Alerts))
 	for _, ref := range resp.Data.Alerts {
-		names = append(names, ref.AlertName)
+		if ref.AlertName == nil {
+			return nil, errors.New("alertName missing from alert ref")
+		}
+		names = append(names, *ref.AlertName)
 	}
 	return names, nil
 }
