@@ -332,7 +332,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/{name}/dashboards` and `/api/v2/metrics/{name}/alerts`, available in SigNoz v0.105.0 and newer. Alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`, available in SigNoz v0.105.0 and newer. Alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -437,7 +437,7 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
 
 #### `signoz_check_metric_usage`
 
-Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/{name}/dashboards` and `/api/v2/metrics/{name}/alerts` per metric. Requires SigNoz v0.105.0+.
+Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric. Requires SigNoz v0.105.0+.
 
 - **Parameters**:
   - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.

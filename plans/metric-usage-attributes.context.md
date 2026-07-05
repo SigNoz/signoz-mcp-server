@@ -27,8 +27,8 @@
 - The earlier v1/rules question is now moot — per-metric alerts API replaces bulk rules fetch entirely
 
 ## Open Questions
-- [ ] Should `signoz_get_metric_attributes` be a separate tool or combined with usage check?
-  - Current thinking: separate — different intent, different invocation time (only called for in-use metrics)
+- [x] Should `signoz_get_metric_attributes` be a separate tool or combined with usage check?
+  - Resolved 2026-07-05: separate — different intent, different invocation time (only called for in-use metrics); shipped separately as `signoz_check_metric_cardinality` on PR #208.
 - [x] Is `/api/v1/rules?limit=100` still available on current SigNoz versions?
   - Confirmed: v1 endpoint is alive, returns all 487 rules with full compositeQuery inline
   - Metric name at: `condition.compositeQuery.queries[].spec.aggregations[].metricName`
@@ -54,3 +54,18 @@
   - Individual requests still use `DefaultQueryTimeout`; this guards the aggregate op
   - Metrics that did not finish before deadline surface with a per-metric error (not silently dropped)
 - Both constants exported (`MaxMetricUsageNames`, `metricUsageTotalTimeout`) for discoverability
+
+### 2026-07-05 — Live route correction and MCP result contract fixes — PR #205
+- Live staging verification showed the Metrics Explorer usage APIs are query-param routes:
+  - `GET /api/v2/metrics/dashboards?metricName=...`
+  - `GET /api/v2/metrics/alerts?metricName=...`
+- The earlier path-shaped notes (`/api/v2/metrics/{name}/...`) are superseded; query encoding is required because metric names can contain `/`.
+- Success results are synthesized JSON, so the handler now returns `structuredContent` via the shared structured result helper.
+- Local validation failures now return `VALIDATION_FAILED` structured codes, including missing/invalid `metricNames` and batches over the 50-name cap.
+- Partial failures preserve known usage from the side that succeeded and set a per-metric `error` for the failed side.
+- Open question resolved: metric cardinality/attribute analysis remains a separate follow-up tool and shipped separately as `signoz_check_metric_cardinality` on PR #208.
+
+### 2026-07-05 — Review follow-up — PR #205
+- Multi-agent review found plan-only stale wording around `searchContext`, 404 semantics, and the resolved metric cardinality question.
+- Current plan now avoids describing `searchContext` as optional and distinguishes usage API metric-not-found responses from route-level 404s on unsupported SigNoz versions.
+- The metric cardinality open question is marked resolved inline above to keep the checklist state aligned with the discussion log.

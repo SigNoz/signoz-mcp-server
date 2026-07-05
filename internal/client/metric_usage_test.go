@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -86,10 +85,10 @@ func TestParseAlertNames_EmptyArray(t *testing.T) {
 
 func TestCheckMetricUsage_ContractCheckDashboards(t *testing.T) {
 	cases := []struct {
-		name         string
-		dashBody     string
-		alertBody    string
-		wantWarn     string
+		name      string
+		dashBody  string
+		alertBody string
+		wantWarn  string
 	}{
 		{
 			name:      "valid dashboard shape — no warn",
@@ -184,10 +183,10 @@ func TestCheckMetricUsage_5xxStoredAsPerMetricError(t *testing.T) {
 
 func TestCheckMetricUsage_PartialFailureRetainsOtherResults(t *testing.T) {
 	// When one metric's request fails, other metrics' results must still be returned.
-	// Failure is keyed on URL path (not call order) so the test is goroutine-order independent.
+	// Failure is keyed on query param (not call order) so the test is goroutine-order independent.
 	okBody, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}, "alerts": []any{}}})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "metric.fail") {
+		if r.URL.Query().Get("metricName") == "metric.fail" {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"error":"oops"}`))
 		} else {
@@ -202,6 +201,37 @@ func TestCheckMetricUsage_PartialFailureRetainsOtherResults(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, result["metric.fail"].Error, "failed metric must have error set")
 	assert.Empty(t, result["metric.ok"].Error, "successful metric must have no error")
+}
+
+func TestCheckMetricUsage_OneSideFailurePreservesKnownUsage(t *testing.T) {
+	dashBody := `{"status":"success","data":{"dashboards":[{"dashboardName":"Host Metrics","dashboardId":"d1"}]}}`
+	alertBody := `{"status":"success","data":{"alerts":[{"alertName":"High CPU","alertId":"a1"}]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/metrics/dashboards":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(dashBody))
+		case "/api/v2/metrics/alerts":
+			if r.URL.Query().Get("metricName") == "metric.partial" {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":"oops"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(alertBody))
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := c.CheckMetricUsage(context.Background(), []string{"metric.partial"})
+	require.NoError(t, err)
+	usage := result["metric.partial"]
+	assert.Equal(t, []string{"Host Metrics"}, usage.Dashboards, "known dashboard usage must be preserved")
+	assert.Equal(t, []string{}, usage.Alerts)
+	assert.Contains(t, usage.Error, "alerts lookup")
 }
 
 func TestCheckMetricUsage_SoftCapRejectsOversizedBatch(t *testing.T) {
@@ -231,7 +261,7 @@ func TestCheckMetricUsage_OverallDeadlineReturnsPartialResults(t *testing.T) {
 	okBody, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}, "alerts": []any{}}})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "metric.slow") {
+		if r.URL.Query().Get("metricName") == "metric.slow" {
 			// Block until the request context is cancelled (simulates a slow backend).
 			<-r.Context().Done()
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -257,19 +287,23 @@ func TestCheckMetricUsage_DeduplicatesInputNames(t *testing.T) {
 	var callCount atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
+		assert.Equal(t, "system.cpu/time", r.URL.Query().Get("metricName"))
 		w.WriteHeader(http.StatusOK)
-		if r.URL.Path[len(r.URL.Path)-len("dashboards"):] == "dashboards" {
+		switch r.URL.Path {
+		case "/api/v2/metrics/dashboards":
 			body, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}}})
 			_, _ = w.Write(body)
-		} else {
+		case "/api/v2/metrics/alerts":
 			body, _ := json.Marshal(map[string]any{"data": map[string]any{"alerts": []any{}}})
 			_, _ = w.Write(body)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 	}))
 	defer srv.Close()
 
 	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	_, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time", "system.cpu.time", ""})
+	_, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu/time", "system.cpu/time", ""})
 	require.NoError(t, err)
 	// Deduplicated to 1 unique name, blank filtered — so 2 API calls (dashboards + alerts)
 	assert.Equal(t, int32(2), callCount.Load())

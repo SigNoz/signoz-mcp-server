@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -22,7 +24,7 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 				"Accepts up to 50 metric names per call — split larger lists into batches of 50 and merge results. "+
 				"Each result entry contains dashboards (list), alerts (list), and error (string). "+
 				"When error is non-empty, the lookup for that metric failed (e.g. older SigNoz version or transient 5xx) "+
-				"and the dashboards/alerts lists are empty but unreliable — do not treat the metric as unused. "+
+				"and any dashboards/alerts lists are partial and unreliable — do not treat the metric as unused. "+
 				"Use this to understand metric dependencies before making drop or reduction decisions."),
 		mcp.WithString("searchContext",
 			mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
@@ -39,30 +41,45 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 	if args == nil {
-		return mcp.NewToolResultError("metricNames is required"), nil
+		return validationError("metricNames", "is required"), nil
 	}
 
 	rawNames, ok := args["metricNames"]
 	if !ok {
-		return mcp.NewToolResultError("metricNames is required"), nil
+		return validationError("metricNames", "is required"), nil
 	}
 
 	namesRaw, ok := rawNames.([]any)
 	if !ok {
-		return mcp.NewToolResultError("metricNames must be an array of strings"), nil
+		return validationError("metricNames", "must be an array of strings"), nil
 	}
 
 	names := make([]string, 0, len(namesRaw))
-	for _, v := range namesRaw {
+	seen := make(map[string]struct{}, len(namesRaw))
+	uniqueNonEmpty := 0
+	for i, v := range namesRaw {
 		s, ok := v.(string)
 		if !ok {
-			return mcp.NewToolResultError("each entry in metricNames must be a string"), nil
+			return validationErrorf("metricNames", "entry %d must be a string", i), nil
 		}
 		names = append(names, s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			uniqueNonEmpty++
+		}
 	}
 
-	if len(names) == 0 {
-		return mcp.NewToolResultError("metricNames must contain at least one metric name"), nil
+	if uniqueNonEmpty == 0 {
+		return validationError("metricNames", "must contain at least one non-empty metric name"), nil
+	}
+	if uniqueNonEmpty > signozclient.MaxMetricUsageNames {
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(
+			"too many metric names: %d exceeds the per-call limit of %d - split into batches of %d and merge results",
+			uniqueNonEmpty, signozclient.MaxMetricUsageNames, signozclient.MaxMetricUsageNames,
+		)), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_check_metric_usage", slog.Int("count", len(names)))
@@ -83,5 +100,5 @@ func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(out)), nil
+	return structuredResult(out), nil
 }

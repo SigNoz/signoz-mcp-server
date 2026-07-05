@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -36,6 +37,9 @@ func TestHandleCheckMetricUsage_ReturnsDashboardsAndAlerts(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
+	if result.StructuredContent == nil {
+		t.Fatalf("expected structuredContent on successful metric usage result")
+	}
 
 	text := textContent(t, result)
 	var out map[string]client.MetricUsage
@@ -67,6 +71,9 @@ func TestHandleCheckMetricUsage_EmptyNamesReturnsError(t *testing.T) {
 	if !result.IsError {
 		t.Fatalf("expected error result for empty metricNames, got success")
 	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+	}
 }
 
 func TestHandleCheckMetricUsage_MissingNamesReturnsError(t *testing.T) {
@@ -79,6 +86,75 @@ func TestHandleCheckMetricUsage_MissingNamesReturnsError(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatalf("expected error result for missing metricNames, got success")
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+	}
+}
+
+func TestHandleCheckMetricUsage_InvalidNamesReturnValidationCodes(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	cases := []struct {
+		name string
+		args map[string]any
+	}{
+		{
+			name: "non-array",
+			args: map[string]any{"metricNames": "system.cpu.time"},
+		},
+		{
+			name: "non-string entry",
+			args: map[string]any{"metricNames": []any{"system.cpu.time", 42}},
+		},
+		{
+			name: "only empty strings",
+			args: map[string]any{"metricNames": []any{"", ""}},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := h.handleCheckMetricUsage(testCtx(), makeToolRequest("signoz_check_metric_usage", tc.args))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected validation error result, got success")
+			}
+			if code := resultCode(t, result); code != CodeValidationFailed {
+				t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+			}
+		})
+	}
+}
+
+func TestHandleCheckMetricUsage_OversizedBatchReturnsValidationCode(t *testing.T) {
+	called := false
+	h := newTestHandler(&client.MockClient{
+		CheckMetricUsageFn: func(_ context.Context, names []string) (map[string]client.MetricUsage, error) {
+			called = true
+			return nil, nil
+		},
+	})
+	names := make([]any, client.MaxMetricUsageNames+1)
+	for i := range names {
+		names[i] = fmt.Sprintf("metric.%d", i)
+	}
+
+	result, err := h.handleCheckMetricUsage(testCtx(), makeToolRequest("signoz_check_metric_usage", map[string]any{
+		"metricNames": names,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected validation error result, got success")
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+	}
+	if called {
+		t.Fatalf("client should not be called for oversized batch")
 	}
 }
 
