@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- isMetricNotFound404 ---
-
 func TestIsMetricNotFound404(t *testing.T) {
 	cases := []struct {
 		name string
@@ -50,8 +48,6 @@ func TestIsMetricNotFound404(t *testing.T) {
 	}
 }
 
-// --- parseDashboardNames ---
-
 func TestParseDashboardNames_Deduplicates(t *testing.T) {
 	body := `{"status":"success","data":{"dashboards":[
 		{"dashboardName":"Host Metrics","dashboardId":"1","widgetId":"w1","widgetName":"CPU"},
@@ -75,8 +71,6 @@ func TestParseDashboardNames_MalformedJSON(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// --- parseAlertNames ---
-
 func TestParseAlertNames_ReturnsNames(t *testing.T) {
 	body := `{"status":"success","data":{"alerts":[
 		{"alertName":"High CPU","alertId":"a1"},
@@ -93,8 +87,6 @@ func TestParseAlertNames_EmptyArray(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{}, names)
 }
-
-// --- Contract check WARN ---
 
 func TestCheckMetricUsage_ContractCheckDashboards(t *testing.T) {
 	cases := []struct {
@@ -160,12 +152,7 @@ func TestCheckMetricUsage_ContractCheckDashboards(t *testing.T) {
 	}
 }
 
-// --- CheckMetricUsage integration ---
-
 func TestCheckMetricUsage_Route404StoredAsPerMetricError(t *testing.T) {
-	// Route-level 404 (plain text) must not be silently swallowed as empty usage.
-	// With per-metric error storage it surfaces in MetricUsage.Error, not as a
-	// batch-level error return.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("404 page not found\n"))
@@ -179,7 +166,6 @@ func TestCheckMetricUsage_Route404StoredAsPerMetricError(t *testing.T) {
 }
 
 func TestCheckMetricUsage_5xxStoredAsPerMetricError(t *testing.T) {
-	// A transient 5xx on one metric must not discard results for the rest.
 	var callCount atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
@@ -195,8 +181,6 @@ func TestCheckMetricUsage_5xxStoredAsPerMetricError(t *testing.T) {
 }
 
 func TestCheckMetricUsage_PartialFailureRetainsOtherResults(t *testing.T) {
-	// When one metric's request fails, other metrics' results must still be returned.
-	// Failure is keyed on query param (not call order) so the test is goroutine-order independent.
 	okBody, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}, "alerts": []any{}}})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("metricName") == "metric.fail" {
@@ -248,7 +232,6 @@ func TestCheckMetricUsage_OneSideFailurePreservesKnownUsage(t *testing.T) {
 }
 
 func TestCheckMetricUsage_SoftCapRejectsOversizedBatch(t *testing.T) {
-	// Batches exceeding MaxMetricUsageNames must be rejected without hitting the backend.
 	var callCount atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
@@ -269,13 +252,10 @@ func TestCheckMetricUsage_SoftCapRejectsOversizedBatch(t *testing.T) {
 }
 
 func TestCheckMetricUsage_OverallDeadlineReturnsPartialResults(t *testing.T) {
-	// When the overall deadline fires, already-completed metrics must be returned
-	// and in-flight metrics must surface with an error — not silently dropped.
 	okBody, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}, "alerts": []any{}}})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("metricName") == "metric.slow" {
-			// Block until the request context is cancelled (simulates a slow backend).
 			<-r.Context().Done()
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -285,7 +265,6 @@ func TestCheckMetricUsage_OverallDeadlineReturnsPartialResults(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Very short timeout so the test does not block.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -318,6 +297,5 @@ func TestCheckMetricUsage_DeduplicatesInputNames(t *testing.T) {
 	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 	_, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu/time", "system.cpu/time", ""})
 	require.NoError(t, err)
-	// Deduplicated to 1 unique name, blank filtered — so 2 API calls (dashboards + alerts)
 	assert.Equal(t, int32(2), callCount.Load())
 }

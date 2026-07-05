@@ -16,24 +16,19 @@ import (
 
 const (
 	// MaxMetricUsageNames is the per-call soft cap on metric names.
-	// Each name makes 2 sequential HTTP calls, so N names → 2N backend requests.
+	// Each name makes 2 sequential HTTP calls.
 	// Callers with more names should batch into groups of this size.
 	MaxMetricUsageNames = 50
 
-	// metricUsageTotalTimeout is the overall deadline for a CheckMetricUsage call.
-	// On expiry the call returns whatever results have been collected so far.
+	// metricUsageTotalTimeout bounds the whole batch.
 	metricUsageTotalTimeout = 30 * time.Second
 )
 
-// metricDashboardRef is the per-widget reference returned by
-// GET /api/v2/metrics/dashboards?metricName={name}.
 type metricDashboardRef struct {
 	DashboardName string `json:"dashboardName"`
 	DashboardID   string `json:"dashboardId"`
 }
 
-// metricAlertRef is the per-alert reference returned by
-// GET /api/v2/metrics/alerts?metricName={name}.
 type metricAlertRef struct {
 	AlertName string `json:"alertName"`
 	AlertID   string `json:"alertId"`
@@ -46,21 +41,13 @@ type MetricUsage struct {
 	Error      string   `json:"error,omitempty"`
 }
 
-// CheckMetricUsage returns dashboard and alert references for each metric in
-// names. It fires up to 10 goroutines concurrently (bounded by errgroup.SetLimit)
-// — each goroutine fetches the dashboards endpoint then the alerts endpoint for
-// one metric, sequentially. A metric-not-found 404 envelope from either endpoint
-// is treated as an empty result, not an error; route-level 404s still surface as
-// per-metric errors. Dashboard names are deduplicated (one metric can appear in
-// multiple widgets of the same dashboard).
-//
-// Errors are stored per-metric in MetricUsage.Error rather than aborting the
-// whole batch — a transient 5xx on one metric must not discard results for the
-// rest.
+// CheckMetricUsage returns dashboard and alert references for each metric.
+// Lookup failures are stored per metric so one transient failure does not cancel
+// the whole batch. Metric-not-found 404s are treated as empty usage; route-level
+// 404s are reported as errors.
 func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error) {
 	ctx = s.ensureTenantContext(ctx)
 
-	// Deduplicate and filter empty strings to avoid malformed URLs and redundant API calls.
 	seen := make(map[string]struct{})
 	var filtered []string
 	for _, name := range names {
@@ -74,9 +61,6 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 	}
 	names = filtered
 
-	// Soft cap: each metric makes 2 sequential HTTP calls, so N names → 2N backend
-	// requests. Reject batches that exceed MaxMetricUsageNames so one tool call cannot
-	// saturate the SigNoz backend. Callers should split large lists into smaller batches.
 	if len(names) > MaxMetricUsageNames {
 		return nil, fmt.Errorf(
 			"too many metric names: %d exceeds the per-call limit of %d — split into batches of %d and merge results",
@@ -84,9 +68,6 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 		)
 	}
 
-	// Overall deadline — return partial results instead of nothing on expiry.
-	// The per-request DefaultQueryTimeout guards individual calls; this guards the
-	// aggregate so the MCP client is not left waiting indefinitely.
 	deadline, ok := ctx.Deadline()
 	if !ok || time.Until(deadline) > metricUsageTotalTimeout {
 		var cancel context.CancelFunc
@@ -109,10 +90,7 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 		g.Go(func() error {
 			usage, err := s.fetchMetricUsage(gctx, name)
 			if err != nil {
-				// Store per-metric error instead of cancelling the whole batch.
-				// Context cancellation (overall deadline) is treated the same way:
-				// metrics that did not finish surface with an error rather than being
-				// silently dropped, so callers can distinguish "not used" from "timed out".
+				// Preserve partial data; the error only marks unknown portions.
 				if usage.Dashboards == nil {
 					usage.Dashboards = []string{}
 				}
@@ -128,7 +106,7 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 		})
 	}
 
-	g.Wait() // always nil — goroutines never return errors
+	_ = g.Wait()
 
 	out := make(map[string]MetricUsage, len(names))
 	for _, r := range results {
@@ -137,7 +115,6 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 	return out, nil
 }
 
-// fetchMetricUsage fetches dashboards then alerts for a single metric name.
 func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage, error) {
 	params := url.Values{}
 	params.Set("metricName", name)
@@ -149,7 +126,6 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	}
 	var errs []string
 
-	// --- Dashboards ---
 	dashURL := fmt.Sprintf("%s/api/v2/metrics/dashboards?%s", s.baseURL, query)
 	s.logger.DebugContext(ctx, "Fetching metric dashboard refs", slog.String("metric", name))
 
@@ -158,11 +134,8 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		if !isMetricNotFound404(err) {
 			errs = append(errs, fmt.Sprintf("dashboards lookup for %q: %v", name, err))
 		}
-		// Metric-not-found 404 = metric not tracked -> empty dashboards.
 	} else {
-		// Fail-open contract check: warn if the expected shape is absent so silent
-		// degradation is detectable in production (see CLAUDE.md §Testing across
-		// external contracts).
+		// Warn on contract drift while keeping fail-open behavior.
 		var dashProbe struct {
 			Data *struct {
 				Dashboards []json.RawMessage `json:"dashboards"`
@@ -180,7 +153,6 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		}
 	}
 
-	// --- Alerts ---
 	alertURL := fmt.Sprintf("%s/api/v2/metrics/alerts?%s", s.baseURL, query)
 	s.logger.DebugContext(ctx, "Fetching metric alert refs", slog.String("metric", name))
 
@@ -189,9 +161,8 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		if !isMetricNotFound404(err) {
 			errs = append(errs, fmt.Sprintf("alerts lookup for %q: %v", name, err))
 		}
-		// Metric-not-found 404 = metric not tracked -> empty alerts.
 	} else {
-		// Fail-open contract check.
+		// Warn on contract drift while keeping fail-open behavior.
 		var alertProbe struct {
 			Data *struct {
 				Alerts []json.RawMessage `json:"alerts"`
@@ -215,14 +186,8 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	return usage, nil
 }
 
-// isMetricNotFound404 reports whether err is a metric-level 404 from the
-// SigNoz API, as opposed to a route-level 404 from the HTTP router.
-//
-// A SigNoz API 404 (metric not tracked) returns the standard JSON error
-// envelope with status=error, error.code=not_found, error.type=not-found, and
-// an error message beginning with "metric not found:".
-// Router/proxy-level 404s must NOT be silently treated as empty usage, even
-// when they also return JSON, as that would incorrectly mark all metrics unused.
+// isMetricNotFound404 accepts only the live SigNoz metric-not-found envelope,
+// not generic route/proxy 404s.
 func isMetricNotFound404(err error) bool {
 	if err == nil {
 		return false
@@ -248,9 +213,6 @@ func isMetricNotFound404(err error) bool {
 		strings.HasPrefix(envelope.Error.Message, "metric not found:")
 }
 
-// parseDashboardNames extracts and deduplicates dashboard names from the
-// /api/v2/metrics/dashboards?metricName={name} response.
-// Response shape: {"status":"success","data":{"dashboards":[{dashboardName,dashboardId,widgetId,widgetName},...]}}
 func parseDashboardNames(body []byte) ([]string, error) {
 	var resp struct {
 		Data struct {
@@ -274,9 +236,6 @@ func parseDashboardNames(body []byte) ([]string, error) {
 	return names, nil
 }
 
-// parseAlertNames extracts alert names from the
-// /api/v2/metrics/alerts?metricName={name} response.
-// Response shape: {"status":"success","data":{"alerts":[{alertName,alertId},...]}
 func parseAlertNames(body []byte) ([]string, error) {
 	var resp struct {
 		Data struct {

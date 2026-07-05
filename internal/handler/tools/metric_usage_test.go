@@ -159,15 +159,10 @@ func TestHandleCheckMetricUsage_OversizedBatchReturnsValidationCode(t *testing.T
 }
 
 func TestHandleCheckMetricUsage_PreservesDedupedDashboards(t *testing.T) {
-	// Verify that the client layer deduplicates dashboard names when the same
-	// dashboard has multiple widgets referencing the metric. This test uses the
-	// real parseDashboardNames helper via a mock that already returns deduplicated
-	// names (dedup is client-side, verified in client unit tests).
 	mock := &client.MockClient{
 		CheckMetricUsageFn: func(_ context.Context, names []string) (map[string]client.MetricUsage, error) {
 			return map[string]client.MetricUsage{
 				"system.cpu.time": {
-					// Same dashboard name once — dedup already applied by client
 					Dashboards: []string{"Host Metrics"},
 					Alerts:     []string{},
 				},
