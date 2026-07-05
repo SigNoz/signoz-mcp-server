@@ -42,9 +42,9 @@ type MetricUsage struct {
 }
 
 // CheckMetricUsage returns dashboard and alert references for each metric.
-// Lookup failures are stored per metric so one transient failure does not cancel
-// the whole batch. Metric-not-found 404s are treated as empty usage; route-level
-// 404s are reported as errors.
+// Per-metric lookup failures are stored on that metric, while auth/permission
+// failures cancel the batch. Metric-not-found 404s are treated as empty usage;
+// route-level 404s are reported as per-metric errors.
 func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error) {
 	ctx = s.ensureTenantContext(ctx)
 
@@ -90,6 +90,9 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 		g.Go(func() error {
 			usage, err := s.fetchMetricUsage(gctx, name)
 			if err != nil {
+				if isMetricUsageAuthzError(err) {
+					return err
+				}
 				// Preserve partial data; the error only marks unknown portions.
 				if usage.Dashboards == nil {
 					usage.Dashboards = []string{}
@@ -106,7 +109,9 @@ func (s *SigNoz) CheckMetricUsage(ctx context.Context, names []string) (map[stri
 		})
 	}
 
-	_ = g.Wait()
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
 
 	out := make(map[string]MetricUsage, len(names))
 	for _, r := range results {
@@ -131,6 +136,9 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 
 	dashBody, err := s.doRequest(ctx, http.MethodGet, dashURL, nil, DefaultQueryTimeout)
 	if err != nil {
+		if isMetricUsageAuthzError(err) {
+			return usage, err
+		}
 		if !isMetricNotFound404(err) {
 			errs = append(errs, fmt.Sprintf("dashboards lookup for %q: %v", name, err))
 		}
@@ -158,6 +166,9 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 
 	alertBody, err := s.doRequest(ctx, http.MethodGet, alertURL, nil, DefaultQueryTimeout)
 	if err != nil {
+		if isMetricUsageAuthzError(err) {
+			return usage, err
+		}
 		if !isMetricNotFound404(err) {
 			errs = append(errs, fmt.Sprintf("alerts lookup for %q: %v", name, err))
 		}
@@ -184,6 +195,14 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 		return usage, errors.New(strings.Join(errs, "; "))
 	}
 	return usage, nil
+}
+
+func isMetricUsageAuthzError(err error) bool {
+	var statusErr *HTTPStatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	return statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusForbidden
 }
 
 // isMetricNotFound404 accepts only the live SigNoz metric-not-found envelope,

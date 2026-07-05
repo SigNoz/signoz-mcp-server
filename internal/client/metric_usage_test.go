@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -234,6 +235,35 @@ func TestCheckMetricUsage_5xxStoredAsPerMetricError(t *testing.T) {
 	result, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
 	require.NoError(t, err, "5xx must not propagate as batch-level error")
 	assert.NotEmpty(t, result["system.cpu.time"].Error, "5xx must surface as per-metric error")
+}
+
+func TestCheckMetricUsage_AuthzFailurePropagates(t *testing.T) {
+	cases := []struct {
+		name       string
+		statusCode int
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized},
+		{name: "forbidden", statusCode: http.StatusForbidden},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unauthenticated","message":"invalid credentials","type":"unauthorized"}}`))
+			}))
+			defer srv.Close()
+
+			c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			result, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
+			require.Error(t, err, "authz failures must propagate as batch-level errors")
+			assert.Nil(t, result)
+
+			var statusErr *HTTPStatusError
+			require.True(t, errors.As(err, &statusErr), "expected typed HTTP status error")
+			assert.Equal(t, tc.statusCode, statusErr.StatusCode)
+		})
+	}
 }
 
 func TestCheckMetricUsage_PartialFailureRetainsOtherResults(t *testing.T) {

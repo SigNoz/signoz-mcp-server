@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -155,6 +156,46 @@ func TestHandleCheckMetricUsage_OversizedBatchReturnsValidationCode(t *testing.T
 	}
 	if called {
 		t.Fatalf("client should not be called for oversized batch")
+	}
+}
+
+func TestHandleCheckMetricUsage_AuthzFailureReturnsUpstreamCode(t *testing.T) {
+	cases := []struct {
+		name       string
+		statusCode int
+		wantCode   string
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, wantCode: CodeUnauthorized},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantCode: CodePermissionDenied},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newTestHandler(&client.MockClient{
+				CheckMetricUsageFn: func(_ context.Context, names []string) (map[string]client.MetricUsage, error) {
+					return nil, &client.HTTPStatusError{
+						StatusCode: tc.statusCode,
+						Body:       `{"status":"error","error":{"code":"unauthenticated","message":"invalid credentials","type":"unauthorized"}}`,
+					}
+				},
+			})
+
+			result, err := h.handleCheckMetricUsage(testCtx(), makeToolRequest("signoz_check_metric_usage", map[string]any{
+				"metricNames": []any{"system.cpu.time"},
+			}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected authz error result, got success")
+			}
+			if code := resultCode(t, result); code != tc.wantCode {
+				t.Fatalf("code = %q, want %q", code, tc.wantCode)
+			}
+			if got := resultStructuredMap(t, result)["status"]; got != tc.statusCode {
+				t.Fatalf("status = %#v, want %d", got, tc.statusCode)
+			}
+		})
 	}
 }
 

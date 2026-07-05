@@ -92,7 +92,7 @@ func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRe
 	usage, err := client.CheckMetricUsage(ctx, names)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to check metric usage", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	out, err := json.Marshal(usage)
