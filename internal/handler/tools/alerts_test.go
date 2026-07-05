@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -782,6 +783,84 @@ func TestHandleCreateAlert_ClientError(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Error("expected error result when client returns error")
+	}
+}
+
+func TestHandleCreateAlert_ForbiddenClientError(t *testing.T) {
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			return nil, &client.HTTPStatusError{
+				StatusCode: http.StatusForbidden,
+				Body:       `{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource","errors":[],"suggestions":[]}}`,
+			}
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_alert", validThresholdAlertArgs())
+
+	result, err := h.handleCreateAlert(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result when upstream returns 403")
+	}
+	if code := resultCode(t, result); code != CodePermissionDenied {
+		t.Fatalf("code = %q, want %q", code, CodePermissionDenied)
+	}
+	structured := resultStructuredMap(t, result)
+	if got := structured["status"]; got != http.StatusForbidden {
+		t.Fatalf("status = %v, want %d", got, http.StatusForbidden)
+	}
+	if got := structured["upstreamCode"]; got != "authz_forbidden" {
+		t.Fatalf("upstreamCode = %v, want authz_forbidden", got)
+	}
+	if got := structured["upstreamMessage"]; got != "only editors/admins can access this resource" {
+		t.Fatalf("upstreamMessage = %v, want backend message", got)
+	}
+	if text := textContent(t, result); !strings.Contains(text, "only editors/admins can access this resource") {
+		t.Fatalf("error text should preserve backend message, got %q", text)
+	}
+}
+
+func validThresholdAlertArgs() map[string]any {
+	return map[string]any{
+		"alert":     "Test Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"expression": "count()"},
+							},
+							"filter": map[string]any{"expression": ""},
+						},
+					},
+				},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{
+					map[string]any{
+						"name":      "warning",
+						"target":    float64(100),
+						"op":        "1",
+						"matchType": "1",
+						"channels":  []any{"slack-alerts"},
+					},
+				},
+			},
+		},
 	}
 }
 
