@@ -98,4 +98,5 @@ For any code that parses an upstream response or shapes a tool output:
 
 - **Pin the contract, and test against reality where you can.** Beyond fixture-based unit tests, add a periodic/integration test against a live SigNoz instance (or a recorded real response) so upstream drift fails a test, not a user. Per-PR fixture tests are necessary but not sufficient.
 - **When tests can't catch it, observability must.** If a break only manifests against real data, add a metric or WARN log that fires when the contract appears violated (e.g. a passthrough enrichment that found rows but could not locate the expected field). Silent degradation that no test and no signal can catch is the failure mode to design against.
+- **Do not hide global upstream failures inside partial item results.** Auth and permission failures such as SigNoz 401/403 must propagate through the shared coded error path (`upstreamError` for tools) so clients can re-authenticate or handle permissions.
 - **Fail open, but never fail silent.** Prefer fail-open behavior for cross-boundary parsing, but always pair it with a detectable signal so "fail-open" does not become "fail-silent."

@@ -13,6 +13,7 @@ import (
 type MockClient struct {
 	GetAnalyticsIdentityFn      func(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetricsFn               func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetTopMetricsFn             func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlertsFn                func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRulesFn            func(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleIDFn          func(ctx context.Context, ruleID string) (json.RawMessage, error)
@@ -38,13 +39,13 @@ type MockClient struct {
 	CreateAlertRuleFn           func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRuleFn           func(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRuleFn           func(ctx context.Context, ruleID string) error
+	CheckMetricUsageFn          func(ctx context.Context, names []string) (map[string]MetricUsage, error)
 	ListNotificationChannelsFn  func(ctx context.Context) (json.RawMessage, error)
 	GetNotificationChannelFn    func(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannelFn func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
 	UpdateNotificationChannelFn func(ctx context.Context, id string, receiverJSON []byte) error
 	DeleteNotificationChannelFn func(ctx context.Context, id string) error
 	TestNotificationChannelFn   func(ctx context.Context, receiverJSON []byte) error
-	GetTopMetricsFn             func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 }
 
 // Compile-time check that MockClient satisfies Client.
@@ -60,6 +61,13 @@ func (m *MockClient) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdenti
 func (m *MockClient) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
 	if m.ListMetricsFn != nil {
 		return m.ListMetricsFn(ctx, start, end, limit, searchText, source)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	if m.GetTopMetricsFn != nil {
+		return m.GetTopMetricsFn(ctx, start, end, limit)
 	}
 	return json.RawMessage(`{}`), nil
 }
@@ -239,6 +247,13 @@ func (m *MockClient) DeleteAlertRule(ctx context.Context, ruleID string) error {
 	return nil
 }
 
+func (m *MockClient) CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error) {
+	if m.CheckMetricUsageFn != nil {
+		return m.CheckMetricUsageFn(ctx, names)
+	}
+	return map[string]MetricUsage{}, nil
+}
+
 func (m *MockClient) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {
 	if m.ListNotificationChannelsFn != nil {
 		return m.ListNotificationChannelsFn(ctx)
@@ -279,11 +294,4 @@ func (m *MockClient) TestNotificationChannel(ctx context.Context, receiverJSON [
 		return m.TestNotificationChannelFn(ctx, receiverJSON)
 	}
 	return nil
-}
-
-func (m *MockClient) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
-	if m.GetTopMetricsFn != nil {
-		return m.GetTopMetricsFn(ctx, start, end, limit)
-	}
-	return json.RawMessage(`{}`), nil
 }
