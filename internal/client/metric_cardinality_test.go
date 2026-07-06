@@ -13,10 +13,10 @@ import (
 
 func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 	cases := []struct {
-		name        string
-		body        string
-		wantWarn    bool
-		wantErr     bool
+		name     string
+		body     string
+		wantWarn bool
+		wantErr  bool
 	}{
 		{
 			name:     "valid shape — no warn",
@@ -52,7 +52,12 @@ func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			var gotPath, gotMetricName, gotStart, gotEnd string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				gotMetricName = r.URL.Query().Get("metricName")
+				gotStart = r.URL.Query().Get("start")
+				gotEnd = r.URL.Query().Get("end")
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(tc.body))
 			}))
@@ -63,6 +68,15 @@ func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 			c := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			result, err := c.GetMetricCardinality(context.Background(), "k8s.pod.uid", 0, 1000)
+
+			// Pin the upstream contract: metricName is a query parameter on
+			// /api/v2/metrics/attributes, NOT a path segment. SigNoz binds it from
+			// the query string (see #208 discussion r3530397545); asserting the URL
+			// here catches the path/query regression the body-only cases could not.
+			assert.Equal(t, "/api/v2/metrics/attributes", gotPath)
+			assert.Equal(t, "k8s.pod.uid", gotMetricName)
+			assert.Equal(t, "0", gotStart)
+			assert.Equal(t, "1000", gotEnd)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -79,4 +93,29 @@ func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGetMetricCardinality_MetricNameWithSlash pins that a metric name containing
+// slashes (e.g. cloud-provider metrics like run.googleapis.com/request_latencies)
+// round-trips through the metricName query parameter intact — the exact case the
+// SigNoz request type flags, and one a path-segment URL would have mangled.
+func TestGetMetricCardinality_MetricNameWithSlash(t *testing.T) {
+	const metric = "run.googleapis.com/request_latencies"
+	var gotPath, gotMetricName string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMetricName = r.URL.Query().Get("metricName")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"attributes":[],"totalKeys":0}}`))
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	logger := newBufferedLogger(&buf, -4)
+	c := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := c.GetMetricCardinality(context.Background(), metric, 0, 1000)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v2/metrics/attributes", gotPath)
+	assert.Equal(t, metric, gotMetricName, "metric name with slashes must round-trip via the query param, not the path")
 }

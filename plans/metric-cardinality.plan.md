@@ -9,7 +9,8 @@ high cardinality is real (unbounded labels like UUIDs, pod IDs) or bounded (name
 codes). This tool provides that data so the agent can make the cardinality assessment.
 
 ## Approach
-- New tool `signoz_check_metric_cardinality` backed by `GET /api/v2/metrics/{name}/attributes`
+- New tool `signoz_check_metric_cardinality` backed by `GET /api/v2/metrics/attributes?metricName=...`
+  (metricName is a required query parameter, not a path segment)
 - Required parameter: `metricName`
 - Optional: `timeRange`, `start`, `end` (same pattern as other metric tools)
 - Response: raw upstream JSON passthrough — label keys with cardinality counts and sample values,

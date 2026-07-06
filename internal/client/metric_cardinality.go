@@ -11,20 +11,22 @@ import (
 
 // GetMetricCardinality fetches label/attribute keys for a single metric with
 // their cardinality counts and sample values from
-// GET /api/v2/metrics/{name}/attributes?start=...&end=...
+// GET /api/v2/metrics/attributes?metricName=...&start=...&end=...
 //
-// The server returns attributes sorted highest-cardinality first. The raw
-// response is returned as-is — classification (UNBOUNDED, ACCUMULATING, etc.)
-// is left to the caller.
+// metricName is sent as a query parameter, not a path segment: SigNoz binds it
+// from the query string (required) and metric names may legitimately contain
+// slashes (e.g. run.googleapis.com/request_latencies), which url.Values encodes
+// safely. The server returns attributes sorted highest-cardinality first. The
+// raw response is returned as-is — classification (UNBOUNDED, ACCUMULATING,
+// etc.) is left to the caller.
 func (s *SigNoz) GetMetricCardinality(ctx context.Context, name string, start, end int64) (json.RawMessage, error) {
-	escaped := url.PathEscape(name)
-
 	params := url.Values{}
+	params.Set("metricName", name)
 	params.Set("start", fmt.Sprintf("%d", start))
 	params.Set("end", fmt.Sprintf("%d", end))
 
-	reqURL := fmt.Sprintf("%s/api/v2/metrics/%s/attributes?%s", s.baseURL, escaped, params.Encode())
-	s.logger.DebugContext(ctx, "Fetching metric cardinality", slog.String("metric", name))
+	reqURL := fmt.Sprintf("%s/api/v2/metrics/attributes?%s", s.baseURL, params.Encode())
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metric cardinality", slog.String("metric", name))
 
 	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 	if err != nil {

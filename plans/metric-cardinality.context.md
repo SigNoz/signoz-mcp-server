@@ -76,5 +76,20 @@
   check_metric_usage) is intentional and correct. Repo-wide latent gap noted but out of scope:
   `start`/`end` are advertised string-only across all time tools though the parser accepts numeric.
 
+### 2026-07-06 — P1: wrong endpoint URL (Codex PR review r3530397545)
+- The client built `GET /api/v2/metrics/{name}/attributes?start=&end=` (metricName as a PATH
+  segment). Verified against SigNoz backend source: the route is `/api/v2/metrics/attributes` and
+  `MetricAttributesRequest` binds `MetricName` from `req.URL.Query()` with `query:"metricName"
+  required:"true"` (and the field description notes names may contain slashes). The path-based URL
+  hits no registered route and omits the required query param → validation/route error against real
+  SigNoz. Fixed to `/api/v2/metrics/attributes?metricName=...&start=...&end=...` via `url.Values`,
+  matching the sibling `fetchMetricUsage` pattern (`/api/v2/metrics/dashboards?metricName=...`).
+- Root cause of the miss: `TestGetMetricCardinality_ContractCheck` used an httptest server that
+  replied identically regardless of URL, so it validated response-shape parsing but never the
+  request path/query — exactly the fixture-vs-reality gap CLAUDE.md warns about. Added request-URL
+  assertions to every contract-check case plus `TestGetMetricCardinality_MetricNameWithSlash` to pin
+  the query-param contract and slash round-trip. Also verified live against staging (see below).
+- Aligned the debug-log ctx with `ensureTenantContext` to match the treemap sibling.
+
 ## Open Questions
 - (none)
