@@ -56,6 +56,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 	handler.RegisterDocsHandlers(s)
 	handler.RegisterTracesHandlers(s)
 	handler.RegisterNotificationChannelHandlers(s)
+	handler.RegisterMetricCardinalityHandlers(s)
 	handler.RegisterResourceTemplates(s)
 	prompts.RegisterPrompts(s.AddPrompt)
 

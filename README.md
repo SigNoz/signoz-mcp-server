@@ -342,6 +342,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
 | `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
+| `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -443,6 +444,15 @@ Given a list of metric names, return which dashboards and alerts reference each 
   - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
 - **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric), `error` (non-empty when the lookup failed — do not treat the metric as unused in that case)
 - **Limits**: Maximum 50 metrics per call; 30-second overall timeout (partial results returned on expiry)
+
+#### `signoz_check_metric_cardinality`
+
+Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. The `values` field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion cost entirely — more impactful than trimming its labels.
+
+- **Parameters**:
+  - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '3d', '7d'; default: '7d'; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
 #### `signoz_list_alerts`
 

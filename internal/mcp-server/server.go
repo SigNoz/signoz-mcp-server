@@ -386,6 +386,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.handler.RegisterDocsHandlers(s)
 	m.handler.RegisterTracesHandlers(s)
 	m.handler.RegisterNotificationChannelHandlers(s)
+	m.handler.RegisterMetricCardinalityHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
 
 	// Register prompts
