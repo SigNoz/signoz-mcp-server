@@ -13,6 +13,7 @@ import (
 type MockClient struct {
 	GetAnalyticsIdentityFn      func(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetricsFn               func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetTopMetricsFn             func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlertsFn                func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRulesFn            func(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleIDFn          func(ctx context.Context, ruleID string) (json.RawMessage, error)
@@ -33,11 +34,12 @@ type MockClient struct {
 	UpdateViewFn                func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
 	DeleteViewFn                func(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeysFn              func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
+	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
 	GetTraceDetailsFn           func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateAlertRuleFn           func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRuleFn           func(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRuleFn           func(ctx context.Context, ruleID string) error
+	CheckMetricUsageFn          func(ctx context.Context, names []string) (map[string]MetricUsage, error)
 	ListNotificationChannelsFn  func(ctx context.Context) (json.RawMessage, error)
 	GetNotificationChannelFn    func(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannelFn func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
@@ -60,6 +62,13 @@ func (m *MockClient) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdenti
 func (m *MockClient) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
 	if m.ListMetricsFn != nil {
 		return m.ListMetricsFn(ctx, start, end, limit, searchText, source)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	if m.GetTopMetricsFn != nil {
+		return m.GetTopMetricsFn(ctx, start, end, limit)
 	}
 	return json.RawMessage(`{}`), nil
 }
@@ -204,9 +213,9 @@ func (m *MockClient) GetFieldKeys(ctx context.Context, signal, metricName, searc
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error) {
+func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
 	if m.GetFieldValuesFn != nil {
-		return m.GetFieldValuesFn(ctx, signal, name, metricName, searchText, source)
+		return m.GetFieldValuesFn(ctx, signal, name, metricName, searchText, fieldContext, source)
 	}
 	return json.RawMessage(`{}`), nil
 }
@@ -237,6 +246,13 @@ func (m *MockClient) DeleteAlertRule(ctx context.Context, ruleID string) error {
 		return m.DeleteAlertRuleFn(ctx, ruleID)
 	}
 	return nil
+}
+
+func (m *MockClient) CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error) {
+	if m.CheckMetricUsageFn != nil {
+		return m.CheckMetricUsageFn(ctx, names)
+	}
+	return map[string]MetricUsage{}, nil
 }
 
 func (m *MockClient) ListNotificationChannels(ctx context.Context) (json.RawMessage, error) {

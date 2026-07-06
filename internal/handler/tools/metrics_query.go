@@ -15,18 +15,29 @@ import (
 )
 
 // metricMetadata holds the parsed metadata from signoz_list_metrics response.
+//
+// TemporalityMissing / IsMonotonicMissing flag that a matched row lacked the
+// field; they drive the drift WARN and the "unknown/assumed" decision note.
 type metricMetadata struct {
-	MetricType  string
-	IsMonotonic bool
-	Temporality string
+	MetricType         string
+	IsMonotonic        bool
+	Temporality        string
+	TemporalityMissing bool
+	IsMonotonicMissing bool
 }
 
+// metricMetadataDriftMarker is the static log marker for partial-field drift; grep it in prod logs.
+const metricMetadataDriftMarker = "metric metadata partial-field drift"
+
 func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	mqr, err := parseMetricsQueryArgs(args)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_query_metrics",
@@ -46,21 +57,31 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	if mqr.MetricType == "" {
 		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
-			return mcp.NewToolResultError(fmt.Sprintf(
-				"Failed to auto-fetch metric metadata for %q: %s\n"+
-					"Please provide metricType, temporality, and isMonotonic manually "+
-					"(get them from signoz_list_metrics).",
-				mqr.MetricName, fetchErr.Error())), nil
+			return upstreamError(fmt.Errorf(
+				"could not auto-fetch metric metadata for %q: %w. "+
+					"Provide metricType, temporality, and isMonotonic manually "+
+					"(get them from signoz_list_metrics)",
+				mqr.MetricName, fetchErr)), nil
 		}
 		if meta != nil {
 			mqr.MetricType = meta.MetricType
 			mqr.IsMonotonic = meta.IsMonotonic
 			mqr.Temporality = meta.Temporality
 			decisions = append(decisions, fmt.Sprintf("metricType: %s (auto-fetched via signoz_list_metrics)", mqr.MetricType))
-			decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
-			decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
+			// Absent fields are reported as unknown/assumed, not authoritative.
+			if meta.TemporalityMissing {
+				decisions = append(decisions, fmt.Sprintf("temporality: unknown (not returned by metadata; assumed %q)", mqr.Temporality))
+			} else {
+				decisions = append(decisions, fmt.Sprintf("temporality: %s (auto-fetched)", mqr.Temporality))
+			}
+			if meta.IsMonotonicMissing {
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: unknown (not returned by metadata; assumed %t)", mqr.IsMonotonic))
+			} else {
+				decisions = append(decisions, fmt.Sprintf("isMonotonic: %t (auto-fetched)", mqr.IsMonotonic))
+			}
 		} else {
-			return mcp.NewToolResultError(fmt.Sprintf(
+			// User-correctable (wrong metric name); coded like the formula not-found path.
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
 				"Metric %q not found via signoz_list_metrics. "+
 					"Check the metric name or provide metricType manually.",
 				mqr.MetricName)), nil
@@ -75,7 +96,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Resolve timestamps
 	startTime, endTime, err := resolveTimestamps(args, mqr.TimeRange)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	// Step interval: use caller-provided value or let the backend decide
@@ -83,6 +104,13 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	callerProvidedStep := stepInterval > 0
 	if callerProvidedStep {
 		decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (caller-provided)", stepInterval))
+	} else if mqr.StepIntervalInvalid != "" {
+		// Present but not a plain positive integer of seconds (e.g. "1h", "60s",
+		// "abc"). Don't coerce it to a wrong bucket size — fall back to backend
+		// auto-select and tell the caller why.
+		decisions = append(decisions, fmt.Sprintf(
+			"stepInterval: ignored invalid value %q (must be a positive integer count of seconds, e.g. 60); using backend auto-select",
+			mqr.StepIntervalInvalid))
 	}
 
 	// Apply defaults for primary query
@@ -95,7 +123,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		ReduceTo:         mqr.ReduceTo,
 	}, mqr.RequestType)
 	if err != nil {
-		return mcp.NewToolResultError(formatValidationError(err)), nil
+		return errorWithCode(CodeValidationFailed, formatValidationError(err)), nil
 	}
 
 	decisions = append(decisions, resolved.Decisions...)
@@ -131,7 +159,12 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	for _, fq := range mqr.FormulaQueries {
 		subResolved, subErr := resolveFormulaSubQuery(ctx, h, client, fq, mqr.RequestType, mqr.Source, &decisions)
 		if subErr != nil {
-			return mcp.NewToolResultError(subErr.Error()), nil
+			// Upstream metadata-fetch failures get the uniform prefix; local
+			// validation errors ("metric not found"/"validation error") stay raw.
+			if res, ok := asUpstreamResult(subErr); ok {
+				return res, nil
+			}
+			return errorWithCode(CodeValidationFailed, subErr.Error()), nil
 		}
 
 		subGroupBy := buildGroupByFields(fq.GroupBy)
@@ -171,7 +204,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Metrics query failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Query execution failed: %s", err.Error())), nil
+		return upstreamError(err), nil
 	}
 
 	// Extract backend-determined stepInterval from response if caller didn't provide one
@@ -180,20 +213,34 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 			decisions = append(decisions, fmt.Sprintf("stepInterval: %ds (backend-determined)", si))
 		}
 	}
+	backendWarnings := extractBackendWarningMessages(result)
+	warnBackendWarnings(ctx, h.logger, "signoz_query_metrics", backendWarnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_query_metrics", result, len(backendWarnings))
 
-	// Build response with decisions block
-	var response strings.Builder
-	response.WriteString("[Decisions applied]\n")
+	// JSON-first: the raw backend payload is block 0 (matching the search/
+	// aggregate siblings); decisions/warnings go into a SEPARATE note block
+	// rather than prepended. query_metrics is a raw QB passthrough, so it stays
+	// text-only (no structuredContent) — its upstream shape is variable.
+	note := buildMetricsDecisionsNote(decisions, resolved.Warnings, backendWarnings)
+	return resultWithNotes(result, note), nil
+}
+
+// buildMetricsDecisionsNote renders the decisions/warnings advisory block that
+// query_metrics surfaces alongside (not prepended into) its JSON payload. It is
+// emitted as a separate content block via resultWithNotes.
+func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []string) string {
+	var b strings.Builder
+	b.WriteString("[Decisions applied]\n")
 	for _, d := range decisions {
-		response.WriteString(fmt.Sprintf("  %s\n", d))
+		b.WriteString(fmt.Sprintf("  %s\n", d))
 	}
-	for _, w := range resolved.Warnings {
-		response.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
+	for _, w := range defaultWarnings {
+		b.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
 	}
-	response.WriteString("---\n")
-	response.WriteString(string(result))
-
-	return mcp.NewToolResultText(response.String()), nil
+	for _, w := range backendWarnings {
+		b.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // fetchMetricMetadata calls ListMetrics to get type/temporality/isMonotonic for a metric.
@@ -214,7 +261,56 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	if err != nil {
 		return nil, err
 	}
+	// Fail open, but never fail silent: a matched row missing a field signals
+	// upstream drift before we apply a possibly-wrong default, so WARN on it.
+	if meta != nil {
+		if meta.TemporalityMissing {
+			h.logger.WarnContext(ctx, metricMetadataDriftMarker,
+				slog.String("metricName", metricName),
+				slog.String("missingField", "temporality"),
+				slog.String("metricType", meta.MetricType))
+		}
+		if meta.IsMonotonicMissing {
+			h.logger.WarnContext(ctx, metricMetadataDriftMarker,
+				slog.String("metricName", metricName),
+				slog.String("missingField", "isMonotonic"),
+				slog.String("metricType", meta.MetricType))
+		}
+	}
 	return meta, nil
+}
+
+// metricMetadataRow mirrors one entry of a ListMetrics response. IsMonotonic and
+// Temporality are pointers so an ABSENT field differs from a present empty/false
+// value, enabling drift detection without flagging legitimate empty values.
+type metricMetadataRow struct {
+	MetricName  string  `json:"metricName"`
+	Type        string  `json:"type"`
+	IsMonotonic *bool   `json:"isMonotonic"`
+	Temporality *string `json:"temporality"`
+}
+
+// metricMetadataFromRow builds metricMetadata from a matched row, recording
+// missing fields. Drift flags only apply to a genuine match (non-empty type).
+func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
+	mt := normalizeMetricType(m.Type)
+	isMono := m.IsMonotonic != nil && *m.IsMonotonic
+	temporality := ""
+	if m.Temporality != nil {
+		temporality = *m.Temporality
+	}
+	meta := &metricMetadata{
+		MetricType:  mt,
+		IsMonotonic: isMono,
+		Temporality: temporality,
+	}
+	if mt != "" {
+		// Absent (nil), not present-but-empty: an explicit "" is a legitimate value.
+		meta.TemporalityMissing = m.Temporality == nil
+		// isMonotonic is only meaningful for sums; only its absence there is drift.
+		meta.IsMonotonicMissing = mt == "sum" && m.IsMonotonic == nil
+	}
+	return meta
 }
 
 // parseMetricMetadataFromResponse extracts metric metadata from the ListMetrics response.
@@ -223,56 +319,28 @@ func parseMetricMetadataFromResponse(data json.RawMessage, metricName string) (*
 	var wrapper struct {
 		Status string `json:"status"`
 		Data   struct {
-			Metrics []struct {
-				MetricName  string `json:"metricName"`
-				Type        string `json:"type"`
-				IsMonotonic bool   `json:"isMonotonic"`
-				Temporality string `json:"temporality"`
-			} `json:"metrics"`
+			Metrics []metricMetadataRow `json:"metrics"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper.Data.Metrics) > 0 {
 		for _, m := range wrapper.Data.Metrics {
 			if m.MetricName == metricName {
-				return &metricMetadata{
-					MetricType:  normalizeMetricType(m.Type),
-					IsMonotonic: m.IsMonotonic,
-					Temporality: m.Temporality,
-				}, nil
+				return metricMetadataFromRow(m), nil
 			}
 		}
 		// If exact match not found, return the first result if search was specific
-		m := wrapper.Data.Metrics[0]
-		return &metricMetadata{
-			MetricType:  normalizeMetricType(m.Type),
-			IsMonotonic: m.IsMonotonic,
-			Temporality: m.Temporality,
-		}, nil
+		return metricMetadataFromRow(wrapper.Data.Metrics[0]), nil
 	}
 
 	// Try format: [{"metricName":"...", "type":"...", ...}]
-	var metrics []struct {
-		MetricName  string `json:"metricName"`
-		Type        string `json:"type"`
-		IsMonotonic bool   `json:"isMonotonic"`
-		Temporality string `json:"temporality"`
-	}
+	var metrics []metricMetadataRow
 	if err := json.Unmarshal(data, &metrics); err == nil && len(metrics) > 0 {
 		for _, m := range metrics {
 			if m.MetricName == metricName {
-				return &metricMetadata{
-					MetricType:  normalizeMetricType(m.Type),
-					IsMonotonic: m.IsMonotonic,
-					Temporality: m.Temporality,
-				}, nil
+				return metricMetadataFromRow(m), nil
 			}
 		}
-		m := metrics[0]
-		return &metricMetadata{
-			MetricType:  normalizeMetricType(m.Type),
-			IsMonotonic: m.IsMonotonic,
-			Temporality: m.Temporality,
-		}, nil
+		return metricMetadataFromRow(metrics[0]), nil
 	}
 
 	return nil, nil
@@ -303,13 +371,23 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 	if metricType == "" {
 		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName, source)
 		if err != nil {
-			return nil, fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err)
+			// Upstream (ListMetrics) failure — tag it so the caller surfaces the
+			// uniform "SigNoz API error:" prefix. The "metric not found" and
+			// "validation error" paths below are local and stay untagged.
+			return nil, markUpstream(fmt.Errorf("failed to auto-fetch metadata for formula query %q (%s): %w", fq.Name, fq.MetricName, err))
 		}
 		if meta != nil {
 			metricType = meta.MetricType
 			isMonotonic = meta.IsMonotonic
 			temporality = meta.Temporality
 			*decisions = append(*decisions, fmt.Sprintf("query %s (%s): metricType=%s (auto-fetched)", fq.Name, fq.MetricName, metricType))
+			// Mirror the primary path: absent fields are disclosed as assumed.
+			if meta.TemporalityMissing {
+				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): temporality unknown (not returned by metadata; assumed %q)", fq.Name, fq.MetricName, temporality))
+			}
+			if meta.IsMonotonicMissing {
+				*decisions = append(*decisions, fmt.Sprintf("query %s (%s): isMonotonic unknown (not returned by metadata; assumed %t)", fq.Name, fq.MetricName, isMonotonic))
+			}
 		} else {
 			return nil, fmt.Errorf("metric %q not found for formula query %q. Check the metric name", fq.MetricName, fq.Name)
 		}

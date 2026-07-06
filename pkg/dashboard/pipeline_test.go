@@ -356,7 +356,7 @@ func TestValidate_NormalizesMalformedFilterItem(t *testing.T) {
 									"op": "AND",
 									"items": []any{
 										map[string]any{
-											"id":  "broken-item",
+											"id": "broken-item",
 											"key": map[string]any{
 												"id":   "k8s.node.name",
 												"key":  "k8s.node.name",

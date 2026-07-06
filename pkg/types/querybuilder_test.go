@@ -527,3 +527,91 @@ func TestBuildTracesQueryPayload_PropagatesOffset(t *testing.T) {
 	require.Equal(t, 50, spec.Limit)
 	require.Equal(t, 25, spec.Offset, "offset must propagate into the traces query")
 }
+
+func TestBuildTracesQueryPayload_UsesCanonicalTraceFields(t *testing.T) {
+	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 0)
+	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
+
+	fields := map[string]SelectField{}
+	for _, field := range spec.SelectFields {
+		fields[field.Name] = field
+	}
+
+	for _, deprecated := range []string{
+		"traceID",
+		"spanID",
+		"parentSpanID",
+		"durationNano",
+		"hasError",
+		"statusCode",
+		"statusCodeString",
+		"statusMessage",
+		"spanKind",
+		"httpMethod",
+		"httpUrl",
+		"responseStatusCode",
+		"rpcMethod",
+	} {
+		_, found := fields[deprecated]
+		require.False(t, found, "deprecated trace field %q must not be selected", deprecated)
+	}
+
+	expected := map[string]SelectField{
+		"trace_id": {
+			Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"span_id": {
+			Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"parent_span_id": {
+			Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"name": {
+			Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"duration_nano": {
+			Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span",
+		},
+		"timestamp": {
+			Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span",
+		},
+		"has_error": {
+			Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span",
+		},
+		"status_code": {
+			Name: "status_code", FieldDataType: "number", Signal: "traces", FieldContext: "span",
+		},
+		"status_code_string": {
+			Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"status_message": {
+			Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"http_method": {
+			Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"http_url": {
+			Name: "http_url", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"kind_string": {
+			Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"kind": {
+			Name: "kind", FieldDataType: "number", Signal: "traces", FieldContext: "span",
+		},
+		"response_status_code": {
+			Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"rpc.method": {
+			Name: "rpc.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag",
+		},
+		"http.response.status_code": {
+			Name: "http.response.status_code", FieldDataType: "number", Signal: "traces", FieldContext: "tag",
+		},
+	}
+
+	for name, want := range expected {
+		require.Equal(t, want, fields[name], "select field %q", name)
+	}
+}

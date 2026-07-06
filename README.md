@@ -206,6 +206,7 @@ The binary is at `./bin/signoz-mcp-server`.
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
+- SigNoz v0.131.0 or newer for `signoz_check_metric_usage`
 - SigNoz v0.120.0 or newer for alert rule tools that use the `/api/v2/rules` APIs
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
@@ -331,7 +332,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected alert-rule tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`, available in SigNoz v0.131.0 and newer. Alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -339,32 +340,34 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
+| `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
+| `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
-| `signoz_get_alert` | Get an alert rule definition by ID via GET /api/v2/rules/{ruleId} |
-| `signoz_get_alert_history` | Get alert state history timeline for a rule |
+| `signoz_get_alert` | Get an alert rule definition by `id` via GET /api/v2/rules/{id} |
+| `signoz_get_alert_history` | Get alert state history timeline for a rule (`id`) |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
-| `signoz_update_alert` | Update an alert rule by UUIDv7 via PUT /api/v2/rules/{ruleId} |
-| `signoz_delete_alert` | Delete an alert rule by UUIDv7 via DELETE /api/v2/rules/{ruleId} |
+| `signoz_update_alert` | Update an alert rule by UUIDv7 `id` via PUT /api/v2/rules/{id} |
+| `signoz_delete_alert` | Delete an alert rule by UUIDv7 `id` via DELETE /api/v2/rules/{id} |
 | `signoz_list_dashboards` | List all dashboards with summaries |
-| `signoz_get_dashboard` | Get full dashboard configuration |
+| `signoz_get_dashboard` | Get full dashboard configuration by `id` |
 | `signoz_create_dashboard` | Create a new dashboard |
-| `signoz_update_dashboard` | Update an existing dashboard |
-| `signoz_delete_dashboard` | Delete a dashboard by UUID |
+| `signoz_update_dashboard` | Update an existing dashboard by `id` |
+| `signoz_delete_dashboard` | Delete a dashboard by `id` |
 | `signoz_import_dashboard` | Create a dashboard from a curated SigNoz/dashboards template by path |
 | `signoz_list_dashboard_templates` | List the bundled curated SigNoz dashboard template catalog so the model can pick a template |
 | `signoz_list_services` | List services within a time range |
 | `signoz_get_service_top_operations` | Get top operations for a service |
 | `signoz_list_views` | List saved Explorer views for a sourcePage (traces/logs/metrics/meter) |
-| `signoz_get_view` | Get a saved view by UUID |
+| `signoz_get_view` | Get a saved view by `id` |
 | `signoz_search_docs` | Search official SigNoz docs for product, setup, instrumentation, config, API, deployment, or troubleshooting questions |
 | `signoz_fetch_doc` | Fetch full markdown for one official SigNoz docs page or heading |
 | `signoz_create_view` | Create a new saved Explorer view |
-| `signoz_update_view` | Replace an existing saved view (full-body PUT) |
-| `signoz_delete_view` | Delete a saved view by UUID |
+| `signoz_update_view` | Replace an existing saved view (full-body PUT; `id`) |
+| `signoz_delete_view` | Delete a saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate logs (count, avg, p99, etc.) with grouping |
 | `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_traces` | Aggregate trace statistics with grouping |
@@ -397,9 +400,10 @@ Search and list available metrics from SigNoz. Supports filtering by name substr
 - **Parameters**:
   - `searchText` (optional) - Filter metrics by name substring (e.g., 'cpu', 'memory')
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
-  - `start` (optional) - Start time in unix milliseconds
-  - `end` (optional) - End time in unix milliseconds
+  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) so a `limit`-truncated list is never mistaken for the full set; narrow with `searchText` for more specificity
 
 #### `signoz_query_metrics`
 
@@ -408,20 +412,38 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
 - **Parameters**:
   - `metricName` (required) - Metric name to query
   - `metricType` (optional) - gauge, sum, histogram, exponential_histogram (auto-fetched if absent)
-  - `isMonotonic` (optional) - true/false (auto-fetched if absent)
+  - `isMonotonic` (optional) - Boolean (or the strings `"true"`/`"false"`); auto-fetched if absent. An invalid value is rejected rather than silently treated as false
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
   - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
   - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
   - `groupBy` (optional) - Comma-separated field names
   - `filter` (optional) - Filter expression
-  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
-  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
   - `stepInterval` (optional) - Step in seconds (auto-calculated if omitted)
-  - `requestType` (optional) - time_series (default) or scalar
+  - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
+
+#### `signoz_get_top_metrics`
+
+Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. Use this to identify which metrics are driving the most ingestion volume and cost. Wraps `POST /api/v2/metrics/treemap`. Response fields: `metricName`, `percentage` (share of total sample volume), `totalValue` (absolute sample count).
+
+- **Parameters**:
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '1h', '24h', '3d', '7d', '30d'; default: '7d'; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
+  - **Completeness note**: returns a fixed top 100 by ingested sample volume; the response appends a note flagging whether the list was truncated at that cap (`hasMore`)
+
+#### `signoz_check_metric_usage`
+
+Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric. Requires SigNoz v0.131.0+.
+
+- **Parameters**:
+  - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
+- **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric), `error` (non-empty when the lookup failed — do not treat the metric as unused in that case)
+- **Limits**: Maximum 50 metrics per call; 30-second overall timeout (partial results returned on expiry)
 
 #### `signoz_check_metric_cardinality`
 
@@ -434,21 +456,28 @@ Return label/attribute keys for a single metric with their cardinality counts an
 
 #### `signoz_list_alerts`
 
-Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with a `ruleId` for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — **not** rule definitions. Use `signoz_list_alert_rules` for configured rules, `signoz_get_alert` with an `id` for one full rule definition, or `signoz_get_alert_history` for the state timeline.
+
+- **Parameters**:
+  - `limit` (optional) - Maximum number of alerts per page (default: 50)
+  - `offset` (optional) - Number of results to skip for pagination (default: 0)
+  - `active` / `silenced` / `inhibited` (optional) - Tri-state filters. Boolean (or the strings `"true"`/`"false"`). Omit to defer to the backend default (all states included). An invalid value is rejected rather than silently dropped
+  - `filter` (optional) - Comma-separated Prometheus matcher expressions (e.g., `alertname="HighCPU",severity="critical"`)
+  - `receiver` (optional) - Regex to filter alerts by receiver name
 
 #### `signoz_list_alert_rules`
 
 Lists configured alert rules from `GET /api/v2/rules`, including inactive/OK and disabled rules. Returns compact summaries with `ruleId`, `alert`, `alertType`, `ruleType`, `state`, `disabled`, `severity`, `labels`, `createdAt`, and `updatedAt`.
 
 - **Parameters**:
-  - `limit` (optional) - Maximum number of rules to return (default: 50)
+  - `limit` (optional) - Maximum number of rules to return per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of rules to skip for pagination (default: 0)
 
 #### `signoz_get_alert`
 
-Gets the rule definition for an alert (`GET /api/v2/rules/{ruleId}`).
+Gets the rule definition for an alert (`GET /api/v2/rules/{id}`).
 
-- **Parameters**: `ruleId` (required) - Alert rule ID (UUIDv7 on v2-capable servers).
+- **Parameters**: `id` (required) - Alert rule ID (UUIDv7 on v2-capable servers).
 - **Note**: Response shape depends on the SigNoz server version. Post-#10997 servers return the canonical `Rule` type with `createdAt/updatedAt/createdBy/updatedBy`; older servers return `GettableRule` with `createAt/updateAt/createBy/updateBy` (no 'd').
 
 #### `signoz_list_dashboards`
@@ -459,7 +488,7 @@ Lists all dashboards with summaries (name, UUID, description, tags).
 
 Gets complete dashboard configuration.
 
-- **Parameters**: `uuid` (required) - Dashboard UUID
+- **Parameters**: `id` (required) - Dashboard UUID
 
 #### `signoz_create_dashboard`
 
@@ -493,7 +522,7 @@ Returns the full bundled catalog of curated SigNoz dashboard templates (id, titl
 Updates an existing dashboard.
 
 - **Parameters:**
-  - `uuid` (required) – Unique identifier of the dashboard to update
+  - `id` (required) – Unique identifier of the dashboard to update
   - `dashboard` (required) – Complete dashboard object representing the post-update state
     - `title` (required) – Dashboard name
     - `description` (optional) – Short summary of what the dashboard shows
@@ -507,9 +536,11 @@ Updates an existing dashboard.
 Lists all services within a time range.
 
 - **Parameters**:
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in nanoseconds (defaults to now)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
+  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `limit` (optional) - Maximum services per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Number of results to skip for pagination (default: 0)
 
 #### `signoz_get_service_top_operations`
 
@@ -517,23 +548,25 @@ Gets top operations for a specific service.
 
 - **Parameters**:
   - `service` (required) - Service name
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in nanoseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in nanoseconds (defaults to now)
-  - `tags` (optional) - JSON array of tags
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
+  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `tags` (optional) - Raw JSON array of tag filters, passed through to the SigNoz API as-is (advanced; the backend expects structured tag-filter objects)
 
 #### `signoz_get_alert_history`
 
 Gets alert history timeline for a specific rule.
 
 - **Parameters**:
-  - `ruleId` (required) - Alert rule ID
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start timestamp in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End timestamp in milliseconds (defaults to now)
+  - `id` (required) - Alert rule ID
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago).
+  - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
+  - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
   - `offset` (optional) - Offset for pagination (default: 0)
-  - `limit` (optional) - Limit number of results (default: 20)
-  - `order` (optional) - Sort order: 'asc' or 'desc' (default: 'asc')
+  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `offset`)
+  - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch
 
 #### `signoz_list_views`
 
@@ -543,22 +576,22 @@ List SigNoz saved Explorer views for a given sourcePage. Supports pagination; re
   - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
   - `name` (optional) - Partial-match filter on view name (server-side)
   - `category` (optional) - Partial-match filter on view category (server-side)
-  - `limit` (optional) - Page size (default: 50)
+  - `limit` (optional) - Page size (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip (default: 0)
 
 #### `signoz_get_view`
 
 Get a single saved view by UUID.
 
-- **Parameters**: `viewId` (required) - Saved view UUID
+- **Parameters**: `id` (required) - Saved view UUID
 
 #### `signoz_search_docs`
 
 Search official SigNoz documentation with BM25 over indexed markdown content.
 
 - **Parameters**:
-  - `query` (required) - Natural-language or keyword query
-  - `limit` (optional) - Maximum results to return (default: 10, max: 25)
+  - `searchText` (required) - Natural-language or keyword query to search official SigNoz docs
+  - `limit` (optional) - Maximum results to return as a string (default: 10, max: 25; a numeric value is also accepted). The 25 ceiling is deliberate — each result hydrates document text out of the in-process docs index, so a larger limit inflates this server's resident memory.
   - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
   - `searchContext` - User's original question
 
@@ -575,6 +608,14 @@ Fetch full markdown for one official SigNoz docs page from the local index. Acce
 
 Read-only MCP resource containing the indexed docs sitemap used by the docs search and fetch tools.
 
+#### `signoz://logs/query-builder-guide`
+
+Read-only MCP resource with logs Query Builder v5 filter syntax, field contexts, body text search, body JSON-path search, timestamp format, and complete raw/aggregation/time-series examples.
+
+#### `signoz://traces/query-builder-guide`
+
+Read-only MCP resource with traces Query Builder v5 filter syntax, field contexts, built-in span columns, timestamp format, and complete raw/aggregation/time-series examples.
+
 #### `signoz_create_view`
 
 Create a new saved Explorer view.
@@ -587,7 +628,7 @@ Create a new saved Explorer view.
 Replace an existing saved view (full-body PUT).
 
 - **Parameters**:
-  - `viewId` (required) - UUID of the view to replace
+  - `id` (required) - UUID of the view to replace
   - `view` (required) - Full `SavedView` object (`name`, `sourcePage`, `compositeQuery`, plus any of `category`, `tags`, `extraData`)
 - **Tip**: Read MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing payloads. Call `signoz_get_view` first, pass its `data` object under `view` with whichever fields changed. Partial bodies wipe unspecified fields.
 
@@ -595,7 +636,7 @@ Replace an existing saved view (full-body PUT).
 
 Delete a saved view by UUID.
 
-- **Parameters**: `viewId` (required) - Saved view UUID
+- **Parameters**: `id` (required) - Saved view UUID
 
 
 
@@ -607,38 +648,41 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
   - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
-  - `filter` (optional) - Filter expression using SigNoz search syntax
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
+  - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
+  - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
 
 #### `signoz_search_logs`
 
 Search logs with flexible filtering across all services.
 
 - **Parameters**:
-  - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND http.status_code >= 400")
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
 
 #### `signoz_get_field_keys`
 
 Get available field keys for a given signal (metrics, traces, or logs).
 
 - **Parameters**:
-  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Filter by field context (e.g., `resource`, `span`)
-  - `fieldDataType` (optional) - Filter by data type (e.g., `string`, `int64`)
+  - `fieldContext` (optional) - Restrict to a field context: `resource`, `attribute` (alias `tag`), `scope`, `log`/`span`/`metric` (intrinsic/built-in columns), or `body` (JSON log body). Distinguishes intrinsic columns from user attributes.
+  - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`, or array forms like `[]string`
   - `source` (optional) - Filter by source
 
 #### `signoz_get_field_values`
@@ -646,10 +690,11 @@ Get available field keys for a given signal (metrics, traces, or logs).
 Get possible values for a specific field key for a given signal.
 
 - **Parameters**:
-  - `signal` (required) - Signal type: `metrics`, `traces`, or `logs`
+  - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
   - `searchText` (optional) - Filter values by substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
+  - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`/`tag`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one
   - `source` (optional) - Filter by source
 
 
@@ -658,15 +703,17 @@ Get possible values for a specific field key for a given signal.
 Search traces/spans with flexible filtering.
 
 - **Parameters**:
-  - `query` (optional) - Filter expression using SigNoz search syntax (e.g., "service.name = 'payment-svc' AND hasError = true")
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "service.name = 'payment-svc' AND (has_error = true OR attribute.http.response.status_code >= 500)"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Service name to filter by
   - `operation` (optional) - Operation/span name to filter by
-  - `error` (optional) - Filter by error status ('true' or 'false')
+  - `error` (optional) - Filter by error status. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
+  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
+  - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
 
 #### `signoz_aggregate_traces`
 
@@ -674,16 +721,18 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
 
 - **Parameters**:
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
-  - `aggregateOn` (optional) - Field to aggregate on (e.g., 'durationNano'). Required for all except count and rate
+  - `aggregateOn` (optional) - Field to aggregate on (e.g., 'duration_nano'). Required for all except count and rate
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, name')
-  - `filter` (optional) - Filter expression using SigNoz search syntax
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://traces/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name
   - `operation` (optional) - Shortcut filter for span/operation name
-  - `error` (optional) - Shortcut filter for error spans ('true' or 'false')
-  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(durationNano) desc')
+  - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
+  - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc')
   - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
-  - `timeRange` (optional) - Time range like '30m', '1h', '6h', '24h' (default: '1h'; ignored when both `start` and `end` are provided)
-  - `start` / `end` (optional) - Start/end time in milliseconds. When both are provided, they override `timeRange`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
+  - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
+  - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
+  - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
 
 #### `signoz_get_trace_details`
 
@@ -691,10 +740,10 @@ Gets trace information including all spans and metadata.
 
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for
-  - `timeRange` (optional) - Time range like '2h', '6h', '2d', '7d' (ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in milliseconds (defaults to 6 hours ago)
-  - `end` (optional) - End time in milliseconds (defaults to now)
-  - `includeSpans` (optional) - Include detailed span information (true/false, default: true)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
+  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
 
 
 
@@ -710,31 +759,31 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 
 #### `signoz_update_alert`
 
-Update an existing alert rule via `PUT /api/v2/rules/{ruleId}`. Replaces the full rule configuration — fetch the current rule with `signoz_get_alert` first and merge changes on top of it.
+Update an existing alert rule via `PUT /api/v2/rules/{id}`. Replaces the full rule configuration — fetch the current rule with `signoz_get_alert` first and merge changes on top of it.
 
 - **Parameters**:
-  - `ruleId` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
+  - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
   - Plus all fields of the alert rule schema (same shape as `signoz_create_alert`).
 
 #### `signoz_delete_alert`
 
-Delete an alert rule via `DELETE /api/v2/rules/{ruleId}`. Irreversible — confirm with the user first.
+Delete an alert rule via `DELETE /api/v2/rules/{id}`. Irreversible — confirm with the user first.
 
 - **Parameters**:
-  - `ruleId` (required) - UUIDv7 of the rule to delete. The server rejects non-UUIDv7 values with `invalid_input`.
+  - `id` (required) - UUIDv7 of the rule to delete. The server rejects non-UUIDv7 values with `invalid_input`.
 
 #### `signoz_delete_dashboard`
 
-Delete a dashboard by UUID.
+Delete a dashboard by ID.
 
-- **Parameters**: `uuid` (required) - Dashboard UUID to delete
+- **Parameters**: `id` (required) - Dashboard UUID to delete
 
 #### `signoz_list_notification_channels`
 
 List notification channels configured in SigNoz.
 
 - **Parameters**:
-  - `limit` (optional) - Maximum number of channels to return (default: 50)
+  - `limit` (optional) - Maximum number of channels to return per page (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Offset for pagination (default: 0)
 
 #### `signoz_create_notification_channel`
@@ -744,7 +793,9 @@ Create a notification channel and send a test notification.
 - **Parameters**:
   - `type` (required) - Channel type: slack, webhook, pagerduty, email, opsgenie, msteams
   - `name` (required) - Channel name
+  - `send_resolved` (optional) - Send notifications when alerts resolve. Boolean (or the strings `"true"`/`"false"`), default: true
   - Type-specific fields (required by channel type), such as `slack_api_url`, `webhook_url`, `pagerduty_routing_key`, `email_to`, `opsgenie_api_key`, or `msteams_webhook_url`
+- **Test-send behavior**: the channel is created first, then a test notification is sent. If the test fails, the tool still returns success (the channel WAS created) but appends a prominent warning note so the failure is not buried — verify the configuration and re-test.
 
 #### `signoz_update_notification_channel`
 
@@ -754,7 +805,9 @@ Update an existing notification channel and send a test notification.
   - `id` (required) - Notification channel UUID
   - `type` (required) - Channel type
   - `name` (required) - Channel name
+  - `send_resolved` (optional) - Send notifications when alerts resolve. Boolean (or the strings `"true"`/`"false"`), default: true
   - Full channel configuration fields for the selected channel type
+- **Test-send behavior**: same as create — a failed verification test-send surfaces a prominent warning note instead of flipping the result to an error.
 
 #### `signoz_get_notification_channel`
 
@@ -780,6 +833,7 @@ Executes a SigNoz Query Builder v5 query.
   - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql` — `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql` — `{name, query, disabled, legend?}`.
+- **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 
 </details>

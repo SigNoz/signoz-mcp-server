@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -553,6 +554,67 @@ func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
 
 	assert.False(t, sawRetryDebug, "did not expect retry log for non-retryable status")
 	assert.True(t, sawTerminalWarn, "expected terminal non-retryable warning log")
+}
+
+func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	require.Error(t, err)
+
+	var statusErr *HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.Contains(t, statusErr.Body, "authz_forbidden")
+	assert.Contains(t, err.Error(), "unexpected status 403")
+}
+
+func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
+	var logBuf bytes.Buffer
+	longMessage := strings.Repeat("x", 5000) + "tail"
+	responseBody, err := json.Marshal(map[string]any{
+		"status": "error",
+		"error": map[string]any{
+			"type":    "forbidden",
+			"code":    "forbidden",
+			"message": longMessage,
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write(responseBody)
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	require.Error(t, err)
+
+	var statusErr *HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.True(t, json.Valid([]byte(statusErr.Body)), "stored body should remain parseable JSON")
+	assert.Contains(t, statusErr.Body, longMessage)
+	assert.Contains(t, err.Error(), "...(truncated)")
+	assert.NotContains(t, err.Error(), "tail")
+
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	require.NotEmpty(t, lines)
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &rec))
+	assert.Equal(t, "SigNoz request returned unexpected status", rec["msg"])
+	response, _ := rec["response"].(string)
+	assert.Contains(t, response, "...(truncated)")
+	assert.NotContains(t, response, "tail")
 }
 
 func TestListMetricKeys(t *testing.T) {
@@ -1251,6 +1313,31 @@ func TestQueryBuilderV5(t *testing.T) {
 	}
 }
 
+func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
+	var captured []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/v5/query_range", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		captured = body
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"result":[]}}`))
+	}))
+	defer server.Close()
+
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.GetTraceDetails(context.Background(), "abc123", true, 1711123200000, 1711130400000)
+	require.NoError(t, err)
+
+	payload := string(captured)
+	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
+	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
+}
+
 func TestCreateDashboard(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -1449,18 +1536,20 @@ func TestGetFieldValues(t *testing.T) {
 		fieldName     string
 		metricName    string
 		searchText    string
+		fieldContext  string
 		source        string
 		resp          map[string]interface{}
 		statusCode    int
 		expectedError bool
 	}{
 		{
-			name:       "successful retrieval with all params",
-			signal:     "metrics",
-			fieldName:  "host.name",
-			metricName: "container.cpu.usage",
-			searchText: "prod",
-			source:     "otel",
+			name:         "successful retrieval with all params",
+			signal:       "metrics",
+			fieldName:    "host.name",
+			metricName:   "container.cpu.usage",
+			searchText:   "prod",
+			fieldContext: "resource",
+			source:       "otel",
 			resp: map[string]interface{}{
 				"status": "success",
 				"data":   []string{"prod-host-1", "prod-host-2"},
@@ -1513,6 +1602,7 @@ func TestGetFieldValues(t *testing.T) {
 				assert.Equal(t, tt.fieldName, q.Get("name"))
 				assert.Equal(t, tt.metricName, q.Get("metricName"))
 				assert.Equal(t, tt.searchText, q.Get("searchText"))
+				assert.Equal(t, tt.fieldContext, q.Get("fieldContext"))
 				assert.Equal(t, tt.source, q.Get("source"))
 
 				w.WriteHeader(tt.statusCode)
@@ -1525,7 +1615,7 @@ func TestGetFieldValues(t *testing.T) {
 			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			ctx := context.Background()
-			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.source)
+			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.fieldContext, tt.source)
 
 			if tt.expectedError {
 				assert.Error(t, err)

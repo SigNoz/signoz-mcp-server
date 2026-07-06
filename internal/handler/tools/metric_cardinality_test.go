@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -83,6 +85,73 @@ func TestHandleCheckMetricCardinality_MissingMetricNameReturnsError(t *testing.T
 	}
 	if !result.IsError {
 		t.Fatal("expected error result for missing metricName, got success")
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+	}
+}
+
+func TestHandleCheckMetricCardinality_MalformedTimestampReturnsValidationCode(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	req := makeToolRequest("signoz_check_metric_cardinality", map[string]any{
+		"metricName": "system.cpu.time",
+		"start":      "yesterday",
+	})
+
+	result, err := h.handleCheckMetricCardinality(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected validation error result for malformed start, got success")
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+	}
+}
+
+// TestHandleCheckMetricCardinality_AuthzFailureReturnsUpstreamCode pins that a
+// SigNoz 401/403 propagates through the shared upstreamError path with the
+// status-derived code — so clients re-authenticate rather than treat the metric
+// as having no attributes. The error is wrapped exactly as the real client wraps
+// it (fmt.Errorf("...: %w")) to prove errors.As classification survives wrapping.
+func TestHandleCheckMetricCardinality_AuthzFailureReturnsUpstreamCode(t *testing.T) {
+	cases := []struct {
+		name       string
+		statusCode int
+		wantCode   string
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, wantCode: CodeUnauthorized},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantCode: CodePermissionDenied},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newTestHandler(&client.MockClient{
+				GetMetricCardinalityFn: func(_ context.Context, name string, _, _ int64) (json.RawMessage, error) {
+					return nil, fmt.Errorf("cardinality lookup for %q: %w", name, &client.HTTPStatusError{
+						StatusCode: tc.statusCode,
+						Body:       `{"status":"error","error":{"code":"unauthenticated","message":"invalid credentials","type":"unauthorized"}}`,
+					})
+				},
+			})
+
+			result, err := h.handleCheckMetricCardinality(testCtx(), makeToolRequest("signoz_check_metric_cardinality", map[string]any{
+				"metricName": "system.cpu.time",
+			}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected authz error result, got success")
+			}
+			if code := resultCode(t, result); code != tc.wantCode {
+				t.Fatalf("code = %q, want %q", code, tc.wantCode)
+			}
+			if got := resultStructuredMap(t, result)["status"]; got != tc.statusCode {
+				t.Fatalf("status = %#v, want %d", got, tc.statusCode)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -23,10 +24,14 @@ type metricsQueryRequest struct {
 	Start            int64
 	End              int64
 	StepInterval     int64
-	RequestType      string
-	Formula          string
-	FormulaQueries   []formulaSubQuery
-	Source           string
+	// StepIntervalInvalid holds the raw stepInterval value when it was present
+	// but not a valid positive integer count of seconds. The handler surfaces it
+	// as a note and falls back to backend auto-select rather than coercing it.
+	StepIntervalInvalid string
+	RequestType         string
+	Formula             string
+	FormulaQueries      []formulaSubQuery
+	Source              string
 }
 
 // formulaSubQuery represents one sub-query within a formula request.
@@ -45,7 +50,21 @@ type formulaSubQuery struct {
 func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	metricName, _ := args["metricName"].(string)
 	if metricName == "" {
-		return nil, fmt.Errorf("\"metricName\" is required. Use signoz_list_metrics to find available metrics")
+		return nil, fmt.Errorf(`%s "metricName" is required. Use signoz_list_metrics to find available metrics`, validationErrorPrefix)
+	}
+	filter, err := readFilterExpr(args)
+	if err != nil {
+		return nil, err
+	}
+	// Read requestType once, rejecting a present-but-non-string value loudly
+	// (instead of stringArg's silent drop to ""), then validate the enum and
+	// reuse the value for RequestType below.
+	requestType, err := readRequestType(args)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRequestType(requestType); err != nil {
+		return nil, err
 	}
 
 	req := &metricsQueryRequest{
@@ -55,19 +74,19 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		TimeAggregation:  stringArg(args, "timeAggregation"),
 		SpaceAggregation: stringArg(args, "spaceAggregation"),
 		ReduceTo:         stringArg(args, "reduceTo"),
-		Filter:           stringArg(args, "filter"),
+		Filter:           filter,
 		TimeRange:        stringArg(args, "timeRange"),
-		RequestType:      stringArg(args, "requestType"),
+		RequestType:      requestType,
 		Formula:          stringArg(args, "formula"),
 		Source:           stringArg(args, "source"),
 	}
 
-	// isMonotonic — accept bool or string
-	switch v := args["isMonotonic"].(type) {
-	case bool:
+	// isMonotonic — accept a real bool or "true"/"false"; hard-error on garbage
+	// (rather than treating any non-"true" string as false).
+	if v, present, err := parseBoolArg(args, "isMonotonic"); err != nil {
+		return nil, err
+	} else if present {
 		req.IsMonotonic = v
-	case string:
-		req.IsMonotonic = strings.EqualFold(v, "true")
 	}
 
 	// groupBy — accept []string, []any, or comma-separated string
@@ -97,9 +116,18 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 		req.End = parseIntLoose(e)
 	}
 
-	// stepInterval
+	// stepInterval — must be a positive base-10 integer count of SECONDS. A
+	// JSON number is taken as-is; a STRING must be entirely numeric. A
+	// non-numeric or unit-suffixed value ("1h", "60s", "abc") is NOT coerced
+	// (the old fmt.Sscanf path silently turned "1h"→1s, a wrong bucket size).
+	// Instead we leave StepInterval unset (0 → backend auto-select) and record
+	// the rejected raw value so the handler can surface a [Decisions] note.
 	if si, ok := args["stepInterval"]; ok {
-		req.StepInterval = parseIntLoose(si)
+		if n, raw, valid := parseStepIntervalSeconds(si); valid {
+			req.StepInterval = n
+		} else if raw != "" {
+			req.StepIntervalInvalid = raw
+		}
 	}
 
 	// formulaQueries — JSON array of sub-query objects
@@ -206,4 +234,53 @@ func parseIntLoose(v any) int64 {
 		return i
 	}
 	return 0
+}
+
+// parseStepIntervalSeconds parses a query_metrics stepInterval argument, which
+// must be a POSITIVE integer count of seconds. Unlike parseIntLoose it is
+// strict on strings: the ENTIRE trimmed string must be a base-10 integer, so
+// unit-suffixed values like "1h"/"60s" and non-numeric "abc" are rejected
+// rather than silently coerced to a wrong bucket size.
+//
+// Returns:
+//   - (n, "", true)    a valid positive integer (from a JSON number or numeric string)
+//   - (0, raw, false)  present but invalid — raw is its string form for surfacing
+//   - (0, "", false)   absent / empty / a non-positive value (use backend auto-select)
+func parseStepIntervalSeconds(v any) (n int64, raw string, valid bool) {
+	switch t := v.(type) {
+	case nil:
+		return 0, "", false
+	case float64:
+		if t > 0 && float64(int64(t)) == t {
+			return int64(t), "", true
+		}
+		return 0, strconv.FormatFloat(t, 'f', -1, 64), false
+	case int:
+		if t > 0 {
+			return int64(t), "", true
+		}
+		return 0, strconv.Itoa(t), false
+	case int64:
+		if t > 0 {
+			return t, "", true
+		}
+		return 0, strconv.FormatInt(t, 10), false
+	case json.Number:
+		i, err := t.Int64()
+		if err == nil && i > 0 {
+			return i, "", true
+		}
+		return 0, t.String(), false
+	case string:
+		s := strings.TrimSpace(t)
+		if s == "" {
+			return 0, "", false
+		}
+		i, err := strconv.ParseInt(s, 10, 64)
+		if err == nil && i > 0 {
+			return i, "", true
+		}
+		return 0, s, false
+	}
+	return 0, "", false
 }

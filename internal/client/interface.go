@@ -12,6 +12,7 @@ import (
 type Client interface {
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRules(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
@@ -32,11 +33,12 @@ type Client interface {
 	UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
 	DeleteView(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeys(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error)
+	GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
 	GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
 	CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRule(ctx context.Context, ruleID string) error
+	CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error)
 	ListNotificationChannels(ctx context.Context) (json.RawMessage, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)

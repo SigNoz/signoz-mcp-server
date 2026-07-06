@@ -41,18 +41,15 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
 
 func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
-	if args == nil {
-		return mcp.NewToolResultError("\"metricName\" is required"), nil
-	}
 
-	metricName, _ := args["metricName"].(string)
-	if metricName == "" {
-		return mcp.NewToolResultError("\"metricName\" is required"), nil
+	metricName, errResult := requireStringArg(args, "metricName")
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	startTime, endTime, err := resolveTimestamps(args, "7d")
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_check_metric_cardinality",
@@ -67,7 +64,7 @@ func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.Call
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to fetch metric cardinality",
 			slog.String("metricName", metricName), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	return mcp.NewToolResultText(string(result)), nil

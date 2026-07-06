@@ -42,6 +42,9 @@ go.work.sum
 .vscode/
 .cursor/
 
+# Claude Code local state (agent worktrees, settings)
+.claude/
+
 ### macOS ###
 # General
 .DS_Store

@@ -22,11 +22,11 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific service, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
-		mcp.WithString("limit", mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50. Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of services to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Must be greater than 0.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0. Must be >= 0.")),
 	)
 
 	addTool(s, listTool, h.handleListServices)
@@ -37,10 +37,10 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get top operations for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),
-		mcp.WithString("timeRange", mcp.Description("Time range string (optional). Ignored when both start and end are provided. Format: <number><unit> where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '7d'. Defaults to last 6 hours if not provided.")),
-		mcp.WithString("start", mcp.Description("Start time in nanoseconds (optional, defaults to 6 hours ago)")),
-		mcp.WithString("end", mcp.Description("End time in nanoseconds (optional, defaults to now)")),
-		mcp.WithString("tags", mcp.Description("Optional tags JSON array")),
+		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
+		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
+		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("tags", mcp.Description("Optional tag filters as a raw JSON array string, passed through to the SigNoz API as-is (advanced).")),
 	)
 
 	addTool(s, getOpsTool, h.handleGetServiceTopOperations)
@@ -49,8 +49,15 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
-	limit, offset := paginate.ParseParams(req.Params.Arguments)
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	}
+
+	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
+	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
 	client, err := h.GetClient(ctx)
@@ -60,7 +67,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	result, err := client.ListServices(ctx, start, end)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to list services", slog.String("start", start), slog.String("end", end), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	var services []any
@@ -91,24 +98,34 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
 	}
 
-	return mcp.NewToolResultText(string(resultJSON)), nil
+	return listResult(resultJSON, limitClamped), nil
 }
 
 func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
-
-	service, ok := args["service"].(string)
-	if !ok {
-		h.logger.WarnContext(ctx, "Invalid service parameter type", slog.Any("type", args["service"]))
-		return mcp.NewToolResultError(`Parameter validation failed: "service" must be a string. Example: {"service": "frontend-api", "timeRange": "1h"}`), nil
-	}
-	if service == "" {
-		h.logger.WarnContext(ctx, "Empty service parameter")
-		return mcp.NewToolResultError(`Parameter validation failed: "service" cannot be empty. Provide a valid service name. Use signoz_list_services tool to see available services.`), nil
+	args, errResult := requireArgsMap(req.Params.Arguments)
+	if errResult != nil {
+		return errResult, nil
 	}
 
-	start, end := timeutil.GetTimestampsWithDefaults(args, "ns")
+	service, errResult := requireStringArg(args, "service")
+	if errResult != nil {
+		h.logger.WarnContext(ctx, "Invalid service parameter", slog.Any("type", args["service"]))
+		return errResult, nil
+	}
 
+	// Reject a present-but-malformed start/end loudly; otherwise
+	// GetTimestampsWithDefaults silently falls back to the default window.
+	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
+		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
+		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
+	}
+
+	start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitNanos)
+
+	// tags is passed through to the SigNoz API verbatim. The backend's
+	// /api/v1/service/top_operations expects a structured []TagQueryParam array,
+	// so the caller supplies that raw JSON; an absent/non-string value defaults
+	// to an empty filter. (A friendlier typed-tags schema is tracked as a follow-up.)
 	var tags json.RawMessage
 	if t, ok := args["tags"].(string); ok && t != "" {
 		tags = json.RawMessage(t)
@@ -132,7 +149,7 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 			slog.String("end", end),
 			slog.String("service", service),
 			logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }

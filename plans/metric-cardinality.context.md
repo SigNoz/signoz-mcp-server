@@ -41,5 +41,23 @@
   reduces cardinality (unique series count). New wording: "dropping it outright eliminates its
   ingestion cost entirely — more impactful than trimming its labels."
 
+### 2026-07-06 — Rebase onto main + align error handling for merge readiness
+- Merged `origin/main` into the branch. Conflicts were all "both added a tool in the same spot"
+  (main gained `signoz_get_top_metrics` #196 and `signoz_check_metric_usage` #205 while this branch
+  was open): resolved by keeping all three metrics-cost tools, grouped in workflow order
+  (top_metrics → check_metric_usage → check_metric_cardinality) in `README.md`, `manifest.json`, and
+  `nil_arguments_test.go`.
+- Brought the handler in line with the error-handling convention that landed in main after this
+  branch forked (#227, `errs.go`): required-arg now uses `requireStringArg` (coded
+  `VALIDATION_FAILED`), timestamp parsing uses `errorWithCode(CodeValidationFailed, …)`, and the
+  upstream client call routes through `upstreamError(err)` so a SigNoz 401/403 surfaces the
+  `UNAUTHORIZED`/`PERMISSION_DENIED` structured code (CLAUDE.md hard requirement: authz failures must
+  propagate through the shared coded path so clients re-authenticate). Previously all three returned
+  a bare `mcp.NewToolResultError(err.Error())`.
+- Added tests mirroring the `check_metric_usage` sibling: validation errors carry `CodeValidationFailed`
+  (missing metricName, malformed timestamp) and a 401/403 authz failure returns the classified upstream
+  code. The authz test wraps the `HTTPStatusError` with `fmt.Errorf("…: %w")` exactly as the real
+  client does, proving `errors.As` classification survives the client's wrapping.
+
 ## Open Questions
 - (none)

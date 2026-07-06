@@ -23,6 +23,18 @@ plans/
    - `In Progress` — implementation underway
    - `Done` — shipped
 
+## Git & PR
+
+- Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`.
+- PR titles must follow the same conventional-commit format, e.g.
+  `chore(rate-limits): centralize override defaults`.
+- Create GitHub issues in `SigNoz/nerve-pod` by default. Only use another repo when the user explicitly asks for that specific repo.
+- Keep PR body in sync with actual changes.
+
+## Code Style
+
+- Avoid long inline code comments unless needed; keep comments concise and non-redundant.
+
 ## Documentation & Metadata Sync Checklist
 
 When adding, renaming, or removing MCP tools/resources/configuration, update docs and metadata in the same PR.
@@ -31,6 +43,7 @@ When adding, renaming, or removing MCP tools/resources/configuration, update doc
 - Update `README.md` tool tables/parameter references to match current behavior.
 - Update `manifest.json` tool metadata (`tools`, descriptions, and related fields) to match registered handlers.
 - Review any user-facing docs under `docs/` for stale references.
+- Check whether the companion **SigNoz/agent-skills** repo needs a matching change. Skills (e.g. `signoz-creating-alerts`, `signoz-creating-dashboards`) deliberately defer field/schema detail to the MCP server, so they need updating only when a change alters the **tool contract they teach** — a renamed/removed tool or parameter, a changed payload shape, or changed documented behavior (as the `query`→`filter` rename did). Additive or internal changes that don't alter that contract (e.g. surfacing already-authored field descriptions) need no skills change. State the outcome of this check in the PR summary, and link the companion agent-skills PR when one is needed.
 - Mention these doc updates explicitly in the PR summary.
 
 ### File templates
@@ -85,4 +98,5 @@ For any code that parses an upstream response or shapes a tool output:
 
 - **Pin the contract, and test against reality where you can.** Beyond fixture-based unit tests, add a periodic/integration test against a live SigNoz instance (or a recorded real response) so upstream drift fails a test, not a user. Per-PR fixture tests are necessary but not sufficient.
 - **When tests can't catch it, observability must.** If a break only manifests against real data, add a metric or WARN log that fires when the contract appears violated (e.g. a passthrough enrichment that found rows but could not locate the expected field). Silent degradation that no test and no signal can catch is the failure mode to design against.
+- **Do not hide global upstream failures inside partial item results.** Auth and permission failures such as SigNoz 401/403 must propagate through the shared coded error path (`upstreamError` for tools) so clients can re-authenticate or handle permissions.
 - **Fail open, but never fail silent.** Prefer fail-open behavior for cross-boundary parsing, but always pair it with a detectable signal so "fail-open" does not become "fail-silent."

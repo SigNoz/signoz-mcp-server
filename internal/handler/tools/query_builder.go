@@ -24,7 +24,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		mcp.WithDescription(
 			"Execute a SigNoz Query Builder v5 query.\n\n"+
 				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
-				"It documents filter expression syntax, correct field names (camelCase vs dot notation), "+
+				"It documents filter expression syntax, canonical field names, field contexts, "+
 				"and complete working examples.\n\n"+
 				"When compositeQuery.queryType=\"promql\" ALSO read signoz://promql/instructions — "+
 				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
@@ -39,7 +39,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
 		"Traces Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax (string, not structured object), built-in span column names (camelCase, no fieldContext), resource/tag attribute naming (dot notation + fieldContext), and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax (string, not structured object), canonical built-in span column names (snake_case with fieldContext span), resource/tag attribute naming (dot notation + fieldContext), and complete working examples for raw, aggregation, and time series queries."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -52,6 +52,23 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			},
 		}, nil
 	})
+
+	logsQueryBuilderGuide := mcp.NewResource(
+		"signoz://logs/query-builder-guide",
+		"Logs Query Builder Guide",
+		mcp.WithResourceDescription("SigNoz Query Builder v5 logs guide: filter expression syntax (string, not structured object), log built-in columns, resource/log attribute naming, body text search, body JSON-path search, and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithMIMEType("text/plain"),
+	)
+
+	s.AddResource(logsQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/plain",
+				Text:     querybuilder.LogsQueryBuilderGuide,
+			},
+		}, nil
+	})
 }
 
 func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -60,13 +77,13 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid arguments payload type", slog.Any("type", req.Params.Arguments))
-		return mcp.NewToolResultError("invalid arguments payload"), nil
+		return notAJSONObjectError(), nil
 	}
 
 	queryObj, ok := args["query"].(map[string]any)
 	if !ok {
 		h.logger.WarnContext(ctx, "Invalid query parameter type", slog.Any("type", args["query"]))
-		return mcp.NewToolResultError("query parameter must be a JSON object"), nil
+		return validationError("query", "must be a JSON object"), nil
 	}
 
 	queryJSON, err := json.Marshal(queryObj)
@@ -77,13 +94,15 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 
 	var queryPayload types.QueryPayload
 	if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
+		// User-input structural mistake: code as VALIDATION_FAILED, not a marshal error.
 		h.logger.ErrorContext(ctx, "Failed to unmarshal query payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("invalid query payload structure: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "invalid query payload structure: "+err.Error()), nil
 	}
 
 	if err := queryPayload.Validate(); err != nil {
+		// Validate() rejects user-input mistakes: route through VALIDATION_FAILED.
 		h.logger.ErrorContext(ctx, "Query validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("query validation error: " + err.Error()), nil
+		return errorWithCode(CodeValidationFailed, "query validation error: "+err.Error()), nil
 	}
 
 	finalQueryJSON, err := json.Marshal(queryPayload)
@@ -99,9 +118,20 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to execute query builder v5", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(err.Error()), nil
+		return upstreamError(err), nil
 	}
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")
-	return mcp.NewToolResultText(string(data)), nil
+
+	// Surface non-fatal backend warnings as a note + WARN log, matching the five
+	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
+	// Returning the body verbatim previously dropped them entirely.
+	var notes []string
+	warnings := extractBackendWarningMessages(data)
+	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
+	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
+	if len(warnings) > 0 {
+		notes = append(notes, backendWarningsNote(warnings))
+	}
+	return resultWithNotes(data, notes...), nil
 }

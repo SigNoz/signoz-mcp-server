@@ -162,7 +162,7 @@ type FormatOptions struct {
 }
 
 // QueryAggregation represents an aggregation expression for QB v5 queries (logs, traces).
-// Example expressions: "count()", "avg(duration)", "p99(durationNano)", "count_distinct(user_id)"
+// Example expressions: "count()", "avg(duration)", "p99(duration_nano)", "count_distinct(user_id)"
 type QueryAggregation struct {
 	Expression string `json:"expression"`
 }
@@ -233,8 +233,16 @@ func (q *QueryPayload) Validate() error {
 
 		switch signal {
 		case "metrics":
-			if q.RequestType != "time_series" && q.RequestType != "scalar" {
+			// Default an unset requestType, but reject an explicit unknown value
+			// instead of silently coercing it (a coerced value can return a
+			// different result shape than the caller asked for).
+			switch q.RequestType {
+			case "":
 				q.RequestType = "time_series"
+			case "time_series", "scalar":
+				// ok
+			default:
+				return fmt.Errorf("%s: unsupported requestType %q for metrics; use \"time_series\" or \"scalar\"", queryName, q.RequestType)
 			}
 
 		case "traces":
@@ -330,7 +338,7 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 }
 
 // BuildAggregateQueryPayload creates a QueryPayload for aggregation queries, signal is "logs" or "traces".
-// aggregationExpr is a QB v5 expression like "count()", "avg(duration)", "p99(durationNano)".
+// aggregationExpr is a QB v5 expression like "count()", "avg(duration)", "p99(duration_nano)".
 // groupBy is a list of fields to group by.
 // orderByExpr is the expression to order by (e.g. "count()"), orderDir is "asc" or "desc".
 func BuildAggregateQueryPayload(signal string, startTime, endTime int64, aggregationExpr string, filterExpression string, groupBy []SelectField, orderByExpr string, orderDir string, limit int, requestType string, stepInterval *int64) *QueryPayload {
@@ -562,22 +570,21 @@ func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, 
 						Having: Having{Expression: ""},
 						SelectFields: []SelectField{
 							// Top-level span fields
-							{Name: "traceID", FieldDataType: "string", Signal: "traces"},
-							{Name: "spanID", FieldDataType: "string", Signal: "traces"},
-							{Name: "parentSpanID", FieldDataType: "string", Signal: "traces"},
-							{Name: "name", FieldDataType: "string", Signal: "traces"},
-							{Name: "durationNano", FieldDataType: "int64", Signal: "traces"},
-							{Name: "timestamp", FieldDataType: "string", Signal: "traces"},
-							{Name: "hasError", FieldDataType: "bool", Signal: "traces"},
-							{Name: "statusCode", FieldDataType: "string", Signal: "traces"},
-							{Name: "statusCodeString", FieldDataType: "string", Signal: "traces"},
-							{Name: "httpMethod", FieldDataType: "string", Signal: "traces"},
-							{Name: "httpUrl", FieldDataType: "string", Signal: "traces"},
-							{Name: "spanKind", FieldDataType: "string", Signal: "traces"},
-							{Name: "rpcMethod", FieldDataType: "string", Signal: "traces"},
-							{Name: "kind", FieldDataType: "int32", Signal: "traces"},
-							{Name: "responseStatusCode", FieldDataType: "string", Signal: "traces"},
-							{Name: "statusMessage", FieldDataType: "string", Signal: "traces"},
+							{Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+							{Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+							{Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span"},
+							{Name: "status_code", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+							{Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "http_url", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "kind", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+							{Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+							{Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
 							// Resource attributes
 							{Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
 							{Name: "cloud.account.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
@@ -602,8 +609,9 @@ func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, 
 							{Name: "client.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
 							{Name: "http.request.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
 							{Name: "http.response.body.size", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "http.response.status_code", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+							{Name: "http.response.status_code", FieldDataType: "number", Signal: "traces", FieldContext: "tag"},
 							{Name: "http.route", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+							{Name: "rpc.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
 							{Name: "network.peer.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
 							{Name: "network.peer.port", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
 							{Name: "network.protocol.version", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},

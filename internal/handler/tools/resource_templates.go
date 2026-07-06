@@ -21,7 +21,7 @@ func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 
 	s.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"signoz://alert/{ruleId}/summary",
+			"signoz://alert/{id}/summary",
 			"Alert Summary",
 			mcp.WithTemplateDescription("Get alert configuration and recent history for a specific alert rule."),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -31,7 +31,7 @@ func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 
 	s.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"signoz://dashboard/{uuid}/summary",
+			"signoz://dashboard/{id}/summary",
 			"Dashboard Summary",
 			mcp.WithTemplateDescription("Get dashboard metadata and widget list for a specific dashboard."),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -43,7 +43,7 @@ func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 func (h *Handler) handleAlertSummaryResource(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	ruleID := extractURIParam(req.Params.URI, "signoz://alert/", "/summary")
 	if ruleID == "" {
-		return nil, fmt.Errorf("missing ruleId in URI")
+		return nil, fmt.Errorf("missing id in URI")
 	}
 
 	client, err := h.GetClient(ctx)
@@ -95,7 +95,7 @@ func (h *Handler) handleAlertSummaryResource(ctx context.Context, req mcp.ReadRe
 func (h *Handler) handleDashboardSummaryResource(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	uuid := extractURIParam(req.Params.URI, "signoz://dashboard/", "/summary")
 	if uuid == "" {
-		return nil, fmt.Errorf("missing uuid in URI")
+		return nil, fmt.Errorf("missing id in URI")
 	}
 
 	client, err := h.GetClient(ctx)

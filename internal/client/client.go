@@ -40,6 +40,20 @@ const (
 
 var ErrUnauthorized = errors.New("signoz credentials rejected")
 
+// HTTPStatusError preserves status and response details from a non-2xx SigNoz API response.
+type HTTPStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
+}
+
+func (e *HTTPStatusError) truncatedBody() string {
+	return logpkg.TruncBody([]byte(e.Body))
+}
+
 // AnalyticsIdentity is the identity tuple used for analytics attribution.
 // UserID holds the service-account ID for API-key sessions, or the SigNoz
 // user ID for auth-token sessions. Name is the service-account name or the
@@ -413,13 +427,13 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 
 		// Retry on transient server errors.
 		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
-			truncatedBody := logpkg.TruncBody(respBody)
-			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+			statusErr := newHTTPStatusError(resp.StatusCode, respBody)
+			lastErr = statusErr
 			s.logger.DebugContext(ctx, "Retryable status, will retry",
 				slog.String("url", reqURL),
 				slog.Int("status", resp.StatusCode),
 				slog.Int("attempt", attempt+1),
-				slog.String("response", truncatedBody))
+				slog.String("response", statusErr.truncatedBody()))
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("retry aborted: %w", lastErr)
@@ -430,22 +444,29 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		retryable := isRetryableStatus(resp.StatusCode)
-		truncatedBody := logpkg.TruncBody(respBody)
+		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 		attrs := []any{
 			slog.String("url", reqURL),
 			slog.Int("status", resp.StatusCode),
 			slog.Int("attempt", attempt+1),
 			slog.Bool("retryable", retryable),
-			slog.String("response", truncatedBody),
+			slog.String("response", statusErr.truncatedBody()),
 		}
 		if retryable {
 			attrs = append(attrs, slog.Bool("retries_exhausted", true))
 		}
 		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status", attrs...)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+		return nil, statusErr
 	}
 
 	return nil, lastErr
+}
+
+func newHTTPStatusError(statusCode int, respBody []byte) *HTTPStatusError {
+	return &HTTPStatusError{
+		StatusCode: statusCode,
+		Body:       string(respBody),
+	}
 }
 
 func isRetryableStatus(code int) bool {
@@ -703,7 +724,7 @@ func (s *SigNoz) GetFieldKeys(ctx context.Context, signal, metricName, searchTex
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, source string) (json.RawMessage, error) {
+func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error) {
 	params := url.Values{}
 	params.Set("signal", signal)
 	params.Set("name", name)
@@ -712,6 +733,9 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	}
 	if searchText != "" {
 		params.Set("searchText", searchText)
+	}
+	if fieldContext != "" {
+		params.Set("fieldContext", fieldContext)
 	}
 	if source != "" {
 		params.Set("source", source)
@@ -729,7 +753,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 		return nil, fmt.Errorf("start and end time parameters are required")
 	}
 
-	filterExpression := fmt.Sprintf("traceID = '%s'", traceID)
+	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
 	limit := 1000
 
 	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0)
@@ -821,6 +845,24 @@ func (s *SigNoz) DeleteNotificationChannel(ctx context.Context, id string) error
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting notification channel", slog.String("id", id))
 	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, ChannelWriteTimeout)
 	return err
+}
+
+func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
+	body, err := json.Marshal(map[string]any{
+		"start":   start,
+		"end":     end,
+		"limit":   limit,
+		"mode":    "samples",
+		"treemap": "samples",
+		"filter":  map[string]string{"expression": ""},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	reqURL := fmt.Sprintf("%s/api/v2/metrics/treemap", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metrics treemap",
+		slog.Int("limit", limit))
+	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
