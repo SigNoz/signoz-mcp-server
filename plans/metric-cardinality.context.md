@@ -59,5 +59,22 @@
   code. The authz test wraps the `HTTPStatusError` with `fmt.Errorf("…: %w")` exactly as the real
   client does, proving `errors.As` classification survives the client's wrapping.
 
+### 2026-07-06 — Param consistency pass vs MCP best-practices
+- Audited the tool's params against the metrics-tool siblings and the MCP Best-practices doc.
+  Three divergences, all because this tool predated the shared `timeRangeDesc()` helper:
+  1. `timeRange` description enumerated a closed-looking set ("30m, 1h, 6h, 24h, 7d") while the
+     parser (`resolveTimestamps`→timeutil) accepts the full `<number><unit>` grammar — an under-
+     advertised contract (the doc's "advertised contract is an executable promise / teach the
+     grammar" point). Switched to the shared `timeRangeDesc("Defaults to '7d' (a cost-analysis
+     window).")`, matching `list_metrics`/`query_metrics`/`get_top_metrics`.
+  2. `timeRange` lacked `mcp.DefaultString("7d")`, so the advertised schema carried no default
+     (the three siblings all set it). Added it. Handler default was already 7d, so no behavior change.
+  3. `searchContext` used the short description; aligned it to the fuller sibling wording
+     ("…Always include the user's raw query here for better results.").
+- Synced the README `timeRange` line to describe the grammar instead of the closed list.
+- No behavior change — schema/description only. `metricName` (singular) vs `metricNames` (array on
+  check_metric_usage) is intentional and correct. Repo-wide latent gap noted but out of scope:
+  `start`/`end` are advertised string-only across all time tools though the parser accepts numeric.
+
 ## Open Questions
 - (none)

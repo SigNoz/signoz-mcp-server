@@ -451,7 +451,7 @@ Return label/attribute keys for a single metric with their cardinality counts an
 
 - **Parameters**:
   - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`
-  - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 7d; ignored when both `start` and `end` are provided)
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '3d', '7d'; default: '7d'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
 #### `signoz_list_alerts`
