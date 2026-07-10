@@ -1363,6 +1363,102 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
 }
 
+// TestGetTraceDetails_RequestsAndReturnsOTelSpanLinks reproduces #229 at the
+// client/API boundary. Query-range projects only the requested selectFields,
+// so the fixture exposes the stored OTel link only when the MCP request asks
+// for the canonical trace field "links".
+func TestGetTraceDetails_RequestsAndReturnsOTelSpanLinks(t *testing.T) {
+	const (
+		consumerTraceID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		consumerSpanID  = "bbbbbbbbbbbbbbbb"
+		producerTraceID = "11111111111111111111111111111111"
+		producerSpanID  = "2222222222222222"
+	)
+	storedLinks := fmt.Sprintf(
+		`[{"traceId":%q,"spanId":%q,"refType":"FOLLOWS_FROM"}]`,
+		producerTraceID,
+		producerSpanID,
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/api/v5/query_range", r.URL.Path)
+
+		var payload struct {
+			CompositeQuery struct {
+				Queries []struct {
+					Spec struct {
+						SelectFields []struct {
+							Name string `json:"name"`
+						} `json:"selectFields"`
+					} `json:"spec"`
+				} `json:"queries"`
+			} `json:"compositeQuery"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+
+		row := map[string]any{
+			"trace_id": consumerTraceID,
+			"span_id":  consumerSpanID,
+			"name":     "process order message",
+		}
+		for _, field := range payload.CompositeQuery.Queries[0].Spec.SelectFields {
+			if field.Name == "links" {
+				row["links"] = storedLinks
+				break
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data": map[string]any{
+				"type": "raw",
+				"data": map[string]any{
+					"results": []any{map[string]any{
+						"queryName": "A",
+						"rows": []any{map[string]any{
+							"data": row,
+						}},
+					}},
+				},
+			},
+		}))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := client.GetTraceDetails(context.Background(), consumerTraceID, true, 1711123200000, 1711130400000)
+	require.NoError(t, err)
+
+	var response struct {
+		Data struct {
+			Data struct {
+				Results []struct {
+					Rows []struct {
+						Data map[string]json.RawMessage `json:"data"`
+					} `json:"rows"`
+				} `json:"results"`
+			} `json:"data"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(result, &response))
+	linksRaw, ok := response.Data.Data.Results[0].Rows[0].Data["links"]
+	require.True(t, ok, "get_trace_details must request the canonical links field")
+
+	var linksJSON string
+	require.NoError(t, json.Unmarshal(linksRaw, &linksJSON))
+	var links []struct {
+		TraceID string `json:"traceId"`
+		SpanID  string `json:"spanId"`
+		RefType string `json:"refType"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(linksJSON), &links))
+	require.Equal(t, producerTraceID, links[0].TraceID)
+	require.Equal(t, producerSpanID, links[0].SpanID)
+	require.Equal(t, "FOLLOWS_FROM", links[0].RefType)
+}
+
 func TestCreateDashboard(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)

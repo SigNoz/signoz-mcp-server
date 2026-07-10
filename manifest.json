@@ -163,7 +163,7 @@
     },
     {
       "name": "signoz_get_trace_details",
-      "description": "Get comprehensive trace information including all spans and hierarchy"
+      "description": "Get comprehensive trace information including all spans, parent-child hierarchy, and OpenTelemetry span links"
     },
     {
       "name": "signoz_execute_builder_query",

@@ -374,7 +374,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_search_logs` | Search logs with flexible filtering |
 | `signoz_aggregate_traces` | Aggregate trace statistics with grouping |
 | `signoz_search_traces` | Search traces with flexible filtering |
-| `signoz_get_trace_details` | Get full trace with all spans |
+| `signoz_get_trace_details` | Get full trace with all spans, hierarchy, and OpenTelemetry span links |
 | `signoz_execute_builder_query` | Execute a raw Query Builder v5 query |
 | `signoz_list_notification_channels` | List notification channels |
 | `signoz_get_notification_channel` | Get a single notification channel by ID |
@@ -728,7 +728,7 @@ Search traces/spans with flexible filtering.
   - `offset` (optional) - Offset for pagination (default: 0)
   - **Ordering**: generated raw trace queries use `timestamp desc`.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
-  - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
+  - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`, and `links`). `links`, when present, is the backend's JSON-encoded array of span references. Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_aggregate_traces`
@@ -754,7 +754,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
 
 #### `signoz_get_trace_details`
 
-Gets trace information including all spans and metadata.
+Gets trace information including all spans, metadata, parent-child hierarchy, and OpenTelemetry span links. Each span's canonical `links` field, when present, contains the backend's JSON-encoded reference array (`traceId`, `spanId`, and `refType`).
 
 - **Parameters**:
   - `traceId` (required) - Trace ID to get details for

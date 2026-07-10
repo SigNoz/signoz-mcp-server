@@ -880,6 +880,7 @@ func TestBuildTracesQueryPayload_UsesCanonicalTraceFields(t *testing.T) {
 		"traceID",
 		"spanID",
 		"parentSpanID",
+		"references",
 		"durationNano",
 		"hasError",
 		"statusCode",
@@ -904,6 +905,9 @@ func TestBuildTracesQueryPayload_UsesCanonicalTraceFields(t *testing.T) {
 		},
 		"parent_span_id": {
 			Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span",
+		},
+		"links": {
+			Name: "links", FieldDataType: "string", Signal: "traces", FieldContext: "span",
 		},
 		"name": {
 			Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span",
