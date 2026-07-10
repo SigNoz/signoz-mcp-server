@@ -413,21 +413,18 @@ func (m *MCPServer) Run(ctx context.Context) error {
 }
 
 func (m *MCPServer) newSDKServer() *server.MCPServer {
-	options := []server.ServerOption{
+	// Schema validation in every mode (including enforce) is owned by the
+	// handler-level validationDecorator, not the SDK validators: rejections
+	// there flow through the ordinary middleware telemetry and use the
+	// repo's coded-error contract.
+	return server.NewMCPServer("SigNozMCP", version.Version,
 		server.WithLogging(),
 		server.WithToolCapabilities(false),
 		server.WithInstructions(instructions.ServerInstructions),
 		server.WithHooks(m.buildHooks()),
 		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
 		server.WithRecovery(),
-	}
-	if m.config != nil && m.config.InputValidationMode == config.InputValidationEnforce {
-		options = append(options,
-			server.WithInputSchemaValidation(),
-			server.WithOutputSchemaValidation(),
-		)
-	}
-	return server.NewMCPServer("SigNozMCP", version.Version, options...)
+	)
 }
 
 // Shutdown closes the HTTP listener if one is active. It is the caller's
@@ -922,42 +919,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
 		}
 	})
-	hooks.AddAfterCallTool(func(ctx context.Context, _ any, message *mcp.CallToolRequest, result any) {
-		toolResult, ok := result.(*mcp.CallToolResult)
-		if !ok || toolResult == nil || !toolResult.IsError {
-			return
-		}
-		text := extractToolErrorMessage(toolResult)
-		direction, prefix := tools.ValidationDirection(text)
-		if direction == "" {
-			return
-		}
-		if direction == "output" && tools.IsDecoratorOutputValidationError(toolResult) {
-			return
-		}
-		toolName := "unknown"
-		if message != nil && message.Params.Name != "" {
-			toolName = message.Params.Name
-		}
-		path, constraint := tools.ValidationRejectionMetadata(text, prefix)
-		m.recordValidationRejection(ctx, toolName, direction, path, constraint)
-	})
 	return hooks
-}
-
-func (m *MCPServer) recordValidationRejection(ctx context.Context, toolName, direction, path, constraint string) {
-	m.logger.WarnContext(ctx, "tool call rejected by schema validation",
-		slog.String("gen_ai.tool.name", toolName),
-		slog.String("validation.direction", direction),
-		slog.String("validation.path", path),
-		slog.String("validation.constraint", constraint))
-	if m.meters != nil {
-		m.meters.ToolValidationRejections.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("gen_ai.tool.name", toolName),
-			attribute.String("validation.direction", direction),
-			attribute.String("validation.path", path),
-			attribute.String("validation.constraint", constraint)))
-	}
 }
 
 // loggingMiddleware returns a tool handler middleware that logs tool call

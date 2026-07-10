@@ -150,8 +150,9 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 			}
 			called := false
 			got := ""
-			s := server.NewMCPServer("test", "0.0.0", server.WithInputSchemaValidation())
-			s.AddTool(entry.Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationEnforce}
+			s := server.NewMCPServer("test", "0.0.0")
+			h.addTool(s, entry.Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				called = true
 				var err error
 				got, err = tt.normalize(req)
@@ -194,7 +195,7 @@ func TestRawWireIntegerAboveFloat53ProductionDecodeCharacterization(t *testing.T
 		t.Run(tt.name, func(t *testing.T) {
 			var got int64
 			h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationEnforce}
-			s := server.NewMCPServer("test", "0.0.0", server.WithInputSchemaValidation())
+			s := server.NewMCPServer("test", "0.0.0")
 			tool := mcp.NewTool("precision_probe",
 				mcp.WithString("metricName", mcp.Required()),
 				mcp.WithString("start", intOrStringType()))

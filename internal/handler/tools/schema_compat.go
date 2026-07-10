@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	InputSchemaValidationPrefix  = "input schema validation failed: "
-	OutputSchemaValidationPrefix = "output schema validation failed: "
+	outputSchemaValidationPrefix = "output schema validation failed: "
 	OutputValidationErrorCode    = "OUTPUT_SCHEMA_VALIDATION_FAILED"
 	maxValidationMetadataLength  = 96
 )
@@ -165,26 +164,38 @@ func resolveLocalSchemaRef(root, node map[string]any) map[string]any {
 	return resolved
 }
 
+// validationDecorator owns schema validation for every mode. Enforce-mode
+// rejections are produced here — not by the SDK validators — so they flow
+// through the ordinary middleware telemetry and use the repo's coded-error
+// contract instead of SDK-pinned message prefixes.
 func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, next server.ToolHandlerFunc) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if h.inputValidationMode == config.InputValidationShadow && input != nil {
-			if err := validateSchemaValue(input.validator, req.Params.Arguments, true); err != nil {
+		mode := h.inputValidationMode
+		if mode != config.InputValidationOff && input != nil {
+			if err := validateArguments(input.validator, req); err != nil {
 				path, constraint := validationMetadata(err, input.topLevelProperties)
+				if mode == config.InputValidationEnforce {
+					h.recordValidationRejection(ctx, toolName, "input", path, constraint)
+					return inputValidationError(toolName, err), nil
+				}
 				h.recordShadowMismatch(ctx, toolName, "input", path, constraint)
 			}
 		}
 
 		result, err := next(ctx, req)
-		if err != nil || result == nil || result.IsError || output == nil || h.inputValidationMode == config.InputValidationOff {
+		if err != nil || result == nil || result.IsError || output == nil || mode == config.InputValidationOff {
 			return result, err
 		}
+		// A schema-declaring success without structured content stays a success
+		// in every mode (fail open, never silent): rejecting would replace a
+		// usable text response with nothing the client can act on.
 		if result.StructuredContent == nil {
 			h.recordMissingStructuredContent(ctx, toolName)
 			return result, nil
 		}
 		if err := validateSchemaValue(output.validator, result.StructuredContent, false); err != nil {
 			path, constraint := validationMetadata(err, output.topLevelProperties)
-			if h.inputValidationMode == config.InputValidationShadow {
+			if mode == config.InputValidationShadow {
 				h.recordShadowMismatch(ctx, toolName, "output", path, constraint)
 				return result, nil
 			}
@@ -193,6 +204,23 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 		}
 		return result, nil
 	}
+}
+
+// validateArguments validates the exact wire bytes when the SDK preserved
+// them, avoiding the marshal round-trip of the decoded argument tree.
+func validateArguments(schema *jsonschema.Schema, req mcp.CallToolRequest) error {
+	raw := req.Params.RawArguments
+	if len(raw) == 0 {
+		return validateSchemaValue(schema, req.Params.Arguments, true)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("decode validation value: %w", err)
+	}
+	if doc == nil {
+		doc = map[string]any{}
+	}
+	return schema.Validate(doc)
 }
 
 func validateSchemaValue(schema *jsonschema.Schema, value any, nilAsObject bool) error {
@@ -208,6 +236,16 @@ func validateSchemaValue(schema *jsonschema.Schema, value any, nilAsObject bool)
 		return fmt.Errorf("decode validation value: %w", err)
 	}
 	return schema.Validate(normalized)
+}
+
+// inputValidationError shapes an enforce-mode input rejection on the repo's
+// coded-error contract: the text names the tool and the violated constraint
+// so the caller can fix the argument and retry.
+func inputValidationError(toolName string, err error) *mcp.CallToolResult {
+	detail := strings.Join(strings.Fields(err.Error()), " ")
+	return errorWithCode(CodeValidationFailed, fmt.Sprintf(
+		"%s arguments for %q do not match the tool input schema: %s",
+		validationErrorPrefix, toolName, boundedErrorDetail(detail)))
 }
 
 func validationMetadata(err error, topLevelProperties map[string]struct{}) (string, string) {
@@ -259,25 +297,19 @@ func boundedMetadata(value string) string {
 }
 
 func outputValidationError(path, constraint string) *mcp.CallToolResult {
-	result := mcp.NewToolResultError(OutputSchemaValidationPrefix + path + ": " + constraint)
+	result := mcp.NewToolResultError(outputSchemaValidationPrefix + path + ": " + constraint)
 	result.StructuredContent = map[string]any{"code": OutputValidationErrorCode}
 	return result
 }
 
-func IsDecoratorOutputValidationError(result *mcp.CallToolResult) bool {
-	if result == nil || !result.IsError {
-		return false
-	}
-	structured, ok := result.StructuredContent.(map[string]any)
-	return ok && structured["code"] == OutputValidationErrorCode
-}
-
 func (h *Handler) recordShadowMismatch(ctx context.Context, toolName, direction, path, constraint string) {
-	h.logger.WarnContext(ctx, "tool schema validation mismatch",
-		slog.String("gen_ai.tool.name", toolName),
-		slog.String("validation.direction", direction),
-		slog.String("validation.path", path),
-		slog.String("validation.constraint", constraint))
+	if h.warnValidationOnce(toolName, direction, path, constraint) {
+		h.logger.WarnContext(ctx, "tool schema validation mismatch (further identical mismatches suppressed; see mcp.tool.validation.mismatches)",
+			slog.String("gen_ai.tool.name", toolName),
+			slog.String("validation.direction", direction),
+			slog.String("validation.path", path),
+			slog.String("validation.constraint", constraint))
+	}
 	if h.meters != nil {
 		h.meters.ToolValidationMismatches.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("gen_ai.tool.name", toolName),
@@ -310,8 +342,10 @@ func (h *Handler) recordSchemaCompileFailure(ctx context.Context, toolName, dire
 }
 
 func (h *Handler) recordMissingStructuredContent(ctx context.Context, toolName string) {
-	h.logger.WarnContext(ctx, "successful schema-declaring tool returned no structured content",
-		slog.String("gen_ai.tool.name", toolName))
+	if h.warnValidationOnce(toolName, "output", "<root>", "missing_structured_content") {
+		h.logger.WarnContext(ctx, "successful schema-declaring tool returned no structured content (further occurrences suppressed; see mcp.tool.output.missing_structured_content)",
+			slog.String("gen_ai.tool.name", toolName))
+	}
 	if h.meters != nil {
 		h.meters.ToolOutputMissingStructuredContent.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("gen_ai.tool.name", toolName)))
@@ -391,66 +425,13 @@ func openInputObjects(schema any) any {
 	return schema
 }
 
-func ValidationDirection(message string) (direction, prefix string) {
-	switch {
-	case strings.HasPrefix(message, InputSchemaValidationPrefix):
-		return "input", InputSchemaValidationPrefix
-	case strings.HasPrefix(message, OutputSchemaValidationPrefix):
-		return "output", OutputSchemaValidationPrefix
-	default:
-		return "", ""
-	}
-}
-
-func ValidationRejectionMetadata(message, prefix string) (string, string) {
-	line := strings.SplitN(strings.TrimPrefix(message, prefix), "\n", 2)[0]
-	if len(line) > 512 {
-		line = line[:512]
-	}
-	pathText := line
-	if before, _, ok := strings.Cut(line, ":"); ok {
-		pathText = before
-	}
-	path := NormalizeValidationPath(pathText)
-	lower := strings.ToLower(line)
-	constraint := "schema"
-	for _, candidate := range []string{"required", "type", "enum", "minimum", "maximum", "pattern", "additionalproperties"} {
-		if strings.Contains(lower, candidate) {
-			constraint = candidate
-			break
-		}
-	}
-	return path, constraint
-}
-
-func NormalizeValidationPath(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" || value == "<root>" {
-		return "<root>"
-	}
-	segments := strings.Split(strings.Trim(value, "/"), "/")
-	if len(segments) == 0 || segments[0] == "" {
-		return "<root>"
-	}
-	segment := strings.ReplaceAll(strings.ReplaceAll(segments[0], "~1", "/"), "~0", "~")
-	var b strings.Builder
-	for _, r := range segment {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
-			b.WriteRune(r)
-		}
-	}
-	if b.Len() == 0 {
-		return "{}"
-	}
-	path := "/" + b.String()
-	if len(segments) > 1 {
-		if _, err := strconv.Atoi(segments[1]); err == nil {
-			path += "/[]"
-		} else {
-			path += "/{}"
-		}
-	}
-	return boundedMetadata(path)
+// warnValidationOnce reports whether this (tool, direction, path, constraint)
+// key has not been logged yet this process. Metrics stay exact per event; only
+// the WARN log is deduplicated so a looping client cannot flood logs.
+func (h *Handler) warnValidationOnce(toolName, direction, path, constraint string) bool {
+	key := toolName + "|" + direction + "|" + path + "|" + constraint
+	_, seen := h.validationWarned.LoadOrStore(key, struct{}{})
+	return !seen
 }
 
 func normalizeToolOutputSchema(schema *mcp.ToolOutputSchema) {

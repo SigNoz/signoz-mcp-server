@@ -170,7 +170,9 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	if err != nil {
 		return SearchResponse{}, err
 	}
-	out := SearchResponse{Query: query, TotalMatches: res.Total}
+	// Results must be non-nil: the advertised output schema promises an
+	// array, and a zero-hit search serializing "results": null violates it.
+	out := SearchResponse{Query: query, TotalMatches: res.Total, Results: []SearchResult{}}
 	for _, hit := range res.Hits {
 		body := stringField(hit.Fields, "body_markdown")
 		resultSectionSlug := stringField(hit.Fields, "section_slug")
@@ -244,8 +246,13 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		return FetchResult{}, CodeDocNotFound, nil
 	}
 	fields := res.Hits[0].Fields
-	var headings []Heading
+	// Non-nil for the same reason as SearchResponse.Results: the output
+	// schema promises an array even for headingless or unparseable metadata.
+	headings := []Heading{}
 	_ = json.Unmarshal([]byte(stringField(fields, "available_headings")), &headings)
+	if headings == nil {
+		headings = []Heading{}
+	}
 	body := stringField(fields, "body_markdown")
 	selectedHeading := ""
 	if heading != "" {

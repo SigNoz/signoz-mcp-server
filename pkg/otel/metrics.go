@@ -163,7 +163,7 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	}
 	toolValidationMismatches, err := meter.Int64Counter(
 		"mcp.tool.validation.mismatches",
-		metric.WithDescription("Count of shadow-mode MCP tool input schema mismatches"),
+		metric.WithDescription("Count of shadow-mode MCP tool input/output schema mismatches"),
 	)
 	if err != nil {
 		return nil, err

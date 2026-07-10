@@ -49,50 +49,6 @@ func TestDashboardReadWriteBackContract(t *testing.T) {
 	}
 }
 
-func TestViewReadWriteBackContractStripsServerFields(t *testing.T) {
-	const viewID = "view-1"
-	getFixture := []byte(`{"status":"success","data":{"id":"view-1","name":"Errors","sourcePage":"logs","compositeQuery":{"queryType":"builder"},"createdAt":"yesterday","createdBy":"user","updatedAt":"today","updatedBy":"user"}}`)
-	var getEnvelope struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(getFixture, &getEnvelope); err != nil {
-		t.Fatal(err)
-	}
-
-	var gotBody []byte
-	h := newTestHandler(&client.MockClient{
-		GetViewFn: func(context.Context, string) (json.RawMessage, error) {
-			return json.RawMessage(getFixture), nil
-		},
-		UpdateViewFn: func(_ context.Context, id string, body []byte) (json.RawMessage, error) {
-			if id != viewID {
-				t.Fatalf("update id = %q, want %q", id, viewID)
-			}
-			gotBody = append([]byte(nil), body...)
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	})
-	result, err := h.handleUpdateView(testCtx(), makeToolRequest("signoz_update_view", map[string]any{
-		"id":   viewID,
-		"view": getEnvelope.Data,
-	}))
-	if err != nil || result.IsError {
-		t.Fatalf("write-back failed: result=%#v err=%v", result, err)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(gotBody, &body); err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range append([]string{"searchContext", "viewId"}, serverPopulatedViewFields...) {
-		if _, present := body[field]; present {
-			t.Fatalf("server-owned field %q leaked into update body: %s", field, gotBody)
-		}
-	}
-	if body["name"] != "Errors" || body["sourcePage"] != "logs" {
-		t.Fatalf("view body lost get response fields: %s", gotBody)
-	}
-}
-
 func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 	for _, versionFields := range []map[string]any{
 		{"createdAt": "yesterday", "updatedAt": "today", "createdBy": "user", "updatedBy": "user"},

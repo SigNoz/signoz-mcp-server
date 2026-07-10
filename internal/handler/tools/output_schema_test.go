@@ -64,12 +64,33 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 		struct {
 			name string
 			call func() (*mcp.CallToolResult, error)
+		}{"signoz_search_docs zero hits", func() (*mcp.CallToolResult, error) {
+			return docsHandler.handleSearchDocs(testCtx(), makeToolRequest("signoz_search_docs", map[string]any{"searchText": "zzqxjvkwpmnohitszz"}))
+		}},
+		struct {
+			name string
+			call func() (*mcp.CallToolResult, error)
 		}{"signoz_fetch_doc", func() (*mcp.CallToolResult, error) {
 			return docsHandler.handleFetchDoc(testCtx(), makeToolRequest("signoz_fetch_doc", map[string]any{"url": "/docs/install/docker/"}))
 		}},
 	)
 
+	registered := registeredTestTools(t)
+	outputValidators := map[string]*compiledToolSchema{}
+	for name, entry := range registered {
+		raw := outputSchemaJSON(entry.Tool)
+		if len(raw) == 0 {
+			continue
+		}
+		compiled, err := compileToolSchema(name, "output", raw)
+		if err != nil {
+			t.Fatalf("compile %s output schema: %v", name, err)
+		}
+		outputValidators[name] = compiled
+	}
+
 	for _, tt := range tests {
+		toolName := strings.Fields(tt.name)[0]
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := tt.call()
 			if err != nil {
@@ -80,6 +101,13 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 			}
 			if result.StructuredContent == nil {
 				t.Fatal("successful allowlisted result has nil StructuredContent")
+			}
+			compiled := outputValidators[toolName]
+			if compiled == nil {
+				t.Fatalf("no advertised output schema for %s", toolName)
+			}
+			if err := validateSchemaValue(compiled.validator, result.StructuredContent, false); err != nil {
+				t.Fatalf("successful %s result violates its advertised output schema: %v", toolName, err)
 			}
 		})
 	}
@@ -124,9 +152,9 @@ func TestShadowValidationProceedsAndNeverLogsArgumentValues(t *testing.T) {
 	}
 }
 
-func TestOutputValidationDecoratorRejectsMismatchBeforeSDKValidation(t *testing.T) {
+func TestOutputValidationDecoratorEnforceRejectsMismatch(t *testing.T) {
 	h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationEnforce}
-	s := server.NewMCPServer("test", "0.0.0", server.WithOutputSchemaValidation())
+	s := server.NewMCPServer("test", "0.0.0")
 	tool := mcp.NewTool("output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
 	}]())
@@ -139,7 +167,7 @@ func TestOutputValidationDecoratorRejectsMismatchBeforeSDKValidation(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), OutputSchemaValidationPrefix) {
+	if !strings.Contains(string(b), outputSchemaValidationPrefix) {
 		t.Fatalf("response did not contain decorator validation error: %s", b)
 	}
 	if !strings.Contains(string(b), OutputValidationErrorCode) {
@@ -168,7 +196,7 @@ func TestOutputValidationDecoratorShadowPassesOriginalAndCounts(t *testing.T) {
 
 	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
-	if strings.Contains(string(b), OutputSchemaValidationPrefix) || !strings.Contains(string(b), `"count":"wrong"`) {
+	if strings.Contains(string(b), outputSchemaValidationPrefix) || !strings.Contains(string(b), `"count":"wrong"`) {
 		t.Fatalf("shadow mode did not pass the original result through: %s", b)
 	}
 	if !strings.Contains(logs.String(), `"validation.direction":"output"`) {
@@ -199,7 +227,7 @@ func TestOutputValidationOffSkipsValidation(t *testing.T) {
 	})
 	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
-	if strings.Contains(string(b), OutputSchemaValidationPrefix) || !strings.Contains(string(b), `"count":"wrong"`) {
+	if strings.Contains(string(b), outputSchemaValidationPrefix) || !strings.Contains(string(b), `"count":"wrong"`) {
 		t.Fatalf("off mode validated output: %s", b)
 	}
 }
@@ -215,7 +243,7 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 		t.Fatal(err)
 	}
 	h := &Handler{logger: logger, meters: meters, inputValidationMode: config.InputValidationShadow}
-	s := server.NewMCPServer("test", "0.0.0", server.WithOutputSchemaValidation())
+	s := server.NewMCPServer("test", "0.0.0")
 	tool := mcp.NewTool("nil_output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
 	}]())
@@ -225,7 +253,7 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 
 	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nil_output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
-	if strings.Contains(string(b), OutputSchemaValidationPrefix) {
+	if strings.Contains(string(b), outputSchemaValidationPrefix) {
 		t.Fatalf("nil StructuredContent should fail open: %s", b)
 	}
 	if !strings.Contains(logs.String(), "successful schema-declaring tool returned no structured content") {

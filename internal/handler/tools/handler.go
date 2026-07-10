@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 
@@ -23,6 +24,10 @@ type Handler struct {
 	meters              *otelpkg.Meters
 	docsIndex           *docsindex.IndexRegistry
 	inputValidationMode config.InputValidationMode
+
+	// validationWarned deduplicates validation WARN logs per bounded
+	// (tool, direction, path, constraint) key; see warnValidationOnce.
+	validationWarned sync.Map
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
