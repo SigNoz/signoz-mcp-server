@@ -102,6 +102,12 @@
 - **Finding corrected during verification**: contract reviewer's "zero-hit search violates output schema" is wrong at the validation layer — mcp-go generates `"type":["null","array"]` for Go slices, so `results: null` was schema-valid. Non-nil arrays kept anyway as client-friendliness polish; verified by dumping the generated schema.
 - Gates after rework: build ✓ vet ✓ go test ./... 17/17 ✓ -race both trees ✓ scoped gofmt/goimports ✓ tidy idempotent ✓. Net vs PR head: −116 Go LOC (167+/283−) plus doc/compose updates, with behavior-equivalent-or-better contracts.
 
+### 2026-07-11 — Enforce-mode default flip dropped (owner design input)
+- Owner: this server is used by end users through many different agents, "and most won't learn" — the enforce premise (reject with actionable error → model self-corrects) holds only for strong agents; for the rest a rejection is a failed user-visible turn, strictly worse than best-effort service.
+- Reframe agreed: **shadow is the standing operating mode, not a soak phase.** Mismatch telemetry exists to drive accept-and-normalize widening (fix schema/add normalizer so every agent succeeds), not to gate a flip. Rejection stays reserved for unrecoverable intent — which handlers already implement per-field (missing required param, unusable value). The genuinely harmful class is silently-wrong service (e.g. a dropped filter returning unfiltered data as if filtered, the #213 class); remedy there is targeted normalization or a targeted per-field error, never blanket schema rejection.
+- Enforce remains an opt-in per-deployment strict mode (CI, integration debugging, controlled single-agent setups). Tri-state env stays: off = kill switch, shadow = default forever, enforce = opt-in.
+- Plan C/Deferred/checklist-10 rewritten accordingly; PR #231 body follow-ups updated to match.
+
 ## Open Questions
 - [x] Which adoption candidates to implement first — RESOLVED: single PR = bump + characterization tests + shadow-first input validation + read-only-allowlist output schemas + transport logger + F tests-only; SEP-414/tracer/enforce-flip/mutation-output-schemas deferred.
 - [x] **MERGE BLOCKER**: loopback listener with public Host topology — RESOLVED clean (see 2026-07-10 topology entry): no sidecars/mesh, ingress-nginx → pod IP, probes → pod IP, assistant → public URL. Protection stays on, no opt-out.
