@@ -16,12 +16,13 @@ import (
 )
 
 type Handler struct {
-	logger        *slog.Logger
-	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
-	configURL     string
-	customHeaders map[string]string
-	meters        *otelpkg.Meters
-	docsIndex     *docsindex.IndexRegistry
+	logger              *slog.Logger
+	clientCache         *expirable.LRU[string, *signozclient.SigNoz]
+	configURL           string
+	customHeaders       map[string]string
+	meters              *otelpkg.Meters
+	docsIndex           *docsindex.IndexRegistry
+	inputValidationMode config.InputValidationMode
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
@@ -48,12 +49,12 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 	if n, err := util.NormalizeSigNozURL(cfg.URL); err == nil {
 		normalizedURL = n
 	}
-
 	return &Handler{
-		logger:        log,
-		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
-		configURL:     normalizedURL,
-		customHeaders: cfg.CustomHeaders,
+		logger:              log,
+		clientCache:         expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
+		configURL:           normalizedURL,
+		customHeaders:       cfg.CustomHeaders,
+		inputValidationMode: cfg.InputValidationMode,
 	}
 }
 

@@ -7,7 +7,8 @@ require (
 	github.com/blevesearch/bleve/v2 v2.5.4
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/mark3labs/mcp-go v0.49.0
+	github.com/mark3labs/mcp-go v0.56.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/segmentio/analytics-go/v3 v3.2.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0

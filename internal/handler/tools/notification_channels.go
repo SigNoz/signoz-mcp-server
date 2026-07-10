@@ -42,7 +42,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
 	)
 
-	addTool(s, listChannelsTool, h.handleListNotificationChannels)
+	h.addTool(s, listChannelsTool, h.handleListNotificationChannels)
 
 	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -63,7 +63,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
+		mcp.WithBoolean("send_resolved", boolOrStringType(), mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),
@@ -97,7 +97,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithString("msteams_text", mcp.Description("Message body template (Go template syntax supported)")),
 	)
 
-	addTool(s, createChannelTool, h.handleCreateNotificationChannel)
+	h.addTool(s, createChannelTool, h.handleCreateNotificationChannel)
 
 	updateChannelTool := mcp.NewTool("signoz_update_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -125,7 +125,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		// Common fields
 		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithBoolean("send_resolved", mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
+		mcp.WithBoolean("send_resolved", boolOrStringType(), mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),
@@ -159,7 +159,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithString("msteams_text", mcp.Description("Message body template (Go template syntax supported)")),
 	)
 
-	addTool(s, updateChannelTool, h.handleUpdateNotificationChannel)
+	h.addTool(s, updateChannelTool, h.handleUpdateNotificationChannel)
 
 	getChannelTool := mcp.NewTool("signoz_get_notification_channel",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -168,7 +168,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Get a single notification channel by ID (GET /api/v1/channels/{id}). Returns the full channel configuration including the embedded receiver config (slack/webhook/pagerduty/email/opsgenie/msteams)."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel.")),
 	)
-	addTool(s, getChannelTool, h.handleGetNotificationChannel)
+	h.addTool(s, getChannelTool, h.handleGetNotificationChannel)
 
 	deleteChannelTool := mcp.NewTool("signoz_delete_notification_channel",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -176,7 +176,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Delete a notification channel by ID (DELETE /api/v1/channels/{id}). Irreversible. Confirm with the user before calling, and warn if the channel is referenced by existing alert rules."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel to delete.")),
 	)
-	addTool(s, deleteChannelTool, h.handleDeleteNotificationChannel)
+	h.addTool(s, deleteChannelTool, h.handleDeleteNotificationChannel)
 }
 
 func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
