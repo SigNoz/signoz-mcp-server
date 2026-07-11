@@ -336,6 +336,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
 
+> **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries an appended `Input validation notice:` text block naming the mismatched parameter so self-correcting agents can adjust. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
+
 | Tool | Description |
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
@@ -848,7 +850,6 @@ Executes a SigNoz Query Builder v5 query.
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode (default: `8000`)                                 | No |
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
-| `MCP_INPUT_VALIDATION_MODE` | Tool input/output-schema validation mode: `off` skips validation, `shadow` (default) warns/counts mismatches and passes the original call/result through, and `enforce` rejects mismatches with in-band coded errors (`VALIDATION_FAILED` for inputs, `OUTPUT_SCHEMA_VALIDATION_FAILED` for outputs). A successful result missing structured content is warned and counted but never rejected. Unknown values fail startup. Applies to both stdio and HTTP transports. | No |
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
 | `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Runtime docs sitemap refresh interval (Go duration, default: `6h`) | No |

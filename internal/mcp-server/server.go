@@ -413,10 +413,9 @@ func (m *MCPServer) Run(ctx context.Context) error {
 }
 
 func (m *MCPServer) newSDKServer() *server.MCPServer {
-	// Schema validation in every mode (including enforce) is owned by the
-	// handler-level validationDecorator, not the SDK validators: rejections
-	// there flow through the ordinary middleware telemetry and use the
-	// repo's coded-error contract.
+	// Schema validation is owned by the handler-level validationDecorator,
+	// not the SDK validators: mismatched calls are served best-effort with an
+	// in-band notice, never rejected.
 	return server.NewMCPServer("SigNozMCP", version.Version,
 		server.WithLogging(),
 		server.WithToolCapabilities(false),

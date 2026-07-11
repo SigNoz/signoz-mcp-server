@@ -108,6 +108,14 @@
 - Enforce remains an opt-in per-deployment strict mode (CI, integration debugging, controlled single-agent setups). Tri-state env stays: off = kill switch, shadow = default forever, enforce = opt-in.
 - Plan C/Deferred/checklist-10 rewritten accordingly; PR #231 body follow-ups updated to match.
 
+### 2026-07-11 — Env var dropped entirely; validation is always-on, never rejects, informs in-band
+- Owner (same day, superseding the morning's flip-drop): "Let's just drop the environment variable all together… in case there is a rejection, we should have best effort, plus we should let the model know that because the model's parameters input was wrong, we selected default."
+- Final design: `MCP_INPUT_VALIDATION_MODE` removed (config type, parsing, startup-fail, tests, README row, compose passthrough, architecture-doc mention). The decorator always validates; an input mismatch is served best-effort and the successful result gets an appended `Input validation notice:` text block naming the mismatched path/expected type — self-correcting agents fix the next call, non-learning agents still get served. Output mismatches and missing structured content stay telemetry-only. No rejection path exists anywhere; `mcp.tool.validation.rejections` metric and the coded input/output rejection errors were deleted.
+- Notice wording is deliberately soft ("values may have been ignored or replaced with defaults"): the schema layer cannot know what the handler did, and a too-narrow schema on our side also lands here until telemetry drives a widening fix. Replay tests now assert accepted forms produce **zero** notices, so schema-widening bugs surface as test failures, not spurious notices.
+- Kill-switch concern (off mode's old role) accepted: every layer fails open (compile failure → undecorated tool; mismatch → served call), so there is no rejection behavior left to switch off; per-call validation cost was already measured acceptable.
+- Side effect: the Codex GitHub bot's P2 review comment (expose the env var in manifest.json user_config) is mooted — the knob no longer exists.
+- Net: −~140 Go LOC vs the tri-state design; plan C/D and checklist rewritten; PR body updated.
+
 ## Open Questions
 - [x] Which adoption candidates to implement first — RESOLVED: single PR = bump + characterization tests + shadow-first input validation + read-only-allowlist output schemas + transport logger + F tests-only; SEP-414/tracer/enforce-flip/mutation-output-schemas deferred.
 - [x] **MERGE BLOCKER**: loopback listener with public Host topology — RESOLVED clean (see 2026-07-10 topology entry): no sidecars/mesh, ingress-nginx → pod IP, probes → pod IP, assistant → public URL. Protection stays on, no opt-out.

@@ -12,12 +12,11 @@ import (
 )
 
 type Config struct {
-	URL                 string
-	APIKey              string
-	LogLevel            string
-	TransportMode       string
-	Port                string
-	InputValidationMode InputValidationMode
+	URL           string
+	APIKey        string
+	LogLevel      string
+	TransportMode string
+	Port          string
 
 	OAuthEnabled     bool
 	OAuthTokenSecret string
@@ -47,14 +46,6 @@ type Config struct {
 	MaxRequestBytes int
 }
 
-type InputValidationMode string
-
-const (
-	InputValidationOff     InputValidationMode = "off"
-	InputValidationShadow  InputValidationMode = "shadow"
-	InputValidationEnforce InputValidationMode = "enforce"
-)
-
 const (
 	SignozURL     = "SIGNOZ_URL"
 	SignozApiKey  = "SIGNOZ_API_KEY"
@@ -80,8 +71,7 @@ const (
 	DocsRefreshIntervalEnv     = "SIGNOZ_DOCS_REFRESH_INTERVAL"
 	DocsFullRefreshIntervalEnv = "SIGNOZ_DOCS_FULL_REFRESH_INTERVAL"
 
-	MaxRequestBytesEnv     = "MCP_MAX_REQUEST_BYTES"
-	InputValidationModeEnv = "MCP_INPUT_VALIDATION_MODE"
+	MaxRequestBytesEnv = "MCP_MAX_REQUEST_BYTES"
 
 	defaultClientCacheSize       = 256
 	defaultClientCacheTTLMinutes = 30
@@ -106,10 +96,6 @@ func LoadConfig() (*Config, error) {
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
 	docsRefreshInterval := getEnvDuration(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
 	docsFullRefreshInterval := getEnvDuration(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
-	inputValidationMode, err := parseInputValidationMode(getEnv(InputValidationModeEnv, string(InputValidationShadow)))
-	if err != nil {
-		return nil, err
-	}
 	if docsFullRefreshInterval < docsRefreshInterval {
 		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
 			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
@@ -143,7 +129,6 @@ func LoadConfig() (*Config, error) {
 		LogLevel:                getEnv(LogLevel, "info"),
 		TransportMode:           getEnv(TransportMode, "stdio"),
 		Port:                    getEnv(MCPPort, "8000"),
-		InputValidationMode:     inputValidationMode,
 		OAuthEnabled:            getEnvBool(OAuthEnabledEnv, false),
 		OAuthTokenSecret:        getEnv(OAuthTokenSecretEnv, ""),
 		OAuthIssuerURL:          strings.TrimSuffix(getEnv(OAuthIssuerURLEnv, ""), "/"),
@@ -160,16 +145,6 @@ func LoadConfig() (*Config, error) {
 		DocsFullRefreshInterval: docsFullRefreshInterval,
 		MaxRequestBytes:         getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
 	}, nil
-}
-
-func parseInputValidationMode(value string) (InputValidationMode, error) {
-	mode := InputValidationMode(value)
-	switch mode {
-	case InputValidationOff, InputValidationShadow, InputValidationEnforce:
-		return mode, nil
-	default:
-		return "", fmt.Errorf("%s must be one of off, shadow, enforce; got %q", InputValidationModeEnv, value)
-	}
 }
 
 func getEnv(key, defaultValue string) string {

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
@@ -113,7 +112,7 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 	}
 }
 
-func TestShadowValidationProceedsAndNeverLogsArgumentValues(t *testing.T) {
+func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	reader := sdkmetric.NewManualReader()
@@ -123,7 +122,7 @@ func TestShadowValidationProceedsAndNeverLogsArgumentValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &Handler{logger: logger, meters: meters, inputValidationMode: config.InputValidationShadow}
+	h := &Handler{logger: logger, meters: meters}
 	s := server.NewMCPServer("test", "0.0.0")
 	tool := mcp.NewTool("shadow_probe", mcp.WithNumber("webhook_password"))
 	called := false
@@ -132,9 +131,22 @@ func TestShadowValidationProceedsAndNeverLogsArgumentValues(t *testing.T) {
 		return mcp.NewToolResultText("ok"), nil
 	})
 
-	s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"webhook_password":"super-secret-value"}}}`))
+	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"webhook_password":"super-secret-value"}}}`))
 	if !called {
-		t.Fatal("shadow validation rejected the handler call")
+		t.Fatal("input mismatch must not block the handler call")
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), inputValidationNoticePrefix) {
+		t.Fatalf("successful result missing in-band validation notice: %s", encoded)
+	}
+	if !strings.Contains(string(encoded), `"ok"`) {
+		t.Fatalf("original handler content must be preserved alongside the notice: %s", encoded)
+	}
+	if strings.Contains(string(encoded), "super-secret-value") {
+		t.Fatalf("validation notice leaked raw argument values: %s", encoded)
 	}
 	if !strings.Contains(logs.String(), "tool schema validation mismatch") || !strings.Contains(logs.String(), `"validation.direction":"input"`) {
 		t.Fatalf("missing shadow mismatch warning: %s", logs.String())
@@ -152,30 +164,7 @@ func TestShadowValidationProceedsAndNeverLogsArgumentValues(t *testing.T) {
 	}
 }
 
-func TestOutputValidationDecoratorEnforceRejectsMismatch(t *testing.T) {
-	h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationEnforce}
-	s := server.NewMCPServer("test", "0.0.0")
-	tool := mcp.NewTool("output_probe", mcp.WithOutputSchema[struct {
-		Count int `json:"count"`
-	}]())
-	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
-	})
-
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
-	b, err := json.Marshal(response)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), outputSchemaValidationPrefix) {
-		t.Fatalf("response did not contain decorator validation error: %s", b)
-	}
-	if !strings.Contains(string(b), OutputValidationErrorCode) {
-		t.Fatalf("response did not contain decorator marker: %s", b)
-	}
-}
-
-func TestOutputValidationDecoratorShadowPassesOriginalAndCounts(t *testing.T) {
+func TestOutputMismatchPassesOriginalResultAndCounts(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))
 	reader := sdkmetric.NewManualReader()
@@ -185,7 +174,7 @@ func TestOutputValidationDecoratorShadowPassesOriginalAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &Handler{logger: logger, meters: meters, inputValidationMode: config.InputValidationShadow}
+	h := &Handler{logger: logger, meters: meters}
 	s := server.NewMCPServer("test", "0.0.0")
 	tool := mcp.NewTool("output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
@@ -196,8 +185,8 @@ func TestOutputValidationDecoratorShadowPassesOriginalAndCounts(t *testing.T) {
 
 	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
-	if strings.Contains(string(b), outputSchemaValidationPrefix) || !strings.Contains(string(b), `"count":"wrong"`) {
-		t.Fatalf("shadow mode did not pass the original result through: %s", b)
+	if !strings.Contains(string(b), `"count":"wrong"`) || strings.Contains(string(b), `"isError":true`) {
+		t.Fatalf("output mismatch did not pass the original result through: %s", b)
 	}
 	if !strings.Contains(logs.String(), `"validation.direction":"output"`) {
 		t.Fatalf("missing bounded output mismatch warning: %s", logs.String())
@@ -216,22 +205,6 @@ func TestOutputValidationDecoratorShadowPassesOriginalAndCounts(t *testing.T) {
 	}
 }
 
-func TestOutputValidationOffSkipsValidation(t *testing.T) {
-	h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationOff}
-	s := server.NewMCPServer("test", "0.0.0")
-	tool := mcp.NewTool("output_probe", mcp.WithOutputSchema[struct {
-		Count int `json:"count"`
-	}]())
-	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
-	})
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
-	b, _ := json.Marshal(response)
-	if strings.Contains(string(b), outputSchemaValidationPrefix) || !strings.Contains(string(b), `"count":"wrong"`) {
-		t.Fatalf("off mode validated output: %s", b)
-	}
-}
-
 func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))
@@ -242,7 +215,7 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &Handler{logger: logger, meters: meters, inputValidationMode: config.InputValidationShadow}
+	h := &Handler{logger: logger, meters: meters}
 	s := server.NewMCPServer("test", "0.0.0")
 	tool := mcp.NewTool("nil_output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
@@ -253,8 +226,8 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 
 	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nil_output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
-	if strings.Contains(string(b), outputSchemaValidationPrefix) {
-		t.Fatalf("nil StructuredContent should fail open: %s", b)
+	if !strings.Contains(string(b), "text-only") || strings.Contains(string(b), `"isError":true`) {
+		t.Fatalf("nil StructuredContent should fail open with the original result: %s", b)
 	}
 	if !strings.Contains(logs.String(), "successful schema-declaring tool returned no structured content") {
 		t.Fatalf("missing nil-StructuredContent warning: %s", logs.String())
@@ -279,7 +252,7 @@ func TestSchemaCompileFailureRegistersFailOpenAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &Handler{logger: logger, meters: meters, inputValidationMode: config.InputValidationShadow}
+	h := &Handler{logger: logger, meters: meters}
 	s := server.NewMCPServer("test", "0.0.0")
 	tool := mcp.NewToolWithRawSchema("broken_schema_probe", "probe", json.RawMessage(`{"type":`))
 	called := false

@@ -79,66 +79,56 @@ func TestStreamableHTTPLoggerUsesServerSlogLevelAndFields(t *testing.T) {
 	}
 }
 
-func TestEnforceModeInputRejectionUsesCodedErrorContract(t *testing.T) {
-	cfg := &config.Config{InputValidationMode: config.InputValidationEnforce}
+func TestInputMismatchServedWithNoticeThroughProductionPipeline(t *testing.T) {
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	logger := logpkg.New("error")
 	h := tools.NewHandler(logger, cfg)
 	m := NewMCPServer(logger, h, cfg, noopanalytics.New(), nil)
 	s := m.newSDKServer()
 
 	called := false
-	h.AddTool(s, mcp.NewTool("coded_probe", mcp.WithString("value", mcp.Required())), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.AddTool(s, mcp.NewTool("notice_probe", mcp.WithString("value", mcp.Required())), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		called = true
 		return mcp.NewToolResultText("ok"), nil
 	})
-	response := s.HandleMessage(context.Background(), []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"coded_probe","arguments":{"value":42}}}`))
-	if called {
-		t.Fatal("enforce mode allowed invalid input to reach the handler")
+	response := s.HandleMessage(context.Background(), []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"notice_probe","arguments":{"value":42}}}`))
+	if !called {
+		t.Fatal("input mismatch must be served best-effort, never rejected")
 	}
 	b, err := json.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(b, []byte(`"code":"VALIDATION_FAILED"`)) {
-		t.Fatalf("input rejection must carry the stable coded-error contract: %s", b)
+	if bytes.Contains(b, []byte(`"isError":true`)) {
+		t.Fatalf("mismatched input must not produce an error result: %s", b)
 	}
-	for _, want := range []string{"coded_probe", "/value", "string"} {
+	if !bytes.Contains(b, []byte(`"ok"`)) {
+		t.Fatalf("handler result must be preserved: %s", b)
+	}
+	// The appended notice tells self-correcting agents what to fix.
+	for _, want := range []string{"input validation notice", "/value", "string"} {
 		if !bytes.Contains(bytes.ToLower(b), []byte(want)) {
-			t.Fatalf("rejection is not actionable (missing %q): %s", want, b)
+			t.Fatalf("notice is not actionable (missing %q): %s", want, b)
 		}
 	}
 }
 
-func TestProductionOutputValidationModeWiring(t *testing.T) {
-	for _, tt := range []struct {
-		mode       config.InputValidationMode
-		wantReject bool
-	}{
-		{mode: config.InputValidationOff},
-		{mode: config.InputValidationShadow},
-		{mode: config.InputValidationEnforce, wantReject: true},
-	} {
-		t.Run(string(tt.mode), func(t *testing.T) {
-			cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute, InputValidationMode: tt.mode}
-			logger := logpkg.New("error")
-			h := tools.NewHandler(logger, cfg)
-			m := NewMCPServer(logger, h, cfg, noopanalytics.New(), nil)
-			s := m.newSDKServer()
-			tool := mcp.NewTool("probe", mcp.WithOutputSchema[struct {
-				Count int `json:"count"`
-			}]())
-			h.AddTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
-			})
-			response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":{}}}`))
-			b, _ := json.Marshal(response)
-			if got := bytes.Contains(b, []byte(tools.OutputValidationErrorCode)); got != tt.wantReject {
-				t.Fatalf("output rejected = %t, want %t: %s", got, tt.wantReject, b)
-			}
-			if !tt.wantReject && !bytes.Contains(b, []byte(`"count":"wrong"`)) {
-				t.Fatalf("mode %s did not pass original result through: %s", tt.mode, b)
-			}
-		})
+func TestProductionOutputMismatchPassesOriginalThrough(t *testing.T) {
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	logger := logpkg.New("error")
+	h := tools.NewHandler(logger, cfg)
+	m := NewMCPServer(logger, h, cfg, noopanalytics.New(), nil)
+	s := m.newSDKServer()
+	tool := mcp.NewTool("probe", mcp.WithOutputSchema[struct {
+		Count int `json:"count"`
+	}]())
+	h.AddTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
+	})
+	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":{}}}`))
+	b, _ := json.Marshal(response)
+	if bytes.Contains(b, []byte(`"isError":true`)) || !bytes.Contains(b, []byte(`"count":"wrong"`)) {
+		t.Fatalf("output mismatch must pass the original result through: %s", b)
 	}
 }
 
@@ -152,23 +142,27 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 		wantLog        string
 		wantLevel      string
 		wantToolCalls  int64
-		wantRejections int64
+		wantMismatches int64
 		wantDirection  string
 	}{
 		{
-			name:      "input rejection",
+			name:      "input mismatch served best-effort",
 			tool:      mcp.NewTool("probe", mcp.WithString("value", mcp.Required())),
 			arguments: `{"value":42}`,
-			// The decorator rejects before the inner handler, and the
-			// middleware logs the error result like any other tool failure.
-			wantLog:        "tool call returned error result",
-			wantLevel:      "WARN",
+			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return mcp.NewToolResultText("ok"), nil
+			},
+			// Mismatches are served, not rejected: the call succeeds and the
+			// mismatch is telemetry plus an in-band notice.
+			wantCalled:     true,
+			wantLog:        "tool call finished",
+			wantLevel:      "DEBUG",
 			wantToolCalls:  1,
-			wantRejections: 1,
+			wantMismatches: 1,
 			wantDirection:  "input",
 		},
 		{
-			name: "output rejection",
+			name: "output mismatch served best-effort",
 			tool: mcp.NewTool("probe", mcp.WithOutputSchema[struct {
 				Count int `json:"count"`
 			}]()),
@@ -177,10 +171,10 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 				return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
 			},
 			wantCalled:     true,
-			wantLog:        "tool call returned error result",
-			wantLevel:      "WARN",
+			wantLog:        "tool call finished",
+			wantLevel:      "DEBUG",
 			wantToolCalls:  1,
-			wantRejections: 1,
+			wantMismatches: 1,
 			wantDirection:  "output",
 		},
 		{
@@ -220,7 +214,7 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			logger := newBufferedLogger(&logs, slog.LevelDebug)
-			cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute, InputValidationMode: config.InputValidationEnforce}
+			cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 			h := tools.NewHandler(logger, cfg)
 			m := NewMCPServer(logger, h, cfg, noopanalytics.New(), meters)
 			s := m.newSDKServer()
@@ -242,10 +236,9 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			}
 
 			classified := map[string]struct{}{
-				"tool call rejected by schema validation": {},
-				"tool call returned error result":         {},
-				"tool call finished":                      {},
-				"tool call failed":                        {},
+				"tool call returned error result": {},
+				"tool call finished":              {},
+				"tool call failed":                {},
 			}
 			var terminal []map[string]any
 			for _, record := range parseJSONLogLines(t, &logs) {
@@ -264,16 +257,13 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			if got := int64MetricTotal(collected, "mcp.tool.calls"); got != tt.wantToolCalls {
 				t.Fatalf("mcp.tool.calls = %d, want %d", got, tt.wantToolCalls)
 			}
-			if got := int64MetricTotal(collected, "mcp.tool.validation.rejections"); got != tt.wantRejections {
-				t.Fatalf("mcp.tool.validation.rejections = %d, want %d", got, tt.wantRejections)
-			}
-			if got := int64MetricTotal(collected, "mcp.tool.validation.mismatches"); got != 0 {
-				t.Fatalf("mcp.tool.validation.mismatches = %d, want 0", got)
+			if got := int64MetricTotal(collected, "mcp.tool.validation.mismatches"); got != tt.wantMismatches {
+				t.Fatalf("mcp.tool.validation.mismatches = %d, want %d", got, tt.wantMismatches)
 			}
 			if tt.wantDirection != "" {
-				sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.rejections")
+				sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.mismatches")
 				if !ok || len(sum.DataPoints) != 1 {
-					t.Fatalf("validation rejection datapoints = %#v, found=%t", sum, ok)
+					t.Fatalf("validation mismatch datapoints = %#v, found=%t", sum, ok)
 				}
 				direction, ok := sum.DataPoints[0].Attributes.Value(attribute.Key("validation.direction"))
 				if !ok || direction.AsString() != tt.wantDirection {

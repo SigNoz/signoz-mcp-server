@@ -17,14 +17,12 @@ import (
 )
 
 type Handler struct {
-	logger              *slog.Logger
-	clientCache         *expirable.LRU[string, *signozclient.SigNoz]
-	configURL           string
-	customHeaders       map[string]string
-	meters              *otelpkg.Meters
-	docsIndex           *docsindex.IndexRegistry
-	inputValidationMode config.InputValidationMode
-
+	logger        *slog.Logger
+	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
+	configURL     string
+	customHeaders map[string]string
+	meters        *otelpkg.Meters
+	docsIndex     *docsindex.IndexRegistry
 	// validationWarned deduplicates validation WARN logs per bounded
 	// (tool, direction, path, constraint) key; see warnValidationOnce.
 	validationWarned sync.Map
@@ -55,11 +53,10 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 		normalizedURL = n
 	}
 	return &Handler{
-		logger:              log,
-		clientCache:         expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
-		configURL:           normalizedURL,
-		customHeaders:       cfg.CustomHeaders,
-		inputValidationMode: cfg.InputValidationMode,
+		logger:        log,
+		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
+		configURL:     normalizedURL,
+		customHeaders: cfg.CustomHeaders,
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -19,9 +18,10 @@ import (
 )
 
 const (
-	outputSchemaValidationPrefix = "output schema validation failed: "
-	OutputValidationErrorCode    = "OUTPUT_SCHEMA_VALIDATION_FAILED"
-	maxValidationMetadataLength  = 96
+	// InputValidationNoticePrefix marks the advisory text block appended to a
+	// successful result whose arguments mismatched the advertised schema.
+	inputValidationNoticePrefix = "Input validation notice:"
+	maxValidationMetadataLength = 96
 )
 
 type compiledToolSchema struct {
@@ -164,43 +164,40 @@ func resolveLocalSchemaRef(root, node map[string]any) map[string]any {
 	return resolved
 }
 
-// validationDecorator owns schema validation for every mode. Enforce-mode
-// rejections are produced here — not by the SDK validators — so they flow
-// through the ordinary middleware telemetry and use the repo's coded-error
-// contract instead of SDK-pinned message prefixes.
+// validationDecorator owns schema validation and never rejects a call.
+// Input mismatches are served best-effort with an in-band notice appended to
+// the successful result, so agents that read errors can self-correct while
+// agents that don't still get a usable answer. Output mismatches and missing
+// structured content are telemetry-only (fail open, never silent) — they are
+// our defects, not the caller's.
 func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, next server.ToolHandlerFunc) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		mode := h.inputValidationMode
-		if mode != config.InputValidationOff && input != nil {
+		var notice string
+		if input != nil {
 			if err := validateArguments(input.validator, req); err != nil {
 				path, constraint := validationMetadata(err, input.topLevelProperties)
-				if mode == config.InputValidationEnforce {
-					h.recordValidationRejection(ctx, toolName, "input", path, constraint)
-					return inputValidationError(toolName, err), nil
-				}
-				h.recordShadowMismatch(ctx, toolName, "input", path, constraint)
+				h.recordValidationMismatch(ctx, toolName, "input", path, constraint)
+				notice = inputValidationNotice(err)
 			}
 		}
 
 		result, err := next(ctx, req)
-		if err != nil || result == nil || result.IsError || output == nil || mode == config.InputValidationOff {
+		if err != nil || result == nil {
 			return result, err
 		}
-		// A schema-declaring success without structured content stays a success
-		// in every mode (fail open, never silent): rejecting would replace a
-		// usable text response with nothing the client can act on.
+		if notice != "" && !result.IsError {
+			result.Content = append(result.Content, mcp.NewTextContent(notice))
+		}
+		if result.IsError || output == nil {
+			return result, nil
+		}
 		if result.StructuredContent == nil {
 			h.recordMissingStructuredContent(ctx, toolName)
 			return result, nil
 		}
 		if err := validateSchemaValue(output.validator, result.StructuredContent, false); err != nil {
 			path, constraint := validationMetadata(err, output.topLevelProperties)
-			if mode == config.InputValidationShadow {
-				h.recordShadowMismatch(ctx, toolName, "output", path, constraint)
-				return result, nil
-			}
-			h.recordValidationRejection(ctx, toolName, "output", path, constraint)
-			return outputValidationError(path, constraint), nil
+			h.recordValidationMismatch(ctx, toolName, "output", path, constraint)
 		}
 		return result, nil
 	}
@@ -238,14 +235,16 @@ func validateSchemaValue(schema *jsonschema.Schema, value any, nilAsObject bool)
 	return schema.Validate(normalized)
 }
 
-// inputValidationError shapes an enforce-mode input rejection on the repo's
-// coded-error contract: the text names the tool and the violated constraint
-// so the caller can fix the argument and retry.
-func inputValidationError(toolName string, err error) *mcp.CallToolResult {
+// inputValidationNotice is appended to a successful result when the
+// arguments did not match the advertised schema. Wording stays soft on
+// purpose: the schema layer cannot know whether the handler ignored the
+// value, replaced it with a default, or normalized it anyway (a too-narrow
+// schema on our side also lands here until telemetry drives a widening fix).
+func inputValidationNotice(err error) string {
 	detail := strings.Join(strings.Fields(err.Error()), " ")
-	return errorWithCode(CodeValidationFailed, fmt.Sprintf(
-		"%s arguments for %q do not match the tool input schema: %s",
-		validationErrorPrefix, toolName, boundedErrorDetail(detail)))
+	return fmt.Sprintf(
+		"%s the arguments did not fully match this tool's input schema (%s). The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.",
+		inputValidationNoticePrefix, boundedErrorDetail(detail))
 }
 
 func validationMetadata(err error, topLevelProperties map[string]struct{}) (string, string) {
@@ -296,13 +295,7 @@ func boundedMetadata(value string) string {
 	return value
 }
 
-func outputValidationError(path, constraint string) *mcp.CallToolResult {
-	result := mcp.NewToolResultError(outputSchemaValidationPrefix + path + ": " + constraint)
-	result.StructuredContent = map[string]any{"code": OutputValidationErrorCode}
-	return result
-}
-
-func (h *Handler) recordShadowMismatch(ctx context.Context, toolName, direction, path, constraint string) {
+func (h *Handler) recordValidationMismatch(ctx context.Context, toolName, direction, path, constraint string) {
 	if h.warnValidationOnce(toolName, direction, path, constraint) {
 		h.logger.WarnContext(ctx, "tool schema validation mismatch (further identical mismatches suppressed; see mcp.tool.validation.mismatches)",
 			slog.String("gen_ai.tool.name", toolName),
@@ -312,16 +305,6 @@ func (h *Handler) recordShadowMismatch(ctx context.Context, toolName, direction,
 	}
 	if h.meters != nil {
 		h.meters.ToolValidationMismatches.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("gen_ai.tool.name", toolName),
-			attribute.String("validation.direction", direction),
-			attribute.String("validation.path", path),
-			attribute.String("validation.constraint", constraint)))
-	}
-}
-
-func (h *Handler) recordValidationRejection(ctx context.Context, toolName, direction, path, constraint string) {
-	if h.meters != nil {
-		h.meters.ToolValidationRejections.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("gen_ai.tool.name", toolName),
 			attribute.String("validation.direction", direction),
 			attribute.String("validation.path", path),

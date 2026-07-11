@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -150,7 +150,7 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 			}
 			called := false
 			got := ""
-			h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationEnforce}
+			h := &Handler{logger: logpkg.New("error")}
 			s := server.NewMCPServer("test", "0.0.0")
 			h.addTool(s, entry.Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				called = true
@@ -164,12 +164,15 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 
 			raw := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tt.tool, tt.arguments)
 			response := s.HandleMessage(context.Background(), json.RawMessage(raw))
+			encoded, _ := json.Marshal(response)
 			if !called {
-				encoded, _ := json.Marshal(response)
-				t.Fatalf("raw-wire call was rejected before the handler: %s", encoded)
+				t.Fatalf("raw-wire call did not reach the handler: %s", encoded)
 			}
 			if got != tt.want {
 				t.Fatalf("normalized value = %q, want %q", got, tt.want)
+			}
+			if strings.Contains(string(encoded), inputValidationNoticePrefix) {
+				t.Fatalf("accepted advertised form must not trigger a validation notice: %s", encoded)
 			}
 		})
 	}
@@ -194,7 +197,7 @@ func TestRawWireIntegerAboveFloat53ProductionDecodeCharacterization(t *testing.T
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got int64
-			h := &Handler{logger: logpkg.New("error"), inputValidationMode: config.InputValidationEnforce}
+			h := &Handler{logger: logpkg.New("error")}
 			s := server.NewMCPServer("test", "0.0.0")
 			tool := mcp.NewTool("precision_probe",
 				mcp.WithString("metricName", mcp.Required()),

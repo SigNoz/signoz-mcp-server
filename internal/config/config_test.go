@@ -96,30 +96,3 @@ func TestValidateConfig_StdioRequiresConfiguredCredentials(t *testing.T) {
 
 	require.ErrorContains(t, cfg.ValidateConfig(), "SIGNOZ_API_KEY is required")
 }
-
-func TestLoadConfig_InputValidationMode(t *testing.T) {
-	t.Setenv(SignozURL, "http://localhost:8080")
-	t.Setenv(SignozApiKey, "test-key")
-
-	t.Run("defaults to shadow", func(t *testing.T) {
-		t.Setenv(InputValidationModeEnv, "")
-		cfg, err := LoadConfig()
-		require.NoError(t, err)
-		assert.Equal(t, InputValidationShadow, cfg.InputValidationMode)
-	})
-
-	for _, mode := range []InputValidationMode{InputValidationOff, InputValidationShadow, InputValidationEnforce} {
-		t.Run(string(mode), func(t *testing.T) {
-			t.Setenv(InputValidationModeEnv, string(mode))
-			cfg, err := LoadConfig()
-			require.NoError(t, err)
-			assert.Equal(t, mode, cfg.InputValidationMode)
-		})
-	}
-
-	t.Run("unknown fails startup", func(t *testing.T) {
-		t.Setenv(InputValidationModeEnv, "warn")
-		_, err := LoadConfig()
-		require.ErrorContains(t, err, "MCP_INPUT_VALIDATION_MODE must be one of off, shadow, enforce")
-	})
-}

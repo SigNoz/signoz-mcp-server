@@ -27,7 +27,6 @@ type Meters struct {
 	DocsFetcherRetries                 metric.Int64Counter
 	DocsSitemapFailures                metric.Int64Counter
 	ToolValidationMismatches           metric.Int64Counter
-	ToolValidationRejections           metric.Int64Counter
 	ToolSchemaCompileFailures          metric.Int64Counter
 	ToolOutputMissingStructuredContent metric.Int64Counter
 }
@@ -163,14 +162,7 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	}
 	toolValidationMismatches, err := meter.Int64Counter(
 		"mcp.tool.validation.mismatches",
-		metric.WithDescription("Count of shadow-mode MCP tool input/output schema mismatches"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	toolValidationRejections, err := meter.Int64Counter(
-		"mcp.tool.validation.rejections",
-		metric.WithDescription("Count of MCP tool calls rejected by schema validation"),
+		metric.WithDescription("Count of MCP tool input/output schema mismatches (calls are served best-effort)"),
 	)
 	if err != nil {
 		return nil, err
@@ -212,7 +204,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		DocsFetcherRetries:                 docsFetcherRetries,
 		DocsSitemapFailures:                docsSitemapFailures,
 		ToolValidationMismatches:           toolValidationMismatches,
-		ToolValidationRejections:           toolValidationRejections,
 		ToolSchemaCompileFailures:          toolSchemaCompileFailures,
 		ToolOutputMissingStructuredContent: toolOutputMissingStructuredContent,
 	}, nil
