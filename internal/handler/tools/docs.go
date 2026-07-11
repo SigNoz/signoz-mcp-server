@@ -19,6 +19,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering docs handlers")
 
 	searchTool := mcp.NewTool("signoz_search_docs",
+		mcp.WithOutputSchema[docsindex.SearchResponse](),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
@@ -33,9 +34,10 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum results to return. Default: 10, max: 25 (capped to bound the docs index's memory footprint).")),
 		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents".`)),
 	)
-	addTool(s, searchTool, h.handleSearchDocs)
+	h.addTool(s, searchTool, h.handleSearchDocs)
 
 	fetchTool := mcp.NewTool("signoz_fetch_doc",
+		mcp.WithOutputSchema[docsindex.FetchResult](),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
@@ -43,7 +45,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithString("url", mcp.Required(), mcp.Description("Full https://signoz.io/docs/... URL or /docs/... path.")),
 		mcp.WithString("heading", mcp.Description(`Optional heading anchor ID or heading text, for example "prerequisites" or "## Prerequisites".`)),
 	)
-	addTool(s, fetchTool, h.handleFetchDoc)
+	h.addTool(s, fetchTool, h.handleFetchDoc)
 
 	sitemap := mcp.NewResource(
 		docsindex.DocsSitemapURI,

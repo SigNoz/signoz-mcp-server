@@ -109,6 +109,26 @@ func intOrStringType() mcp.PropertyOption {
 	}
 }
 
+func boolOrStringType() mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["type"] = []string{"boolean", "string"}
+	}
+}
+
+func stringOrStringArrayType() mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["type"] = []string{"array", "string"}
+		schema["items"] = map[string]any{"type": "string"}
+	}
+}
+
+func stringOrArrayType() mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["type"] = []string{"array", "string"}
+		schema["items"] = map[string]any{"type": "object"}
+	}
+}
+
 // validRequestTypes maps the user-facing requestType values accepted by the
 // aggregate and metrics tools to true. This is an MCP-owned, stable enum (not a
 // backend-evolving set), so we hard-validate it at the arg layer and reject

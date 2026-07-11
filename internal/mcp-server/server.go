@@ -296,14 +296,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	// recovery converts it to an error that bubbles back to loggingMiddleware
 	// via the normal return path, so mcp.tool.calls{is_error=true} and the
 	// codes.Error span status actually get recorded.
-	s := server.NewMCPServer("SigNozMCP", version.Version,
-		server.WithLogging(),
-		server.WithToolCapabilities(false),
-		server.WithInstructions(instructions.ServerInstructions),
-		server.WithHooks(m.buildHooks()),
-		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
-		server.WithRecovery(),
-	)
+	s := m.newSDKServer()
 
 	m.logger.InfoContext(ctx, "Starting SigNoz MCP Server",
 		slog.String("server_name", "SigNozMCPServer"),
@@ -417,6 +410,20 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		return nil
 	}
 	return m.runStdio(ctx, s)
+}
+
+func (m *MCPServer) newSDKServer() *server.MCPServer {
+	// Schema validation is owned by the handler-level validationDecorator,
+	// not the SDK validators: mismatched calls are served best-effort with an
+	// in-band notice, never rejected.
+	return server.NewMCPServer("SigNozMCP", version.Version,
+		server.WithLogging(),
+		server.WithToolCapabilities(false),
+		server.WithInstructions(instructions.ServerInstructions),
+		server.WithHooks(m.buildHooks()),
+		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
+		server.WithRecovery(),
+	)
 }
 
 // Shutdown closes the HTTP listener if one is active. It is the caller's
@@ -1463,10 +1470,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	// with the MCP 2026-07-28 direction of removing the session model entirely.
 	// WithHeartbeatInterval is kept: clients may still open a GET listening stream
 	// and the heartbeat keeps it alive through proxies.
-	mcpHandler := server.NewStreamableHTTPServer(s,
-		server.WithStateLess(true),
-		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
-	)
+	mcpHandler := server.NewStreamableHTTPServer(s, m.streamableHTTPOptions()...)
 	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(m.methodSpanMiddleware(mcpHandler))))
 
 	m.logger.Info("Listening for MCP clients",
@@ -1497,6 +1501,14 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	}
 
 	return srv
+}
+
+func (m *MCPServer) streamableHTTPOptions() []server.StreamableHTTPOption {
+	return []server.StreamableHTTPOption{
+		server.WithStateLess(true),
+		server.WithHeartbeatInterval(streamableHTTPHeartbeatInterval),
+		server.WithStreamableHTTPLogger(m.logger),
+	}
 }
 
 func (m *MCPServer) setOAuthChallenge(w http.ResponseWriter, extra string) {

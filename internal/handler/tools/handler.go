@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 
@@ -22,6 +23,9 @@ type Handler struct {
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
 	docsIndex     *docsindex.IndexRegistry
+	// validationWarned deduplicates validation WARN logs per bounded
+	// (tool, direction, path, constraint) key; see warnValidationOnce.
+	validationWarned sync.Map
 
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
@@ -48,7 +52,6 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 	if n, err := util.NormalizeSigNozURL(cfg.URL); err == nil {
 		normalizedURL = n
 	}
-
 	return &Handler{
 		logger:        log,
 		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),

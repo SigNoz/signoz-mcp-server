@@ -19,25 +19,42 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
+type alertListOutput struct {
+	Data       []types.Alert     `json:"data"`
+	Pagination paginate.Metadata `json:"pagination"`
+}
+
+type alertRuleListOutput struct {
+	Data       []types.AlertRuleSummary `json:"data"`
+	Pagination paginate.Metadata        `json:"pagination"`
+}
+
+var serverPopulatedAlertFields = []string{
+	"createdAt", "updatedAt", "createdBy", "updatedBy",
+	"createAt", "updateAt", "createBy", "updateBy",
+}
+
 func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
+		mcp.WithOutputSchema[alertListOutput](),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with an id for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active=true, silenced=false, inhibited=false\n- To see only silenced alerts: silenced=true, active=false\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50 (max 1000, clamped), offset=0."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alerts to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip for pagination. Default: 0.")),
-		mcp.WithBoolean("active", mcp.Description("Include active (firing) alerts. Default: true (server-side).")),
-		mcp.WithBoolean("silenced", mcp.Description("Include silenced alerts. Default: true (server-side).")),
-		mcp.WithBoolean("inhibited", mcp.Description("Include inhibited alerts. Default: true (server-side).")),
+		mcp.WithBoolean("active", boolOrStringType(), mcp.Description("Include active (firing) alerts. Default: true (server-side).")),
+		mcp.WithBoolean("silenced", boolOrStringType(), mcp.Description("Include silenced alerts. Default: true (server-side).")),
+		mcp.WithBoolean("inhibited", boolOrStringType(), mcp.Description("Include inhibited alerts. Default: true (server-side).")),
 		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
-	addTool(s, alertsTool, h.handleListAlerts)
+	h.addTool(s, alertsTool, h.handleListAlerts)
 
 	alertRulesTool := mcp.NewTool("signoz_list_alert_rules",
+		mcp.WithOutputSchema[alertRuleListOutput](),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
@@ -45,7 +62,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alert rules to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip for pagination. Default: 0.")),
 	)
-	addTool(s, alertRulesTool, h.handleListAlertRules)
+	h.addTool(s, alertRulesTool, h.handleListAlertRules)
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -58,7 +75,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		// present. See readResourceID.
 		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required.")),
 	)
-	addTool(s, getAlertTool, h.handleGetAlert)
+	h.addTool(s, getAlertTool, h.handleGetAlert)
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -67,14 +84,14 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
 		mcp.WithString("id", mcp.Description("Alert rule ID. Required.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
+		mcp.WithString("start", intOrStringType(), mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
+		mcp.WithString("end", intOrStringType(), mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Offset for pagination (default: 0)")),
 		mcp.WithString("limit", mcp.DefaultString("20"), intOrStringType(), mcp.Description("Limit number of results (default: 20)")),
 		mcp.WithString("order", mcp.DefaultString("asc"), mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
-	addTool(s, alertHistoryTool, h.handleGetAlertHistory)
+	h.addTool(s, alertHistoryTool, h.handleGetAlertHistory)
 
 	createAlertTool := mcp.NewTool(
 		"signoz_create_alert",
@@ -99,7 +116,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
-	addTool(s, createAlertTool, h.handleCreateAlert)
+	h.addTool(s, createAlertTool, h.handleCreateAlert)
 
 	updateAlertTool := mcp.NewTool(
 		"signoz_update_alert",
@@ -114,7 +131,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		),
 		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
-	addTool(s, updateAlertTool, h.handleUpdateAlert)
+	h.addTool(s, updateAlertTool, h.handleUpdateAlert)
 
 	deleteAlertTool := mcp.NewTool(
 		"signoz_delete_alert",
@@ -123,7 +140,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithString("id", mcp.Description("UUIDv7 of the alert rule to delete. Required. The server validates the UUID format and returns invalid_input on bad values.")),
 		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{id}). Irreversible. Confirm with the user before calling."),
 	)
-	addTool(s, deleteAlertTool, h.handleDeleteAlert)
+	h.addTool(s, deleteAlertTool, h.handleDeleteAlert)
 
 	// Register alert resources for create alert
 	h.registerAlertResources(s)
@@ -529,6 +546,9 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 // error to surface to the caller.
 func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string]any) ([]byte, *mcp.CallToolResult) {
 	delete(rawConfig, "searchContext")
+	for _, field := range serverPopulatedAlertFields {
+		delete(rawConfig, field)
+	}
 
 	cleanJSON, err := alert.ValidateFromMap(rawConfig)
 	if err != nil {

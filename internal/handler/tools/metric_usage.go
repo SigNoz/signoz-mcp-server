@@ -17,6 +17,7 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering metric usage handlers")
 
 	tool := mcp.NewTool("signoz_check_metric_usage",
+		mcp.WithOutputSchema[map[string]signozclient.MetricUsage](),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithDescription(
@@ -35,7 +36,7 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 		),
 	)
 
-	addTool(s, tool, h.handleCheckMetricUsage)
+	h.addTool(s, tool, h.handleCheckMetricUsage)
 }
 
 func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -36,7 +36,7 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 		mcp.WithString("source", mcp.Description("Source filter (optional).")),
 	)
 
-	addTool(s, getFieldKeysTool, h.handleGetFieldKeys)
+	h.addTool(s, getFieldKeysTool, h.handleGetFieldKeys)
 
 	getFieldValuesTool := mcp.NewTool("signoz_get_field_values",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -51,7 +51,7 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 		mcp.WithString("source", mcp.Description("Source filter (optional).")),
 	)
 
-	addTool(s, getFieldValuesTool, h.handleGetFieldValues)
+	h.addTool(s, getFieldValuesTool, h.handleGetFieldValues)
 }
 
 func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

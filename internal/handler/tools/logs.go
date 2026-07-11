@@ -34,13 +34,13 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the aggregation expression descending.")),
 		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 10, max: 10000; higher values are clamped)")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("requestType", mcp.DefaultString("scalar"), mcp.Enum("scalar", "time_series"), mcp.Description("Controls whether to return a single aggregate or a time-series. Choose based on the user's question — do NOT ask the user to set this.\n\n\"scalar\" (default) — Returns one aggregate value computed over the entire time range. Use when the answer is a single number or a ranked/grouped table: \"how many errors today?\", \"what is the p99 latency of checkout?\", \"which service has the most errors?\", \"top 10 slowest endpoints\".\n\n\"time_series\" — Returns one value per time bucket so you can see changes over time. Use ONLY when the user's question is about WHEN something happened, HOW a metric changed, or to find SPIKES/TRENDS across time: \"when did errors spike?\", \"how did p99 change hour by hour?\", \"show error count per hour\", \"at what time is traffic highest?\".\n\nIf the intent is ambiguous (e.g. \"show latency over 24h\" could mean either), ask the user to clarify before calling this tool.\n\nIMPORTANT: If the question has ANY temporal component (spike, trend, change over time, \"when did X happen\"), always use \"time_series\" — it answers both the count AND the timing in one call. Never call this tool twice for the same question.\nExample: \"get error count and find when it spiked\" → \"time_series\".")),
 		mcp.WithString("stepInterval", intOrStringType(), mcp.Description(stepIntervalDesc)),
 	)
 
-	addTool(s, aggregateLogsTool, h.handleAggregateLogs)
+	h.addTool(s, aggregateLogsTool, h.handleAggregateLogs)
 
 	// search_logs: log search with optional filters
 	// ToDo: use this function for error logs or logs by service
@@ -57,13 +57,13 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("severity", mcp.Description("Optional severity filter (DEBUG, INFO, WARN, ERROR, FATAL).")),
 		mcp.WithString("searchText", mcp.Description("Text to search for in log body (uses CONTAINS matching).")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("limit", mcp.DefaultString("100"), intOrStringType(), mcp.Description("Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with offset)")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Offset for pagination (default: 0)")),
 	)
 
-	addTool(s, searchLogsTool, h.handleSearchLogs)
+	h.addTool(s, searchLogsTool, h.handleSearchLogs)
 }
 
 func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

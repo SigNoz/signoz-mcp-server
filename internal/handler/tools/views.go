@@ -52,7 +52,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
 	)
-	addTool(s, listTool, h.handleListViews)
+	h.addTool(s, listTool, h.handleListViews)
 
 	getTool := mcp.NewTool("signoz_get_view",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -63,7 +63,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		// for schema-aware clients. The handler validates id/viewId presence.
 		mcp.WithString("id", mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. Required.")),
 	)
-	addTool(s, getTool, h.handleGetView)
+	h.addTool(s, getTool, h.handleGetView)
 
 	createTool := mcp.NewTool("signoz_create_view",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -85,7 +85,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithArray("tags", mcp.WithStringItems(), mcp.Description("Optional free-form tags.")),
 		mcp.WithString("extraData", mcp.Description("Optional UI-controlled options as a JSON-encoded string (safe to leave empty).")),
 	)
-	addTool(s, createTool, h.handleCreateView)
+	h.addTool(s, createTool, h.handleCreateView)
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -109,7 +109,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 			mcp.Description("Full SavedView body representing the complete post-update state. Call signoz_get_view first and pass its data field back here."),
 		),
 	)
-	addTool(s, updateTool, h.handleUpdateView)
+	h.addTool(s, updateTool, h.handleUpdateView)
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		mcp.WithDestructiveHintAnnotation(true),
@@ -117,7 +117,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
 		mcp.WithString("id", mcp.Description("UUID of the view to delete. Required.")),
 	)
-	addTool(s, deleteTool, h.handleDeleteView)
+	h.addTool(s, deleteTool, h.handleDeleteView)
 
 	viewInstructions := mcp.NewResource(
 		"signoz://view/instructions",
