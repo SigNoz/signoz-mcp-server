@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "built_at": "2026-05-20T10:29:28.762141188Z",
   "sitemap_hash": "2f315722bb409e5afbeacfee525fcc7853941be87e5b339b680d3176b1caa749",
   "pages": [
@@ -439,7 +439,7 @@
       "url": "https://signoz.io/docs/userguide/writing-clickhouse-traces-query/",
       "title": "Traces Schema - Write ClickHouse Queries \u0026 Build Dashboard Panels",
       "sha256": "4628ad9412ae0f80a894841e9ced910108cdfecd585d2a336f21dc3078ccefaa",
-      "fetched_at": "2026-05-20T10:29:16.476343044Z"
+      "fetched_at": "2026-05-20T10:29:23.581874929Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/authentication/",
@@ -853,12 +853,6 @@
       "url": "https://signoz.io/docs/instrumentation/overview/",
       "title": "Get Started with APM \u0026 Distributed Tracing",
       "sha256": "50a0bf0d314db0c7b695d191d40c04c9c1c77ca2de86f2fa2992c5f5a6915528",
-      "fetched_at": "2026-05-20T10:29:16.520528472Z"
-    },
-    {
-      "url": "https://signoz.io/docs/instrumentation/overview/",
-      "title": "Get Started with APM \u0026 Distributed Tracing",
-      "sha256": "50a0bf0d314db0c7b695d191d40c04c9c1c77ca2de86f2fa2992c5f5a6915528",
       "fetched_at": "2026-05-20T10:29:16.593405059Z"
     },
     {
@@ -1039,7 +1033,7 @@
       "url": "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
       "title": "Deno OpenTelemetry Instrumentation Guide",
       "sha256": "eb07c38387b2d9d53a71b4d8d17e9e46a176742de12e1e6a82c399bf40c46513",
-      "fetched_at": "2026-05-20T10:29:14.786581272Z"
+      "fetched_at": "2026-05-20T10:29:18.476203929Z"
     },
     {
       "url": "https://signoz.io/docs/instrumentation/manual-instrumentation/deno/manual-instrumentation/",
@@ -1081,25 +1075,19 @@
       "url": "https://signoz.io/docs/integrations/opentelemetry-hasura/",
       "title": "OpenTelemetry Hasura Integration Guide",
       "sha256": "ffe0415577774ec2eca3aab8dab120ae14a2c03b0f8b8da2be0f01b42abcb5e9",
-      "fetched_at": "2026-05-20T10:29:15.148975619Z"
+      "fetched_at": "2026-05-20T10:29:22.591159224Z"
     },
     {
       "url": "https://signoz.io/docs/integrations/opentelemetry-dbos/",
       "title": "DBOS OpenTelemetry Instrumentation Guide",
       "sha256": "59e71b08c0a697746b31838b8cc7ad205dced026ab6046898b7d4435c051a03a",
-      "fetched_at": "2026-05-20T10:29:15.206720399Z"
+      "fetched_at": "2026-05-20T10:29:22.615469881Z"
     },
     {
       "url": "https://signoz.io/docs/integrations/opentelemetry-kong-gateway/",
       "title": "OpenTelemetry Kong Gateway Integration",
       "sha256": "356e479134babb6ad9c53656d65f83632483f9dbbc0fd8fd4e60a6b758d3eec7",
-      "fetched_at": "2026-05-20T10:29:15.285028614Z"
-    },
-    {
-      "url": "https://signoz.io/docs/userguide/metrics/",
-      "title": "View Services",
-      "sha256": "4b073a8272f06c54f51b38e717d3114d69379b620b5b45c7e66be44a68a38fc3",
-      "fetched_at": "2026-05-20T10:29:15.386403881Z"
+      "fetched_at": "2026-05-20T10:29:22.905592359Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/metrics/",
@@ -1129,12 +1117,6 @@
       "url": "https://signoz.io/docs/userguide/traces/",
       "title": "Trace Explorer",
       "sha256": "107f975746cc272700b13762466dfa9c787f6083a142b36c8da7e25f680f3803",
-      "fetched_at": "2026-05-20T10:29:15.72769843Z"
-    },
-    {
-      "url": "https://signoz.io/docs/userguide/traces/",
-      "title": "Trace Explorer",
-      "sha256": "107f975746cc272700b13762466dfa9c787f6083a142b36c8da7e25f680f3803",
       "fetched_at": "2026-05-20T10:29:15.78751481Z"
     },
     {
@@ -1147,7 +1129,7 @@
       "url": "https://signoz.io/docs/trace-funnels/overview/",
       "title": "Trace Funnels",
       "sha256": "48cfe9dc3a69a4c4b5fb72efa98ecad42b1ba09b1e328d0f759395dda01220a9",
-      "fetched_at": "2026-05-20T10:29:15.861656199Z"
+      "fetched_at": "2026-05-20T10:29:23.748320956Z"
     },
     {
       "url": "https://signoz.io/docs/apm-and-distributed-tracing/traces-user-guides/",
@@ -1159,7 +1141,7 @@
       "url": "https://signoz.io/docs/trace-funnels/setup/",
       "title": "Setup Trace Funnels",
       "sha256": "61e77dd048c933970d8dc4e4d24feca932671b554adc0e449da3499659f51748",
-      "fetched_at": "2026-05-20T10:29:15.956600683Z"
+      "fetched_at": "2026-05-20T10:29:23.884542027Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/service-map/",
@@ -1279,12 +1261,6 @@
       "url": "https://signoz.io/docs/logs-management/overview/",
       "title": "Logs Management Overview",
       "sha256": "37a7bf114a1a40d662aa431a8efe9002151e3eca33ccc2a302e2b5edc4f81bc4",
-      "fetched_at": "2026-05-20T10:29:17.465087713Z"
-    },
-    {
-      "url": "https://signoz.io/docs/logs-management/overview/",
-      "title": "Logs Management Overview",
-      "sha256": "37a7bf114a1a40d662aa431a8efe9002151e3eca33ccc2a302e2b5edc4f81bc4",
       "fetched_at": "2026-05-20T10:29:17.483445036Z"
     },
     {
@@ -1364,12 +1340,6 @@
       "title": "Send Logs from Zap to SigNoz",
       "sha256": "f1d89f6239b1b3d7ac43a56a569c6343982b2e58c882cb17b8a2b20e3b469d28",
       "fetched_at": "2026-05-20T10:29:18.401510935Z"
-    },
-    {
-      "url": "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
-      "title": "Deno OpenTelemetry Instrumentation Guide",
-      "sha256": "eb07c38387b2d9d53a71b4d8d17e9e46a176742de12e1e6a82c399bf40c46513",
-      "fetched_at": "2026-05-20T10:29:18.476203929Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/fluentbit_to_signoz/",
@@ -1453,25 +1423,7 @@
       "url": "https://signoz.io/docs/integrations/opentelemetry-neondb/",
       "title": "OpenTelemetry Neon DB Integration",
       "sha256": "7512dc2c6905a9f2a93f83ba147d4175a38203196c10a0cb017d996bd6d2063d",
-      "fetched_at": "2026-05-20T10:29:19.364013846Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-hasura/",
-      "title": "OpenTelemetry Hasura Integration Guide",
-      "sha256": "ffe0415577774ec2eca3aab8dab120ae14a2c03b0f8b8da2be0f01b42abcb5e9",
-      "fetched_at": "2026-05-20T10:29:19.424172167Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-dbos/",
-      "title": "DBOS OpenTelemetry Instrumentation Guide",
-      "sha256": "59e71b08c0a697746b31838b8cc7ad205dced026ab6046898b7d4435c051a03a",
-      "fetched_at": "2026-05-20T10:29:19.50423002Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-kong-gateway/",
-      "title": "OpenTelemetry Kong Gateway Integration",
-      "sha256": "356e479134babb6ad9c53656d65f83632483f9dbbc0fd8fd4e60a6b758d3eec7",
-      "fetched_at": "2026-05-20T10:29:19.57899407Z"
+      "fetched_at": "2026-05-20T10:29:22.187406475Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/send-logs-http/",
@@ -1502,12 +1454,6 @@
       "title": "Send Logs from Vector to SigNoz",
       "sha256": "ebc36221e9b91d53cedc511988bc5d468e371aee662b0f80c870e583e6b365cf",
       "fetched_at": "2026-05-20T10:29:19.963762975Z"
-    },
-    {
-      "url": "https://signoz.io/docs/userguide/logs_query_builder/",
-      "title": "Logs Explorer",
-      "sha256": "efe131671286a50f0fd43fcc01510cb52959cc1fd2c12407a51fe58613990c6a",
-      "fetched_at": "2026-05-20T10:29:20.039525849Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/logs_query_builder/",
@@ -1544,12 +1490,6 @@
       "title": "Parsing Multiline Logs",
       "sha256": "eeb9c5b02d96609cb09b4765b85aae68f27d7cfe7e63b0e15496281374bfd5d9",
       "fetched_at": "2026-05-20T10:29:20.521591602Z"
-    },
-    {
-      "url": "https://signoz.io/docs/logs-pipelines/introduction/",
-      "title": "Logs Pipelines Overview",
-      "sha256": "0a426796b94b0ec8f2a890afce2ef843d9a7938e613af8910f11700ed1eb3919",
-      "fetched_at": "2026-05-20T10:29:20.547583769Z"
     },
     {
       "url": "https://signoz.io/docs/logs-pipelines/introduction/",
@@ -1663,7 +1603,7 @@
       "url": "https://signoz.io/docs/logs-management/logs-api/overview/",
       "title": "Logs API",
       "sha256": "045436946bad13bf27cdd3a9078dc0a5e7f4a282f9b8d8cbcfa5d4cc5397f54a",
-      "fetched_at": "2026-05-20T10:29:17.717957504Z"
+      "fetched_at": "2026-05-20T10:29:25.095155942Z"
     },
     {
       "url": "https://signoz.io/docs/logs-management/long-term-storage/",
@@ -1687,19 +1627,7 @@
       "url": "https://signoz.io/docs/metrics-management/overview/",
       "title": "Metrics",
       "sha256": "4d4b90894f251582717863906faade8cb21ea151d7838837184d391c122cbdbb",
-      "fetched_at": "2026-05-20T10:29:17.802446671Z"
-    },
-    {
-      "url": "https://signoz.io/docs/metrics-management/overview/",
-      "title": "Metrics",
-      "sha256": "4d4b90894f251582717863906faade8cb21ea151d7838837184d391c122cbdbb",
       "fetched_at": "2026-05-20T10:29:17.826678055Z"
-    },
-    {
-      "url": "https://signoz.io/docs/metrics-management/send-metrics/",
-      "title": "Send Metrics",
-      "sha256": "af4b0cb4804d570c666bc1f0cb6a2409531bedd0656a390aba69afd70fcbbe03",
-      "fetched_at": "2026-05-20T10:29:17.864911115Z"
     },
     {
       "url": "https://signoz.io/docs/metrics-management/send-metrics/",
@@ -1760,12 +1688,6 @@
       "title": "Send Metrics from Ruby Application Using OpenTelemetry",
       "sha256": "022ce6ad9080d80ae0c846663aa4d79c44eb0ff98ed3997e9fbd2d003aec4c0b",
       "fetched_at": "2026-05-20T10:29:18.34020621Z"
-    },
-    {
-      "url": "https://signoz.io/docs/instrumentation/opentelemetry-deno/",
-      "title": "Deno OpenTelemetry Instrumentation Guide",
-      "sha256": "eb07c38387b2d9d53a71b4d8d17e9e46a176742de12e1e6a82c399bf40c46513",
-      "fetched_at": "2026-05-20T10:29:18.379253439Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/otel-metrics-receivers/",
@@ -1840,34 +1762,10 @@
       "fetched_at": "2026-05-20T10:29:19.05800992Z"
     },
     {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-neondb/",
-      "title": "OpenTelemetry Neon DB Integration",
-      "sha256": "7512dc2c6905a9f2a93f83ba147d4175a38203196c10a0cb017d996bd6d2063d",
-      "fetched_at": "2026-05-20T10:29:19.133015402Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-hasura/",
-      "title": "OpenTelemetry Hasura Integration Guide",
-      "sha256": "ffe0415577774ec2eca3aab8dab120ae14a2c03b0f8b8da2be0f01b42abcb5e9",
-      "fetched_at": "2026-05-20T10:29:19.192290772Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-kong-gateway/",
-      "title": "OpenTelemetry Kong Gateway Integration",
-      "sha256": "356e479134babb6ad9c53656d65f83632483f9dbbc0fd8fd4e60a6b758d3eec7",
-      "fetched_at": "2026-05-20T10:29:19.25212561Z"
-    },
-    {
       "url": "https://signoz.io/docs/metrics-management/nginx-metrics/",
       "title": "NGINX metrics",
       "sha256": "fb7a66f93e4a04a973eded9aa6cdc8acd1fab871ace9e2542054a7e72a12ad2e",
       "fetched_at": "2026-05-20T10:29:19.311392028Z"
-    },
-    {
-      "url": "https://signoz.io/docs/metrics-management/metrics-explorer/",
-      "title": "Metrics Explorer",
-      "sha256": "5d2f1c5457299b65cb8e42d7c1a8724929e4dc8c0176c5d1bbc60db137f86185",
-      "fetched_at": "2026-05-20T10:29:19.465177733Z"
     },
     {
       "url": "https://signoz.io/docs/metrics-management/metrics-explorer/",
@@ -1921,7 +1819,7 @@
       "url": "https://signoz.io/docs/metrics-management/query-range-api/",
       "title": "Metrics API",
       "sha256": "dd11d4d50e6b2e75139d0894854feb83e79d4c919806b282e0f1153470ff3a11",
-      "fetched_at": "2026-05-20T10:29:20.218316124Z"
+      "fetched_at": "2026-05-20T10:29:25.55980614Z"
     },
     {
       "url": "https://signoz.io/docs/metrics-management/reducing-costs/",
@@ -1994,12 +1892,6 @@
       "title": "Dashboards",
       "sha256": "ce7131ae6d84d4ec04eac46a0af4b99e6e405ce2ad2aa3b344c2a36d021c67c5",
       "fetched_at": "2026-05-20T10:29:21.111567524Z"
-    },
-    {
-      "url": "https://signoz.io/docs/userguide/manage-dashboards/",
-      "title": "Manage Dashboards in SigNoz",
-      "sha256": "21d7be4f2ef16b7990aac111de707b6ee4e1103b1f10d4774e06e32c872b9837",
-      "fetched_at": "2026-05-20T10:29:21.182721589Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/manage-dashboards/",
@@ -2311,7 +2203,7 @@
       "url": "https://signoz.io/docs/dashboards/dashboard-templates/hostmetrics-k8s/",
       "title": "Host Metrics K8s Dashboard",
       "sha256": "cedb3fc8b6c4607f101c952d1155a3d7e67fb1faf6366cf9ca474c6adb7c4e07",
-      "fetched_at": "2026-05-20T10:29:18.341549758Z"
+      "fetched_at": "2026-05-20T10:29:18.848611169Z"
     },
     {
       "url": "https://signoz.io/docs/dashboards/dashboard-templates/hostmetrics-vm/",
@@ -2360,12 +2252,6 @@
       "title": "Kubernetes Cluster Metrics Dashboard",
       "sha256": "b7150bfe362cc9ac38689158a4bad28ab8759c1269ad1f1a191f4f16569fd9e5",
       "fetched_at": "2026-05-20T10:29:18.777758234Z"
-    },
-    {
-      "url": "https://signoz.io/docs/dashboards/dashboard-templates/hostmetrics-k8s/",
-      "title": "Host Metrics K8s Dashboard",
-      "sha256": "cedb3fc8b6c4607f101c952d1155a3d7e67fb1faf6366cf9ca474c6adb7c4e07",
-      "fetched_at": "2026-05-20T10:29:18.848611169Z"
     },
     {
       "url": "https://signoz.io/docs/dashboards/dashboard-templates/kubernetes-events/",
@@ -2686,12 +2572,6 @@
       "fetched_at": "2026-05-20T10:29:23.499753778Z"
     },
     {
-      "url": "https://signoz.io/docs/userguide/writing-clickhouse-traces-query/",
-      "title": "Traces Schema - Write ClickHouse Queries \u0026 Build Dashboard Panels",
-      "sha256": "4628ad9412ae0f80a894841e9ced910108cdfecd585d2a336f21dc3078ccefaa",
-      "fetched_at": "2026-05-20T10:29:23.581874929Z"
-    },
-    {
       "url": "https://signoz.io/docs/userguide/clickhouse-faqs/",
       "title": "ClickHouse Query FAQs",
       "sha256": "8bee79c335386e4b25aba6243baf7b4bb1d6d06607bcd18907870351fcfb64e7",
@@ -2702,12 +2582,6 @@
       "title": "PromQL UTF-8 Syntax Guide",
       "sha256": "daed6a46a65b6cb805c7d1c33303055e90c99419808cf293dcdb22d6ec3357c9",
       "fetched_at": "2026-05-20T10:29:23.802700616Z"
-    },
-    {
-      "url": "https://signoz.io/docs/alerts/",
-      "title": "Alerts",
-      "sha256": "ba92c2783920b1bf7c90cd8c2cc9f2f81af0ded591fe414ecd3320b9ddceebaf",
-      "fetched_at": "2026-05-20T10:29:17.679068994Z"
     },
     {
       "url": "https://signoz.io/docs/alerts/",
@@ -2750,12 +2624,6 @@
       "title": "Exceptions based alerts",
       "sha256": "b4a50a1cb0409cd0b7486fe0d4f8a2a8e82d746990022e5b93590cc88b94c80a",
       "fetched_at": "2026-05-20T10:29:22.255974435Z"
-    },
-    {
-      "url": "https://signoz.io/docs/userguide/alerts-management/",
-      "title": "Alert List Page",
-      "sha256": "58eb1bf50a4b2772df4bc14238110deef7e803389bb4a359fa17a746058be118",
-      "fetched_at": "2026-05-20T10:29:22.284700959Z"
     },
     {
       "url": "https://signoz.io/docs/userguide/alerts-management/",
@@ -3724,12 +3592,6 @@
       "fetched_at": "2026-05-20T10:29:22.141076111Z"
     },
     {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-neondb/",
-      "title": "OpenTelemetry Neon DB Integration",
-      "sha256": "7512dc2c6905a9f2a93f83ba147d4175a38203196c10a0cb017d996bd6d2063d",
-      "fetched_at": "2026-05-20T10:29:22.187406475Z"
-    },
-    {
       "url": "https://signoz.io/docs/integrations/supabase/",
       "title": "Supabase Metrics Integration",
       "sha256": "920d2cca6615fb870ace636568238c218cfb4fae888d2290e3555fa3ee35f8d7",
@@ -3748,18 +3610,6 @@
       "fetched_at": "2026-05-20T10:29:22.464029899Z"
     },
     {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-hasura/",
-      "title": "OpenTelemetry Hasura Integration Guide",
-      "sha256": "ffe0415577774ec2eca3aab8dab120ae14a2c03b0f8b8da2be0f01b42abcb5e9",
-      "fetched_at": "2026-05-20T10:29:22.591159224Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-dbos/",
-      "title": "DBOS OpenTelemetry Instrumentation Guide",
-      "sha256": "59e71b08c0a697746b31838b8cc7ad205dced026ab6046898b7d4435c051a03a",
-      "fetched_at": "2026-05-20T10:29:22.615469881Z"
-    },
-    {
       "url": "https://signoz.io/docs/integrations/outposts/flyio/",
       "title": "Monitor Fly.io with SigNoz",
       "sha256": "b5676d6cd5f6a5b83e91dd61ee7ea5dfaff7acafef444a4ea9de9092cf7a3d03",
@@ -3776,12 +3626,6 @@
       "title": "Monitor Render with SigNoz",
       "sha256": "a29489f8c258217406463cb63619cce970bb7e6833d0428b46f8738d767f9aae",
       "fetched_at": "2026-05-20T10:29:22.83105054Z"
-    },
-    {
-      "url": "https://signoz.io/docs/integrations/opentelemetry-kong-gateway/",
-      "title": "OpenTelemetry Kong Gateway Integration",
-      "sha256": "356e479134babb6ad9c53656d65f83632483f9dbbc0fd8fd4e60a6b758d3eec7",
-      "fetched_at": "2026-05-20T10:29:22.905592359Z"
     },
     {
       "url": "https://signoz.io/docs/integrations/nomad/",
@@ -3854,24 +3698,6 @@
       "title": "Setup External API Monitoring",
       "sha256": "a9677f82fb118b67da468dcf34bb2c9119edb2e8abc0477367aff7467e38d1a8",
       "fetched_at": "2026-05-20T10:29:23.630043163Z"
-    },
-    {
-      "url": "https://signoz.io/docs/trace-funnels/overview/",
-      "title": "Trace Funnels",
-      "sha256": "48cfe9dc3a69a4c4b5fb72efa98ecad42b1ba09b1e328d0f759395dda01220a9",
-      "fetched_at": "2026-05-20T10:29:23.748320956Z"
-    },
-    {
-      "url": "https://signoz.io/docs/trace-funnels/setup/",
-      "title": "Setup Trace Funnels",
-      "sha256": "61e77dd048c933970d8dc4e4d24feca932671b554adc0e449da3499659f51748",
-      "fetched_at": "2026-05-20T10:29:23.884542027Z"
-    },
-    {
-      "url": "https://signoz.io/docs/cicd/overview/",
-      "title": "CI/CD Monitoring",
-      "sha256": "7ab6d904a3de586f3b789cc6592077e593ec1e696c2a3b58f3f05f379705c01d",
-      "fetched_at": "2026-05-20T10:29:23.902067631Z"
     },
     {
       "url": "https://signoz.io/docs/cicd/overview/",
@@ -3982,12 +3808,6 @@
       "fetched_at": "2026-05-20T10:29:25.07129063Z"
     },
     {
-      "url": "https://signoz.io/docs/logs-management/logs-api/overview/",
-      "title": "Logs API",
-      "sha256": "045436946bad13bf27cdd3a9078dc0a5e7f4a282f9b8d8cbcfa5d4cc5397f54a",
-      "fetched_at": "2026-05-20T10:29:25.095155942Z"
-    },
-    {
       "url": "https://signoz.io/docs/logs-management/logs-api/payload-model/",
       "title": "Logs API Payload Model",
       "sha256": "53aa529edc4b351a24a2d76fc097721e43d8bc1a77c4361b4ab7fbe1fa085d76",
@@ -4010,12 +3830,6 @@
       "title": "Create Logs URL for Explorer page",
       "sha256": "229918acb8b630b8e8714145bd15cc176bde4d1b15618e51551d8dff893d4398",
       "fetched_at": "2026-05-20T10:29:25.404300923Z"
-    },
-    {
-      "url": "https://signoz.io/docs/metrics-management/query-range-api/",
-      "title": "Metrics API",
-      "sha256": "dd11d4d50e6b2e75139d0894854feb83e79d4c919806b282e0f1153470ff3a11",
-      "fetched_at": "2026-05-20T10:29:25.55980614Z"
     },
     {
       "url": "https://signoz.io/docs/migration/migrate-to-signoz/",

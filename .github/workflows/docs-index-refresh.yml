@@ -43,8 +43,8 @@ jobs:
         # fallback blob.
         run: go run ./cmd/build-docs-index
 
-      - name: Verify committed manifest matches rebuilt blob
-        run: go test ./internal/docs/ -run TestCorpusManifestMatches -count=1
+      - name: Verify corpus integrity and search ranking
+        run: go test ./internal/docs/ -run 'TestCorpusManifestMatches|TestGoldenSet' -count=1
 
       - name: Detect changes
         id: diff

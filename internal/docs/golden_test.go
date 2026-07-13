@@ -48,19 +48,28 @@ func TestGoldenSet(t *testing.T) {
 		if _, ok := expected[res.Results[0].URL]; ok {
 			precisionHits++
 		}
+		recalled := false
 		for _, hit := range res.Results {
 			if _, ok := expected[hit.URL]; ok {
 				recallHits++
+				recalled = true
 				break
 			}
+		}
+		if !recalled {
+			got := make([]string, 0, len(res.Results))
+			for _, hit := range res.Results {
+				got = append(got, hit.URL)
+			}
+			t.Logf("recall miss for %q: got %v, want one of %v", q.Query, got, q.ExpectedTopPages)
 		}
 	}
 	recallAt3 := float64(recallHits) / float64(len(queries))
 	precisionAt1 := float64(precisionHits) / float64(len(queries))
 	t.Logf("recall@3=%.3f precision@1=%.3f queries=%d", recallAt3, precisionAt1, len(queries))
-	// 0.85 tolerates 6 misses out of 45 to absorb routine ranking drift from
-	// scheduled corpus refreshes; dropping below this means real search regression.
-	require.GreaterOrEqual(t, recallAt3, 0.85)
+	// 0.9 tolerates four misses out of 45 to absorb routine corpus drift while
+	// protecting the ranking quality recovered by the navigation-text fields.
+	require.GreaterOrEqual(t, recallAt3, 0.9)
 	require.GreaterOrEqual(t, precisionAt1, 0.7)
 }
 

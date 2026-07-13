@@ -53,7 +53,7 @@ func TestTruncateContentIsUTF8Safe(t *testing.T) {
 	require.True(t, strings.HasPrefix(content, truncated))
 }
 
-func TestIndexMergesDuplicateURLSectionsForFiltering(t *testing.T) {
+func TestNormalizePagesPreservesURLSectionsForFiltering(t *testing.T) {
 	defer goleak.VerifyNone(t,
 		goleak.IgnoreTopFunction("github.com/blevesearch/bleve_index_api.AnalysisWorker"),
 	)
@@ -94,6 +94,11 @@ func TestIndexMergesDuplicateURLSectionsForFiltering(t *testing.T) {
 			},
 		},
 	}
+	snapshot.Pages = NormalizePages(snapshot.Pages)
+	require.Len(t, snapshot.Pages, 1)
+	require.Equal(t, []string{"apm-distributed-tracing", "logs-management", "metrics"}, snapshot.Pages[0].SectionSlugs)
+	require.Equal(t, "APM & Distributed Tracing > Instrument Application > Deno", snapshot.Pages[0].SectionMap["apm-distributed-tracing"])
+	require.Equal(t, snapshot.Pages, NormalizePages(snapshot.Pages), "normalization must be idempotent")
 	reg, err := NewIndexRegistry(ctx, snapshot)
 	require.NoError(t, err)
 	defer reg.Close(context.Background())
@@ -112,7 +117,7 @@ func TestIndexMergesDuplicateURLSectionsForFiltering(t *testing.T) {
 	require.Len(t, result.Results, 1)
 }
 
-func TestIndexDuplicateURLMergeUsesFreshestPagePayload(t *testing.T) {
+func TestNormalizePagesUsesFreshestPayloadAndStablePrimarySection(t *testing.T) {
 	defer goleak.VerifyNone(t,
 		goleak.IgnoreTopFunction("github.com/blevesearch/bleve_index_api.AnalysisWorker"),
 	)
@@ -146,6 +151,10 @@ func TestIndexDuplicateURLMergeUsesFreshestPagePayload(t *testing.T) {
 			},
 		},
 	}
+	snapshot.Pages = NormalizePages(snapshot.Pages)
+	require.Len(t, snapshot.Pages, 1)
+	require.Equal(t, "logs-management", snapshot.Pages[0].SectionSlug)
+	require.Equal(t, "Logs Management > Duplicate", snapshot.Pages[0].SectionBreadcrumb)
 	reg, err := NewIndexRegistry(ctx, snapshot)
 	require.NoError(t, err)
 	defer reg.Close(context.Background())
@@ -162,6 +171,34 @@ func TestIndexDuplicateURLMergeUsesFreshestPagePayload(t *testing.T) {
 		require.Len(t, result.Results, 1)
 		require.Equal(t, section, result.Results[0].SectionSlug)
 	}
+}
+
+func TestBuildIndexRejectsDuplicateCanonicalURLs(t *testing.T) {
+	snapshot := testSnapshot()
+	duplicate := snapshot.Pages[0]
+	duplicate.URL += "?duplicate=true"
+	snapshot.Pages = append(snapshot.Pages, duplicate)
+
+	idx, err := BuildIndex(snapshot)
+	if idx != nil {
+		defer func() { _ = idx.Close() }()
+	}
+	require.ErrorContains(t, err, "duplicate canonical docs URL")
+}
+
+func TestNavigationSearchText(t *testing.T) {
+	require.Equal(t, "install kubernetes aws", urlSearchText("https://signoz.io/docs/install/kubernetes/aws/"))
+	require.Equal(t,
+		"Install > Kubernetes Logs Management > Kubernetes",
+		breadcrumbSearchText(
+			[]string{"install", "logs-management", "duplicate-install"},
+			map[string]string{
+				"install":           "Install > Kubernetes",
+				"logs-management":   "Logs Management > Kubernetes",
+				"duplicate-install": "Install > Kubernetes",
+			},
+		),
+	)
 }
 
 func TestMakeSnippetUsesOriginalOffsetsAfterUnicodeCaseFold(t *testing.T) {
