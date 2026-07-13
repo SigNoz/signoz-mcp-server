@@ -263,7 +263,6 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 
 func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash string, entries []SitemapEntry, previous CorpusSnapshot) (CorpusSnapshot, bool, error) {
 	priorByURL := make(map[string]PageRecord, len(previous.Pages))
-	priorBySection := make(map[string]map[string]PageRecord, len(previous.Pages))
 	for _, page := range previous.Pages {
 		canonical, ok := CanonicalDocURL(page.URL)
 		if !ok {
@@ -271,15 +270,6 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		}
 		if current, ok := priorByURL[canonical]; !ok || shouldReplaceDuplicatePayload(page, current) {
 			priorByURL[canonical] = page
-		}
-		if page.SectionSlug == "" {
-			continue
-		}
-		if priorBySection[canonical] == nil {
-			priorBySection[canonical] = map[string]PageRecord{}
-		}
-		if current, ok := priorBySection[canonical][page.SectionSlug]; !ok || shouldReplaceDuplicatePayload(page, current) {
-			priorBySection[canonical][page.SectionSlug] = page
 		}
 	}
 
@@ -356,12 +346,12 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 			})
 		case FetchStatusNotFound:
 			if r.notFoundCounts[entry.URL] <= 3 {
-				if page, ok := priorPageForEntry(entry, priorBySection, priorByURL); ok {
+				if page, ok := priorPageForEntry(entry, priorByURL); ok {
 					pages = append(pages, page)
 				}
 			}
 		default:
-			if page, ok := priorPageForEntry(entry, priorBySection, priorByURL); ok {
+			if page, ok := priorPageForEntry(entry, priorByURL); ok {
 				pages = append(pages, page)
 			}
 		}
@@ -371,20 +361,32 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		BuiltAt:       time.Now().UTC(),
 		SitemapRaw:    sitemapRaw,
 		SitemapHash:   sitemapHash,
-		Pages:         pages,
+		Pages:         NormalizePages(pages),
 	}, false, nil
 }
 
-func priorPageForEntry(entry SitemapEntry, priorBySection map[string]map[string]PageRecord, priorByURL map[string]PageRecord) (PageRecord, bool) {
+func priorPageForEntry(entry SitemapEntry, priorByURL map[string]PageRecord) (PageRecord, bool) {
 	canonical, ok := CanonicalDocURL(entry.URL)
 	if !ok {
 		return PageRecord{}, false
 	}
-	if bySection := priorBySection[canonical]; bySection != nil {
-		if page, ok := bySection[entry.SectionSlug]; ok {
-			return page, true
-		}
-	}
 	page, ok := priorByURL[canonical]
-	return page, ok
+	if !ok {
+		return PageRecord{}, false
+	}
+	return projectPageToSitemapEntry(page, entry), true
+}
+
+func projectPageToSitemapEntry(page PageRecord, entry SitemapEntry) PageRecord {
+	breadcrumb := entry.SectionBreadcrumb
+	if breadcrumb == "" {
+		_, sectionMap := pageSectionMetadata(page)
+		breadcrumb = sectionMap[entry.SectionSlug]
+	}
+	page.URL = entry.URL
+	page.SectionSlug = entry.SectionSlug
+	page.SectionBreadcrumb = breadcrumb
+	page.SectionSlugs = nil
+	page.SectionMap = nil
+	return page
 }

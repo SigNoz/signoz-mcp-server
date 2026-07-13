@@ -2,7 +2,7 @@ package docs
 
 import "time"
 
-const CorpusSchemaVersion = 1
+const CorpusSchemaVersion = 2
 
 const (
 	DefaultSitemapURL = "https://signoz.io/docs/sitemap.md"
@@ -18,14 +18,16 @@ type CorpusSnapshot struct {
 }
 
 type PageRecord struct {
-	URL               string    `json:"url"`
-	Title             string    `json:"title"`
-	SectionSlug       string    `json:"section_slug"`
-	SectionBreadcrumb string    `json:"section_breadcrumb"`
-	HeadingsJSON      string    `json:"headings_json"`
-	BodyMarkdown      string    `json:"body_markdown"`
-	FetchedAt         time.Time `json:"fetched_at"`
-	SourceETag        string    `json:"source_etag,omitempty"`
+	URL               string            `json:"url"`
+	Title             string            `json:"title"`
+	SectionSlug       string            `json:"section_slug"`
+	SectionBreadcrumb string            `json:"section_breadcrumb"`
+	SectionSlugs      []string          `json:"section_slugs"`
+	SectionMap        map[string]string `json:"section_map"`
+	HeadingsJSON      string            `json:"headings_json"`
+	BodyMarkdown      string            `json:"body_markdown"`
+	FetchedAt         time.Time         `json:"fetched_at"`
+	SourceETag        string            `json:"source_etag,omitempty"`
 }
 
 type SitemapEntry struct {

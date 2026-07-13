@@ -102,6 +102,7 @@ func main() {
 	if corpusFailureThresholdExceeded(len(entries), failures, notFound) {
 		log.Fatalf("too many docs fetch failures: failures=%d 404s=%d total=%d", failures, notFound, len(entries))
 	}
+	pages = docs.NormalizePages(pages)
 	snapshot := docs.CorpusSnapshot{
 		SchemaVersion: docs.CorpusSchemaVersion,
 		BuiltAt:       time.Now().UTC(),
@@ -160,6 +161,7 @@ func writeFallbackCorpus() error {
 	for i := range pages {
 		pages[i].HeadingsJSON = jsonString(docs.ExtractHeadings(pages[i].BodyMarkdown))
 	}
+	pages = docs.NormalizePages(pages)
 	sitemapRaw := "- [Logs Management Overview](https://signoz.io/docs/logs-management/overview/)\n- [Install SigNoz Using Docker](https://signoz.io/docs/install/docker/)\n"
 	snapshot := docs.CorpusSnapshot{
 		SchemaVersion: docs.CorpusSchemaVersion,
