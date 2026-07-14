@@ -67,6 +67,12 @@ to lock). Implementation has not started — plan stays `Planning` until coding 
 - **agent-skills check outcome:** no change needed — no shipped skill teaches the alert-history parameter surface (history is read-only; the create/update skills cover different contracts). To be re-stated in the PR summary.
 - Not yet done: commit/PR; fill the concrete minimum SigNoz version into README once known.
 
+### 2026-07-15 — Live smoke verification (staging) + follow-up test
+- Ran a read-only live smoke against `app.us.staging.signoz.cloud` (delegated to a subagent; API key via env, never persisted). Exercised the real `GET /api/v2/rules/{id}/history/timeline` via curl AND through the actual `signozclient.NewClient(..., "SIGNOZ-API-KEY", ...)` → `handleGetAlertHistory` path.
+- **Result: PASS.** 200 OK; envelope `{"status":"success","data":{items,total,nextCursor}}`; item fields `ruleId/ruleName/overallState/overallStateChanged/state/stateChanged/unixMilli/labels/fingerprint/value` all present. Completeness note correctly derived `hasMore=true` from `data.nextCursor`; cursor pagination advanced (cursor decodes to `{offset,limit}`); `state:"firing"` accepted; `filterExpression` forwarded faithfully (a bad label yielded a clean upstream 400 via the `upstreamError` path, reproduced by raw curl — not an encoding bug).
+- Added `TestHandleGetAlertHistory_ItemsExactFillNoCursor` — pins that a `data.items[]` page filling the limit with no `nextCursor` reports `hasMore=false` (the exact case the old row-count heuristic got wrong).
+- **Notes for any FUTURE typed consumer** (do not affect this raw-passthrough tool): v2 `labels` is an array of `{key:{name,signal,fieldContext,fieldDataType}, value}` objects (not a flat `map[string]string`); `fingerprint` is a `uint64` that can exceed int64 max (don't unmarshal into `int64`).
+
 ## Open Questions
 - [x] **Pagination surface** → RESOLVED (2026-07-14): opaque `cursor` (option a). Drop raw `offset`; surface `nextCursor`.
 - [x] **Add `filterExpression` param now, or defer?** → RESOLVED (2026-07-14): add now as an optional passthrough string.
