@@ -968,83 +968,66 @@ func TestGetAlertHistory(t *testing.T) {
 		resp          map[string]interface{}
 		statusCode    int
 		expectedError bool
-		expectedData  []map[string]interface{}
+		expectedItems int
 	}{
 		{
-			name:   "successful alert history retrieval",
+			name:   "successful alert history retrieval with state and filter",
 			ruleID: "ruleid-abc",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start:            1640995200000,
+				End:              1641081600000,
+				State:            "firing",
+				FilterExpression: "severity = 'warning'",
+				Limit:            20,
+				Order:            "desc",
 			},
 			resp: map[string]interface{}{
 				"status": "success",
-				"data": []map[string]interface{}{
-					{
-						"timestamp": "2022-01-01T10:00:00Z",
-						"state":     "firing",
-						"value":     85.5,
-						"labels": map[string]interface{}{
-							"service":  "frontend",
-							"severity": "warning",
-						},
+				"data": map[string]interface{}{
+					"items": []map[string]interface{}{
+						{"ruleId": "ruleid-abc", "state": "firing", "value": 85.5, "unixMilli": 1640995200000},
+						{"ruleId": "ruleid-abc", "state": "inactive", "value": 45.2, "unixMilli": 1640998800000},
 					},
-					{
-						"timestamp": "2022-01-01T11:00:00Z",
-						"state":     "resolved",
-						"value":     45.2,
-						"labels": map[string]interface{}{
-							"service":  "frontend",
-							"severity": "warning",
-						},
-					},
+					"total":      2,
+					"nextCursor": "",
 				},
 			},
 			statusCode:    http.StatusOK,
 			expectedError: false,
-			expectedData: []map[string]interface{}{
-				{
-					"timestamp": "2022-01-01T10:00:00Z",
-					"state":     "firing",
-					"value":     85.5,
-					"labels": map[string]interface{}{
-						"service":  "frontend",
-						"severity": "warning",
-					},
-				},
-				{
-					"timestamp": "2022-01-01T11:00:00Z",
-					"state":     "resolved",
-					"value":     45.2,
-					"labels": map[string]interface{}{
-						"service":  "frontend",
-						"severity": "warning",
-					},
+			expectedItems: 2,
+		},
+		{
+			name:   "cursor paginated request",
+			ruleID: "ruleid-abc",
+			request: types.AlertHistoryRequest{
+				Start:  1640995200000,
+				End:    1641081600000,
+				Limit:  20,
+				Order:  "desc",
+				Cursor: "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
+			},
+			resp: map[string]interface{}{
+				"status": "success",
+				"data": map[string]interface{}{
+					"items":      []map[string]interface{}{},
+					"total":      20,
+					"nextCursor": "",
 				},
 			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+			expectedItems: 0,
 		},
 		{
 			name:   "server error",
 			ruleID: "ruleid-abc",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start: 1640995200000,
+				End:   1641081600000,
+				Limit: 20,
+				Order: "desc",
 			},
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			resp:          map[string]interface{}{"status": "error", "error": map[string]interface{}{"message": "Internal server error"}},
 			statusCode:    http.StatusInternalServerError,
 			expectedError: true,
 		},
@@ -1052,17 +1035,12 @@ func TestGetAlertHistory(t *testing.T) {
 			name:   "rule not found",
 			ruleID: "non-existent-rule",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start: 1640995200000,
+				End:   1641081600000,
+				Limit: 20,
+				Order: "desc",
 			},
-			resp:          map[string]interface{}{"status": "error", "message": "Rule not found"},
+			resp:          map[string]interface{}{"status": "error", "error": map[string]interface{}{"message": "Rule not found"}},
 			statusCode:    http.StatusNotFound,
 			expectedError: true,
 		},
@@ -1070,41 +1048,36 @@ func TestGetAlertHistory(t *testing.T) {
 			name:   "empty response",
 			ruleID: "ruleid-abc",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start: 1640995200000,
+				End:   1641081600000,
+				Limit: 20,
+				Order: "desc",
 			},
-			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
+			resp:          map[string]interface{}{"status": "success", "data": map[string]interface{}{"items": []map[string]interface{}{}, "total": 0}},
 			statusCode:    http.StatusOK,
 			expectedError: false,
-			expectedData:  []map[string]interface{}{},
+			expectedItems: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				expectedPath := fmt.Sprintf("/api/v1/rules/%s/history/timeline", tt.ruleID)
+				// v2 timeline is a GET; params ride on the query string, not a body.
+				assert.Equal(t, http.MethodGet, r.Method)
+				expectedPath := fmt.Sprintf("/api/v2/rules/%s/history/timeline", tt.ruleID)
 				assert.Equal(t, expectedPath, r.URL.Path)
-
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
 
-				var requestBody types.AlertHistoryRequest
-				err := json.NewDecoder(r.Body).Decode(&requestBody)
-				require.NoError(t, err)
-				assert.Equal(t, tt.request.Start, requestBody.Start)
-				assert.Equal(t, tt.request.End, requestBody.End)
-				assert.Equal(t, tt.request.Offset, requestBody.Offset)
-				assert.Equal(t, tt.request.Limit, requestBody.Limit)
-				assert.Equal(t, tt.request.Order, requestBody.Order)
+				q := r.URL.Query()
+				assert.Equal(t, fmt.Sprintf("%d", tt.request.Start), q.Get("start"))
+				assert.Equal(t, fmt.Sprintf("%d", tt.request.End), q.Get("end"))
+				assert.Equal(t, fmt.Sprintf("%d", tt.request.Limit), q.Get("limit"))
+				assert.Equal(t, tt.request.Order, q.Get("order"))
+				// Optional params are omitted when empty (server applies defaults).
+				assert.Equal(t, tt.request.State, q.Get("state"))
+				assert.Equal(t, tt.request.FilterExpression, q.Get("filterExpression"))
+				assert.Equal(t, tt.request.Cursor, q.Get("cursor"))
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
@@ -1127,23 +1100,10 @@ func TestGetAlertHistory(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].([]interface{}); ok {
-					assert.Equal(t, len(tt.expectedData), len(data))
-					for i, expectedHistory := range tt.expectedData {
-						if i < len(data) {
-							if history, ok := data[i].(map[string]interface{}); ok {
-								assert.Equal(t, expectedHistory["timestamp"], history["timestamp"])
-								assert.Equal(t, expectedHistory["state"], history["state"])
-								assert.Equal(t, expectedHistory["value"], history["value"])
-								if labels, ok := history["labels"].(map[string]interface{}); ok {
-									expectedLabels := expectedHistory["labels"].(map[string]interface{})
-									assert.Equal(t, expectedLabels["service"], labels["service"])
-									assert.Equal(t, expectedLabels["severity"], labels["severity"])
-								}
-							}
-						}
-					}
-				}
+				data, ok := response["data"].(map[string]interface{})
+				require.True(t, ok, "expected v2 data object with items[]")
+				items, _ := data["items"].([]interface{})
+				assert.Equal(t, tt.expectedItems, len(items))
 			}
 		})
 	}

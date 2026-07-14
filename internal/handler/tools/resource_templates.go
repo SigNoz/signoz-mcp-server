@@ -59,11 +59,10 @@ func (h *Handler) handleAlertSummaryResource(ctx context.Context, req mcp.ReadRe
 	}
 
 	historyReq := types.AlertHistoryRequest{
-		Start:  timeutil.HoursAgoMillis(6),
-		End:    timeutil.NowMillis(),
-		Order:  "desc",
-		Limit:  10,
-		Offset: 0,
+		Start: timeutil.HoursAgoMillis(6),
+		End:   timeutil.NowMillis(),
+		Order: "desc",
+		Limit: 10,
 	}
 	historyData, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 	if err != nil {

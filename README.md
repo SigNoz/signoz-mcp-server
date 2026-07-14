@@ -557,7 +557,7 @@ Gets top operations for a specific service.
 
 #### `signoz_get_alert_history`
 
-Gets alert history timeline for a specific rule.
+Gets the alert state-history timeline for a specific rule via `GET /api/v2/rules/{id}/history/timeline`. The response is `{ "status": "success", "data": { "items": [...], "total": <n>, "nextCursor": "<opaque>" } }`.
 
 - **Parameters**:
   - `id` (required) - Alert rule ID
@@ -565,10 +565,13 @@ Gets alert history timeline for a specific rule.
   - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
   - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
-  - `offset` (optional) - Offset for pagination (default: 0)
-  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `offset`)
+  - `filterExpression` (optional) - SigNoz v5 query-builder filter expression to narrow the timeline by label (e.g. `severity = 'critical'`)
+  - `cursor` (optional) - Opaque pagination cursor. Pass the `nextCursor` from a previous response's `data` to fetch the next page; omit for the first page.
+  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `cursor`)
   - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
-  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch
+  - **Completeness note**: the response appends a note reporting `hasMore` (from the presence of `data.nextCursor`) and the `cursor` value to pass for the next page
+
+> **Requires** a SigNoz version that serves the v2 rule-history routes (`/api/v2/rules/{id}/history/*`). Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
 
 #### `signoz_list_views`
 

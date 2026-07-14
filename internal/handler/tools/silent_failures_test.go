@@ -727,7 +727,6 @@ func TestHandleGetAlertHistoryFamilyA_TopLevelDataArrayCompletenessNote(t *testi
 	result, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
 		"ruleId": "rule-x",
 		"limit":  "2",
-		"offset": "5",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -742,8 +741,49 @@ func TestHandleGetAlertHistoryFamilyA_TopLevelDataArrayCompletenessNote(t *testi
 	if strings.Contains(note, "cannot count returned rows") {
 		t.Fatalf("must count top-level data[] alert history rows; note=%q", note)
 	}
-	if !strings.Contains(note, "returned 2 rows") || !strings.Contains(note, "hasMore=true") || !strings.Contains(note, "offset=7") {
-		t.Fatalf("completeness note = %q, want 2 rows / hasMore=true / offset=7", note)
+	// v2 paginates by cursor: with no data.nextCursor there are no more pages,
+	// so the note reports hasMore=false (the server emits a cursor only when
+	// more rows exist — strictly more accurate than the old offset heuristic).
+	if !strings.Contains(note, "returned 2 rows") || !strings.Contains(note, "hasMore=false") {
+		t.Fatalf("completeness note = %q, want 2 rows / hasMore=false", note)
+	}
+}
+
+// TestHandleGetAlertHistory_NextCursorHasMore pins the v2 pagination signal: a
+// response carrying data.nextCursor reports hasMore=true and names the cursor to
+// pass back, and a passed-through offset arg is ignored (v2 has no offset param).
+func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
+	var captured types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			captured = req
+			return json.RawMessage(`{"status":"success","data":{"items":[{"state":"firing"},{"state":"inactive"}],"total":42,"nextCursor":"CURSOR_XYZ"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	result, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId":           "rule-x",
+		"limit":            "2",
+		"offset":           "5", // ignored under v2
+		"cursor":           "CURSOR_PREV",
+		"filterExpression": "severity = 'critical'",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	// The cursor and filter expression must reach the client verbatim.
+	if captured.Cursor != "CURSOR_PREV" {
+		t.Errorf("forwarded cursor = %q, want CURSOR_PREV", captured.Cursor)
+	}
+	if captured.FilterExpression != "severity = 'critical'" {
+		t.Errorf("forwarded filterExpression = %q, want severity = 'critical'", captured.FilterExpression)
+	}
+	note := result.Content[1].(mcp.TextContent).Text
+	if !strings.Contains(note, "hasMore=true") || !strings.Contains(note, "CURSOR_XYZ") {
+		t.Fatalf("completeness note = %q, want hasMore=true naming cursor CURSOR_XYZ", note)
 	}
 }
 

@@ -81,13 +81,14 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get alert history timeline for a specific rule. Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state (e.g., only firing transitions or only resolutions)."),
+		mcp.WithDescription("Get the alert state-history timeline for a specific rule (GET /api/v2/rules/{id}/history/timeline). Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state, 'filterExpression' to narrow by label, and 'cursor' to page through results."),
 		mcp.WithString("id", mcp.Description("Alert rule ID. Required.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
 		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Offset for pagination (default: 0)")),
+		mcp.WithString("filterExpression", mcp.Description("Optional SigNoz v5 query-builder filter expression to narrow the timeline by label (e.g. severity = 'critical'). Omit to return all transitions.")),
+		mcp.WithString("cursor", mcp.Description("Opaque pagination cursor. Pass the 'nextCursor' value from a previous response's data to fetch the next page. Omit for the first page.")),
 		mcp.WithString("limit", mcp.DefaultString("20"), intOrStringType(), mcp.Description("Limit number of results (default: 20)")),
 		mcp.WithString("order", mcp.DefaultString("asc"), mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
@@ -371,8 +372,6 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 	}
 
-	_, offset := paginate.ParseParams(args)
-
 	// Route the limit through the shared loose parser (number-or-string), with
 	// this tool's documented default of 20. The old bespoke re-parse advertised
 	// a fictional "1-1000" bound that was never enforced — dropped here.
@@ -403,24 +402,30 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		state = stateStr
 	}
 
+	var filterExpression string
+	if v, ok := args["filterExpression"].(string); ok {
+		filterExpression = strings.TrimSpace(v)
+	}
+	var cursor string
+	if v, ok := args["cursor"].(string); ok {
+		cursor = strings.TrimSpace(v)
+	}
+
 	historyReq := types.AlertHistoryRequest{
-		Start:  start,
-		End:    end,
-		State:  state,
-		Offset: offset,
-		Limit:  limit,
-		Order:  order,
-		Filters: types.AlertHistoryFilters{
-			Items: []interface{}{},
-			Op:    "AND",
-		},
+		Start:            start,
+		End:              end,
+		State:            state,
+		FilterExpression: filterExpression,
+		Limit:            limit,
+		Order:            order,
+		Cursor:           cursor,
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert_history",
 		slog.String("ruleId", ruleID),
 		slog.Int64("start", start),
 		slog.Int64("end", end),
-		slog.Int("offset", offset),
+		slog.Bool("hasCursor", cursor != ""),
 		slog.Int("limit", limit),
 		slog.String("order", order))
 
@@ -436,16 +441,17 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 
-	// Completeness signal: alert history is a raw passthrough with limit/offset
-	// but no hasMore of its own. Count rows across both known history shapes.
+	// Completeness signal: alert history is a raw passthrough. v2 returns an
+	// explicit data.nextCursor when more pages exist, so derive hasMore from it
+	// (falling back to a row-count heuristic when the cursor is absent).
 	returnedRows, rowsKnown := countAlertHistoryRows(respJSON)
 	var notes []string
 	if limitClamped {
 		notes = append(notes, fmt.Sprintf(
-			"note: result limited to %d rows to bound server memory; paginate with \"offset\" (or narrow the time range) for more.",
+			"note: result limited to %d rows to bound server memory; paginate with \"cursor\" (or narrow the time range) for more.",
 			MaxRawResultLimit))
 	}
-	notes = append(notes, completenessNote(returnedRows, limit, offset, rowsKnown))
+	notes = append(notes, alertHistoryCompletenessNote(respJSON, returnedRows, limit, rowsKnown))
 	return resultWithNotes(respJSON, notes...), nil
 }
 
