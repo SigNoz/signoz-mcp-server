@@ -78,4 +78,4 @@ to lock). Implementation has not started — plan stays `Planning` until coding 
 - [x] **Add `filterExpression` param now, or defer?** → RESOLVED (2026-07-14): add now as an optional passthrough string.
 - [x] **Expand the `state` enum?** → RESOLVED (2026-07-14): keep `firing`/`inactive`; expansion deferred.
 - [x] **Migrate only `timeline`, or also the sibling v2 history endpoints?** → RESOLVED (2026-07-14): `timeline` only.
-- [ ] **Minimum SigNoz version** that ships the v2 `signozapiserver` rule-history routes — fill into README once confirmed (same open item as `v2-convention-migration`).
+- [x] **Minimum SigNoz version** → RESOLVED (2026-07-15): **v0.118.0** (2026-04-08). The v2 routes were added and wired in commit `bb4e7df` (PR #10488, 2026-03-30); `git tag --contains` shows `v0.118.0` is the earliest stable release containing it (`v0.117.x` does not). Documented in README.

@@ -571,7 +571,7 @@ Gets the alert state-history timeline for a specific rule via `GET /api/v2/rules
   - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
   - **Completeness note**: the response appends a note reporting `hasMore` (from the presence of `data.nextCursor`) and the `cursor` value to pass for the next page
 
-> **Requires** a SigNoz version that serves the v2 rule-history routes (`/api/v2/rules/{id}/history/*`). Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
+> **Requires SigNoz ≥ v0.118.0**, the first release to serve the v2 rule-history routes (`/api/v2/rules/{id}/history/*`, added in [SigNoz #10488](https://github.com/SigNoz/signoz/pull/10488)). Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
 
 #### `signoz_list_views`
 
