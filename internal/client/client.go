@@ -493,7 +493,83 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 
 	reqURL := fmt.Sprintf("%s/api/v2/metrics?%s", s.baseURL, params.Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Listing metrics", slog.String("searchText", searchText))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if !looksLikeHTML(body) {
+		return body, nil
+	}
+
+	// SigNoz v0.108 routes the newer /api/v2/metrics catalog endpoint to the
+	// frontend SPA, but still exposes exact metric metadata at
+	// /api/v2/metrics/metadata?metricName=... . Preserve the ListMetrics shape
+	// for callers that use an exact metric name, especially query_metrics'
+	// metadata auto-fetch path.
+	metricName := strings.TrimSpace(searchText)
+	if source != "" || metricName == "" {
+		return nil, fmt.Errorf("metrics catalog endpoint returned HTML; this SigNoz version may not support /api/v2/metrics listing")
+	}
+	return s.getLegacyMetricMetadataAsListMetrics(ctx, metricName)
+}
+
+func looksLikeHTML(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	lower := bytes.ToLower(trimmed)
+	return bytes.HasPrefix(lower, []byte("<!doctype html")) || bytes.HasPrefix(lower, []byte("<html"))
+}
+
+func (s *SigNoz) getLegacyMetricMetadataAsListMetrics(ctx context.Context, metricName string) (json.RawMessage, error) {
+	params := url.Values{}
+	params.Set("metricName", metricName)
+
+	reqURL := fmt.Sprintf("%s/api/v2/metrics/metadata?%s", s.baseURL, params.Encode())
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching legacy metric metadata", slog.String("metric", metricName))
+	body, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("legacy metric metadata lookup for %q: %w", metricName, err)
+	}
+	if looksLikeHTML(body) {
+		return nil, fmt.Errorf("legacy metric metadata endpoint returned HTML for %q", metricName)
+	}
+
+	var resp struct {
+		Status string `json:"status"`
+		Data   struct {
+			Description string `json:"description"`
+			Type        string `json:"type"`
+			Unit        string `json:"unit"`
+			Temporality string `json:"temporality"`
+			IsMonotonic bool   `json:"isMonotonic"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse legacy metric metadata for %q: %w", metricName, err)
+	}
+	if resp.Data.Type == "" {
+		return nil, fmt.Errorf("legacy metric metadata for %q did not include a metric type", metricName)
+	}
+	status := resp.Status
+	if status == "" {
+		status = "success"
+	}
+
+	out := map[string]any{
+		"status": status,
+		"data": map[string]any{
+			"metrics": []map[string]any{
+				{
+					"metricName":  metricName,
+					"description": resp.Data.Description,
+					"type":        resp.Data.Type,
+					"unit":        resp.Data.Unit,
+					"temporality": resp.Data.Temporality,
+					"isMonotonic": resp.Data.IsMonotonic,
+				},
+			},
+		},
+	}
+	return json.Marshal(out)
 }
 
 func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
