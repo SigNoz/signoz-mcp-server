@@ -160,3 +160,7 @@ GitHub issue #136 showed the "OTLP always on" decision was too sharp for self-ho
 
 ## Open Questions
 _(none — plan approved by Codex after 3 rounds; post-ship review findings addressed)_
+
+### 2026-07-15 — Docker image `service.version` parity
+- Follow-up review found that Make and GoReleaser injected `pkg/version.Version`, but the official Primus workflow passed empty `GO_BUILD_FLAGS` and the standalone Dockerfile had no version linker flag. Those images therefore exported the default `service.version=dev`.
+- Decision: tagged release builds inject the exact Git tag, which is also the published Docker tag; `main` builds inject the commit SHA so each deployment remains distinguishable. Standalone Docker builds accept an explicit `VERSION` build argument because an OCI image tag is not automatically available inside a Docker build.

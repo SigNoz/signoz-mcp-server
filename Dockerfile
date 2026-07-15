@@ -1,6 +1,8 @@
 # Build stage
 FROM golang:1.25-alpine AS builder
 
+ARG VERSION=dev
+
 # Install git and ca-certificates for dependencies
 RUN apk --no-cache add git ca-certificates tzdata
 
@@ -17,7 +19,7 @@ COPY . .
 
 # Build the application with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags='-w -s -extldflags "-static"' \
+    -ldflags="-w -s -extldflags=-static -X github.com/SigNoz/signoz-mcp-server/pkg/version.Version=${VERSION}" \
     -a -installsuffix cgo \
     -o signoz-mcp-server \
     ./cmd/server/

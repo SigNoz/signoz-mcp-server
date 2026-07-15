@@ -18,7 +18,7 @@ jobs:
       PRIMUS_REF: main
       GO_BUILD_CONTEXT: ./cmd/server
       GO_VERSION: 1.25
-      GO_BUILD_FLAGS: ""
+      GO_BUILD_FLAGS: "-ldflags=-X=github.com/SigNoz/signoz-mcp-server/pkg/version.Version=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}"
       DOCKER_BASE_IMAGES: '{"distroless":"gcr.io/distroless/base:latest"}'
       DOCKER_DOCKERFILE_PATH: Dockerfile.multi-arch
       DOCKER_MANIFEST: true

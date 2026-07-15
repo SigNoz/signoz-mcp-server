@@ -24,6 +24,11 @@ Goal: match Zeus's shape — slog + ContextHandler + `pkg/otel` — so the MCP s
 
 Single PR, three commits. Each commit compiles and tests green independently so the PR is bisectable.
 
+### Post-ship follow-up — Docker `service.version` parity
+
+- The official Primus workflow passes the release Git tag into `pkg/version.Version` through `GO_BUILD_FLAGS`; branch builds use the commit SHA so deployment markers remain unique.
+- The standalone Dockerfile accepts `VERSION` as a build argument and injects it through the same linker variable. The image tag must be passed explicitly because OCI tags are not visible inside the build or running container.
+
 ### Commit 1 — OTel scaffolding + graceful lifecycle (no logger migration)
 
 Introduce `pkg/otel`, `pkg/version`, and refactor the server for graceful shutdown. **Zap stays.** No `pkg/log` yet.
@@ -160,6 +165,8 @@ Specifically:
 - `internal/telemetry/telemetry.go` — thin shim delegating to `pkg/otel`; remove `genai.go` (moved).
 - `Makefile` — `-ldflags` on build target.
 - `.goreleaser.yaml` — `ldflags: -s -w -X .../pkg/version.Version={{.Version}}`.
+- `.github/workflows/dockerbuildci.yaml` — inject the release tag, or commit SHA for branch builds, into `pkg/version.Version`.
+- `Dockerfile` — accept a `VERSION` build argument and inject it into `pkg/version.Version` for standalone image builds.
 
 ### Modified (commit 2)
 - All 14 files listed in commit 2 "Migration scope" — mechanical zap→slog.
@@ -187,6 +194,7 @@ Specifically:
 - Manual: run HTTP mode against staging SigNoz — confirm traces + metrics arrive, logs on stdout show trace_id/session/tenant.
 - Manual: send `SIGTERM` during a burst of tool calls — no OTLP "shutdown timed out" warnings; last batch reaches collector.
 - Manual: trigger a tool panic — verify `mcp.tool.calls{is_error=true}` increments and the span is marked `codes.Error`.
+- Build the standalone image with `--build-arg VERSION=v0.7.0` and confirm the compiled binary carries `v0.7.0` as `pkg/version.Version`.
 
 ## Resolved Questions
 - [x] Stdout JSON vs OTLP log exporter → **stdout JSON**.
@@ -195,4 +203,4 @@ Specifically:
 - [x] `mcp.sessions.active` feasibility → **defer, use counter instead**.
 - [x] Shutdown ctx source → **fresh `context.Background()+timeout`, not cancelled signal ctx**.
 - [x] Middleware order for panic coverage → **`loggingMiddleware` appended before `WithRecovery()` in NewMCPServer options; mcp-go's reverse-slice wrap yields `logging(recovery(tool))` so recovery catches the panic and logging records metrics via the normal return path. No second `recover()` in logging middleware.**
-- [x] Version plumbing → **goreleaser ldflags + version.Version in `NewMCPServer`**.
+- [x] Version plumbing → **GoReleaser, Primus release builds, and standalone Docker builds inject `pkg/version.Version`; tagged images use the exact Git/Docker tag, while branch images use the commit SHA.**
