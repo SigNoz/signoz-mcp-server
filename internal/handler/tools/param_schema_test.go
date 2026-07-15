@@ -95,7 +95,7 @@ func TestStableSetEnumsArePresent(t *testing.T) {
 		{"signoz_aggregate_traces", "requestType", []string{"scalar", "time_series"}},
 		{"signoz_query_metrics", "requestType", []string{"scalar", "time_series"}},
 		{"signoz_get_alert_history", "order", []string{"asc", "desc"}},
-		{"signoz_get_alert_history", "state", []string{"firing", "inactive"}},
+		{"signoz_get_alert_history", "state", []string{"disabled", "firing", "inactive", "nodata", "pending", "recovering"}},
 		{"signoz_get_field_keys", "signal", []string{"logs", "metrics", "traces"}},
 		{"signoz_get_field_values", "signal", []string{"logs", "metrics", "traces"}},
 		// sourcePage already carried an enum before this change; pin it so a
@@ -115,6 +115,35 @@ func TestStableSetEnumsArePresent(t *testing.T) {
 				t.Fatalf("%s.%s enum = %v, want %v", tc.tool, tc.prop, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAlertHistoryAgentFacingContract(t *testing.T) {
+	props := registeredToolProps(t, "signoz_get_alert_history")
+	if _, ok := props["filter"]; !ok {
+		t.Fatal("signoz_get_alert_history must advertise the canonical filter parameter")
+	}
+	for _, hidden := range []string{"filterExpression", "offset"} {
+		if _, ok := props[hidden]; ok {
+			t.Fatalf("signoz_get_alert_history should not advertise backend/legacy parameter %q", hidden)
+		}
+	}
+
+	h := newTestHandler(&signozclient.MockClient{})
+	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	h.RegisterAlertsHandlers(s)
+	registered, ok := s.ListTools()["signoz_get_alert_history"]
+	if !ok {
+		t.Fatal("signoz_get_alert_history not registered")
+	}
+	description := registered.Tool.Description
+	if strings.Contains(description, "/api/v2/rules/") || strings.Contains(description, "GET ") {
+		t.Fatalf("agent-facing description leaks backend route/method: %q", description)
+	}
+	for _, required := range []string{"alert firing history", "filter", "cursor"} {
+		if !strings.Contains(description, required) {
+			t.Fatalf("agent-facing description missing %q: %q", required, description)
+		}
 	}
 }
 

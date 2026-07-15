@@ -5,21 +5,42 @@ import (
 	"strconv"
 )
 
-// AlertHistoryRequest is the request payload for alert history
+// AlertHistoryRequest carries the query parameters for the v2 rule state-history
+// timeline endpoint (GET /api/v2/rules/{id}/history/timeline). v2 replaced the v1
+// POST body: the structured `filters` set became a single `filterExpression`
+// string, and raw `offset` paging became an opaque `cursor`.
 type AlertHistoryRequest struct {
-	Start   int64               `json:"start"`
-	End     int64               `json:"end"`
-	State   string              `json:"state,omitempty"`
-	Offset  int                 `json:"offset"`
-	Limit   int                 `json:"limit"`
-	Order   string              `json:"order"`
-	Filters AlertHistoryFilters `json:"filters"`
+	Start            int64
+	End              int64
+	State            string // "" omitted; one of inactive|pending|recovering|firing|nodata|disabled
+	FilterExpression string // "" omitted; v5 query-builder filter expression
+	Limit            int
+	Order            string // "asc" | "desc"
+	Cursor           string // "" omitted; opaque cursor from a prior response's nextCursor
 }
 
-// AlertHistoryFilters is filters for alert history
-type AlertHistoryFilters struct {
-	Items []interface{} `json:"items"`
-	Op    string        `json:"op"`
+// QueryParams renders the request as URL query parameters for the v2 GET endpoint.
+// Empty optional values are omitted so the server applies its own defaults.
+func (r AlertHistoryRequest) QueryParams() url.Values {
+	v := url.Values{}
+	v.Set("start", strconv.FormatInt(r.Start, 10))
+	v.Set("end", strconv.FormatInt(r.End, 10))
+	if r.State != "" {
+		v.Set("state", r.State)
+	}
+	if r.FilterExpression != "" {
+		v.Set("filterExpression", r.FilterExpression)
+	}
+	if r.Limit > 0 {
+		v.Set("limit", strconv.Itoa(r.Limit))
+	}
+	if r.Order != "" {
+		v.Set("order", r.Order)
+	}
+	if r.Cursor != "" {
+		v.Set("cursor", r.Cursor)
+	}
+	return v
 }
 
 // Alert contains only essential information

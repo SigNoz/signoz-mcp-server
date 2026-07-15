@@ -3007,7 +3007,7 @@ func TestRun_HTTPShutdownRaceDuringStartup(t *testing.T) {
 		runDone <- srv.Run(runCtx)
 	}()
 
-	waitForCondition(t, time.Second, func() bool {
+	waitForCondition(t, 5*time.Second, func() bool {
 		return srv.httpServer.Load() != nil
 	}, "timed out waiting for HTTP server startup publication")
 

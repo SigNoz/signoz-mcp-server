@@ -630,14 +630,9 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 }
 
 func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/rules/%s/history/timeline", s.baseURL, url.PathEscape(ruleID))
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
+	reqURL := fmt.Sprintf("%s/api/v2/rules/%s/history/timeline?%s", s.baseURL, url.PathEscape(ruleID), req.QueryParams().Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert history", slog.String("ruleID", ruleID))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
