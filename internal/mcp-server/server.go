@@ -254,7 +254,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	// the async corpus build below calls Swap() with a real snapshot, so docs
 	// handlers correctly return INDEX_NOT_READY in the window before the
 	// index is populated. This lets HTTP server publication (below) happen
-	// within the 1 s test bound instead of waiting on the 1-3 s bleve build.
+	// without waiting on the 1-3 s bleve build.
 	placeholderRegistry, err := docsindex.NewPlaceholderRegistry(ctx)
 	if err != nil {
 		return fmt.Errorf("initialize placeholder docs registry: %w", err)
