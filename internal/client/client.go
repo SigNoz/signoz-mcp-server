@@ -22,11 +22,13 @@ import (
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 const (
 	SignozApiKey = "SIGNOZ-API-KEY"
 	ContentType  = "Content-Type"
+	UserAgent    = "User-Agent"
 
 	// DefaultQueryTimeout is used for read-only API calls.
 	DefaultQueryTimeout = 600 * time.Second
@@ -38,7 +40,10 @@ const (
 	analyticsIdentityCacheTTL = 10 * time.Minute
 )
 
-var ErrUnauthorized = errors.New("signoz credentials rejected")
+var (
+	ErrUnauthorized  = errors.New("signoz credentials rejected")
+	defaultUserAgent = version.UserAgent()
+)
 
 // HTTPStatusError preserves status and response details from a non-2xx SigNoz API response.
 type HTTPStatusError struct {
@@ -134,6 +139,29 @@ func (s *SigNoz) ensureTenantContext(ctx context.Context) context.Context {
 		return util.SetSigNozURL(ctx, s.baseURL)
 	}
 	return ctx
+}
+
+func (s *SigNoz) setRequestHeaders(ctx context.Context, req *http.Request, warnReserved bool) {
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(s.authHeaderName, s.apiKey)
+	req.Header.Set(UserAgent, defaultUserAgent)
+
+	for name, value := range s.customHeaders {
+		if strings.EqualFold(name, UserAgent) {
+			if value = strings.TrimSpace(value); value != "" {
+				req.Header.Set(UserAgent, value+" "+defaultUserAgent)
+			}
+			continue
+		}
+		if strings.EqualFold(name, ContentType) || strings.EqualFold(name, s.authHeaderName) {
+			if warnReserved {
+				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
+					slog.String("header", name), slog.String("value", value))
+			}
+			continue
+		}
+		req.Header.Set(name, value)
+	}
 }
 
 // ValidateCredentials performs a lightweight authenticated request against the
@@ -281,14 +309,7 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		return 0, nil, fmt.Errorf("failed to create validation request: %w", err)
 	}
 
-	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(s.authHeaderName, s.apiKey)
-
-	for k, v := range s.customHeaders {
-		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, s.authHeaderName) {
-			req.Header.Set(k, v)
-		}
-	}
+	s.setRequestHeaders(ctx, req, false)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -369,18 +390,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 
-		req.Header.Set(ContentType, "application/json")
-
-		req.Header.Set(s.authHeaderName, s.apiKey)
-
-		for k, v := range s.customHeaders {
-			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
-				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
-					slog.String("header", k), slog.String("value", v))
-				continue
-			}
-			req.Header.Set(k, v)
-		}
+		s.setRequestHeaders(ctx, req, true)
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {

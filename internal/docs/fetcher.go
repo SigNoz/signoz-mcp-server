@@ -197,11 +197,7 @@ func retryAfter(raw string) time.Duration {
 }
 
 func defaultUserAgent() string {
-	ver := strings.TrimSpace(version.Version)
-	if ver == "" {
-		ver = "dev"
-	}
-	return fmt.Sprintf("signoz-mcp-server/%s (+https://github.com/SigNoz/signoz-mcp-server; docs-indexer)", ver)
+	return version.UserAgent() + " (+https://github.com/SigNoz/signoz-mcp-server; docs-indexer)"
 }
 
 func RemoteHost(remoteAddr string) string {
