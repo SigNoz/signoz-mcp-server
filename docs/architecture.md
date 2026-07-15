@@ -143,10 +143,11 @@ the per-session maps the MCP SDK would otherwise accumulate, and aligns with the
 `2026-07-28` spec direction of removing the protocol-level session model. Clients may still
 open a GET listening stream; a periodic heartbeat keeps it alive through intermediary proxies.
 
-One consequence: MCP client identity (name/version) is captured only on the
-`session_registered` analytics event, taken directly from the `initialize` request's
-`ClientInfo`. With no session to correlate against, it is not attached to later
-per-tool-call events.
+The successful `initialize` request emits `MCP Client: Initialized` with its client
+name/version and negotiated protocol version. This is client-adoption telemetry, not a
+session lifecycle signal: there is still no reliable cross-request session identity for
+attaching `ClientInfo` to later tool events. Per-request `clientSource` and assistant
+correlation headers remain available on tool telemetry.
 
 ## OAuth 2.1 — Stateless Token Design
 

@@ -9,7 +9,6 @@ type Meters struct {
 	ToolCallDuration                   metric.Float64Histogram
 	MethodCalls                        metric.Int64Counter
 	MethodDuration                     metric.Float64Histogram
-	SessionRegistered                  metric.Int64Counter
 	AuthFailures                       metric.Int64Counter
 	OAuthEvents                        metric.Int64Counter
 	OAuthFailures                      metric.Int64Counter
@@ -20,11 +19,9 @@ type Meters struct {
 	DocsFetches                        metric.Int64Counter
 	DocsRefreshes                      metric.Int64Counter
 	DocsRefreshDuration                metric.Float64Histogram
-	DocsIndexAge                       metric.Float64Gauge
 	DocsIndexSizeBytes                 metric.Int64Gauge
 	DocsIndexDocCount                  metric.Int64Gauge
 	DocsIndexGeneration                metric.Int64Gauge
-	DocsFetcherRetries                 metric.Int64Counter
 	DocsSitemapFailures                metric.Int64Counter
 	ToolValidationMismatches           metric.Int64Counter
 	ToolSchemaCompileFailures          metric.Int64Counter
@@ -63,14 +60,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		"mcp.method.duration",
 		metric.WithDescription("Duration of non-tool MCP method calls"),
 		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	sessionRegistered, err := meter.Int64Counter(
-		"mcp.session.registered",
-		metric.WithDescription("Count of MCP sessions successfully registered"),
 	)
 	if err != nil {
 		return nil, err
@@ -120,7 +109,12 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
-	docsSearchDuration, err := meter.Float64Histogram("signoz_docs_search_duration_seconds", metric.WithDescription("Duration of SigNoz docs searches"), metric.WithUnit("s"))
+	docsSearchDuration, err := meter.Float64Histogram(
+		"signoz_docs_search_duration_seconds",
+		metric.WithDescription("Duration of SigNoz docs searches"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +126,12 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
-	docsRefreshDuration, err := meter.Float64Histogram("signoz_docs_refresh_duration_seconds", metric.WithDescription("Duration of SigNoz docs refreshes"), metric.WithUnit("s"))
-	if err != nil {
-		return nil, err
-	}
-	docsIndexAge, err := meter.Float64Gauge("signoz_docs_index_age_seconds", metric.WithDescription("Age of the active SigNoz docs index"), metric.WithUnit("s"))
+	docsRefreshDuration, err := meter.Float64Histogram(
+		"signoz_docs_refresh_duration_seconds",
+		metric.WithDescription("Duration of SigNoz docs refreshes"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(.1, .5, 1, 2.5, 5, 10, 30, 60, 120, 300),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -149,10 +144,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		return nil, err
 	}
 	docsIndexGeneration, err := meter.Int64Gauge("signoz_docs_index_generation", metric.WithDescription("Active SigNoz docs index generation"))
-	if err != nil {
-		return nil, err
-	}
-	docsFetcherRetries, err := meter.Int64Counter("signoz_docs_fetcher_retries_total", metric.WithDescription("Count of SigNoz docs fetcher retries"))
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +177,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		ToolCallDuration:                   toolCallDuration,
 		MethodCalls:                        methodCalls,
 		MethodDuration:                     methodDuration,
-		SessionRegistered:                  sessionRegistered,
 		AuthFailures:                       authFailures,
 		OAuthEvents:                        oauthEvents,
 		OAuthFailures:                      oauthFailures,
@@ -197,11 +187,9 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		DocsFetches:                        docsFetches,
 		DocsRefreshes:                      docsRefreshes,
 		DocsRefreshDuration:                docsRefreshDuration,
-		DocsIndexAge:                       docsIndexAge,
 		DocsIndexSizeBytes:                 docsIndexSizeBytes,
 		DocsIndexDocCount:                  docsIndexDocCount,
 		DocsIndexGeneration:                docsIndexGeneration,
-		DocsFetcherRetries:                 docsFetcherRetries,
 		DocsSitemapFailures:                docsSitemapFailures,
 		ToolValidationMismatches:           toolValidationMismatches,
 		ToolSchemaCompileFailures:          toolSchemaCompileFailures,
