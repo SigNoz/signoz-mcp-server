@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-const HeaderMCPSessionID = "Mcp-Session-Id"
-
 // HTTPClientAddress returns the best available client address for request
 // telemetry. It prefers forwarded headers because production traffic reaches
 // the server through ingress/proxy layers.
@@ -65,14 +63,6 @@ func HTTPUserAgent(r *http.Request) string {
 		return ""
 	}
 	return NormalizeCallerCorrelationValue(r.UserAgent())
-}
-
-// HTTPSessionID returns the MCP session ID header after basic normalization.
-func HTTPSessionID(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	return NormalizeCallerCorrelationValue(r.Header.Get(HeaderMCPSessionID))
 }
 
 func normalizeClientAddress(s string) string {

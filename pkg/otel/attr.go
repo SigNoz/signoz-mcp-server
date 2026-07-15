@@ -15,23 +15,23 @@ import (
 const (
 	GenAIOperationNameKey = attribute.Key("gen_ai.operation.name")
 	GenAIToolNameKey      = attribute.Key("gen_ai.tool.name")
-	GenAIToolCallIDKey    = attribute.Key("gen_ai.tool.call.id")
 )
 
 // MCP semantic convention attribute keys.
 // Spec: https://opentelemetry.io/docs/specs/semconv/registry/attributes/mcp/
 //
-// MCPMethodKey, MCPSessionIDKey match the registry exactly. The other keys
-// (search_context, tenant_url, tool.is_error, query.payload) are custom
+// MCPMethodKey and MCPProtocolVersionKey match the registry exactly. The other
+// keys (search_context, tenant_url, tool.*, query.payload) are custom
 // extensions this server uses for multi-tenant attribution and are not
 // defined by the spec.
 const (
-	MCPMethodKey        = attribute.Key("mcp.method.name")
-	MCPSessionIDKey     = attribute.Key("mcp.session.id")
-	MCPSearchContextKey = attribute.Key("mcp.search_context")
-	MCPTenantURLKey     = attribute.Key("mcp.tenant_url")
-	MCPToolIsErrorKey   = attribute.Key("mcp.tool.is_error")
-	MCPQueryPayloadKey  = attribute.Key("mcp.query.payload")
+	MCPMethodKey          = attribute.Key("mcp.method.name")
+	MCPProtocolVersionKey = attribute.Key("mcp.protocol.version")
+	MCPSearchContextKey   = attribute.Key("mcp.search_context")
+	MCPTenantURLKey       = attribute.Key("mcp.tenant_url")
+	MCPToolIsErrorKey     = attribute.Key("mcp.tool.is_error")
+	MCPToolErrorCodeKey   = attribute.Key("mcp.tool.error.code")
+	MCPQueryPayloadKey    = attribute.Key("mcp.query.payload")
 	// MCPToolResultBytes approximates the size, in bytes, of the text content
 	// returned by a tool call — sum of `len(Text)` across TextContent entries.
 	// Non-standard (the registry has no equivalent today); scoped under the

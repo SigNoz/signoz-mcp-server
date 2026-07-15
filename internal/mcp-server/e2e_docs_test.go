@@ -14,8 +14,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -158,7 +156,7 @@ func TestE2EAuthFailureTelemetry(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "claude-code/2.1.133 (cli)")
 	req.Header.Set("X-Forwarded-For", "198.51.100.9, 10.0.0.2")
-	req.Header.Set(util.HeaderMCPSessionID, "mcp-session-e2e")
+	req.Header.Set("Mcp-Session-Id", "mcp-session-e2e")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -173,7 +171,8 @@ func TestE2EAuthFailureTelemetry(t *testing.T) {
 	require.Equal(t, authModeNone, rec["mcp.auth.mode"])
 	require.Equal(t, "198.51.100.9", rec["client.address"])
 	require.Equal(t, "claude-code/2.1.133 (cli)", rec["user_agent.original"])
-	require.Equal(t, "mcp-session-e2e", rec["mcp.session.id"])
+	_, hasSessionLogAttr := rec["mcp.session.id"]
+	require.False(t, hasSessionLogAttr, "incoming session header must not be logged")
 
 	var httpAttrs []attribute.KeyValue
 	for _, span := range traceExporter.GetSpans() {
@@ -188,12 +187,13 @@ func TestE2EAuthFailureTelemetry(t *testing.T) {
 		"mcp.auth.mode":           authModeNone,
 		"client.address":          "198.51.100.9",
 		"user_agent.original":     "claude-code/2.1.133 (cli)",
-		otelpkg.MCPSessionIDKey:   "mcp-session-e2e",
 	} {
 		got, ok := spanAttrValue(httpAttrs, key)
 		require.True(t, ok, "missing span attr %s", key)
 		require.Equal(t, want, got.AsString(), "span attr %s", key)
 	}
+	_, hasSessionSpanAttr := spanAttrValue(httpAttrs, attribute.Key("mcp.session.id"))
+	require.False(t, hasSessionSpanAttr, "incoming session header must not be attached to spans")
 }
 
 func firstTextContent(t *testing.T, content []mcp.Content) string {

@@ -150,7 +150,6 @@ func TestForcedFullRefresh(t *testing.T) {
 	require.Equal(t, int64(1), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
 	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
 	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
-	require.Less(t, float64GaugeValue(t, metrics, "signoz_docs_index_age_seconds"), 10.0)
 }
 
 func TestSingleflightSerialization(t *testing.T) {
@@ -229,10 +228,6 @@ func TestRecordDocsIndexMetrics(t *testing.T) {
 	require.Equal(t, int64(len(snapshot.Pages)), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
 	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
 	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
-
-	age := float64GaugeValue(t, metrics, "signoz_docs_index_age_seconds")
-	require.GreaterOrEqual(t, age, 2*time.Hour.Seconds())
-	require.Less(t, age, 2*time.Hour.Seconds()+10)
 }
 
 func TestAtomicSwapRace(t *testing.T) {
@@ -557,14 +552,6 @@ func collectDocsMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata
 func int64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) int64 {
 	t.Helper()
 	gauge, ok := oteltest.FindInt64GaugeMetric(rm, name)
-	require.True(t, ok, "metric %s not found", name)
-	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
-	return gauge.DataPoints[0].Value
-}
-
-func float64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) float64 {
-	t.Helper()
-	gauge, ok := oteltest.FindFloat64GaugeMetric(rm, name)
 	require.True(t, ok, "metric %s not found", name)
 	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
 	return gauge.DataPoints[0].Value

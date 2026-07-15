@@ -1,12 +1,9 @@
 package mcp_server
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,6 +22,7 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -38,7 +36,6 @@ import (
 )
 
 const (
-	defaultMethodSpanBodyMaxSize = 1 << 20
 	// methodObsTombstoneTTL is how long an expired method observation lingers
 	// in methodObs so a late OnError hook can detect the race and skip its
 	// fallback (preventing double-count). Finish deletes the entry immediately;
@@ -54,36 +51,22 @@ const (
 	// Requires mcp-go >= v0.44.1, which routes empty ping replies to HTTP 202
 	// instead of the sampling-response path (mark3labs/mcp-go#740).
 	streamableHTTPHeartbeatInterval = 20 * time.Second
+	unknownToolName                 = "unknown"
 )
 
 type MCPServer struct {
-	logger                 *slog.Logger
-	handler                *tools.Handler
-	config                 *config.Config
-	analytics              analytics.Analytics
-	meters                 *otelpkg.Meters
-	methodObs              sync.Map
-	maxMethodSpanBodyBytes int64
-	methodObsTombstoneTTL  time.Duration
+	logger                *slog.Logger
+	handler               *tools.Handler
+	config                *config.Config
+	analytics             analytics.Analytics
+	meters                *otelpkg.Meters
+	methodObs             sync.Map
+	methodObsTombstoneTTL time.Duration
 	// httpServer is published via atomic.Pointer so Shutdown (on the main
 	// goroutine) can safely race Run's publication (on the errgroup
 	// goroutine) when SIGTERM lands mid-startup.
 	httpServer  atomic.Pointer[http.Server]
 	analyticsWG sync.WaitGroup
-}
-
-// attachClientInfo copies the MCP client name/version onto an analytics property
-// map. The server is stateless, so there is no session to correlate later tool
-// calls against — this is populated only from the InitializeRequest's ClientInfo
-// on the session_registered event, where the client identity is carried directly.
-func attachClientInfo(props map[string]any, info mcp.Implementation) {
-	if info.Name == "" {
-		return
-	}
-	props[analytics.AttrClientName] = info.Name
-	if info.Version != "" {
-		props[analytics.AttrClientVersion] = info.Version
-	}
 }
 
 // attachCallerCorrelation copies caller-correlation values from ctx onto an
@@ -149,23 +132,6 @@ func (m *MCPServer) resolveIdentity(ctx context.Context) (*signozclient.Analytic
 	return client.GetAnalyticsIdentity(ctx)
 }
 
-func (m *MCPServer) identifyAsync(ctx context.Context, traits map[string]any) {
-	if !m.analyticsEnabled() {
-		return
-	}
-
-	traits = cloneAttrs(traits)
-	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
-		identity, err := m.resolveIdentity(detachedCtx)
-		if err != nil {
-			m.logger.WarnContext(detachedCtx, "analytics identity resolution failed; skipping identify", logpkg.ErrAttr(err))
-			return
-		}
-
-		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.mergeIdentityAttrs(identity, traits))
-	})
-}
-
 func (m *MCPServer) trackEventAsync(ctx context.Context, event string, properties map[string]any) {
 	if !m.analyticsEnabled() {
 		return
@@ -181,29 +147,6 @@ func (m *MCPServer) trackEventAsync(ctx context.Context, event string, propertie
 			return
 		}
 
-		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.mergeIdentityAttrs(identity, properties))
-	})
-}
-
-// identifyAndTrackAsync resolves identity once and emits both calls under
-// the same goroutine to avoid a second /me roundtrip.
-func (m *MCPServer) identifyAndTrackAsync(ctx context.Context, event string, traits map[string]any, properties map[string]any) {
-	if !m.analyticsEnabled() {
-		return
-	}
-
-	traits = cloneAttrs(traits)
-	properties = cloneAttrs(properties)
-	m.dispatchAnalytics(ctx, func(detachedCtx context.Context) {
-		identity, err := m.resolveIdentity(detachedCtx)
-		if err != nil {
-			m.logger.WarnContext(detachedCtx, "analytics identity resolution failed; skipping identify+track",
-				slog.String("event", event),
-				logpkg.ErrAttr(err))
-			return
-		}
-
-		m.analytics.IdentifyUser(detachedCtx, identity.OrgID, identity.UserID, m.mergeIdentityAttrs(identity, traits))
 		m.analytics.TrackUser(detachedCtx, identity.OrgID, identity.UserID, event, m.mergeIdentityAttrs(identity, properties))
 	})
 }
@@ -245,9 +188,6 @@ func (m *MCPServer) detachedAnalyticsContext(parent context.Context) (context.Co
 	if searchContext, ok := util.GetSearchContext(parent); ok && searchContext != "" {
 		ctx = util.SetSearchContext(ctx, searchContext)
 	}
-	if sessionID, ok := util.GetSessionID(parent); ok && sessionID != "" {
-		ctx = util.SetSessionID(ctx, sessionID)
-	}
 	if clientSource, ok := util.GetClientSource(parent); ok && clientSource != "" {
 		ctx = util.SetClientSource(ctx, clientSource)
 	}
@@ -279,13 +219,12 @@ func NewMCPServer(log *slog.Logger, handler *tools.Handler, cfg *config.Config, 
 		handler.SetMeters(meters)
 	}
 	return &MCPServer{
-		logger:                 log,
-		handler:                handler,
-		config:                 cfg,
-		analytics:              a,
-		meters:                 meters,
-		maxMethodSpanBodyBytes: defaultMethodSpanBodyMaxSize,
-		methodObsTombstoneTTL:  methodObsTombstoneTTL,
+		logger:                log,
+		handler:               handler,
+		config:                cfg,
+		analytics:             a,
+		meters:                meters,
+		methodObsTombstoneTTL: methodObsTombstoneTTL,
 	}
 }
 
@@ -422,6 +361,7 @@ func (m *MCPServer) newSDKServer() *server.MCPServer {
 		server.WithInstructions(instructions.ServerInstructions),
 		server.WithHooks(m.buildHooks()),
 		server.WithToolHandlerMiddleware(m.loggingMiddleware()),
+		server.WithTracer(otelpkg.NewMCPTracer(otel.Tracer("signoz-mcp-server"))),
 		server.WithRecovery(),
 	)
 }
@@ -464,9 +404,10 @@ type methodObservation struct {
 	cleanupStop func() bool
 	// completed is the exactly-once guard. CAS'd by finishMethodObservation
 	// (the hook path) or expireMethodObservation (the ctx-cancel path); whichever
-	// wins emits the metric and ends the span. The loser skips emission but the
-	// entry stays in methodObs so the loser can still detect "we were beaten by
-	// a race" vs "observation was never stored at all" (unmarshal-failure path).
+	// wins emits the metric and decorates the SDK-owned span. The loser skips
+	// emission, but the entry stays in methodObs so the loser can still detect
+	// "we were beaten by a race" vs "observation was never stored at all"
+	// (unmarshal-failure path).
 	completed atomic.Bool
 }
 
@@ -488,24 +429,6 @@ func shouldObserveMethod(method mcp.MCPMethod) bool {
 	return method != mcp.MethodToolsCall && !strings.HasPrefix(string(method), "notifications/")
 }
 
-func isKnownRequestMethod(method mcp.MCPMethod) bool {
-	switch method {
-	case mcp.MethodInitialize,
-		mcp.MethodPing,
-		mcp.MethodSetLogLevel,
-		mcp.MethodResourcesList,
-		mcp.MethodResourcesTemplatesList,
-		mcp.MethodResourcesRead,
-		mcp.MethodPromptsList,
-		mcp.MethodPromptsGet,
-		mcp.MethodToolsList,
-		mcp.MethodToolsCall:
-		return true
-	default:
-		return false
-	}
-}
-
 func methodErrorType(err error) string {
 	if err == nil {
 		return ""
@@ -513,6 +436,10 @@ func methodErrorType(err error) string {
 
 	var unparsable *server.UnparsableMessageError
 	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
 	case errors.As(err, &unparsable):
 		return "parse"
 	case errors.Is(err, server.ErrUnsupported):
@@ -551,7 +478,7 @@ func (m *MCPServer) beginMethodObservation(ctx context.Context, id any, method m
 // unmarshal-path fallback. Returns false only when no observation was ever
 // stored for this key — that's the "OnError without BeforeAny" path (e.g.,
 // mcp-go unmarshal failures in request_handler.go), where the caller SHOULD
-// fallback to synthesize a one-shot emission so the method span gets ended.
+// fallback to synthesize a one-shot metric emission.
 func (m *MCPServer) finishMethodObservation(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) bool {
 	if !shouldObserveMethod(method) {
 		return false
@@ -598,14 +525,14 @@ func (m *MCPServer) expireMethodObservation(key string) {
 	}
 
 	ctxErr := observation.ctx.Err()
-	expireErr := errors.New("request context ended before success/error hook")
-	if ctxErr != nil {
-		expireErr = fmt.Errorf("%w: %v", expireErr, ctxErr)
+	expireErr := error(ctxErr)
+	if expireErr == nil {
+		expireErr = errors.New("request context ended before success/error hook")
 	}
 	m.completeMethodObservation(observation, expireErr)
 
 	logCtx := context.WithoutCancel(observation.ctx)
-	attrs := []any{slog.String("mcp.method.name", string(observation.method))}
+	attrs := []any{slog.String("mcp.method.name", otelpkg.NormalizeMCPMethod(string(observation.method)))}
 	if ctxErr != nil {
 		attrs = append(attrs, slog.String("context_error", ctxErr.Error()))
 	}
@@ -626,8 +553,7 @@ func (m *MCPServer) expireMethodObservation(key string) {
 // paths where BeforeAny never fired (mcp-go unmarshal-failure OnError invocations
 // and "notification channel blocked" operational errors — see mcp-go
 // request_handler.go and session.go). Without this, the method span started in
-// methodSpanMiddleware would leak and the error would be invisible in
-// mcp.method.calls.
+// mcp.method.calls would otherwise miss the failure.
 func (m *MCPServer) completeMethodObservationFallback(ctx context.Context, method mcp.MCPMethod, err error) {
 	observation := &methodObservation{
 		ctx:     ctx,
@@ -648,9 +574,6 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 	ctx := context.WithoutCancel(observation.ctx)
 	span := trace.SpanFromContext(ctx)
 	spanAttrs := []attribute.KeyValue{}
-	if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
-		spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
-	}
 	spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
 	spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
 
@@ -664,7 +587,7 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 
 	if m.meters != nil {
 		metricAttrs := []attribute.KeyValue{
-			attribute.String("mcp.method.name", string(observation.method)),
+			attribute.String("mcp.method.name", otelpkg.NormalizeMCPMethod(string(observation.method))),
 		}
 		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
 		metricAttrs = otelpkg.AppendClientSource(ctx, metricAttrs)
@@ -676,112 +599,14 @@ func (m *MCPServer) completeMethodObservation(observation *methodObservation, er
 		m.meters.MethodCalls.Add(ctx, 1, opts)
 		m.meters.MethodDuration.Record(ctx, float64(time.Since(observation.started))/float64(time.Millisecond), opts)
 	}
-
-	span.End()
-}
-
-func (m *MCPServer) startMethodSpan(ctx context.Context, method mcp.MCPMethod) (context.Context, trace.Span) {
-	attrs := []attribute.KeyValue{
-		otelpkg.MCPMethodKey.String(string(method)),
-	}
-	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-		attrs = append(attrs, otelpkg.MCPTenantURLKey.String(signozURL))
-	}
-	attrs = otelpkg.AppendCallerCorrelation(ctx, attrs)
-
-	return otel.Tracer("signoz-mcp-server").Start(ctx, "MCP "+string(method),
-		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(attrs...),
-	)
-}
-
-func methodFromJSONRPCMessage(message []byte) (mcp.MCPMethod, bool) {
-	var envelope struct {
-		JSONRPC string        `json:"jsonrpc"`
-		Method  mcp.MCPMethod `json:"method"`
-		ID      any           `json:"id,omitempty"`
-		Result  any           `json:"result,omitempty"`
-	}
-
-	if err := json.Unmarshal(message, &envelope); err != nil {
-		return "", false
-	}
-	if envelope.JSONRPC != mcp.JSONRPC_VERSION || envelope.ID == nil || envelope.Result != nil {
-		return "", false
-	}
-	if !isKnownRequestMethod(envelope.Method) {
-		return "", false
-	}
-	if !shouldObserveMethod(envelope.Method) {
-		return "", false
-	}
-
-	return envelope.Method, true
-}
-
-type delegatedReadCloser struct {
-	io.Reader
-	io.Closer
-}
-
-func (m *MCPServer) peekMethodSpanBody(body io.ReadCloser) ([]byte, io.ReadCloser, bool, error) {
-	if body == nil {
-		return nil, nil, false, nil
-	}
-
-	limited := &io.LimitedReader{R: body, N: m.maxMethodSpanBodyBytes + 1}
-	prefix, err := io.ReadAll(limited)
-	reconstructed := delegatedReadCloser{
-		Reader: io.MultiReader(bytes.NewReader(prefix), body),
-		Closer: body,
-	}
-	if err != nil {
-		return nil, reconstructed, false, err
-	}
-	if int64(len(prefix)) > m.maxMethodSpanBodyBytes {
-		return nil, reconstructed, true, nil
-	}
-	return prefix, reconstructed, false, nil
-}
-
-func (m *MCPServer) methodSpanMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.Body == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		body, reconstructed, oversized, err := m.peekMethodSpanBody(r.Body)
-		if reconstructed != nil {
-			r.Body = reconstructed
-		}
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if oversized {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		method, ok := methodFromJSONRPCMessage(body)
-		if !ok {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		ctx, _ := m.startMethodSpan(r.Context(), method)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
 }
 
 // maxBytesMiddleware bounds an inbound /mcp request body (config.MaxRequestBytes,
 // default 4 MiB; env MCP_MAX_REQUEST_BYTES) so one oversized POST can't OOM the
 // shared pod: a declared over-cap Content-Length is rejected early with 413,
 // otherwise MaxBytesReader bounds the (possibly chunked) stream and an over-cap
-// read surfaces downstream as mcp-go's JSON-RPC parse error. Outermost /mcp
-// middleware, so the cap also covers the methodSpanMiddleware peek. The limit<=0
-// guard is defensive for directly-constructed configs (e.g. tests).
+// read surfaces downstream as mcp-go's JSON-RPC parse error. The limit<=0 guard
+// is defensive for directly-constructed configs (e.g. tests).
 func (m *MCPServer) maxBytesMiddleware(next http.Handler) http.Handler {
 	limit := int64(m.config.MaxRequestBytes)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -805,29 +630,37 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		m.beginMethodObservation(ctx, id, method, message)
 		span := trace.SpanFromContext(ctx)
 		spanAttrs := []attribute.KeyValue{}
-		if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
-			spanAttrs = append(spanAttrs, otelpkg.MCPSessionIDKey.String(session.SessionID()))
+		if method == mcp.MethodToolsCall {
+			span.SetName(string(mcp.MethodToolsCall))
+			spanAttrs = append(spanAttrs,
+				otelpkg.MCPMethodKey.String(string(mcp.MethodToolsCall)),
+				otelpkg.GenAIOperationNameKey.String("execute_tool"),
+			)
 		}
 		spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
 		spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
 		if len(spanAttrs) > 0 {
 			span.SetAttributes(spanAttrs...)
 		}
-		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method.name", string(method)))
+		m.logger.DebugContext(ctx, "mcp request", slog.String("mcp.method.name", otelpkg.NormalizeMCPMethod(string(method))))
 	})
 	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
-		if !m.finishMethodObservation(ctx, id, method, message, nil) && shouldObserveMethod(method) {
-			trace.SpanFromContext(ctx).End()
+		if method == mcp.MethodToolsCall {
+			m.completeUnobservedToolCall(ctx, result, nil)
+			return
 		}
+		m.finishMethodObservation(ctx, id, method, message, nil)
 	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
-		if shouldObserveMethod(method) {
+		if method == mcp.MethodToolsCall {
+			m.completeUnobservedToolCall(ctx, nil, err)
+		} else if shouldObserveMethod(method) {
 			// finish returns true iff a matching observation existed (even if
 			// expireMethodObservation already emitted on the race path — the
 			// tombstone prevents double-count). It returns false only when
 			// BeforeAny never stored one (mcp-go unmarshal-failure paths), in
-			// which case we synthesize a one-shot emission so the method span
-			// gets ended and mcp.method.calls records the failure.
+			// which case we synthesize a one-shot emission so
+			// mcp.method.calls records the failure.
 			if !m.finishMethodObservation(ctx, id, method, message, err) {
 				m.completeMethodObservationFallback(ctx, method, err)
 			}
@@ -840,66 +673,39 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			span.SetStatus(codes.Error, err.Error())
 		}
 		m.logger.ErrorContext(ctx, "mcp error",
-			slog.String("mcp.method.name", string(method)),
+			slog.String("mcp.method.name", otelpkg.NormalizeMCPMethod(string(method))),
 			logpkg.ErrAttr(err))
 	})
-	// Analytics: track session registration after successful initialize.
-	// Uses AfterInitialize (not BeforeAny) so failed initializations are not counted.
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
-		if m.meters != nil {
-			attrs := otelpkg.AppendTenantURL(ctx, nil)
-			attrs = otelpkg.AppendClientSource(ctx, attrs)
-			m.meters.SessionRegistered.Add(ctx, 1, metric.WithAttributes(attrs...))
+		signozURL, ok := util.GetSigNozURL(ctx)
+		if !ok || signozURL == "" {
+			return
 		}
 
-		var sessionID string
-		if session := server.ClientSessionFromContext(ctx); session != nil {
-			sessionID = session.SessionID()
+		props := map[string]any{
+			analytics.AttrTenantURL: signozURL,
 		}
-
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			traits := map[string]any{
-				analytics.AttrTenantURL: signozURL,
+		if message != nil {
+			if name := message.Params.ClientInfo.Name; name != "" {
+				props[analytics.AttrClientName] = name
 			}
-			props := map[string]any{
-				analytics.AttrTenantURL: signozURL,
+			if clientVersion := message.Params.ClientInfo.Version; clientVersion != "" {
+				props[analytics.AttrClientVersion] = clientVersion
 			}
-			if sessionID != "" {
-				props[analytics.AttrSessionID] = sessionID
-			}
-			if message != nil && message.Params.ProtocolVersion != "" {
-				props[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
-				traits[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
-			}
-			if message != nil {
-				attachClientInfo(traits, message.Params.ClientInfo)
-				attachClientInfo(props, message.Params.ClientInfo)
-			}
-			attachCallerCorrelation(ctx, props)
-			m.identifyAndTrackAsync(ctx, analytics.EventSessionRegistered, traits, props)
 		}
-	})
-	hooks.AddOnRegisterSession(func(ctx context.Context, _ server.ClientSession) {
-		m.logger.InfoContext(ctx, "mcp session registered")
-
-		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-			traits := map[string]any{
-				analytics.AttrTenantURL: signozURL,
-			}
-			m.identifyAsync(ctx, traits)
+		if result != nil && result.ProtocolVersion != "" {
+			props[analytics.AttrProtocolVersion] = result.ProtocolVersion
+		} else if message != nil && message.Params.ProtocolVersion != "" {
+			props[analytics.AttrProtocolVersion] = message.Params.ProtocolVersion
 		}
-	})
-	hooks.AddOnUnregisterSession(func(ctx context.Context, _ server.ClientSession) {
-		m.logger.InfoContext(ctx, "mcp session unregistered")
+		attachCallerCorrelation(ctx, props)
+		m.trackEventAsync(ctx, analytics.EventClientInitialized, props)
 	})
 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
 		if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 			props := map[string]any{
 				analytics.AttrTenantURL:  signozURL,
 				analytics.AttrPromptName: message.Params.Name,
-			}
-			if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
-				props[analytics.AttrSessionID] = session.SessionID()
 			}
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventPromptFetched, props)
@@ -911,9 +717,6 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 				analytics.AttrTenantURL:   signozURL,
 				analytics.AttrResourceURI: message.Params.URI,
 			}
-			if session := server.ClientSessionFromContext(ctx); session != nil && session.SessionID() != "" {
-				props[analytics.AttrSessionID] = session.SessionID()
-			}
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
 		}
@@ -922,18 +725,13 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 }
 
 // loggingMiddleware returns a tool handler middleware that logs tool call
-// start/finish with duration, tool name, session ID, and search context.
-// It also creates an OTel span with GenAI semantic convention attributes.
+// start/finish with duration, tool name, and search context. It decorates the
+// request span created by mcp-go with MCP and GenAI semantic attributes.
 func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
-	tracer := otel.Tracer("signoz-mcp-server")
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			start := time.Now()
-
-			// Extract session ID from mcp-go client session.
-			if session := server.ClientSessionFromContext(ctx); session != nil {
-				ctx = util.SetSessionID(ctx, session.SessionID())
-			}
+			otelpkg.MarkMCPToolHandlerObserved(ctx)
 
 			// Extract searchContext from tool arguments (LLM-provided).
 			if args, ok := req.Params.Arguments.(map[string]any); ok {
@@ -944,22 +742,17 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 
 			ctx = util.SetToolName(ctx, req.Params.Name)
 
-			// Create a span for this tool call with GenAI semantic attributes.
-			ctx, span := tracer.Start(ctx, "execute_tool",
-				trace.WithSpanKind(trace.SpanKindServer),
-				trace.WithAttributes(
-					otelpkg.GenAIOperationNameKey.String("execute_tool"),
-					otelpkg.GenAIToolNameKey.String(req.Params.Name),
-				))
-			defer span.End()
-
-			// Use the span's own span ID as the tool call ID.
-			span.SetAttributes(otelpkg.GenAIToolCallIDKey.String(span.SpanContext().SpanID().String()))
+			// mcp-go owns the request span lifetime. Decorate that MCP server span
+			// with the low-cardinality tool target and GenAI compatibility attrs.
+			span := trace.SpanFromContext(ctx)
+			span.SetName("tools/call " + req.Params.Name)
+			span.SetAttributes(
+				otelpkg.MCPMethodKey.String(string(mcp.MethodToolsCall)),
+				otelpkg.GenAIOperationNameKey.String("execute_tool"),
+				otelpkg.GenAIToolNameKey.String(req.Params.Name),
+			)
 
 			extraAttrs := []attribute.KeyValue{}
-			if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-				extraAttrs = append(extraAttrs, otelpkg.MCPSessionIDKey.String(sid))
-			}
 			if sc, ok := util.GetSearchContext(ctx); ok && sc != "" {
 				extraAttrs = append(extraAttrs, otelpkg.MCPSearchContextKey.String(sc))
 			}
@@ -974,7 +767,15 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 
 			// Determine error status: either a Go error or an MCP tool result error.
 			isErr := err != nil || (result != nil && result.IsError)
+			errorType := toolOTelErrorType(err, result)
+			errorCode := toolerrors.Code(result)
 			span.SetAttributes(otelpkg.MCPToolIsErrorKey.Bool(isErr))
+			if errorType != "" {
+				span.SetAttributes(attribute.String("error.type", errorType))
+			}
+			if errorCode != "" {
+				span.SetAttributes(otelpkg.MCPToolErrorCodeKey.String(errorCode))
+			}
 			// Always emit the result size — even zero — so it matches the log
 			// field and downstream aggregations (avg, histogram) don't drop
 			// empty-result tool calls as nulls.
@@ -1011,39 +812,119 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 					sizeAttr)
 			}
 
-			if m.meters != nil {
-				attrKVs := []attribute.KeyValue{
-					attribute.String("gen_ai.tool.name", req.Params.Name),
-					attribute.Bool("mcp.tool.is_error", isErr),
-				}
-				attrKVs = otelpkg.AppendTenantURL(ctx, attrKVs)
-				attrKVs = otelpkg.AppendClientSource(ctx, attrKVs)
-				attrs := metric.WithAttributes(attrKVs...)
-				m.meters.ToolCalls.Add(ctx, 1, attrs)
-				m.meters.ToolCallDuration.Record(ctx, float64(duration)/float64(time.Millisecond), attrs)
-			}
-
-			// Analytics: track tool call
-			if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
-				props := map[string]any{
-					analytics.AttrTenantURL:   signozURL,
-					analytics.AttrToolName:    req.Params.Name,
-					analytics.AttrToolIsError: isErr,
-					analytics.AttrDurationMs:  time.Since(start).Milliseconds(),
-				}
-				if sid, ok := util.GetSessionID(ctx); ok && sid != "" {
-					props[analytics.AttrSessionID] = sid
-				}
-				if errorType := toolErrorType(err, result); errorType != "" {
-					props[analytics.AttrErrorType] = errorType
-				}
-				attachCallerCorrelation(ctx, props)
-				m.trackEventAsync(ctx, analytics.EventToolCalled, props)
-			}
+			m.recordToolMetrics(ctx, req.Params.Name, isErr, errorType, errorCode, duration)
+			m.trackToolCall(ctx, req.Params.Name, isErr, duration, toolErrorType(err, result))
 
 			return result, err
 		}
 	}
+}
+
+// completeUnobservedToolCall covers SDK rejections that occur before the
+// registered tool middleware can run, such as unknown or filtered tool names.
+func (m *MCPServer) completeUnobservedToolCall(ctx context.Context, rawResult any, err error) {
+	started, handlerObserved, ok := otelpkg.MCPToolRequestObservation(ctx)
+	if !ok || handlerObserved {
+		return
+	}
+
+	result, _ := rawResult.(*mcp.CallToolResult)
+	isErr := err != nil || (result != nil && result.IsError)
+	errorType := methodErrorType(err)
+	if err == nil {
+		errorType = toolOTelErrorType(nil, result)
+	}
+	errorCode := toolerrors.Code(result)
+	resultBytes := approxResultBytes(result)
+
+	span := trace.SpanFromContext(ctx)
+	span.SetName(string(mcp.MethodToolsCall))
+	spanAttrs := []attribute.KeyValue{
+		otelpkg.MCPMethodKey.String(string(mcp.MethodToolsCall)),
+		otelpkg.GenAIOperationNameKey.String("execute_tool"),
+		otelpkg.GenAIToolNameKey.String(unknownToolName),
+		otelpkg.MCPToolIsErrorKey.Bool(isErr),
+		otelpkg.MCPToolResultBytesKey.Int64(resultBytes),
+	}
+	if errorType != "" {
+		spanAttrs = append(spanAttrs, attribute.String("error.type", errorType))
+	}
+	if errorCode != "" {
+		spanAttrs = append(spanAttrs, otelpkg.MCPToolErrorCodeKey.String(errorCode))
+	}
+	span.SetAttributes(spanAttrs...)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	} else if result != nil && result.IsError {
+		errMsg := extractToolErrorMessage(result)
+		span.RecordError(errors.New(errMsg))
+		span.SetStatus(codes.Error, errMsg)
+	}
+
+	duration := time.Since(started)
+	m.recordToolMetrics(ctx, unknownToolName, isErr, errorType, errorCode, duration)
+	analyticsErrorType := errorType
+	if err == nil {
+		analyticsErrorType = toolErrorType(nil, result)
+	}
+	m.trackToolCall(ctx, unknownToolName, isErr, duration, analyticsErrorType)
+}
+
+func (m *MCPServer) recordToolMetrics(ctx context.Context, toolName string, isErr bool, errorType, errorCode string, duration time.Duration) {
+	if m.meters == nil {
+		return
+	}
+	attrKVs := []attribute.KeyValue{
+		otelpkg.GenAIToolNameKey.String(toolName),
+		otelpkg.MCPToolIsErrorKey.Bool(isErr),
+	}
+	if errorType != "" {
+		attrKVs = append(attrKVs, attribute.String("error.type", errorType))
+	}
+	if errorCode != "" {
+		attrKVs = append(attrKVs, otelpkg.MCPToolErrorCodeKey.String(errorCode))
+	}
+	attrKVs = otelpkg.AppendTenantURL(ctx, attrKVs)
+	attrKVs = otelpkg.AppendClientSource(ctx, attrKVs)
+	opts := metric.WithAttributes(attrKVs...)
+	m.meters.ToolCalls.Add(ctx, 1, opts)
+	m.meters.ToolCallDuration.Record(ctx, float64(duration)/float64(time.Millisecond), opts)
+}
+
+func (m *MCPServer) trackToolCall(ctx context.Context, toolName string, isErr bool, duration time.Duration, errorType string) {
+	signozURL, ok := util.GetSigNozURL(ctx)
+	if !ok || signozURL == "" {
+		return
+	}
+	props := map[string]any{
+		analytics.AttrTenantURL:   signozURL,
+		analytics.AttrToolName:    toolName,
+		analytics.AttrToolIsError: isErr,
+		analytics.AttrDurationMs:  duration.Milliseconds(),
+	}
+	if errorType != "" {
+		props[analytics.AttrErrorType] = errorType
+	}
+	attachCallerCorrelation(ctx, props)
+	m.trackEventAsync(ctx, analytics.EventToolCalled, props)
+}
+
+func toolOTelErrorType(err error, result *mcp.CallToolResult) string {
+	if err != nil {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			return "timeout"
+		case errors.Is(err, context.Canceled):
+			return "cancelled"
+		default:
+			return "internal"
+		}
+	}
+	if result != nil && result.IsError {
+		return "tool_error"
+	}
+	return ""
 }
 
 // extractToolErrorMessage returns the text from the first Content entry of an
@@ -1061,6 +942,7 @@ func extractToolErrorMessage(result *mcp.CallToolResult) string {
 
 // toolErrorType classifies a tool-call failure into a small, bounded set of
 // categories so dashboards can split errors without exploding cardinality.
+// Structured result codes are authoritative; display text is never parsed.
 // Returns "" when there is no error.
 func toolErrorType(err error, result *mcp.CallToolResult) string {
 	if err != nil {
@@ -1075,20 +957,10 @@ func toolErrorType(err error, result *mcp.CallToolResult) string {
 	if result == nil || !result.IsError {
 		return ""
 	}
-
-	msg := strings.ToLower(extractToolErrorMessage(result))
-	switch {
-	case strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded"):
-		return "timeout"
-	case strings.Contains(msg, "unauthorized") || strings.Contains(msg, "status 401") || strings.Contains(msg, "status 403"):
-		return "unauthorized"
-	case strings.Contains(msg, "status 4"):
-		return "upstream_4xx"
-	case strings.Contains(msg, "status 5"):
-		return "upstream_5xx"
-	default:
-		return "tool_error"
+	if code := toolerrors.Code(result); code != "" {
+		return strings.ToLower(code)
 	}
+	return "tool_error"
 }
 
 // approxResultBytes sums the length of text content entries in a tool result.
@@ -1189,9 +1061,6 @@ func httpRequestSpanAttrs(r *http.Request) []attribute.KeyValue {
 	if userAgent := util.HTTPUserAgent(r); userAgent != "" {
 		attrs = append(attrs, attribute.String("user_agent.original", userAgent))
 	}
-	if sessionID := util.HTTPSessionID(r); sessionID != "" {
-		attrs = append(attrs, otelpkg.MCPSessionIDKey.String(sessionID))
-	}
 	return attrs
 }
 
@@ -1234,7 +1103,7 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 		slog.String("mcp.auth.failure_reason", reason),
 		slog.String("mcp.auth.mode", authMode),
 	}
-	logAttrs = append(logAttrs, logpkg.MCPHTTPRequestAttrs(r)...)
+	logAttrs = append(logAttrs, logpkg.HTTPRequestAttrs(r)...)
 	logAttrs = append(logAttrs, attrs...)
 	level := slog.LevelWarn
 	if reason == authFailureExpiredOAuthToken || reason == authFailureMissingCredential {
@@ -1471,7 +1340,7 @@ func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	// WithHeartbeatInterval is kept: clients may still open a GET listening stream
 	// and the heartbeat keeps it alive through proxies.
 	mcpHandler := server.NewStreamableHTTPServer(s, m.streamableHTTPOptions()...)
-	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(m.methodSpanMiddleware(mcpHandler))))
+	mux.Handle("/mcp", m.maxBytesMiddleware(m.authMiddleware(mcpHandler)))
 
 	m.logger.Info("Listening for MCP clients",
 		slog.String("addr", addr),
