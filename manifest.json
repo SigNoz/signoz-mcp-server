@@ -67,7 +67,7 @@
     },
     {
       "name": "signoz_get_alert_history",
-      "description": "Get alert state history timeline for a specific rule (param 'id') via GET /api/v2/rules/{id}/history/timeline, with optional state filter, filterExpression, and cursor pagination"
+      "description": "Get alert firing history for a specific alert rule. Defaults to the last 6 hours. Use 'state' and 'filter' to narrow results. For the next page, pass data.nextCursor as 'cursor' and repeat the original query filters and time range."
     },
     {
       "name": "signoz_create_alert",

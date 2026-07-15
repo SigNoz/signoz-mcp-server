@@ -79,3 +79,36 @@ to lock). Implementation has not started — plan stays `Planning` until coding 
 - [x] **Expand the `state` enum?** → RESOLVED (2026-07-14): keep `firing`/`inactive`; expansion deferred.
 - [x] **Migrate only `timeline`, or also the sibling v2 history endpoints?** → RESOLVED (2026-07-14): `timeline` only.
 - [x] **Minimum SigNoz version** → RESOLVED (2026-07-15): **v0.118.0** (2026-04-08). The v2 routes were added and wired in commit `bb4e7df` (PR #10488, 2026-03-30); `git tag --contains` shows `v0.118.0` is the earliest stable release containing it (`v0.117.x` does not). Documented in README.
+
+### 2026-07-15 — PR review follow-up and user direction
+- User asked to address every valid review issue locally and explicitly directed that the agent-facing tool description must not mention `GET /api/v2/rules/{id}/history/timeline`. No commit, push, review-thread resolution, or PR-body edit is authorized until the user confirms.
+- Live review-thread refresh confirmed two open findings: custom page limits were not preserved on cursor-only follow-ups, and the v2 state enum was incomplete. Independent runtime/docs/MCP-practice passes also confirmed silent legacy `offset`, canonical-filter, pagination-drift, version-recovery, and compatibility-documentation gaps.
+- **Pagination decision superseded:** raw upstream cursors encode only offset/limit, so `id+cursor` could silently recompute a moving default time window and drop state/filter/order. The tool now returns a versioned MCP cursor containing the full absolute scope plus the inner upstream cursor. Follow-ups pass only `id`, `cursor`, and `searchContext`; unsafe or mismatched tokens fail before the upstream call.
+- **Filter decision superseded:** the MCP schema now advertises canonical `filter`, while the just-introduced backend-shaped `filterExpression` name remains an accepted alias. Conflicting aliases and wrong types fail loudly to prevent accidentally broad results.
+- **State decision superseded:** the tool now exposes all authoritative v2 values: `inactive`, `pending`, `recovering`, `firing`, `nodata`, and `disabled`.
+- **Offset compatibility:** the removed field cannot safely map to the opaque v2 cursor. Legacy `offset=0` is accepted only with a deprecation note; nonzero or malformed offset values return actionable `VALIDATION_FAILED` guidance.
+- **Cross-boundary drift:** malformed/inconsistent `items`, `total`, or `nextCursor` now emits a WARN and a fail-open “more results may exist” note. Cursor rewriting uses `json.RawMessage` maps so uint64 fingerprints remain exact.
+- **Docs/metadata:** runtime and manifest descriptions omit the backend route, the runtime description includes the v0.118.0 requirement, README compatibility is split from the v0.120.0 alert-rule CRUD requirement, and no companion `SigNoz/agent-skills` change is needed because shipped skills do not teach this contract.
+
+### 2026-07-15 — Independent-review hardening
+- A final independent runtime/MCP/docs pass found additional valid edge cases, all addressed locally before handoff.
+- Filter guidance no longer promises that unknown label keys hard-error; it advises unfiltered key discovery and retry because unknown labels generally return no matches. Fractional offsets are rejected before the shared loose integer parser can truncate them to zero.
+- Repeated cursors, cursor-without-row-progress pages, cursors after the reported total, and pages exceeding the clamped limit now withhold `nextCursor`, emit a WARN, and return fail-open recovery guidance. Cursor encoding and decoding enforce the same 64 KiB token bound.
+- Cursor rewriting can hold multiple JSON representations, so alert history now uses a 16 MiB response cap rather than the generic 64 MiB cap. Large uint64 item fields remain byte-exact.
+- The alert-summary resource now wraps `recentHistory.data.nextCursor` with the same absolute scope; a resource-to-tool continuation test pins the second call path. Credential-gated E2E coverage follows a live cursor when available and exercises every v2 state.
+- HTTP 404 recovery now preserves the shared upstream code/message/type/status fields, directs v0.118–v0.119 users to verify the rule in the UI, and names `signoz_list_alert_rules` only for v0.120.0+.
+
+### 2026-07-15 — Resource-facing pagination recovery
+- The independent re-review confirmed that logging alert-summary pagination drift was insufficient for resource consumers. The resource template now documents the history-tool handoff, and every summary includes machine-readable recent-history pagination or recovery metadata.
+- When recent-history pagination cannot be verified, all usable response data is retained but any parseable raw `nextCursor` is removed. The consumer is told that more results may exist and to retry `signoz_get_alert_history` without a cursor and with a narrower time range or filter.
+- A best-effort history-fetch failure is also visible in the summary as generic recovery metadata instead of being server-log-only; upstream error details are not leaked in the resource body.
+- Malformed history bytes returned with HTTP 200 are omitted from the best-effort summary so they cannot invalidate the surrounding JSON; the valid alert and generic history-recovery metadata remain available.
+
+### 2026-07-15 — Resource output simplification
+- User direction: do not overengineer the resource response. The nested pagination/recovery metadata described above is superseded by one concise `recentHistoryNote`; safe continuation remains in `recentHistory.data.nextCursor`, and malformed HTTP-200 history bodies are still omitted so the alert summary remains usable.
+
+### 2026-07-15 — Owner scope correction
+- Owner rejected the alert-history-specific 16 MiB response cap and the MCP-owned cursor wrapper as overengineering. Those changes, their resource wrapping, and their extensive edge-case test surface were removed.
+- The tool now forwards SigNoz's `data.nextCursor` unchanged and keeps `alertHistoryCompletenessNote` in `aggregate_helper.go`; deeper cursor refactoring remains in the separately tracked issue.
+- The narrow limit fix remains: when a cursor follow-up omits `limit`, the MCP request also omits it so SigNoz uses the page size encoded in the upstream cursor. The runtime description tells callers to repeat the original time range, state, filter, and order.
+- Filter compatibility is canonical-first (`filter`, then `filterExpression`) without a bespoke alias-conflict subsystem. Any supplied legacy `offset`, including zero, is rejected with direct cursor guidance.

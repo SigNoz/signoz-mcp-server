@@ -207,7 +207,7 @@ The binary is at `./bin/signoz-mcp-server`.
 
 - A running [SigNoz](https://signoz.io) instance
 - SigNoz v0.131.0 or newer for `signoz_check_metric_usage`
-- SigNoz v0.120.0 or newer for alert rule tools that use the `/api/v2/rules` APIs
+- SigNoz v0.120.0 or newer for alert-rule list/get/create/update/delete tools, and v0.118.0 or newer for alert history
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
 
@@ -332,7 +332,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`, available in SigNoz v0.131.0 and newer. Alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`, available in SigNoz v0.131.0 and newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -350,7 +350,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get an alert rule definition by `id` via GET /api/v2/rules/{id} |
-| `signoz_get_alert_history` | Get alert state history timeline for a rule (`id`) |
+| `signoz_get_alert_history` | Get alert firing history for a specific alert rule |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
 | `signoz_update_alert` | Update an alert rule by UUIDv7 `id` via PUT /api/v2/rules/{id} |
 | `signoz_delete_alert` | Delete an alert rule by UUIDv7 `id` via DELETE /api/v2/rules/{id} |
@@ -557,21 +557,24 @@ Gets top operations for a specific service.
 
 #### `signoz_get_alert_history`
 
-Gets the alert state-history timeline for a specific rule via `GET /api/v2/rules/{id}/history/timeline`. The response is `{ "status": "success", "data": { "items": [...], "total": <n>, "nextCursor": "<opaque>" } }`.
+Gets alert firing history for a specific alert rule. Defaults to the last 6 hours. Use `state` and `filter` to narrow results. For the next page, pass `data.nextCursor` as `cursor` and repeat the original query filters and time range.
+
+The response is `{ "status": "success", "data": { "items": [...], "total": <n>, "nextCursor": "<opaque>" } }`; `nextCursor` is omitted on the final page.
 
 - **Parameters**:
   - `id` (required) - Alert rule ID
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
-  - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
-  - `filterExpression` (optional) - SigNoz v5 query-builder filter expression to narrow the timeline by label (e.g. `severity = 'critical'`)
-  - `cursor` (optional) - Opaque pagination cursor. Pass the `nextCursor` from a previous response's `data` to fetch the next page; omit for the first page.
-  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `cursor`)
+  - `state` (optional) - Filter by alert state. Enum: `inactive`, `pending`, `recovering`, `firing`, `nodata`, `disabled` (omit for all transitions)
+  - `filter` (optional) - SigNoz query-builder expression over timeline labels. Combine conditions with `AND`, `OR`, and parentheses; quote strings with single quotes. Example: `severity = 'critical' AND (team = 'payments' OR service.name = 'checkout')`. To discover keys, first call without a filter and inspect `data.items[].labels[].key.name`. The backend-shaped `filterExpression` alias remains accepted for compatibility, but `filter` is canonical.
+  - `cursor` (optional) - Opaque continuation cursor. Repeat the original time range, state, filter, and order when fetching the next page. Omit `cursor` for the first page.
+  - `limit` (optional) - Rows per page. Default: 20; max: 10000 (higher values are clamped).
   - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
-  - **Completeness note**: the response appends a note reporting `hasMore` (from the presence of `data.nextCursor`) and the `cursor` value to pass for the next page
+  - **Legacy `offset`**: no longer supported; use the returned cursor instead.
+  - **Completeness note**: the response appends a note reporting `hasMore` from `data.nextCursor` and names the cursor for the next page.
 
-> **Requires SigNoz ≥ v0.118.0**, the first release to serve the v2 rule-history routes (`/api/v2/rules/{id}/history/*`, added in [SigNoz #10488](https://github.com/SigNoz/signoz/pull/10488)). Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
+> **Requires SigNoz ≥ v0.118.0**, the first release to serve the v2 rule-history routes (`/api/v2/rules/{id}/history/*`, added in [SigNoz #10488](https://github.com/SigNoz/signoz/pull/10488)). If this tool returns `NOT_FOUND`, verify the rule `id` in the SigNoz UI or, on SigNoz v0.120.0+, with `signoz_list_alert_rules`; if the rule exists, upgrade SigNoz. Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
 
 #### `signoz_list_views`
 

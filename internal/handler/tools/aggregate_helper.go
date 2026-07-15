@@ -716,6 +716,11 @@ func alertHistoryCompletenessNote(payload []byte, returnedRows, limit int, rowsK
 	}
 	if err := json.Unmarshal(payload, &resp); err == nil && resp.Data.NextCursor != "" {
 		if rowsKnown {
+			if limit == 0 {
+				return fmt.Sprintf(
+					"note: returned %d rows — more results exist (hasMore=true). Fetch the next page with cursor=%q.",
+					returnedRows, resp.Data.NextCursor)
+			}
 			return fmt.Sprintf(
 				"note: returned %d rows (limit %d) — more results exist (hasMore=true). Fetch the next page with cursor=%q.",
 				returnedRows, limit, resp.Data.NextCursor)
@@ -725,9 +730,17 @@ func alertHistoryCompletenessNote(payload []byte, returnedRows, limit int, rowsK
 			resp.Data.NextCursor)
 	}
 	if !rowsKnown {
+		if limit == 0 {
+			return "note: this tool cannot count returned rows, so more results may exist. Paginate with \"cursor\" (or narrow the query) to be sure."
+		}
 		return fmt.Sprintf(
 			"note: limit %d applied; this tool cannot count returned rows, so more results may exist. Paginate with \"cursor\" (or narrow the query) to be sure.",
 			limit)
+	}
+	if limit == 0 {
+		return fmt.Sprintf(
+			"note: returned %d rows — all matching results returned (hasMore=false).",
+			returnedRows)
 	}
 	return fmt.Sprintf(
 		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",

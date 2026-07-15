@@ -751,7 +751,7 @@ func TestHandleGetAlertHistoryFamilyA_TopLevelDataArrayCompletenessNote(t *testi
 
 // TestHandleGetAlertHistory_NextCursorHasMore pins the v2 pagination signal: a
 // response carrying data.nextCursor reports hasMore=true and names the cursor to
-// pass back, and a passed-through offset arg is ignored (v2 has no offset param).
+// pass back. The upstream cursor is forwarded unchanged.
 func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	var captured types.AlertHistoryRequest
 	mock := &client.MockClient{
@@ -762,11 +762,10 @@ func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	result, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
-		"ruleId":           "rule-x",
-		"limit":            "2",
-		"offset":           "5", // ignored under v2
-		"cursor":           "CURSOR_PREV",
-		"filterExpression": "severity = 'critical'",
+		"ruleId": "rule-x",
+		"limit":  "2",
+		"cursor": "CURSOR_PREV",
+		"filter": "severity = 'critical'",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -774,7 +773,6 @@ func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	// The cursor and filter expression must reach the client verbatim.
 	if captured.Cursor != "CURSOR_PREV" {
 		t.Errorf("forwarded cursor = %q, want CURSOR_PREV", captured.Cursor)
 	}

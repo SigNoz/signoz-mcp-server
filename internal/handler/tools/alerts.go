@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -32,6 +34,10 @@ type alertRuleListOutput struct {
 var serverPopulatedAlertFields = []string{
 	"createdAt", "updatedAt", "createdBy", "updatedBy",
 	"createAt", "updateAt", "createBy", "updateBy",
+}
+
+var alertHistoryStateValues = []string{
+	"inactive", "pending", "recovering", "firing", "nodata", "disabled",
 }
 
 func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
@@ -81,15 +87,15 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get the alert state-history timeline for a specific rule (GET /api/v2/rules/{id}/history/timeline). Defaults to last 6 hours if no time specified. Use 'state' to filter by alert state, 'filterExpression' to narrow by label, and 'cursor' to page through results."),
+		mcp.WithDescription("Get alert firing history for a specific alert rule. Defaults to the last 6 hours. Use 'state' and 'filter' to narrow results. For the next page, pass data.nextCursor as 'cursor' and repeat the original query filters and time range."),
 		mcp.WithString("id", mcp.Description("Alert rule ID. Required.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
-		mcp.WithString("state", mcp.Enum("firing", "inactive"), mcp.Description("Filter history by alert state: 'firing' or 'inactive'. If omitted, returns all state transitions.")),
-		mcp.WithString("filterExpression", mcp.Description("Optional SigNoz v5 query-builder filter expression to narrow the timeline by label (e.g. severity = 'critical'). Omit to return all transitions.")),
-		mcp.WithString("cursor", mcp.Description("Opaque pagination cursor. Pass the 'nextCursor' value from a previous response's data to fetch the next page. Omit for the first page.")),
-		mcp.WithString("limit", mcp.DefaultString("20"), intOrStringType(), mcp.Description("Limit number of results (default: 20)")),
+		mcp.WithString("state", mcp.Enum(alertHistoryStateValues...), mcp.Description("Filter by alert state: inactive, pending, recovering, firing, nodata, or disabled. Omit to return all transitions.")),
+		mcp.WithString("filter", mcp.Description("Filter timeline labels using SigNoz query-builder syntax. Combine conditions with AND, OR, and parentheses; quote string values with single quotes and use operators such as =, !=, IN, and NOT IN. Example: \"severity = 'critical' AND (team = 'payments' OR service.name = 'checkout')\". To discover label keys, first call without a filter and inspect data.items[].labels[].key.name. If a filter returns no matches, retry unfiltered and verify the key spelling; malformed expressions return validation errors.")),
+		mcp.WithString("cursor", mcp.Description("Opaque continuation cursor. Repeat the original time range, state, filter, and order when fetching the next page. Omit cursor for the first page.")),
+		mcp.WithString("limit", mcp.DefaultString("20"), intOrStringType(), mcp.Description("Rows per page. Default: 20; max: 10000 (higher values are clamped).")),
 		mcp.WithString("order", mcp.DefaultString("asc"), mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default: 'asc')")),
 	)
 	h.addTool(s, alertHistoryTool, h.handleGetAlertHistory)
@@ -353,6 +359,10 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Example: {"id": "0196634d-5d66-75c4-b778-e317f49dab7a", "timeRange": "24h"}`), nil
 	}
 
+	if _, present := args["offset"]; present {
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "offset" is no longer supported; use data.nextCursor as "cursor" for subsequent pages.`), nil
+	}
+
 	// Reject a present-but-malformed start/end loudly; otherwise
 	// GetTimestampsWithDefaults silently falls back to the default window.
 	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
@@ -361,7 +371,6 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	}
 
 	startStr, endStr := timeutil.GetTimestampsWithDefaults(args, "ms")
-
 	var start, end int64
 	if _, err := fmt.Sscanf(startStr, "%d", &start); err != nil {
 		h.logger.WarnContext(ctx, "Invalid start timestamp format", slog.String("start", startStr), logpkg.ErrAttr(err))
@@ -371,44 +380,49 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "Invalid end timestamp format", slog.String("end", endStr), logpkg.ErrAttr(err))
 		return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "end" timestamp: "%s". Expected milliseconds since epoch (e.g., "1697472000000") or use "timeRange" parameter instead (e.g., "24h")`, endStr)), nil
 	}
+	if start >= end {
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "start" must be earlier than "end".`), nil
+	}
 
-	// Route the limit through the shared loose parser (number-or-string), with
-	// this tool's documented default of 20. The old bespoke re-parse advertised
-	// a fictional "1-1000" bound that was never enforced — dropped here.
-	limit, err := intArg(args, "limit", 20)
+	cursor := strings.TrimSpace(stringArg(args, "cursor"))
+	defaultLimit := 20
+	if cursor != "" {
+		defaultLimit = 0 // let the upstream cursor retain its encoded page size
+	}
+	limit, err := intArg(args, "limit", defaultLimit)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Invalid limit format", slog.Any("limit", args["limit"]), logpkg.ErrAttr(err))
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
-	// Clamp before forwarding so an oversized limit can't bypass the memory guard.
 	limit, limitClamped := clampLimit(limit)
 
 	order := "asc"
-	if orderStr, ok := args["order"].(string); ok && orderStr != "" {
-		if orderStr == "asc" || orderStr == "desc" {
-			order = orderStr
-		} else {
-			h.logger.WarnContext(ctx, "Invalid order value", slog.String("order", orderStr))
-			return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderStr)), nil
+	if orderArg := strings.TrimSpace(stringArg(args, "order")); orderArg != "" {
+		if orderArg != "asc" && orderArg != "desc" {
+			h.logger.WarnContext(ctx, "Invalid order value", slog.String("order", orderArg))
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "order" value: "%s". Must be either "asc" or "desc"`, orderArg)), nil
+		}
+		order = orderArg
+	}
+
+	state := strings.TrimSpace(stringArg(args, "state"))
+	if state != "" {
+		valid := false
+		for _, candidate := range alertHistoryStateValues {
+			if state == candidate {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			h.logger.WarnContext(ctx, "Invalid state value", slog.String("state", state))
+			return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "state" value: "%s". Must be one of: %s`, state, strings.Join(alertHistoryStateValues, ", "))), nil
 		}
 	}
 
-	var state string
-	if stateStr, ok := args["state"].(string); ok && stateStr != "" {
-		if stateStr != "firing" && stateStr != "inactive" {
-			h.logger.WarnContext(ctx, "Invalid state value", slog.String("state", stateStr))
-			return errorWithCode(CodeValidationFailed, fmt.Sprintf(`Invalid "state" value: "%s". Must be either "firing" or "inactive"`, stateStr)), nil
-		}
-		state = stateStr
-	}
-
-	var filterExpression string
-	if v, ok := args["filterExpression"].(string); ok {
-		filterExpression = strings.TrimSpace(v)
-	}
-	var cursor string
-	if v, ok := args["cursor"].(string); ok {
-		cursor = strings.TrimSpace(v)
+	filterExpression := strings.TrimSpace(stringArg(args, "filter"))
+	if filterExpression == "" {
+		filterExpression = strings.TrimSpace(stringArg(args, "filterExpression"))
 	}
 
 	historyReq := types.AlertHistoryRequest{
@@ -423,11 +437,11 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert_history",
 		slog.String("ruleId", ruleID),
-		slog.Int64("start", start),
-		slog.Int64("end", end),
-		slog.Bool("hasCursor", cursor != ""),
-		slog.Int("limit", limit),
-		slog.String("order", order))
+		slog.Int64("start", historyReq.Start),
+		slog.Int64("end", historyReq.End),
+		slog.Bool("hasCursor", historyReq.Cursor != ""),
+		slog.Int("limit", historyReq.Limit),
+		slog.String("order", historyReq.Order))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
@@ -438,12 +452,16 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 		h.logger.ErrorContext(ctx, "Failed to get alert history",
 			slog.String("ruleId", ruleID),
 			logpkg.ErrAttr(err))
+		var statusErr *signozclient.HTTPStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+			result := upstreamError(err)
+			result.Content = append(result.Content, mcp.NewTextContent(
+				`recovery: Verify "id" in the SigNoz UI or, on SigNoz v0.120.0+, with signoz_list_alert_rules. If the rule exists, upgrade SigNoz to v0.118.0 or later; older versions do not support this tool.`))
+			return result, nil
+		}
 		return upstreamError(err), nil
 	}
 
-	// Completeness signal: alert history is a raw passthrough. v2 returns an
-	// explicit data.nextCursor when more pages exist, so derive hasMore from it
-	// (falling back to a row-count heuristic when the cursor is absent).
 	returnedRows, rowsKnown := countAlertHistoryRows(respJSON)
 	var notes []string
 	if limitClamped {
@@ -451,7 +469,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 			"note: result limited to %d rows to bound server memory; paginate with \"cursor\" (or narrow the time range) for more.",
 			MaxRawResultLimit))
 	}
-	notes = append(notes, alertHistoryCompletenessNote(respJSON, returnedRows, limit, rowsKnown))
+	notes = append(notes, alertHistoryCompletenessNote(respJSON, returnedRows, historyReq.Limit, rowsKnown))
 	return resultWithNotes(respJSON, notes...), nil
 }
 

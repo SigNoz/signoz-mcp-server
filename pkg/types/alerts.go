@@ -12,7 +12,7 @@ import (
 type AlertHistoryRequest struct {
 	Start            int64
 	End              int64
-	State            string // "" omitted; one of inactive|pending|firing|nodata|disabled
+	State            string // "" omitted; one of inactive|pending|recovering|firing|nodata|disabled
 	FilterExpression string // "" omitted; v5 query-builder filter expression
 	Limit            int
 	Order            string // "asc" | "desc"
