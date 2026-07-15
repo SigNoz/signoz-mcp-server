@@ -469,7 +469,10 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 			"note: result limited to %d rows to bound server memory; paginate with \"cursor\" (or narrow the time range) for more.",
 			MaxRawResultLimit))
 	}
-	notes = append(notes, alertHistoryCompletenessNote(respJSON, returnedRows, historyReq.Limit, rowsKnown))
+	notes = append(notes, alertHistoryCompletenessNote(
+		respJSON, returnedRows, historyReq.Limit, rowsKnown,
+		historyReq.Start, historyReq.End, historyReq.Order,
+	))
 	return resultWithNotes(respJSON, notes...), nil
 }
 

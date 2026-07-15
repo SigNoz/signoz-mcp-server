@@ -750,8 +750,9 @@ func TestHandleGetAlertHistoryFamilyA_TopLevelDataArrayCompletenessNote(t *testi
 }
 
 // TestHandleGetAlertHistory_NextCursorHasMore pins the v2 pagination signal: a
-// response carrying data.nextCursor reports hasMore=true and names the cursor to
-// pass back. The upstream cursor is forwarded unchanged.
+// response carrying data.nextCursor reports hasMore=true and names the cursor,
+// resolved absolute time range, and order to pass back. The upstream cursor is
+// forwarded unchanged.
 func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	var captured types.AlertHistoryRequest
 	mock := &client.MockClient{
@@ -763,7 +764,10 @@ func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	h := newTestHandler(mock)
 	result, err := h.handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
 		"ruleId": "rule-x",
+		"start":  "1697385600000",
+		"end":    "1697472000000",
 		"limit":  "2",
+		"order":  "desc",
 		"cursor": "CURSOR_PREV",
 		"filter": "severity = 'critical'",
 	}))
@@ -779,9 +783,17 @@ func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	if captured.FilterExpression != "severity = 'critical'" {
 		t.Errorf("forwarded filterExpression = %q, want severity = 'critical'", captured.FilterExpression)
 	}
+	if captured.Start != 1697385600000 || captured.End != 1697472000000 || captured.Order != "desc" {
+		t.Errorf("forwarded scope = start:%d end:%d order:%q, want explicit millisecond range and desc", captured.Start, captured.End, captured.Order)
+	}
 	note := result.Content[1].(mcp.TextContent).Text
 	if !strings.Contains(note, "hasMore=true") || !strings.Contains(note, "CURSOR_XYZ") {
 		t.Fatalf("completeness note = %q, want hasMore=true naming cursor CURSOR_XYZ", note)
+	}
+	for _, want := range []string{"start=1697385600000", "end=1697472000000", `order="desc"`, "same state and filter"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("completeness note = %q, want scoped continuation containing %q", note, want)
+		}
 	}
 }
 

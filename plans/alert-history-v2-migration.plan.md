@@ -41,7 +41,8 @@ upstream cursor's encoded page size.
 - Keep `alertHistoryCompletenessNote` beside the existing pagination helpers in
   `aggregate_helper.go`.
 - Derive `hasMore` from a non-empty upstream `data.nextCursor` and include that
-  cursor in the note.
+  cursor in the note. Include the resolved absolute `start`/`end` and actual
+  `order`, and require the same `state` and `filter` on the follow-up call.
 - Preserve the shared coded upstream error path. Add concise recovery guidance
   for HTTP 404 because the rule may be missing or the SigNoz version may predate
   v0.118.0.

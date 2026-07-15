@@ -112,3 +112,8 @@ to lock). Implementation has not started — plan stays `Planning` until coding 
 - The tool now forwards SigNoz's `data.nextCursor` unchanged and keeps `alertHistoryCompletenessNote` in `aggregate_helper.go`; deeper cursor refactoring remains in the separately tracked issue.
 - The narrow limit fix remains: when a cursor follow-up omits `limit`, the MCP request also omits it so SigNoz uses the page size encoded in the upstream cursor. The runtime description tells callers to repeat the original time range, state, filter, and order.
 - Filter compatibility is canonical-first (`filter`, then `filterExpression`) without a bespoke alias-conflict subsystem. Any supplied legacy `offset`, including zero, is rejected with direct cursor guidance.
+
+### 2026-07-15 — Scoped pagination note
+- The latest Codex review correctly identified that the immediate completeness note still suggested a cursor-only follow-up even though the upstream cursor contains only offset and limit.
+- The narrow fix keeps the upstream cursor unchanged and adds the resolved absolute `start`/`end`, actual `order`, and a requirement to repeat the same `state` and `filter` to every `hasMore=true` continuation note. No MCP-owned cursor wrapper is reintroduced.
+- User authorized the local fix only; no commit, push, GitHub reply, or thread resolution is authorized.

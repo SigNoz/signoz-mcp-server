@@ -708,26 +708,29 @@ func completenessNote(returnedRows, limit, offset int, rowsKnown bool) string {
 // exist and the caller must pass it back as "cursor"; otherwise it reports the
 // page as complete. If the cursor field can't be read (unexpected shape), it
 // falls back to the row-count heuristic without asserting a cursor.
-func alertHistoryCompletenessNote(payload []byte, returnedRows, limit int, rowsKnown bool) string {
+func alertHistoryCompletenessNote(payload []byte, returnedRows, limit int, rowsKnown bool, start, end int64, order string) string {
 	var resp struct {
 		Data struct {
 			NextCursor string `json:"nextCursor"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &resp); err == nil && resp.Data.NextCursor != "" {
+		continuation := fmt.Sprintf(
+			"Fetch the next page with cursor=%q, start=%d, end=%d, order=%q, and the same state and filter.",
+			resp.Data.NextCursor, start, end, order)
 		if rowsKnown {
 			if limit == 0 {
 				return fmt.Sprintf(
-					"note: returned %d rows — more results exist (hasMore=true). Fetch the next page with cursor=%q.",
-					returnedRows, resp.Data.NextCursor)
+					"note: returned %d rows — more results exist (hasMore=true). %s",
+					returnedRows, continuation)
 			}
 			return fmt.Sprintf(
-				"note: returned %d rows (limit %d) — more results exist (hasMore=true). Fetch the next page with cursor=%q.",
-				returnedRows, limit, resp.Data.NextCursor)
+				"note: returned %d rows (limit %d) — more results exist (hasMore=true). %s",
+				returnedRows, limit, continuation)
 		}
 		return fmt.Sprintf(
-			"note: more results exist (hasMore=true). Fetch the next page with cursor=%q.",
-			resp.Data.NextCursor)
+			"note: more results exist (hasMore=true). %s",
+			continuation)
 	}
 	if !rowsKnown {
 		if limit == 0 {
