@@ -1,12 +1,15 @@
 package docs
 
-import "github.com/mark3labs/mcp-go/mcp"
+import (
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
+	"github.com/mark3labs/mcp-go/mcp"
+)
 
 const (
-	CodeOutOfScopeURL  = "OUT_OF_SCOPE_URL"
-	CodeDocNotFound    = "DOC_NOT_FOUND"
-	CodeHeadingMissing = "HEADING_NOT_FOUND"
-	CodeIndexNotReady  = "INDEX_NOT_READY"
+	CodeOutOfScopeURL  = toolerrors.CodeOutOfScopeURL
+	CodeDocNotFound    = toolerrors.CodeDocNotFound
+	CodeHeadingMissing = toolerrors.CodeHeadingMissing
+	CodeIndexNotReady  = toolerrors.CodeIndexNotReady
 )
 
 func ToolError(code, message string, extra map[string]any) *mcp.CallToolResult {

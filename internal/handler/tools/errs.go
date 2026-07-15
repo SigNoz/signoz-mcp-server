@@ -13,6 +13,7 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 )
 
 // Shared error/validation string helpers used across the MCP tool handlers.
@@ -47,41 +48,41 @@ const (
 	// CodeValidationFailed marks a fixable parameter/validation mistake: the
 	// caller should correct the arguments and retry. Emitted by local
 	// validation helpers and upstream HTTP 400 responses.
-	CodeValidationFailed = "VALIDATION_FAILED"
+	CodeValidationFailed = toolerrors.CodeValidationFailed
 
 	// CodeUpstreamError marks a generic SigNoz backend failure. Emitted by
 	// upstreamError when no more precise status-derived code applies.
-	CodeUpstreamError = "UPSTREAM_ERROR"
+	CodeUpstreamError = toolerrors.CodeUpstreamError
 
 	// CodeUnauthorized marks a SigNoz backend 401. The caller should re-authenticate
 	// or provide valid credentials rather than blindly retrying.
-	CodeUnauthorized = "UNAUTHORIZED"
+	CodeUnauthorized = toolerrors.CodeUnauthorized
 
 	// CodePermissionDenied marks a SigNoz backend 403. The caller should ask for
 	// permissions or use an account with the required role.
-	CodePermissionDenied = "PERMISSION_DENIED"
+	CodePermissionDenied = toolerrors.CodePermissionDenied
 
 	// CodeNotFound marks a missing resource (bad id/uuid) — re-discover the id
 	// rather than blindly retry. Emitted by local guards and upstream HTTP 404s.
-	CodeNotFound = "NOT_FOUND"
+	CodeNotFound = toolerrors.CodeNotFound
 
 	// CodeConflict marks an upstream HTTP 409.
-	CodeConflict = "CONFLICT"
+	CodeConflict = toolerrors.CodeConflict
 
 	// CodeRateLimited marks an upstream HTTP 429.
-	CodeRateLimited = "RATE_LIMITED"
+	CodeRateLimited = toolerrors.CodeRateLimited
 
 	// CodeUnsupported marks an upstream HTTP 501.
-	CodeUnsupported = "UNSUPPORTED"
+	CodeUnsupported = toolerrors.CodeUnsupported
 
 	// CodeLicenseUnavailable marks an upstream HTTP 451.
-	CodeLicenseUnavailable = "LICENSE_UNAVAILABLE"
+	CodeLicenseUnavailable = toolerrors.CodeLicenseUnavailable
 
 	// CodeCanceled marks an upstream/client-closed HTTP 499.
-	CodeCanceled = "CANCELED"
+	CodeCanceled = toolerrors.CodeCanceled
 
 	// CodeTimeout marks an upstream HTTP timeout response.
-	CodeTimeout = "TIMEOUT"
+	CodeTimeout = toolerrors.CodeTimeout
 )
 
 const statusClientClosedConnection = 499

@@ -42,9 +42,6 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 		r.AddAttrs(slog.String("mcp.tenant_url", signozURL))
 	}
-	if sessionID, ok := util.GetSessionID(ctx); ok && sessionID != "" {
-		r.AddAttrs(slog.String("mcp.session.id", sessionID))
-	}
 	if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" {
 		r.AddAttrs(slog.String("mcp.search_context", searchContext))
 	}
