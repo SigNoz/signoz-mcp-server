@@ -117,3 +117,8 @@ to lock). Implementation has not started — plan stays `Planning` until coding 
 - The latest Codex review correctly identified that the immediate completeness note still suggested a cursor-only follow-up even though the upstream cursor contains only offset and limit.
 - The narrow fix keeps the upstream cursor unchanged and adds the resolved absolute `start`/`end`, actual `order`, and a requirement to repeat the same `state` and `filter` to every `hasMore=true` continuation note. No MCP-owned cursor wrapper is reintroduced.
 - User authorized the local fix only; no commit, push, GitHub reply, or thread resolution is authorized.
+
+### 2026-07-15 — Restore original plan detail
+- User identified that the review-fix commit had replaced the original detailed implementation plan with a shorter summary.
+- Restored the plan content from `d0313e14dc1894fb3737f2b826deb8e1aebe16e0` and added a separate section describing the review-driven changes that supersede individual original assumptions.
+- No commit or push is authorized for this documentation correction yet.
