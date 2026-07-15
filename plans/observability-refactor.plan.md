@@ -1,7 +1,7 @@
 # Plan: Observability Refactor
 
 ## Status
-Done
+In Progress
 
 ## Context
 The MCP server's observability has three gaps relative to Zeus's pattern:
@@ -23,6 +23,14 @@ Goal: match Zeus's shape — slog + ContextHandler + `pkg/otel` — so the MCP s
 ## Approach
 
 Single PR, three commits. Each commit compiles and tests green independently so the PR is bisectable.
+
+### Post-ship follow-up — Docker `service.version` parity
+
+- The official Primus workflow injects its canonical `VERSION` into `pkg/version.Version` through `GO_BUILD_FLAGS`, so `service.version` exactly matches the published image tag for both release and branch builds.
+- GoReleaser injects its full Git tag through the same linker variable so binaries from the same release use the same version representation as Docker images.
+- The standalone Dockerfile accepts `VERSION` as a build argument and injects it through the same linker variable. The image tag must be passed explicitly because OCI tags are not visible inside the build or running container.
+- Metrics retain `service.version` as an OpenTelemetry resource attribute through the shared `MeterProvider` resource; a manual-reader regression test verifies the exported `ResourceMetrics` value.
+- JSON stderr logs include `service.version` as a global structured field. They do not use an OpenTelemetry `LoggerProvider`, so they cannot inherit the SDK resource automatically.
 
 ### Commit 1 — OTel scaffolding + graceful lifecycle (no logger migration)
 
@@ -65,7 +73,7 @@ Introduce `pkg/otel`, `pkg/version`, and refactor the server for graceful shutdo
 - `server.NewMCPServer("SigNozMCP", version.Version, ...)` — replaces hard-coded `"0.0.1"` at [server.go:263](internal/mcp-server/server.go#L263).
 - Integration test still pins an expected version by reading `version.Version` at test time.
 - `Makefile` `build` target adds `-ldflags "-X github.com/SigNoz/signoz-mcp-server/pkg/version.Version=$(VERSION)"` (VERSION defaults to `git describe --tags --always --dirty 2>/dev/null || echo dev`).
-- `.goreleaser.yaml` — add `ldflags: -s -w -X github.com/SigNoz/signoz-mcp-server/pkg/version.Version={{.Version}}` under `builds[0]` (same convention Goreleaser uses; `{{.Version}}` is the tag without leading `v`).
+- `.goreleaser.yaml` — add `ldflags: -s -w -X github.com/SigNoz/signoz-mcp-server/pkg/version.Version={{.Tag}}` under `builds[0]` so release binaries preserve the exact Git/Docker tag.
 
 **Commit 1 compiles because:**
 - Zap is untouched.
@@ -159,7 +167,12 @@ Specifically:
 - `internal/client/client.go` — swap attr imports.
 - `internal/telemetry/telemetry.go` — thin shim delegating to `pkg/otel`; remove `genai.go` (moved).
 - `Makefile` — `-ldflags` on build target.
-- `.goreleaser.yaml` — `ldflags: -s -w -X .../pkg/version.Version={{.Version}}`.
+- `.goreleaser.yaml` — `ldflags: -s -w -X .../pkg/version.Version={{.Tag}}`.
+- `.github/workflows/dockerbuildci.yaml` — inject Primus's canonical image `VERSION` into `pkg/version.Version`.
+- `Dockerfile` — accept a `VERSION` build argument and inject it into `pkg/version.Version` for standalone image builds.
+- `pkg/log/log.go` — attach `version.Version` to every JSON record as `service.version`.
+- `pkg/log/log_test.go` — verify the global log field is emitted.
+- `pkg/otel/metrics_test.go` — verify collected metrics carry the same version on their resource.
 
 ### Modified (commit 2)
 - All 14 files listed in commit 2 "Migration scope" — mechanical zap→slog.
@@ -187,6 +200,8 @@ Specifically:
 - Manual: run HTTP mode against staging SigNoz — confirm traces + metrics arrive, logs on stdout show trace_id/session/tenant.
 - Manual: send `SIGTERM` during a burst of tool calls — no OTLP "shutdown timed out" warnings; last batch reaches collector.
 - Manual: trigger a tool panic — verify `mcp.tool.calls{is_error=true}` increments and the span is marked `codes.Error`.
+- Build the standalone image with `--build-arg VERSION=v0.7.0` and confirm the compiled binary carries `v0.7.0` as `pkg/version.Version`.
+- Build with a test linker version and verify both collected metrics and emitted JSON logs report that exact `service.version`.
 
 ## Resolved Questions
 - [x] Stdout JSON vs OTLP log exporter → **stdout JSON**.
@@ -195,4 +210,4 @@ Specifically:
 - [x] `mcp.sessions.active` feasibility → **defer, use counter instead**.
 - [x] Shutdown ctx source → **fresh `context.Background()+timeout`, not cancelled signal ctx**.
 - [x] Middleware order for panic coverage → **`loggingMiddleware` appended before `WithRecovery()` in NewMCPServer options; mcp-go's reverse-slice wrap yields `logging(recovery(tool))` so recovery catches the panic and logging records metrics via the normal return path. No second `recover()` in logging middleware.**
-- [x] Version plumbing → **goreleaser ldflags + version.Version in `NewMCPServer`**.
+- [x] Version plumbing → **GoReleaser, Primus image builds, and standalone Docker builds inject `pkg/version.Version`; Primus builds use the exact published image tag, and GoReleaser uses the full Git tag.**

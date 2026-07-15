@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
@@ -136,6 +137,7 @@ func TestListAlertRules(t *testing.T) {
 		assert.Equal(t, "", r.URL.RawQuery)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		assert.Equal(t, version.UserAgent(), r.Header.Get("User-Agent"))
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
@@ -216,6 +218,7 @@ func TestValidateCredentials(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
 				switch r.URL.Path {
@@ -234,7 +237,9 @@ func TestValidateCredentials(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{
+				"User-Agent": "custom-client/1.0",
+			})
 
 			err := client.ValidateCredentials(context.Background())
 
@@ -1759,6 +1764,7 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	customHeaders := map[string]string{
 		"Content-Type":        "text/plain",
 		"SIGNOZ-API-KEY":      "overridden-key",
+		"User-Agent":          "custom-client/1.0",
 		"CF-Access-Client-Id": "test-id",
 	}
 
@@ -1766,6 +1772,7 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 		// Reserved headers should NOT be overridden by custom headers
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 
 		// Non-reserved custom headers should still be injected
 		assert.Equal(t, "test-id", r.Header.Get("CF-Access-Client-Id"))

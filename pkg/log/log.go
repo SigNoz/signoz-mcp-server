@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 const (
@@ -41,7 +43,9 @@ func New(level string) *slog.Logger {
 		},
 	})
 
-	return slog.New(NewContextHandler(baseHandler))
+	return slog.New(NewContextHandler(baseHandler)).With(
+		slog.String("service.version", version.Version),
+	)
 }
 
 func ErrAttr(err error) slog.Attr {

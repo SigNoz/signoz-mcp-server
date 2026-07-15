@@ -5,9 +5,50 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
+
+func TestMetricsIncludeBuildVersionResource(t *testing.T) {
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "service.version=from-env")
+
+	ctx := context.Background()
+	res, err := NewResource(ctx, version.Version)
+	if err != nil {
+		t.Fatalf("NewResource() error = %v", err)
+	}
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetric.WithResource(res),
+	)
+	t.Cleanup(func() { _ = provider.Shutdown(ctx) })
+
+	meters, err := NewMeters(provider)
+	if err != nil {
+		t.Fatalf("NewMeters() error = %v", err)
+	}
+	meters.DocsSearchDuration.Record(ctx, .05)
+
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &collected); err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if collected.Resource == nil {
+		t.Fatal("collected metrics have no resource")
+	}
+
+	got, ok := collected.Resource.Set().Value(semconv.ServiceVersionKey)
+	if !ok {
+		t.Fatal("collected metrics resource has no service.version")
+	}
+	if got.AsString() != version.Version {
+		t.Fatalf("service.version = %q, want %q", got.AsString(), version.Version)
+	}
+}
 
 func TestDocsDurationHistogramsUseSecondScaleBuckets(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
