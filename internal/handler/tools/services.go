@@ -66,7 +66,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	}
 	result, err := client.ListServices(ctx, start, end)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list services", slog.String("start", start), slog.String("end", end), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list services", err, slog.String("start", start), slog.String("end", end))
 		return upstreamError(err), nil
 	}
 
@@ -144,11 +144,7 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 	}
 	result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get service top operations",
-			slog.String("start", start),
-			slog.String("end", end),
-			slog.String("service", service),
-			logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get service top operations", err, slog.String("start", start), slog.String("end", end), slog.String("service", service))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

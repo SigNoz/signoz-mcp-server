@@ -451,6 +451,20 @@ func methodErrorType(err error) string {
 	}
 }
 
+// methodErrorLogLevel maps a hook error to its log severity. Requests for
+// optional capabilities this server does not advertise (e.g. clients probing
+// resources/subscribe, rejected by mcp-go with server.ErrUnsupported) are
+// expected protocol negotiation, and context.Canceled means the client
+// disconnected or aborted the request — both log at DEBUG. Deadline-exceeded
+// and everything else stay ERROR. The record is always emitted at the
+// returned level, never dropped.
+func methodErrorLogLevel(err error) slog.Level {
+	if errors.Is(err, server.ErrUnsupported) {
+		return slog.LevelDebug
+	}
+	return logpkg.LevelForError(err)
+}
+
 func (m *MCPServer) beginMethodObservation(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 	if !shouldObserveMethod(method) {
 		return
@@ -672,7 +686,7 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
-		m.logger.ErrorContext(ctx, "mcp error",
+		m.logger.Log(ctx, methodErrorLogLevel(err), "mcp error",
 			slog.String("mcp.method.name", otelpkg.NormalizeMCPMethod(string(method))),
 			logpkg.ErrAttr(err))
 	})
@@ -794,7 +808,9 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			sizeAttr := slog.Int64("mcp.tool.result.size_bytes", resultBytes)
 			switch {
 			case err != nil:
-				m.logger.ErrorContext(ctx, "tool call failed",
+				// Client-driven cancellations (context.Canceled) log at DEBUG;
+				// deadline-exceeded and real failures stay ERROR.
+				m.logger.Log(ctx, logpkg.LevelForError(err), "tool call failed",
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,

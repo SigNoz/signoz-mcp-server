@@ -6,8 +6,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
@@ -62,8 +60,7 @@ func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.Call
 
 	result, err := client.GetMetricCardinality(ctx, metricName, startTime, endTime)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to fetch metric cardinality",
-			slog.String("metricName", metricName), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to fetch metric cardinality", err, slog.String("metricName", metricName))
 		return upstreamError(err), nil
 	}
 

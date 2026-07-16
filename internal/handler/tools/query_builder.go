@@ -117,7 +117,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	}
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to execute query builder v5", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to execute query builder v5", err)
 		return upstreamError(err), nil
 	}
 
