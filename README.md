@@ -428,7 +428,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - Array or JSON-encoded array string of additional named metric queries for formula. Each object supports `name`, `metricName`, `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `groupBy`, and `filter`; `name` and `metricName` are required.
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
-  - **Result bounds**: every generated metric query and formula uses `limit: 1000` with `__result desc`. The response decisions note reports these effective bounds. For time series, top-N groups are ranked over the whole requested window, so a short-lived locally significant series can fall outside the returned set; narrow the window or use `signoz_execute_builder_query` for a deliberate positive override.
+  - **Result bounds**: every generated metric query and formula uses `limit: 100` with `__result desc`. The response decisions note reports these effective bounds. For time series, top-N groups are ranked over the whole requested window, so a short-lived locally significant series can fall outside the returned set; narrow the window or use `signoz_execute_builder_query` for a deliberate positive override.
 
 #### `signoz_get_top_metrics`
 
@@ -661,7 +661,7 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `service` (optional) - Shortcut filter for service name
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
-  - `limit` (optional) - Maximum number of groups to return (default: 1000, max: 10000; higher values are clamped to bound server memory)
+  - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
@@ -740,7 +740,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc')
-  - `limit` (optional) - Maximum number of groups to return (default: 1000, max: 10000; higher values are clamped to bound server memory)
+  - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
@@ -846,7 +846,7 @@ Executes a SigNoz Query Builder v5 query as the raw escape hatch for shapes the 
   - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql` — `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql` — `{name, query, disabled, legend?}`.
-- **Builder result bounds**: every authored `builder_query` and `builder_formula` must have a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`). Defaults inserted for omitted, null, or zero limits are: raw logs `100` ordered by `timestamp desc, id desc`; raw traces `100` ordered by `timestamp desc`; metric scalar/time-series and formulas `1000` ordered by `__result desc`; log/trace scalar/time-series `1000` ordered by the primary aggregation descending. Positive caller-authored values are preserved. The response appends a decisions note when defaults are inserted.
+- **Builder result bounds**: every authored `builder_query` and `builder_formula` must have a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`). Omitted, null, or zero limits default to `100` for every request type. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Positive caller-authored values are preserved. The response appends a decisions note when defaults are inserted.
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or choose a deliberate positive limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).

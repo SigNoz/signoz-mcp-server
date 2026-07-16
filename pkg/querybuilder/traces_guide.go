@@ -85,8 +85,8 @@ selectFields entry (fieldContext: "tag" required):
 Every builder_query must include a positive limit and explicit order.
 
   raw / trace: limit 100; order by timestamp desc
-  scalar:      limit 1000 groups; order by the primary aggregation desc unless the task needs another order
-  time_series: limit 1000 groups; order by the primary aggregation desc unless the task needs another order
+  scalar:      limit 100 groups; order by the primary aggregation desc unless the task needs another order
+  time_series: limit 100 groups; order by the primary aggregation desc unless the task needs another order
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
 time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
@@ -147,7 +147,7 @@ matters more than response size.
           "name": "A",
           "signal": "traces",
           "disabled": false,
-          "limit": 1000,
+          "limit": 100,
           "offset": 0,
           "having": {"expression": ""},
           "filter": {"expression": "has_error = true"},
@@ -182,7 +182,7 @@ matters more than response size.
           "signal": "traces",
           "disabled": false,
           "stepInterval": 60,
-          "limit": 1000,
+          "limit": 100,
           "offset": 0,
           "order": [{"key": {"name": "p99(duration_nano)"}, "direction": "desc"}],
           "having": {"expression": ""},

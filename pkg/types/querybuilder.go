@@ -10,7 +10,7 @@ import (
 
 const (
 	DefaultRawQueryLimit       = 100
-	DefaultAggregateQueryLimit = 1000
+	DefaultAggregateQueryLimit = 100
 )
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
@@ -469,7 +469,7 @@ func (q *QueryPayload) applyBuilderBounds() error {
 			}
 			queryName := queryDisplayName(spec.Name, i)
 			if spec.Limit < 0 {
-				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.limit received %d; builder_formula limits must be positive, or omitted/0 for the 1000-series default. See signoz://metrics-aggregation-guide`, queryName, i, spec.Limit)
+				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.limit received %d; builder_formula limits must be positive, or omitted/0 for the 100-series default. See signoz://metrics-aggregation-guide`, queryName, i, spec.Limit)
 			}
 			applied := AppliedQueryBounds{QueryIndex: i, QueryName: queryName}
 			if spec.Limit == 0 {

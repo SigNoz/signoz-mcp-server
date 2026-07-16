@@ -118,8 +118,8 @@ For arrays inside JSON bodies, mark the path as an array with the [*] suffix and
 Every builder_query must include a positive limit and explicit order.
 
   raw:        limit 100; order by timestamp desc, then id desc for stable offset pagination
-  scalar:     limit 1000 groups; order by the primary aggregation desc unless the task needs another order
-  time_series: limit 1000 groups; order by the primary aggregation desc unless the task needs another order
+  scalar:     limit 100 groups; order by the primary aggregation desc unless the task needs another order
+  time_series: limit 100 groups; order by the primary aggregation desc unless the task needs another order
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
 time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
@@ -205,7 +205,7 @@ matters more than response size.
           "name": "A",
           "signal": "logs",
           "disabled": false,
-          "limit": 1000,
+          "limit": 100,
           "offset": 0,
           "having": {"expression": ""},
           "filter": {"expression": "severity_text IN ('ERROR', 'FATAL')"},
@@ -240,7 +240,7 @@ matters more than response size.
           "signal": "logs",
           "disabled": false,
           "stepInterval": 60,
-          "limit": 1000,
+          "limit": 100,
           "offset": 0,
           "order": [{"key": {"name": "count()"}, "direction": "desc"}],
           "having": {"expression": ""},

@@ -38,7 +38,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 			"Query metrics from SigNoz with smart aggregation defaults and validation. "+
 				"Automatically applies the right timeAggregation and spaceAggregation based on metric type "+
 				"(gauge, counter, histogram). If metricType is not provided, it is auto-fetched via signoz_list_metrics. "+
-				"Every generated builder query and formula uses limit=1000 ordered by __result desc. For time_series queries, that top-N selection is ranked over the whole requested range. "+
+				"Every generated builder query and formula uses limit=100 ordered by __result desc. For time_series queries, that top-N selection is ranked over the whole requested range. "+
 				"Every response includes a [Decisions applied] block showing all defaults used. "+
 				"Read the signoz://metrics-aggregation-guide resource for full aggregation rules and examples. "+
 				"TIP: Call signoz_list_metrics first to get the metric's type, temporality, and isMonotonic."),
@@ -69,7 +69,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	metricsGuideResource := mcp.NewResource(
 		"signoz://metrics-aggregation-guide",
 		"Metrics Aggregation Guide",
-		mcp.WithResourceDescription("Complete metrics/formula guide with aggregation defaults, explicit limit 1000 and __result ordering, executable Query Builder examples, Cost Meter coverage, and the whole-window top-N caveat."),
+		mcp.WithResourceDescription("Complete metrics/formula guide with aggregation defaults, explicit limit 100 and __result ordering, executable Query Builder examples, Cost Meter coverage, and the whole-window top-N caveat."),
 		mcp.WithMIMEType("text/plain"),
 	)
 

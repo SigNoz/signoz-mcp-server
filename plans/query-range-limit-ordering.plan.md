@@ -1,10 +1,10 @@
 # Plan: Explicit QueryRange Limits and Ordering
 
 ## Status
-Complete — implementation and verification pass; Fable High approved the corrected server and companion skill diffs.
+Complete — raw and aggregate defaults are 100; server, companion skills, full checks, and fresh live MCP verification are synchronized.
 
 ## Context
-Issue [SigNoz/nerve-pod #132](https://github.com/SigNoz/nerve-pod/issues/132) requires Query Range payloads authored by the MCP server and companion skills to carry an explicit, request-type-appropriate limit and ordering instead of inheriting backend defaults. The server already does this for raw search and log/trace aggregate tools, but aggregate defaults are 10 rather than 1000, metric payloads are unbounded/unordered, formula bounds are dropped by the typed round trip, and several embedded/companion examples omit the fields.
+Issue [SigNoz/nerve-pod #132](https://github.com/SigNoz/nerve-pod/issues/132) requires Query Range payloads authored by the MCP server and companion skills to carry an explicit limit and ordering instead of inheriting backend defaults. The final owner-selected default is 100 for raw rows and aggregate groups. Metric payloads were previously unbounded/unordered, formula bounds were dropped by the typed round trip, and several embedded/companion examples omitted the fields.
 
 The implementation must preserve the semantic distinction between raw row limits and scalar/time-series group limits. It must also surface the known tradeoff: top-N time-series selection ranks groups over the whole window and can hide a locally significant series.
 
@@ -14,9 +14,9 @@ The implementation must preserve the semantic distinction between raw row limits
 |---|---|---:|---|---|
 | logs `builder_query` | raw | 100 | `timestamp desc`, then `id desc` | Stable offset pagination |
 | traces `builder_query` | raw / trace | 100 | `timestamp desc` | `signoz_get_trace_details` keeps its explicit 1000 limit |
-| logs/traces `builder_query` | scalar / time_series | 1000 | primary aggregation desc | Positive tool/caller overrides win |
-| metrics `builder_query` | scalar / time_series | 1000 | `__result desc` | Apply to every generated/query payload member |
-| `builder_formula` | scalar / time_series | 1000 | `__result desc` | Model and preserve fields in `FormulaSpec` |
+| logs/traces `builder_query` | scalar / time_series | 100 | primary aggregation desc | Positive tool/caller overrides win |
+| metrics `builder_query` | scalar / time_series | 100 | `__result desc` | Apply to every generated/query payload member |
+| `builder_formula` | scalar / time_series | 100 | `__result desc` | Model and preserve fields in `FormulaSpec` |
 | PromQL / ClickHouse SQL | any supported | unchanged | unchanged | These envelopes do not use the builder contract |
 | trace operator / join / subquery / future raw envelope | type-specific | unchanged in V1 | unchanged in V1 | Preserve raw JSON; do not inject a generic invalid order |
 
@@ -25,7 +25,7 @@ The implementation must preserve the semantic distinction between raw row limits
 ## Approach
 
 ### 1. Centralize typed defaults without clamping authored positive values
-- Add named defaults in `pkg/types/querybuilder.go` for raw (100) and scalar/time-series (1000) Query Range results.
+- Add named defaults in `pkg/types/querybuilder.go`; both raw rows and scalar/time-series groups default to 100 while remaining separately named for semantic clarity.
 - Refactor `QueryPayload.Validate()` into validation/defaulting followed by a second typed bounds pass so composite-query order cannot affect which global `requestType` is used.
 - For `builder_query`:
   - reject negative limits;
@@ -41,8 +41,8 @@ The implementation must preserve the semantic distinction between raw row limits
 ### 2. Align every MCP-generated Query Range payload
 - Keep search-log/search-trace defaults at 100 and pin them to the shared raw constant.
 - Add `id desc` after `timestamp desc` for generated raw log searches, matching the official pagination contract.
-- Change the aggregate parser and tool schemas from an omitted-input default of 10 groups to 1000. Retain caller-provided positive limits/order, the existing 10000 clamp, and clamp notes.
-- Put `limit: 1000` and `order: __result desc` on every metrics `builder_query` and generated `builder_formula`.
+- Change the aggregate parser and tool schemas from an omitted-input default of 10 groups to 100. Retain caller-provided positive limits/order, the existing 10000 clamp, and clamp notes.
+- Put `limit: 100` and `order: __result desc` on every metrics `builder_query` and generated `builder_formula`.
 - Remove the unused malformed `BuildMetricsQueryPayload` helper and make `BuildMetricsQueryPayloadJSON` marshal the shared typed `QueryPayload`/`FormulaSpec` path so formulas, source propagation, defaults, and future changes cannot drift.
 - Preserve `signoz_get_trace_details` at its explicit 1000 limit; add a regression assertion documenting the exception.
 
@@ -50,7 +50,7 @@ The implementation must preserve the semantic distinction between raw row limits
 - Position `signoz_execute_builder_query` as the raw escape hatch: raw rows use search tools first, grouped/top-N work uses aggregate tools, metrics use `signoz_query_metrics`, and only unsupported multi-query/formula shapes fall back to raw Query Builder.
 - Route agents to the signal-specific guide instead of requiring the traces guide for every query: logs, traces, metrics/formulas, and PromQL each point to their own resource.
 - In the Query Builder tool description and resources, state that every authored `builder_query`/`builder_formula` must carry a positive limit plus explicit order, with the type-aware defaults above.
-- Update raw, scalar, time-series, metric, Cost Meter, and formula examples. Examples that intentionally demonstrate top N may use a smaller positive limit; otherwise use 100/1000.
+- Update raw, scalar, time-series, metric, Cost Meter, and formula examples. Examples that intentionally demonstrate top N may use a smaller positive limit; otherwise use 100.
 - Add the whole-range time-series ranking caveat from the official Result Manipulation docs.
 - When `signoz_execute_builder_query` inserts a limit/order, append an agent-visible decisions note. Add the same effective bounds to `signoz_query_metrics`' existing decisions note.
 - Update `README.md` aggregate defaults and `signoz_execute_builder_query` guidance.
@@ -84,7 +84,7 @@ Skill/eval invariants:
 - dashboard/editor queries use `limit` plus editor-model `orderBy`;
 - `signoz_execute_builder_query` calls use `limit` plus v5 `order`;
 - raw defaults to 100/timestamp desc;
-- scalar/time-series defaults to 1000/result-or-primary-aggregation desc;
+- scalar/time-series defaults to 100/result-or-primary-aggregation desc;
 - every authored `builder_query` and `builder_formula` is covered;
 - guidance names the whole-range time-series truncation risk.
 
@@ -95,7 +95,7 @@ No skill-schema change is needed for `signoz_query_metrics`, `signoz_search_logs
 ### `signoz-mcp-server`
 - `pkg/types/querybuilder.go` — defaults, typed second pass, formula fields, metrics-builder consolidation, log tie-breaker.
 - `pkg/types/querybuilder_test.go` — table-driven request-type defaults, preservation, formulas, exclusions, and round-trip coverage.
-- `internal/handler/tools/aggregate_helper.go` — aggregate omitted-input default 1000.
+- `internal/handler/tools/aggregate_helper.go` — aggregate omitted-input default 100.
 - `internal/handler/tools/aggregate_helper_test.go` — default, explicit override, and existing clamp behavior.
 - `internal/handler/tools/logs.go` / `internal/handler/tools/traces.go` — schema descriptions/defaults.
 - `internal/handler/tools/metrics.go` — generated-bounds behavior in the tool/resource description.
@@ -128,7 +128,7 @@ No skill-schema change is needed for `signoz_query_metrics`, `signoz_search_logs
 - Assert PromQL, ClickHouse SQL, trace operators, joins, and other raw-preserved specs remain byte-preserved and receive no builder-only fields.
 - Assert raw logs use timestamp/id desc; raw traces use timestamp desc.
 - Capture outbound payloads for search, aggregate, query-metrics, trace-details, and execute-builder handlers.
-- Assert aggregate tool schemas and README advertise 1000, while raw search remains 100.
+- Assert aggregate tool schemas and README advertise 100, matching raw search's numeric default while retaining request-type-specific ordering.
 - Parse representative raw, aggregate, metric, and formula guide examples through `QueryPayload.Validate()` and assert their serialized bounds/order.
 - Extend dashboard/alert/view read-to-write fixtures so query specs retain the destination model's canonical ordering field and limit.
 
@@ -144,8 +144,8 @@ Run:
 Delegate live verification to a subagent per repository rules. Use read-only fixed-window queries and do not print credentials. Verify:
 - raw logs accept timestamp/id ordering and paginate stably;
 - raw traces accept timestamp ordering;
-- log/trace scalar and time-series queries accept primary-aggregation ordering with limit 1000;
-- metric scalar/time-series and formula queries accept `__result desc` with limit 1000;
+- log/trace scalar and time-series queries accept primary-aggregation ordering with limit 100;
+- metric scalar/time-series and formula queries accept `__result desc` with limit 100;
 - trace request type queries accept the raw trace default and preserve the explicit trace-details exception;
 - omitted versus explicit-default requests have the expected bounded shape and compatible results.
 
@@ -164,7 +164,7 @@ No resources should be created. The subagent must still explicitly report that c
 - Because omission/default serialization is fully unit-testable, visible to the caller, and backend acceptance is covered live, no new runtime metric is required for V1.
 
 ## Out of Scope
-- A new hard cap of 1000; existing 10000 search/aggregate limits remain.
+- A new hard cap equal to the 100-item default; existing 10000 search/aggregate limits remain.
 - New public `limit` or `orderBy` parameters on `signoz_query_metrics`.
 - A complete generated nested JSON Schema for the raw `query` object, tolerant normalization of unrelated top-level numeric fields, or new completion tools; track those broader MCP-surface improvements separately.
 - Generic mutation of PromQL, ClickHouse SQL, trace-operator, join, subquery, or future raw envelope specs.

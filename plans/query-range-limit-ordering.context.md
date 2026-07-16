@@ -99,3 +99,14 @@
 - [x] Which envelope types are in V1? — `builder_query` and `builder_formula`; preserve PromQL, ClickHouse SQL, and less-common raw envelopes unchanged.
 - [x] What are the default orders? — Raw logs: timestamp/id desc; raw traces: timestamp desc; generated log/trace aggregates: primary aggregation desc; metrics/formulas: `__result desc`.
 - [x] Is a companion skills change required? — Yes; this changes the payload contract those skills teach.
+
+### 2026-07-16 — Owner correction: aggregate default remains 100
+- The owner explicitly changed the scalar/time-series aggregate default from 1000 to 100. `DefaultAggregateQueryLimit` remains separately named from `DefaultRawQueryLimit`, but both now equal 100 because they bound different result semantics and may diverge later.
+- Update server defaults, generated metric/formula payloads, alert/dashboard/view/query-builder guidance, README/manifest metadata, tests, and the companion agent-skills contract to teach 100 groups.
+- Preserve positive caller-authored overrides, the existing 10000 safety clamp, and the intentional `signoz_get_trace_details` 1000-span exception.
+- The `AlertQuerySpec.Order` struct tag is valid: Go permits the adjacent `json` and `jsonschema` tags, mcp-go v0.56.0 feeds the type through google/jsonschema-go, and `AlertOrderField` encodes the intended v5 wire shape `{key:{name},direction}` rather than dashboard `orderBy`.
+
+### 2026-07-16 — Final 100-group verification
+- Full `go test ./...`, `go vet ./...`, `go build ./...`, JSON parsing, formatting, and diff checks pass after changing `DefaultAggregateQueryLimit` to 100. All seven companion eval JSON files parse, the dashboard crosswalks remain byte-identical, and strict Claude plugin validation passes.
+- A delegated read-only replay initialized a fresh local MCP server from the current working tree and created no resources. Omitted-bound scalar traces used limit 100 with `count() desc`; time-series traces used limit 100 with `count() desc` and surfaced the whole-window ranking warning; a discovered scalar metric used limit 100 with `__result desc`. All three tool calls succeeded.
+- The replay initially found a stale pre-change MCP process still advertising 1000, so it was intentionally bypassed. The fresh test server on port 18083 was stopped after verification and the listener was confirmed gone.

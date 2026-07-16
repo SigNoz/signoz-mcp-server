@@ -26,7 +26,7 @@ ERROR: If you use aggregateOperator or aggregateAttribute, the dashboard may not
 
 Every builder query and formula must carry an explicit positive limit and non-empty editor-model orderBy. Dashboard payloads use orderBy entries shaped as {columnName, order}; do not copy the Query Range v5 wire field named order into a dashboard.
 
-Use limit: 100 by default for raw list panels, or the same smaller positive value as an intentional pageSize. Order trace lists by timestamp desc and log lists by timestamp desc then id desc. Use limit: 1000 for graph, table, pie, and value panels; order by the primary aggregation descending. Formulas use limit: 1000 and __result desc. For time-series panels, the limit ranks groups over the whole selected window, so a short-lived locally significant series can fall outside the returned top N.
+Use limit: 100 by default for raw list panels, or the same smaller positive value as an intentional pageSize. Order trace lists by timestamp desc and log lists by timestamp desc then id desc. Use limit: 100 for graph, table, pie, and value panels; order by the primary aggregation descending. Formulas use limit: 100 and __result desc. For time-series panels, the limit ranks groups over the whole selected window, so a short-lived locally significant series can fall outside the returned top N.
 
 === FIELD NAMING CONVENTIONS ===
 
@@ -104,7 +104,7 @@ OPTIONAL FIELDS:
 
 groupBy (for multiple series)
 legend (REQUIRED when groupBy is used - use {{attribute_name}} syntax matching groupBy keys)
-EXAMPLE: panelTypes: graph query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name limit: 1000 orderBy: - columnName: p95(duration_nano) order: desc
+EXAMPLE: panelTypes: graph query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: p95(duration_nano) filter: expression: service.name in $service_name limit: 100 orderBy: - columnName: p95(duration_nano) order: desc
 
 ERROR: Missing aggregations causes "No data" error. ERROR: Missing filter may show unfiltered data.
 
@@ -136,7 +136,7 @@ dataSource
 expression
 limit
 orderBy
-EXAMPLE: panelTypes: pie query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() filter: expression: service.name in $service_name groupBy: - key: llm.model_name dataType: string type: tag legend: {{llm.model_name}} limit: 1000 orderBy: - columnName: count() order: desc
+EXAMPLE: panelTypes: pie query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() filter: expression: service.name in $service_name groupBy: - key: llm.model_name dataType: string type: tag legend: {{llm.model_name}} limit: 100 orderBy: - columnName: count() order: desc
 
 ERROR: Missing groupBy causes "No data" or single slice. ERROR: Missing legend causes unlabeled slices. ERROR: Using 'name' instead of 'key' in groupBy causes query errors. SOLUTION: Always include groupBy with 'key' field and legend with template variables.
 
@@ -151,7 +151,7 @@ dataSource
 expression
 limit
 orderBy
-EXAMPLE: panelTypes: table query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() as 'Requests' avg(duration_nano) as 'Latency' filter: expression: service.name in $service_name groupBy: - key: service.name dataType: string type: resource isColumn: true limit: 1000 orderBy: - columnName: count() order: desc
+EXAMPLE: panelTypes: table query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: count() as 'Requests' avg(duration_nano) as 'Latency' filter: expression: service.name in $service_name groupBy: - key: service.name dataType: string type: resource isColumn: true limit: 100 orderBy: - columnName: count() order: desc
 
 ERROR: Missing groupBy causes single row output. ERROR: Missing 'as' aliases in aggregations causes unclear column names. SOLUTION: Always include groupBy and use aliases in aggregation expressions.
 
@@ -165,7 +165,7 @@ dataSource
 expression
 limit
 orderBy
-EXAMPLE: panelTypes: value query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: sum(llm.token_count.prompt) filter: expression: service.name in $service_name limit: 1000 orderBy: - columnName: sum(llm.token_count.prompt) order: desc
+EXAMPLE: panelTypes: value query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A aggregations: - expression: sum(llm.token_count.prompt) filter: expression: service.name in $service_name limit: 100 orderBy: - columnName: sum(llm.token_count.prompt) order: desc
 
 ERROR: Missing aggregations causes "No data". ERROR: Using groupBy causes multiple values instead of single value. SOLUTION: Do not use groupBy for value panels.
 
@@ -218,7 +218,7 @@ ERROR: Invalid operators cause filter errors. ERROR: Missing $ prefix for variab
 
 For calculated metrics (like error rate):
 
-builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = 'true' limit: 1000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 1000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 1000 orderBy: - columnName: __result order: desc
+builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = 'true' limit: 100 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 100 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
 
 ERROR: Not disabling base queries shows multiple series. ERROR: Invalid formula syntax causes calculation errors. SOLUTION: Always set disabled: true for base queries when using formulas.
 
@@ -325,7 +325,7 @@ Example: Token Usage (from Anthropic API)
           expression: A
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: sum(llm.token_count.prompt)
@@ -340,7 +340,7 @@ Example: Token Usage (from Anthropic API)
           expression: B
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: sum(llm.token_count.completion)
@@ -349,7 +349,7 @@ Example: Token Usage (from Anthropic API)
       queryFormulas:
         -
           expression: A + B
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: __result
@@ -410,7 +410,7 @@ Example: Latency (P95) (from Anthropic API)
           expression: A
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: p95(duration_nano)
@@ -477,7 +477,7 @@ Example: Number of Requests (from Anthropic API)
               key: service.name
               type: resource
           legend: {{service.name}}
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -814,7 +814,7 @@ Example: Model Distribution (from Anthropic API)
               key: llm.model_name
               type: tag
           legend: {{llm.model_name}}
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -881,7 +881,7 @@ Example: Model Distribution (from Autogen)
               key: gen_ai.request.model
               type: tag
           legend: {{gen_ai.request.model}}
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -948,7 +948,7 @@ Example: Model Distribution (from Azure OpenAI API)
               key: llm.model_name
               type: tag
           legend: {{llm.model_name}}
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -1039,7 +1039,7 @@ Example: Services and Languages (from Anthropic API)
               dataType: string
               key: telemetry.sdk.language
               type: resource
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -1111,7 +1111,7 @@ Example: Agents (from Autogen)
               dataType: string
               key: gen_ai.agent.name
               type: tag
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -1183,7 +1183,7 @@ Example: Tools (from Autogen)
               dataType: string
               key: gen_ai.tool.name
               type: tag
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -1246,7 +1246,7 @@ Example: Input Tokens (from Anthropic API)
           expression: A
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: sum(llm.token_count.prompt)
@@ -1307,7 +1307,7 @@ Example: Output Tokens (from Anthropic API)
           expression: A
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: sum(llm.token_count.completion)
@@ -1369,7 +1369,7 @@ Example: Error Rate (from Anthropic API)
           expression: A
           filter:
             expression: has_error = 'true' service.name in $service_name
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -1384,7 +1384,7 @@ Example: Error Rate (from Anthropic API)
           expression: B
           filter:
             expression: has_error = 'false' service.name in $service_name
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: count()
@@ -1393,7 +1393,7 @@ Example: Error Rate (from Anthropic API)
       queryFormulas:
         -
           expression: A / (A+B)
-          limit: 1000
+          limit: 100
           orderBy:
             -
               columnName: __result

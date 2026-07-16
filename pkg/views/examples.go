@@ -107,7 +107,7 @@ Meter Explorer views (sourcePage "meter" + signal "metrics" + source "meter").
             "signal": "metrics",
             "source": "",
             "stepInterval": 60,
-            "limit": 1000,
+            "limit": 100,
             "order": [{"key":{"name":"__result"},"direction":"desc"}],
             "filter": { "expression": "" },
             "having": { "expression": "" },
@@ -143,7 +143,7 @@ is queried as metrics: every builder spec sets ` + "`signal:\"metrics\"`" + ` AN
             "signal": "metrics",
             "source": "meter",
             "stepInterval": 3600,
-            "limit": 1000,
+            "limit": 100,
             "order": [{"key":{"name":"__result"},"direction":"desc"}],
             "filter": { "expression": "" },
             "having": { "expression": "" },
@@ -168,6 +168,6 @@ is queried as metrics: every builder spec sets ` + "`signal:\"metrics\"`" + ` AN
 - stepInterval is 0 for list panels, typically 60 for minute-resolution graphs,
   and 3600 for Cost Meter (meter) views, which the backend aggregates hourly.
 - Every builder query carries a positive limit and the v5 ` + "`order`" + ` field.
-  The 1000-group limit on a graph ranks groups over the whole selected window;
+  The 100-group limit on a graph ranks groups over the whole selected window;
   a short-lived local spike may be outside the returned top N.
 `

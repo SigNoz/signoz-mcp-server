@@ -60,7 +60,7 @@ The server rejects them with HTTP 400 "failed to validate request body".
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |
 | aggregations | array    | Required for metrics graphs (see metrics example) |
-| limit        | integer  | Positive result bound. Use 100 for list/raw views and 1000 for graph/table/value aggregate views |
+| limit        | integer  | Positive result bound. Use 100 by default for list/raw and graph/table/value aggregate views |
 | order        | array    | Query Builder v5 wire order. List logs: timestamp desc then id desc; list traces: timestamp desc; metrics/formulas: __result desc; log/trace aggregates: primary aggregation desc. Do not use dashboard orderBy |
 
 ## Rules

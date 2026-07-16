@@ -27,7 +27,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			"Execute a raw SigNoz Query Builder v5 query as an escape hatch for multi-query, formula, or other shapes the higher-level tools cannot express. "+
 				"Prefer signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for metrics.\n\n"+
 				"Read the guide for the signal you are querying: signoz://logs/query-builder-guide for logs, signoz://traces/query-builder-guide for traces, and signoz://metrics-aggregation-guide for metrics or formulas. "+
-				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order; omitted, null, or zero bounds are normalized to 100 rows for raw/trace requests and 1000 groups for scalar/time_series requests. "+
+				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order; omitted, null, or zero bounds are normalized to 100 rows or groups for all request types. "+
 				"The v5 wire field is spec.order, not the dashboard/editor field orderBy.\n\n"+
 				"For promql envelopes also read signoz://promql/instructions — "+
 				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+

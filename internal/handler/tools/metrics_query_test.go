@@ -119,7 +119,7 @@ func TestHandleQueryMetrics_JSONFirstWithSeparateDecisionsNote(t *testing.T) {
 	if !strings.Contains(block1.Text, "[Decisions applied]") || !strings.Contains(block1.Text, wantLine) {
 		t.Fatalf("note block missing decisions header or backend warning; want %q in:\n%s", wantLine, block1.Text)
 	}
-	if !strings.Contains(block1.Text, "result bounds: limit=1000 groups, order=__result desc") || !strings.Contains(block1.Text, "ranked across the entire time range") {
+	if !strings.Contains(block1.Text, "result bounds: limit=100 groups, order=__result desc") || !strings.Contains(block1.Text, "ranked across the entire time range") {
 		t.Fatalf("note block missing effective bounds or time-series caveat:\n%s", block1.Text)
 	}
 

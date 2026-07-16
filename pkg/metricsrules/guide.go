@@ -91,7 +91,7 @@ Formula C: A / B * 100
 
 ## Result Bounds and Ordering
 
-Every ` + "`builder_query`" + ` and ` + "`builder_formula`" + ` must include ` + "`limit: 1000`" + ` and
+Every ` + "`builder_query`" + ` and ` + "`builder_formula`" + ` must include ` + "`limit: 100`" + ` and
 ` + "`order: [{\"key\":{\"name\":\"__result\"},\"direction\":\"desc\"}]`" + ` unless the task intentionally
 needs another positive limit or ordering. The wire field is ` + "`order`" + `; dashboard/editor payloads use a
 different ` + "`orderBy`" + ` shape.
@@ -116,7 +116,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "signal": "metrics",
         "name": "A",
         "stepInterval": 60,
-        "limit": 1000,
+        "limit": 100,
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "container.cpu.utilization",
@@ -145,7 +145,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "signal": "metrics",
         "name": "A",
         "stepInterval": 60,
-        "limit": 1000,
+        "limit": 100,
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "http_requests_total",
@@ -173,7 +173,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
         "signal": "metrics",
         "name": "A",
         "stepInterval": 60,
-        "limit": 1000,
+        "limit": 100,
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "http_request_duration_seconds",
@@ -202,7 +202,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "signal": "metrics",
           "name": "A",
           "stepInterval": 60,
-          "limit": 1000,
+          "limit": 100,
           "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_errors_total",
@@ -218,7 +218,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "signal": "metrics",
           "name": "B",
           "stepInterval": 60,
-          "limit": 1000,
+          "limit": 100,
           "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_requests_total",
@@ -234,7 +234,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "name": "C",
           "expression": "A / B * 100",
           "legend": "error_rate_%",
-          "limit": 1000,
+          "limit": 100,
           "order": [{"key": {"name": "__result"}, "direction": "desc"}]
         }
       }
@@ -300,7 +300,7 @@ dimension, just like any other metric.
         "source": "meter",
         "name": "A",
         "stepInterval": 3600,
-        "limit": 1000,
+        "limit": 100,
         "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "signoz.meter.log.size",

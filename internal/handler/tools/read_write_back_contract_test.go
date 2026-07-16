@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func TestDashboardReadWriteBackContract(t *testing.T) {
@@ -53,7 +54,7 @@ func TestDashboardReadWriteBackContract(t *testing.T) {
 	query := widgets[1].(map[string]any)["query"].(map[string]any)
 	builder := query["builder"].(map[string]any)
 	spec := builder["queryData"].([]any)[0].(map[string]any)
-	if spec["limit"] != float64(1000) {
+	if spec["limit"] != float64(types.DefaultAggregateQueryLimit) {
 		t.Fatalf("dashboard builder limit did not survive read-write-back: %s", gotBody)
 	}
 	orderBy := spec["orderBy"].([]any)
@@ -109,7 +110,7 @@ func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 				t.Fatalf("alert body lost get response fields: %s", gotBody)
 			}
 			spec := body["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
-			if spec["limit"] != float64(1000) {
+			if spec["limit"] != float64(types.DefaultAggregateQueryLimit) {
 				t.Fatalf("alert builder limit did not survive read-write-back: %s", gotBody)
 			}
 			order := spec["order"].([]any)
@@ -194,7 +195,7 @@ func validAlertWriteBackFixture() map[string]any {
 					"spec": map[string]any{
 						"name":   "A",
 						"signal": "metrics",
-						"limit":  1000,
+						"limit":  types.DefaultAggregateQueryLimit,
 						"order": []any{map[string]any{
 							"key":       map[string]any{"name": "__result"},
 							"direction": "desc",
