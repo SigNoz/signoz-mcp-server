@@ -34,7 +34,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables")),
 	)
 
-	addTool(s, executeQuery, h.handleExecuteBuilderQuery)
+	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)
 
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",

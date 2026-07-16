@@ -5,27 +5,27 @@ import (
 )
 
 type Meters struct {
-	ToolCalls           metric.Int64Counter
-	ToolCallDuration    metric.Float64Histogram
-	MethodCalls         metric.Int64Counter
-	MethodDuration      metric.Float64Histogram
-	SessionRegistered   metric.Int64Counter
-	AuthFailures        metric.Int64Counter
-	OAuthEvents         metric.Int64Counter
-	OAuthFailures       metric.Int64Counter
-	IdentityCacheHits   metric.Int64Counter
-	IdentityCacheMisses metric.Int64Counter
-	DocsSearches        metric.Int64Counter
-	DocsSearchDuration  metric.Float64Histogram
-	DocsFetches         metric.Int64Counter
-	DocsRefreshes       metric.Int64Counter
-	DocsRefreshDuration metric.Float64Histogram
-	DocsIndexAge        metric.Float64Gauge
-	DocsIndexSizeBytes  metric.Int64Gauge
-	DocsIndexDocCount   metric.Int64Gauge
-	DocsIndexGeneration metric.Int64Gauge
-	DocsFetcherRetries  metric.Int64Counter
-	DocsSitemapFailures metric.Int64Counter
+	ToolCalls                          metric.Int64Counter
+	ToolCallDuration                   metric.Float64Histogram
+	MethodCalls                        metric.Int64Counter
+	MethodDuration                     metric.Float64Histogram
+	AuthFailures                       metric.Int64Counter
+	OAuthEvents                        metric.Int64Counter
+	OAuthFailures                      metric.Int64Counter
+	IdentityCacheHits                  metric.Int64Counter
+	IdentityCacheMisses                metric.Int64Counter
+	DocsSearches                       metric.Int64Counter
+	DocsSearchDuration                 metric.Float64Histogram
+	DocsFetches                        metric.Int64Counter
+	DocsRefreshes                      metric.Int64Counter
+	DocsRefreshDuration                metric.Float64Histogram
+	DocsIndexSizeBytes                 metric.Int64Gauge
+	DocsIndexDocCount                  metric.Int64Gauge
+	DocsIndexGeneration                metric.Int64Gauge
+	DocsSitemapFailures                metric.Int64Counter
+	ToolValidationMismatches           metric.Int64Counter
+	ToolSchemaCompileFailures          metric.Int64Counter
+	ToolOutputMissingStructuredContent metric.Int64Counter
 }
 
 func NewMeters(mp metric.MeterProvider) (*Meters, error) {
@@ -60,14 +60,6 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		"mcp.method.duration",
 		metric.WithDescription("Duration of non-tool MCP method calls"),
 		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	sessionRegistered, err := meter.Int64Counter(
-		"mcp.session.registered",
-		metric.WithDescription("Count of MCP sessions successfully registered"),
 	)
 	if err != nil {
 		return nil, err
@@ -117,7 +109,12 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
-	docsSearchDuration, err := meter.Float64Histogram("signoz_docs_search_duration_seconds", metric.WithDescription("Duration of SigNoz docs searches"), metric.WithUnit("s"))
+	docsSearchDuration, err := meter.Float64Histogram(
+		"signoz_docs_search_duration_seconds",
+		metric.WithDescription("Duration of SigNoz docs searches"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +126,12 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
-	docsRefreshDuration, err := meter.Float64Histogram("signoz_docs_refresh_duration_seconds", metric.WithDescription("Duration of SigNoz docs refreshes"), metric.WithUnit("s"))
-	if err != nil {
-		return nil, err
-	}
-	docsIndexAge, err := meter.Float64Gauge("signoz_docs_index_age_seconds", metric.WithDescription("Age of the active SigNoz docs index"), metric.WithUnit("s"))
+	docsRefreshDuration, err := meter.Float64Histogram(
+		"signoz_docs_refresh_duration_seconds",
+		metric.WithDescription("Duration of SigNoz docs refreshes"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(.1, .5, 1, 2.5, 5, 10, 30, 60, 120, 300),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -149,35 +147,52 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
-	docsFetcherRetries, err := meter.Int64Counter("signoz_docs_fetcher_retries_total", metric.WithDescription("Count of SigNoz docs fetcher retries"))
-	if err != nil {
-		return nil, err
-	}
 	docsSitemapFailures, err := meter.Int64Counter("signoz_docs_sitemap_parse_failures_total", metric.WithDescription("Count of SigNoz docs sitemap parse failures"))
 	if err != nil {
 		return nil, err
 	}
+	toolValidationMismatches, err := meter.Int64Counter(
+		"mcp.tool.validation.mismatches",
+		metric.WithDescription("Count of MCP tool input/output schema mismatches (calls are served best-effort)"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	toolSchemaCompileFailures, err := meter.Int64Counter(
+		"mcp.tool.schema.compile_failures",
+		metric.WithDescription("Count of MCP tool schemas that failed registration-time compilation"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	toolOutputMissingStructuredContent, err := meter.Int64Counter(
+		"mcp.tool.output.missing_structured_content",
+		metric.WithDescription("Count of successful schema-declaring tools that returned no structured content"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &Meters{
-		ToolCalls:           toolCalls,
-		ToolCallDuration:    toolCallDuration,
-		MethodCalls:         methodCalls,
-		MethodDuration:      methodDuration,
-		SessionRegistered:   sessionRegistered,
-		AuthFailures:        authFailures,
-		OAuthEvents:         oauthEvents,
-		OAuthFailures:       oauthFailures,
-		IdentityCacheHits:   identityCacheHits,
-		IdentityCacheMisses: identityCacheMisses,
-		DocsSearches:        docsSearches,
-		DocsSearchDuration:  docsSearchDuration,
-		DocsFetches:         docsFetches,
-		DocsRefreshes:       docsRefreshes,
-		DocsRefreshDuration: docsRefreshDuration,
-		DocsIndexAge:        docsIndexAge,
-		DocsIndexSizeBytes:  docsIndexSizeBytes,
-		DocsIndexDocCount:   docsIndexDocCount,
-		DocsIndexGeneration: docsIndexGeneration,
-		DocsFetcherRetries:  docsFetcherRetries,
-		DocsSitemapFailures: docsSitemapFailures,
+		ToolCalls:                          toolCalls,
+		ToolCallDuration:                   toolCallDuration,
+		MethodCalls:                        methodCalls,
+		MethodDuration:                     methodDuration,
+		AuthFailures:                       authFailures,
+		OAuthEvents:                        oauthEvents,
+		OAuthFailures:                      oauthFailures,
+		IdentityCacheHits:                  identityCacheHits,
+		IdentityCacheMisses:                identityCacheMisses,
+		DocsSearches:                       docsSearches,
+		DocsSearchDuration:                 docsSearchDuration,
+		DocsFetches:                        docsFetches,
+		DocsRefreshes:                      docsRefreshes,
+		DocsRefreshDuration:                docsRefreshDuration,
+		DocsIndexSizeBytes:                 docsIndexSizeBytes,
+		DocsIndexDocCount:                  docsIndexDocCount,
+		DocsIndexGeneration:                docsIndexGeneration,
+		DocsSitemapFailures:                docsSitemapFailures,
+		ToolValidationMismatches:           toolValidationMismatches,
+		ToolSchemaCompileFailures:          toolSchemaCompileFailures,
+		ToolOutputMissingStructuredContent: toolOutputMissingStructuredContent,
 	}, nil
 }

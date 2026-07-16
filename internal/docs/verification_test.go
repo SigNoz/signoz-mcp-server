@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -52,12 +53,44 @@ func TestCorpusManifestMatches(t *testing.T) {
 	require.Equal(t, manifest.SitemapHash, snapshot.SitemapHash)
 	require.Len(t, manifest.Pages, len(snapshot.Pages))
 
+	seenURLs := make(map[string]struct{}, len(snapshot.Pages))
 	for i, page := range snapshot.Pages {
+		canonical, ok := CanonicalDocURL(page.URL)
+		require.True(t, ok, "invalid corpus URL: %s", page.URL)
+		require.Equal(t, canonical, page.URL)
+		require.NotContains(t, seenURLs, canonical, "duplicate corpus URL: %s", canonical)
+		seenURLs[canonical] = struct{}{}
+		require.NotEmpty(t, page.SectionSlugs, page.URL)
+		require.Equal(t, page.SectionBreadcrumb, page.SectionMap[page.SectionSlug], page.URL)
+		seenSections := make(map[string]struct{}, len(page.SectionSlugs))
+		for _, slug := range page.SectionSlugs {
+			require.NotEmpty(t, slug, page.URL)
+			require.NotContains(t, seenSections, slug, "%s has duplicate section %s", page.URL, slug)
+			seenSections[slug] = struct{}{}
+			require.Contains(t, page.SectionMap, slug, page.URL)
+		}
+		require.Len(t, page.SectionMap, len(page.SectionSlugs), "%s has unlisted section metadata", page.URL)
+
 		sum := sha256.Sum256([]byte(page.BodyMarkdown))
 		require.Equal(t, manifest.Pages[i].URL, page.URL)
 		require.Equal(t, manifest.Pages[i].Title, page.Title)
 		require.Equal(t, manifest.Pages[i].SHA256, hex.EncodeToString(sum[:]), page.URL)
 	}
+}
+
+func TestCorpusRoundTripPreservesMergedSections(t *testing.T) {
+	snapshot := testSnapshot()
+	duplicate := snapshot.Pages[0]
+	duplicate.SectionSlug = "alternate"
+	duplicate.SectionBreadcrumb = "Alternate > Logs"
+	snapshot.Pages = NormalizePages(append(snapshot.Pages, duplicate))
+
+	var encoded bytes.Buffer
+	require.NoError(t, EncodeCorpus(&encoded, snapshot))
+	decoded, err := DecodeCorpus(bytes.NewReader(encoded.Bytes()))
+	require.NoError(t, err)
+	require.Equal(t, snapshot, decoded)
+	require.Equal(t, []string{"logs-management", "alternate"}, decoded.Pages[0].SectionSlugs)
 }
 
 func TestSchemaVersionGuard(t *testing.T) {
@@ -117,7 +150,6 @@ func TestForcedFullRefresh(t *testing.T) {
 	require.Equal(t, int64(1), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
 	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
 	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
-	require.Less(t, float64GaugeValue(t, metrics, "signoz_docs_index_age_seconds"), 10.0)
 }
 
 func TestSingleflightSerialization(t *testing.T) {
@@ -183,6 +215,11 @@ func TestRecordDocsIndexMetrics(t *testing.T) {
 	reader, meters := newDocsTestMeters(t)
 
 	snapshot := testSnapshot()
+	duplicate := snapshot.Pages[0]
+	duplicate.SectionSlug = "alternate"
+	duplicate.SectionBreadcrumb = "Alternate > Logs"
+	snapshot.Pages = NormalizePages(append(snapshot.Pages, duplicate))
+	require.Len(t, snapshot.Pages, 2)
 	snapshot.BuiltAt = time.Now().UTC().Add(-2 * time.Hour)
 	require.NoError(t, reg.Swap(context.Background(), snapshot))
 	require.True(t, reg.RecordMetrics(context.Background(), meters))
@@ -191,10 +228,6 @@ func TestRecordDocsIndexMetrics(t *testing.T) {
 	require.Equal(t, int64(len(snapshot.Pages)), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
 	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
 	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
-
-	age := float64GaugeValue(t, metrics, "signoz_docs_index_age_seconds")
-	require.GreaterOrEqual(t, age, 2*time.Hour.Seconds())
-	require.Less(t, age, 2*time.Hour.Seconds()+10)
 }
 
 func TestAtomicSwapRace(t *testing.T) {
@@ -457,11 +490,9 @@ func TestRefreshFallbackPreservesDuplicateURLSections(t *testing.T) {
 			duplicatePages = append(duplicatePages, page)
 		}
 	}
-	require.Len(t, duplicatePages, 2)
-	sections := map[string]string{}
-	for _, page := range duplicatePages {
-		sections[page.SectionSlug] = page.SectionBreadcrumb
-	}
+	require.Len(t, duplicatePages, 1)
+	require.Equal(t, []string{"logs-management", "metrics"}, duplicatePages[0].SectionSlugs)
+	sections := duplicatePages[0].SectionMap
 	require.Equal(t, map[string]string{
 		"logs-management": "Logs Management > Deno",
 		"metrics":         "Metrics > Deno",
@@ -521,14 +552,6 @@ func collectDocsMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata
 func int64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) int64 {
 	t.Helper()
 	gauge, ok := oteltest.FindInt64GaugeMetric(rm, name)
-	require.True(t, ok, "metric %s not found", name)
-	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
-	return gauge.DataPoints[0].Value
-}
-
-func float64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) float64 {
-	t.Helper()
-	gauge, ok := oteltest.FindFloat64GaugeMetric(rm, name)
 	require.True(t, ok, "metric %s not found", name)
 	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
 	return gauge.DataPoints[0].Value
@@ -673,7 +696,7 @@ func snapshotForEntries(entries []SitemapEntry, bodies map[string]string) Corpus
 		BuiltAt:       now,
 		SitemapRaw:    sitemap,
 		SitemapHash:   SitemapHash(sitemap),
-		Pages:         pages,
+		Pages:         NormalizePages(pages),
 	}
 }
 

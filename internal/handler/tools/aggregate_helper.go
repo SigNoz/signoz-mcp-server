@@ -588,10 +588,10 @@ func countQueryRangeRows(payload []byte) (int, bool) {
 	return total, true
 }
 
-// countAlertHistoryRows counts the alert history rows in either response shape
-// returned by /api/v1/rules/{id}/history/timeline: data[] or data.items[]. A
-// present null at data or data.items is a known empty collection; missing or
-// unrecognized shapes fail open.
+// countAlertHistoryRows counts the alert history rows in either response shape:
+// the v2 GET /api/v2/rules/{id}/history/timeline body (data.items[]) or a bare
+// data[] array. A present null at data or data.items is a known empty
+// collection; missing or unrecognized shapes fail open.
 func countAlertHistoryRows(payload []byte) (int, bool) {
 	var resp struct {
 		Data json.RawMessage `json:"data"`
@@ -696,6 +696,54 @@ func completenessNote(returnedRows, limit, offset int, rowsKnown bool) string {
 		return fmt.Sprintf(
 			"note: returned %d rows (limit %d) — more results likely exist (hasMore=true). Fetch the next page with offset=%d.",
 			returnedRows, limit, nextOffset)
+	}
+	return fmt.Sprintf(
+		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",
+		returnedRows, limit)
+}
+
+// alertHistoryCompletenessNote is the completeness advisory for the v2 rule
+// state-history timeline, which paginates with an opaque cursor rather than an
+// offset. When the response carries a non-empty data.nextCursor, more pages
+// exist and the caller must pass it back as "cursor"; otherwise it reports the
+// page as complete. If the cursor field can't be read (unexpected shape), it
+// falls back to the row-count heuristic without asserting a cursor.
+func alertHistoryCompletenessNote(payload []byte, returnedRows, limit int, rowsKnown bool, start, end int64, order string) string {
+	var resp struct {
+		Data struct {
+			NextCursor string `json:"nextCursor"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &resp); err == nil && resp.Data.NextCursor != "" {
+		continuation := fmt.Sprintf(
+			"Fetch the next page with cursor=%q, start=%d, end=%d, order=%q, and the same state and filter.",
+			resp.Data.NextCursor, start, end, order)
+		if rowsKnown {
+			if limit == 0 {
+				return fmt.Sprintf(
+					"note: returned %d rows — more results exist (hasMore=true). %s",
+					returnedRows, continuation)
+			}
+			return fmt.Sprintf(
+				"note: returned %d rows (limit %d) — more results exist (hasMore=true). %s",
+				returnedRows, limit, continuation)
+		}
+		return fmt.Sprintf(
+			"note: more results exist (hasMore=true). %s",
+			continuation)
+	}
+	if !rowsKnown {
+		if limit == 0 {
+			return "note: this tool cannot count returned rows, so more results may exist. Paginate with \"cursor\" (or narrow the query) to be sure."
+		}
+		return fmt.Sprintf(
+			"note: limit %d applied; this tool cannot count returned rows, so more results may exist. Paginate with \"cursor\" (or narrow the query) to be sure.",
+			limit)
+	}
+	if limit == 0 {
+		return fmt.Sprintf(
+			"note: returned %d rows — all matching results returned (hasMore=false).",
+			returnedRows)
 	}
 	return fmt.Sprintf(
 		"note: returned %d rows (limit %d) — all matching results returned (hasMore=false).",

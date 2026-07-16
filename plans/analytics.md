@@ -812,7 +812,7 @@ All event names are defined in [pkg/analytics/events.go](../pkg/analytics/events
 
 | Event | Fired at | Notable attributes |
 | --- | --- | --- |
-| `MCP Session: Registered` | `AddAfterInitialize` hook (successful initialize) | `tenantUrl`, `clientName`, `clientVersion`, `protocolVersion` |
+| `MCP Client: Initialized` | `AddAfterInitialize` hook (successful initialize) | `tenantUrl`, `clientName`, `clientVersion`, `protocolVersion`, `clientSource`, `assistantThreadId`/`assistantExecutionId` |
 | `MCP Tool: Called` | tool-handler middleware, post-return | `toolName`, `toolIsError`, `durationMs`, `errorType`, `tenantUrl`, `clientSource`, `assistantThreadId`/`assistantExecutionId` |
 | `MCP Prompt: Fetched` | `AddAfterGetPrompt` (success only) | `promptName`, `tenantUrl` |
 | `MCP Resource: Fetched` | `AddAfterReadResource` (success only) | `resourceUri`, `tenantUrl` |
@@ -823,11 +823,11 @@ Every event is enriched with identity attributes (`orgId`, `principal`, `name`, 
 
 ### Async dispatch
 
-All analytics emission runs on a detached goroutine via `trackEventAsync` / `identifyAsync` / `identifyAndTrackAsync` with a 5s budget and its own context carrying credentials, session/tenant context, and the OTel span context (so the identity HTTP request joins the originating tool-call trace). Tool-call latency is never blocked on analytics.
+All analytics emission runs on a detached goroutine via `trackEventAsync` with a 5s budget and its own context carrying credentials, tenant/caller context, and the OTel span context (so the identity HTTP request joins the originating tool-call trace). Tool-call latency is never blocked on analytics.
 
 ### Client attribution (stateless transport)
 
-The Streamable HTTP transport runs stateless (`WithStateLess(true)`; see [architecture.md](architecture.md)) — no `Mcp-Session-Id` is issued and there is no session to correlate requests across. Consequently MCP `ClientInfo` (Name, Version from `InitializeRequest.Params.ClientInfo`) is attached **only to `MCP Session: Registered`**, read directly from the initialize request in the `AfterInitialize` hook. Per-call events (`MCP Tool: Called`, `MCP Prompt: Fetched`, `MCP Resource: Fetched`) do **not** carry `clientName`/`clientVersion`, and `sessionId` is unset on all events. (The earlier per-session `expirable.LRU[string, mcp.Implementation]` cache that propagated client info onto later events was removed with the move to stateless.) `clientSource` and assistant correlation (`assistantThreadId`/`assistantExecutionId`) are unaffected — they are header-derived and attached per request via `attachCallerCorrelation`.
+The Streamable HTTP transport runs stateless (`WithStateLess(true)`; see [architecture.md](architecture.md)) — no `Mcp-Session-Id` is issued and there is no server-owned session lifecycle to report. The successful initialize request emits `MCP Client: Initialized`, sourcing `clientName`/`clientVersion` directly from its MCP `ClientInfo` and `protocolVersion` from the negotiated result. Those fields are not attached to later calls because stateless requests cannot be correlated through a durable session. `clientSource` and assistant correlation (`assistantThreadId`/`assistantExecutionId`) are header-derived and attached per request via `attachCallerCorrelation`.
 
 ### OAuth
 

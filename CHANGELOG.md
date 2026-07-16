@@ -14,6 +14,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+
+## [0.8.0] - 2026-07-15
+
+### Added
+- migrate get_alert_history to v2 rule-history API ([#235](https://github.com/SigNoz/signoz-mcp-server/pull/235))
+- upgrade mcp-go to v0.56.0 with shadow-mode schema validation ([#231](https://github.com/SigNoz/signoz-mcp-server/pull/231))
+
+### Fixed
+- align MCP telemetry and OAuth guidance ([#237](https://github.com/SigNoz/signoz-mcp-server/pull/237))
+- deduplicate docs corpus and improve ranking ([#233](https://github.com/SigNoz/signoz-mcp-server/pull/233))
+
+## [0.7.0] - 2026-07-07
+
+### Added
+- add signoz_check_metric_cardinality tool ([#208](https://github.com/SigNoz/signoz-mcp-server/pull/208))
+- add signoz_check_metric_usage tool ([#205](https://github.com/SigNoz/signoz-mcp-server/pull/205))
+
+### Fixed
+- classify upstream authz errors ([#227](https://github.com/SigNoz/signoz-mcp-server/pull/227))
+- migrate trace fields to snake_case ([#225](https://github.com/SigNoz/signoz-mcp-server/pull/225))
+
+### Other
+- bump golang.org/x/net from 0.51.0 to 0.55.0 ([#228](https://github.com/SigNoz/signoz-mcp-server/pull/228))
+
 ## [0.6.0] - 2026-06-25
 
 ### Added
@@ -274,3 +299,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.4.2...v0.5.0
 [0.5.1]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.0...v0.5.1
 [0.6.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.1...v0.6.0
+[0.7.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.6.0...v0.7.0
+[0.8.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.7.0...v0.8.0

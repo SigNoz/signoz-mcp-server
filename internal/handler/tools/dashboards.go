@@ -75,7 +75,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Default: 0. Must be >= 0.")),
 	)
 
-	addTool(s, tool, h.handleListDashboards)
+	h.addTool(s, tool, h.handleListDashboards)
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -87,7 +87,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("id", mcp.Description("Dashboard UUID. Required.")),
 	)
 
-	addTool(s, getDashboardTool, h.handleGetDashboard)
+	h.addTool(s, getDashboardTool, h.handleGetDashboard)
 
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
@@ -111,7 +111,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		rawInputSchema(createDashboardSchema),
 	)
 
-	addTool(s, createDashboardTool, h.handleCreateDashboard)
+	h.addTool(s, createDashboardTool, h.handleCreateDashboard)
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
@@ -135,7 +135,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		rawInputSchema(updateDashboardSchema),
 	)
 
-	addTool(s, updateDashboardTool, h.handleUpdateDashboard)
+	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard)
 
 	patchDashboardTool := mcp.NewTool(
 		"signoz_patch_dashboard",
@@ -159,7 +159,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("id", mcp.Description("Dashboard UUID to delete. Required.")),
 	)
 
-	addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
+	h.addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
 
 	importDashboardTool := mcp.NewTool(
 		"signoz_import_dashboard",
@@ -176,7 +176,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 	)
 
-	addTool(s, importDashboardTool, h.handleImportDashboard)
+	h.addTool(s, importDashboardTool, h.handleImportDashboard)
 
 	listTemplatesTool := mcp.NewTool(
 		"signoz_list_dashboard_templates",
@@ -191,7 +191,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 	)
 
-	addTool(s, listTemplatesTool, h.handleListDashboardTemplates)
+	h.addTool(s, listTemplatesTool, h.handleListDashboardTemplates)
 
 	// resources for create and update dashboard
 	h.registerDashboardResources(s)

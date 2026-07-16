@@ -23,11 +23,11 @@ func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
 				"'what is driving my metrics ingestion volume?', 'metrics by ingestion cost'."),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithString("timeRange", mcp.DefaultString("7d"), mcp.Description(timeRangeDesc("Defaults to '7d' (a cost-analysis window); if the query times out, retry with '3d', then '24h'."))),
-		mcp.WithString("start", mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
-		mcp.WithString("end", mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
+		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 	)
 
-	addTool(s, tool, h.handleGetTopMetrics)
+	h.addTool(s, tool, h.handleGetTopMetrics)
 }
 
 func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

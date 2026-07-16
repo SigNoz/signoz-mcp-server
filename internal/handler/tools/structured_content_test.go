@@ -209,6 +209,11 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
 			return json.RawMessage(`[{"serviceName":"frontend"}]`), nil
 		},
+		CheckMetricUsageFn: func(ctx context.Context, names []string) (map[string]client.MetricUsage, error) {
+			return map[string]client.MetricUsage{
+				"system.cpu.time": {Dashboards: []string{"Host Metrics"}, Alerts: []string{}},
+			}, nil
+		},
 		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
 			return json.RawMessage(`{"dashboards":[{"id":"d1","name":"x"}],"tags":[],"total":1}`), nil
 		},
@@ -244,6 +249,7 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		req  mcp.CallToolRequest
 	}{
 		{"list_services", h.handleListServices, makeToolRequest("signoz_list_services", map[string]any{})},
+		{"check_metric_usage", h.handleCheckMetricUsage, makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"system.cpu.time"}})},
 		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
 		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "d1"})},
 		{"create_dashboard", h.handleCreateDashboard, makeToolRequest("signoz_create_dashboard", map[string]any{"spec": map[string]any{"display": map[string]any{"name": "X"}}})},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
@@ -135,6 +137,7 @@ func TestListAlertRules(t *testing.T) {
 		assert.Equal(t, "", r.URL.RawQuery)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		assert.Equal(t, version.UserAgent(), r.Header.Get("User-Agent"))
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
@@ -215,6 +218,7 @@ func TestValidateCredentials(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
 				switch r.URL.Path {
@@ -233,7 +237,9 @@ func TestValidateCredentials(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{
+				"User-Agent": "custom-client/1.0",
+			})
 
 			err := client.ValidateCredentials(context.Background())
 
@@ -555,6 +561,67 @@ func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
 	assert.True(t, sawTerminalWarn, "expected terminal non-retryable warning log")
 }
 
+func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	require.Error(t, err)
+
+	var statusErr *HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.Contains(t, statusErr.Body, "authz_forbidden")
+	assert.Contains(t, err.Error(), "unexpected status 403")
+}
+
+func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
+	var logBuf bytes.Buffer
+	longMessage := strings.Repeat("x", 5000) + "tail"
+	responseBody, err := json.Marshal(map[string]any{
+		"status": "error",
+		"error": map[string]any{
+			"type":    "forbidden",
+			"code":    "forbidden",
+			"message": longMessage,
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write(responseBody)
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	require.Error(t, err)
+
+	var statusErr *HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.True(t, json.Valid([]byte(statusErr.Body)), "stored body should remain parseable JSON")
+	assert.Contains(t, statusErr.Body, longMessage)
+	assert.Contains(t, err.Error(), "...(truncated)")
+	assert.NotContains(t, err.Error(), "tail")
+
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	require.NotEmpty(t, lines)
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &rec))
+	assert.Equal(t, "SigNoz request returned unexpected status", rec["msg"])
+	response, _ := rec["response"].(string)
+	assert.Contains(t, response, "...(truncated)")
+	assert.NotContains(t, response, "tail")
+}
+
 func TestListMetricKeys(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -820,83 +887,66 @@ func TestGetAlertHistory(t *testing.T) {
 		resp          map[string]interface{}
 		statusCode    int
 		expectedError bool
-		expectedData  []map[string]interface{}
+		expectedItems int
 	}{
 		{
-			name:   "successful alert history retrieval",
+			name:   "successful alert history retrieval with state and filter",
 			ruleID: "ruleid-abc",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start:            1640995200000,
+				End:              1641081600000,
+				State:            "firing",
+				FilterExpression: "severity = 'warning'",
+				Limit:            20,
+				Order:            "desc",
 			},
 			resp: map[string]interface{}{
 				"status": "success",
-				"data": []map[string]interface{}{
-					{
-						"timestamp": "2022-01-01T10:00:00Z",
-						"state":     "firing",
-						"value":     85.5,
-						"labels": map[string]interface{}{
-							"service":  "frontend",
-							"severity": "warning",
-						},
+				"data": map[string]interface{}{
+					"items": []map[string]interface{}{
+						{"ruleId": "ruleid-abc", "state": "firing", "value": 85.5, "unixMilli": 1640995200000},
+						{"ruleId": "ruleid-abc", "state": "inactive", "value": 45.2, "unixMilli": 1640998800000},
 					},
-					{
-						"timestamp": "2022-01-01T11:00:00Z",
-						"state":     "resolved",
-						"value":     45.2,
-						"labels": map[string]interface{}{
-							"service":  "frontend",
-							"severity": "warning",
-						},
-					},
+					"total":      2,
+					"nextCursor": "",
 				},
 			},
 			statusCode:    http.StatusOK,
 			expectedError: false,
-			expectedData: []map[string]interface{}{
-				{
-					"timestamp": "2022-01-01T10:00:00Z",
-					"state":     "firing",
-					"value":     85.5,
-					"labels": map[string]interface{}{
-						"service":  "frontend",
-						"severity": "warning",
-					},
-				},
-				{
-					"timestamp": "2022-01-01T11:00:00Z",
-					"state":     "resolved",
-					"value":     45.2,
-					"labels": map[string]interface{}{
-						"service":  "frontend",
-						"severity": "warning",
-					},
+			expectedItems: 2,
+		},
+		{
+			name:   "cursor paginated request",
+			ruleID: "ruleid-abc",
+			request: types.AlertHistoryRequest{
+				Start:  1640995200000,
+				End:    1641081600000,
+				Limit:  20,
+				Order:  "desc",
+				Cursor: "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
+			},
+			resp: map[string]interface{}{
+				"status": "success",
+				"data": map[string]interface{}{
+					"items":      []map[string]interface{}{},
+					"total":      20,
+					"nextCursor": "",
 				},
 			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+			expectedItems: 0,
 		},
 		{
 			name:   "server error",
 			ruleID: "ruleid-abc",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start: 1640995200000,
+				End:   1641081600000,
+				Limit: 20,
+				Order: "desc",
 			},
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			resp:          map[string]interface{}{"status": "error", "error": map[string]interface{}{"message": "Internal server error"}},
 			statusCode:    http.StatusInternalServerError,
 			expectedError: true,
 		},
@@ -904,17 +954,12 @@ func TestGetAlertHistory(t *testing.T) {
 			name:   "rule not found",
 			ruleID: "non-existent-rule",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start: 1640995200000,
+				End:   1641081600000,
+				Limit: 20,
+				Order: "desc",
 			},
-			resp:          map[string]interface{}{"status": "error", "message": "Rule not found"},
+			resp:          map[string]interface{}{"status": "error", "error": map[string]interface{}{"message": "Rule not found"}},
 			statusCode:    http.StatusNotFound,
 			expectedError: true,
 		},
@@ -922,41 +967,36 @@ func TestGetAlertHistory(t *testing.T) {
 			name:   "empty response",
 			ruleID: "ruleid-abc",
 			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Offset: 0,
-				Limit:  20,
-				Order:  "desc",
-				Filters: types.AlertHistoryFilters{
-					Items: []interface{}{},
-					Op:    "AND",
-				},
+				Start: 1640995200000,
+				End:   1641081600000,
+				Limit: 20,
+				Order: "desc",
 			},
-			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
+			resp:          map[string]interface{}{"status": "success", "data": map[string]interface{}{"items": []map[string]interface{}{}, "total": 0}},
 			statusCode:    http.StatusOK,
 			expectedError: false,
-			expectedData:  []map[string]interface{}{},
+			expectedItems: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				expectedPath := fmt.Sprintf("/api/v1/rules/%s/history/timeline", tt.ruleID)
+				// v2 timeline is a GET; params ride on the query string, not a body.
+				assert.Equal(t, http.MethodGet, r.Method)
+				expectedPath := fmt.Sprintf("/api/v2/rules/%s/history/timeline", tt.ruleID)
 				assert.Equal(t, expectedPath, r.URL.Path)
-
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
 
-				var requestBody types.AlertHistoryRequest
-				err := json.NewDecoder(r.Body).Decode(&requestBody)
-				require.NoError(t, err)
-				assert.Equal(t, tt.request.Start, requestBody.Start)
-				assert.Equal(t, tt.request.End, requestBody.End)
-				assert.Equal(t, tt.request.Offset, requestBody.Offset)
-				assert.Equal(t, tt.request.Limit, requestBody.Limit)
-				assert.Equal(t, tt.request.Order, requestBody.Order)
+				q := r.URL.Query()
+				assert.Equal(t, fmt.Sprintf("%d", tt.request.Start), q.Get("start"))
+				assert.Equal(t, fmt.Sprintf("%d", tt.request.End), q.Get("end"))
+				assert.Equal(t, fmt.Sprintf("%d", tt.request.Limit), q.Get("limit"))
+				assert.Equal(t, tt.request.Order, q.Get("order"))
+				// Optional params are omitted when empty (server applies defaults).
+				assert.Equal(t, tt.request.State, q.Get("state"))
+				assert.Equal(t, tt.request.FilterExpression, q.Get("filterExpression"))
+				assert.Equal(t, tt.request.Cursor, q.Get("cursor"))
 
 				w.WriteHeader(tt.statusCode)
 				responseBody, _ := json.Marshal(tt.resp)
@@ -979,23 +1019,10 @@ func TestGetAlertHistory(t *testing.T) {
 				require.NoError(t, err)
 
 				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].([]interface{}); ok {
-					assert.Equal(t, len(tt.expectedData), len(data))
-					for i, expectedHistory := range tt.expectedData {
-						if i < len(data) {
-							if history, ok := data[i].(map[string]interface{}); ok {
-								assert.Equal(t, expectedHistory["timestamp"], history["timestamp"])
-								assert.Equal(t, expectedHistory["state"], history["state"])
-								assert.Equal(t, expectedHistory["value"], history["value"])
-								if labels, ok := history["labels"].(map[string]interface{}); ok {
-									expectedLabels := expectedHistory["labels"].(map[string]interface{})
-									assert.Equal(t, expectedLabels["service"], labels["service"])
-									assert.Equal(t, expectedLabels["severity"], labels["severity"])
-								}
-							}
-						}
-					}
-				}
+				data, ok := response["data"].(map[string]interface{})
+				require.True(t, ok, "expected v2 data object with items[]")
+				items, _ := data["items"].([]interface{})
+				assert.Equal(t, tt.expectedItems, len(items))
 			}
 		})
 	}
@@ -1643,6 +1670,7 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	customHeaders := map[string]string{
 		"Content-Type":        "text/plain",
 		"SIGNOZ-API-KEY":      "overridden-key",
+		"User-Agent":          "custom-client/1.0",
 		"CF-Access-Client-Id": "test-id",
 	}
 
@@ -1650,6 +1678,7 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 		// Reserved headers should NOT be overridden by custom headers
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 
 		// Non-reserved custom headers should still be injected
 		assert.Equal(t, "test-id", r.Header.Get("CF-Access-Client-Id"))

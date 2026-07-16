@@ -206,7 +206,8 @@ The binary is at `./bin/signoz-mcp-server`.
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
-- SigNoz v0.120.0 or newer for alert rule tools that use the `/api/v2/rules` APIs
+- SigNoz v0.131.0 or newer for `signoz_check_metric_usage`
+- SigNoz v0.120.0 or newer for alert-rule list/get/create/update/delete tools, and v0.118.0 or newer for alert history
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
 
@@ -331,21 +332,25 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** alert-rule tools target `/api/v2/rules/*`, which is available in SigNoz v0.120.0 and newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected alert-rule tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`, available in SigNoz v0.131.0 and newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`, the user's original question/search text. It is used for MCP observability and is not forwarded to SigNoz APIs.
+
+> **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries an appended `Input validation notice:` text block naming the mismatched parameter so self-correcting agents can adjust. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
 
 | Tool | Description |
 |------|-------------|
 | `signoz_list_metrics` | Search and list available metrics |
 | `signoz_query_metrics` | Query metrics with smart aggregation defaults |
-| `signoz_get_top_metrics` | Rank metrics by ingested sample count for cost analysis |
+| `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
+| `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
+| `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert rules, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get an alert rule definition by `id` via GET /api/v2/rules/{id} |
-| `signoz_get_alert_history` | Get alert state history timeline for a rule (`id`) |
+| `signoz_get_alert_history` | Get alert firing history for a specific alert rule |
 | `signoz_create_alert` | Create an alert rule via POST /api/v2/rules; v2alpha1 for threshold/promql, v1 for anomaly |
 | `signoz_update_alert` | Update an alert rule by UUIDv7 `id` via PUT /api/v2/rules/{id} |
 | `signoz_delete_alert` | Delete an alert rule by UUIDv7 `id` via DELETE /api/v2/rules/{id} |
@@ -414,7 +419,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `temporality` (optional) - cumulative, delta, unspecified (auto-fetched if absent)
   - `timeAggregation` (optional) - Aggregation over time (auto-defaulted by type)
   - `spaceAggregation` (optional) - Aggregation across dimensions (auto-defaulted by type)
-  - `groupBy` (optional) - Comma-separated field names
+  - `groupBy` (optional) - Comma-separated field names or an array of field names
   - `filter` (optional) - Filter expression
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
@@ -422,7 +427,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `requestType` (optional) - Response format. Enum: `time_series` (default), `scalar`. Unknown values are rejected.
   - `reduceTo` (optional) - For scalar: sum, count, avg, min, max, last, median
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
-  - `formulaQueries` (optional) - JSON array of additional named metric queries for formula
+  - `formulaQueries` (optional) - Array or JSON-encoded array string of additional named metric queries for formula. Each object supports `name`, `metricName`, `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `groupBy`, and `filter`; `name` and `metricName` are required.
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
 
 #### `signoz_get_top_metrics`
@@ -433,6 +438,24 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '1h', '24h', '3d', '7d', '30d'; default: '7d'; ignored when both `start` and `end` are provided). Start with 7d; if the query times out, retry with 3d, then 24h
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
   - **Completeness note**: returns a fixed top 100 by ingested sample volume; the response appends a note flagging whether the list was truncated at that cap (`hasMore`)
+
+#### `signoz_check_metric_usage`
+
+Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric. Requires SigNoz v0.131.0+.
+
+- **Parameters**:
+  - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
+- **Response**: Per metric — `dashboards` (list of dashboard names that reference the metric), `alerts` (list of alert names that reference the metric), `error` (non-empty when the lookup failed — do not treat the metric as unused in that case)
+- **Limits**: Maximum 50 metrics per call; 30-second overall timeout (partial results returned on expiry)
+
+#### `signoz_check_metric_cardinality`
+
+Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. The `values` field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion cost entirely — more impactful than trimming its labels.
+
+- **Parameters**:
+  - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '3d', '7d'; default: '7d'; ignored when both `start` and `end` are provided)
+  - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
 
 #### `signoz_list_alerts`
 
@@ -535,18 +558,24 @@ Gets top operations for a specific service.
 
 #### `signoz_get_alert_history`
 
-Gets alert history timeline for a specific rule.
+Gets alert firing history for a specific alert rule. Defaults to the last 6 hours. Use `state` and `filter` to narrow results. For the next page, pass `data.nextCursor` as `cursor` and repeat the original query filters and time range.
+
+The response is `{ "status": "success", "data": { "items": [...], "total": <n>, "nextCursor": "<opaque>" } }`; `nextCursor` is omitted on the final page.
 
 - **Parameters**:
   - `id` (required) - Alert rule ID
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
-  - `state` (optional) - Filter by alert state. Enum: `firing`, `inactive` (omit for all transitions)
-  - `offset` (optional) - Offset for pagination (default: 0)
-  - `limit` (optional) - Limit number of results (default: 20, max: 10000; higher values are clamped — paginate with `offset`)
+  - `state` (optional) - Filter by alert state. Enum: `inactive`, `pending`, `recovering`, `firing`, `nodata`, `disabled` (omit for all transitions)
+  - `filter` (optional) - SigNoz query-builder expression over timeline labels. Combine conditions with `AND`, `OR`, and parentheses; quote strings with single quotes. Example: `severity = 'critical' AND (team = 'payments' OR service.name = 'checkout')`. To discover keys, first call without a filter and inspect `data.items[].labels[].key.name`. The backend-shaped `filterExpression` alias remains accepted for compatibility, but `filter` is canonical.
+  - `cursor` (optional) - Opaque continuation cursor. Repeat the original time range, state, filter, and order when fetching the next page. Omit `cursor` for the first page.
+  - `limit` (optional) - Rows per page. Default: 20; max: 10000 (higher values are clamped).
   - `order` (optional) - Sort order. Enum: `asc`, `desc` (default: 'asc')
-  - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch
+  - **Legacy `offset`**: no longer supported; use the returned cursor instead.
+  - **Completeness note**: the response appends a note reporting `hasMore` from `data.nextCursor` and names the cursor for the next page.
+
+> **Requires SigNoz ≥ v0.118.0**, the first release to serve the v2 rule-history routes (`/api/v2/rules/{id}/history/*`, added in [SigNoz #10488](https://github.com/SigNoz/signoz/pull/10488)). If this tool returns `NOT_FOUND`, verify the rule `id` in the SigNoz UI or, on SigNoz v0.120.0+, with `signoz_list_alert_rules`; if the rule exists, upgrade SigNoz. Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
 
 #### `signoz_list_views`
 
@@ -826,18 +855,22 @@ Executes a SigNoz Query Builder v5 query.
 | `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → API Keys in the SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
-| `MCP_SERVER_PORT` | Port for HTTP transport mode                                                   | Yes only when `TRANSPORT_MODE=http` |
+| `MCP_SERVER_PORT` | Port for HTTP transport mode (default: `8000`)                                 | No |
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
+| `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
+| `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Runtime docs sitemap refresh interval (Go duration, default: `6h`) | No |
 | `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Runtime full docs refresh interval (Go duration, default: `24h`) | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
 | `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |
 | `OAUTH_ISSUER_URL` | Public URL of this MCP server (used in OAuth metadata discovery)              | Yes when `OAUTH_ENABLED=true`       |
 | `OAUTH_ACCESS_TOKEN_TTL_MINUTES` | Access token lifetime in minutes (default: 60)                  | No                                  |
-| `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 1440 / 24h)       | No                                  |
+| `OAUTH_REFRESH_TOKEN_TTL_MINUTES` | Refresh token lifetime in minutes (default: 43200 / 30d)      | No                                  |
 | `OAUTH_AUTH_CODE_TTL_SECONDS` | Authorization code lifetime in seconds (default: 600 / 10min)      | No                                  |
 | `SIGNOZ_CUSTOM_HEADERS` | Extra HTTP headers added to every API request, useful when SigNoz is behind a reverse proxy requiring auth (e.g. `CF-Access-Client-Id:id.access,CF-Access-Client-Secret:secret`). Format: `Key1:Value1,Key2:Value2` | No |
 | `SIGNOZ_INSTANCE_URL_ALLOWLIST` | Multi-tenant (http) only: comma-separated allowlist of SigNoz backend hosts the server will proxy to. Entries are exact hosts (`signoz.example.com`) or wildcards (`*.us.signoz.cloud`, which matches any subdomain ending in `.us.signoz.cloud`); a scheme/port/path accidentally included in an entry is tolerated and reduced to the bare host. When set, SigNoz instance URLs that do not match are refused at every ingress: the OAuth setup form and `X-SigNoz-URL` header return HTTP 403, the OAuth token endpoint (incl. existing refresh tokens) returns `invalid_grant`, and `/mcp` requests via an OAuth token return 403. All increment a `disallowed_signoz_url`-tagged failure metric for alerting (not logged per-request, to avoid noise from misconfigured/looping clients), and the rejection message points SigNoz Cloud users to their region's MCP URL (`mcp.<region>.signoz.cloud`) with a docs link. Empty/unset allows any host. The operator's own `SIGNOZ_URL` is exempt. | No |
+| `ANALYTICS_ENABLED` | Enable product analytics (`true`/`false`; default: `false`) | No |
+| `SEGMENT_KEY` | Segment write key used only when analytics is enabled | No |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for the MCP server's own traces and metrics. Internal telemetry export is disabled when no OTLP endpoint/exporter is configured. For plaintext collectors, use an `http://` endpoint such as `http://localhost:4317`. | No |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Trace-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for traces. | No |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Metrics-specific OTLP gRPC endpoint; overrides `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics. | No |

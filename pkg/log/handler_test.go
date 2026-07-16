@@ -20,13 +20,12 @@ func newTestLogger(buf *bytes.Buffer) *slog.Logger {
 	return slog.New(NewContextHandler(base))
 }
 
-func TestContextHandler_InjectsTenantSessionSearchContext(t *testing.T) {
+func TestContextHandler_InjectsTenantAndSearchContext(t *testing.T) {
 	var buf bytes.Buffer
 	logger := newTestLogger(&buf)
 
 	ctx := context.Background()
 	ctx = util.SetSigNozURL(ctx, "https://tenant.example.com")
-	ctx = util.SetSessionID(ctx, "sess-42")
 	ctx = util.SetSearchContext(ctx, "root-cause")
 
 	logger.InfoContext(ctx, "ping")
@@ -37,9 +36,6 @@ func TestContextHandler_InjectsTenantSessionSearchContext(t *testing.T) {
 	}
 	if got := rec["mcp.tenant_url"]; got != "https://tenant.example.com" {
 		t.Fatalf("mcp.tenant_url = %v, want tenant url", got)
-	}
-	if got := rec["mcp.session.id"]; got != "sess-42" {
-		t.Fatalf("mcp.session.id = %v, want sess-42", got)
 	}
 	if got := rec["mcp.search_context"]; got != "root-cause" {
 		t.Fatalf("mcp.search_context = %v, want root-cause", got)

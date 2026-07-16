@@ -23,11 +23,13 @@ import (
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
 const (
 	SignozApiKey = "SIGNOZ-API-KEY"
 	ContentType  = "Content-Type"
+	UserAgent    = "User-Agent"
 
 	// DefaultQueryTimeout is used for read-only API calls.
 	DefaultQueryTimeout = 600 * time.Second
@@ -39,7 +41,24 @@ const (
 	analyticsIdentityCacheTTL = 10 * time.Minute
 )
 
-var ErrUnauthorized = errors.New("signoz credentials rejected")
+var (
+	ErrUnauthorized  = errors.New("signoz credentials rejected")
+	defaultUserAgent = version.UserAgent()
+)
+
+// HTTPStatusError preserves status and response details from a non-2xx SigNoz API response.
+type HTTPStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
+}
+
+func (e *HTTPStatusError) truncatedBody() string {
+	return logpkg.TruncBody([]byte(e.Body))
+}
 
 // AnalyticsIdentity is the identity tuple used for analytics attribution.
 // UserID holds the service-account ID for API-key sessions, or the SigNoz
@@ -121,6 +140,29 @@ func (s *SigNoz) ensureTenantContext(ctx context.Context) context.Context {
 		return util.SetSigNozURL(ctx, s.baseURL)
 	}
 	return ctx
+}
+
+func (s *SigNoz) setRequestHeaders(ctx context.Context, req *http.Request, warnReserved bool) {
+	req.Header.Set(ContentType, "application/json")
+	req.Header.Set(s.authHeaderName, s.apiKey)
+	req.Header.Set(UserAgent, defaultUserAgent)
+
+	for name, value := range s.customHeaders {
+		if strings.EqualFold(name, UserAgent) {
+			if value = strings.TrimSpace(value); value != "" {
+				req.Header.Set(UserAgent, value+" "+defaultUserAgent)
+			}
+			continue
+		}
+		if strings.EqualFold(name, ContentType) || strings.EqualFold(name, s.authHeaderName) {
+			if warnReserved {
+				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
+					slog.String("header", name), slog.String("value", value))
+			}
+			continue
+		}
+		req.Header.Set(name, value)
+	}
 }
 
 // ValidateCredentials performs a lightweight authenticated request against the
@@ -268,14 +310,7 @@ func (s *SigNoz) doValidationRequest(ctx context.Context, reqURL string) (int, [
 		return 0, nil, fmt.Errorf("failed to create validation request: %w", err)
 	}
 
-	req.Header.Set(ContentType, "application/json")
-	req.Header.Set(s.authHeaderName, s.apiKey)
-
-	for k, v := range s.customHeaders {
-		if !strings.EqualFold(k, ContentType) && !strings.EqualFold(k, s.authHeaderName) {
-			req.Header.Set(k, v)
-		}
-	}
+	s.setRequestHeaders(ctx, req, false)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -356,18 +391,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 
-		req.Header.Set(ContentType, "application/json")
-
-		req.Header.Set(s.authHeaderName, s.apiKey)
-
-		for k, v := range s.customHeaders {
-			if strings.EqualFold(k, ContentType) || strings.EqualFold(k, s.authHeaderName) {
-				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
-					slog.String("header", k), slog.String("value", v))
-				continue
-			}
-			req.Header.Set(k, v)
-		}
+		s.setRequestHeaders(ctx, req, true)
 
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
@@ -414,13 +438,13 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 
 		// Retry on transient server errors.
 		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
-			truncatedBody := logpkg.TruncBody(respBody)
-			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+			statusErr := newHTTPStatusError(resp.StatusCode, respBody)
+			lastErr = statusErr
 			s.logger.DebugContext(ctx, "Retryable status, will retry",
 				slog.String("url", reqURL),
 				slog.Int("status", resp.StatusCode),
 				slog.Int("attempt", attempt+1),
-				slog.String("response", truncatedBody))
+				slog.String("response", statusErr.truncatedBody()))
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("retry aborted: %w", lastErr)
@@ -431,22 +455,29 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		retryable := isRetryableStatus(resp.StatusCode)
-		truncatedBody := logpkg.TruncBody(respBody)
+		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 		attrs := []any{
 			slog.String("url", reqURL),
 			slog.Int("status", resp.StatusCode),
 			slog.Int("attempt", attempt+1),
 			slog.Bool("retryable", retryable),
-			slog.String("response", truncatedBody),
+			slog.String("response", statusErr.truncatedBody()),
 		}
 		if retryable {
 			attrs = append(attrs, slog.Bool("retries_exhausted", true))
 		}
 		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status", attrs...)
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, truncatedBody)
+		return nil, statusErr
 	}
 
 	return nil, lastErr
+}
+
+func newHTTPStatusError(statusCode int, respBody []byte) *HTTPStatusError {
+	return &HTTPStatusError{
+		StatusCode: statusCode,
+		Body:       string(respBody),
+	}
 }
 
 func isRetryableStatus(code int) bool {
@@ -565,14 +596,9 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 }
 
 func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/rules/%s/history/timeline", s.baseURL, url.PathEscape(ruleID))
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
+	reqURL := fmt.Sprintf("%s/api/v2/rules/%s/history/timeline?%s", s.baseURL, url.PathEscape(ruleID), req.QueryParams().Encode())
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching alert history", slog.String("ruleID", ruleID))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(reqBody), DefaultQueryTimeout)
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {

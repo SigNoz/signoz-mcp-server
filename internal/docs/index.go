@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,8 @@ import (
 
 const fetchContentByteLimit = 256 * 1024
 const snippetRuneLimit = 200
+
+var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", ".", " ")
 
 //go:embed assets/corpus.gob.gz assets/corpus.manifest.json
 var embeddedAssets embed.FS
@@ -170,7 +173,9 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	if err != nil {
 		return SearchResponse{}, err
 	}
-	out := SearchResponse{Query: query, TotalMatches: res.Total}
+	// Results must be non-nil: the advertised output schema promises an
+	// array, and a zero-hit search serializing "results": null violates it.
+	out := SearchResponse{Query: query, TotalMatches: res.Total, Results: []SearchResult{}}
 	for _, hit := range res.Hits {
 		body := stringField(hit.Fields, "body_markdown")
 		resultSectionSlug := stringField(hit.Fields, "section_slug")
@@ -217,9 +222,15 @@ func boostedDocsQuery(raw string) bleveQuery.Query {
 	body := bleve.NewMatchQuery(raw)
 	body.SetField("body")
 	body.SetBoost(1)
+	sectionBreadcrumb := bleve.NewMatchQuery(raw)
+	sectionBreadcrumb.SetField("section_breadcrumb_text")
+	sectionBreadcrumb.SetBoost(2.5)
+	urlTokens := bleve.NewMatchQuery(raw)
+	urlTokens.SetField("url_text")
+	urlTokens.SetBoost(2.5)
 	queryString := bleve.NewQueryStringQuery(raw)
 	queryString.SetBoost(0.5)
-	return bleve.NewDisjunctionQuery(title, headings, body, queryString)
+	return bleve.NewDisjunctionQuery(title, headings, body, sectionBreadcrumb, urlTokens, queryString)
 }
 
 func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (FetchResult, string, error) {
@@ -244,8 +255,13 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		return FetchResult{}, CodeDocNotFound, nil
 	}
 	fields := res.Hits[0].Fields
-	var headings []Heading
+	// Non-nil for the same reason as SearchResponse.Results: the output
+	// schema promises an array even for headingless or unparseable metadata.
+	headings := []Heading{}
 	_ = json.Unmarshal([]byte(stringField(fields, "available_headings")), &headings)
+	if headings == nil {
+		headings = []Heading{}
+	}
 	body := stringField(fields, "body_markdown")
 	selectedHeading := ""
 	if heading != "" {
@@ -330,25 +346,45 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 		return nil, err
 	}
 	batch := idx.NewBatch()
-	for _, page := range mergeDuplicatePages(snapshot.Pages) {
-		canonical := page.CanonicalURL
+	seenURLs := make(map[string]struct{}, len(snapshot.Pages))
+	for _, page := range snapshot.Pages {
+		canonical, ok := CanonicalDocURL(page.URL)
+		if !ok {
+			continue
+		}
+		if _, exists := seenURLs[canonical]; exists {
+			_ = idx.Close()
+			return nil, fmt.Errorf("duplicate canonical docs URL %q in corpus schema %d", canonical, snapshot.SchemaVersion)
+		}
+		seenURLs[canonical] = struct{}{}
+		sectionSlugs, sectionMap := pageSectionMetadata(page)
+		sectionSlug := page.SectionSlug
+		if sectionSlug == "" && len(sectionSlugs) > 0 {
+			sectionSlug = sectionSlugs[0]
+		}
+		sectionBreadcrumb := page.SectionBreadcrumb
+		if sectionBreadcrumb == "" {
+			sectionBreadcrumb = sectionMap[sectionSlug]
+		}
 		body := page.BodyMarkdown
 		headingsJSON := page.HeadingsJSON
 		if headingsJSON == "" {
 			headingsJSON = mustJSON(ExtractHeadings(body))
 		}
 		doc := map[string]any{
-			"title":              page.Title,
-			"headings":           headingsJSON,
-			"body":               body,
-			"section_slug":       page.SectionSlug,
-			"section_breadcrumb": page.SectionBreadcrumb,
-			"section_slugs":      page.SectionSlugs,
-			"section_map":        mustJSON(page.SectionMap),
-			"url":                canonical,
-			"body_markdown":      body,
-			"available_headings": headingsJSON,
-			"last_fetched_at":    page.FetchedAt.UTC().Format(time.RFC3339),
+			"title":                   page.Title,
+			"headings":                headingsJSON,
+			"body":                    body,
+			"section_breadcrumb_text": breadcrumbSearchText(sectionSlugs, sectionMap),
+			"url_text":                urlSearchText(canonical),
+			"section_slug":            sectionSlug,
+			"section_breadcrumb":      sectionBreadcrumb,
+			"section_slugs":           sectionSlugs,
+			"section_map":             mustJSON(sectionMap),
+			"url":                     canonical,
+			"body_markdown":           body,
+			"available_headings":      headingsJSON,
+			"last_fetched_at":         page.FetchedAt.UTC().Format(time.RFC3339),
 		}
 		if err := batch.Index(canonical, doc); err != nil {
 			_ = idx.Close()
@@ -362,16 +398,14 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 	return idx, nil
 }
 
-type indexedPage struct {
-	PageRecord
-	CanonicalURL string
-	SectionSlugs []string
-	SectionMap   map[string]string
-}
-
-func mergeDuplicatePages(pages []PageRecord) []indexedPage {
+// NormalizePages returns one PageRecord per canonical URL while retaining all
+// section associations. The first record supplies stable navigation metadata;
+// a fresher duplicate may replace only the fetched page payload.
+func NormalizePages(pages []PageRecord) []PageRecord {
 	type accumulator struct {
-		page         indexedPage
+		page         PageRecord
+		sectionSlugs []string
+		sectionMap   map[string]string
 		seenSections map[string]struct{}
 	}
 	byURL := make(map[string]*accumulator, len(pages))
@@ -385,41 +419,114 @@ func mergeDuplicatePages(pages []PageRecord) []indexedPage {
 		current, ok := byURL[canonical]
 		if !ok {
 			current = &accumulator{
-				page: indexedPage{
-					PageRecord:   page,
-					CanonicalURL: canonical,
-					SectionMap:   map[string]string{},
-				},
+				page:         page,
+				sectionMap:   map[string]string{},
 				seenSections: map[string]struct{}{},
 			}
 			current.page.URL = canonical
+			current.page.SectionSlugs = nil
+			current.page.SectionMap = nil
 			byURL[canonical] = current
 			order = append(order, canonical)
-		} else if shouldReplaceDuplicatePayload(page, current.page.PageRecord) {
-			sectionSlugs := current.page.SectionSlugs
-			sectionMap := current.page.SectionMap
-			current.page.PageRecord = page
-			current.page.URL = canonical
-			current.page.CanonicalURL = canonical
-			current.page.SectionSlugs = sectionSlugs
-			current.page.SectionMap = sectionMap
+		} else if shouldReplaceDuplicatePayload(page, current.page) {
+			replacePagePayload(&current.page, page)
 		}
-		if page.SectionSlug == "" {
-			continue
+
+		sectionSlugs, sectionMap := pageSectionMetadata(page)
+		for _, slug := range sectionSlugs {
+			if _, exists := current.seenSections[slug]; exists {
+				if current.sectionMap[slug] == "" && sectionMap[slug] != "" {
+					current.sectionMap[slug] = sectionMap[slug]
+				}
+				continue
+			}
+			current.seenSections[slug] = struct{}{}
+			current.sectionSlugs = append(current.sectionSlugs, slug)
+			current.sectionMap[slug] = sectionMap[slug]
 		}
-		if _, ok := current.seenSections[page.SectionSlug]; ok {
-			continue
-		}
-		current.seenSections[page.SectionSlug] = struct{}{}
-		current.page.SectionSlugs = append(current.page.SectionSlugs, page.SectionSlug)
-		current.page.SectionMap[page.SectionSlug] = page.SectionBreadcrumb
 	}
 
-	merged := make([]indexedPage, 0, len(order))
+	merged := make([]PageRecord, 0, len(order))
 	for _, canonical := range order {
-		merged = append(merged, byURL[canonical].page)
+		current := byURL[canonical]
+		current.page.SectionSlugs = append([]string(nil), current.sectionSlugs...)
+		current.page.SectionMap = current.sectionMap
+		if current.page.SectionSlug == "" && len(current.sectionSlugs) > 0 {
+			current.page.SectionSlug = current.sectionSlugs[0]
+		}
+		if current.page.SectionBreadcrumb == "" {
+			current.page.SectionBreadcrumb = current.sectionMap[current.page.SectionSlug]
+		}
+		merged = append(merged, current.page)
 	}
 	return merged
+}
+
+func pageSectionMetadata(page PageRecord) ([]string, map[string]string) {
+	seen := map[string]struct{}{}
+	sectionSlugs := make([]string, 0, len(page.SectionSlugs)+1)
+	sectionMap := make(map[string]string, len(page.SectionMap)+1)
+	add := func(slug, breadcrumb string) {
+		if slug == "" {
+			return
+		}
+		if _, ok := seen[slug]; ok {
+			if sectionMap[slug] == "" && breadcrumb != "" {
+				sectionMap[slug] = breadcrumb
+			}
+			return
+		}
+		seen[slug] = struct{}{}
+		sectionSlugs = append(sectionSlugs, slug)
+		sectionMap[slug] = breadcrumb
+	}
+
+	add(page.SectionSlug, page.SectionBreadcrumb)
+	for _, slug := range page.SectionSlugs {
+		add(slug, page.SectionMap[slug])
+	}
+	extras := make([]string, 0, len(page.SectionMap))
+	for slug := range page.SectionMap {
+		if _, ok := seen[slug]; !ok && slug != "" {
+			extras = append(extras, slug)
+		}
+	}
+	sort.Strings(extras)
+	for _, slug := range extras {
+		add(slug, page.SectionMap[slug])
+	}
+	return sectionSlugs, sectionMap
+}
+
+func replacePagePayload(current *PageRecord, candidate PageRecord) {
+	current.Title = candidate.Title
+	current.HeadingsJSON = candidate.HeadingsJSON
+	current.BodyMarkdown = candidate.BodyMarkdown
+	current.FetchedAt = candidate.FetchedAt
+	current.SourceETag = candidate.SourceETag
+}
+
+func breadcrumbSearchText(sectionSlugs []string, sectionMap map[string]string) string {
+	seen := make(map[string]struct{}, len(sectionSlugs))
+	parts := make([]string, 0, len(sectionSlugs))
+	for _, slug := range sectionSlugs {
+		breadcrumb := strings.TrimSpace(sectionMap[slug])
+		if breadcrumb == "" {
+			continue
+		}
+		if _, ok := seen[breadcrumb]; ok {
+			continue
+		}
+		seen[breadcrumb] = struct{}{}
+		parts = append(parts, breadcrumb)
+	}
+	return strings.Join(parts, " ")
+}
+
+func urlSearchText(canonical string) string {
+	pathText := strings.TrimPrefix(canonical, "https://signoz.io/docs/")
+	pathText = strings.Trim(pathText, "/")
+	return urlSearchTokenReplacer.Replace(pathText)
 }
 
 func shouldReplaceDuplicatePayload(candidate, current PageRecord) bool {
@@ -450,6 +557,14 @@ func newIndexMapping() *mapping.IndexMappingImpl {
 	body := bleve.NewTextFieldMapping()
 	body.Analyzer = "standard"
 	docMapping.AddFieldMappingsAt("body", body)
+
+	navigationText := func() *mapping.FieldMapping {
+		m := bleve.NewTextFieldMapping()
+		m.Analyzer = "en"
+		return m
+	}
+	docMapping.AddFieldMappingsAt("section_breadcrumb_text", navigationText())
+	docMapping.AddFieldMappingsAt("url_text", navigationText())
 
 	keyword := func() *mapping.FieldMapping {
 		m := bleve.NewKeywordFieldMapping()

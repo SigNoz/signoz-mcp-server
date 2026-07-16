@@ -83,6 +83,27 @@ func TestHandleGetAlertHistory_LimitNotClamped(t *testing.T) {
 	}
 }
 
+func TestHandleGetAlertHistory_CursorKeepsEncodedLimitWhenOmitted(t *testing.T) {
+	var capturedReq types.AlertHistoryRequest
+	mock := &client.MockClient{
+		GetAlertHistoryFn: func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
+			capturedReq = req
+			return json.RawMessage(`{"data":{"items":[]}}`), nil
+		},
+	}
+
+	result, err := newTestHandler(mock).handleGetAlertHistory(testCtx(), makeToolRequest("signoz_get_alert_history", map[string]any{
+		"ruleId": "rule-hist",
+		"cursor": "UPSTREAM_CURSOR",
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("cursor follow-up failed: err=%v result=%v", err, result.Content)
+	}
+	if capturedReq.Cursor != "UPSTREAM_CURSOR" || capturedReq.Limit != 0 {
+		t.Fatalf("cursor follow-up request = %#v, want raw cursor with omitted limit", capturedReq)
+	}
+}
+
 // resultNotesContain reports whether any text content block of the result
 // contains the given substring. resultWithNotes appends notes as content blocks
 // trailing the JSON payload block.

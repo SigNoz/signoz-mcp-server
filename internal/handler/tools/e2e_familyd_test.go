@@ -295,7 +295,7 @@ func TestFamilyD_E2E_SignalEnumValues(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// order (asc/desc) + state (firing/inactive) on get_alert_history (N15).
+// order (asc/desc) + every v2 state on get_alert_history (N15).
 // Needs a real ruleId from list_alert_rules.
 // ---------------------------------------------------------------------------
 
@@ -322,7 +322,7 @@ func TestFamilyD_E2E_AlertHistoryEnums(t *testing.T) {
 		mustNoToolError(t, res, "get_alert_history/order="+order)
 	}
 
-	for _, state := range []string{"firing", "inactive"} {
+	for _, state := range alertHistoryStateValues {
 		res, err := h.handleGetAlertHistory(ctx, makeToolRequest("signoz_get_alert_history", map[string]any{
 			"ruleId":    ruleID,
 			"timeRange": "24h",
@@ -333,7 +333,7 @@ func TestFamilyD_E2E_AlertHistoryEnums(t *testing.T) {
 		}
 		mustNoToolError(t, res, "get_alert_history/state="+state)
 	}
-	t.Logf("order (asc, desc) and state (firing, inactive) enums accepted on get_alert_history")
+	t.Logf("order (asc, desc) and all v2 state enums accepted on get_alert_history")
 }
 
 func firstLiveRuleID(t *testing.T, h *Handler, ctx context.Context) string {

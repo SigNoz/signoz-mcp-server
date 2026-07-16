@@ -2,7 +2,6 @@ package docs
 
 import (
 	"context"
-	"time"
 
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 )
@@ -20,11 +19,6 @@ func (r *IndexRegistry) RecordMetrics(ctx context.Context, meters *otelpkg.Meter
 	defer release()
 
 	snapshot := entry.snapshot
-	age := time.Since(snapshot.BuiltAt)
-	if age < 0 {
-		age = 0
-	}
-	meters.DocsIndexAge.Record(ctx, age.Seconds())
 	meters.DocsIndexSizeBytes.Record(ctx, approximateCorpusSizeBytes(snapshot))
 	meters.DocsIndexDocCount.Record(ctx, int64(len(snapshot.Pages)))
 	meters.DocsIndexGeneration.Record(ctx, int64(entry.generation))
@@ -39,6 +33,12 @@ func approximateCorpusSizeBytes(snapshot CorpusSnapshot) int64 {
 		total += int64(len(page.Title))
 		total += int64(len(page.SectionSlug))
 		total += int64(len(page.SectionBreadcrumb))
+		for _, slug := range page.SectionSlugs {
+			total += int64(len(slug))
+		}
+		for slug, breadcrumb := range page.SectionMap {
+			total += int64(len(slug) + len(breadcrumb))
+		}
 		total += int64(len(page.HeadingsJSON))
 		total += int64(len(page.BodyMarkdown))
 		total += int64(len(page.SourceETag))
