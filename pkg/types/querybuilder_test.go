@@ -460,7 +460,7 @@ func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
 		spec, ok := payload.CompositeQuery.Queries[i].Spec.(QuerySpec)
 		require.True(t, ok, "query %d: expected QuerySpec, got %T", i, payload.CompositeQuery.Queries[i].Spec)
 		require.Equal(t, "meter", spec.Source, "query %d: source must be set", i)
-		require.Equal(t, DefaultAggregateQueryLimit, spec.Limit)
+		require.Equal(t, DefaultFormulaInputQueryLimit, spec.Limit)
 		require.Equal(t, resultDescendingOrder(), spec.Order)
 	}
 
@@ -628,6 +628,8 @@ func TestQueryPayloadRoundTrip_FormulaBoundsDefaultAndPreserve(t *testing.T) {
 	var payload QueryPayload
 	require.NoError(t, json.Unmarshal([]byte(input), &payload))
 	require.NoError(t, payload.Validate())
+	base := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, DefaultFormulaInputQueryLimit, base.Limit)
 	formula := payload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
 	require.Equal(t, 25, formula.Limit)
 	require.Equal(t, []Order{{Key: Key{Name: "F", Signal: "metrics", FieldContext: "metric", FieldDataType: "float64"}, Direction: "asc"}}, formula.Order)
@@ -650,6 +652,29 @@ func TestQueryPayloadRoundTrip_FormulaBoundsDefaultAndPreserve(t *testing.T) {
 	formula = payload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
 	require.Equal(t, DefaultAggregateQueryLimit, formula.Limit)
 	require.Equal(t, resultDescendingOrder(), formula.Order)
+}
+
+func TestQueryPayloadValidate_FormulaInputsUseWiderDefaultAndPreserveOverrides(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "time_series",
+		CompositeQuery: CompositeQuery{Queries: []Query{
+			{Type: "builder_query", Spec: QuerySpec{Name: "A", Signal: "metrics", Aggregations: []any{map[string]any{"metricName": "errors", "spaceAggregation": "sum"}}}},
+			{Type: "builder_query", Spec: QuerySpec{Name: "B", Signal: "metrics", Limit: 42, Order: resultDescendingOrder(), Aggregations: []any{map[string]any{"metricName": "requests", "spaceAggregation": "sum"}}}},
+			{Type: "builder_query", Spec: QuerySpec{Name: "AA", Signal: "metrics", Aggregations: []any{map[string]any{"metricName": "unrelated", "spaceAggregation": "sum"}}}},
+			{Type: "builder_formula", Spec: FormulaSpec{Name: "F1", Expression: "A / B * 100"}},
+			{Type: "builder_formula", Spec: FormulaSpec{Name: "F2", Expression: "AA * 2", Disabled: true}},
+		}},
+	}
+
+	require.NoError(t, payload.Validate())
+	require.Equal(t, DefaultFormulaInputQueryLimit, payload.CompositeQuery.Queries[0].Spec.(QuerySpec).Limit)
+	require.Equal(t, 42, payload.CompositeQuery.Queries[1].Spec.(QuerySpec).Limit)
+	require.Equal(t, DefaultAggregateQueryLimit, payload.CompositeQuery.Queries[2].Spec.(QuerySpec).Limit)
+	require.Equal(t, DefaultAggregateQueryLimit, payload.CompositeQuery.Queries[3].Spec.(FormulaSpec).Limit)
+	require.Equal(t, DefaultAggregateQueryLimit, payload.CompositeQuery.Queries[4].Spec.(FormulaSpec).Limit)
+	require.True(t, payload.AppliedBounds[0].FormulaInput)
 }
 
 func TestQuerySpecUnmarshal_NormalizesIntegerStringsAndRejectsInvalidShapes(t *testing.T) {

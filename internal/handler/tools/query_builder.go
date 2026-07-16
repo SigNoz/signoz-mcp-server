@@ -27,7 +27,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 			"Execute a raw SigNoz Query Builder v5 query as an escape hatch for multi-query, formula, or other shapes the higher-level tools cannot express. "+
 				"Prefer signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for metrics.\n\n"+
 				"Read the guide for the signal you are querying: signoz://logs/query-builder-guide for logs, signoz://traces/query-builder-guide for traces, and signoz://metrics-aggregation-guide for metrics or formulas. "+
-				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order; omitted, null, or zero bounds are normalized to 100 rows or groups for all request types. "+
+				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order. Standalone omitted/null/zero bounds normalize to 100 rows or groups; builder queries referenced by a formula normalize to 10000 because base limits are applied before formula evaluation, while the formula result stays at 100. "+
 				"The v5 wire field is spec.order, not the dashboard/editor field orderBy.\n\n"+
 				"For promql envelopes also read signoz://promql/instructions — "+
 				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
@@ -148,7 +148,11 @@ func queryBoundsDecisionsNote(applied []types.AppliedQueryBounds, requestType st
 	for _, bounds := range applied {
 		var decisions []string
 		if bounds.LimitDefaulted {
-			decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
+			if bounds.FormulaInput {
+				decisions = append(decisions, fmt.Sprintf("limit=%d (formula-input default; applied before formula evaluation)", bounds.Limit))
+			} else {
+				decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
+			}
 		}
 		if bounds.OrderDefaulted {
 			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", formatQueryOrder(bounds.Order)))

@@ -26,7 +26,7 @@ ERROR: If you use aggregateOperator or aggregateAttribute, the dashboard may not
 
 Every builder query and formula must carry an explicit positive limit and non-empty editor-model orderBy. Dashboard payloads use orderBy entries shaped as {columnName, order}; do not copy the Query Range v5 wire field named order into a dashboard.
 
-Use limit: 100 by default for raw list panels, or the same smaller positive value as an intentional pageSize. Order trace lists by timestamp desc and log lists by timestamp desc then id desc. Use limit: 100 for graph, table, pie, and value panels; order by the primary aggregation descending. Formulas use limit: 100 and __result desc. For time-series panels, the limit ranks groups over the whole selected window, so a short-lived locally significant series can fall outside the returned top N.
+Use limit: 100 by default for raw list panels, or the same smaller positive value as an intentional pageSize. Order trace lists by timestamp desc and log lists by timestamp desc then id desc. Use limit: 100 for standalone graph, table, pie, and value queries; order by the primary aggregation descending. Formula outputs use limit: 100 and __result desc, while every base query referenced by a formula uses limit: 10000 because base limits are applied before formula evaluation. Narrow filters/grouping when formula-input cardinality can exceed 10000. For time-series panels, each limit ranks groups over the whole selected window, so a short-lived locally significant series can fall outside the returned top N.
 
 === FIELD NAMING CONVENTIONS ===
 
@@ -218,7 +218,7 @@ ERROR: Invalid operators cause filter errors. ERROR: Missing $ prefix for variab
 
 For calculated metrics (like error rate):
 
-builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = 'true' limit: 100 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 100 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
+builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = 'true' limit: 10000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 10000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
 
 ERROR: Not disabling base queries shows multiple series. ERROR: Invalid formula syntax causes calculation errors. SOLUTION: Always set disabled: true for base queries when using formulas.
 
@@ -300,7 +300,7 @@ panelTypes: value title: Total Requests query: queryType: builder builder: query
 
 --- Value: Error Rate (with Formula) ---
 
-panelTypes: value title: Error Rate yAxisUnit: percentunit query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A disabled: true aggregations: - expression: count() filter: expression: has_error = 'true' - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' queryFormulas: - queryName: F1 expression: A / (A+B)
+panelTypes: value title: Error Rate yAxisUnit: percentunit query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A disabled: true aggregations: - expression: count() filter: expression: has_error = 'true' limit: 10000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 10000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
 
 
 === WIDGET TYPES ===
@@ -325,7 +325,7 @@ Example: Token Usage (from Anthropic API)
           expression: A
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 100
+          limit: 10000
           orderBy:
             -
               columnName: sum(llm.token_count.prompt)
@@ -340,7 +340,7 @@ Example: Token Usage (from Anthropic API)
           expression: B
           filter:
             expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
-          limit: 100
+          limit: 10000
           orderBy:
             -
               columnName: sum(llm.token_count.completion)
@@ -1369,7 +1369,7 @@ Example: Error Rate (from Anthropic API)
           expression: A
           filter:
             expression: has_error = 'true' service.name in $service_name
-          limit: 100
+          limit: 10000
           orderBy:
             -
               columnName: count()
@@ -1384,7 +1384,7 @@ Example: Error Rate (from Anthropic API)
           expression: B
           filter:
             expression: has_error = 'false' service.name in $service_name
-          limit: 100
+          limit: 10000
           orderBy:
             -
               columnName: count()

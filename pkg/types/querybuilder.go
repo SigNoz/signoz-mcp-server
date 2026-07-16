@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	DefaultRawQueryLimit       = 100
-	DefaultAggregateQueryLimit = 100
+	DefaultRawQueryLimit          = 100
+	DefaultAggregateQueryLimit    = 100
+	DefaultFormulaInputQueryLimit = 10000
 )
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
@@ -34,6 +35,7 @@ type AppliedQueryBounds struct {
 	Order          []Order
 	LimitDefaulted bool
 	OrderDefaulted bool
+	FormulaInput   bool
 }
 
 type CompositeQuery struct {
@@ -424,6 +426,7 @@ func inferDefaultRequestType(queries []Query) string {
 }
 
 func (q *QueryPayload) applyBuilderBounds() error {
+	formulaInputs := formulaInputQueryNames(q.CompositeQuery.Queries)
 	for i, query := range q.CompositeQuery.Queries {
 		switch query.Type {
 		case "builder_query":
@@ -442,7 +445,12 @@ func (q *QueryPayload) applyBuilderBounds() error {
 
 			applied := AppliedQueryBounds{QueryIndex: i, QueryName: queryName}
 			if spec.Limit == 0 {
-				spec.Limit = defaultLimitForRequestType(q.RequestType)
+				if formulaInputs[strings.ToLower(strings.TrimSpace(spec.Name))] {
+					spec.Limit = DefaultFormulaInputQueryLimit
+					applied.FormulaInput = true
+				} else {
+					spec.Limit = defaultLimitForRequestType(q.RequestType)
+				}
 				applied.LimitDefaulted = true
 			}
 			if len(spec.Order) == 0 {
@@ -491,6 +499,65 @@ func (q *QueryPayload) applyBuilderBounds() error {
 		}
 	}
 	return nil
+}
+
+// formulaInputQueryNames returns the builder-query names referenced by any
+// formula in the same composite request. SigNoz applies each builder query's
+// limit before it evaluates formulas, so omitted formula inputs need a wider
+// bound than standalone aggregate results.
+func formulaInputQueryNames(queries []Query) map[string]bool {
+	builderNames := make([]string, 0, len(queries))
+	formulaExpressions := make([]string, 0, len(queries))
+	for _, query := range queries {
+		switch spec := query.Spec.(type) {
+		case QuerySpec:
+			if name := strings.TrimSpace(spec.Name); name != "" {
+				builderNames = append(builderNames, name)
+			}
+		case FormulaSpec:
+			if !spec.Disabled {
+				formulaExpressions = append(formulaExpressions, spec.Expression)
+			}
+		}
+	}
+
+	inputs := make(map[string]bool)
+	for _, name := range builderNames {
+		for _, expression := range formulaExpressions {
+			if formulaReferencesQuery(expression, name) {
+				inputs[strings.ToLower(name)] = true
+				break
+			}
+		}
+	}
+	return inputs
+}
+
+func formulaReferencesQuery(expression, queryName string) bool {
+	expression = strings.ToLower(expression)
+	queryName = strings.ToLower(strings.TrimSpace(queryName))
+	if queryName == "" {
+		return false
+	}
+	for start := 0; start < len(expression); {
+		index := strings.Index(expression[start:], queryName)
+		if index < 0 {
+			return false
+		}
+		index += start
+		end := index + len(queryName)
+		leftBoundary := index == 0 || !isFormulaIdentifierByte(expression[index-1])
+		rightBoundary := end == len(expression) || !isFormulaIdentifierByte(expression[end])
+		if leftBoundary && rightBoundary {
+			return true
+		}
+		start = index + 1
+	}
+	return false
+}
+
+func isFormulaIdentifierByte(value byte) bool {
+	return value == '_' || value >= 'a' && value <= 'z' || value >= '0' && value <= '9'
 }
 
 func queryDisplayName(name string, index int) string {
@@ -782,6 +849,18 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 		requestType = "time_series"
 	}
 
+	formulaInputs := make(map[string]bool)
+	for _, formula := range queries {
+		if !formula.IsFormula {
+			continue
+		}
+		for _, candidate := range queries {
+			if !candidate.IsFormula && formulaReferencesQuery(formula.Expression, candidate.Name) {
+				formulaInputs[strings.ToLower(strings.TrimSpace(candidate.Name))] = true
+			}
+		}
+	}
+
 	var qbQueries []Query
 	for _, q := range queries {
 		if q.IsFormula {
@@ -799,6 +878,10 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 			continue
 		}
 
+		limit := DefaultAggregateQueryLimit
+		if formulaInputs[strings.ToLower(strings.TrimSpace(q.Name))] {
+			limit = DefaultFormulaInputQueryLimit
+		}
 		spec := QuerySpec{
 			Name:         q.Name,
 			Signal:       "metrics",
@@ -807,7 +890,7 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
-			Limit:        DefaultAggregateQueryLimit,
+			Limit:        limit,
 			Order:        resultDescendingOrder(),
 		}
 		if stepInterval > 0 {

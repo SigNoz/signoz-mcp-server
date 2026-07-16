@@ -31,7 +31,7 @@
     },
     {
       "name": "signoz_query_metrics",
-      "description": "Query metrics with smart aggregation defaults based on metric type; generated queries and formulas use limit 100 ordered by __result desc. Set source=\"meter\" to query Cost Meter (usage/billing) data"
+      "description": "Query metrics with smart aggregation defaults based on metric type; standalone queries and formula results use limit 100, while formula inputs use limit 10000 before evaluation, all ordered by __result desc. Set source=\"meter\" to query Cost Meter (usage/billing) data"
     },
     {
       "name": "signoz_get_top_metrics",
@@ -167,7 +167,7 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Raw Query Builder v5 escape hatch for unsupported multi-query/formula shapes. Prefer search/aggregate/query_metrics tools; builder_query and builder_formula specs require positive limit plus v5 order (not dashboard orderBy), with type-aware defaults inserted and reported"
+      "description": "Raw Query Builder v5 escape hatch for unsupported multi-query/formula shapes. Prefer search/aggregate/query_metrics tools; builder_query and builder_formula specs require positive limit plus v5 order (not dashboard orderBy), with standalone/result defaults of 100 and formula-input defaults of 10000 inserted and reported"
     },
     {
       "name": "signoz_list_notification_channels",
@@ -212,7 +212,7 @@
     {
       "uri": "signoz://metrics-aggregation-guide",
       "name": "Metrics Aggregation Guide",
-      "description": "SigNoz Query Builder v5 metrics and formula guide with aggregation defaults, explicit limit 100 and __result ordering, Cost Meter examples, and whole-window top-N caveats",
+      "description": "SigNoz Query Builder v5 metrics and formula guide with aggregation defaults, standalone/result limit 100, formula-input limit 10000, __result ordering, Cost Meter examples, and whole-window top-N caveats",
       "mimeType": "text/plain"
     }
   ],

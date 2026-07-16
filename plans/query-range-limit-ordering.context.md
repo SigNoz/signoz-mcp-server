@@ -110,3 +110,15 @@
 - Full `go test ./...`, `go vet ./...`, `go build ./...`, JSON parsing, formatting, and diff checks pass after changing `DefaultAggregateQueryLimit` to 100. All seven companion eval JSON files parse, the dashboard crosswalks remain byte-identical, and strict Claude plugin validation passes.
 - A delegated read-only replay initialized a fresh local MCP server from the current working tree and created no resources. Omitted-bound scalar traces used limit 100 with `count() desc`; time-series traces used limit 100 with `count() desc` and surfaced the whole-window ranking warning; a discovered scalar metric used limit 100 with `__result desc`. All three tool calls succeeded.
 - The replay initially found a stale pre-change MCP process still advertising 1000, so it was intentionally bypassed. The fresh test server on port 18083 was stopped after verification and the listener was confirmed gone.
+
+### 2026-07-16 — Formula-input truncation review
+- GitHub review comment `discussion_r3597782255` is valid. The SigNoz alert evaluator copies persisted v5 queries into `QueryRange`, applies each base query's limit before formula evaluation, and applies the formula's own limit only after evaluation. Two independently top-100 component queries can therefore omit a high-ratio group and silently prevent a grouped formula alert from firing.
+- Keep `DefaultAggregateQueryLimit` at the owner-selected 100 for standalone aggregate results and formula outputs. Add a separate 10000 formula-input bound, matching the upstream Query Builder maximum, for generated/defaulted component queries referenced by a formula.
+- Preserve deliberate positive caller-authored bounds. Update alert, dashboard, Query Builder, and metrics guidance so formula inputs use 10000, formula outputs use 100, and users narrow filters/grouping when expected formula-input cardinality can exceed 10000.
+- Update the companion skills and their formula eval assertions in the same change; standalone queries remain at 100 with their signal-specific order keys.
+
+### 2026-07-16 — Formula-input fix verification
+- Query Builder validation now detects enabled formula references before defaulting bounds. Omitted component limits become 10000, while positive authored limits remain unchanged and standalone/formula-result limits remain 100. The generated metrics path authors the same contract directly.
+- Alert, dashboard, metrics, README, manifest, tool descriptions, and companion skills now distinguish formula-input limits from result limits while retaining signal-specific order keys: metrics/formulas use `__result`; log/trace inputs use their primary aggregation.
+- Full `go test ./...`, `go vet ./...`, `go build ./...`, strict Claude plugin validation, edited eval JSON parsing, dashboard-crosswalk identity, formatting, and diff checks pass.
+- Agent CI authenticated to the private reusable workflows but could not start their jobs without repository-only Primus and Docker Hub secrets. This was an infrastructure preflight failure, not a code/test failure; the equivalent repository checks available locally passed directly.

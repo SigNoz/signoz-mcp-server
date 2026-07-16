@@ -449,6 +449,52 @@ func TestHandleExecuteBuilderQuery_SurfacesAppliedBounds(t *testing.T) {
 	}
 }
 
+func TestHandleExecuteBuilderQuery_SurfacesFormulaInputDefault(t *testing.T) {
+	response := json.RawMessage(`{"status":"success","data":{"data":{"results":[]}}}`)
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return response, nil
+		},
+	}
+	h := newTestHandler(mock)
+	query := map[string]any{
+		"schemaVersion": "v1",
+		"start":         1711123200000,
+		"end":           1711130400000,
+		"requestType":   "time_series",
+		"compositeQuery": map[string]any{"queries": []any{
+			map[string]any{"type": "builder_query", "spec": map[string]any{
+				"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "errors", "spaceAggregation": "sum"}},
+			}},
+			map[string]any{"type": "builder_formula", "spec": map[string]any{"name": "F1", "expression": "A * 100"}},
+		}},
+	}
+
+	result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if !resultNotesContain(result, "limit=10000 (formula-input default; applied before formula evaluation)") {
+		t.Fatalf("formula-input decision missing: %v", allTextBlocks(result))
+	}
+
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("captured payload is invalid: %v; body=%s", err, captured)
+	}
+	if got := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec).Limit; got != types.DefaultFormulaInputQueryLimit {
+		t.Fatalf("formula input limit = %d, want %d", got, types.DefaultFormulaInputQueryLimit)
+	}
+	if got := payload.CompositeQuery.Queries[1].Spec.(types.FormulaSpec).Limit; got != types.DefaultAggregateQueryLimit {
+		t.Fatalf("formula result limit = %d, want %d", got, types.DefaultAggregateQueryLimit)
+	}
+}
+
 // --- N4: completeness notes ---
 
 func TestCountQueryRangeRows(t *testing.T) {

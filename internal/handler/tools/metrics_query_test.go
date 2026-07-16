@@ -56,6 +56,60 @@ func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	}
 }
 
+func TestHandleQueryMetrics_FormulaUsesWideInputsAndBoundedResult(t *testing.T) {
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = body
+			return json.RawMessage(`{"status":"success","data":{"results":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_query_metrics", map[string]any{
+		"metricName":       "errors",
+		"metricType":       "gauge",
+		"spaceAggregation": "sum",
+		"requestType":      "scalar",
+		"timeRange":        "1h",
+		"formula":          "A / B * 100",
+		"formulaQueries": []any{map[string]any{
+			"name":             "B",
+			"metricName":       "requests",
+			"metricType":       "gauge",
+			"spaceAggregation": "sum",
+		}},
+	})
+
+	result, err := h.handleQueryMetrics(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("failed to parse captured formula query: %v", err)
+	}
+	if len(payload.CompositeQuery.Queries) != 3 {
+		t.Fatalf("query count = %d, want 3", len(payload.CompositeQuery.Queries))
+	}
+	for i := 0; i < 2; i++ {
+		spec := payload.CompositeQuery.Queries[i].Spec.(types.QuerySpec)
+		if spec.Limit != types.DefaultFormulaInputQueryLimit {
+			t.Fatalf("formula input %d limit = %d, want %d", i, spec.Limit, types.DefaultFormulaInputQueryLimit)
+		}
+	}
+	formula := payload.CompositeQuery.Queries[2].Spec.(types.FormulaSpec)
+	if formula.Limit != types.DefaultAggregateQueryLimit {
+		t.Fatalf("formula result limit = %d, want %d", formula.Limit, types.DefaultAggregateQueryLimit)
+	}
+	if !resultNotesContain(result, "formula input bounds: limit=10000") || !resultNotesContain(result, "formula result bounds: limit=100") {
+		t.Fatalf("formula bounds decisions missing: %v", allTextBlocks(result))
+	}
+}
+
 // TestHandleQueryMetrics_JSONFirstWithSeparateDecisionsNote pins the JSON-first
 // contract for query_metrics: the raw backend payload is
 // content block 0 (independently json.Unmarshal-able, matching the

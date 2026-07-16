@@ -91,9 +91,12 @@ Formula C: A / B * 100
 
 ## Result Bounds and Ordering
 
-Every ` + "`builder_query`" + ` and ` + "`builder_formula`" + ` must include ` + "`limit: 100`" + ` and
+Every ` + "`builder_query`" + ` and ` + "`builder_formula`" + ` must include a positive limit and
 ` + "`order: [{\"key\":{\"name\":\"__result\"},\"direction\":\"desc\"}]`" + ` unless the task intentionally
-needs another positive limit or ordering. The wire field is ` + "`order`" + `; dashboard/editor payloads use a
+needs another ordering. Standalone queries and formula results use ` + "`limit: 100`" + `. Queries referenced
+by a formula use ` + "`limit: 10000`" + ` because SigNoz limits each input before evaluating the formula;
+independent top-100 inputs can silently discard a high-ratio group. Narrow the filters/grouping if expected
+input cardinality can exceed 10000. The wire field is ` + "`order`" + `; dashboard/editor payloads use a
 different ` + "`orderBy`" + ` shape.
 
 For time_series queries with groupBy, limit selects top groups using the ordering across the entire time
@@ -202,7 +205,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "signal": "metrics",
           "name": "A",
           "stepInterval": 60,
-          "limit": 100,
+          "limit": 10000,
           "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_errors_total",
@@ -218,7 +221,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
           "signal": "metrics",
           "name": "B",
           "stepInterval": 60,
-          "limit": 100,
+          "limit": 10000,
           "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_requests_total",

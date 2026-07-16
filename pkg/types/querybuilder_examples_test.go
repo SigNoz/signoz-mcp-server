@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
@@ -36,10 +37,14 @@ func TestQueryBuilderGuideExamplesUseExecutableBoundsContract(t *testing.T) {
 				require.NoErrorf(t, json.Unmarshal([]byte(match[1]), &payload), "example %d is invalid JSON", index+1)
 				require.NoErrorf(t, payload.Validate(), "example %d does not satisfy QueryPayload.Validate", index+1)
 				require.Emptyf(t, payload.AppliedBounds, "example %d omitted explicit limit/order and was auto-healed by validation", index+1)
+				formulaInputs := formulaInputQueryNames(payload.CompositeQuery.Queries)
 				for queryIndex, query := range payload.CompositeQuery.Queries {
 					switch spec := query.Spec.(type) {
 					case QuerySpec:
 						wantLimit := defaultLimitForRequestType(payload.RequestType)
+						if formulaInputs[strings.ToLower(strings.TrimSpace(spec.Name))] {
+							wantLimit = DefaultFormulaInputQueryLimit
+						}
 						require.Equalf(t, wantLimit, spec.Limit, "example %d query %d should teach the request-type default limit", index+1, queryIndex+1)
 						wantOrder, err := defaultOrderForQuery(spec, payload.RequestType, queryIndex)
 						require.NoErrorf(t, err, "example %d query %d default order", index+1, queryIndex+1)

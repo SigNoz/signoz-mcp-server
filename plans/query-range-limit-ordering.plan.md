@@ -1,7 +1,7 @@
 # Plan: Explicit QueryRange Limits and Ordering
 
 ## Status
-Complete — raw and aggregate defaults are 100; server, companion skills, full checks, and fresh live MCP verification are synchronized.
+Done
 
 ## Context
 Issue [SigNoz/nerve-pod #132](https://github.com/SigNoz/nerve-pod/issues/132) requires Query Range payloads authored by the MCP server and companion skills to carry an explicit limit and ordering instead of inheriting backend defaults. The final owner-selected default is 100 for raw rows and aggregate groups. Metric payloads were previously unbounded/unordered, formula bounds were dropped by the typed round trip, and several embedded/companion examples omitted the fields.
@@ -14,8 +14,9 @@ The implementation must preserve the semantic distinction between raw row limits
 |---|---|---:|---|---|
 | logs `builder_query` | raw | 100 | `timestamp desc`, then `id desc` | Stable offset pagination |
 | traces `builder_query` | raw / trace | 100 | `timestamp desc` | `signoz_get_trace_details` keeps its explicit 1000 limit |
-| logs/traces `builder_query` | scalar / time_series | 100 | primary aggregation desc | Positive tool/caller overrides win |
-| metrics `builder_query` | scalar / time_series | 100 | `__result desc` | Apply to every generated/query payload member |
+| standalone logs/traces `builder_query` | scalar / time_series | 100 | primary aggregation desc | Positive tool/caller overrides win |
+| standalone metrics `builder_query` | scalar / time_series | 100 | `__result desc` | Apply to every generated/query payload member |
+| `builder_query` referenced by a formula | scalar / time_series | 10000 | signal-specific aggregate order | Formula inputs are limited before evaluation; use the backend maximum explicit bound to avoid independent top-100 truncation |
 | `builder_formula` | scalar / time_series | 100 | `__result desc` | Model and preserve fields in `FormulaSpec` |
 | PromQL / ClickHouse SQL | any supported | unchanged | unchanged | These envelopes do not use the builder contract |
 | trace operator / join / subquery / future raw envelope | type-specific | unchanged in V1 | unchanged in V1 | Preserve raw JSON; do not inject a generic invalid order |
@@ -32,6 +33,7 @@ The implementation must preserve the semantic distinction between raw row limits
   - treat omitted, null, and zero limits as requests for the type-aware default;
   - accept integer and numeric-string limits at the raw Query Builder boundary; reject fractional or malformed values with a recovery-oriented error;
   - preserve every positive limit;
+  - when an omitted/zero query is referenced by a formula, default that input to 10000 while keeping the standalone aggregate default at 100;
   - fill only an empty order with a signal/request-type-safe value;
   - preserve every non-empty authored order.
 - Extend `FormulaSpec` with non-omitempty `Limit` and `Order`, preserve authored values during round trip, and apply scalar/time-series omission defaults.
@@ -42,14 +44,14 @@ The implementation must preserve the semantic distinction between raw row limits
 - Keep search-log/search-trace defaults at 100 and pin them to the shared raw constant.
 - Add `id desc` after `timestamp desc` for generated raw log searches, matching the official pagination contract.
 - Change the aggregate parser and tool schemas from an omitted-input default of 10 groups to 100. Retain caller-provided positive limits/order, the existing 10000 clamp, and clamp notes.
-- Put `limit: 100` and `order: __result desc` on every metrics `builder_query` and generated `builder_formula`.
+- Put `limit: 100` and `order: __result desc` on standalone metric queries and generated formula outputs. Give every generated metric query referenced by a formula an explicit 10000 input bound so independent top-N ranking does not discard groups before the formula runs.
 - Remove the unused malformed `BuildMetricsQueryPayload` helper and make `BuildMetricsQueryPayloadJSON` marshal the shared typed `QueryPayload`/`FormulaSpec` path so formulas, source propagation, defaults, and future changes cannot drift.
 - Preserve `signoz_get_trace_details` at its explicit 1000 limit; add a regression assertion documenting the exception.
 
 ### 3. Update MCP authoring guidance and metadata
 - Position `signoz_execute_builder_query` as the raw escape hatch: raw rows use search tools first, grouped/top-N work uses aggregate tools, metrics use `signoz_query_metrics`, and only unsupported multi-query/formula shapes fall back to raw Query Builder.
 - Route agents to the signal-specific guide instead of requiring the traces guide for every query: logs, traces, metrics/formulas, and PromQL each point to their own resource.
-- In the Query Builder tool description and resources, state that every authored `builder_query`/`builder_formula` must carry a positive limit plus explicit order, with the type-aware defaults above.
+- In the Query Builder tool description and resources, state that every authored `builder_query`/`builder_formula` must carry a positive limit plus explicit order, with the type-aware defaults above and the formula-input exception.
 - Update raw, scalar, time-series, metric, Cost Meter, and formula examples. Examples that intentionally demonstrate top N may use a smaller positive limit; otherwise use 100.
 - Add the whole-range time-series ranking caveat from the official Result Manipulation docs.
 - When `signoz_execute_builder_query` inserts a limit/order, append an agent-visible decisions note. Add the same effective bounds to `signoz_query_metrics`' existing decisions note.
