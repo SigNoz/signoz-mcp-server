@@ -80,6 +80,19 @@ OTel span attributes set per-span:
 selectFields entry (fieldContext: "tag" required):
   {"name": "http.response.status_code", "fieldDataType": "number", "signal": "traces", "fieldContext": "tag"}
 
+== RESULT BOUNDS AND ORDERING ==
+
+Every builder_query must include a positive limit and explicit order.
+
+  raw / trace: limit 100; order by timestamp desc
+  scalar:      limit 100 groups; order by the primary aggregation desc unless the task needs another order
+  time_series: limit 100 groups; order by the primary aggregation desc unless the task needs another order
+
+For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
+time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
+smaller positive limit only when the user asks for top N; use a larger positive override when completeness
+matters more than response size.
+
 == COMPLETE WORKING EXAMPLES ==
 
 --- Example 1: Raw error spans (requestType: "raw") ---
@@ -97,7 +110,7 @@ selectFields entry (fieldContext: "tag" required):
           "name": "A",
           "signal": "traces",
           "disabled": false,
-          "limit": 10,
+          "limit": 100,
           "offset": 0,
           "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
           "having": {"expression": ""},
@@ -134,7 +147,7 @@ selectFields entry (fieldContext: "tag" required):
           "name": "A",
           "signal": "traces",
           "disabled": false,
-          "limit": 20,
+          "limit": 100,
           "offset": 0,
           "having": {"expression": ""},
           "filter": {"expression": "has_error = true"},
@@ -169,6 +182,9 @@ selectFields entry (fieldContext: "tag" required):
           "signal": "traces",
           "disabled": false,
           "stepInterval": 60,
+          "limit": 100,
+          "offset": 0,
+          "order": [{"key": {"name": "p99(duration_nano)"}, "direction": "desc"}],
           "having": {"expression": ""},
           "filter": {"expression": "service.name = 'checkout'"},
           "aggregations": [

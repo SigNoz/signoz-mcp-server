@@ -88,7 +88,13 @@
                 "op": "AND"
               },
               "groupBy": [],
-              "orderBy": [],
+              "limit": 100,
+              "orderBy": [
+                {
+                  "columnName": "duration_nano",
+                  "order": "desc"
+                }
+              ],
               "legend": "P99"
             }
           ],

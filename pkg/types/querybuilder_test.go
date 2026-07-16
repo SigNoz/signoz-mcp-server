@@ -460,10 +460,14 @@ func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
 		spec, ok := payload.CompositeQuery.Queries[i].Spec.(QuerySpec)
 		require.True(t, ok, "query %d: expected QuerySpec, got %T", i, payload.CompositeQuery.Queries[i].Spec)
 		require.Equal(t, "meter", spec.Source, "query %d: source must be set", i)
+		require.Equal(t, DefaultFormulaInputQueryLimit, spec.Limit)
+		require.Equal(t, resultDescendingOrder(), spec.Order)
 	}
 
-	_, ok := payload.CompositeQuery.Queries[2].Spec.(FormulaSpec)
+	formula, ok := payload.CompositeQuery.Queries[2].Spec.(FormulaSpec)
 	require.True(t, ok, "expected FormulaSpec, got %T", payload.CompositeQuery.Queries[2].Spec)
+	require.Equal(t, DefaultAggregateQueryLimit, formula.Limit)
+	require.Equal(t, resultDescendingOrder(), formula.Order)
 
 	// "source":"meter" appears exactly twice — once per builder_query, never on the formula.
 	require.Equal(t, 2, strings.Count(string(out), `"source":"meter"`),
@@ -476,6 +480,340 @@ func TestBuildMetricsQueryPayloadJSON_AppliesSource(t *testing.T) {
 		"empty source must be omitted from JSON; got: %s", string(outEmpty))
 	require.Equal(t, 0, strings.Count(string(outEmpty), `"source"`),
 		"empty source must not emit the key at all; got: %s", string(outEmpty))
+}
+
+func TestQueryPayloadValidate_DefaultsBoundsByRequestType(t *testing.T) {
+	tests := []struct {
+		name        string
+		requestType string
+		spec        QuerySpec
+		wantLimit   int
+		wantOrder   []Order
+	}{
+		{
+			name:        "raw logs",
+			requestType: "raw",
+			spec:        QuerySpec{Name: "A", Signal: "logs"},
+			wantLimit:   DefaultRawQueryLimit,
+			wantOrder: []Order{
+				{Key: Key{Name: "timestamp"}, Direction: "desc"},
+				{Key: Key{Name: "id"}, Direction: "desc"},
+			},
+		},
+		{
+			name:        "raw traces",
+			requestType: "raw",
+			spec:        QuerySpec{Name: "A", Signal: "traces"},
+			wantLimit:   DefaultRawQueryLimit,
+			wantOrder:   []Order{{Key: Key{Name: "timestamp"}, Direction: "desc"}},
+		},
+		{
+			name:        "trace request",
+			requestType: "trace",
+			spec:        QuerySpec{Name: "A", Signal: "traces"},
+			wantLimit:   DefaultRawQueryLimit,
+			wantOrder:   []Order{{Key: Key{Name: "timestamp"}, Direction: "desc"}},
+		},
+		{
+			name:        "scalar logs",
+			requestType: "scalar",
+			spec: QuerySpec{Name: "A", Signal: "logs",
+				Aggregations: []any{map[string]any{"expression": "count()"}}},
+			wantLimit: DefaultAggregateQueryLimit,
+			wantOrder: []Order{{Key: Key{Name: "count()"}, Direction: "desc"}},
+		},
+		{
+			name:        "scalar logs strips display alias from default order",
+			requestType: "scalar",
+			spec: QuerySpec{Name: "A", Signal: "logs",
+				Aggregations: []any{map[string]any{"expression": "count() AS 'Requests'"}}},
+			wantLimit: DefaultAggregateQueryLimit,
+			wantOrder: []Order{{Key: Key{Name: "count()"}, Direction: "desc"}},
+		},
+		{
+			name:        "scalar logs preserves quoted as inside aggregation while stripping display alias",
+			requestType: "scalar",
+			spec: QuerySpec{Name: "A", Signal: "logs",
+				Aggregations: []any{map[string]any{"expression": "countIf(message = 'read as write') AS 'Requests'"}}},
+			wantLimit: DefaultAggregateQueryLimit,
+			wantOrder: []Order{{Key: Key{Name: "countIf(message = 'read as write')"}, Direction: "desc"}},
+		},
+		{
+			name:        "time series traces",
+			requestType: "time_series",
+			spec: QuerySpec{Name: "A", Signal: "traces", StepInterval: int64ptr(60),
+				Aggregations: []any{map[string]any{"expression": "p99(duration_nano)"}}},
+			wantLimit: DefaultAggregateQueryLimit,
+			wantOrder: []Order{{Key: Key{Name: "p99(duration_nano)"}, Direction: "desc"}},
+		},
+		{
+			name:        "scalar metrics",
+			requestType: "scalar",
+			spec: QuerySpec{Name: "A", Signal: "metrics",
+				Aggregations: []any{map[string]any{"metricName": "cpu", "spaceAggregation": "sum"}}},
+			wantLimit: DefaultAggregateQueryLimit,
+			wantOrder: resultDescendingOrder(),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := QueryPayload{
+				Start:       1,
+				End:         2,
+				RequestType: tc.requestType,
+				CompositeQuery: CompositeQuery{Queries: []Query{{
+					Type: "builder_query",
+					Spec: tc.spec,
+				}}},
+			}
+			require.NoError(t, payload.Validate())
+			got := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+			require.Equal(t, tc.wantLimit, got.Limit)
+			require.Equal(t, tc.wantOrder, got.Order)
+			require.Len(t, payload.AppliedBounds, 1)
+			require.True(t, payload.AppliedBounds[0].LimitDefaulted)
+			require.True(t, payload.AppliedBounds[0].OrderDefaulted)
+		})
+	}
+}
+
+func TestQueryPayloadValidate_PreservesAuthoredBounds(t *testing.T) {
+	wantOrder := []Order{{Key: Key{
+		Name:          "service.name",
+		Description:   "Service name",
+		Unit:          "short",
+		Signal:        "logs",
+		FieldContext:  "resource",
+		FieldDataType: "string",
+	}, Direction: "asc"}}
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "time_series",
+		CompositeQuery: CompositeQuery{Queries: []Query{{
+			Type: "builder_query",
+			Spec: QuerySpec{
+				Name:   "A",
+				Signal: "logs",
+				Limit:  42,
+				Order: []Order{{Key: Key{
+					Name:          " service.name ",
+					Description:   "Service name",
+					Unit:          "short",
+					Signal:        "logs",
+					FieldContext:  "resource",
+					FieldDataType: "string",
+				}, Direction: " ASC "}},
+				StepInterval: int64ptr(60),
+				Aggregations: []any{map[string]any{"expression": "count()"}},
+			},
+		}}},
+	}
+	require.NoError(t, payload.Validate())
+	got := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, 42, got.Limit)
+	require.Equal(t, wantOrder, got.Order)
+	require.Empty(t, payload.AppliedBounds)
+}
+
+func TestQueryPayloadRoundTrip_FormulaBoundsDefaultAndPreserve(t *testing.T) {
+	input := `{
+		"start":1,"end":2,"requestType":"time_series",
+		"compositeQuery":{"queries":[
+			{"type":"builder_query","spec":{"name":"A","signal":"metrics","aggregations":[{"metricName":"cpu","spaceAggregation":"sum"}]}},
+			{"type":"builder_formula","spec":{"name":"F","expression":"A * 100","legend":"percent","having":{"expression":"F > 5"},"functions":[{"name":"clampMax","args":[{"name":"max","value":100}]}],"limit":"25","order":[{"key":{"name":"F","signal":"metrics","fieldContext":"metric","fieldDataType":"float64"},"direction":"asc"}]}}
+		]}}
+	`
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+	require.NoError(t, payload.Validate())
+	base := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, DefaultFormulaInputQueryLimit, base.Limit)
+	formula := payload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
+	require.Equal(t, 25, formula.Limit)
+	require.Equal(t, []Order{{Key: Key{Name: "F", Signal: "metrics", FieldContext: "metric", FieldDataType: "float64"}, Direction: "asc"}}, formula.Order)
+	require.Equal(t, "percent", formula.Legend)
+	require.Equal(t, &Having{Expression: "F > 5"}, formula.Having)
+	require.Len(t, formula.Functions, 1)
+	require.JSONEq(t, `{"name":"clampMax","args":[{"name":"max","value":100}]}`, string(formula.Functions[0]))
+
+	roundTripped, err := json.Marshal(payload)
+	require.NoError(t, err)
+	var roundTrippedPayload QueryPayload
+	require.NoError(t, json.Unmarshal(roundTripped, &roundTrippedPayload))
+	roundTrippedFormula := roundTrippedPayload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
+	require.Equal(t, formula.Having, roundTrippedFormula.Having)
+	require.Equal(t, formula.Order, roundTrippedFormula.Order)
+	require.Equal(t, formula.Functions, roundTrippedFormula.Functions)
+
+	payload.CompositeQuery.Queries[1].Spec = FormulaSpec{Name: "F", Expression: "A * 100"}
+	require.NoError(t, payload.Validate())
+	formula = payload.CompositeQuery.Queries[1].Spec.(FormulaSpec)
+	require.Equal(t, DefaultAggregateQueryLimit, formula.Limit)
+	require.Equal(t, resultDescendingOrder(), formula.Order)
+}
+
+func TestQueryPayloadValidate_DisabledIntermediateFormulaWidensInputsAndPreservesOverrides(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "time_series",
+		CompositeQuery: CompositeQuery{Queries: []Query{
+			{Type: "builder_query", Spec: QuerySpec{Name: "A", Signal: "metrics", Aggregations: []any{map[string]any{"metricName": "errors", "spaceAggregation": "sum"}}}},
+			{Type: "builder_query", Spec: QuerySpec{Name: "B", Signal: "metrics", Limit: 42, Order: resultDescendingOrder(), Aggregations: []any{map[string]any{"metricName": "requests", "spaceAggregation": "sum"}}}},
+			{Type: "builder_query", Spec: QuerySpec{Name: "AA", Signal: "metrics", Aggregations: []any{map[string]any{"metricName": "unrelated", "spaceAggregation": "sum"}}}},
+			{Type: "builder_formula", Spec: FormulaSpec{Name: "F1", Expression: "A / B", Disabled: true}},
+		}},
+	}
+
+	require.NoError(t, payload.Validate())
+	require.Equal(t, DefaultFormulaInputQueryLimit, payload.CompositeQuery.Queries[0].Spec.(QuerySpec).Limit)
+	require.Equal(t, 42, payload.CompositeQuery.Queries[1].Spec.(QuerySpec).Limit)
+	require.Equal(t, DefaultAggregateQueryLimit, payload.CompositeQuery.Queries[2].Spec.(QuerySpec).Limit)
+	require.Equal(t, DefaultAggregateQueryLimit, payload.CompositeQuery.Queries[3].Spec.(FormulaSpec).Limit)
+	require.True(t, payload.AppliedBounds[0].FormulaInput)
+}
+
+func TestQueryPayloadApplyBuilderBounds_DoesNotRequireOuterTimeRange(t *testing.T) {
+	payload := QueryPayload{
+		RequestType: "time_series",
+		CompositeQuery: CompositeQuery{Queries: []Query{
+			{Type: "builder_query", Spec: QuerySpec{Name: "A", Signal: "metrics", Aggregations: []any{map[string]any{"metricName": "cpu", "spaceAggregation": "avg"}}}},
+		}},
+	}
+
+	require.NoError(t, payload.ApplyBuilderBounds())
+	spec := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, DefaultAggregateQueryLimit, spec.Limit)
+	require.Equal(t, resultDescendingOrder(), spec.Order)
+	require.Len(t, payload.AppliedBounds, 1)
+}
+
+func TestQueryPayloadRoundTrip_PreservesExtendedBuilderV5Fields(t *testing.T) {
+	input := `{
+		"schemaVersion":"v1","start":1,"end":2,"requestType":"time_series","noCache":true,
+		"compositeQuery":{"queries":[{"type":"builder_query","spec":{
+			"name":"A","signal":"metrics","aggregations":[{"metricName":"cpu","spaceAggregation":"avg"}],
+			"limit":100,"order":[{"key":{"name":"__result"},"direction":"desc"}],
+			"limitBy":{"keys":["service.name"],"value":"5"},"cursor":"opaque-cursor",
+			"secondaryAggregations":[{"expression":"sum(count())","limit":10}],
+			"functions":[{"name":"cutOffMin","args":[{"name":"min","value":0}]}],
+			"legend":"{{service.name}}"
+		}}]},"formatOptions":{},"variables":{}}
+	`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+	require.NoError(t, payload.Validate())
+	out, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var roundTripped QueryPayload
+	require.NoError(t, json.Unmarshal(out, &roundTripped))
+	require.True(t, roundTripped.NoCache)
+	spec := roundTripped.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.JSONEq(t, `{"keys":["service.name"],"value":"5"}`, string(spec.LimitBy))
+	require.Equal(t, "opaque-cursor", spec.Cursor)
+	require.Len(t, spec.SecondaryAggregations, 1)
+	require.JSONEq(t, `{"expression":"sum(count())","limit":10}`, string(spec.SecondaryAggregations[0]))
+	require.Len(t, spec.Functions, 1)
+	require.JSONEq(t, `{"name":"cutOffMin","args":[{"name":"min","value":0}]}`, string(spec.Functions[0]))
+	require.Equal(t, "{{service.name}}", spec.Legend)
+}
+
+func TestQueryPayloadValidate_RejectsLimitAboveBackendMaximum(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "time_series",
+		CompositeQuery: CompositeQuery{Queries: []Query{{
+			Type: "builder_query",
+			Spec: QuerySpec{
+				Name: "A", Signal: "metrics", Limit: MaxQueryLimit + 1,
+				Order: resultDescendingOrder(), Aggregations: []any{map[string]any{"metricName": "cpu", "spaceAggregation": "avg"}},
+			},
+		}}},
+	}
+
+	err := payload.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maximum is 10000")
+}
+
+func TestQuerySpecUnmarshal_NormalizesIntegerStringsAndRejectsInvalidShapes(t *testing.T) {
+	var query Query
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"builder_query","spec":{"name":"A","signal":"logs","limit":"100","offset":"2"}}`), &query))
+	spec := query.Spec.(QuerySpec)
+	require.Equal(t, 100, spec.Limit)
+	require.Equal(t, 2, spec.Offset)
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"builder_query","spec":{"name":"A","signal":"logs","limit":100.0,"offset":"2.0"}}`), &query))
+	spec = query.Spec.(QuerySpec)
+	require.Equal(t, 100, spec.Limit)
+	require.Equal(t, 2, spec.Offset)
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"builder_formula","spec":{"name":"F","expression":"A","limit":"25.0"}}`), &query))
+	require.Equal(t, 25, query.Spec.(FormulaSpec).Limit)
+
+	invalid := []struct {
+		name    string
+		input   string
+		wantMsg string
+	}{
+		{
+			name:    "fractional limit",
+			input:   `{"type":"builder_query","spec":{"name":"A","signal":"logs","limit":1.5}}`,
+			wantMsg: "spec.limit must be an integer or numeric string",
+		},
+		{
+			name:    "malformed formula limit",
+			input:   `{"type":"builder_formula","spec":{"name":"F","expression":"A","limit":"many"}}`,
+			wantMsg: "spec.limit must be an integer or numeric string",
+		},
+		{
+			name:    "pathological numeric token",
+			input:   `{"type":"builder_query","spec":{"name":"A","signal":"logs","limit":"1e1000000000000000000000000000000"}}`,
+			wantMsg: "integer tokens must be at most 32 characters",
+		},
+		{
+			name:    "dashboard orderBy in raw query",
+			input:   `{"type":"builder_query","spec":{"name":"A","signal":"logs","orderBy":[{"columnName":"timestamp","order":"desc"}]}}`,
+			wantMsg: "spec.orderBy is a dashboard/editor field",
+		},
+	}
+	for _, tc := range invalid {
+		t.Run(tc.name, func(t *testing.T) {
+			var got Query
+			err := json.Unmarshal([]byte(tc.input), &got)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantMsg)
+		})
+	}
+}
+
+func TestQueryPayloadValidate_NegativeLimitHasRecoveryGuidance(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "raw",
+		CompositeQuery: CompositeQuery{Queries: []Query{{
+			Type: "builder_query",
+			Spec: QuerySpec{Name: "A", Signal: "logs", Limit: -1},
+		}}},
+	}
+	err := payload.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "compositeQuery.queries[0].spec.limit")
+	require.Contains(t, err.Error(), "omit/use 0")
+	require.Contains(t, err.Error(), "signoz://logs/query-builder-guide")
+}
+
+func TestBuildLogsQueryPayload_UsesStablePaginationOrder(t *testing.T) {
+	payload := BuildLogsQueryPayload(1, 2, "", DefaultRawQueryLimit, 0)
+	spec := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, []Order{
+		{Key: Key{Name: "timestamp"}, Direction: "desc"},
+		{Key: Key{Name: "id"}, Direction: "desc"},
+	}, spec.Order)
 }
 
 // jsonString JSON-encodes s and returns the result as a Go string (including

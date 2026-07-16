@@ -28,6 +28,8 @@ Meter Explorer views (sourcePage "meter" + signal "metrics" + source "meter").
             "signal": "traces",
             "source": "",
             "stepInterval": 0,
+            "limit": 100,
+            "order": [{"key":{"name":"timestamp"},"direction":"desc"}],
             "filter": { "expression": "service.name = 'checkoutservice' AND duration_nano > 500000000" },
             "having": { "expression": "" }
           }
@@ -53,6 +55,8 @@ Meter Explorer views (sourcePage "meter" + signal "metrics" + source "meter").
             "signal": "traces",
             "source": "",
             "stepInterval": 0,
+            "limit": 100,
+            "order": [{"key":{"name":"timestamp"},"direction":"desc"}],
             "filter": { "expression": "has_error = true" },
             "having": { "expression": "" }
           }
@@ -76,6 +80,11 @@ Meter Explorer views (sourcePage "meter" + signal "metrics" + source "meter").
             "signal": "logs",
             "source": "",
             "stepInterval": 0,
+            "limit": 100,
+            "order": [
+              {"key":{"name":"timestamp"},"direction":"desc"},
+              {"key":{"name":"id"},"direction":"desc"}
+            ],
             "filter": { "expression": "service.name = 'paymentservice' AND severity_text = 'ERROR'" },
             "having": { "expression": "" }
           }
@@ -98,6 +107,8 @@ Meter Explorer views (sourcePage "meter" + signal "metrics" + source "meter").
             "signal": "metrics",
             "source": "",
             "stepInterval": 60,
+            "limit": 100,
+            "order": [{"key":{"name":"__result"},"direction":"desc"}],
             "filter": { "expression": "" },
             "having": { "expression": "" },
             "aggregations": [{
@@ -132,6 +143,8 @@ is queried as metrics: every builder spec sets ` + "`signal:\"metrics\"`" + ` AN
             "signal": "metrics",
             "source": "meter",
             "stepInterval": 3600,
+            "limit": 100,
+            "order": [{"key":{"name":"__result"},"direction":"desc"}],
             "filter": { "expression": "" },
             "having": { "expression": "" },
             "aggregations": [{
@@ -154,4 +167,7 @@ is queried as metrics: every builder spec sets ` + "`signal:\"metrics\"`" + ` AN
   signal "metrics" + source "meter" (see Example 4).
 - stepInterval is 0 for list panels, typically 60 for minute-resolution graphs,
   and 3600 for Cost Meter (meter) views, which the backend aggregates hourly.
+- Every builder query carries a positive limit and the v5 ` + "`order`" + ` field.
+  The 100-group limit on a graph ranks groups over the whole selected window;
+  a short-lived local spike may be outside the returned top N.
 `

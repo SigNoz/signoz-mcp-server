@@ -192,6 +192,15 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		})
 		decisions = append(decisions, fmt.Sprintf("formula: %s", mqr.Formula))
 	}
+	if mqr.Formula != "" {
+		decisions = append(decisions, fmt.Sprintf("formula input bounds: limit=%d groups per query, order=__result desc", types.DefaultFormulaInputQueryLimit))
+		decisions = append(decisions, fmt.Sprintf("formula result bounds: limit=%d groups, order=__result desc", types.DefaultAggregateQueryLimit))
+	} else {
+		decisions = append(decisions, fmt.Sprintf("result bounds: limit=%d groups, order=__result desc", types.DefaultAggregateQueryLimit))
+	}
+	if mqr.RequestType == "time_series" {
+		decisions = append(decisions, "time-series selection: top groups are ranked across the entire time range; a short-lived spike can fall outside the selected groups")
+	}
 
 	// Build and execute
 	queryJSON, err := types.BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval, querySpecs, mqr.RequestType, mqr.Source)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func TestHandleSearchLogs_BasicQuery(t *testing.T) {
@@ -32,6 +33,17 @@ func TestHandleSearchLogs_BasicQuery(t *testing.T) {
 	}
 	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
+	}
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("failed to parse captured query: %v", err)
+	}
+	spec := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultRawQueryLimit {
+		t.Fatalf("limit = %d, want %d", spec.Limit, types.DefaultRawQueryLimit)
+	}
+	if len(spec.Order) != 2 || spec.Order[0].Key.Name != "timestamp" || spec.Order[0].Direction != "desc" || spec.Order[1].Key.Name != "id" || spec.Order[1].Direction != "desc" {
+		t.Fatalf("order = %#v, want timestamp desc then id desc", spec.Order)
 	}
 }
 
@@ -150,10 +162,10 @@ func TestHandleSearchLogs_InvalidLimit(t *testing.T) {
 }
 
 func TestHandleAggregateLogs_Count(t *testing.T) {
-	called := false
+	var captured []byte
 	mock := &client.MockClient{
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
+			captured = body
 			return json.RawMessage(`{"status":"success","result":[{"value":42}]}`), nil
 		},
 	}
@@ -171,8 +183,19 @@ func TestHandleAggregateLogs_Count(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if !called {
+	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
+	}
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("failed to parse captured query: %v", err)
+	}
+	spec := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultAggregateQueryLimit {
+		t.Fatalf("limit = %d, want %d", spec.Limit, types.DefaultAggregateQueryLimit)
+	}
+	if len(spec.Order) != 1 || spec.Order[0].Key.Name != "count()" || spec.Order[0].Direction != "desc" {
+		t.Fatalf("order = %#v, want count() desc", spec.Order)
 	}
 }
 

@@ -89,6 +89,19 @@ Query A: http_errors_total (counter) → rate / sum
 Query B: http_requests_total (counter) → rate / sum
 Formula C: A / B * 100
 
+## Result Bounds and Ordering
+
+Every ` + "`builder_query`" + ` and ` + "`builder_formula`" + ` must include a positive limit and
+` + "`order: [{\"key\":{\"name\":\"__result\"},\"direction\":\"desc\"}]`" + ` unless the task intentionally
+needs another ordering. Standalone queries and formula results use ` + "`limit: 100`" + `. Queries referenced
+by a formula use ` + "`limit: 10000`" + ` because SigNoz limits each input before evaluating the formula;
+independent top-100 inputs can silently discard a high-ratio group. Narrow the filters/grouping if expected
+input cardinality can exceed 10000. The wire field is ` + "`order`" + `; dashboard/editor payloads use a
+different ` + "`orderBy`" + ` shape.
+
+For time_series queries with groupBy, limit selects top groups using the ordering across the entire time
+range, not each time bucket. A short-lived spike can therefore fall outside the selected groups.
+
 ---
 
 ## Payload Examples
@@ -106,6 +119,8 @@ Formula C: A / B * 100
         "signal": "metrics",
         "name": "A",
         "stepInterval": 60,
+        "limit": 100,
+        "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "container.cpu.utilization",
           "temporality": "unspecified",
@@ -123,6 +138,8 @@ Formula C: A / B * 100
 ### Example 2: Counter — HTTP Request Rate
 ` + "```json" + `
 {
+  "start": 1711123200000,
+  "end": 1711209600000,
   "requestType": "time_series",
   "compositeQuery": {
     "queries": [{
@@ -131,6 +148,8 @@ Formula C: A / B * 100
         "signal": "metrics",
         "name": "A",
         "stepInterval": 60,
+        "limit": 100,
+        "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "http_requests_total",
           "temporality": "cumulative",
@@ -147,6 +166,8 @@ Formula C: A / B * 100
 ### Example 3: Histogram — Latency P99
 ` + "```json" + `
 {
+  "start": 1711123200000,
+  "end": 1711209600000,
   "requestType": "time_series",
   "compositeQuery": {
     "queries": [{
@@ -155,6 +176,8 @@ Formula C: A / B * 100
         "signal": "metrics",
         "name": "A",
         "stepInterval": 60,
+        "limit": 100,
+        "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "http_request_duration_seconds",
           "temporality": "delta",
@@ -171,6 +194,8 @@ Formula C: A / B * 100
 ### Example 4: Formula — Error Rate Percentage
 ` + "```json" + `
 {
+  "start": 1711123200000,
+  "end": 1711209600000,
   "requestType": "time_series",
   "compositeQuery": {
     "queries": [
@@ -180,6 +205,8 @@ Formula C: A / B * 100
           "signal": "metrics",
           "name": "A",
           "stepInterval": 60,
+          "limit": 10000,
+          "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_errors_total",
             "temporality": "cumulative",
@@ -194,6 +221,8 @@ Formula C: A / B * 100
           "signal": "metrics",
           "name": "B",
           "stepInterval": 60,
+          "limit": 10000,
+          "order": [{"key": {"name": "__result"}, "direction": "desc"}],
           "aggregations": [{
             "metricName": "http_requests_total",
             "temporality": "cumulative",
@@ -207,7 +236,9 @@ Formula C: A / B * 100
         "spec": {
           "name": "C",
           "expression": "A / B * 100",
-          "legend": "error_rate_%"
+          "legend": "error_rate_%",
+          "limit": 100,
+          "order": [{"key": {"name": "__result"}, "direction": "desc"}]
         }
       }
     ]
@@ -261,6 +292,8 @@ Add a ` + "`groupBy`" + ` (e.g. a service or environment attribute) to break the
 dimension, just like any other metric.
 ` + "```json" + `
 {
+  "start": 1711123200000,
+  "end": 1711209600000,
   "requestType": "time_series",
   "compositeQuery": {
     "queries": [{
@@ -270,6 +303,8 @@ dimension, just like any other metric.
         "source": "meter",
         "name": "A",
         "stepInterval": 3600,
+        "limit": 100,
+        "order": [{"key": {"name": "__result"}, "direction": "desc"}],
         "aggregations": [{
           "metricName": "signoz.meter.log.size",
           "temporality": "delta",
