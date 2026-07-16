@@ -132,3 +132,18 @@
 - `QueryPayload.ApplyBuilderBounds` now exposes the existing bounds engine without requiring outer timestamps. Alert validation decodes a temporary typed view, applies the shared rules, and copies only `limit` and `order` into the original map.
 - Regression tests cover omitted and explicit-zero bounds, 10000 formula inputs, 100 formula results, metric `__result` ordering, log primary-aggregation ordering, positive override and order-metadata preservation, invalid limit/order rejection, anomaly-function preservation, and exact create/update forwarding.
 - Full `go test ./...`, `go vet ./...`, `go build ./...`, formatting, and diff checks pass. Agent CI could not fetch the private reusable workflow (`go-test.yaml`, HTTP 400), so no local Agent CI jobs started; the repository checks were run directly instead.
+
+### 2026-07-17 — Disabled intermediate formulas
+- GitHub review comment `discussion_r3598038127` is valid. The upstream v5 querier applies every formula first and only then filters disabled query/formula results, so `disabled` hides an intermediate result but does not make its expression irrelevant to evaluation.
+- Include expressions from disabled formulas when finding builder-query dependencies. This gives their base inputs the same 10000 bound used by directly visible formulas and prevents chained formulas from inheriting independently truncated top-100 inputs.
+- Add direct Query Builder and alert-normalization regression coverage for a disabled `F1 = A / B` referenced by enabled `F2 = F1 * 100`.
+
+### 2026-07-17 — Formula-chain scope correction
+- Multi-agent review found that the upstream formula evaluator stores formulas in a map before evaluation, so formula-to-formula ordering is not a deterministic contract to encode here.
+- Keep the fix scoped to the valid invariant: every formula expression, including a disabled formula's expression, contributes its directly referenced builder-query dependencies. Regression tests use disabled `F1 = A / B` directly and do not claim reliable chained-formula execution.
+
+### 2026-07-17 — Multi-agent review fixes and verification
+- Three independent review passes covered reuse, code quality, and contract/efficiency. The canonical bounds pass now owns generated-metrics defaults instead of duplicating formula-dependency logic.
+- The review also found that the typed execute-query round trip omitted current v5 fields. Model and exact-forward-test top-level `noCache` plus builder-query `limitBy`, `cursor`, `secondaryAggregations`, `functions`, and `legend`. Reuse the backend's 10000 maximum for local builder-query validation and the existing raw-result clamp.
+- Companion skills now inspect disabled formula expressions when identifying 10000-limit builder-query leaves and explicitly state that this bound calculation does not guarantee formula-to-formula evaluation order. A focused eval requires reporting only a successful complete-payload result or the execution failure.
+- Targeted tests, full `go test ./...`, `go vet ./...`, `go build ./...`, strict companion plugin validation, eval JSON parsing, crosswalk identity, formatting, and diff checks pass. Agent CI stopped at job startup because repository-only Primus and Docker Hub secrets were unavailable; no workflow job ran, while the equivalent local Go checks passed directly.

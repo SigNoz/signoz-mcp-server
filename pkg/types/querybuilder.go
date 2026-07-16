@@ -11,7 +11,8 @@ import (
 const (
 	DefaultRawQueryLimit          = 100
 	DefaultAggregateQueryLimit    = 100
-	DefaultFormulaInputQueryLimit = 10000
+	MaxQueryLimit                 = 10000
+	DefaultFormulaInputQueryLimit = MaxQueryLimit
 )
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
@@ -23,6 +24,7 @@ type QueryPayload struct {
 	CompositeQuery CompositeQuery       `json:"compositeQuery"`
 	FormatOptions  FormatOptions        `json:"formatOptions"`
 	Variables      map[string]any       `json:"variables"`
+	NoCache        bool                 `json:"noCache,omitempty"`
 	AppliedBounds  []AppliedQueryBounds `json:"-"`
 }
 
@@ -139,19 +141,24 @@ func (q *Query) UnmarshalJSON(data []byte) error {
 }
 
 type QuerySpec struct {
-	Name         string        `json:"name"`
-	Signal       string        `json:"signal"`
-	Source       string        `json:"source,omitempty"`
-	StepInterval *int64        `json:"stepInterval,omitempty"`
-	Disabled     bool          `json:"disabled"`
-	Filter       *Filter       `json:"filter,omitempty"`
-	Limit        int           `json:"limit"`
-	Offset       int           `json:"offset"`
-	Order        []Order       `json:"order"`
-	Having       Having        `json:"having"`
-	SelectFields []SelectField `json:"selectFields"`
-	Aggregations []any         `json:"aggregations,omitempty"`
-	GroupBy      []SelectField `json:"groupBy,omitempty"`
+	Name                  string            `json:"name"`
+	Signal                string            `json:"signal"`
+	Source                string            `json:"source,omitempty"`
+	StepInterval          *int64            `json:"stepInterval,omitempty"`
+	Disabled              bool              `json:"disabled"`
+	Filter                *Filter           `json:"filter,omitempty"`
+	Limit                 int               `json:"limit"`
+	LimitBy               json.RawMessage   `json:"limitBy,omitempty"`
+	Offset                int               `json:"offset"`
+	Cursor                string            `json:"cursor,omitempty"`
+	Order                 []Order           `json:"order"`
+	Having                Having            `json:"having"`
+	SelectFields          []SelectField     `json:"selectFields"`
+	Aggregations          []any             `json:"aggregations,omitempty"`
+	SecondaryAggregations []json.RawMessage `json:"secondaryAggregations,omitempty"`
+	GroupBy               []SelectField     `json:"groupBy,omitempty"`
+	Functions             []json.RawMessage `json:"functions,omitempty"`
+	Legend                string            `json:"legend,omitempty"`
 }
 
 // UnmarshalJSON accepts integer-like strings for nested bounds because MCP
@@ -447,6 +454,9 @@ func (q *QueryPayload) ApplyBuilderBounds() error {
 			if spec.Limit < 0 {
 				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.limit received %d; use a positive integer, or omit/use 0 to apply the %s default. See %s`, queryName, i, spec.Limit, requestTypeLimitDescription(q.RequestType), guide)
 			}
+			if spec.Limit > MaxQueryLimit {
+				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.limit received %d; the Query Builder maximum is %d. Reduce the limit to %d or less, or narrow the filters/grouping. See %s`, queryName, i, spec.Limit, MaxQueryLimit, MaxQueryLimit, guide)
+			}
 			if spec.Offset < 0 {
 				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.offset received %d; use a non-negative integer such as 0. See %s`, queryName, i, spec.Offset, guide)
 			}
@@ -511,8 +521,9 @@ func (q *QueryPayload) ApplyBuilderBounds() error {
 
 // formulaInputQueryNames returns the builder-query names referenced by any
 // formula in the same composite request. SigNoz applies each builder query's
-// limit before it evaluates formulas, so omitted formula inputs need a wider
-// bound than standalone aggregate results.
+// limit before it evaluates formulas, including disabled intermediate formulas,
+// and filters disabled results only afterward. Omitted formula inputs therefore
+// need a wider bound than standalone aggregate results.
 func formulaInputQueryNames(queries []Query) map[string]bool {
 	builderNames := make([]string, 0, len(queries))
 	formulaExpressions := make([]string, 0, len(queries))
@@ -523,9 +534,7 @@ func formulaInputQueryNames(queries []Query) map[string]bool {
 				builderNames = append(builderNames, name)
 			}
 		case FormulaSpec:
-			if !spec.Disabled {
-				formulaExpressions = append(formulaExpressions, spec.Expression)
-			}
+			formulaExpressions = append(formulaExpressions, spec.Expression)
 		}
 	}
 
@@ -857,18 +866,6 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 		requestType = "time_series"
 	}
 
-	formulaInputs := make(map[string]bool)
-	for _, formula := range queries {
-		if !formula.IsFormula {
-			continue
-		}
-		for _, candidate := range queries {
-			if !candidate.IsFormula && formulaReferencesQuery(formula.Expression, candidate.Name) {
-				formulaInputs[strings.ToLower(strings.TrimSpace(candidate.Name))] = true
-			}
-		}
-	}
-
 	var qbQueries []Query
 	for _, q := range queries {
 		if q.IsFormula {
@@ -879,17 +876,11 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 					Expression: q.Expression,
 					Legend:     q.Legend,
 					Disabled:   false,
-					Limit:      DefaultAggregateQueryLimit,
-					Order:      resultDescendingOrder(),
 				},
 			})
 			continue
 		}
 
-		limit := DefaultAggregateQueryLimit
-		if formulaInputs[strings.ToLower(strings.TrimSpace(q.Name))] {
-			limit = DefaultFormulaInputQueryLimit
-		}
 		spec := QuerySpec{
 			Name:         q.Name,
 			Signal:       "metrics",
@@ -898,8 +889,6 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
-			Limit:        limit,
-			Order:        resultDescendingOrder(),
 		}
 		if stepInterval > 0 {
 			step := stepInterval

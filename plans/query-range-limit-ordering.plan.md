@@ -32,11 +32,13 @@ The implementation must preserve the semantic distinction between raw row limits
   - reject negative limits;
   - treat omitted, null, and zero limits as requests for the type-aware default;
   - accept integer and numeric-string limits at the raw Query Builder boundary; reject fractional or malformed values with a recovery-oriented error;
-  - preserve every positive limit;
+  - preserve every positive limit up to the backend's 10000 maximum and reject larger values locally with recovery guidance;
   - when an omitted/zero query is referenced by a formula, default that input to 10000 while keeping the standalone aggregate default at 100;
   - fill only an empty order with a signal/request-type-safe value;
   - preserve every non-empty authored order.
+- Treat formulas as dependencies regardless of their `disabled` flag. SigNoz evaluates formulas before filtering disabled results, so a disabled formula still requires its referenced builder inputs to use the 10000 pre-evaluation bound.
 - Extend `FormulaSpec` with non-omitempty `Limit` and `Order`, preserve authored values during round trip, and apply scalar/time-series omission defaults.
+- Preserve the complete current builder-query v5 wire shape through the typed execute-query round trip, including top-level `noCache` and query-level `limitBy`, `cursor`, `secondaryAggregations`, `functions`, and `legend`.
 - Expose a bounds-only normalizer for nested Query Builder query arrays. Alert create/update validation uses it with `requestType: time_series`, then copies only normalized `limit` and `order` back into the original map so alert-only and future query fields remain lossless.
 - Make new bounds errors name `spec.limit`, the received value, accepted forms/default behavior, and a corrective example. Reject dashboard/editor `orderBy` inside raw v5 specs with guidance to use wire-level `order` rather than silently dropping it.
 - Leave PromQL, ClickHouse SQL, and raw-preserved envelope specs unchanged. Do not mutate untyped maps in the handler.

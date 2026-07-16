@@ -126,7 +126,7 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 	}
 }
 
-func TestValidate_DefaultsFormulaInputAndResultBounds(t *testing.T) {
+func TestValidate_DisabledIntermediateFormulaDefaultsInputAndResultBounds(t *testing.T) {
 	rule := minimalValidAlert()
 	cq := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)
 	cq["queries"] = []any{
@@ -139,12 +139,16 @@ func TestValidate_DefaultsFormulaInputAndResultBounds(t *testing.T) {
 			"name": "B", "signal": "metrics", "disabled": true,
 			"aggregations": []any{map[string]any{"metricName": "requests", "spaceAggregation": "sum"}},
 		}},
+		map[string]any{"type": "builder_query", "spec": map[string]any{
+			"name": "C", "signal": "metrics",
+			"aggregations": []any{map[string]any{"metricName": "latency", "spaceAggregation": "avg"}},
+		}},
 		map[string]any{"type": "builder_formula", "spec": map[string]any{
-			"name": "F1", "expression": "A / B * 100",
+			"name": "F1", "expression": "A / B", "disabled": true,
 			"limit": 0, "order": nil,
 		}},
 	}
-	rule["condition"].(map[string]any)["selectedQueryName"] = "F1"
+	rule["condition"].(map[string]any)["selectedQueryName"] = "C"
 
 	out, err := ValidateFromMap(rule)
 	if err != nil {
@@ -154,6 +158,7 @@ func TestValidate_DefaultsFormulaInputAndResultBounds(t *testing.T) {
 	assertAlertQueryBounds(t, queries[0]["spec"].(map[string]any), 10000, "__result")
 	assertAlertQueryBounds(t, queries[1]["spec"].(map[string]any), 10000, "__result")
 	assertAlertQueryBounds(t, queries[2]["spec"].(map[string]any), 100, "__result")
+	assertAlertQueryBounds(t, queries[3]["spec"].(map[string]any), 100, "__result")
 }
 
 func TestValidate_DefaultsLogAlertOrderToPrimaryAggregation(t *testing.T) {
@@ -198,6 +203,7 @@ func TestValidate_RejectsInvalidBuilderBounds(t *testing.T) {
 		wantMsg string
 	}{
 		{name: "negative limit", mutate: func(spec map[string]any) { spec["limit"] = -1 }, wantMsg: "spec.limit"},
+		{name: "limit above backend maximum", mutate: func(spec map[string]any) { spec["limit"] = 10001 }, wantMsg: "maximum is 10000"},
 		{name: "fractional limit", mutate: func(spec map[string]any) { spec["limit"] = 1.5 }, wantMsg: "must be an integer"},
 		{name: "invalid direction", mutate: func(spec map[string]any) {
 			spec["order"] = []any{map[string]any{"key": map[string]any{"name": "__result"}, "direction": "sideways"}}

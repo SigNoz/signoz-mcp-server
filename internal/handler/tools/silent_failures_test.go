@@ -495,6 +495,81 @@ func TestHandleExecuteBuilderQuery_SurfacesFormulaInputDefault(t *testing.T) {
 	}
 }
 
+func TestHandleExecuteBuilderQuery_PreservesExtendedV5Fields(t *testing.T) {
+	response := json.RawMessage(`{"status":"success","data":{"data":{"results":[]}}}`)
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return response, nil
+		},
+	}
+	h := newTestHandler(mock)
+	query := map[string]any{
+		"schemaVersion": "v1",
+		"start":         1711123200000,
+		"end":           1711130400000,
+		"requestType":   "time_series",
+		"noCache":       true,
+		"compositeQuery": map[string]any{"queries": []any{map[string]any{
+			"type": "builder_query",
+			"spec": map[string]any{
+				"name": "A", "signal": "metrics",
+				"aggregations": []any{map[string]any{"metricName": "cpu", "spaceAggregation": "avg"}},
+				"limit":        100,
+				"order":        []any{map[string]any{"key": map[string]any{"name": "__result"}, "direction": "desc"}},
+				"limitBy":      map[string]any{"keys": []any{"service.name"}, "value": "5"},
+				"cursor":       "opaque-cursor",
+				"secondaryAggregations": []any{
+					map[string]any{"expression": "sum(count())", "limit": 10},
+				},
+				"functions": []any{
+					map[string]any{"name": "cutOffMin", "args": []any{map[string]any{"name": "min", "value": 0}}},
+				},
+				"legend": "{{service.name}}",
+			},
+		}}},
+	}
+
+	result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var forwarded map[string]any
+	if err := json.Unmarshal(captured, &forwarded); err != nil {
+		t.Fatalf("captured payload is invalid: %v; body=%s", err, captured)
+	}
+	if forwarded["noCache"] != true {
+		t.Fatalf("noCache = %v, want true", forwarded["noCache"])
+	}
+	queries := forwarded["compositeQuery"].(map[string]any)["queries"].([]any)
+	spec := queries[0].(map[string]any)["spec"].(map[string]any)
+	originalSpec := query["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	for field, want := range map[string]any{
+		"limitBy":               originalSpec["limitBy"],
+		"cursor":                "opaque-cursor",
+		"secondaryAggregations": originalSpec["secondaryAggregations"],
+		"functions":             originalSpec["functions"],
+		"legend":                "{{service.name}}",
+	} {
+		gotJSON, err := json.Marshal(spec[field])
+		if err != nil {
+			t.Fatalf("marshal forwarded %s: %v", field, err)
+		}
+		wantJSON, err := json.Marshal(want)
+		if err != nil {
+			t.Fatalf("marshal expected %s: %v", field, err)
+		}
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s = %s, want %s", field, gotJSON, wantJSON)
+		}
+	}
+}
+
 // --- N4: completeness notes ---
 
 func TestCountQueryRangeRows(t *testing.T) {

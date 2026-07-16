@@ -400,7 +400,7 @@ func parseStepInterval(raw any) (*int64, string) {
 // against a real backend), so an uncapped limit is an unbounded single-request
 // memory vector on the shared, memory-limited multi-tenant pod. Callers that
 // need more rows should paginate via offset.
-const MaxRawResultLimit = 10000
+const MaxRawResultLimit = types.MaxQueryLimit
 
 // clampLimit bounds a parsed limit to MaxRawResultLimit. It returns the
 // effective limit and whether clamping occurred so handlers can surface it.
