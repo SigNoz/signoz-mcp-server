@@ -3,17 +3,37 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"strconv"
+	"strings"
+)
+
+const (
+	DefaultRawQueryLimit       = 100
+	DefaultAggregateQueryLimit = 1000
 )
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
 type QueryPayload struct {
-	SchemaVersion  string         `json:"schemaVersion"`
-	Start          int64          `json:"start"`
-	End            int64          `json:"end"`
-	RequestType    string         `json:"requestType"`
-	CompositeQuery CompositeQuery `json:"compositeQuery"`
-	FormatOptions  FormatOptions  `json:"formatOptions"`
-	Variables      map[string]any `json:"variables"`
+	SchemaVersion  string               `json:"schemaVersion"`
+	Start          int64                `json:"start"`
+	End            int64                `json:"end"`
+	RequestType    string               `json:"requestType"`
+	CompositeQuery CompositeQuery       `json:"compositeQuery"`
+	FormatOptions  FormatOptions        `json:"formatOptions"`
+	Variables      map[string]any       `json:"variables"`
+	AppliedBounds  []AppliedQueryBounds `json:"-"`
+}
+
+// AppliedQueryBounds records defaults injected during validation so raw Query
+// Builder callers can see the effective bounded request in the tool result.
+type AppliedQueryBounds struct {
+	QueryIndex     int
+	QueryName      string
+	Limit          int
+	Order          []Order
+	LimitDefaulted bool
+	OrderDefaulted bool
 }
 
 type CompositeQuery struct {
@@ -32,7 +52,7 @@ type CompositeQuery struct {
 //
 // Note: builder_formula is a sibling envelope type, not a kind of builder_query.
 // Formulas reference other queries' results by name (e.g. "A / B * 100") and
-// carry only name/expression/legend/disabled.
+// carry name/expression/legend/disabled plus their own limit/order bounds.
 type Query struct {
 	Type string `json:"type"`
 	Spec any    `json:"spec"`
@@ -132,13 +152,100 @@ type QuerySpec struct {
 	GroupBy      []SelectField `json:"groupBy,omitempty"`
 }
 
+// UnmarshalJSON accepts integer-like strings for nested bounds because MCP
+// clients are inconsistent about encoding numeric values. The wire contract is
+// still canonicalized back to JSON numbers before the request is sent upstream.
+func (s *QuerySpec) UnmarshalJSON(data []byte) error {
+	normalized, err := normalizeSpecIntegerFields(data, "limit", "offset")
+	if err != nil {
+		return err
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(normalized, &fields); err != nil {
+		return err
+	}
+	if raw, ok := fields["orderBy"]; ok && strings.TrimSpace(string(raw)) != "null" {
+		return fmt.Errorf(`spec.orderBy is a dashboard/editor field, not a Query Builder v5 wire field; use spec.order, for example [{"key":{"name":"timestamp"},"direction":"desc"}]`)
+	}
+
+	type querySpecAlias QuerySpec
+	var decoded querySpecAlias
+	if err := json.Unmarshal(normalized, &decoded); err != nil {
+		return err
+	}
+	*s = QuerySpec(decoded)
+	return nil
+}
+
+func normalizeSpecIntegerFields(data []byte, fieldNames ...string) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	for _, fieldName := range fieldNames {
+		raw, ok := fields[fieldName]
+		if !ok {
+			continue
+		}
+		value, err := parseSpecInteger(raw)
+		if err != nil {
+			return nil, fmt.Errorf(`spec.%s must be an integer or numeric string, for example %s: %w`, fieldName, integerFieldExample(fieldName), err)
+		}
+		fields[fieldName] = json.RawMessage(strconv.Itoa(value))
+	}
+	return json.Marshal(fields)
+}
+
+func parseSpecInteger(raw json.RawMessage) (int, error) {
+	value := strings.TrimSpace(string(raw))
+	if value == "null" {
+		return 0, nil
+	}
+	if strings.HasPrefix(value, `"`) {
+		var stringValue string
+		if err := json.Unmarshal(raw, &stringValue); err != nil {
+			return 0, fmt.Errorf("received %s", value)
+		}
+		value = strings.TrimSpace(stringValue)
+	}
+	if len(value) > 32 {
+		return 0, fmt.Errorf("received a %d-character value; integer tokens must be at most 32 characters", len(value))
+	}
+	parsed, ok := new(big.Rat).SetString(value)
+	if !ok || strings.Contains(value, "/") || !parsed.IsInt() {
+		return 0, fmt.Errorf("received %s; fractional, empty, and non-numeric values are not accepted", strings.TrimSpace(string(raw)))
+	}
+	if !parsed.Num().IsInt64() {
+		return 0, fmt.Errorf("received %s; value is outside the supported integer range", strings.TrimSpace(string(raw)))
+	}
+	integer64 := parsed.Num().Int64()
+	integer := int(integer64)
+	if int64(integer) != integer64 {
+		return 0, fmt.Errorf("received %s; value is outside the supported integer range", strings.TrimSpace(string(raw)))
+	}
+	return integer, nil
+}
+
+func integerFieldExample(fieldName string) string {
+	if fieldName == "offset" {
+		return `0 or "0"`
+	}
+	return `100 or "100"; omit it or use 0 to apply the request-type default`
+}
+
 type Order struct {
 	Key       Key    `json:"key"`
 	Direction string `json:"direction"`
 }
 
 type Key struct {
-	Name string `json:"name"`
+	Name          string `json:"name"`
+	Description   string `json:"description,omitempty"`
+	Unit          string `json:"unit,omitempty"`
+	Signal        string `json:"signal,omitempty"`
+	FieldContext  string `json:"fieldContext,omitempty"`
+	FieldDataType string `json:"fieldDataType,omitempty"`
 }
 
 type Having struct {
@@ -171,6 +278,7 @@ type QueryAggregation struct {
 // this indirectly helps LLMs to build right payload.
 // if there is an error LLM checks the error and fix.
 func (q *QueryPayload) Validate() error {
+	q.AppliedBounds = nil
 	if q.SchemaVersion == "" {
 		q.SchemaVersion = "v1"
 	}
@@ -180,6 +288,9 @@ func (q *QueryPayload) Validate() error {
 	}
 	if len(q.CompositeQuery.Queries) == 0 {
 		return fmt.Errorf("missing or empty compositeQuery.queries")
+	}
+	if q.RequestType == "" {
+		q.RequestType = inferDefaultRequestType(q.CompositeQuery.Queries)
 	}
 
 	for i, query := range q.CompositeQuery.Queries {
@@ -196,9 +307,6 @@ func (q *QueryPayload) Validate() error {
 				}
 				return fmt.Errorf("%s: missing query string for promql query", name)
 			}
-			if q.RequestType == "" {
-				q.RequestType = "time_series"
-			}
 			continue
 		case "clickhouse_sql":
 			spec, ok := query.Spec.(ClickHouseSQLSpec)
@@ -213,10 +321,23 @@ func (q *QueryPayload) Validate() error {
 				return fmt.Errorf("%s: missing query string for clickhouse_sql query", name)
 			}
 			continue
+		case "builder_formula":
+			spec, ok := query.Spec.(FormulaSpec)
+			if !ok {
+				return fmt.Errorf("query at position %d: builder_formula envelope has wrong spec type %T", i+1, query.Spec)
+			}
+			queryName := queryDisplayName(spec.Name, i)
+			if strings.TrimSpace(spec.Expression) == "" {
+				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.expression is required for builder_formula; provide an expression such as "A / B * 100"`, queryName, i)
+			}
+			if q.RequestType != "scalar" && q.RequestType != "time_series" {
+				return fmt.Errorf(`%s: builder_formula requires requestType "scalar" or "time_series"; received %q`, queryName, q.RequestType)
+			}
+			continue
 		case "builder_query":
 			// fall through to builder validation below
 		default:
-			// builder_formula, builder_trace_operator, builder_sub_query, builder_join, etc.
+			// builder_trace_operator, builder_sub_query, builder_join, etc.
 			// Pass through unchanged; backend will validate.
 			continue
 		}
@@ -226,10 +347,7 @@ func (q *QueryPayload) Validate() error {
 			return fmt.Errorf("query at position %d: builder_query envelope has wrong spec type %T", i+1, query.Spec)
 		}
 		signal := spec.Signal
-		queryName := spec.Name
-		if queryName == "" {
-			queryName = fmt.Sprintf("query at position %d", i+1)
-		}
+		queryName := queryDisplayName(spec.Name, i)
 
 		switch signal {
 		case "metrics":
@@ -237,8 +355,6 @@ func (q *QueryPayload) Validate() error {
 			// instead of silently coercing it (a coerced value can return a
 			// different result shape than the caller asked for).
 			switch q.RequestType {
-			case "":
-				q.RequestType = "time_series"
 			case "time_series", "scalar":
 				// ok
 			default:
@@ -248,9 +364,6 @@ func (q *QueryPayload) Validate() error {
 		case "traces":
 			// Traces support both raw queries and time series aggregations.
 			// Don't force requestType=raw, since that breaks aggregation queries.
-			if q.RequestType == "" {
-				q.RequestType = "raw"
-			}
 			switch q.RequestType {
 			case "raw", "trace":
 				spec.StepInterval = nil
@@ -270,9 +383,6 @@ func (q *QueryPayload) Validate() error {
 		case "logs":
 			// Logs support both raw queries and time series aggregations.
 			// Don't force requestType=raw, since that breaks count()/groupBy queries.
-			if q.RequestType == "" {
-				q.RequestType = "raw"
-			}
 			switch q.RequestType {
 			case "raw":
 				spec.StepInterval = nil
@@ -296,11 +406,238 @@ func (q *QueryPayload) Validate() error {
 		q.CompositeQuery.Queries[i].Spec = spec
 	}
 
-	if q.RequestType == "" {
-		q.RequestType = "raw"
-	}
+	return q.applyBuilderBounds()
+}
 
+func inferDefaultRequestType(queries []Query) string {
+	for _, query := range queries {
+		switch query.Type {
+		case "promql", "builder_formula":
+			return "time_series"
+		case "builder_query":
+			if spec, ok := query.Spec.(QuerySpec); ok && spec.Signal == "metrics" {
+				return "time_series"
+			}
+		}
+	}
+	return "raw"
+}
+
+func (q *QueryPayload) applyBuilderBounds() error {
+	for i, query := range q.CompositeQuery.Queries {
+		switch query.Type {
+		case "builder_query":
+			spec, ok := query.Spec.(QuerySpec)
+			if !ok {
+				continue
+			}
+			queryName := queryDisplayName(spec.Name, i)
+			guide := guideForSignal(spec.Signal)
+			if spec.Limit < 0 {
+				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.limit received %d; use a positive integer, or omit/use 0 to apply the %s default. See %s`, queryName, i, spec.Limit, requestTypeLimitDescription(q.RequestType), guide)
+			}
+			if spec.Offset < 0 {
+				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.offset received %d; use a non-negative integer such as 0. See %s`, queryName, i, spec.Offset, guide)
+			}
+
+			applied := AppliedQueryBounds{QueryIndex: i, QueryName: queryName}
+			if spec.Limit == 0 {
+				spec.Limit = defaultLimitForRequestType(q.RequestType)
+				applied.LimitDefaulted = true
+			}
+			if len(spec.Order) == 0 {
+				order, err := defaultOrderForQuery(spec, q.RequestType, i)
+				if err != nil {
+					return err
+				}
+				spec.Order = order
+				applied.OrderDefaulted = true
+			} else if err := validateAuthoredOrder(spec.Order, queryName, i, guide); err != nil {
+				return err
+			}
+			applied.Limit = spec.Limit
+			applied.Order = append([]Order(nil), spec.Order...)
+			if applied.LimitDefaulted || applied.OrderDefaulted {
+				q.AppliedBounds = append(q.AppliedBounds, applied)
+			}
+			q.CompositeQuery.Queries[i].Spec = spec
+
+		case "builder_formula":
+			spec, ok := query.Spec.(FormulaSpec)
+			if !ok {
+				continue
+			}
+			queryName := queryDisplayName(spec.Name, i)
+			if spec.Limit < 0 {
+				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.limit received %d; builder_formula limits must be positive, or omitted/0 for the 1000-series default. See signoz://metrics-aggregation-guide`, queryName, i, spec.Limit)
+			}
+			applied := AppliedQueryBounds{QueryIndex: i, QueryName: queryName}
+			if spec.Limit == 0 {
+				spec.Limit = DefaultAggregateQueryLimit
+				applied.LimitDefaulted = true
+			}
+			if len(spec.Order) == 0 {
+				spec.Order = resultDescendingOrder()
+				applied.OrderDefaulted = true
+			} else if err := validateAuthoredOrder(spec.Order, queryName, i, "signoz://metrics-aggregation-guide"); err != nil {
+				return err
+			}
+			applied.Limit = spec.Limit
+			applied.Order = append([]Order(nil), spec.Order...)
+			if applied.LimitDefaulted || applied.OrderDefaulted {
+				q.AppliedBounds = append(q.AppliedBounds, applied)
+			}
+			q.CompositeQuery.Queries[i].Spec = spec
+		}
+	}
 	return nil
+}
+
+func queryDisplayName(name string, index int) string {
+	if strings.TrimSpace(name) != "" {
+		return fmt.Sprintf("query %q", name)
+	}
+	return fmt.Sprintf("query at position %d", index+1)
+}
+
+func defaultLimitForRequestType(requestType string) int {
+	if requestType == "raw" || requestType == "trace" {
+		return DefaultRawQueryLimit
+	}
+	return DefaultAggregateQueryLimit
+}
+
+func requestTypeLimitDescription(requestType string) string {
+	if requestType == "raw" || requestType == "trace" {
+		return fmt.Sprintf("%d-row %s", DefaultRawQueryLimit, requestType)
+	}
+	return fmt.Sprintf("%d-group %s", DefaultAggregateQueryLimit, requestType)
+}
+
+func defaultOrderForQuery(spec QuerySpec, requestType string, index int) ([]Order, error) {
+	switch requestType {
+	case "raw", "trace":
+		switch spec.Signal {
+		case "logs":
+			return []Order{
+				{Key: Key{Name: "timestamp"}, Direction: "desc"},
+				{Key: Key{Name: "id"}, Direction: "desc"},
+			}, nil
+		case "traces":
+			return []Order{{Key: Key{Name: "timestamp"}, Direction: "desc"}}, nil
+		}
+	case "scalar", "time_series":
+		if spec.Signal == "metrics" {
+			return resultDescendingOrder(), nil
+		}
+		if spec.Signal == "logs" || spec.Signal == "traces" {
+			expression := primaryAggregationExpression(spec.Aggregations)
+			if expression == "" {
+				return nil, fmt.Errorf(`%s: compositeQuery.queries[%d].spec.order is missing and aggregations[0].expression could not be determined; add an explicit spec.order or provide an aggregation expression such as "count()". See %s`, queryDisplayName(spec.Name, index), index, guideForSignal(spec.Signal))
+			}
+			return []Order{{Key: Key{Name: expression}, Direction: "desc"}}, nil
+		}
+	}
+	return nil, fmt.Errorf(`%s: no safe default order exists for signal %q and requestType %q; provide spec.order explicitly`, queryDisplayName(spec.Name, index), spec.Signal, requestType)
+}
+
+func primaryAggregationExpression(aggregations []any) string {
+	if len(aggregations) == 0 {
+		return ""
+	}
+	var expression string
+	switch aggregation := aggregations[0].(type) {
+	case QueryAggregation:
+		expression = aggregation.Expression
+	case *QueryAggregation:
+		if aggregation != nil {
+			expression = aggregation.Expression
+		}
+	case map[string]any:
+		if value, ok := aggregation["expression"].(string); ok {
+			expression = value
+		}
+	}
+	expression = strings.TrimSpace(expression)
+	if aliasIndex := topLevelAliasIndex(expression); aliasIndex > 0 {
+		expression = strings.TrimSpace(expression[:aliasIndex])
+	}
+	return expression
+}
+
+// topLevelAliasIndex returns the byte offset of the last SQL-style " AS "
+// outside quoted strings and parentheses. Query Builder aggregation expressions
+// may contain quoted text with the same bytes, which must not be mistaken for a
+// display alias.
+func topLevelAliasIndex(expression string) int {
+	aliasIndex := -1
+	depth := 0
+	var quote byte
+	escaped := false
+	for i := 0; i < len(expression); i++ {
+		ch := expression[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch ch {
+		case '\'', '"', '`':
+			quote = ch
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		default:
+			if depth == 0 && i+4 <= len(expression) && strings.EqualFold(expression[i:i+4], " as ") {
+				aliasIndex = i
+				i += 3
+			}
+		}
+	}
+	return aliasIndex
+}
+
+func resultDescendingOrder() []Order {
+	return []Order{{Key: Key{Name: "__result"}, Direction: "desc"}}
+}
+
+func validateAuthoredOrder(order []Order, queryName string, queryIndex int, guide string) error {
+	for orderIndex := range order {
+		keyName := strings.TrimSpace(order[orderIndex].Key.Name)
+		if keyName == "" {
+			return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.order[%d].key.name is empty; provide an order key such as "timestamp", "count()", or "__result". See %s`, queryName, queryIndex, orderIndex, guide)
+		}
+		direction := strings.ToLower(strings.TrimSpace(order[orderIndex].Direction))
+		if direction != "asc" && direction != "desc" {
+			return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.order[%d].direction received %q; valid values are "asc" or "desc". See %s`, queryName, queryIndex, orderIndex, order[orderIndex].Direction, guide)
+		}
+		order[orderIndex].Key.Name = keyName
+		order[orderIndex].Direction = direction
+	}
+	return nil
+}
+
+func guideForSignal(signal string) string {
+	switch signal {
+	case "logs":
+		return "signoz://logs/query-builder-guide"
+	case "traces":
+		return "signoz://traces/query-builder-guide"
+	default:
+		return "signoz://metrics-aggregation-guide"
+	}
 }
 
 // BuildLogsQueryPayload creates a QueryPayload for logs queries
@@ -323,6 +660,7 @@ func BuildLogsQueryPayload(startTime, endTime int64, filterExpression string, li
 						Offset:   offset,
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
+							{Key: Key{Name: "id"}, Direction: "desc"},
 						},
 						Having: Having{Expression: ""},
 					},
@@ -400,9 +738,46 @@ type MetricsQuerySpec struct {
 	Legend      string
 }
 
-// BuildMetricsQueryPayload creates a QueryPayload for metrics queries.
-// It supports multiple builder queries and formulas in a single composite query.
-func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType string) *QueryPayload {
+// FormulaSpec is the spec shape for builder_formula queries. Formula bounds
+// share the builder wire contract, while the expression replaces the
+// signal/aggregation/filter fields used by QuerySpec.
+type FormulaSpec struct {
+	Name       string            `json:"name"`
+	Expression string            `json:"expression"`
+	Legend     string            `json:"legend,omitempty"`
+	Disabled   bool              `json:"disabled"`
+	Limit      int               `json:"limit"`
+	Order      []Order           `json:"order"`
+	Having     *Having           `json:"having,omitempty"`
+	Functions  []json.RawMessage `json:"functions,omitempty"`
+}
+
+func (s *FormulaSpec) UnmarshalJSON(data []byte) error {
+	normalized, err := normalizeSpecIntegerFields(data, "limit")
+	if err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(normalized, &fields); err != nil {
+		return err
+	}
+	if raw, ok := fields["orderBy"]; ok && strings.TrimSpace(string(raw)) != "null" {
+		return fmt.Errorf(`spec.orderBy is a dashboard/editor field, not a Query Builder v5 formula field; use spec.order, for example [{"key":{"name":"__result"},"direction":"desc"}]`)
+	}
+	type formulaSpecAlias FormulaSpec
+	var decoded formulaSpecAlias
+	if err := json.Unmarshal(normalized, &decoded); err != nil {
+		return err
+	}
+	*s = FormulaSpec(decoded)
+	return nil
+}
+
+// BuildMetricsQueryPayloadJSON builds the metrics payload and returns the
+// marshalled JSON. It handles formula specs that need a different shape.
+// source is an optional data-source filter (e.g. "meter" for Cost Meter queries);
+// pass an empty string for the default SigNoz metrics store.
+func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType, source string) ([]byte, error) {
 	if requestType == "" {
 		requestType = "time_series"
 	}
@@ -412,23 +787,28 @@ func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64, queries []
 		if q.IsFormula {
 			qbQueries = append(qbQueries, Query{
 				Type: "builder_formula",
-				Spec: QuerySpec{
-					Name:   q.Name,
-					Signal: "metrics",
+				Spec: FormulaSpec{
+					Name:       q.Name,
+					Expression: q.Expression,
+					Legend:     q.Legend,
+					Disabled:   false,
+					Limit:      DefaultAggregateQueryLimit,
+					Order:      resultDescendingOrder(),
 				},
 			})
-			// builder_formula uses a different spec shape; we handle it via
-			// FormulaSpec below.
 			continue
 		}
 
 		spec := QuerySpec{
 			Name:         q.Name,
 			Signal:       "metrics",
+			Source:       source,
 			Disabled:     false,
 			Aggregations: []any{q.Aggregation},
 			GroupBy:      q.GroupBy,
 			Having:       Having{Expression: ""},
+			Limit:        DefaultAggregateQueryLimit,
+			Order:        resultDescendingOrder(),
 		}
 		if stepInterval > 0 {
 			step := stepInterval
@@ -444,105 +824,21 @@ func BuildMetricsQueryPayload(startTime, endTime, stepInterval int64, queries []
 		})
 	}
 
-	return &QueryPayload{
-		SchemaVersion: "v1",
-		Start:         startTime,
-		End:           endTime,
-		RequestType:   requestType,
-		CompositeQuery: CompositeQuery{
-			Queries: qbQueries,
-		},
+	payload := QueryPayload{
+		SchemaVersion:  "v1",
+		Start:          startTime,
+		End:            endTime,
+		RequestType:    requestType,
+		CompositeQuery: CompositeQuery{Queries: qbQueries},
 		FormatOptions: FormatOptions{
 			FormatTableResultForUI: false,
 			FillGaps:               false,
 		},
 		Variables: map[string]any{},
 	}
-}
-
-// FormulaSpec is the spec shape for builder_formula queries.
-// We marshal it separately because it differs from QuerySpec.
-type FormulaSpec struct {
-	Name       string `json:"name"`
-	Expression string `json:"expression"`
-	Legend     string `json:"legend,omitempty"`
-	Disabled   bool   `json:"disabled"`
-}
-
-// BuildMetricsQueryPayloadJSON builds the metrics payload and returns the
-// marshalled JSON. It handles formula specs that need a different shape.
-// source is an optional data-source filter (e.g. "meter" for Cost Meter queries);
-// pass an empty string for the default SigNoz metrics store.
-func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, queries []MetricsQuerySpec, requestType, source string) ([]byte, error) {
-	if requestType == "" {
-		requestType = "time_series"
+	if err := payload.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid generated metrics query payload: %w", err)
 	}
-
-	type rawQuery struct {
-		Type string `json:"type"`
-		Spec any    `json:"spec"`
-	}
-
-	var rawQueries []rawQuery
-	for _, q := range queries {
-		if q.IsFormula {
-			rawQueries = append(rawQueries, rawQuery{
-				Type: "builder_formula",
-				Spec: FormulaSpec{
-					Name:       q.Name,
-					Expression: q.Expression,
-					Legend:     q.Legend,
-					Disabled:   false,
-				},
-			})
-			continue
-		}
-
-		spec := QuerySpec{
-			Name:         q.Name,
-			Signal:       "metrics",
-			Source:       source,
-			Disabled:     false,
-			Aggregations: []any{q.Aggregation},
-			GroupBy:      q.GroupBy,
-			Having:       Having{Expression: ""},
-		}
-		if stepInterval > 0 {
-			step := stepInterval
-			spec.StepInterval = &step
-		}
-		if q.Filter != "" {
-			spec.Filter = &Filter{Expression: q.Filter}
-		}
-
-		rawQueries = append(rawQueries, rawQuery{
-			Type: "builder_query",
-			Spec: spec,
-		})
-	}
-
-	payload := struct {
-		SchemaVersion  string `json:"schemaVersion"`
-		Start          int64  `json:"start"`
-		End            int64  `json:"end"`
-		RequestType    string `json:"requestType"`
-		CompositeQuery struct {
-			Queries []rawQuery `json:"queries"`
-		} `json:"compositeQuery"`
-		FormatOptions FormatOptions  `json:"formatOptions"`
-		Variables     map[string]any `json:"variables"`
-	}{
-		SchemaVersion: "v1",
-		Start:         startTime,
-		End:           endTime,
-		RequestType:   requestType,
-		FormatOptions: FormatOptions{
-			FormatTableResultForUI: false,
-			FillGaps:               false,
-		},
-		Variables: map[string]any{},
-	}
-	payload.CompositeQuery.Queries = rawQueries
 
 	return json.Marshal(payload)
 }

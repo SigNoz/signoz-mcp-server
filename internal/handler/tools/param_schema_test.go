@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/server"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // registeredToolProps registers every tool handler on a fresh MCP server and
@@ -26,6 +28,7 @@ func registeredToolProps(t *testing.T, toolName string) map[string]any {
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
 	h.RegisterMetricsHandlers(s)
+	h.RegisterQueryBuilderV5Handlers(s)
 	h.RegisterTopMetricsHandlers(s)
 	h.RegisterAlertsHandlers(s)
 	h.RegisterFieldsHandlers(s)
@@ -56,6 +59,52 @@ func registeredToolProps(t *testing.T, toolName string) map[string]any {
 		t.Fatalf("tool %q inputSchema.properties = %#v, want object", toolName, inputSchema["properties"])
 	}
 	return props
+}
+
+func TestQueryToolLimitSchemaDefaults(t *testing.T) {
+	cases := []struct {
+		tool string
+		want string
+	}{
+		{tool: "signoz_aggregate_logs", want: strconv.Itoa(types.DefaultAggregateQueryLimit)},
+		{tool: "signoz_aggregate_traces", want: strconv.Itoa(types.DefaultAggregateQueryLimit)},
+		{tool: "signoz_search_logs", want: strconv.Itoa(types.DefaultRawQueryLimit)},
+		{tool: "signoz_search_traces", want: strconv.Itoa(types.DefaultRawQueryLimit)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.tool, func(t *testing.T) {
+			props := registeredToolProps(t, tc.tool)
+			limit, ok := props["limit"].(map[string]any)
+			if !ok {
+				t.Fatalf("%s.limit = %#v, want schema object", tc.tool, props["limit"])
+			}
+			if got := limit["default"]; got != tc.want {
+				t.Fatalf("%s.limit.default = %#v, want %q", tc.tool, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExecuteBuilderQueryAgentFacingRouting(t *testing.T) {
+	h := newTestHandler(&signozclient.MockClient{})
+	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	h.RegisterQueryBuilderV5Handlers(s)
+	registered := s.ListTools()["signoz_execute_builder_query"]
+	description := registered.Tool.Description
+	for _, want := range []string{
+		"escape hatch",
+		"signoz_search_logs",
+		"signoz_aggregate_traces",
+		"signoz_query_metrics",
+		"signoz://logs/query-builder-guide",
+		"signoz://traces/query-builder-guide",
+		"signoz://metrics-aggregation-guide",
+		"spec.order",
+	} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("execute_builder_query description missing %q: %q", want, description)
+		}
+	}
 }
 
 // propEnum returns the sorted enum values declared on a property, or nil if the

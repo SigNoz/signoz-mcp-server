@@ -3,6 +3,8 @@ package tools
 import (
 	"fmt"
 	"strings"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // SearchTracesRequest holds the parsed parameters for a trace search query.
@@ -30,7 +32,7 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	maxDuration, _ := args["maxDuration"].(string)
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
-	limit, err := intArg(args, "limit", 100)
+	limit, err := intArg(args, "limit", types.DefaultRawQueryLimit)
 	if err != nil {
 		return nil, err
 	}

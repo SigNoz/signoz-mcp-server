@@ -113,6 +113,19 @@ are unsure the body is JSON:
 For arrays inside JSON bodies, mark the path as an array with the [*] suffix and use has():
   has(body.tags[*], 'production')
 
+== RESULT BOUNDS AND ORDERING ==
+
+Every builder_query must include a positive limit and explicit order.
+
+  raw:        limit 100; order by timestamp desc, then id desc for stable offset pagination
+  scalar:     limit 1000 groups; order by the primary aggregation desc unless the task needs another order
+  time_series: limit 1000 groups; order by the primary aggregation desc unless the task needs another order
+
+For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
+time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
+smaller positive limit only when the user asks for top N; use a larger positive override when completeness
+matters more than response size.
+
 == COMPLETE WORKING EXAMPLES ==
 
 --- Example 1: Raw error logs for a service (requestType: "raw") ---
@@ -132,7 +145,10 @@ For arrays inside JSON bodies, mark the path as an array with the [*] suffix and
           "disabled": false,
           "limit": 100,
           "offset": 0,
-          "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+          "order": [
+            {"key": {"name": "timestamp"}, "direction": "desc"},
+            {"key": {"name": "id"}, "direction": "desc"}
+          ],
           "having": {"expression": ""},
           "filter": {"expression": "service.name = 'checkout' AND severity_text = 'ERROR' AND body CONTAINS 'timeout'"}
         }
@@ -158,9 +174,12 @@ For arrays inside JSON bodies, mark the path as an array with the [*] suffix and
           "name": "A",
           "signal": "logs",
           "disabled": false,
-          "limit": 50,
+          "limit": 100,
           "offset": 0,
-          "order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
+          "order": [
+            {"key": {"name": "timestamp"}, "direction": "desc"},
+            {"key": {"name": "id"}, "direction": "desc"}
+          ],
           "having": {"expression": ""},
           "filter": {"expression": "body.user.id = '12345' AND body.request.method = 'POST'"}
         }
@@ -186,7 +205,7 @@ For arrays inside JSON bodies, mark the path as an array with the [*] suffix and
           "name": "A",
           "signal": "logs",
           "disabled": false,
-          "limit": 20,
+          "limit": 1000,
           "offset": 0,
           "having": {"expression": ""},
           "filter": {"expression": "severity_text IN ('ERROR', 'FATAL')"},
@@ -221,6 +240,9 @@ For arrays inside JSON bodies, mark the path as an array with the [*] suffix and
           "signal": "logs",
           "disabled": false,
           "stepInterval": 60,
+          "limit": 1000,
+          "offset": 0,
+          "order": [{"key": {"name": "count()"}, "direction": "desc"}],
           "having": {"expression": ""},
           "filter": {"expression": "service.name = 'checkout' AND severity_text = 'ERROR'"},
           "aggregations": [

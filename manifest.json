@@ -31,7 +31,7 @@
     },
     {
       "name": "signoz_query_metrics",
-      "description": "Query metrics with smart aggregation defaults based on metric type. Set source=\"meter\" to query Cost Meter (usage/billing) data"
+      "description": "Query metrics with smart aggregation defaults based on metric type; generated queries and formulas use limit 1000 ordered by __result desc. Set source=\"meter\" to query Cost Meter (usage/billing) data"
     },
     {
       "name": "signoz_get_top_metrics",
@@ -147,7 +147,7 @@
     },
     {
       "name": "signoz_aggregate_logs",
-      "description": "Aggregate logs to compute statistics (count, avg, sum, min, max, percentiles) with canonical filter expressions; requestType scalar (default) or time_series; see signoz://logs/query-builder-guide"
+      "description": "Aggregate logs to compute statistics (count, avg, sum, min, max, percentiles) with canonical filter expressions; requestType scalar (default) or time_series; default limit 1000 ordered by the primary aggregation; see signoz://logs/query-builder-guide"
     },
     {
       "name": "signoz_search_logs",
@@ -155,7 +155,7 @@
     },
     {
       "name": "signoz_aggregate_traces",
-      "description": "Aggregate traces to compute statistics over spans, optionally grouped by fields, with canonical filter expressions; requestType scalar (default) or time_series; see signoz://traces/query-builder-guide"
+      "description": "Aggregate traces to compute statistics over spans, optionally grouped by fields, with canonical filter expressions; requestType scalar (default) or time_series; default limit 1000 ordered by the primary aggregation; see signoz://traces/query-builder-guide"
     },
     {
       "name": "signoz_search_traces",
@@ -167,7 +167,7 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Execute a SigNoz Query Builder v5 query (builder_query / builder_formula / promql / clickhouse_sql envelopes)"
+      "description": "Raw Query Builder v5 escape hatch for unsupported multi-query/formula shapes. Prefer search/aggregate/query_metrics tools; builder_query and builder_formula specs require positive limit plus v5 order (not dashboard orderBy), with type-aware defaults inserted and reported"
     },
     {
       "name": "signoz_list_notification_channels",
@@ -200,13 +200,19 @@
     {
       "uri": "signoz://logs/query-builder-guide",
       "name": "Logs Query Builder Guide",
-      "description": "SigNoz Query Builder v5 logs guide with filter expression syntax, field contexts, body search, and complete examples",
+      "description": "SigNoz Query Builder v5 logs guide with filter syntax, field contexts, explicit raw/aggregate result bounds and ordering, body search, and executable examples",
       "mimeType": "text/plain"
     },
     {
       "uri": "signoz://traces/query-builder-guide",
       "name": "Traces Query Builder Guide",
-      "description": "SigNoz Query Builder v5 traces guide with filter expression syntax, field contexts, built-in span columns, and complete examples",
+      "description": "SigNoz Query Builder v5 traces guide with filter syntax, field contexts, explicit raw/aggregate result bounds and ordering, built-in span columns, and executable examples",
+      "mimeType": "text/plain"
+    },
+    {
+      "uri": "signoz://metrics-aggregation-guide",
+      "name": "Metrics Aggregation Guide",
+      "description": "SigNoz Query Builder v5 metrics and formula guide with aggregation defaults, explicit limit 1000 and __result ordering, Cost Meter examples, and whole-window top-N caveats",
       "mimeType": "text/plain"
     }
   ],

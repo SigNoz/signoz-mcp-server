@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
@@ -39,10 +40,7 @@ func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 
-	var payload struct {
-		Start int64 `json:"start"`
-		End   int64 `json:"end"`
-	}
+	var payload types.QueryPayload
 	if err := json.Unmarshal(captured, &payload); err != nil {
 		t.Fatalf("failed to parse captured query: %v", err)
 	}
@@ -51,6 +49,10 @@ func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	}
 	if payload.End != 1711130400000 {
 		t.Fatalf("end = %d, want explicit end", payload.End)
+	}
+	spec := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultAggregateQueryLimit || len(spec.Order) != 1 || spec.Order[0].Key.Name != "__result" || spec.Order[0].Direction != "desc" {
+		t.Fatalf("metrics bounds = limit %d order %#v", spec.Limit, spec.Order)
 	}
 }
 
@@ -116,6 +118,9 @@ func TestHandleQueryMetrics_JSONFirstWithSeparateDecisionsNote(t *testing.T) {
 	wantLine := "WARNING: backend: " + warningMessage
 	if !strings.Contains(block1.Text, "[Decisions applied]") || !strings.Contains(block1.Text, wantLine) {
 		t.Fatalf("note block missing decisions header or backend warning; want %q in:\n%s", wantLine, block1.Text)
+	}
+	if !strings.Contains(block1.Text, "result bounds: limit=1000 groups, order=__result desc") || !strings.Contains(block1.Text, "ranked across the entire time range") {
+		t.Fatalf("note block missing effective bounds or time-series caveat:\n%s", block1.Text)
 	}
 
 	if gotLogs := logs.String(); !strings.Contains(gotLogs, "level=WARN") || !strings.Contains(gotLogs, "SigNoz query builder returned non-fatal warnings") || !strings.Contains(gotLogs, "warningCount=1") {

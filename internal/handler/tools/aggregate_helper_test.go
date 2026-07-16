@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func TestResolveTimestampsEndOnlyUsesDefaultRange(t *testing.T) {
@@ -119,6 +120,22 @@ func TestParseAggregateArgs_LimitClamped(t *testing.T) {
 	}
 	if under.Limit != 25 || under.LimitClamped {
 		t.Fatalf("under-cap aggregate: Limit=%d Clamped=%v, want 25 false", under.Limit, under.LimitClamped)
+	}
+}
+
+func TestParseAggregateArgs_DefaultLimit(t *testing.T) {
+	req, err := parseAggregateArgs(map[string]any{
+		"aggregation": "count",
+		"timeRange":   "1h",
+	}, "logs", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.Limit != types.DefaultAggregateQueryLimit {
+		t.Fatalf("default limit = %d, want %d", req.Limit, types.DefaultAggregateQueryLimit)
+	}
+	if req.OrderExpr != "count()" || req.OrderDir != "desc" {
+		t.Fatalf("default order = %q %q, want count() desc", req.OrderExpr, req.OrderDir)
 	}
 }
 

@@ -251,7 +251,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		}
 	}
 
-	limit, err := intArg(args, "limit", 10)
+	limit, err := intArg(args, "limit", types.DefaultAggregateQueryLimit)
 	if err != nil {
 		return nil, err
 	}
