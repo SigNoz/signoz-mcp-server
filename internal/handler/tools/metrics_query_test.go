@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
@@ -39,10 +40,7 @@ func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 
-	var payload struct {
-		Start int64 `json:"start"`
-		End   int64 `json:"end"`
-	}
+	var payload types.QueryPayload
 	if err := json.Unmarshal(captured, &payload); err != nil {
 		t.Fatalf("failed to parse captured query: %v", err)
 	}
@@ -51,6 +49,64 @@ func TestHandleQueryMetrics_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	}
 	if payload.End != 1711130400000 {
 		t.Fatalf("end = %d, want explicit end", payload.End)
+	}
+	spec := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultAggregateQueryLimit || len(spec.Order) != 1 || spec.Order[0].Key.Name != "__result" || spec.Order[0].Direction != "desc" {
+		t.Fatalf("metrics bounds = limit %d order %#v", spec.Limit, spec.Order)
+	}
+}
+
+func TestHandleQueryMetrics_FormulaUsesWideInputsAndBoundedResult(t *testing.T) {
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = body
+			return json.RawMessage(`{"status":"success","data":{"results":[]}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_query_metrics", map[string]any{
+		"metricName":       "errors",
+		"metricType":       "gauge",
+		"spaceAggregation": "sum",
+		"requestType":      "scalar",
+		"timeRange":        "1h",
+		"formula":          "A / B * 100",
+		"formulaQueries": []any{map[string]any{
+			"name":             "B",
+			"metricName":       "requests",
+			"metricType":       "gauge",
+			"spaceAggregation": "sum",
+		}},
+	})
+
+	result, err := h.handleQueryMetrics(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("failed to parse captured formula query: %v", err)
+	}
+	if len(payload.CompositeQuery.Queries) != 3 {
+		t.Fatalf("query count = %d, want 3", len(payload.CompositeQuery.Queries))
+	}
+	for i := 0; i < 2; i++ {
+		spec := payload.CompositeQuery.Queries[i].Spec.(types.QuerySpec)
+		if spec.Limit != types.DefaultFormulaInputQueryLimit {
+			t.Fatalf("formula input %d limit = %d, want %d", i, spec.Limit, types.DefaultFormulaInputQueryLimit)
+		}
+	}
+	formula := payload.CompositeQuery.Queries[2].Spec.(types.FormulaSpec)
+	if formula.Limit != types.DefaultAggregateQueryLimit {
+		t.Fatalf("formula result limit = %d, want %d", formula.Limit, types.DefaultAggregateQueryLimit)
+	}
+	if !resultNotesContain(result, "formula input bounds: limit=10000") || !resultNotesContain(result, "formula result bounds: limit=100") {
+		t.Fatalf("formula bounds decisions missing: %v", allTextBlocks(result))
 	}
 }
 
@@ -116,6 +172,9 @@ func TestHandleQueryMetrics_JSONFirstWithSeparateDecisionsNote(t *testing.T) {
 	wantLine := "WARNING: backend: " + warningMessage
 	if !strings.Contains(block1.Text, "[Decisions applied]") || !strings.Contains(block1.Text, wantLine) {
 		t.Fatalf("note block missing decisions header or backend warning; want %q in:\n%s", wantLine, block1.Text)
+	}
+	if !strings.Contains(block1.Text, "result bounds: limit=100 groups, order=__result desc") || !strings.Contains(block1.Text, "ranked across the entire time range") {
+		t.Fatalf("note block missing effective bounds or time-series caveat:\n%s", block1.Text)
 	}
 
 	if gotLogs := logs.String(); !strings.Contains(gotLogs, "level=WARN") || !strings.Contains(gotLogs, "SigNoz query builder returned non-fatal warnings") || !strings.Contains(gotLogs, "warningCount=1") {

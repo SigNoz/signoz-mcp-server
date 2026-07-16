@@ -428,6 +428,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `formula` (optional) - Expression over named queries (e.g., "A / B * 100")
   - `formulaQueries` (optional) - Array or JSON-encoded array string of additional named metric queries for formula. Each object supports `name`, `metricName`, `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `groupBy`, and `filter`; `name` and `metricName` are required.
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
+  - **Result bounds**: standalone generated metric queries and formula results use `limit: 100` with `__result desc`. Every query feeding a formula uses `limit: 10000`, because component limits are applied before formula evaluation and independent top-100 inputs can discard a high-ratio group. The response decisions note reports both bounds. Narrow the filters/grouping when formula-input cardinality can exceed 10000.
 
 #### `signoz_get_top_metrics`
 
@@ -660,11 +661,12 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `service` (optional) - Shortcut filter for service name
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
-  - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
+  - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
+  - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or set a deliberate smaller/larger positive limit when a short-lived series could otherwise be hidden.
 
 #### `signoz_search_logs`
 
@@ -679,6 +681,7 @@ Search logs with flexible filtering across all services.
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
+  - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
 
 #### `signoz_get_field_keys`
@@ -720,6 +723,7 @@ Search traces/spans with flexible filtering.
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
+  - **Ordering**: generated raw trace queries use `timestamp desc`.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
 
@@ -736,11 +740,12 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `operation` (optional) - Shortcut filter for span/operation name
   - `error` (optional) - Shortcut filter for error spans. Boolean (or the strings `"true"`/`"false"`). An invalid value is rejected rather than silently dropped
   - `orderBy` (optional) - Order expression and direction (e.g., 'avg(duration_nano) desc')
-  - `limit` (optional) - Maximum number of groups to return (default: 10, max: 10000; higher values are clamped to bound server memory)
+  - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
+  - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or set a deliberate smaller/larger positive limit when a short-lived series could otherwise be hidden.
 
 #### `signoz_get_trace_details`
 
@@ -833,7 +838,7 @@ Delete a notification channel by ID (`DELETE /api/v1/channels/{id}`). Irreversib
 
 #### `signoz_execute_builder_query`
 
-Executes a SigNoz Query Builder v5 query.
+Executes a SigNoz Query Builder v5 query as the raw escape hatch for shapes the higher-level tools cannot express. Prefer `signoz_search_logs` / `signoz_search_traces` for rows, `signoz_aggregate_logs` / `signoz_aggregate_traces` for grouped results, and `signoz_query_metrics` for metrics.
 
 - **Parameters**: `query` (required) - Complete SigNoz Query Builder v5 JSON object
 - **Query types**: the per-envelope `compositeQuery.queries[i].type` selects the spec shape:
@@ -841,6 +846,9 @@ Executes a SigNoz Query Builder v5 query.
   - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql` — `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql` — `{name, query, disabled, legend?}`.
+- **Builder result bounds**: every authored `builder_query` and `builder_formula` must have a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`). Omitted, null, or zero standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Positive caller-authored values are preserved. The response appends a decisions note when defaults are inserted.
+- **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
+- **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or choose a deliberate positive limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 

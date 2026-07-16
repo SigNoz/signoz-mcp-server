@@ -334,6 +334,11 @@ func TestHandleExecuteBuilderQuery_SurfacesBackendWarning(t *testing.T) {
 					"spec": map[string]any{
 						"name":   "A",
 						"signal": "logs",
+						"limit":  100,
+						"order": []any{
+							map[string]any{"key": map[string]any{"name": "timestamp"}, "direction": "desc"},
+							map[string]any{"key": map[string]any{"name": "id"}, "direction": "desc"},
+						},
 					},
 				},
 			},
@@ -370,11 +375,17 @@ func TestHandleExecuteBuilderQuery_NoWarningSingleBlock(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	query := map[string]any{
-		"schemaVersion":  "v1",
-		"start":          1711123200000,
-		"end":            1711130400000,
-		"requestType":    "raw",
-		"compositeQuery": map[string]any{"queries": []any{map[string]any{"type": "builder_query", "spec": map[string]any{"name": "A", "signal": "logs"}}}},
+		"schemaVersion": "v1",
+		"start":         1711123200000,
+		"end":           1711130400000,
+		"requestType":   "raw",
+		"compositeQuery": map[string]any{"queries": []any{map[string]any{"type": "builder_query", "spec": map[string]any{
+			"name": "A", "signal": "logs", "limit": 100,
+			"order": []any{
+				map[string]any{"key": map[string]any{"name": "timestamp"}, "direction": "desc"},
+				map[string]any{"key": map[string]any{"name": "id"}, "direction": "desc"},
+			},
+		}}}},
 	}
 	req := makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query})
 
@@ -387,6 +398,175 @@ func TestHandleExecuteBuilderQuery_NoWarningSingleBlock(t *testing.T) {
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("content block count = %d, want raw JSON only (no warnings)", len(result.Content))
+	}
+}
+
+func TestHandleExecuteBuilderQuery_SurfacesAppliedBounds(t *testing.T) {
+	response := json.RawMessage(`{"status":"success","data":{"data":{"results":[]}}}`)
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return response, nil
+		},
+	}
+	h := newTestHandler(mock)
+	query := map[string]any{
+		"schemaVersion": "v1",
+		"start":         1711123200000,
+		"end":           1711130400000,
+		"requestType":   "raw",
+		"compositeQuery": map[string]any{"queries": []any{map[string]any{
+			"type": "builder_query",
+			"spec": map[string]any{"name": "A", "signal": "logs"},
+		}}},
+	}
+
+	result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if len(result.Content) != 2 {
+		t.Fatalf("content block count = %d, want raw JSON + decisions note", len(result.Content))
+	}
+	note := result.Content[1].(mcp.TextContent).Text
+	for _, want := range []string{"[Decisions applied]", "limit=100", "timestamp desc, id desc"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("decisions note = %q, want %q", note, want)
+		}
+	}
+
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("captured payload is invalid: %v; body=%s", err, captured)
+	}
+	spec := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultRawQueryLimit || len(spec.Order) != 2 || spec.Order[1].Key.Name != "id" {
+		t.Fatalf("captured bounds = limit %d order %#v", spec.Limit, spec.Order)
+	}
+}
+
+func TestHandleExecuteBuilderQuery_SurfacesFormulaInputDefault(t *testing.T) {
+	response := json.RawMessage(`{"status":"success","data":{"data":{"results":[]}}}`)
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return response, nil
+		},
+	}
+	h := newTestHandler(mock)
+	query := map[string]any{
+		"schemaVersion": "v1",
+		"start":         1711123200000,
+		"end":           1711130400000,
+		"requestType":   "time_series",
+		"compositeQuery": map[string]any{"queries": []any{
+			map[string]any{"type": "builder_query", "spec": map[string]any{
+				"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "errors", "spaceAggregation": "sum"}},
+			}},
+			map[string]any{"type": "builder_formula", "spec": map[string]any{"name": "F1", "expression": "A * 100"}},
+		}},
+	}
+
+	result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if !resultNotesContain(result, "limit=10000 (formula-input default; applied before formula evaluation)") {
+		t.Fatalf("formula-input decision missing: %v", allTextBlocks(result))
+	}
+
+	var payload types.QueryPayload
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("captured payload is invalid: %v; body=%s", err, captured)
+	}
+	if got := payload.CompositeQuery.Queries[0].Spec.(types.QuerySpec).Limit; got != types.DefaultFormulaInputQueryLimit {
+		t.Fatalf("formula input limit = %d, want %d", got, types.DefaultFormulaInputQueryLimit)
+	}
+	if got := payload.CompositeQuery.Queries[1].Spec.(types.FormulaSpec).Limit; got != types.DefaultAggregateQueryLimit {
+		t.Fatalf("formula result limit = %d, want %d", got, types.DefaultAggregateQueryLimit)
+	}
+}
+
+func TestHandleExecuteBuilderQuery_PreservesExtendedV5Fields(t *testing.T) {
+	response := json.RawMessage(`{"status":"success","data":{"data":{"results":[]}}}`)
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return response, nil
+		},
+	}
+	h := newTestHandler(mock)
+	query := map[string]any{
+		"schemaVersion": "v1",
+		"start":         1711123200000,
+		"end":           1711130400000,
+		"requestType":   "time_series",
+		"noCache":       true,
+		"compositeQuery": map[string]any{"queries": []any{map[string]any{
+			"type": "builder_query",
+			"spec": map[string]any{
+				"name": "A", "signal": "metrics",
+				"aggregations": []any{map[string]any{"metricName": "cpu", "spaceAggregation": "avg"}},
+				"limit":        100,
+				"order":        []any{map[string]any{"key": map[string]any{"name": "__result"}, "direction": "desc"}},
+				"limitBy":      map[string]any{"keys": []any{"service.name"}, "value": "5"},
+				"cursor":       "opaque-cursor",
+				"secondaryAggregations": []any{
+					map[string]any{"expression": "sum(count())", "limit": 10},
+				},
+				"functions": []any{
+					map[string]any{"name": "cutOffMin", "args": []any{map[string]any{"name": "min", "value": 0}}},
+				},
+				"legend": "{{service.name}}",
+			},
+		}}},
+	}
+
+	result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+
+	var forwarded map[string]any
+	if err := json.Unmarshal(captured, &forwarded); err != nil {
+		t.Fatalf("captured payload is invalid: %v; body=%s", err, captured)
+	}
+	if forwarded["noCache"] != true {
+		t.Fatalf("noCache = %v, want true", forwarded["noCache"])
+	}
+	queries := forwarded["compositeQuery"].(map[string]any)["queries"].([]any)
+	spec := queries[0].(map[string]any)["spec"].(map[string]any)
+	originalSpec := query["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	for field, want := range map[string]any{
+		"limitBy":               originalSpec["limitBy"],
+		"cursor":                "opaque-cursor",
+		"secondaryAggregations": originalSpec["secondaryAggregations"],
+		"functions":             originalSpec["functions"],
+		"legend":                "{{service.name}}",
+	} {
+		gotJSON, err := json.Marshal(spec[field])
+		if err != nil {
+			t.Fatalf("marshal forwarded %s: %v", field, err)
+		}
+		wantJSON, err := json.Marshal(want)
+		if err != nil {
+			t.Fatalf("marshal expected %s: %v", field, err)
+		}
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("%s = %s, want %s", field, gotJSON, wantJSON)
+		}
 	}
 }
 
