@@ -122,3 +122,13 @@
 - Alert, dashboard, metrics, README, manifest, tool descriptions, and companion skills now distinguish formula-input limits from result limits while retaining signal-specific order keys: metrics/formulas use `__result`; log/trace inputs use their primary aggregation.
 - Full `go test ./...`, `go vet ./...`, `go build ./...`, strict Claude plugin validation, edited eval JSON parsing, dashboard-crosswalk identity, formatting, and diff checks pass.
 - Agent CI authenticated to the private reusable workflows but could not start their jobs without repository-only Primus and Docker Hub secrets. This was an infrastructure preflight failure, not a code/test failure; the equivalent repository checks available locally passed directly.
+
+### 2026-07-17 — Alert forwarding gap
+- GitHub review comment `discussion_r3597937565` is valid. `AlertQuerySpec` advertises `limit` and `order`, but create/update handlers forward the map returned by `alert.ValidateFromMap`, whose runtime query validation previously accepted omitted/zero bounds and did not add defaults.
+- Reuse the central Query Builder bounds engine for alert payloads rather than duplicating its formula-reference and signal-specific ordering rules. Alerts evaluate time-series data, so standalone/formula-result limits default to 100, formula inputs default to 10000, metrics/formulas order by `__result`, and logs/traces order by the primary aggregation.
+- Preserve positive authored bounds and all unrelated raw alert query fields. Copy only the normalized limit/order fields back into the original alert map before it is serialized for create/update.
+
+### 2026-07-17 — Alert forwarding fix verification
+- `QueryPayload.ApplyBuilderBounds` now exposes the existing bounds engine without requiring outer timestamps. Alert validation decodes a temporary typed view, applies the shared rules, and copies only `limit` and `order` into the original map.
+- Regression tests cover omitted and explicit-zero bounds, 10000 formula inputs, 100 formula results, metric `__result` ordering, log primary-aggregation ordering, positive override and order-metadata preservation, invalid limit/order rejection, anomaly-function preservation, and exact create/update forwarding.
+- Full `go test ./...`, `go vet ./...`, `go build ./...`, formatting, and diff checks pass. Agent CI could not fetch the private reusable workflow (`go-test.yaml`, HTTP 400), so no local Agent CI jobs started; the repository checks were run directly instead.

@@ -677,6 +677,21 @@ func TestQueryPayloadValidate_FormulaInputsUseWiderDefaultAndPreserveOverrides(t
 	require.True(t, payload.AppliedBounds[0].FormulaInput)
 }
 
+func TestQueryPayloadApplyBuilderBounds_DoesNotRequireOuterTimeRange(t *testing.T) {
+	payload := QueryPayload{
+		RequestType: "time_series",
+		CompositeQuery: CompositeQuery{Queries: []Query{
+			{Type: "builder_query", Spec: QuerySpec{Name: "A", Signal: "metrics", Aggregations: []any{map[string]any{"metricName": "cpu", "spaceAggregation": "avg"}}}},
+		}},
+	}
+
+	require.NoError(t, payload.ApplyBuilderBounds())
+	spec := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, DefaultAggregateQueryLimit, spec.Limit)
+	require.Equal(t, resultDescendingOrder(), spec.Order)
+	require.Len(t, payload.AppliedBounds, 1)
+}
+
 func TestQuerySpecUnmarshal_NormalizesIntegerStringsAndRejectsInvalidShapes(t *testing.T) {
 	var query Query
 	require.NoError(t, json.Unmarshal([]byte(`{"type":"builder_query","spec":{"name":"A","signal":"logs","limit":"100","offset":"2"}}`), &query))

@@ -633,6 +633,7 @@ func TestHandleCreateAlert(t *testing.T) {
 	if parsed["schemaVersion"] != "v2alpha1" {
 		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
 	}
+	assertForwardedMetricAlertBounds(t, parsed)
 }
 
 func TestHandleCreateAlert_StripsSearchContext(t *testing.T) {
@@ -1169,6 +1170,23 @@ func TestHandleUpdateAlert(t *testing.T) {
 	}
 	if _, present := parsed["ruleId"]; present {
 		t.Error("ruleId should be stripped from the rule body before sending")
+	}
+	assertForwardedMetricAlertBounds(t, parsed)
+}
+
+func assertForwardedMetricAlertBounds(t *testing.T, rule map[string]any) {
+	t.Helper()
+	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	if spec["limit"] != float64(types.DefaultAggregateQueryLimit) {
+		t.Fatalf("forwarded alert limit = %v, want %d", spec["limit"], types.DefaultAggregateQueryLimit)
+	}
+	order, ok := spec["order"].([]any)
+	if !ok || len(order) != 1 {
+		t.Fatalf("forwarded alert order = %v, want one entry", spec["order"])
+	}
+	entry := order[0].(map[string]any)
+	if entry["direction"] != "desc" || entry["key"].(map[string]any)["name"] != "__result" {
+		t.Fatalf("forwarded alert order = %v, want __result desc", order)
 	}
 }
 

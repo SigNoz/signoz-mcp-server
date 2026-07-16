@@ -408,7 +408,7 @@ func (q *QueryPayload) Validate() error {
 		q.CompositeQuery.Queries[i].Spec = spec
 	}
 
-	return q.applyBuilderBounds()
+	return q.ApplyBuilderBounds()
 }
 
 func inferDefaultRequestType(queries []Query) string {
@@ -425,7 +425,15 @@ func inferDefaultRequestType(queries []Query) string {
 	return "raw"
 }
 
-func (q *QueryPayload) applyBuilderBounds() error {
+// ApplyBuilderBounds normalizes and validates limit/order fields without
+// requiring the outer time range. Callers with nested Query Builder envelopes,
+// such as alert rules, can reuse the same contract without running the full
+// QueryPayload validation path.
+func (q *QueryPayload) ApplyBuilderBounds() error {
+	q.AppliedBounds = nil
+	if q.RequestType == "" {
+		q.RequestType = inferDefaultRequestType(q.CompositeQuery.Queries)
+	}
 	formulaInputs := formulaInputQueryNames(q.CompositeQuery.Queries)
 	for i, query := range q.CompositeQuery.Queries {
 		switch query.Type {

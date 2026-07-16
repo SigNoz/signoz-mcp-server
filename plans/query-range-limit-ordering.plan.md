@@ -37,6 +37,7 @@ The implementation must preserve the semantic distinction between raw row limits
   - fill only an empty order with a signal/request-type-safe value;
   - preserve every non-empty authored order.
 - Extend `FormulaSpec` with non-omitempty `Limit` and `Order`, preserve authored values during round trip, and apply scalar/time-series omission defaults.
+- Expose a bounds-only normalizer for nested Query Builder query arrays. Alert create/update validation uses it with `requestType: time_series`, then copies only normalized `limit` and `order` back into the original map so alert-only and future query fields remain lossless.
 - Make new bounds errors name `spec.limit`, the received value, accepted forms/default behavior, and a corrective example. Reject dashboard/editor `orderBy` inside raw v5 specs with guidance to use wire-level `order` rather than silently dropping it.
 - Leave PromQL, ClickHouse SQL, and raw-preserved envelope specs unchanged. Do not mutate untyped maps in the handler.
 
@@ -107,6 +108,8 @@ No skill-schema change is needed for `signoz_query_metrics`, `signoz_search_logs
 - `internal/client/client_test.go` — pin the explicit 1000-limit trace-details exception.
 - `pkg/types/alertrule.go` — expose alert builder/formula limit and v5 order in the typed MCP schema.
 - `pkg/alert/resources.go` / `pkg/alert/resources_test.go` — bounded executable alert examples and a drift guard.
+- `pkg/alert/validate.go` / `pkg/alert/validate_test.go` — enforce the shared bounds contract on alert create/update payloads before forwarding.
+- `internal/handler/tools/alerts_test.go` — capture exact defaulted create/update alert payloads.
 - `pkg/dashboard/widgets_examples.go` / `pkg/dashboard/dashboardbuilder/testdata/full.json` — editor-model limit/orderBy guidance and a full fixture.
 - `pkg/views/instructions.go` / `pkg/views/examples.go` — saved-view limits, v5 ordering, and copy-losslessly guidance.
 - `internal/handler/tools/read_write_back_contract_test.go` — dashboard/alert/view preservation tests.
