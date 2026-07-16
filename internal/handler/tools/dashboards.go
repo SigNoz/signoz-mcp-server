@@ -71,8 +71,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes a 'total' count of all dashboards. When searching for a specific dashboard, page through all results using 'offset' (increment by 'limit') until you've covered 'total'. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("limit", mcp.DefaultString("50"), mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.DefaultString("0"), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Default: 0. Must be >= 0.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Default: 0. Must be >= 0.")),
 	)
 
 	h.addTool(s, tool, h.handleListDashboards)
