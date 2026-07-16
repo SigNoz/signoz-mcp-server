@@ -212,7 +212,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Metrics query failed", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Metrics query failed", err)
 		return upstreamError(err), nil
 	}
 

@@ -370,7 +370,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	}
 	result, err := client.ListViews(ctx, sourcePage, name, category)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list views", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list views", err)
 		return upstreamError(err), nil
 	}
 
@@ -419,7 +419,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 	}
 	data, err := client.GetView(ctx, viewID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get view", err, slog.String("viewId", viewID))
 		return upstreamError(err), nil
 	}
 	return structuredResult(data), nil
@@ -461,7 +461,7 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	data, err := client.CreateView(ctx, body)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to create view", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to create view", err)
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
@@ -548,7 +548,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	data, err := client.UpdateView(ctx, viewID, body)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to update view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to update view", err, slog.String("viewId", viewID))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
@@ -571,7 +571,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	data, err := client.DeleteView(ctx, viewID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to delete view", slog.String("viewId", viewID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to delete view", err, slog.String("viewId", viewID))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil

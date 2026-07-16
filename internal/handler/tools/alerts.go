@@ -206,7 +206,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	}
 	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list alerts", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list alerts", err)
 		return upstreamError(err), nil
 	}
 
@@ -258,7 +258,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	}
 	rules, err := client.ListAlertRules(ctx)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list alert rules", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list alert rules", err)
 		return upstreamError(err), nil
 	}
 
@@ -331,7 +331,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	}
 	respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get alert", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get alert", err, slog.String("ruleId", ruleID))
 		return upstreamError(err), nil
 	}
 
@@ -449,9 +449,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 	}
 	respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get alert history",
-			slog.String("ruleId", ruleID),
-			logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get alert history", err, slog.String("ruleId", ruleID))
 		var statusErr *signozclient.HTTPStatusError
 		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
 			result := upstreamError(err)
@@ -497,7 +495,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 
 	data, err := client.CreateAlertRule(ctx, cleanJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to create alert rule in SigNoz", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to create alert rule in SigNoz", err)
 		return upstreamError(err), nil
 	}
 
@@ -533,7 +531,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 	}
 
 	if err := client.UpdateAlertRule(ctx, ruleID, cleanJSON); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to update alert rule in SigNoz", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to update alert rule in SigNoz", err, slog.String("ruleId", ruleID))
 		return upstreamError(err), nil
 	}
 
@@ -560,7 +558,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	}
 
 	if err := client.DeleteAlertRule(ctx, ruleID); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to delete alert rule in SigNoz", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to delete alert rule in SigNoz", err, slog.String("ruleId", ruleID))
 		return upstreamError(err), nil
 	}
 

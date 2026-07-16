@@ -166,7 +166,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	}
 	result, err := client.ListDashboards(ctx)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list dashboards", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list dashboards", err)
 		return upstreamError(err), nil
 	}
 
@@ -233,7 +233,7 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	}
 	data, err := client.GetDashboard(ctx, uuid)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get dashboard", err, slog.String("uuid", uuid))
 		return upstreamError(err), nil
 	}
 	data = enrichDashboardWebURL(ctx, data, uuid)
@@ -272,7 +272,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to create dashboard in SigNoz", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to create dashboard in SigNoz", err)
 		return upstreamError(err), nil
 	}
 
@@ -297,7 +297,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 
 	body, err := fetchTemplate(ctx, path)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to fetch dashboard template", slog.String("path", path), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to fetch dashboard template", err, slog.String("path", path))
 		return mcp.NewToolResultError(fmt.Sprintf("Template fetch error: %s", err.Error())), nil
 	}
 
@@ -322,7 +322,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to create dashboard from template", slog.String("path", path), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to create dashboard from template", err, slog.String("path", path))
 		return upstreamError(err), nil
 	}
 
@@ -407,7 +407,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	err = client.UpdateDashboardRaw(ctx, uuid, cleanJSON)
 
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to update dashboard in SigNoz", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to update dashboard in SigNoz", err)
 		return upstreamError(err), nil
 	}
 
@@ -432,7 +432,7 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 	err = client.DeleteDashboard(ctx, uuid)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to delete dashboard", slog.String("uuid", uuid), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to delete dashboard", err, slog.String("uuid", uuid))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText("dashboard deleted"), nil

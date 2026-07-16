@@ -6,8 +6,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 const fieldContextParamDesc = "Restrict results to a single field context (optional). Valid values: " +
@@ -78,7 +76,7 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 	}
 	result, err := client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get field keys", slog.String("signal", signal), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get field keys", err, slog.String("signal", signal))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil
@@ -112,7 +110,7 @@ func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequ
 	}
 	result, err := client.GetFieldValues(ctx, signal, name, metricName, searchText, fieldContext, source)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get field values", slog.String("signal", signal), slog.String("name", name), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get field values", err, slog.String("signal", signal), slog.String("name", name))
 		return upstreamError(err), nil
 	}
 	return mcp.NewToolResultText(string(result)), nil

@@ -104,7 +104,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to aggregate logs", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to aggregate logs", err)
 		return upstreamError(err), nil
 	}
 
@@ -142,7 +142,7 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to search logs", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to search logs", err)
 		return upstreamError(err), nil
 	}
 

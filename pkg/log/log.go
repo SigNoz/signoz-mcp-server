@@ -1,7 +1,9 @@
 package log
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -50,6 +52,20 @@ func New(level string) *slog.Logger {
 
 func ErrAttr(err error) slog.Attr {
 	return slog.Any("error", err)
+}
+
+// LevelForError maps an error to the severity it should be logged at.
+// context.Canceled means the caller (typically an MCP client) disconnected or
+// aborted the request mid-flight — expected behavior logged at DEBUG so it
+// does not pollute ERROR streams. context.DeadlineExceeded and every other
+// error stay ERROR: timeouts are real operational signals. Callers must still
+// emit the record at the returned level — never drop it (fail open, never
+// fail silent).
+func LevelForError(err error) slog.Level {
+	if errors.Is(err, context.Canceled) {
+		return slog.LevelDebug
+	}
+	return slog.LevelError
 }
 
 func TruncBody(b []byte) string {

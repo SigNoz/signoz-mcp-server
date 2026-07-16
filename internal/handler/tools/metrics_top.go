@@ -7,8 +7,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
@@ -53,7 +51,7 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 	const topMetricsLimit = 100
 	result, err := client.GetTopMetrics(ctx, startTime, endTime, topMetricsLimit)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get top metrics", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get top metrics", err)
 		return upstreamError(err), nil
 	}
 

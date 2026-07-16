@@ -7,7 +7,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
 )
 
@@ -112,7 +111,7 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 	}
 	result, err := client.ListMetrics(ctx, start, end, limit, searchText, source)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list metrics", slog.String("searchText", searchText), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list metrics", err, slog.String("searchText", searchText))
 		return upstreamError(err), nil
 	}
 

@@ -125,7 +125,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to aggregate traces", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to aggregate traces", err)
 		return upstreamError(err), nil
 	}
 
@@ -160,7 +160,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to search traces", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to search traces", err)
 		return upstreamError(err), nil
 	}
 
@@ -210,7 +210,7 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	}
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get trace details", slog.String("traceId", traceID), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get trace details", err, slog.String("traceId", traceID))
 		return upstreamError(err), nil
 	}
 	result = enrichTraceWebURL(ctx, result, traceID)
