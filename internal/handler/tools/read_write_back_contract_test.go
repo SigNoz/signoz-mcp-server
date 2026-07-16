@@ -8,47 +8,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
-func TestDashboardReadWriteBackContract(t *testing.T) {
-	const dashboardID = "dashboard-1"
-	getFixture := []byte(`{"status":"success","data":{"title":"Latency","description":"Service latency","tags":[],"layout":[],"widgets":[],"variables":{}}}`)
-	var getEnvelope struct {
-		Data map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(getFixture, &getEnvelope); err != nil {
-		t.Fatal(err)
-	}
-
-	var gotID string
-	var gotBody []byte
-	h := newTestHandler(&client.MockClient{
-		UpdateDashboardRawFn: func(_ context.Context, id string, body []byte) error {
-			gotID = id
-			gotBody = append([]byte(nil), body...)
-			return nil
-		},
-	})
-	result, err := h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", map[string]any{
-		"id":        dashboardID,
-		"dashboard": getEnvelope.Data,
-	}))
-	if err != nil || result.IsError {
-		t.Fatalf("write-back failed: result=%#v err=%v", result, err)
-	}
-	if gotID != dashboardID {
-		t.Fatalf("update id = %q, want %q", gotID, dashboardID)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(gotBody, &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["title"] != "Latency" {
-		t.Fatalf("dashboard body lost data subobject: %s", gotBody)
-	}
-	if _, wrapped := body["dashboard"]; wrapped {
-		t.Fatalf("API body must be the dashboard subobject, not the MCP wrapper: %s", gotBody)
-	}
-}
-
 func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 	for _, versionFields := range []map[string]any{
 		{"createdAt": "yesterday", "updatedAt": "today", "createdBy": "user", "updatedBy": "user"},

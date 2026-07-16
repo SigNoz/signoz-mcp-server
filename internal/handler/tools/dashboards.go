@@ -150,7 +150,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		rawInputSchema(patchDashboardSchema),
 	)
 
-	addTool(s, patchDashboardTool, h.handlePatchDashboard)
+	h.addTool(s, patchDashboardTool, h.handlePatchDashboard)
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		mcp.WithDestructiveHintAnnotation(true),

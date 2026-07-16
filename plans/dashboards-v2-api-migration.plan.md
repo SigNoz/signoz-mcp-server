@@ -3,7 +3,7 @@
 ## Status
 In Progress
 
-- **Done:** schema extraction; client → v2 + `PatchDashboardRaw`; pass-through handlers on the shared helpers (canonical `id` + `uuid` alias, structured output); embedded JSON Schemas; `name` auto-generation; old v1 types deleted; `handleImportDashboard` made pass-through and import/list-templates tools registered; all three v6 resources rewritten in place + registered (`instructions` = basics/layout/variables, `widgets-instructions` = concepts, `widgets-examples` = worked round-tripped panels) and linked from create/update; tests + docs synced. `go build`, `gofmt -l`, `go test ./...` green.
+- **Done:** schema extraction; client → v2 + `PatchDashboardRaw`; pass-through handlers on the shared helpers (canonical `id` + `uuid` alias, structured output); embedded JSON Schemas; `name` auto-generation; old v1 types deleted; `handleImportDashboard` made pass-through and import/list-templates tools registered; all three v6 resources rewritten in place + registered (`instructions` = basics/layout/variables, `widgets-instructions` = concepts, `widgets-examples` = worked round-tripped panels) and linked from create/update; metric dashboard-usage moved to the v3 (Perses) endpoint; tests + docs synced. `go build`, `gofmt -l`, `go test ./...` green.
 - **Remaining:** migrate the `SigNoz/dashboards` repo + regen script to v6 (so import actually works);
 
 ## Context (brief)
@@ -26,6 +26,8 @@ v1 (`/api/v1/dashboards`, accept-all, flat `Dashboard{title,layout[],widgets[]}`
 
 **Import/templates.** `handleImportDashboard` is now a pure pass-through — fetch the template, default `generateName` when it has no `name`, POST to v2 verbatim (no local validation; this removed the last caller of `dashboard.ValidateFromMap`), and return the created dashboard via `structuredResult` like create. Both `signoz_import_dashboard` + `signoz_list_dashboard_templates` are **registered** (and in `manifest.json` + README), so they're discoverable — but imports **fail validation** until the (owned) `SigNoz/dashboards` repo is migrated to v6 and `dashboard_templates.json` is regenerated (the regen-script change is in Remaining work). (`list_dashboard_templates` itself is content-agnostic and works now; its listed paths only resolve once the repo is migrated.)
 
+**Metric usage — `internal/client/metric_usage.go`.** `CheckMetricUsage` (metric→dashboard/alert usage behind `get_top_metrics`) now queries `/api/v3/metrics/dashboards` (`GetMetricDashboardsV2`, the v2/Perses variant) instead of the v1-era `/api/v2/metrics/dashboards`, so a metric used only in a Perses dashboard surfaces post-migration. v3-only (matching the dashboard-API migration). The response shape is unchanged for our needs (same envelope + `dashboardId`/`dashboardName`), so this is a one-line URL swap — `parseDashboardNames` and error handling are as on `main`.
+
 **Docs/metadata.** `manifest.json` + `README.md` → v2 tool set (added patch; import/templates kept and updated; `id`-canonical with `uuid` alias).
 
 ## Files changed
@@ -34,10 +36,11 @@ v1 (`/api/v1/dashboards`, accept-all, flat `Dashboard{title,layout[],widgets[]}`
 - `pkg/dashboard/widgets.go` — `WidgetsInstructions` surgically rewritten to structure-agnostic v6 concepts (panel/query selection, legend/layout conventions); both guides re-registered.
 - `internal/handler/tools/schemas/dashboard_{create,update,patch}.json` — new embedded schemas, plus `extract_schemas.py`, the committed regenerator that produces them.
 - `internal/client/{client,interface,mock}.go` — v2 endpoints, `PatchDashboardRaw`, typed methods removed.
+- `internal/client/metric_usage.go` (+ `metric_usage_test.go`) — metric dashboard-usage moved to the v3 (Perses) endpoint (one-line URL swap; response shape unchanged).
 - `pkg/types/dashboard.go` deleted; `pkg/types/querytype.go` added.
 - `manifest.json`, `README.md` — v2 tool set.
 - `.github/scripts/regenerate_dashboard_templates.py` — catalog regenerator made v6-aware (`spec.display.*` + KV tags), v1-tolerant.
-- Tests: `client_test.go`, `tools/{dashboards,schema_compat,id_alias,silent_failures,structured_content,upstream_error}_test.go`, `internal/mcp-server/integration_test.go` (asserts `tools/list` ↔ `manifest.json` parity).
+- Tests: `client_test.go`, `tools/{dashboards,schema_compat,id_alias,silent_failures,structured_content,upstream_error}_test.go`, `internal/mcp-server/integration_test.go` (asserts `tools/list` ↔ `manifest.json` parity). `metric_usage_test.go` exercises the v3 dashboards endpoint.
 
 ## Remaining work
 **Make import functional** — migrate the `SigNoz/dashboards` repo to v6, then rerun `.github/scripts/regenerate_dashboard_templates.py` to refresh `dashboard_templates.json`. The script is already v6-aware (reads `spec.display.*` + KV tags for the keyword index, v1-tolerant), so this is now blocked only on the repo migration — which only the repo owner can do. Until then `signoz_import_dashboard` is registered but every import 400s.
