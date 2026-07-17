@@ -13,7 +13,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\"."
+const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Log keys are workspace-specific — logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\"."
 
 func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering logs handlers")
@@ -29,7 +29,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'response_time', 'duration'). Required for all aggregations except count and rate.")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, severity_text'). Leave empty for a single aggregate value.")),
 		mcp.WithString("filter", mcp.Description(logsFilterParamDescription+" Combined with service/severity params using AND.")),
-		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter.")),
+		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter. Fails with `key service.name not found` when this workspace's logs lack that attribute — then discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.")),
 		mcp.WithString("severity", mcp.Description("Shortcut filter for log severity (DEBUG, INFO, WARN, ERROR, FATAL). Equivalent to adding severity_text = '<value>' to filter.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the aggregation expression descending.")),
 		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups.")),
@@ -52,7 +52,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 			"For logs filter syntax, field contexts, and body JSON examples, read signoz://logs/query-builder-guide. "+
 			"Defaults to last 1 hour if no time specified."),
 		mcp.WithString("filter", mcp.Description(logsFilterParamDescription)),
-		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
+		mcp.WithString("service", mcp.Description("Optional service name to filter by (adds service.name = '<value>'). Fails with `key service.name not found` when this workspace's logs lack that attribute — then discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.")),
 		mcp.WithString("severity", mcp.Description("Optional severity filter (DEBUG, INFO, WARN, ERROR, FATAL).")),
 		mcp.WithString("searchText", mcp.Description("Text to search for in log body (uses CONTAINS matching).")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
@@ -102,8 +102,8 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to aggregate logs", err)
-		return upstreamError(err), nil
+		h.logQueryFailure(ctx, "Failed to aggregate logs", err)
+		return upstreamQueryError(err, "logs"), nil
 	}
 
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_logs", result, reqData.LimitClamped), nil
@@ -140,8 +140,8 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to search logs", err)
-		return upstreamError(err), nil
+		h.logQueryFailure(ctx, "Failed to search logs", err)
+		return upstreamQueryError(err, "logs"), nil
 	}
 
 	return rawSearchResult(ctx, h.logger, "signoz_search_logs", result, reqData.Limit, reqData.Offset, reqData.LimitClamped), nil
