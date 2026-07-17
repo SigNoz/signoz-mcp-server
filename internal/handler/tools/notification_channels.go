@@ -44,7 +44,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, listChannelsTool, h.handleListNotificationChannels)
 
 	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
-		withCreateToolAnnotations(),
+		withTestNotifyMutationToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Create a notification channel in SigNoz and send a test notification to verify it works.\n\n"+
@@ -99,7 +99,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, createChannelTool, h.handleCreateNotificationChannel)
 
 	updateChannelTool := mcp.NewTool("signoz_update_notification_channel",
-		withNonIdempotentUpdateToolAnnotations(),
+		withTestNotifyMutationToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Update an existing notification channel in SigNoz and send a test notification to verify it works.\n\n"+

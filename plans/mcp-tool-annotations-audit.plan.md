@@ -12,9 +12,9 @@ Annotation triples per class (see `.context.md` for per-tool verification of ups
 | Class | readOnlyHint | destructiveHint | idempotentHint |
 |---|---|---|---|
 | read (28) | true | false | true |
-| create (5, incl. `signoz_import_dashboard`) | false | false | false |
+| create (4, incl. `signoz_import_dashboard`) | false | false | false |
 | update (3, upstream PUT full-replace) | false | true | true |
-| non-idempotent update (1: `signoz_update_notification_channel`, fires a live test notification per call) | false | true | false |
+| test-notify mutation (2: `signoz_create_notification_channel`, `signoz_update_notification_channel` — each fires a live test notification per call) | false | true | false |
 | delete (4, upstream DELETE by id) | false | true | true |
 
 1. Add `internal/handler/tools/annotations.go` with five composite `mcp.ToolOption` helpers, one per class, each setting the full triple. Doc comments carry the spec reasoning.
@@ -24,9 +24,12 @@ Annotation triples per class (see `.context.md` for per-tool verification of ups
 5. Docs/metadata sync: manifest.json and README carry no annotation mirror (verified) — no changes; note in PR summary.
 
 ## Files to Modify
-- `internal/handler/tools/annotations.go` — new; four class helpers
+- `internal/handler/tools/annotations.go` — new; five class helpers (read, create, update, test-notify mutation, delete)
+- `internal/handler/tools/register.go` — new; `RegisterAllToolHandlers` single-source registrar
 - `internal/handler/tools/alerts.go`, `dashboards.go`, `views.go`, `notification_channels.go`, `docs.go`, `fields.go`, `logs.go`, `metrics.go`, `metrics_top.go`, `metric_usage.go`, `metric_cardinality.go`, `query_builder.go`, `services.go`, `traces.go` — swap raw hint options for class helpers
 - `internal/handler/tools/annotations_inventory_test.go` — new; pinned triple inventory
+- `internal/handler/tools/schema_inventory_test.go` — drop local registrar copy, use `RegisterAllToolHandlers`
+- `internal/mcp-server/server.go`, `internal/mcp-server/integration_test.go` — register via `RegisterAllToolHandlers`
 - `plans/mcp-tool-annotations-audit.{context,plan}.md` — this pair
 
 ## Verification
