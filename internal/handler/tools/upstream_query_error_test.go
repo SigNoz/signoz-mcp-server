@@ -110,6 +110,22 @@ func TestMissingFilterKeys_DropsOversizedKeys(t *testing.T) {
 	}
 }
 
+// TestMissingFilterKeys_OversizedBodyScanBounded pins the byte bound on the
+// raw-body scan: the match cap alone would not stop FindAllStringSubmatch from
+// walking an arbitrarily large 400 body, so only the first
+// missingFilterKeyScanBytes are examined — a phrase beyond the window fails
+// open, one inside it is still detected.
+func TestMissingFilterKeys_OversizedBodyScanBounded(t *testing.T) {
+	padding := strings.Repeat("x", missingFilterKeyScanBytes)
+	if got := missingFilterKeys(keyNotFound400(padding + "key `service.name` not found")); got != nil {
+		t.Fatalf("missingFilterKeys = %#v, want nil for a match beyond the scan window", got)
+	}
+	got := missingFilterKeys(keyNotFound400("key `service.name` not found" + padding))
+	if !reflect.DeepEqual(got, []string{"service.name"}) {
+		t.Fatalf("missingFilterKeys = %#v, want detection inside the scan window of an oversized body", got)
+	}
+}
+
 func TestMissingKeyGuidance_PluralAgreement(t *testing.T) {
 	if got := missingKeyGuidance([]string{"a", "b"}, "logs"); !strings.Contains(got, "which do not exist") {
 		t.Fatalf("plural guidance = %q, want 'which do not exist'", got)
@@ -208,9 +224,10 @@ func TestUpstreamError_AdditionalDetailsDedupAndCap(t *testing.T) {
 }
 
 // TestUpstreamError_OversizedDetailArraySkippedNotDecoded pins the input-size
-// bound: a non-2xx body can be up to 64 MiB, so an errors[] payload beyond
-// maxUpstreamErrorDetailsBytes is never json.Unmarshal-ed — details are dropped
-// (fail open) while the independently parsed main fields survive.
+// bound: a non-2xx body can be up to 64 MiB and json.RawMessage copies the field
+// bytes during Unmarshal, so an error object beyond maxUpstreamErrorDetailsBytes
+// never has errors[] in a decode target — details are dropped (fail open) while
+// the independently parsed main fields survive.
 func TestUpstreamError_OversizedDetailArraySkippedNotDecoded(t *testing.T) {
 	huge := `[{"message":"` + strings.Repeat("x", maxUpstreamErrorDetailsBytes) + `"}]`
 	body := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":` + huge + `}}`

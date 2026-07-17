@@ -47,6 +47,16 @@
 - PR was accidentally cut from local `main` carrying PR #243's unmerged oauth commit; rebased onto `origin/main` (`git rebase --onto`) and force-pushed — #243 and #244 are independent, zero file overlap.
 - Codex GitHub bot P2 on `upstreamErrorDetails` (r3600212141) judged **valid**: `json.Unmarshal` materialized the whole `error.errors[]` array before the 5-detail cap, and non-2xx bodies can reach 64 MiB (`client.go` `maxResponseBytes`); pre-change the field was unknown and never allocated. Fixed with `maxUpstreamErrorDetailsBytes` (16 KiB): oversized detail payloads are skipped outright (fail open, main fields preserved), matching the PR's bounded-extraction rule. Regression test added.
 
+### 2026-07-17 — PR #244 bot review finding #2 (valid): unbounded regex scan
+- Codex bot P2 (r3600488141) judged **valid**: `missingFilterKeys` ran `FindAllStringSubmatch` over the full 400 body — the 64-match cap bounds returned matches, not bytes walked, so a matchless (or few-match) body up to 64 MiB was fully scanned, twice per failure (`logQueryFailure` + `upstreamQueryError`), contradicting the "everything derived is bounded" comment.
+- Fixed with `missingFilterKeyScanBytes` (16 KiB, matching `maxUpstreamErrorDetailsBytes`): the scan examines only the body's prefix. Prefix-scan rather than skip-outright (the errors[] remedy) because a regex can safely scan a truncated string while JSON cannot be partially decoded — enrichment survives for any realistic body; a phrase beyond the window fails open. The double scan is left in place: two 16 KiB scans are negligible, so no cross-function caching complexity.
+- Regression test pins both sides of the window (match beyond → nil; match inside an oversized body → detected).
+
+### 2026-07-17 — Codex review of the scan-bound fix (gpt-5.6-sol, high) — clean, plus 1 should-fix on the earlier errors[] fix
+- Scan-bound fix cleared: no blocker; mid-UTF-8-rune and mid-match slicing confirmed safe (regexp tolerates invalid trailing bytes; a boundary-straddling match is omitted = documented fail-open); new test judged meaningful.
+- Should-fix found in the *first* bot-comment fix: `json.RawMessage` copies the field's bytes during `Unmarshal` (`*m = append((*m)[0:0], data...)`), so `json.Unmarshal(envelope.Error, &nested)` still materialized a near-64 MiB `errors[]` copy before `upstreamErrorDetails`' size check ran — the check was too late, and the oversized-details test's "never json.Unmarshal-ed" claim was false.
+- Fixed by removing `Errors` from the main nested decode target and extracting it in a second, size-gated pass (only when `len(envelope.Error) <= maxUpstreamErrorDetailsBytes`). Semantics shift slightly: the gate is now the whole error object's size, not the errors[] field's — anomalous-but-fine, fail open. The double decode of a ≤16 KiB object is negligible. `upstreamErrorDetails` keeps its own size check as defense in depth. Test comments corrected.
+
 ## Open Questions
 - [x] Should traces get the same description caveat as logs? — No; traces effectively guarantee `service.name` via SDKs. Traces still get the error-path enrichment (10 + 8 rows in the 7d evidence), with generic wording.
 - [x] Does manifest.json need updating? — No; it stores only tool name + top-level description, and only parameter descriptions/error text change. README parameter references do get updated.
