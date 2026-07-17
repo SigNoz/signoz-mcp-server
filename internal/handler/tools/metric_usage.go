@@ -16,8 +16,7 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 
 	tool := mcp.NewTool("signoz_check_metric_usage",
 		mcp.WithOutputSchema[map[string]signozclient.MetricUsage](),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
 			"Given a list of metric names, return which dashboards and alerts reference each one. "+
 				"Accepts up to 50 metric names per call — split larger lists into batches of 50 and merge results. "+

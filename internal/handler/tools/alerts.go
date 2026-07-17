@@ -45,8 +45,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
 		mcp.WithOutputSchema[alertListOutput](),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with an id for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active=true, silenced=false, inhibited=false\n- To see only silenced alerts: silenced=true, active=false\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50 (max 1000, clamped), offset=0."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alerts to return per page. Default: 50, max: 1000 (higher values are clamped).")),
@@ -61,8 +60,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	alertRulesTool := mcp.NewTool("signoz_list_alert_rules",
 		mcp.WithOutputSchema[alertRuleListOutput](),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Lists configured alert rules from GET /api/v2/rules, including inactive/OK and disabled rules. Use signoz_list_alerts for current Alertmanager alert instances.\n\nReturns ruleId, alert, alertType, ruleType, state, disabled, severity, labels, createdAt, and updatedAt. Use signoz_get_alert for the full rule definition.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Default: limit=50 (max 1000, clamped), offset=0."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alert rules to return per page. Default: 50, max: 1000 (higher values are clamped).")),
@@ -71,8 +69,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.addTool(s, alertRulesTool, h.handleListAlertRules)
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get the rule definition for a specific alert rule by id (GET /api/v2/rules/{id}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
 		// Not declared mcp.Required(): the legacy alias "ruleId" must remain a
@@ -84,8 +81,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	h.addTool(s, getAlertTool, h.handleGetAlert)
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get alert firing history for a specific alert rule. Defaults to the last 6 hours. Use 'state' and 'filter' to narrow results. For the next page, pass data.nextCursor as 'cursor' and repeat the original query filters and time range."),
 		mcp.WithString("id", mcp.Description("Alert rule ID. Required.")),
@@ -102,7 +98,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	createAlertTool := mcp.NewTool(
 		"signoz_create_alert",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Creates a new alert rule in SigNoz (POST /api/v2/rules).\n\n"+
 				"SCHEMA — pick based on ruleType:\n"+
@@ -127,7 +123,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	updateAlertTool := mcp.NewTool(
 		"signoz_update_alert",
-		mcp.WithDestructiveHintAnnotation(true),
+		withUpdateToolAnnotations(),
 		mcp.WithDescription(
 			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{id}). Replaces the full rule configuration.\n\n"+
 				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
@@ -142,7 +138,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	deleteAlertTool := mcp.NewTool(
 		"signoz_delete_alert",
-		mcp.WithDestructiveHintAnnotation(true),
+		withDeleteToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithString("id", mcp.Description("UUIDv7 of the alert rule to delete. Required. The server validates the UUID format and returns invalid_input on bad values.")),
 		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{id}). Irreversible. Confirm with the user before calling."),

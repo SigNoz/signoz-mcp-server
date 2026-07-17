@@ -18,8 +18,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering service handlers")
 
 	listTool := mcp.NewTool("signoz_list_services",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List all services in SigNoz. Defaults to last 6 hours if no time specified. IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific service, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
@@ -32,8 +31,7 @@ func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
 	h.addTool(s, listTool, h.handleListServices)
 
 	getOpsTool := mcp.NewTool("signoz_get_service_top_operations",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get top operations for a specific service. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("service", mcp.Required(), mcp.Description("Service name")),

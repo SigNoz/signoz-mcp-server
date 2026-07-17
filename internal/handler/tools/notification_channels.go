@@ -27,8 +27,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering notification channel handlers")
 
 	listChannelsTool := mcp.NewTool("signoz_list_notification_channels",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"List all notification channels configured in SigNoz.\n\n"+
@@ -45,7 +44,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, listChannelsTool, h.handleListNotificationChannels)
 
 	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Create a notification channel in SigNoz and send a test notification to verify it works.\n\n"+
@@ -100,7 +99,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, createChannelTool, h.handleCreateNotificationChannel)
 
 	updateChannelTool := mcp.NewTool("signoz_update_notification_channel",
-		mcp.WithDestructiveHintAnnotation(true),
+		withUpdateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Update an existing notification channel in SigNoz and send a test notification to verify it works.\n\n"+
@@ -162,8 +161,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, updateChannelTool, h.handleUpdateNotificationChannel)
 
 	getChannelTool := mcp.NewTool("signoz_get_notification_channel",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get a single notification channel by ID (GET /api/v1/channels/{id}). Returns the full channel configuration including the embedded receiver config (slack/webhook/pagerduty/email/opsgenie/msteams)."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel.")),
@@ -171,7 +169,7 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, getChannelTool, h.handleGetNotificationChannel)
 
 	deleteChannelTool := mcp.NewTool("signoz_delete_notification_channel",
-		mcp.WithDestructiveHintAnnotation(true),
+		withDeleteToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Delete a notification channel by ID (DELETE /api/v1/channels/{id}). Irreversible. Confirm with the user before calling, and warn if the channel is referenced by existing alert rules."),
 		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel to delete.")),

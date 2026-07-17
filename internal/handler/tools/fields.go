@@ -22,8 +22,7 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering fields handlers")
 
 	getFieldKeysTool := mcp.NewTool("signoz_get_field_keys",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get available field keys for a given signal (metrics, traces, or logs). Use this to discover filterable fields before building queries."),
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
@@ -37,8 +36,7 @@ func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
 	h.addTool(s, getFieldKeysTool, h.handleGetFieldKeys)
 
 	getFieldValuesTool := mcp.NewTool("signoz_get_field_values",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get possible values for a specific field key for a given signal (metrics, traces, or logs). Use this to discover valid filter values."),
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),

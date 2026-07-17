@@ -20,8 +20,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 
 	// aggregate_logs: compute statistics over logs with GROUP BY
 	aggregateLogsTool := mcp.NewTool("signoz_aggregate_logs",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Aggregate logs to compute statistics like count, average, sum, min, max, or percentiles, optionally grouped by fields. "+
 			"Use this for questions like 'how many errors per service?', 'average response time by endpoint', 'top error messages by count'. "+
@@ -46,8 +45,7 @@ func (h *Handler) RegisterLogsHandlers(s *server.MCPServer) {
 	// search_logs: log search with optional filters
 	// ToDo: use this function for error logs or logs by service
 	searchLogsTool := mcp.NewTool("signoz_search_logs",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Search logs with flexible filtering. Supports free-form filter expressions, optional service/severity filters, and body text search. "+
 			"Use service param to scope to a single service, severity param for error-only queries (e.g., severity='ERROR'), or filter param for any filter expression. "+

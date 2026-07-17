@@ -41,8 +41,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering view handlers")
 
 	listTool := mcp.NewTool("signoz_list_views",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type) — supported for the Logs, Traces, Metrics, and Cost Meter Explorer pages. "+
 			"IMPORTANT: Supports pagination via 'limit' and 'offset'. The response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. When searching for a specific view, ALWAYS check 'pagination.hasMore' — if true, continue paging with 'nextOffset' until you find the item or 'hasMore' is false. Never conclude a view doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
@@ -55,8 +54,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	h.addTool(s, listTool, h.handleListViews)
 
 	getTool := mcp.NewTool("signoz_get_view",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Fetch a single SigNoz saved view by UUID. Use the returned object as the base for signoz_update_view — the update is a full-body replace."),
 		// Not mcp.Required(): the legacy alias "viewId" must remain a valid call
@@ -66,7 +64,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	h.addTool(s, getTool, h.handleGetView)
 
 	createTool := mcp.NewTool("signoz_create_view",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Create a new SigNoz saved Explorer view.\n\n"+
@@ -88,7 +86,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	h.addTool(s, createTool, h.handleCreateView)
 
 	updateTool := mcp.NewTool("signoz_update_view",
-		mcp.WithDestructiveHintAnnotation(true),
+		withUpdateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
 			"Replace an existing SigNoz saved view (HTTP PUT — full body replace).\n\n"+
@@ -112,7 +110,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	h.addTool(s, updateTool, h.handleUpdateView)
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
-		mcp.WithDestructiveHintAnnotation(true),
+		withDeleteToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
 		mcp.WithString("id", mcp.Description("UUID of the view to delete. Required.")),
