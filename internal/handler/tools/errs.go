@@ -94,6 +94,14 @@ const statusClientClosedConnection = 499
 // into the surfaced upstream message; the body is upstream-controlled input.
 const maxUpstreamErrorDetails = 5
 
+// maxUpstreamErrorDetailsBytes bounds how large an error.errors[] payload is
+// decoded at all: json.Unmarshal materializes the whole array before the
+// per-detail cap applies, and a non-2xx body can be up to 64 MiB, so an
+// oversized detail array is skipped outright (fail open, like a drifted shape)
+// rather than decoded. 16 KiB is orders of magnitude more than the five
+// surfaced details ever need.
+const maxUpstreamErrorDetailsBytes = 16 << 10
+
 var assistantAuthEnvelopeCodes = map[string]struct{}{
 	"forbidden":       {},
 	"token_expired":   {},
@@ -501,12 +509,13 @@ func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstrea
 }
 
 // upstreamErrorDetails decodes error.errors[] best-effort: the documented shape is
-// [{"message": "..."}], with a plain []string fallback; any other shape yields nil
-// rather than an error, so a drifted detail array can never discard the main
-// error fields (they are decoded independently via json.RawMessage). Details are
-// trimmed, deduplicated (including against the main message), and capped.
+// [{"message": "..."}], with a plain []string fallback; any other shape — or a
+// payload over maxUpstreamErrorDetailsBytes — yields nil rather than an error, so
+// a drifted or oversized detail array can never discard the main error fields
+// (they are decoded independently via json.RawMessage). Details are trimmed,
+// deduplicated (including against the main message), and capped.
 func upstreamErrorDetails(raw json.RawMessage, mainMessage string) []string {
-	if len(raw) == 0 {
+	if len(raw) == 0 || len(raw) > maxUpstreamErrorDetailsBytes {
 		return nil
 	}
 	var messages []string

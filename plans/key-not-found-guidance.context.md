@@ -43,6 +43,10 @@
 - Logs guide's first canonical example now uses guaranteed built-ins; the service.name example is annotated as conditional on discovery. README documents the `missingKeys` structured error field on all six QB tools.
 - Nits fixed: general detail dedup (not just vs summary), singular/plural agreement in guidance.
 
+### 2026-07-17 — PR #244 bot review finding (valid) + branch hygiene
+- PR was accidentally cut from local `main` carrying PR #243's unmerged oauth commit; rebased onto `origin/main` (`git rebase --onto`) and force-pushed — #243 and #244 are independent, zero file overlap.
+- Codex GitHub bot P2 on `upstreamErrorDetails` (r3600212141) judged **valid**: `json.Unmarshal` materialized the whole `error.errors[]` array before the 5-detail cap, and non-2xx bodies can reach 64 MiB (`client.go` `maxResponseBytes`); pre-change the field was unknown and never allocated. Fixed with `maxUpstreamErrorDetailsBytes` (16 KiB): oversized detail payloads are skipped outright (fail open, main fields preserved), matching the PR's bounded-extraction rule. Regression test added.
+
 ## Open Questions
 - [x] Should traces get the same description caveat as logs? — No; traces effectively guarantee `service.name` via SDKs. Traces still get the error-path enrichment (10 + 8 rows in the 7d evidence), with generic wording.
 - [x] Does manifest.json need updating? — No; it stores only tool name + top-level description, and only parameter descriptions/error text change. README parameter references do get updated.

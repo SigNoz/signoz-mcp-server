@@ -207,6 +207,26 @@ func TestUpstreamError_AdditionalDetailsDedupAndCap(t *testing.T) {
 	}
 }
 
+// TestUpstreamError_OversizedDetailArraySkippedNotDecoded pins the input-size
+// bound: a non-2xx body can be up to 64 MiB, so an errors[] payload beyond
+// maxUpstreamErrorDetailsBytes is never json.Unmarshal-ed — details are dropped
+// (fail open) while the independently parsed main fields survive.
+func TestUpstreamError_OversizedDetailArraySkippedNotDecoded(t *testing.T) {
+	huge := `[{"message":"` + strings.Repeat("x", maxUpstreamErrorDetailsBytes) + `"}]`
+	body := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":` + huge + `}}`
+
+	res := upstreamError(keyNotFound400(body))
+
+	text := resultText(t, res)
+	if !strings.Contains(text, "summary") || strings.Contains(text, "summary (") {
+		t.Fatalf("oversized details should be skipped, main message kept: %q", text[:min(len(text), 200)])
+	}
+	structured := resultStructuredMap(t, res)
+	if got := structured["upstreamCode"]; got != "invalid_input" {
+		t.Fatalf("upstreamCode = %v, want invalid_input preserved for oversized errors[]", got)
+	}
+}
+
 // TestUpstreamError_AlternativeErrorsShapesKeepMainFields pins the fail-open
 // contract of the errors[] decoding: a []string detail array still folds, and a
 // detail shape we don't recognize is ignored WITHOUT discarding the independently
