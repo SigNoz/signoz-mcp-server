@@ -20,8 +20,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 
 	searchTool := mcp.NewTool("signoz_search_docs",
 		mcp.WithOutputSchema[docsindex.SearchResponse](),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Search official SigNoz documentation with BM25 over full markdown content. Use this for ANY SigNoz product question: how-to, feature usage, setup, config, API, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Call before data tools for ambiguous how-to questions, and after data tools when live telemetry results are confusing. Do not use for fetching actual telemetry, live alert state, or dashboard contents."),
 		// Not Required() so the legacy "query" alias (#367) stays valid for
@@ -38,8 +37,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 
 	fetchTool := mcp.NewTool("signoz_fetch_doc",
 		mcp.WithOutputSchema[docsindex.FetchResult](),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Fetch full markdown for one official SigNoz documentation page from the local docs index. Use after signoz_search_docs when a result needs detail, exact commands, prerequisites, or a specific section. Accepts only signoz.io/docs URLs or /docs/... paths."),
 		mcp.WithString("url", mcp.Required(), mcp.Description("Full https://signoz.io/docs/... URL or /docs/... path.")),

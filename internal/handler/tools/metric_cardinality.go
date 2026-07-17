@@ -12,8 +12,7 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering metric cardinality handlers")
 
 	tool := mcp.NewTool("signoz_check_metric_cardinality",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
 			"Return label/attribute keys for a single metric with their cardinality counts and sample "+
 				"values, sorted highest-cardinality first. The values field on each attribute entry contains a "+

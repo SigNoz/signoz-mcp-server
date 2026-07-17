@@ -41,8 +41,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering dashboard handlers")
 
 	tool := mcp.NewTool("signoz_list_dashboards",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes 'pagination' metadata with 'total', 'hasMore', and 'nextOffset' fields. When searching for a specific dashboard, ALWAYS check 'pagination.hasMore' - if true, continue paginating through all pages using 'nextOffset' until you find the item or 'hasMore' is false. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
@@ -52,8 +51,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.addTool(s, tool, h.handleListDashboards)
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get full details of a specific dashboard by ID (returns complete dashboard configuration with all panels and queries)"),
 		// Not mcp.Required(): the legacy alias "uuid" must remain a valid call for
@@ -65,7 +63,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
 				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
@@ -88,7 +86,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withUpdateToolAnnotations(),
 		mcp.WithDescription(
 			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
 				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
@@ -112,7 +110,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard)
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withDeleteToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Delete a dashboard by its ID. This action is irreversible. Use signoz_list_dashboards to find dashboard IDs."),
 		mcp.WithString("id", mcp.Description("Dashboard UUID to delete. Required.")),
@@ -122,7 +120,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	importDashboardTool := mcp.NewTool(
 		"signoz_import_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Create a new SigNoz dashboard from a curated template hosted in the SigNoz/dashboards GitHub repo. "+
 				"Takes a single 'path' argument (e.g. 'hostmetrics/hostmetrics.json' or 'postgresql/postgresql.json') "+
@@ -139,8 +137,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	listTemplatesTool := mcp.NewTool(
 		"signoz_list_dashboard_templates",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
 			"List all curated SigNoz dashboard templates bundled with this server. "+
 				"Returns the full catalog as a JSON array — each entry includes 'id', 'title', 'path', 'description', 'category', and 'keywords'. "+

@@ -43,20 +43,7 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 		server.WithInstructions(instructions.ServerInstructions),
 	)
 
-	handler.RegisterMetricsHandlers(s)
-	handler.RegisterTopMetricsHandlers(s)
-	handler.RegisterMetricUsageHandlers(s)
-	handler.RegisterFieldsHandlers(s)
-	handler.RegisterAlertsHandlers(s)
-	handler.RegisterDashboardHandlers(s)
-	handler.RegisterServiceHandlers(s)
-	handler.RegisterQueryBuilderV5Handlers(s)
-	handler.RegisterLogsHandlers(s)
-	handler.RegisterViewHandlers(s)
-	handler.RegisterDocsHandlers(s)
-	handler.RegisterTracesHandlers(s)
-	handler.RegisterNotificationChannelHandlers(s)
-	handler.RegisterMetricCardinalityHandlers(s)
+	handler.RegisterAllToolHandlers(s)
 	handler.RegisterResourceTemplates(s)
 	prompts.RegisterPrompts(s.AddPrompt)
 

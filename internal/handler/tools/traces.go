@@ -23,8 +23,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 	// aggregate_traces: compute statistics over traces with GROUP BY
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Aggregate traces to compute statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields. "+
 			"Use this for questions like 'p99 latency by service', 'error count per operation', 'request rate by endpoint', 'average duration by span kind'. "+
@@ -51,8 +50,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	h.addTool(s, aggregateTracesTool, h.handleAggregateTraces)
 
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Search traces with flexible filtering. Supports free-form filter expressions, optional service/operation/error filters, and duration filtering. "+
 			"Use service param to scope to a single service, or filter param for any filter expression. "+
@@ -74,8 +72,7 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	h.addTool(s, searchTracesTool, h.handleSearchTraces)
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription("Get comprehensive trace information including all spans, metadata, and span hierarchy/relationships. Defaults to last 6 hours if no time specified."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),

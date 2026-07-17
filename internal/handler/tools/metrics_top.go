@@ -13,8 +13,7 @@ func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering top metrics handlers")
 
 	tool := mcp.NewTool("signoz_get_top_metrics",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
 			"Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. "+
 				"Use this for questions like 'which metrics cost the most?', 'top metrics by sample count', "+
