@@ -94,13 +94,9 @@ const statusClientClosedConnection = 499
 // into the surfaced upstream message; the body is upstream-controlled input.
 const maxUpstreamErrorDetails = 5
 
-// maxUpstreamErrorDetailsBytes bounds how large an error object has its
-// error.errors[] detail array extracted at all: json.RawMessage copies the
-// field's bytes during Unmarshal and a non-2xx body can be up to 64 MiB, so
-// parseUpstreamErrorBody only names errors[] in a decode target when the whole
-// error object fits this bound (fail open, like a drifted shape — details
-// dropped, main fields kept). 16 KiB is orders of magnitude more than the five
-// surfaced details ever need.
+// maxUpstreamErrorDetailsBytes caps the error-object size for which errors[]
+// details are extracted: non-2xx bodies can reach 64 MiB and json.RawMessage
+// copies the field's bytes, so oversized objects skip extraction (fail open).
 const maxUpstreamErrorDetailsBytes = 16 << 10
 
 var assistantAuthEnvelopeCodes = map[string]struct{}{
@@ -233,22 +229,16 @@ func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error,
 	h.logger.Log(ctx, level, msg, args...)
 }
 
-// keyNotFoundPattern matches the QB v5 key-resolution failure ("key `service.name`
-// not found") in a 400 body. The wording is stable across backend generations: older
-// releases inline it in error.message, newer ones carry it in error.errors[].message
-// — matching the raw body covers both. Contract-sensitive by design: if the backend
-// rewords it, detection fails open (no enrichment) and logQueryFailure's ERROR-level
-// fallback is the drift signal.
+// keyNotFoundPattern matches the QB v5 key-resolution failure in a 400 body;
+// the wording is stable across backend generations (inline in error.message or
+// in error.errors[].message). If the backend rewords it, detection fails open
+// and logQueryFailure's ERROR-level fallback is the drift signal.
 var keyNotFoundPattern = regexp.MustCompile("key `([^`]+)` not found")
 
-// The 400 body is upstream-controlled input (buffered up to 64 MiB), so everything
-// derived from it is bounded: only the first missingFilterKeyScanBytes are scanned
-// (FindAllStringSubmatch's match cap would not stop it walking the whole body, and
-// each failure is scanned by both logQueryFailure and upstreamQueryError), at most
-// missingFilterKeyScanLimit matches are examined, a captured key longer than
-// missingFilterKeyMaxLen is discarded as garbage, and at most
-// missingFilterKeysLimit distinct keys are surfaced. Real key-not-found bodies are
-// far smaller than the scan window; a phrase beyond it fails open (no enrichment).
+// Bounds on processing the upstream-controlled 400 body (up to 64 MiB): scan
+// only the first missingFilterKeyScanBytes (a match cap alone would still walk
+// the whole body), examine at most missingFilterKeyScanLimit matches, drop keys
+// longer than missingFilterKeyMaxLen, surface at most missingFilterKeysLimit.
 const (
 	missingFilterKeysLimit    = 10
 	missingFilterKeyScanLimit = 64
@@ -485,13 +475,9 @@ func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstrea
 			upstreamType = nested.Type
 			upstreamCode = nested.Code
 			upstreamMessage = nested.Message
-			// Newer backends put the per-term detail in error.errors[] and keep
-			// error.message as a bare summary ("Found N errors while parsing the
-			// search expression."); fold the details in so they reach the caller.
-			// Extracted in a separate size-gated pass: json.RawMessage copies the
-			// field's bytes during Unmarshal, so an oversized error object must
-			// never name errors[] in a decode target at all (fail open on the
-			// details; the main fields above are already decoded).
+			// Newer backends carry the per-term detail in error.errors[]; fold it
+			// in via a size-gated second decode — json.RawMessage copies the
+			// field's bytes, so oversized objects never decode errors[] at all.
 			if len(envelope.Error) <= maxUpstreamErrorDetailsBytes {
 				var withDetails struct {
 					Errors json.RawMessage `json:"errors"`
@@ -528,14 +514,10 @@ func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstrea
 	return upstreamCode, upstreamMessage, upstreamType, true
 }
 
-// upstreamErrorDetails decodes error.errors[] best-effort: the documented shape is
-// [{"message": "..."}], with a plain []string fallback; any other shape — or a
-// payload over maxUpstreamErrorDetailsBytes — yields nil rather than an error, so
-// a drifted or oversized detail array can never discard the main error fields
-// (they are decoded independently). The caller size-gates the whole error object
-// before raw is ever copied out of it, so the size check here is defense in
-// depth. Details are trimmed, deduplicated (including against the main message),
-// and capped.
+// upstreamErrorDetails decodes error.errors[] best-effort ([{"message":...}]
+// or []string); any other or oversized shape yields nil so a drifted detail
+// array never discards the main fields (the caller's size gate makes the check
+// here defense in depth). Details are trimmed, deduped, and capped.
 func upstreamErrorDetails(raw json.RawMessage, mainMessage string) []string {
 	if len(raw) == 0 || len(raw) > maxUpstreamErrorDetailsBytes {
 		return nil

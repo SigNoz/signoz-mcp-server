@@ -110,10 +110,8 @@ func TestMissingFilterKeys_DropsOversizedKeys(t *testing.T) {
 	}
 }
 
-// TestMissingFilterKeys_OversizedBodyScanBounded pins the byte bound on the
-// raw-body scan: the match cap alone would not stop FindAllStringSubmatch from
-// walking an arbitrarily large 400 body, so only the first
-// missingFilterKeyScanBytes are examined — a phrase beyond the window fails
+// Pins the byte bound on the raw-body scan: only the first
+// missingFilterKeyScanBytes are examined — a match beyond the window fails
 // open, one inside it is still detected.
 func TestMissingFilterKeys_OversizedBodyScanBounded(t *testing.T) {
 	padding := strings.Repeat("x", missingFilterKeyScanBytes)
@@ -223,11 +221,8 @@ func TestUpstreamError_AdditionalDetailsDedupAndCap(t *testing.T) {
 	}
 }
 
-// TestUpstreamError_OversizedDetailArraySkippedNotDecoded pins the input-size
-// bound: a non-2xx body can be up to 64 MiB and json.RawMessage copies the field
-// bytes during Unmarshal, so an error object beyond maxUpstreamErrorDetailsBytes
-// never has errors[] in a decode target — details are dropped (fail open) while
-// the independently parsed main fields survive.
+// Pins the input-size bound: an error object beyond maxUpstreamErrorDetailsBytes
+// never has errors[] decoded — details drop (fail open), main fields survive.
 func TestUpstreamError_OversizedDetailArraySkippedNotDecoded(t *testing.T) {
 	huge := `[{"message":"` + strings.Repeat("x", maxUpstreamErrorDetailsBytes) + `"}]`
 	body := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":` + huge + `}}`
