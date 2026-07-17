@@ -65,6 +65,13 @@ type registerClientResponse struct {
 // allowlist rejections are alertable on the same mcp.auth.failure_reason.
 const authFailureDisallowedSignozURL = "disallowed_signoz_url"
 
+// Credential-validation failure subtypes, emitted as mcp.auth.failure_reason
+// so expired-workspace noise is separable from real connectivity incidents.
+const (
+	authFailureInstanceNotFound    = "instance_not_found"
+	authFailureInstanceUnreachable = "instance_unreachable"
+)
+
 type authorizeTemplateData struct {
 	ClientID            string
 	ClientName          string
@@ -231,11 +238,13 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
+	// Seed the SigNoz URL (mcp.tenant_url) so every failure from here on —
+	// allowlist rejection, bad credentials, unreachable or missing instance —
+	// is attributed to the tenant in mcp.oauth.failures.
+	r = r.WithContext(util.SetSigNozURL(r.Context(), normalizedURL))
 	// Reject disallowed backends before probing them, so the server never
 	// dials — or issues a token for — a host it will not serve.
 	if !h.config.InstanceURLAllowlist.AllowsURL(normalizedURL) {
-		// Seed the SigNoz URL (mcp.tenant_url) so the rejection is attributed in mcp.oauth.failures.
-		r = r.WithContext(util.SetSigNozURL(r.Context(), normalizedURL))
 		h.renderAuthorizePage(w, r, http.StatusForbidden, authorizeTemplateData{
 			ClientID:            params.ClientID,
 			ClientName:          params.ClientName,
@@ -266,6 +275,20 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 				ErrorMessage:        "We couldn't sign in to that SigNoz instance. Check the URL and API key, then try again.",
 				ErrorCode:           "access_denied",
 			})
+		case errors.Is(err, client.ErrInstanceNotFound):
+			h.renderAuthorizePage(w, r, http.StatusNotFound, authorizeTemplateData{
+				ClientID:            params.ClientID,
+				ClientName:          params.ClientName,
+				RedirectURI:         params.RedirectURI,
+				State:               params.State,
+				CodeChallenge:       params.CodeChallenge,
+				CodeChallengeMethod: params.CodeChallengeMethod,
+				Scope:               params.Scope,
+				SignozURL:           normalizedURL,
+				ErrorMessage:        "We couldn't find a SigNoz workspace at that URL. If your trial or subscription has ended, the workspace may have been deactivated — check your workspace status or contact SigNoz support.",
+				ErrorCode:           "invalid_request",
+				FailureReason:       authFailureInstanceNotFound,
+			})
 		default:
 			h.renderAuthorizePage(w, r, http.StatusBadGateway, authorizeTemplateData{
 				ClientID:            params.ClientID,
@@ -278,6 +301,7 @@ func (h *Handler) HandleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) 
 				SignozURL:           normalizedURL,
 				ErrorMessage:        "We couldn't reach that SigNoz instance. Check the URL and try again.",
 				ErrorCode:           "temporarily_unavailable",
+				FailureReason:       authFailureInstanceUnreachable,
 			})
 		}
 		return

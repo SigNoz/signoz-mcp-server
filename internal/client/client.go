@@ -41,8 +41,13 @@ const (
 )
 
 var (
-	ErrUnauthorized  = errors.New("signoz credentials rejected")
-	defaultUserAgent = version.UserAgent()
+	ErrUnauthorized = errors.New("signoz credentials rejected")
+	// ErrInstanceNotFound means the URL resolves but no SigNoz API answers
+	// there — e.g. an expired/deactivated cloud workspace whose ingress serves
+	// an HTML 404 page. A live SigNoz API replies to the validation endpoints
+	// with JSON, even on 404.
+	ErrInstanceNotFound = errors.New("no signoz instance found at URL")
+	defaultUserAgent    = version.UserAgent()
 )
 
 // HTTPStatusError preserves status and response details from a non-2xx SigNoz API response.
@@ -185,8 +190,11 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 
-	// 404 means the key is a service-account key; validate via service account endpoint.
-	if status == http.StatusNotFound {
+	// A JSON 404 means the key is a service-account key; validate via the
+	// service account endpoint. An HTML 404 is not a SigNoz API response at
+	// all (e.g. an expired cloud workspace's ingress page) — retrying the
+	// service-account endpoint would just hit the same page.
+	if status == http.StatusNotFound && !isHTMLBody(body) {
 		s.logger.DebugContext(ctx, "user/me returned non-user status, retrying with service_accounts/me",
 			slog.Int("status", status))
 		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
@@ -337,6 +345,13 @@ func (s *SigNoz) evaluateValidationResponse(ctx context.Context, status int, bod
 	case http.StatusUnauthorized, http.StatusForbidden:
 		s.logger.WarnContext(ctx, "SigNoz credential validation failed", slog.Int("status", status))
 		return fmt.Errorf("%w: status %d", ErrUnauthorized, status)
+	case http.StatusNotFound:
+		if isHTMLBody(body) {
+			s.logger.WarnContext(ctx, "no SigNoz API at instance URL (HTML 404)",
+				slog.String("response", logpkg.TruncBody(body)))
+			return fmt.Errorf("%w: status %d", ErrInstanceNotFound, status)
+		}
+		fallthrough
 	default:
 		truncatedBody := logpkg.TruncBody(body)
 		s.logger.WarnContext(ctx, "SigNoz credential validation returned unexpected status",
@@ -344,6 +359,16 @@ func (s *SigNoz) evaluateValidationResponse(ctx context.Context, status int, bod
 			slog.String("response", truncatedBody))
 		return fmt.Errorf("unexpected status %d: %s", status, truncatedBody)
 	}
+}
+
+// isHTMLBody reports whether a response body is a markup document (HTML/XML)
+// rather than a JSON API payload — the first non-whitespace byte of JSON is
+// never '<'. Empty and plain-text bodies conservatively count as non-HTML so
+// they keep the transient "try again" path.
+func isHTMLBody(body []byte) bool {
+	trimmed := bytes.TrimPrefix(body, []byte("\xef\xbb\xbf")) // UTF-8 BOM
+	trimmed = bytes.TrimLeft(trimmed, " \t\r\n")
+	return len(trimmed) > 0 && trimmed[0] == '<'
 }
 
 const (
