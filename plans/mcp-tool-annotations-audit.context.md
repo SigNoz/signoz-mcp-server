@@ -46,6 +46,10 @@
 - **Rejected: "deletes idempotent(true) causes spurious retry errors".** The hint is accurate per spec — double-delete has no additional upstream effect; retry presentation is client policy. #142 explicitly prescribes this triple for deletes.
 - **Accepted: stale `Files to Modify` list in `.plan.md`** — rewritten to include `register.go`, the fifth helper, and the mcp-server registration changes.
 
+### 2026-07-17 — Maintainer decision: create_notification_channel is plain create-class
+- Vishal overruled the Opus-review deviation: `signoz_create_notification_channel` uses `withCreateToolAnnotations()` like `signoz_create_alert`. Rationale: per the MCP spec, `destructiveHint` covers destroying/overwriting existing data — the always-sent test notification is part of the documented create contract, not data destruction — and `idempotentHint(false)` already tells clients a retry is not free (it re-notifies and duplicates the channel).
+- `signoz_update_notification_channel` keeps `(readOnly=false, destructive=true, idempotent=false)` — destructive because the PUT overwrites existing config, non-idempotent because of the per-call test notification (Codex finding stands). Helper renamed back to `withNonIdempotentUpdateToolAnnotations()`; the test-notify class is dropped.
+
 ## Open Questions
 - [ ] Should `openWorldHint(false)` be set on all tools (single configured SigNoz backend)? Deferred — not part of #142's triple.
 - [ ] Revisit `signoz_update_view` idempotent/destructive hints when nerve-pod#100 is fixed upstream.

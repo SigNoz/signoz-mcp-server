@@ -42,13 +42,11 @@ func withUpdateToolAnnotations() mcp.ToolOption {
 	}
 }
 
-// withTestNotifyMutationToolAnnotations marks a mutation whose handler fires
-// a live test notification (Slack post, email, page) on every successful
-// call — the notification-channel create and update tools. The notification
-// is an irreversible outward-facing action, so the tool stays destructive
-// despite the create being additive data-wise, and a repeat call re-notifies,
-// so it is not idempotent.
-func withTestNotifyMutationToolAnnotations() mcp.ToolOption {
+// withNonIdempotentUpdateToolAnnotations marks an update tool whose handler
+// performs an external side effect on every call beyond the PUT itself —
+// signoz_update_notification_channel sends a live test notification after
+// each successful update — so a repeat call re-notifies and is not free.
+func withNonIdempotentUpdateToolAnnotations() mcp.ToolOption {
 	return func(t *mcp.Tool) {
 		mcp.WithReadOnlyHintAnnotation(false)(t)
 		mcp.WithDestructiveHintAnnotation(true)(t)
