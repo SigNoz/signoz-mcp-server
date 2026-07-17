@@ -7,7 +7,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
 )
 
@@ -38,6 +37,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 			"Query metrics from SigNoz with smart aggregation defaults and validation. "+
 				"Automatically applies the right timeAggregation and spaceAggregation based on metric type "+
 				"(gauge, counter, histogram). If metricType is not provided, it is auto-fetched via signoz_list_metrics. "+
+				"Standalone generated queries and formula results use limit=100 ordered by __result desc. Queries feeding a formula use limit=10000 because input limits are applied before formula evaluation. For time_series queries, each top-N selection is ranked over the whole requested range. "+
 				"Every response includes a [Decisions applied] block showing all defaults used. "+
 				"Read the signoz://metrics-aggregation-guide resource for full aggregation rules and examples. "+
 				"TIP: Call signoz_list_metrics first to get the metric's type, temporality, and isMonotonic."),
@@ -68,7 +68,7 @@ func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
 	metricsGuideResource := mcp.NewResource(
 		"signoz://metrics-aggregation-guide",
 		"Metrics Aggregation Guide",
-		mcp.WithResourceDescription("Complete guide for metrics aggregation rules, defaults, payload examples, and common pitfalls. Covers gauge, counter, histogram, and exponential_histogram types with valid timeAggregation and spaceAggregation options."),
+		mcp.WithResourceDescription("Complete metrics/formula guide with aggregation defaults, standalone/formula-result limit 100, formula-input limit 10000, __result ordering, executable Query Builder examples, Cost Meter coverage, and the whole-window top-N caveat."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -111,7 +111,7 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 	}
 	result, err := client.ListMetrics(ctx, start, end, limit, searchText, source)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list metrics", slog.String("searchText", searchText), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list metrics", err, slog.String("searchText", searchText))
 		return upstreamError(err), nil
 	}
 

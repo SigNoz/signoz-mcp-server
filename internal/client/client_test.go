@@ -1214,6 +1214,8 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 
 	payload := string(captured)
 	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
+	require.Contains(t, payload, `"limit":1000`)
+	require.Contains(t, payload, `"order":[{"key":{"name":"timestamp"},"direction":"desc"}]`)
 	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
 }
 

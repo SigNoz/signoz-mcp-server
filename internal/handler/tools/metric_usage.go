@@ -9,8 +9,6 @@ import (
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-
-	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 )
 
 func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
@@ -92,7 +90,7 @@ func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRe
 
 	usage, err := client.CheckMetricUsage(ctx, names)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to check metric usage", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to check metric usage", err)
 		return upstreamError(err), nil
 	}
 

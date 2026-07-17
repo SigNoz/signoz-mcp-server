@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -22,11 +24,12 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
-			"Execute a SigNoz Query Builder v5 query.\n\n"+
-				"REQUIRED: Read signoz://traces/query-builder-guide BEFORE building any query. "+
-				"It documents filter expression syntax, canonical field names, field contexts, "+
-				"and complete working examples.\n\n"+
-				"When compositeQuery.queryType=\"promql\" ALSO read signoz://promql/instructions — "+
+			"Execute a raw SigNoz Query Builder v5 query as an escape hatch for multi-query, formula, or other shapes the higher-level tools cannot express. "+
+				"Prefer signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for metrics.\n\n"+
+				"Read the guide for the signal you are querying: signoz://logs/query-builder-guide for logs, signoz://traces/query-builder-guide for traces, and signoz://metrics-aggregation-guide for metrics or formulas. "+
+				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order. Standalone omitted/null/zero bounds normalize to 100 rows or groups; builder queries referenced by a formula normalize to 10000 because base limits are applied before formula evaluation, while the formula result stays at 100. "+
+				"The v5 wire field is spec.order, not the dashboard/editor field orderBy.\n\n"+
+				"For promql envelopes also read signoz://promql/instructions — "+
 				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
 				"Underscored / __name__ / bare-dotted forms silently return no data.\n\n"+
 				"See docs: https://signoz.io/docs/userguide/query-builder-v5/",
@@ -39,7 +42,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
 		"Traces Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax (string, not structured object), canonical built-in span column names (snake_case with fieldContext span), resource/tag attribute naming (dot notation + fieldContext), and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax, canonical built-in span columns, explicit raw/aggregate result bounds and ordering, and executable examples for raw, scalar, and time-series queries."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -56,7 +59,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	logsQueryBuilderGuide := mcp.NewResource(
 		"signoz://logs/query-builder-guide",
 		"Logs Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 logs guide: filter expression syntax (string, not structured object), log built-in columns, resource/log attribute naming, body text search, body JSON-path search, and complete working examples for raw, aggregation, and time series queries."),
+		mcp.WithResourceDescription("SigNoz Query Builder v5 logs guide: filter expression syntax, explicit raw/aggregate result bounds and ordering, stable timestamp/id pagination, body search, and executable examples for raw, scalar, and time-series queries."),
 		mcp.WithMIMEType("text/plain"),
 	)
 
@@ -117,7 +120,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	}
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to execute query builder v5", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to execute query builder v5", err)
 		return upstreamError(err), nil
 	}
 
@@ -127,6 +130,9 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
 	// Returning the body verbatim previously dropped them entirely.
 	var notes []string
+	if len(queryPayload.AppliedBounds) > 0 {
+		notes = append(notes, queryBoundsDecisionsNote(queryPayload.AppliedBounds, queryPayload.RequestType))
+	}
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
 	warnUnparsedWarningEnvelope(ctx, h.logger, "signoz_execute_builder_query", data, len(warnings))
@@ -134,4 +140,35 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		notes = append(notes, backendWarningsNote(warnings))
 	}
 	return resultWithNotes(data, notes...), nil
+}
+
+func queryBoundsDecisionsNote(applied []types.AppliedQueryBounds, requestType string) string {
+	var b strings.Builder
+	b.WriteString("[Decisions applied]\n")
+	for _, bounds := range applied {
+		var decisions []string
+		if bounds.LimitDefaulted {
+			if bounds.FormulaInput {
+				decisions = append(decisions, fmt.Sprintf("limit=%d (formula-input default; applied before formula evaluation)", bounds.Limit))
+			} else {
+				decisions = append(decisions, fmt.Sprintf("limit=%d (request-type default)", bounds.Limit))
+			}
+		}
+		if bounds.OrderDefaulted {
+			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", formatQueryOrder(bounds.Order)))
+		}
+		b.WriteString(fmt.Sprintf("  %s: %s\n", bounds.QueryName, strings.Join(decisions, ", ")))
+	}
+	if requestType == "time_series" {
+		b.WriteString("  NOTE: time_series limits select top groups using the ordering across the entire time range; a short-lived spike can fall outside the selected groups.\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func formatQueryOrder(order []types.Order) string {
+	parts := make([]string, 0, len(order))
+	for _, item := range order {
+		parts = append(parts, strings.TrimSpace(item.Key.Name)+" "+strings.ToLower(strings.TrimSpace(item.Direction)))
+	}
+	return strings.Join(parts, ", ")
 }

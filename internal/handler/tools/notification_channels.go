@@ -197,7 +197,7 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 
 	resp, err := client.GetNotificationChannel(ctx, id)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to get notification channel", slog.String("id", id), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to get notification channel", err, slog.String("id", id))
 		return upstreamError(err), nil
 	}
 	return structuredResult(resp), nil
@@ -220,7 +220,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 	}
 
 	if err := client.DeleteNotificationChannel(ctx, id); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to delete notification channel", slog.String("id", id), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to delete notification channel", err, slog.String("id", id))
 		return upstreamError(err), nil
 	}
 	return structuredResult([]byte(fmt.Sprintf(`{"status":"success","id":%q}`, id))), nil
@@ -237,7 +237,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 
 	result, err := client.ListNotificationChannels(ctx)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to list notification channels", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to list notification channels", err)
 		return upstreamError(err), nil
 	}
 
@@ -344,7 +344,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	// Step 1: Create the channel
 	createResp, err := client.CreateNotificationChannel(ctx, receiverJSON)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to create notification channel", slog.String("type", channelType), slog.String("name", name), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to create notification channel", err, slog.String("type", channelType), slog.String("name", name))
 		return upstreamError(err), nil
 	}
 
@@ -444,7 +444,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 
 	// Step 1: Update the channel (204 No Content on success)
 	if err := client.UpdateNotificationChannel(ctx, id, receiverJSON); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to update notification channel", slog.String("type", channelType), slog.String("name", name), slog.String("id", id), logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to update notification channel", err, slog.String("type", channelType), slog.String("name", name), slog.String("id", id))
 		return upstreamError(err), nil
 	}
 

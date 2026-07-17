@@ -3,6 +3,8 @@ package tools
 import (
 	"fmt"
 	"strings"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // parseAggregateLogsArgs validates and parses arguments for the aggregate_logs tool.
@@ -38,7 +40,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	searchText, _ := args["searchText"].(string)
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText)
 
-	limit, err := intArg(args, "limit", 100)
+	limit, err := intArg(args, "limit", types.DefaultRawQueryLimit)
 	if err != nil {
 		return nil, err
 	}

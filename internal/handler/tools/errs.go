@@ -2,10 +2,12 @@ package tools
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -196,6 +198,25 @@ func requireStringField(args map[string]any, key, requiredReason string) (string
 // notAConfigObjectError is the body-carrying-tool variant of the arguments guard.
 func notAConfigObjectError() *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, notAConfigObjectMessage)
+}
+
+// logUpstreamFailure logs a failed outbound call (SigNoz backend, template
+// fetch) at a severity derived from its cause: context.Canceled — the MCP
+// client disconnected or aborted the request mid-flight — logs at DEBUG with a
+// cancellation note, while everything else, including context.DeadlineExceeded
+// (a real operational signal), stays ERROR. The record is always emitted at
+// the chosen level, never dropped (fail open, never fail silent).
+func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+	level := logpkg.LevelForError(err)
+	if level != slog.LevelError {
+		msg += " (request cancelled by client)"
+	}
+	args := make([]any, 0, len(attrs)+1)
+	for _, attr := range attrs {
+		args = append(args, attr)
+	}
+	args = append(args, logpkg.ErrAttr(err))
+	h.logger.Log(ctx, level, msg, args...)
 }
 
 // upstreamError wraps a SigNoz backend client error with the uniform text prefix

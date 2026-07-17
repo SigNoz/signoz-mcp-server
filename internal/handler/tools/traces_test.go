@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func TestHandleSearchTraces_BasicQuery(t *testing.T) {
@@ -38,6 +39,17 @@ func TestHandleSearchTraces_BasicQuery(t *testing.T) {
 	payload := string(captured)
 	if !strings.Contains(payload, "checkout-svc") {
 		t.Errorf("expected payload to contain service name, got: %s", payload)
+	}
+	var parsed types.QueryPayload
+	if err := json.Unmarshal(captured, &parsed); err != nil {
+		t.Fatalf("failed to parse captured query: %v", err)
+	}
+	spec := parsed.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultRawQueryLimit {
+		t.Fatalf("limit = %d, want %d", spec.Limit, types.DefaultRawQueryLimit)
+	}
+	if len(spec.Order) != 1 || spec.Order[0].Key.Name != "timestamp" || spec.Order[0].Direction != "desc" {
+		t.Fatalf("order = %#v, want timestamp desc", spec.Order)
 	}
 }
 
@@ -135,6 +147,17 @@ func TestHandleAggregateTraces_CountByService(t *testing.T) {
 	}
 	if got := groupBy[0]; got.Name != "service.name" || got.FieldContext != "resource" || got.FieldDataType != "string" {
 		t.Fatalf("groupBy[0] = %#v, want service.name resource string", got)
+	}
+	var parsed types.QueryPayload
+	if err := json.Unmarshal(captured, &parsed); err != nil {
+		t.Fatalf("failed to parse captured query: %v", err)
+	}
+	spec := parsed.CompositeQuery.Queries[0].Spec.(types.QuerySpec)
+	if spec.Limit != types.DefaultAggregateQueryLimit {
+		t.Fatalf("limit = %d, want %d", spec.Limit, types.DefaultAggregateQueryLimit)
+	}
+	if len(spec.Order) != 1 || spec.Order[0].Key.Name != "count()" || spec.Order[0].Direction != "desc" {
+		t.Fatalf("order = %#v, want count() desc", spec.Order)
 	}
 }
 

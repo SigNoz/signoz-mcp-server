@@ -8,6 +8,7 @@ For the rules behind these — which panel and query type to choose, layout, leg
 Quick reference (all illustrated below):
 - Aggregations: count(), p50/p95/p99(field), avg/sum/min/max(field). Name a column with the aggregation's "alias" field (NOT "as '...'" inside the expression). Multiple aggregations = multiple entries in the aggregations[] array.
 - Filters: a single filter.expression string. Operators include =, !=, IN, AND, EXISTS. Reference variables as $name (omit the $ and it matches the literal string instead).
+- Result bounds and ordering: give every builder query an explicit positive "limit" and a non-empty "order". An order entry is {"key": {"name": <field-or-aggregation>}, "direction": "asc"|"desc"}. Order raw/list queries by timestamp desc (logs: timestamp desc then id desc); order scalar/time_series (aggregated or grouped) queries by the primary aggregation expression desc, e.g. {"key": {"name": "count()"}, "direction": "desc"}. Use limit 100 for standalone graph/table/pie/value and grouped queries — for time_series it ranks the top N groups over the whole selected window, so a locally significant series can fall outside it. For a formula, each base query it references uses a larger limit (e.g. 10000, since base limits apply before the formula runs) and the formula output orders by "__result" desc; narrow filters/grouping when formula-input cardinality can exceed that.
 
 === EXAMPLES ===
 
@@ -41,7 +42,9 @@ A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token
                     "name": "A",
                     "disabled": true,
                     "aggregations": [ { "expression": "sum(llm.token_count.prompt)", "alias": "prompt_tokens" } ],
-                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
+                    "order": [ { "key": { "name": "sum(llm.token_count.prompt)" }, "direction": "desc" } ],
+                    "limit": 10000
                   }
                 },
                 {
@@ -51,12 +54,14 @@ A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token
                     "name": "B",
                     "disabled": true,
                     "aggregations": [ { "expression": "sum(llm.token_count.completion)", "alias": "completion_tokens" } ],
-                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+                    "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
+                    "order": [ { "key": { "name": "sum(llm.token_count.completion)" }, "direction": "desc" } ],
+                    "limit": 10000
                   }
                 },
                 {
                   "type": "builder_formula",
-                  "spec": { "name": "F1", "expression": "A + B", "legend": "F1", "disabled": false }
+                  "spec": { "name": "F1", "expression": "A + B", "legend": "F1", "disabled": false, "order": [ { "key": { "name": "__result" }, "direction": "desc" } ], "limit": 100 }
                 }
               ]
             }
@@ -91,7 +96,9 @@ A timeseries widget with just one query and no formula, so the panel's single qu
               "name": "A",
               "aggregations": [ { "expression": "p95(duration_nano)", "alias": "p95_latency" } ],
               "legend": "P95",
-              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
+              "order": [ { "key": { "name": "p95(duration_nano)" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -125,7 +132,9 @@ A timeseries widget that groups a count() of trace spans by the service.name res
               "aggregations": [ { "expression": "count()" } ],
               "groupBy": [ { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" } ],
               "legend": "{{service.name}}",
-              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model AND llm.provider = 'anthropic'" }
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model AND llm.provider = 'anthropic'" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -304,7 +313,9 @@ A pie widget showing each model's share of requests. The panel plugin is signoz/
               "aggregations": [ { "expression": "count()" } ],
               "groupBy": [ { "name": "llm.model_name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
               "legend": "{{llm.model_name}}",
-              "filter": { "expression": "service.name IN $service_name AND llm.provider = 'anthropic' AND llm.model_name EXISTS" }
+              "filter": { "expression": "service.name IN $service_name AND llm.provider = 'anthropic' AND llm.model_name EXISTS" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -338,7 +349,9 @@ Same pie shape as the previous example, but Autogen records the model under the 
               "aggregations": [ { "expression": "count()" } ],
               "groupBy": [ { "name": "gen_ai.request.model", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
               "legend": "{{gen_ai.request.model}}",
-              "filter": { "expression": "service.name IN $service_name AND gen_ai.request.model EXISTS" }
+              "filter": { "expression": "service.name IN $service_name AND gen_ai.request.model EXISTS" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -372,7 +385,9 @@ Same pie shape again. Azure OpenAI also records the model under llm.model_name, 
               "aggregations": [ { "expression": "count()" } ],
               "groupBy": [ { "name": "llm.model_name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
               "legend": "{{llm.model_name}}",
-              "filter": { "expression": "service.name IN $service_name AND llm.model_name EXISTS" }
+              "filter": { "expression": "service.name IN $service_name AND llm.model_name EXISTS" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -410,7 +425,9 @@ A table widget counting spans per (service.name, SDK language) pair. The panel p
                 { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" },
                 { "name": "telemetry.sdk.language", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" }
               ],
-              "filter": { "expression": "llm.provider = 'anthropic' AND telemetry.sdk.language EXISTS" }
+              "filter": { "expression": "llm.provider = 'anthropic' AND telemetry.sdk.language EXISTS" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -446,7 +463,9 @@ A table widget with two aggregations per row: count() aliased "Requests" and avg
                 { "expression": "avg(duration_nano)", "alias": "Latency" }
               ],
               "groupBy": [ { "name": "gen_ai.agent.name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
-              "filter": { "expression": "service.name IN $service_name AND gen_ai.agent.name EXISTS AND gen_ai.operation.name = 'invoke_agent'" }
+              "filter": { "expression": "service.name IN $service_name AND gen_ai.agent.name EXISTS AND gen_ai.operation.name = 'invoke_agent'" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -482,7 +501,9 @@ Same table shape as Agents. Autogen records tool calls under the gen_ai.tool.nam
                 { "expression": "avg(duration_nano)", "alias": "Latency" }
               ],
               "groupBy": [ { "name": "gen_ai.tool.name", "fieldContext": "attribute", "fieldDataType": "string", "signal": "traces" } ],
-              "filter": { "expression": "service.name IN $service_name AND gen_ai.tool.name EXISTS AND gen_ai.operation.name = 'execute_tool'" }
+              "filter": { "expression": "service.name IN $service_name AND gen_ai.tool.name EXISTS AND gen_ai.operation.name = 'execute_tool'" },
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -516,7 +537,9 @@ A value/KPI widget reducing a series to one number. The panel plugin is signoz/N
               "signal": "traces",
               "name": "A",
               "aggregations": [ { "expression": "sum(llm.token_count.prompt)" } ],
-              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
+              "order": [ { "key": { "name": "sum(llm.token_count.prompt)" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -548,7 +571,9 @@ Identical to the Input Tokens value panel, summing llm.token_count.completion in
               "signal": "traces",
               "name": "A",
               "aggregations": [ { "expression": "sum(llm.token_count.completion)" } ],
-              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" }
+              "filter": { "expression": "service.name IN $service_name AND telemetry.sdk.language IN $language AND llm.model_name IN $llm_model" },
+              "order": [ { "key": { "name": "sum(llm.token_count.completion)" }, "direction": "desc" } ],
+              "limit": 100
             }
           }
         }
@@ -585,7 +610,9 @@ A value widget computing errored ÷ total as a single percentage. Because it com
                     "name": "A",
                     "disabled": true,
                     "aggregations": [ { "expression": "count()" } ],
-                    "filter": { "expression": "has_error = true AND service.name IN $service_name" }
+                    "filter": { "expression": "has_error = true AND service.name IN $service_name" },
+                    "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+                    "limit": 10000
                   }
                 },
                 {
@@ -595,12 +622,14 @@ A value widget computing errored ÷ total as a single percentage. Because it com
                     "name": "B",
                     "disabled": true,
                     "aggregations": [ { "expression": "count()" } ],
-                    "filter": { "expression": "has_error = false AND service.name IN $service_name" }
+                    "filter": { "expression": "has_error = false AND service.name IN $service_name" },
+                    "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+                    "limit": 10000
                   }
                 },
                 {
                   "type": "builder_formula",
-                  "spec": { "name": "F1", "expression": "A / (A + B)", "legend": "Error Rate", "disabled": false }
+                  "spec": { "name": "F1", "expression": "A / (A + B)", "legend": "Error Rate", "disabled": false, "order": [ { "key": { "name": "__result" }, "direction": "desc" } ], "limit": 100 }
                 }
               ]
             }

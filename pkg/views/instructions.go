@@ -60,6 +60,8 @@ The server rejects them with HTTP 400 "failed to validate request body".
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |
 | aggregations | array    | Required for metrics graphs (see metrics example) |
+| limit        | integer  | Positive result bound. Use 100 by default for list/raw and graph/table/value aggregate views |
+| order        | array    | Query Builder v5 wire order. List logs: timestamp desc then id desc; list traces: timestamp desc; metrics/formulas: __result desc; log/trace aggregates: primary aggregation desc. Do not use dashboard orderBy |
 
 ## Rules
 
@@ -73,6 +75,10 @@ The server rejects them with HTTP 400 "failed to validate request body".
   ` + "`sourcePage:\"metrics\"`" + ` — it will land in the wrong Explorer's list.
 - **panelType by intent:** "list" for tabular spans/logs; "graph" for
   time-series; "table" for grouped tables; "value" for a single number.
+- **Always bound and order builder results:** every builder_query must include a
+  positive ` + "`limit`" + ` and non-empty v5 ` + "`order`" + `. For time-series views,
+  the limit selects groups over the whole requested range, so a short-lived
+  locally significant series can fall outside the returned top N.
 - **Full Query Builder v5 spec:** https://signoz.io/docs/userguide/query-builder-v5/
 
 ## Update flow
@@ -105,6 +111,8 @@ omitting them up front is clearer.)
             "signal": "traces",
             "source": "",
             "stepInterval": 0,
+            "limit": 100,
+            "order": [{"key":{"name":"timestamp"},"direction":"desc"}],
             "filter":  { "expression": "service.name = 'checkoutservice'" },
             "having":  { "expression": "" }
           }
