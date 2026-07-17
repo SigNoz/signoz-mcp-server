@@ -7,7 +7,7 @@ const LogsQueryBuilderGuide = `
 
 Filters are a STRING expression in filter.expression - NOT a structured {op, items} object.
 
-CORRECT:   "filter": {"expression": "severity_text = 'ERROR' AND service.name = 'checkout'"}
+CORRECT:   "filter": {"expression": "severity_text = 'ERROR' AND body CONTAINS 'timeout'"}
 INCORRECT: "filter": {"op": "AND", "items": [...]}
 
 Operators: =  !=  >  >=  <  <=  IN  NOT IN  LIKE  NOT LIKE  ILIKE  NOT ILIKE  CONTAINS  NOT CONTAINS  REGEXP  NOT REGEXP  BETWEEN  NOT BETWEEN  EXISTS  NOT EXISTS
@@ -16,7 +16,7 @@ Combine:   AND  OR  (use parentheses for precedence)
 Examples:
   severity_text = 'ERROR'
   body CONTAINS 'timeout'
-  service.name = 'checkout' AND severity_text IN ('ERROR', 'FATAL')
+  service.name = 'checkout' AND severity_text IN ('ERROR', 'FATAL')   <- only if this workspace's logs carry service.name (see FIELD NAMES AND CONTEXTS)
   body.user.id = '12345'
   body.error.message ILIKE '%connection refused%'
   trace_id = 'abc123def456'
@@ -28,6 +28,11 @@ Unknown keys hard-error. Do not guess field names. If unsure, call:
   signoz_get_field_keys(signal="logs", fieldContext="resource")
   signoz_get_field_keys(signal="logs", fieldContext="attribute")
   signoz_get_field_values(signal="logs", name="<field>")
+
+Log keys are workspace-specific: logs have no spec-mandated resource attributes, so even
+service.name exists only when the log pipeline sets it. A filter on a key this workspace's
+logs never carried fails with "key ... not found" — discover valid keys as above and use
+an existing one (e.g. k8s.deployment.name) instead of retrying the same filter.
 
 If a key matches BOTH the resource and attribute contexts, SigNoz defaults to the resource context (and warns). For other multi-context matches, every matching context is ORed together.
 Disambiguate explicitly in filter expressions with resource.<key> or attribute.<key> (scope.<key> also exists).

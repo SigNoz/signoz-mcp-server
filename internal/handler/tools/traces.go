@@ -125,8 +125,8 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to aggregate traces", err)
-		return upstreamError(err), nil
+		h.logQueryFailure(ctx, "Failed to aggregate traces", err)
+		return upstreamQueryError(err, "traces"), nil
 	}
 
 	return aggregateResult(ctx, h.logger, "signoz_aggregate_traces", result, reqData.LimitClamped), nil
@@ -160,8 +160,8 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to search traces", err)
-		return upstreamError(err), nil
+		h.logQueryFailure(ctx, "Failed to search traces", err)
+		return upstreamQueryError(err, "traces"), nil
 	}
 
 	result = h.enrichSearchTracesWebURL(ctx, result)

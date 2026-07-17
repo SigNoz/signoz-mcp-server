@@ -429,6 +429,7 @@ Query metrics with smart aggregation defaults and validation. Automatically appl
   - `formulaQueries` (optional) - Array or JSON-encoded array string of additional named metric queries for formula. Each object supports `name`, `metricName`, `metricType`, `isMonotonic`, `temporality`, `timeAggregation`, `spaceAggregation`, `groupBy`, and `filter`; `name` and `metricName` are required.
   - `source` (optional) - Data-source filter. Use `"meter"` to query Cost Meter data; omit for the default metrics store
   - **Result bounds**: standalone generated metric queries and formula results use `limit: 100` with `__result desc`. Every query feeding a formula uses `limit: 10000`, because component limits are applied before formula evaluation and independent top-100 inputs can discard a high-ratio group. The response decisions note reports both bounds. Narrow the filters/grouping when formula-input cardinality can exceed 10000.
+  - **Key-not-found errors**: a filter referencing a key absent from this workspace's metrics metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_get_top_metrics`
 
@@ -657,8 +658,8 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
   - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. See `signoz://logs/query-builder-guide`
-  - `service` (optional) - Shortcut filter for service name
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. Log keys are workspace-specific — even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
+  - `service` (optional) - Shortcut filter for service name (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Shortcut filter for severity (DEBUG, INFO, WARN, ERROR, FATAL)
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
   - `limit` (optional) - Maximum number of groups to return (default: 100, max: 10000; higher values are clamped to bound server memory)
@@ -667,14 +668,15 @@ Aggregate logs with count, average, sum, min, max, or percentiles, optionally gr
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
   - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or set a deliberate smaller/larger positive limit when a short-lived series could otherwise be hidden.
+  - **Key-not-found errors**: a filter referencing a key absent from this workspace's logs metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_search_logs`
 
 Search logs with flexible filtering across all services.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
-  - `service` (optional) - Service name to filter by
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific — even `service.name` is only present when the log pipeline sets it. Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
+  - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Severity filter (DEBUG, INFO, WARN, ERROR, FATAL)
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
@@ -683,6 +685,7 @@ Search logs with flexible filtering across all services.
   - `offset` (optional) - Offset for pagination (default: 0)
   - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
+  - **Key-not-found errors**: a filter referencing a key absent from this workspace's logs metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_get_field_keys`
 
@@ -726,6 +729,7 @@ Search traces/spans with flexible filtering.
   - **Ordering**: generated raw trace queries use `timestamp desc`.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
+  - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_aggregate_traces`
 
@@ -746,6 +750,7 @@ Aggregate trace statistics like count, average, sum, min, max, or percentiles ov
   - `requestType` (optional) - `scalar` (default — one aggregate value over the whole range) or `time_series` (one value per time bucket). Unknown values are rejected.
   - `stepInterval` (optional) - Time bucket size in seconds for `time_series` mode. Accepts a number or numeric string (backend auto-selects when omitted)
   - **Time-series ranking note**: the limit selects top groups over the whole requested window, not independently per bucket. Narrow the window or set a deliberate smaller/larger positive limit when a short-lived series could otherwise be hidden.
+  - **Key-not-found errors**: a filter referencing a key absent from this workspace's traces metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 
 #### `signoz_get_trace_details`
 
@@ -850,6 +855,7 @@ Executes a SigNoz Query Builder v5 query as the raw escape hatch for shapes the 
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or choose a deliberate positive limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).
+- **Key-not-found errors**: a filter referencing a key absent from the workspace's metadata for the queried signal fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
 - **Documentation**: See [SigNoz Query Builder v5 docs](https://signoz.io/docs/userguide/query-builder-v5/)
 
 </details>

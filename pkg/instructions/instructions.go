@@ -13,6 +13,7 @@ const ServerInstructions = `# SigNoz MCP Server — Instructions
    b. Optionally call signoz_get_field_values to suggest concrete values for those attributes.
    c. Ask the user to pick a resource attribute filter before running the query.
    If the user already provides resource attributes, proceed directly without extra prompting.
+   **Caveat:** field keys are workspace- and signal-specific. Logs have no spec-mandated resource attributes — even service.name is only present when the log pipeline sets it (traces almost always carry it). If a query fails with ` + "`key ... not found`" + `, call signoz_get_field_keys for that signal to discover valid keys, then retry with an existing key or drop the failing condition — do not retry the same filter.
 
 3. **Clarify the signal before querying.** If it is not clear which signal to use, ask the user whether to start with metrics, traces, or logs.
 

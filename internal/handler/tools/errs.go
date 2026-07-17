@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -88,6 +89,10 @@ const (
 )
 
 const statusClientClosedConnection = 499
+
+// maxUpstreamErrorDetails bounds how many error.errors[] detail messages are folded
+// into the surfaced upstream message; the body is upstream-controlled input.
+const maxUpstreamErrorDetails = 5
 
 var assistantAuthEnvelopeCodes = map[string]struct{}{
 	"forbidden":       {},
@@ -219,6 +224,135 @@ func (h *Handler) logUpstreamFailure(ctx context.Context, msg string, err error,
 	h.logger.Log(ctx, level, msg, args...)
 }
 
+// keyNotFoundPattern matches the QB v5 key-resolution failure ("key `service.name`
+// not found") in a 400 body. The wording is stable across backend generations: older
+// releases inline it in error.message, newer ones carry it in error.errors[].message
+// — matching the raw body covers both. Contract-sensitive by design: if the backend
+// rewords it, detection fails open (no enrichment) and logQueryFailure's ERROR-level
+// fallback is the drift signal.
+var keyNotFoundPattern = regexp.MustCompile("key `([^`]+)` not found")
+
+// The 400 body is upstream-controlled input, so everything derived from it is
+// bounded: at most missingFilterKeyScanLimit regex matches are examined, a
+// captured key longer than missingFilterKeyMaxLen is discarded as garbage, and at
+// most missingFilterKeysLimit distinct keys are surfaced.
+const (
+	missingFilterKeysLimit    = 10
+	missingFilterKeyScanLimit = 64
+	missingFilterKeyMaxLen    = 256
+)
+
+// missingFilterKeys extracts the filter keys a QB v5 400 reported as absent from
+// the workspace's field metadata. Returns nil for anything other than an HTTP 400
+// whose body carries the key-not-found wording.
+func missingFilterKeys(err error) []string {
+	var statusErr *signozclient.HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusBadRequest {
+		return nil
+	}
+	matches := keyNotFoundPattern.FindAllStringSubmatch(statusErr.Body, missingFilterKeyScanLimit)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, missingFilterKeysLimit)
+	keys := make([]string, 0, missingFilterKeysLimit)
+	for _, m := range matches {
+		key := m[1]
+		if len(key) > missingFilterKeyMaxLen {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+		if len(keys) == missingFilterKeysLimit {
+			break
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return keys
+}
+
+// missingKeyGuidance builds the recovery instructions appended to a key-not-found
+// error. Field keys are workspace- and signal-specific: logs carry no spec-mandated
+// resource attributes (even service.name is only present when the pipeline sets it),
+// so the guidance steers the agent to discover real keys instead of retrying blind.
+func missingKeyGuidance(keys []string, signal string) string {
+	quoted := make([]string, len(keys))
+	for i, key := range keys {
+		quoted[i] = "`" + key + "`"
+	}
+
+	var b strings.Builder
+	noun := "this workspace's data"
+	if signal != "" {
+		noun = "this workspace's " + signal + " data"
+	}
+	verb := "does"
+	if len(keys) > 1 {
+		verb = "do"
+	}
+	fmt.Fprintf(&b, "The filter references %s, which %s not exist in %s.", strings.Join(quoted, ", "), verb, noun)
+	if signal == "logs" {
+		b.WriteString(" Log attributes are workspace-specific: logs have no spec-mandated resource attributes, so even standard keys like service.name are only present when the log pipeline sets them.")
+	}
+	if signal != "" {
+		fmt.Fprintf(&b, ` Discover valid keys with signoz_get_field_keys (signal=%q; fieldContext="resource" for resource attributes), then retry with an existing key`, signal)
+	} else {
+		b.WriteString(` Discover valid keys with signoz_get_field_keys for the queried signal (fieldContext="resource" for resource attributes), then retry with an existing key`)
+	}
+	if signal == "logs" {
+		b.WriteString(" (for service scoping, workspaces without service.name often carry k8s.deployment.name or k8s.container.name)")
+	}
+	b.WriteString(", or remove the failing condition.")
+	return b.String()
+}
+
+// upstreamQueryError is upstreamError for the QB v5 passthrough tools: when the 400
+// reports filter keys missing from the workspace's field metadata, it appends
+// signal-aware recovery guidance to the text block and surfaces the keys as
+// `missingKeys` in StructuredContent so clients can branch without string-matching.
+// signal is "logs"/"traces", or "" when the tool spans signals (execute_builder_query).
+func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
+	res := upstreamError(err)
+	keys := missingFilterKeys(err)
+	if len(keys) == 0 {
+		return res
+	}
+	if len(res.Content) == 1 {
+		if tc, ok := res.Content[0].(mcp.TextContent); ok {
+			tc.Text += "\n\n" + missingKeyGuidance(keys, signal)
+			res.Content[0] = tc
+		}
+	}
+	if structured, ok := res.StructuredContent.(map[string]any); ok {
+		structured["missingKeys"] = keys
+	}
+	return res
+}
+
+// logQueryFailure is the QB v5 tools' variant of logUpstreamFailure: a 400 whose
+// filter references keys absent from the workspace's metadata is an expected agent
+// mistake (the tool result carries the recovery guidance), so it logs at WARN with
+// the missing keys attached — still always emitted, never dropped. Everything else
+// keeps logUpstreamFailure's severity contract.
+func (h *Handler) logQueryFailure(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+	keys := missingFilterKeys(err)
+	if len(keys) == 0 {
+		h.logUpstreamFailure(ctx, msg, err, attrs...)
+		return
+	}
+	args := make([]any, 0, len(attrs)+2)
+	for _, attr := range attrs {
+		args = append(args, attr)
+	}
+	args = append(args, slog.Any("missingKeys", keys), logpkg.ErrAttr(err))
+	h.logger.Log(ctx, slog.LevelWarn, msg+" (filter references keys missing from workspace field metadata)", args...)
+}
+
 // upstreamError wraps a SigNoz backend client error with the uniform text prefix
 // and the most specific structured code we can derive from the HTTP response.
 func upstreamError(err error) *mcp.CallToolResult {
@@ -325,14 +459,25 @@ func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstrea
 	}
 	if len(envelope.Error) > 0 && string(envelope.Error) != "null" {
 		var nested struct {
-			Type    string `json:"type"`
-			Code    string `json:"code"`
-			Message string `json:"message"`
+			Type    string          `json:"type"`
+			Code    string          `json:"code"`
+			Message string          `json:"message"`
+			Errors  json.RawMessage `json:"errors"`
 		}
 		if err := json.Unmarshal(envelope.Error, &nested); err == nil {
 			upstreamType = nested.Type
 			upstreamCode = nested.Code
 			upstreamMessage = nested.Message
+			// Newer backends put the per-term detail in error.errors[] and keep
+			// error.message as a bare summary ("Found N errors while parsing the
+			// search expression."); fold the details in so they reach the caller.
+			switch details := upstreamErrorDetails(nested.Errors, upstreamMessage); {
+			case len(details) == 0:
+			case upstreamMessage == "":
+				upstreamMessage = strings.Join(details, "; ")
+			default:
+				upstreamMessage = upstreamMessage + " (" + strings.Join(details, "; ") + ")"
+			}
 		} else {
 			var message string
 			if err := json.Unmarshal(envelope.Error, &message); err == nil {
@@ -353,6 +498,47 @@ func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstrea
 		upstreamMessage = envelope.Message
 	}
 	return upstreamCode, upstreamMessage, upstreamType, true
+}
+
+// upstreamErrorDetails decodes error.errors[] best-effort: the documented shape is
+// [{"message": "..."}], with a plain []string fallback; any other shape yields nil
+// rather than an error, so a drifted detail array can never discard the main
+// error fields (they are decoded independently via json.RawMessage). Details are
+// trimmed, deduplicated (including against the main message), and capped.
+func upstreamErrorDetails(raw json.RawMessage, mainMessage string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var messages []string
+	var structured []struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &structured); err == nil {
+		messages = make([]string, 0, len(structured))
+		for _, additional := range structured {
+			messages = append(messages, additional.Message)
+		}
+	} else if err := json.Unmarshal(raw, &messages); err != nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{mainMessage: {}}
+	details := make([]string, 0, maxUpstreamErrorDetails)
+	for _, message := range messages {
+		detail := strings.TrimSpace(message)
+		if detail == "" {
+			continue
+		}
+		if _, dup := seen[detail]; dup {
+			continue
+		}
+		seen[detail] = struct{}{}
+		details = append(details, detail)
+		if len(details) == maxUpstreamErrorDetails {
+			break
+		}
+	}
+	return details
 }
 
 // notFoundError marks a referenced resource that does not exist. The message is

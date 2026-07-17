@@ -212,8 +212,8 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Metrics query failed", err)
-		return upstreamError(err), nil
+		h.logQueryFailure(ctx, "Metrics query failed", err)
+		return upstreamQueryError(err, "metrics"), nil
 	}
 
 	// Extract backend-determined stepInterval from response if caller didn't provide one
