@@ -15,6 +15,9 @@ var (
 	createTriple = annotationTriple{readOnly: false, destructive: false, idempotent: false}
 	updateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: true}
 	deleteTriple = annotationTriple{readOnly: false, destructive: true, idempotent: true}
+	// Updates whose handler fires an external side effect (a live test
+	// notification) on every call, so repeats are not idempotent.
+	nonIdempotentUpdateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: false}
 )
 
 // expectedToolAnnotations pins the advertised annotation triple for every
@@ -56,7 +59,7 @@ var expectedToolAnnotations = map[string]annotationTriple{
 	"signoz_import_dashboard":            createTriple,
 	"signoz_update_alert":                updateTriple,
 	"signoz_update_dashboard":            updateTriple,
-	"signoz_update_notification_channel": updateTriple,
+	"signoz_update_notification_channel": nonIdempotentUpdateTriple,
 	"signoz_update_view":                 updateTriple,
 	"signoz_delete_alert":                deleteTriple,
 	"signoz_delete_dashboard":            deleteTriple,

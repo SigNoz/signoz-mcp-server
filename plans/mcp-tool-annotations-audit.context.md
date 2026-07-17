@@ -36,6 +36,10 @@
 - README/docs contain no tool-annotation tables → no docs change needed.
 - agent-skills repo: annotations are advisory client-side hints and do not alter the tool contract skills teach → no companion change needed.
 
+### 2026-07-17 — Codex (gpt-5.6-sol) review findings, both accepted
+- **`signoz_update_notification_channel` is not idempotent**: after a successful PUT, the handler sends a live test notification (`client.TestNotificationChannel`, `notification_channels.go`), so a client retry fires another Slack/email/PagerDuty message. Reclassified to `(readOnly=false, destructive=true, idempotent=false)` via a new `withNonIdempotentUpdateToolAnnotations()` helper; pinned as `nonIdempotentUpdateTriple` in the inventory test. (`signoz_create_notification_channel` also test-fires, but creates are already `idempotentHint(false)`.)
+- **Registration lists had drifted into three hand-maintained copies** (production `internal/mcp-server/server.go`, `integration_test.go`, `schema_inventory_test.go`) — a new handler group registered in production but not in the test list would bypass the pinned annotation inventory. Consolidated into `Handler.RegisterAllToolHandlers` (`register.go`), now the single source of truth used by production and both test setups. `RegisterResourceTemplates` (resources, not tools) stays a separate call.
+
 ## Open Questions
 - [ ] Should `openWorldHint(false)` be set on all tools (single configured SigNoz backend)? Deferred — not part of #142's triple.
 - [ ] Revisit `signoz_update_view` idempotent/destructive hints when nerve-pod#100 is fixed upstream.

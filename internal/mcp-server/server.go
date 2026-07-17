@@ -305,20 +305,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	}()
 
 	// Register all handlers
-	m.handler.RegisterMetricsHandlers(s)
-	m.handler.RegisterTopMetricsHandlers(s)
-	m.handler.RegisterMetricUsageHandlers(s)
-	m.handler.RegisterFieldsHandlers(s)
-	m.handler.RegisterAlertsHandlers(s)
-	m.handler.RegisterDashboardHandlers(s)
-	m.handler.RegisterServiceHandlers(s)
-	m.handler.RegisterQueryBuilderV5Handlers(s)
-	m.handler.RegisterLogsHandlers(s)
-	m.handler.RegisterViewHandlers(s)
-	m.handler.RegisterDocsHandlers(s)
-	m.handler.RegisterTracesHandlers(s)
-	m.handler.RegisterNotificationChannelHandlers(s)
-	m.handler.RegisterMetricCardinalityHandlers(s)
+	m.handler.RegisterAllToolHandlers(s)
 	m.handler.RegisterResourceTemplates(s)
 
 	// Register prompts

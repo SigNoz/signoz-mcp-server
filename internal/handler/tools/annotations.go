@@ -42,6 +42,18 @@ func withUpdateToolAnnotations() mcp.ToolOption {
 	}
 }
 
+// withNonIdempotentUpdateToolAnnotations marks an update tool whose handler
+// performs an external side effect on every call beyond the PUT itself —
+// e.g. signoz_update_notification_channel sends a live test notification
+// after each successful update — so a repeat call is not free.
+func withNonIdempotentUpdateToolAnnotations() mcp.ToolOption {
+	return func(t *mcp.Tool) {
+		mcp.WithReadOnlyHintAnnotation(false)(t)
+		mcp.WithDestructiveHintAnnotation(true)(t)
+		mcp.WithIdempotentHintAnnotation(false)(t)
+	}
+}
+
 // withDeleteToolAnnotations marks a tool that removes a resource by id:
 // destructive, and idempotent in the HTTP DELETE sense — a repeat call fails
 // with not-found upstream but causes no additional state change.

@@ -13,13 +13,15 @@ Annotation triples per class (see `.context.md` for per-tool verification of ups
 |---|---|---|---|
 | read (28) | true | false | true |
 | create (5, incl. `signoz_import_dashboard`) | false | false | false |
-| update (4, upstream PUT full-replace) | false | true | true |
+| update (3, upstream PUT full-replace) | false | true | true |
+| non-idempotent update (1: `signoz_update_notification_channel`, fires a live test notification per call) | false | true | false |
 | delete (4, upstream DELETE by id) | false | true | true |
 
-1. Add `internal/handler/tools/annotations.go` with four composite `mcp.ToolOption` helpers, one per class, each setting the full triple. Doc comments carry the spec reasoning.
+1. Add `internal/handler/tools/annotations.go` with five composite `mcp.ToolOption` helpers, one per class, each setting the full triple. Doc comments carry the spec reasoning.
 2. Replace the existing per-tool hint options at all 41 `mcp.NewTool` call sites with the matching class helper.
 3. Add `internal/handler/tools/annotations_inventory_test.go`: exact map of tool name → expected triple, verified in both directions against `registeredTestTools`, with non-nil assertions on all three hint pointers.
-4. Docs/metadata sync: manifest.json and README carry no annotation mirror (verified) — no changes; note in PR summary.
+4. Consolidate tool registration into `Handler.RegisterAllToolHandlers` (`internal/handler/tools/register.go`) used by production `server.go`, `integration_test.go`, and the inventory tests — one source of truth so a new handler group cannot bypass the pinned inventory.
+5. Docs/metadata sync: manifest.json and README carry no annotation mirror (verified) — no changes; note in PR summary.
 
 ## Files to Modify
 - `internal/handler/tools/annotations.go` — new; four class helpers
