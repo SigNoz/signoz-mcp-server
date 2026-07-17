@@ -152,11 +152,21 @@ func TestListAlertRules(t *testing.T) {
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }
 
+// expiredWorkspaceHTML mirrors the 404 page the SigNoz Cloud ingress serves
+// for expired/deactivated workspaces (captured from production logs).
+const expiredWorkspaceHTML = `<!DOCTYPE html>
+<html>
+<head><title>404 : This page does not exist :/</title></head>
+<body><p>Either the workspace has expired or the workspace does not exist.</p></body>
+</html>`
+
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
 		name            string
-		userMeStatus    int // status for /api/v1/user/me (always hit first)
-		saStatus        int // status for /api/v1/service_accounts/me (only hit on user/me 502)
+		userMeStatus    int    // status for /api/v1/user/me (always hit first)
+		userMeBody      string // body for user/me; defaults to JSON
+		saStatus        int    // status for /api/v1/service_accounts/me (only hit on user/me JSON 404)
+		saBody          string // body for service_accounts/me; defaults to JSON
 		expectedError   bool
 		checkErr        func(t *testing.T, err error)
 		expectUserMeHit bool
@@ -208,6 +218,41 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Contains(t, err.Error(), "unexpected status 500")
 			},
 		},
+		{
+			name:            "user/me HTML 404 means no instance, skips fallback",
+			userMeStatus:    http.StatusNotFound,
+			userMeBody:      expiredWorkspaceHTML,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     false,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrInstanceNotFound)
+			},
+		},
+		{
+			name:            "user/me JSON 404 falls back, HTML 404 on service_accounts/me means no instance",
+			userMeStatus:    http.StatusNotFound,
+			saStatus:        http.StatusNotFound,
+			saBody:          expiredWorkspaceHTML,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     true,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrInstanceNotFound)
+			},
+		},
+		{
+			name:            "JSON 404 on both endpoints stays a generic unexpected status",
+			userMeStatus:    http.StatusNotFound,
+			saStatus:        http.StatusNotFound,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     true,
+			checkErr: func(t *testing.T, err error) {
+				assert.NotErrorIs(t, err, ErrInstanceNotFound)
+				assert.Contains(t, err.Error(), "unexpected status 404")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -221,18 +266,25 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
+				body := `{"status":"ok"}`
 				switch r.URL.Path {
 				case "/api/v1/user/me":
 					userMeRequests++
 					w.WriteHeader(tt.userMeStatus)
+					if tt.userMeBody != "" {
+						body = tt.userMeBody
+					}
 				case "/api/v1/service_accounts/me":
 					saRequests++
 					w.WriteHeader(tt.saStatus)
+					if tt.saBody != "" {
+						body = tt.saBody
+					}
 				default:
 					t.Fatalf("unexpected path %s", r.URL.Path)
 				}
 
-				_, _ = w.Write([]byte(`{"status":"ok"}`))
+				_, _ = w.Write([]byte(body))
 			}))
 			defer server.Close()
 
