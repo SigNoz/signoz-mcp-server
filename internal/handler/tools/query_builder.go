@@ -23,17 +23,12 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
 		mcp.WithDescription(
-			"Execute a raw SigNoz Query Builder v5 query as an escape hatch for multi-query, formula, or other shapes the higher-level tools cannot express. "+
-				"Prefer signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for metrics.\n\n"+
-				"Read the guide for the signal you are querying: signoz://logs/query-builder-guide for logs, signoz://traces/query-builder-guide for traces, and signoz://metrics-aggregation-guide for metrics or formulas. "+
-				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order. Standalone omitted/null/zero bounds normalize to 100 rows or groups; builder queries referenced by a formula normalize to 10000 because base limits are applied before formula evaluation, while the formula result stays at 100. "+
-				"The v5 wire field is spec.order, not the dashboard/editor field orderBy.\n\n"+
-				"For promql envelopes also read signoz://promql/instructions — "+
-				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
-				"Underscored / __name__ / bare-dotted forms silently return no data.\n\n"+
-				"See docs: https://signoz.io/docs/userguide/query-builder-v5/",
+			"Use this only when the user needs a raw SigNoz Query Builder v5 envelope for multi-query, formulas, PromQL, ClickHouse SQL, or another shape the higher-level tools cannot express. "+
+				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
+				"Before composing the query, read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas also require the metrics guide, and PromQL requires signoz://promql/instructions. "+
+				"For predictable formulas, explicitly set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server normalizes omissions.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables")),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)

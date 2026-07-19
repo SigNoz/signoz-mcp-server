@@ -65,19 +65,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_create_dashboard",
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Creates a new monitoring dashboard based on the provided title, layout, and widget configuration. "+
-				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
-				"1. signoz://dashboard/instructions - REQUIRED: Dashboard structure and basics\n"+
-				"2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules\n"+
-				"3. signoz://dashboard/widgets-examples - REQUIRED: Complete widget examples with all required fields\n\n"+
-				"QUERY-SPECIFIC RESOURCES (read based on query type used):\n"+
-				"- For PromQL queries: signoz://promql/instructions\n"+
-				"- For Query Builder queries: signoz://dashboard/query-builder-example\n"+
-				"- For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
-				"- For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
-				"- For ClickHouse SQL on traces: signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
-				"IMPORTANT: The widgets-examples resource contains complete, working widget configurations. "+
-				"You must consult it to ensure all required fields (id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks) are properly populated.",
+			"Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and widget configuration; use signoz_import_dashboard instead when a curated template fits. "+
+				"Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
 		),
 		mcp.WithInputSchema[types.CreateDashboardInput](),
 	)
@@ -88,21 +77,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_update_dashboard",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Update an existing dashboard by supplying its UUID along with a fully assembled dashboard JSON object.\n\n"+
-				"MANDATORY FIRST STEP: Read signoz://dashboard/widgets-examples before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
-				"The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications.\n\n"+
-				"REQUIRED RESOURCES (read ALL before generating output):\n"+
-				"1. signoz://dashboard/instructions\n"+
-				"2. signoz://dashboard/widgets-instructions\n"+
-				"3. signoz://dashboard/widgets-examples ← CRITICAL: Shows complete widget field structure\n\n"+
-				"CONDITIONAL RESOURCES (based on query type):\n"+
-				"• PromQL → signoz://promql/instructions\n"+
-				"• Query Builder → signoz://dashboard/query-builder-example\n"+
-				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
-				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
-				"• ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
-				"WARNING: Failing to consult widgets-examples will result in incomplete widget configurations missing required fields "+
-				"(id, panelTypes, title, query, selectedLogFields, selectedTracesFields, thresholds, contextLinks).",
+			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, merge only the requested changes, and preserve every other field. "+
+				"Before composing changed widgets, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
 		),
 		mcp.WithInputSchema[types.UpdateDashboardInput](),
 	)

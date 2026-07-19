@@ -9,6 +9,24 @@ import (
 
 var formulaVariablePattern = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
+func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.T) {
+	for _, required := range []string{
+		"Before creating an alert, call signoz_list_notification_channels",
+		"verify every user-selected name exists",
+		"present the available names and ask the user to choose",
+		"fallback for stale or changed channel data, not normal discovery",
+		"verified with signoz_list_notification_channels",
+		"Never guess",
+	} {
+		if !strings.Contains(Instructions, required) {
+			t.Errorf("alert instructions missing notification-channel guidance %q", required)
+		}
+	}
+	if strings.Contains(Instructions, "If the user explicitly names a channel, use it directly") {
+		t.Error("alert instructions must not prescribe direct use of an unvalidated channel name")
+	}
+}
+
 func TestAlertExamplesBoundAndOrderEveryBuilderQuery(t *testing.T) {
 	parts := strings.Split(Examples, "```json")
 	if len(parts) < 2 {

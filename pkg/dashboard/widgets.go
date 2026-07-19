@@ -34,6 +34,13 @@ Selection Guidelines:
 - Use PromQL when you need: Prometheus compatibility, metric-specific functions, range vector operations
 - Avoid mixing query types within a single dashboard unless necessary for specific requirements
 
+Query Resources [REQUIRED]:
+- Query Builder: signoz://dashboard/query-builder-example
+- ClickHouse logs: signoz://dashboard/clickhouse-schema-for-logs and signoz://dashboard/clickhouse-logs-example
+- ClickHouse metrics: signoz://dashboard/clickhouse-schema-for-metrics and signoz://dashboard/clickhouse-metrics-example
+- ClickHouse traces: signoz://dashboard/clickhouse-schema-for-traces and signoz://dashboard/clickhouse-traces-example
+- PromQL: signoz://promql/instructions
+
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
 - ALWAYS set legend when groupBy is used on series-producing charts. Without legend, SigNoz shows raw query identifiers.

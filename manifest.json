@@ -55,7 +55,7 @@
     },
     {
       "name": "signoz_list_alerts",
-      "description": "List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) with optional matcher/receiver filtering"
+      "description": "List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) with optional alert-label and receiver filtering"
     },
     {
       "name": "signoz_list_alert_rules",
@@ -71,7 +71,7 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert rule via POST /api/v2/rules. Threshold/PromQL rules use v2alpha1; anomaly rules use the v1 schema (top-level evalWindow/frequency, condition-level op/matchType/target/algorithm/seasonality)"
+      "description": "Create a new alert rule via POST /api/v2/rules. Verify notification channel names with signoz_list_notification_channels first. Threshold/PromQL rules use v2alpha1; metric-only anomaly rules use the v1 schema"
     },
     {
       "name": "signoz_update_alert",
@@ -167,7 +167,7 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Raw Query Builder v5 escape hatch for unsupported multi-query/formula shapes. Prefer search/aggregate/query_metrics tools; builder_query and builder_formula specs require positive limit plus v5 order (not dashboard orderBy), with standalone/result defaults of 100 and formula-input defaults of 10000 inserted and reported"
+      "description": "Raw Query Builder v5 escape hatch for unsupported multi-query/formula shapes. Prefer search/aggregate/query_metrics tools; explicitly author positive limits plus v5 order (not dashboard orderBy) for predictable bounds, while the server inserts and reports standalone/result defaults of 100 and formula-input defaults of 10000"
     },
     {
       "name": "signoz_list_notification_channels",
