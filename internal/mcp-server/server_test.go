@@ -2527,7 +2527,7 @@ func TestRun_HTTPCanceledBeforeListen(t *testing.T) {
 
 // TestToolCallEventHasErrorType verifies error categorization lands on the
 // analytics event (analytics scope). resultBytes is not an analytics field
-// — see TestToolCallSpanHasResultBytes for the span + log coverage.
+// — see TestGuardrail_ToolCallSpanHasSerializedResultBytes for span coverage.
 func TestToolCallEventHasErrorType(t *testing.T) {
 	sigNoz := meEndpointServer(t)
 	defer sigNoz.Close()
@@ -2577,10 +2577,10 @@ func TestToolCallEventHasErrorType(t *testing.T) {
 	}
 }
 
-// TestToolCallSpanHasResultBytes verifies the tool-call span carries the
-// approximate text-content size so SigNoz dashboards can correlate latency
-// with payload size.
-func TestToolCallSpanHasResultBytes(t *testing.T) {
+// TestGuardrail_ToolCallSpanHasSerializedResultBytes verifies the tool-call span carries the
+// complete serialized result size so SigNoz dashboards can correlate latency
+// with the payload clients actually receive.
+func TestGuardrail_ToolCallSpanHasSerializedResultBytes(t *testing.T) {
 	traceExporter := tracetest.NewInMemoryExporter()
 	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
 	prevTracerProvider := otel.GetTracerProvider()
@@ -2599,12 +2599,14 @@ func TestToolCallSpanHasResultBytes(t *testing.T) {
 	mcpServer := NewMCPServer(logpkg.New("error"), handler, cfg, noopanalytics.New(), nil)
 
 	body := strings.Repeat("x", 512)
+	result := &mcp.CallToolResult{
+		Content:           []mcp.Content{mcp.TextContent{Type: "text", Text: body}},
+		StructuredContent: map[string]any{"body": body},
+	}
 	ctx, span := startTestMCPSpan(context.Background(), mcp.MethodToolsCall)
 	middleware := mcpServer.loggingMiddleware()
 	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: body}},
-		}, nil
+		return result, nil
 	})(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{Name: "signoz_list_services"},
 	})
@@ -2640,15 +2642,18 @@ func TestToolCallSpanHasResultBytes(t *testing.T) {
 	if !ok {
 		t.Fatalf("span missing %s", otelpkg.MCPToolResultBytesKey)
 	}
-	if size.AsInt64() != int64(len(body)) {
-		t.Fatalf("%s = %d, want %d", otelpkg.MCPToolResultBytesKey, size.AsInt64(), len(body))
+	serialized, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size.AsInt64() != int64(len(serialized)) {
+		t.Fatalf("%s = %d, want %d", otelpkg.MCPToolResultBytesKey, size.AsInt64(), len(serialized))
 	}
 }
 
-// TestToolCallSpanEmitsZeroResultBytes verifies that empty-result tool calls
-// still carry mcp.tool.result.size_bytes=0 on the span so size-based
-// aggregations (avg, histogram) don't silently drop them as nulls.
-func TestToolCallSpanEmitsZeroResultBytes(t *testing.T) {
+// TestGuardrail_EmptyToolResultIncludesSerializedEnvelopeBytes verifies that an empty result
+// still carries the JSON envelope bytes rather than being reported as zero.
+func TestGuardrail_EmptyToolResultIncludesSerializedEnvelopeBytes(t *testing.T) {
 	traceExporter := tracetest.NewInMemoryExporter()
 	traceProvider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(traceExporter))
 	prevTracerProvider := otel.GetTracerProvider()
@@ -2668,8 +2673,9 @@ func TestToolCallSpanEmitsZeroResultBytes(t *testing.T) {
 
 	ctx, span := startTestMCPSpan(context.Background(), mcp.MethodToolsCall)
 	middleware := mcpServer.loggingMiddleware()
+	result := &mcp.CallToolResult{}
 	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return &mcp.CallToolResult{}, nil
+		return result, nil
 	})(ctx, mcp.CallToolRequest{
 		Params: mcp.CallToolParams{Name: "signoz_list_services"},
 	})
@@ -2686,8 +2692,12 @@ func TestToolCallSpanEmitsZeroResultBytes(t *testing.T) {
 	if !ok {
 		t.Fatalf("span missing %s on empty result", otelpkg.MCPToolResultBytesKey)
 	}
-	if size.AsInt64() != 0 {
-		t.Fatalf("%s = %d, want 0", otelpkg.MCPToolResultBytesKey, size.AsInt64())
+	serialized, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size.AsInt64() != int64(len(serialized)) {
+		t.Fatalf("%s = %d, want %d", otelpkg.MCPToolResultBytesKey, size.AsInt64(), len(serialized))
 	}
 }
 
@@ -2938,46 +2948,6 @@ func TestMethodErrorTypeCancellationAndDeadline(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := methodErrorType(tt.err); got != tt.want {
 				t.Fatalf("methodErrorType() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestApproxResultBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		result   *mcp.CallToolResult
-		wantSize int64
-	}{
-		{name: "nil result", wantSize: 0},
-		{name: "empty content", result: &mcp.CallToolResult{}, wantSize: 0},
-		{
-			name:     "single text",
-			result:   &mcp.CallToolResult{Content: []mcp.Content{mcp.TextContent{Text: "hello"}}},
-			wantSize: 5,
-		},
-		{
-			name: "multiple text entries sum",
-			result: &mcp.CallToolResult{Content: []mcp.Content{
-				mcp.TextContent{Text: "abc"},
-				mcp.TextContent{Text: "defg"},
-			}},
-			wantSize: 7,
-		},
-		{
-			name: "large result is summed without truncation",
-			result: &mcp.CallToolResult{Content: []mcp.Content{
-				mcp.TextContent{Text: strings.Repeat("x", 10<<20)},
-			}},
-			wantSize: 10 << 20,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			size := approxResultBytes(tt.result)
-			if size != tt.wantSize {
-				t.Errorf("size = %d, want %d", size, tt.wantSize)
 			}
 		})
 	}

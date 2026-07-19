@@ -51,7 +51,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 		mcp.WithResourceDescription("Indexed SigNoz docs sitemap used by signoz_search_docs and signoz_fetch_doc."),
 		mcp.WithMIMEType("text/markdown"),
 	)
-	s.AddResource(sitemap, h.handleDocsSitemap)
+	h.addResource(s, sitemap, h.handleDocsSitemap)
 }
 
 func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

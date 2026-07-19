@@ -19,7 +19,7 @@ import (
 func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 	h.logger.Debug("Registering resource templates")
 
-	s.AddResourceTemplate(
+	h.addResourceTemplate(s,
 		mcp.NewResourceTemplate(
 			"signoz://alert/{id}/summary",
 			"Alert Summary",
@@ -29,7 +29,7 @@ func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 		h.handleAlertSummaryResource,
 	)
 
-	s.AddResourceTemplate(
+	h.addResourceTemplate(s,
 		mcp.NewResourceTemplate(
 			"signoz://dashboard/{id}/summary",
 			"Dashboard Summary",

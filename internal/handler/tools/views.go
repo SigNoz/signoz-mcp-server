@@ -123,7 +123,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithResourceDescription("SigNoz saved-view schema: SavedView fields, sourcePage values, compositeQuery rules, and the GET-then-PUT update flow."),
 		mcp.WithMIMEType("text/markdown"),
 	)
-	s.AddResource(viewInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, viewInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -139,7 +139,7 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 		mcp.WithResourceDescription("Complete SavedView payloads — one per sourcePage (traces, logs, metrics, meter) — suitable for signoz_create_view."),
 		mcp.WithMIMEType("text/markdown"),
 	)
-	s.AddResource(viewExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, viewExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,

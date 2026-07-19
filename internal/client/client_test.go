@@ -29,6 +29,12 @@ func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
 	return slog.New(logpkg.NewContextHandler(base))
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func TestGetAlertByRuleID(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -622,7 +628,7 @@ func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
 
 	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{}`), time.Second)
 	require.Error(t, err)
 
 	var statusErr *HTTPStatusError
@@ -653,7 +659,7 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 
 	client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{}`), time.Second)
 	require.Error(t, err)
 
 	var statusErr *HTTPStatusError
@@ -1750,6 +1756,72 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, attempts)
 	assert.Contains(t, string(result), "success")
+}
+
+func TestGuardrail_MutatingPOSTNotRetriedAfterRetryableStatus(t *testing.T) {
+	var attempts atomic.Int32
+	var requestBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		var err error
+		requestBody, err = io.ReadAll(r.Body)
+		require.NoError(t, err)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"may already have committed"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{"name":"created-once"}`), time.Second)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), attempts.Load())
+	assert.JSONEq(t, `{"name":"created-once"}`, string(requestBody))
+}
+
+func TestGuardrail_MutatingPOSTNotRetriedAfterAmbiguousTransportFailure(t *testing.T) {
+	var attempts atomic.Int32
+	var requestBody []byte
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		attempts.Add(1)
+		var err error
+		requestBody, err = io.ReadAll(req.Body)
+		require.NoError(t, err)
+		return nil, io.ErrUnexpectedEOF
+	})
+	client := NewClient(logpkg.New("error"), "http://example.invalid", "test-api-key", "SIGNOZ-API-KEY", nil)
+	client.httpClient.Transport = transport
+
+	_, err := client.doRequest(context.Background(), http.MethodPost, "http://example.invalid/api/v1/dashboards", []byte(`{"title":"created-once"}`), time.Second)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), attempts.Load())
+	assert.JSONEq(t, `{"title":"created-once"}`, string(requestBody))
+}
+
+func TestGuardrail_ReadOnlyPOSTRetries(t *testing.T) {
+	var attempts atomic.Int32
+	var requestBodies [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestBody, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		requestBodies = append(requestBodies, requestBody)
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := client.QueryBuilderV5(context.Background(), []byte(`{"schemaVersion":"v1"}`))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"data":{"result":[]}}`, string(result))
+	assert.Equal(t, int32(2), attempts.Load())
+	require.Len(t, requestBodies, 2)
+	for _, requestBody := range requestBodies {
+		assert.JSONEq(t, `{"schemaVersion":"v1"}`, string(requestBody))
+	}
 }
 
 func TestNewClient_SetsCustomHeaders(t *testing.T) {

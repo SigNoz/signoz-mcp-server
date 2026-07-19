@@ -27,6 +27,13 @@ type Handler struct {
 	// (tool, direction, path, constraint) key; see warnValidationOnce.
 	validationWarned sync.Map
 
+	// registrations tracks the names advertised through each composed SDK
+	// server. mcp-go stores registrations in maps and silently overwrites a
+	// prior entry, so every production registration must pass through the
+	// checked helpers in registration.go.
+	registrationMu sync.Mutex
+	registrations  map[registrationKey]struct{}
+
 	// clientOverride, when non-nil, is returned by GetClient instead of
 	// looking up the cache. This exists solely to support unit testing
 	// with mock clients.

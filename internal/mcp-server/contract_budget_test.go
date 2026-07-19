@@ -2,161 +2,44 @@ package mcp_server
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/SigNoz/signoz-mcp-server/guardrails"
+	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 const (
-	maxServerInstructionsBytes   = 2048
-	maxServerPreambleBytes       = 512
-	maxToolDescriptionBytes      = 1024
-	maxParameterDescriptionBytes = 1024
-	requestTypeTargetBytes       = 512
-	maxTopLevelProperties        = 15
+	maxServerInstructionsBytes   = guardrails.MaxServerInstructionsBytes
+	maxServerPreambleBytes       = guardrails.MaxServerPreambleBytes
+	maxToolDescriptionBytes      = guardrails.MaxToolDescriptionBytes
+	maxParameterDescriptionBytes = guardrails.MaxParameterDescriptionBytes
+	requestTypeTargetBytes       = guardrails.RequestTypeTargetBytes
+	maxTopLevelProperties        = guardrails.MaxTopLevelProperties
+	maxToolNameBytes             = guardrails.MaxToolNameBytes
+	maxCombinedToolNameBytes     = guardrails.MaxCombinedToolNameBytes
+	maxSerializedSchemaBytes     = guardrails.MaxSerializedSchemaBytes
+	maxInputSchemaNestingDepth   = guardrails.MaxInputSchemaNestingDepth
 )
 
-// These are the only current schemas above the ordinary property limit.
-// Exact inventories prevent growth and expose accidental contract changes.
-var grandfatheredWideSchemaProperties = map[string][]string{
-	"signoz_aggregate_traces": {
-		"aggregateOn",
-		"aggregation",
-		"end",
-		"error",
-		"filter",
-		"groupBy",
-		"limit",
-		"maxDuration",
-		"minDuration",
-		"operation",
-		"orderBy",
-		"requestType",
-		"searchContext",
-		"service",
-		"start",
-		"stepInterval",
-		"timeRange",
-	},
-	"signoz_create_alert": {
-		"alert",
-		"alertType",
-		"annotations",
-		"condition",
-		"description",
-		"disabled",
-		"evalWindow",
-		"evaluation",
-		"frequency",
-		"labels",
-		"notificationSettings",
-		"preferredChannels",
-		"ruleType",
-		"schemaVersion",
-		"searchContext",
-		"source",
-		"version",
-	},
-	"signoz_create_notification_channel": {
-		"email_html",
-		"email_to",
-		"msteams_text",
-		"msteams_title",
-		"msteams_webhook_url",
-		"name",
-		"opsgenie_api_key",
-		"opsgenie_description",
-		"opsgenie_message",
-		"opsgenie_priority",
-		"pagerduty_description",
-		"pagerduty_routing_key",
-		"pagerduty_severity",
-		"searchContext",
-		"send_resolved",
-		"slack_api_url",
-		"slack_channel",
-		"slack_text",
-		"slack_title",
-		"type",
-		"webhook_password",
-		"webhook_url",
-		"webhook_username",
-	},
-	"signoz_query_metrics": {
-		"end",
-		"filter",
-		"formula",
-		"formulaQueries",
-		"groupBy",
-		"isMonotonic",
-		"metricName",
-		"metricType",
-		"reduceTo",
-		"requestType",
-		"searchContext",
-		"source",
-		"spaceAggregation",
-		"start",
-		"stepInterval",
-		"temporality",
-		"timeAggregation",
-		"timeRange",
-	},
-	"signoz_update_alert": {
-		"alert",
-		"alertType",
-		"annotations",
-		"condition",
-		"description",
-		"disabled",
-		"evalWindow",
-		"evaluation",
-		"frequency",
-		"id",
-		"labels",
-		"notificationSettings",
-		"preferredChannels",
-		"ruleId",
-		"ruleType",
-		"schemaVersion",
-		"searchContext",
-		"source",
-		"version",
-	},
-	"signoz_update_notification_channel": {
-		"email_html",
-		"email_to",
-		"id",
-		"msteams_text",
-		"msteams_title",
-		"msteams_webhook_url",
-		"name",
-		"opsgenie_api_key",
-		"opsgenie_description",
-		"opsgenie_message",
-		"opsgenie_priority",
-		"pagerduty_description",
-		"pagerduty_routing_key",
-		"pagerduty_severity",
-		"searchContext",
-		"send_resolved",
-		"slack_api_url",
-		"slack_channel",
-		"slack_text",
-		"slack_title",
-		"type",
-		"webhook_password",
-		"webhook_url",
-		"webhook_username",
-	},
-}
+var toolNamePattern = regexp.MustCompile(`^[a-z0-9_]+$`)
+var advertisedResourcePattern = regexp.MustCompile("signoz://[^\\s\"'<>`]+")
 
-func TestWireContractBudgets(t *testing.T) {
+// These are the server aliases published in first-party setup examples or
+// sent in initialize. Cursor combines alias + separator + tool name and caps
+// that identifier at 60 characters.
+var officialServerAliases = guardrails.OfficialServerAliases
+
+var grandfatheredWideSchemaProperties = guardrails.GrandfatheredWideSchemaProperties
+
+func TestGuardrail_WireContractBudgets(t *testing.T) {
 	initializeResult, listedTools := initializedWireCatalog(t)
 
 	t.Run("server instructions and preamble", func(t *testing.T) {
@@ -329,6 +212,173 @@ func TestWireContractBudgets(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("tool names and schema envelopes", func(t *testing.T) {
+		maxSchemaTool, maxSchemaBytes := "", 0
+		maxDepthTool, maxDepth := "", 0
+		for _, tool := range listedTools {
+			if got := len(tool.Name); got > maxToolNameBytes {
+				t.Errorf("%s name = %d bytes, limit %d", tool.Name, got, maxToolNameBytes)
+			}
+			if !toolNamePattern.MatchString(tool.Name) {
+				t.Errorf("tool name %q must contain only lowercase ASCII letters, digits, and underscores", tool.Name)
+			}
+			for _, alias := range officialServerAliases {
+				combined := alias + "_" + tool.Name
+				if got := len(combined); got > maxCombinedToolNameBytes {
+					t.Errorf("combined tool name %q = %d bytes, Cursor limit %d", combined, got, maxCombinedToolNameBytes)
+				}
+			}
+
+			schema := inputSchema(t, tool)
+			encodedInput, err := json.Marshal(schema)
+			if err != nil {
+				t.Fatalf("marshal %s input schema: %v", tool.Name, err)
+			}
+			serializedSchemaBytes := len(encodedInput)
+			encodedTool, err := json.Marshal(tool)
+			if err != nil {
+				t.Fatalf("marshal %s tool: %v", tool.Name, err)
+			}
+			var wireTool map[string]any
+			if err := json.Unmarshal(encodedTool, &wireTool); err != nil {
+				t.Fatalf("decode %s tool: %v", tool.Name, err)
+			}
+			if outputSchema, ok := wireTool["outputSchema"]; ok {
+				encodedOutput, err := json.Marshal(outputSchema)
+				if err != nil {
+					t.Fatalf("marshal %s output schema: %v", tool.Name, err)
+				}
+				serializedSchemaBytes += len(encodedOutput)
+			}
+			if serializedSchemaBytes > maxSchemaBytes {
+				maxSchemaTool, maxSchemaBytes = tool.Name, serializedSchemaBytes
+			}
+			if serializedSchemaBytes > maxSerializedSchemaBytes {
+				t.Errorf("%s schemas = %d bytes, limit %d", tool.Name, serializedSchemaBytes, maxSerializedSchemaBytes)
+			}
+
+			depth := schemaNestingDepth(schema)
+			if depth > maxDepth {
+				maxDepthTool, maxDepth = tool.Name, depth
+			}
+			if depth > maxInputSchemaNestingDepth {
+				t.Errorf("%s input schema nesting depth = %d, limit %d", tool.Name, depth, maxInputSchemaNestingDepth)
+			}
+		}
+		t.Logf("maximum input schema=%s (%d bytes); maximum nesting=%s (depth %d)", maxSchemaTool, maxSchemaBytes, maxDepthTool, maxDepth)
+	})
+}
+
+func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
+	dashboard.InitClickhouseSchema()
+	ctx := context.Background()
+	client, err := mcpclient.NewInProcessClient(buildTestServer(t))
+	if err != nil {
+		t.Fatalf("create in-process client: %v", err)
+	}
+	initializeResult, err := client.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+		ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+		ClientInfo:      mcp.Implementation{Name: "resource-integrity-test", Version: version.Version},
+	}})
+	if err != nil {
+		t.Fatalf("initialize in-process client: %v", err)
+	}
+	toolsResult, err := client.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	resourcesResult, err := client.ListResources(ctx, mcp.ListResourcesRequest{})
+	if err != nil {
+		t.Fatalf("list resources: %v", err)
+	}
+	templatesResult, err := client.ListResourceTemplates(ctx, mcp.ListResourceTemplatesRequest{})
+	if err != nil {
+		t.Fatalf("list resource templates: %v", err)
+	}
+	promptsResult, err := client.ListPrompts(ctx, mcp.ListPromptsRequest{})
+	if err != nil {
+		t.Fatalf("list prompts: %v", err)
+	}
+
+	advertisedDescriptions := []string{initializeResult.Instructions}
+	for _, tool := range toolsResult.Tools {
+		advertisedDescriptions = append(advertisedDescriptions, tool.Description)
+		walkSchemaDescriptions(inputSchema(t, tool), "inputSchema", func(_ string, description string) {
+			advertisedDescriptions = append(advertisedDescriptions, description)
+		})
+		encodedTool, err := json.Marshal(tool)
+		if err != nil {
+			t.Fatalf("marshal advertised tool %s: %v", tool.Name, err)
+		}
+		var wireTool map[string]any
+		if err := json.Unmarshal(encodedTool, &wireTool); err != nil {
+			t.Fatalf("decode advertised tool %s: %v", tool.Name, err)
+		}
+		walkSchemaDescriptions(wireTool["outputSchema"], "outputSchema", func(_ string, description string) {
+			advertisedDescriptions = append(advertisedDescriptions, description)
+		})
+	}
+	for _, resource := range resourcesResult.Resources {
+		advertisedDescriptions = append(advertisedDescriptions, resource.Description)
+	}
+	for _, resourceTemplate := range templatesResult.ResourceTemplates {
+		advertisedDescriptions = append(advertisedDescriptions, resourceTemplate.Description)
+	}
+	for _, prompt := range promptsResult.Prompts {
+		advertisedDescriptions = append(advertisedDescriptions, prompt.Description)
+		for _, argument := range prompt.Arguments {
+			advertisedDescriptions = append(advertisedDescriptions, argument.Description)
+		}
+	}
+	resourceByURI := make(map[string]mcp.Resource, len(resourcesResult.Resources))
+	for _, resource := range resourcesResult.Resources {
+		resourceByURI[resource.URI] = resource
+	}
+
+	referenced := make(map[string]struct{})
+	for _, uri := range advertisedResourceURIs(strings.Join(advertisedDescriptions, "\n")) {
+		referenced[uri] = struct{}{}
+	}
+	if len(referenced) == 0 {
+		t.Fatal("advertised catalog contains no signoz:// resource pointers")
+	}
+
+	for uri := range referenced {
+		resource, ok := resourceByURI[uri]
+		if !ok {
+			t.Errorf("advertised resource pointer %s is not present in resources/list", uri)
+			continue
+		}
+		if resource.MIMEType == "" {
+			t.Errorf("advertised resource %s has no MIME type", uri)
+			continue
+		}
+		readResult, err := client.ReadResource(ctx, mcp.ReadResourceRequest{Params: mcp.ReadResourceParams{URI: uri}})
+		if err != nil {
+			t.Errorf("read advertised resource %s: %v", uri, err)
+			continue
+		}
+		if len(readResult.Contents) == 0 {
+			t.Errorf("advertised resource %s returned no content", uri)
+			continue
+		}
+		for i, content := range readResult.Contents {
+			assertResourceContentIntegrity(t, uri, resource.MIMEType, i, content)
+		}
+	}
+	t.Logf("verified %d advertised resource pointers through resources/read", len(referenced))
+}
+
+func TestGuardrail_AdvertisedResourceURIsPreserveFullPointer(t *testing.T) {
+	got := advertisedResourceURIs("Read signoz://docs/foo.json, then signoz://docs/query?signal=logs%2Fraw+v1&limit=10.")
+	want := []string{
+		"signoz://docs/foo.json",
+		"signoz://docs/query?signal=logs%2Fraw+v1&limit=10",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("advertisedResourceURIs() = %v, want %v", got, want)
+	}
 }
 
 func initializedWireCatalog(t *testing.T) (*mcp.InitializeResult, []mcp.Tool) {
@@ -374,6 +424,14 @@ func firstMarkdownHeadingOffset(text string) int {
 	return -1
 }
 
+func advertisedResourceURIs(text string) []string {
+	matches := advertisedResourcePattern.FindAllString(text, -1)
+	for i := range matches {
+		matches[i] = strings.TrimRight(matches[i], ".,;:!?)]}")
+	}
+	return matches
+}
+
 func walkSchemaDescriptions(node any, path string, visit func(path, description string)) {
 	switch value := node.(type) {
 	case map[string]any:
@@ -389,5 +447,62 @@ func walkSchemaDescriptions(node any, path string, visit func(path, description 
 		for _, child := range value {
 			walkSchemaDescriptions(child, path, visit)
 		}
+	}
+}
+
+func schemaNestingDepth(node any) int {
+	object, ok := node.(map[string]any)
+	if !ok {
+		return 0
+	}
+	maxDepth := 1
+	visitChild := func(child any) {
+		if depth := 1 + schemaNestingDepth(child); depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+	for key, child := range object {
+		switch key {
+		case "properties", "$defs", "definitions", "dependentSchemas", "patternProperties":
+			children, _ := child.(map[string]any)
+			for _, nested := range children {
+				visitChild(nested)
+			}
+		case "items", "additionalItems", "additionalProperties", "contains", "else", "if", "not", "propertyNames", "then", "unevaluatedItems", "unevaluatedProperties":
+			visitChild(child)
+		case "allOf", "anyOf", "oneOf", "prefixItems":
+			children, _ := child.([]any)
+			for _, nested := range children {
+				visitChild(nested)
+			}
+		}
+	}
+	return maxDepth
+}
+
+func assertResourceContentIntegrity(t *testing.T, uri, advertisedMIME string, index int, content mcp.ResourceContents) {
+	t.Helper()
+	var contentURI, contentMIME, payload string
+	switch value := content.(type) {
+	case mcp.TextResourceContents:
+		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Text
+	case *mcp.TextResourceContents:
+		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Text
+	case mcp.BlobResourceContents:
+		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Blob
+	case *mcp.BlobResourceContents:
+		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Blob
+	default:
+		t.Errorf("resource %s content[%d] has unsupported type %T", uri, index, content)
+		return
+	}
+	if contentURI != uri {
+		t.Errorf("resource %s content[%d] URI = %q", uri, index, contentURI)
+	}
+	if contentMIME != advertisedMIME {
+		t.Errorf("resource %s content[%d] MIME = %q, advertised %q", uri, index, contentMIME, advertisedMIME)
+	}
+	if strings.TrimSpace(payload) == "" {
+		t.Errorf("resource %s content[%d] is empty", uri, index)
 	}
 }

@@ -45,7 +45,9 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 
 	handler.RegisterAllToolHandlers(s)
 	handler.RegisterResourceTemplates(s)
-	prompts.RegisterPrompts(s.AddPrompt)
+	prompts.RegisterPrompts(func(prompt mcp.Prompt, promptHandler server.PromptHandlerFunc) {
+		handler.RegisterPrompt(s, prompt, promptHandler)
+	})
 
 	return s
 }

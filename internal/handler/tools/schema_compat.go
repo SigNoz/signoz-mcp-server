@@ -73,7 +73,7 @@ func (h *Handler) addTool(s *server.MCPServer, tool mcp.Tool, handler server.Too
 	if input != nil || output != nil {
 		handler = h.validationDecorator(tool.Name, input, output, handler)
 	}
-	s.AddTool(tool, handler)
+	h.registerTool(s, tool, handler)
 }
 
 // AddTool exposes the production registration path to server composition and
