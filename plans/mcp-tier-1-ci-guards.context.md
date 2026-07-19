@@ -54,3 +54,8 @@
 - The review surface is centralized instead: `guardrails/policy.go` owns shared limits, aliases, and grandfathered exceptions; `guardrails/tests.txt` owns exact suite membership; and `guardrails/README.md` documents invariants and the intentional-change procedure.
 - The dedicated workflow now reads `guardrails/tests.txt` and rejects unsorted, duplicate, missing, or unexpected test names before executing the suite.
 - `CLAUDE.md` now instructs contributors and coding agents to treat guardrail edits as policy changes, document intentional relaxations, avoid CI-only weakening, and run both focused and full verification.
+
+### 2026-07-19 — Fable and PR review follow-up
+- Fable High and the unresolved PR review agreed that the registration source guard missed SDK registration methods passed as function values. The scanner now checks every matching selector expression, and its existing guarded test includes a method-value regression probe.
+- The dedicated guardrail job does not need secrets, so it now runs only on the unprivileged `pull_request` event for internal, fork, and Dependabot PRs. This removes the stale `safe-to-test` label path and avoids checking out fork code in a privileged `pull_request_target` workflow.
+- The repository's existing secret-dependent CI workflow keeps its current `safe-to-test` policy; changing that separate workflow is outside this guardrail tranche.

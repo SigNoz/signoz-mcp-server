@@ -4,9 +4,6 @@ on:
   pull_request:
     branches:
       - main
-  pull_request_target:
-    types:
-      - labeled
 
 permissions:
   contents: read
@@ -14,15 +11,10 @@ permissions:
 jobs:
   contract:
     name: contract
-    if: |
-      (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
-      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v5

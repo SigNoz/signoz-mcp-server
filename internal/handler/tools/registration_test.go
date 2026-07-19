@@ -100,12 +100,27 @@ func TestGuardrail_ProductionRegistrationsUseCheckedHelpers(t *testing.T) {
 	}
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", ".."))
 	schemaCompatPath := filepath.Join(repoRoot, "internal", "handler", "tools", "schema_compat.go")
-	directSDKMethods := map[string]struct{}{
-		"AddTool":             {},
-		"AddResource":         {},
-		"AddResourceTemplate": {},
-		"AddPrompt":           {},
-	}
+
+	t.Run("detects method-value bypasses", func(t *testing.T) {
+		fileSet := token.NewFileSet()
+		parsed, err := parser.ParseFile(fileSet, "method_value.go", `package probe
+
+type MCPServer struct{}
+
+func (*MCPServer) AddPrompt() {}
+
+func register(s *MCPServer, registerPrompt func(func())) {
+	registerPrompt(s.AddPrompt)
+}
+`, 0)
+		if err != nil {
+			t.Fatalf("parse method-value probe: %v", err)
+		}
+		bypasses := directMCPRegistrationBypasses(fileSet, parsed, "method_value.go", schemaCompatPath)
+		if len(bypasses) != 1 {
+			t.Fatalf("method-value bypasses = %d, want 1", len(bypasses))
+		}
+	})
 
 	err := filepath.WalkDir(repoRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -126,31 +141,40 @@ func TestGuardrail_ProductionRegistrationsUseCheckedHelpers(t *testing.T) {
 		if parseErr != nil {
 			return parseErr
 		}
-		ast.Inspect(parsed, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			if _, guardedMethod := directSDKMethods[selector.Sel.Name]; !guardedMethod {
-				return true
-			}
-			// jsonschema.Compiler.AddResource is unrelated to MCP registration.
-			if path == schemaCompatPath && selector.Sel.Name == "AddResource" {
-				if receiver, ok := selector.X.(*ast.Ident); ok && receiver.Name == "compiler" {
-					return true
-				}
-			}
-			position := fileSet.Position(call.Pos())
+		for _, position := range directMCPRegistrationBypasses(fileSet, parsed, path, schemaCompatPath) {
 			t.Errorf("direct MCP registration bypasses checked helpers at %s:%d", position.Filename, position.Line)
-			return true
-		})
+		}
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("scan production registrations: %v", err)
 	}
+}
+
+func directMCPRegistrationBypasses(fileSet *token.FileSet, parsed *ast.File, path, schemaCompatPath string) []token.Position {
+	directSDKMethods := map[string]struct{}{
+		"AddTool":             {},
+		"AddResource":         {},
+		"AddResourceTemplate": {},
+		"AddPrompt":           {},
+	}
+	var bypasses []token.Position
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if _, guardedMethod := directSDKMethods[selector.Sel.Name]; !guardedMethod {
+			return true
+		}
+		// jsonschema.Compiler.AddResource is unrelated to MCP registration.
+		if path == schemaCompatPath && selector.Sel.Name == "AddResource" {
+			if receiver, ok := selector.X.(*ast.Ident); ok && receiver.Name == "compiler" {
+				return true
+			}
+		}
+		bypasses = append(bypasses, fileSet.Position(selector.Pos()))
+		return true
+	})
+	return bypasses
 }
