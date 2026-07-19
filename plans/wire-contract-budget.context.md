@@ -100,3 +100,8 @@
 - Found the superseded direct-use notification-channel instruction in `signoz://alert/instructions`, which the create-alert description explicitly routes clients to. Replaced it with neutral validation/recovery guidance and added a regression test so neither discovery metadata nor the resource prescribes using an unvalidated name directly.
 - Aligned README and manifest summaries with the registered metric-only anomaly rule boundary. No companion agent-skills update is needed because the tool contract remains unchanged.
 - Marked implementation complete after the uncached full test suite, focused wire/resource tests, vet, build, manifest validation, formatting, and diff checks passed.
+
+### 2026-07-19 — Review clarification: preflight is the primary channel flow
+- Clarified that notification-channel validation inside `signoz_create_alert` is a defensive fallback, not the normal discovery workflow. To maximize first-call success, agents should call `signoz_list_notification_channels` before creation, verify user-provided names, and ask the user to select from valid names when needed.
+- Updated the tool description, alert instructions, README, manifest, plan, and regression assertions together. This supersedes the earlier neutral wording that left preflight versus create-time validation unspecified.
+- The revised create-alert description is 788 bytes. Focused resource/wire tests, the uncached full suite, vet, build, manifest validation, formatting, and diff checks pass; all catalog budgets remain green.

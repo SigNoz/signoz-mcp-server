@@ -773,6 +773,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
+- **Notification channels**: Before creating the alert, call `signoz_list_notification_channels` to verify user-selected names or present valid choices. Never guess. Create-time validation is a fallback for stale or changed channel data.
 - **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (the ten canonical SigNoz PR #11023 payloads plus a Cost Meter cumulative-budget example) before composing payloads. For `promql_rule`, also read `signoz://promql/instructions` — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form.
 
 #### `signoz_update_alert`

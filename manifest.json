@@ -71,7 +71,7 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert rule via POST /api/v2/rules. Threshold/PromQL rules use v2alpha1; metric-only anomaly rules use the v1 schema (top-level evalWindow/frequency, condition-level op/matchType/target/algorithm/seasonality)"
+      "description": "Create a new alert rule via POST /api/v2/rules. Verify notification channel names with signoz_list_notification_channels first. Threshold/PromQL rules use v2alpha1; metric-only anomaly rules use the v1 schema"
     },
     {
       "name": "signoz_update_alert",

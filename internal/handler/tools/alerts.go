@@ -103,7 +103,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			"Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. "+
 				"Supported cases are v2alpha1 threshold alerts over metrics, logs, traces, or exceptions; v2alpha1 PromQL alerts; and metric-only v1 anomaly alerts, which use top-level evalWindow/frequency and no thresholds, evaluation, or schemaVersion. "+
 				"Before composing the payload, read signoz://alert/instructions and signoz://alert/examples; for PromQL also read signoz://promql/instructions. "+
-				"At least one notification channel is required. Supplied channel names are validated; when a name is missing or invalid, use the available names returned by this tool, ask the user to choose, and retry—never guess.",
+				"At least one valid notification channel is required. Before creating, call signoz_list_notification_channels to verify user-provided names or offer available names for user selection; never guess. If create-time validation still finds a missing or invalid name, present the returned choices and retry.",
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)

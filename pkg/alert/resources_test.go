@@ -9,13 +9,13 @@ import (
 
 var formulaVariablePattern = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
-func TestAlertInstructionsUseNeutralChannelValidationGuidance(t *testing.T) {
+func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.T) {
 	for _, required := range []string{
-		"At least one valid channel name is required",
-		"validates supplied names",
-		"names are missing or invalid",
-		"available channel names",
-		"Present those names to the user",
+		"Before creating an alert, call signoz_list_notification_channels",
+		"verify every user-selected name exists",
+		"present the available names and ask the user to choose",
+		"fallback for stale or changed channel data, not normal discovery",
+		"verified with signoz_list_notification_channels",
 		"Never guess",
 	} {
 		if !strings.Contains(Instructions, required) {

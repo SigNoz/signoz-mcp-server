@@ -267,7 +267,7 @@ func TestWireContractBudgets(t *testing.T) {
 			},
 			"signoz_create_alert": {
 				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "Supplied channel names are validated", "missing or invalid", "never guess"},
+				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "Before creating", "signoz_list_notification_channels", "verify user-provided names", "create-time validation", "missing or invalid", "never guess"},
 			},
 			"signoz_create_dashboard": {
 				prefix:   "Use this when",

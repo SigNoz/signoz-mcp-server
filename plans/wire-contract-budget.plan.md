@@ -8,7 +8,7 @@ The registered MCP server currently exceeds verified client delivery budgets: in
 
 ## Approach
 1. Rewrite the server instructions with a self-contained preamble before the first heading, preserving the routing, filtering, timestamp, and `webUrl` rules within the 2,048-byte hard limit and near the 1,800-byte target.
-2. Apply the researched description rubric to `signoz_create_alert`, `signoz_list_alerts`, `signoz_create_dashboard`, `signoz_update_dashboard`, and the additional wire offender `signoz_execute_builder_query`: lead with “Use this when”, distinguish adjacent tools, summarize the result when it affects selection, retain safe validation/recovery caveats, explain domain-specific input language on the relevant parameter, and point to on-demand resources for long-form construction guidance.
+2. Apply the researched description rubric to `signoz_create_alert`, `signoz_list_alerts`, `signoz_create_dashboard`, `signoz_update_dashboard`, and the additional wire offender `signoz_execute_builder_query`: lead with “Use this when”, distinguish adjacent tools, summarize the result when it affects selection, verify notification-channel names before alert creation with create-time validation as fallback, explain domain-specific input language on the relevant parameter, and point to on-demand resources for long-form construction guidance.
 3. Keep detailed Query Builder argument-construction guidance beside the `query` property, repeat the empirically critical formula bounds/order rule in the top-level discovery description, and replace the duplicated logs/traces aggregation `requestType` prose with field-semantic guidance within 512 bytes.
 4. Add integration guards against the initialized server and `tools/list` wire catalog for instruction size/preamble, description budgets, targeted selection guidance, Query Builder construction guidance, and exact property inventories for all six currently grandfathered wide schemas.
 5. Review mirrored descriptions in `README.md`, `manifest.json`, and `docs/`; update only stale user-facing text. Confirm no companion agent-skills contract update is needed.
@@ -24,6 +24,7 @@ The registered MCP server currently exceeds verified client delivery budgets: in
 - `internal/handler/tools/logs.go` — use the shared `requestType` description.
 - `internal/handler/tools/traces.go` — use the shared `requestType` description.
 - `internal/handler/tools/param_schema_test.go` — pin raw Query Builder selection routing and argument-construction guidance in their intended surfaces.
+- `pkg/alert/resources.go`, `pkg/alert/resources_test.go` — teach and pin notification-channel preflight as the primary alert-creation flow.
 - `pkg/dashboard/widgets.go` — retain query-type-to-resource routing moved out of dashboard tool descriptions.
 - `pkg/dashboard/widgets_test.go` — pin every moved Query Builder, ClickHouse, and PromQL resource route.
 - `internal/mcp-server/contract_budget_test.go` — enforce budgets and wide-schema inventories at the wire boundary.
