@@ -466,7 +466,7 @@ Lists currently firing/silenced/inhibited alert *instances* from Alertmanager �
   - `limit` (optional) - Maximum number of alerts per page (default: 50)
   - `offset` (optional) - Number of results to skip for pagination (default: 0)
   - `active` / `silenced` / `inhibited` (optional) - Tri-state filters. Boolean (or the strings `"true"`/`"false"`). Omit to defer to the backend default (all states included). An invalid value is rejected rather than silently dropped
-  - `filter` (optional) - Comma-separated Prometheus matcher expressions (e.g., `alertname="HighCPU",severity="critical"`)
+  - `filter` (optional) - Comma-separated alert-label comparisons using `=`, `!=`, `=~` (regex), or `!~` (negative regex), e.g. `alertname="HighCPU",severity="critical"`
   - `receiver` (optional) - Regex to filter alerts by receiver name
 
 #### `signoz_list_alert_rules`
@@ -772,7 +772,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Parameters**: JSON payload matching the SigNoz alert rule schema.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
-  - `anomaly_rule` → **v1** schema: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
+  - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
 - **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (the ten canonical SigNoz PR #11023 payloads plus a Cost Meter cumulative-budget example) before composing payloads. For `promql_rule`, also read `signoz://promql/instructions` — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form.
 
 #### `signoz_update_alert`
@@ -851,7 +851,7 @@ Executes a SigNoz Query Builder v5 query as the raw escape hatch for shapes the 
   - `builder_formula` — formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql` — `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql` — `{name, query, disabled, legend?}`.
-- **Builder result bounds**: every authored `builder_query` and `builder_formula` must have a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`). Omitted, null, or zero standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Positive caller-authored values are preserved. The response appends a decisions note when defaults are inserted.
+- **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_query` and `builder_formula`. When omitted, null, or zero, standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Positive caller-authored values are preserved. The response appends a decisions note when defaults are inserted.
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or choose a deliberate positive limit when that matters.
 - **Backend warnings**: non-fatal warnings the backend returns (e.g. ambiguous-key resolution) are surfaced as a note alongside the raw response and WARN-logged, matching the search/aggregate/query_metrics tools (previously the body was returned verbatim and warnings were dropped).

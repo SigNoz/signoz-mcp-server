@@ -47,13 +47,13 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		mcp.WithOutputSchema[alertListOutput](),
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Lists currently firing/silenced/inhibited alert *instances* from Alertmanager — not rule definitions. Use signoz_list_alert_rules for configured rules, signoz_get_alert with an id for one full rule definition, or signoz_get_alert_history for the state timeline.\n\nReturns alert name, rule ID, severity, start time, end time, and state.\n\nFILTERING: Use server-side filters to narrow results BEFORE paginating.\n- To find a specific alert by name: filter='alertname=\"HighCPU\"'\n- To find alerts by severity: filter='severity=\"critical\"'\n- Combine matchers: filter='alertname=\"HighCPU\",severity=\"critical\"'\n- To see only firing alerts: active=true, silenced=false, inhibited=false\n- To see only silenced alerts: silenced=true, active=false\n- To filter by notification receiver: receiver='slack-.*'\nBy default all alert states (active, silenced, inhibited) are included.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Prefer 'filter' to find specific alerts instead of paginating all pages. Default: limit=50 (max 1000, clamped), offset=0."),
+		mcp.WithDescription("Use this when the user wants current firing, silenced, or inhibited Alertmanager alert instances and their state, severity, timing, and rule IDs. Do not use it for configured rules or history: use signoz_list_alert_rules for rule summaries, signoz_get_alert for one definition, or signoz_get_alert_history for its timeline. Filter by alert labels, state, or receiver before paginating."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alerts to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip for pagination. Default: 0.")),
 		mcp.WithBoolean("active", boolOrStringType(), mcp.Description("Include active (firing) alerts. Default: true (server-side).")),
 		mcp.WithBoolean("silenced", boolOrStringType(), mcp.Description("Include silenced alerts. Default: true (server-side).")),
 		mcp.WithBoolean("inhibited", boolOrStringType(), mcp.Description("Include inhibited alerts. Default: true (server-side).")),
-		mcp.WithString("filter", mcp.Description("Comma-separated matcher expressions to filter alerts. Example: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. Uses Prometheus matcher syntax.")),
+		mcp.WithString("filter", mcp.Description("Comma-separated alert-label comparisons; each is a label followed by =, !=, =~ (regex), or !~ (negative regex) and a quoted value. Examples: 'alertname=\"HighCPU\"' or 'alertname=\"HighCPU\",severity=\"critical\"'. All comparisons must match.")),
 		mcp.WithString("receiver", mcp.Description("Regex to filter alerts by receiver name. Example: 'slack-.*' to match all Slack receivers.")),
 	)
 	h.addTool(s, alertsTool, h.handleListAlerts)
@@ -100,22 +100,10 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_create_alert",
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Creates a new alert rule in SigNoz (POST /api/v2/rules).\n\n"+
-				"SCHEMA — pick based on ruleType:\n"+
-				"- threshold_rule / promql_rule → v2alpha1 with structured condition.thresholds (per-tier channel routing), evaluation block, notificationSettings.\n"+
-				"- anomaly_rule → **v1 schema**: top-level evalWindow and frequency; condition.op, condition.matchType, condition.target, condition.algorithm, condition.seasonality; compositeQuery.queries[].spec.functions carries the anomaly function. Omit thresholds, evaluation, schemaVersion.\n\n"+
-				"CRITICAL: You MUST read these resources BEFORE generating any alert payload:\n"+
-				"1. signoz://alert/instructions — REQUIRED: Alert structure, field descriptions, valid values\n"+
-				"2. signoz://alert/examples — REQUIRED: canonical payloads covering metric/logs/traces threshold, PromQL, anomaly (v1), tiered thresholds, formula, full notificationSettings, and a Cost Meter cumulative-budget alert.\n"+
-				"3. signoz://promql/instructions — REQUIRED when ruleType=promql_rule: SigNoz needs the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}) for OTel metric names. Underscored / __name__ / bare-dotted forms return no data.\n\n"+
-				"RECOMMENDED: Use signoz_get_alert on an existing alert to study the exact structure.\n\n"+
-				"NOTIFICATION CHANNELS: At least one notification channel is required. "+
-				"If the user explicitly names a channel, use it directly. "+
-				"Otherwise, do NOT guess or assume channel names — call this tool WITHOUT channels to get the list of available channels, "+
-				"present that list to the user, let them choose, then call again with their selection. "+
-				"If no suitable channel exists, use signoz_create_notification_channel first.\n\n"+
-				"Supports all alert types (metrics, logs, traces, exceptions) and rule types (threshold, promql, anomaly).\n"+
-				"Labels enable routing policies — always set labels.severity (critical, error, warning, or info) to match your highest threshold tier, and add team/service labels for routing.",
+			"Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. "+
+				"Supported cases are v2alpha1 threshold alerts over metrics, logs, traces, or exceptions; v2alpha1 PromQL alerts; and metric-only v1 anomaly alerts, which use top-level evalWindow/frequency and no thresholds, evaluation, or schemaVersion. "+
+				"Before composing the payload, read signoz://alert/instructions and signoz://alert/examples; for PromQL also read signoz://promql/instructions. "+
+				"At least one notification channel is required. Supplied channel names are validated; when a name is missing or invalid, use the available names returned by this tool, ask the user to choose, and retry—never guess.",
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)

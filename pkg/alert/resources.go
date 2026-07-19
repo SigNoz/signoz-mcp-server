@@ -15,7 +15,7 @@ Schemas supported:
 1. ALWAYS read signoz://alert/examples for complete working payloads (the canonical SigNoz PR #11023 examples plus a Cost Meter cumulative-budget example).
 2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects.
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
-4. NOTIFICATION CHANNELS: If the user explicitly names a channel, use it directly. Otherwise, do NOT guess channel names — call signoz_create_alert without channels first, it returns available channels. Present the list to the user, let them choose, then retry with their selection. If no suitable channel exists, use signoz_create_notification_channel to create one first.
+4. NOTIFICATION CHANNELS: At least one valid channel name is required. Never guess. signoz_create_alert validates supplied names; when names are missing or invalid, it returns the available channel names. Present those names to the user, let them choose, then retry. If no suitable channel exists, use signoz_create_notification_channel first.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
@@ -24,9 +24,9 @@ A repeatable mental model for going from a user request ("alert me when login p9
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
 5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*) — the backend indexes them.
-6. **Configure thresholds.** Tier name (critical | error | warning | info), op, matchType, target. Add channels only if the user named them — otherwise leave empty and let channel validation prompt the user.
+6. **Configure thresholds.** Tier name (critical | error | warning | info), op, matchType, target. Include only channel names the user selected; if none were selected, leave channels empty so validation returns available choices.
 7. **Evaluation.** Leave defaults (evalWindow=5m, frequency=1m) unless the user asked for a different window.
-8. **Notification.** Always ask the user for channel names — never guess. Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
+8. **Notification.** Never guess channel names; when validation returns available names, ask the user to choose. Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
 
 ## Alert Types (alertType)
 | Value | Signal | Use When |

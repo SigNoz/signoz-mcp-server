@@ -2,47 +2,21 @@ package instructions
 
 // ServerInstructions is sent to MCP clients during the initialize response.
 // It contains cross-cutting rules that apply to all tool usage.
-const ServerInstructions = `# SigNoz MCP Server — Instructions
+const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, traces, and exceptions; manage dashboards, alerts, and saved views; and consult SigNoz docs. Start with the user's signal; if none is clear, ask whether to use metrics, traces, or logs. For data queries, prioritize resource-attribute filters such as service.name and avoid redundant calls.
+
+# SigNoz MCP Server — Instructions
 
 ## Rules
 
-1. **Avoid redundant queries.** Only fetch additional data if the first result is insufficient or if the user explicitly asks for more. Do not make multiple overlapping calls when one would suffice.
+1. **Query once when possible.** Fetch more only if the first result is insufficient or the user asks. Never repeat overlapping queries.
 
-2. **Always prefer resource attributes in filters.** Resource attributes (e.g., service.name, k8s.namespace.name, host.name) significantly speed up backend queries. If the user does not provide a resource attribute filter:
-   a. Call signoz_get_field_keys with fieldContext=resource to discover available resource attributes.
-   b. Optionally call signoz_get_field_values to suggest concrete values for those attributes.
-   c. Ask the user to pick a resource attribute filter before running the query.
-   If the user already provides resource attributes, proceed directly without extra prompting.
-   **Caveat:** field keys are workspace- and signal-specific. Logs have no spec-mandated resource attributes — even service.name is only present when the log pipeline sets it (traces almost always carry it). If a query fails with ` + "`key ... not found`" + `, call signoz_get_field_keys for that signal to discover valid keys, then retry with an existing key or drop the failing condition — do not retry the same filter.
+2. **Prefer resource attributes in filters.** Use service.name, k8s.namespace.name, or host.name when available. If none was supplied, call signoz_get_field_keys with fieldContext=resource, optionally signoz_get_field_values, then ask the user to choose. Keys vary by workspace/signal; logs may lack standard resource fields. On "key not found", discover valid keys, then retry with an existing key or remove that condition—never retry the invalid filter.
 
-3. **Clarify the signal before querying.** If it is not clear which signal to use, ask the user whether to start with metrics, traces, or logs.
+3. **Match operators to intent and type.** Use EXISTS/NOT EXISTS for presence, = for exact matches, IN/NOT IN for sets, and LIKE/ILIKE/CONTAINS/REGEXP for string patterns. int64 also supports >, >=, <, and <=; bool supports =, !=, EXISTS, and NOT EXISTS.
 
-4. **Choose the right filter operator for the intent and data type.**
+4. **Guard negative filters.** !=, NOT LIKE, NOT IN, NOT CONTAINS, and NOT REGEXP also match missing fields. Require presence when excluding a value, for example: service.name EXISTS AND service.name != 'redis'.
 
-   **By query intent:**
-   | Intent | Operator | Example |
-   |---|---|---|
-   | Field exists / is present | EXISTS | trace_id EXISTS |
-   | Field is absent | NOT EXISTS | k8s.pod.name NOT EXISTS |
-   | Exact match | = | service.name = 'frontend' |
-   | Exclude (field must exist) | EXISTS AND != | service.name EXISTS AND service.name != 'redis' |
-   | One of several values | IN | severity_text IN ('ERROR', 'WARN', 'FATAL') |
-   | Substring / pattern | LIKE | name LIKE '%payment%' |
-   | Case-insensitive pattern | ILIKE | body ILIKE '%timeout%' |
-   | Simple text containment | CONTAINS | body CONTAINS 'timeout' |
-   | Regex | REGEXP | name REGEXP '^grpc\.' |
+5. **Convert timestamps programmatically.** SigNoz start/end and time-series timestamps are Unix milliseconds. Never convert them mentally; use a date/time function before presenting them.
 
-   **By data type:**
-   | Data type | Safe operators |
-   |---|---|
-   | bool | = , != , EXISTS, NOT EXISTS |
-   | int64 | = , != , > , >= , < , <= , IN, EXISTS, NOT EXISTS |
-   | string | = , != , LIKE, ILIKE, CONTAINS, REGEXP, IN, NOT IN, EXISTS, NOT EXISTS |
-
-   **Important:** Negative operators (!=, NOT LIKE, NOT IN, NOT CONTAINS, NOT REGEXP) also match records where the field is **absent**. To exclude a value while requiring the field, combine with EXISTS:
-   ` + "`" + `service.name EXISTS AND service.name != 'redis'` + "`" + `
-
-5. **Never convert Unix timestamps manually.** All SigNoz timestamps (start, end, and time series values) are Unix milliseconds. When presenting timestamps to the user, always use a programmatic method (e.g., a date conversion tool or function) to convert them to human-readable format. Do NOT attempt mental arithmetic or manual offset calculations — this is error-prone and leads to incorrect times being reported.
-
-6. **Use the webUrl field for SigNoz links.** Resource tool outputs (dashboards, alerts, services, traces) include a webUrl field with a deep link to the resource in the SigNoz UI. When linking to a resource, use that field verbatim. Never construct a SigNoz URL by hand from IDs, names, or the base domain.
+6. **Use returned webUrl values verbatim.** Resource results include SigNoz deep links. Never construct links from IDs or the instance URL.
 `
