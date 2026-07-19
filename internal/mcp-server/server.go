@@ -309,7 +309,9 @@ func (m *MCPServer) Run(ctx context.Context) error {
 	m.handler.RegisterResourceTemplates(s)
 
 	// Register prompts
-	prompts.RegisterPrompts(s.AddPrompt)
+	prompts.RegisterPrompts(func(prompt mcp.Prompt, handler server.PromptHandlerFunc) {
+		m.handler.RegisterPrompt(s, prompt, handler)
+	})
 
 	m.logger.InfoContext(ctx, "All handlers registered successfully")
 
@@ -765,6 +767,18 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 
 			m.logger.DebugContext(ctx, "tool call started")
 			result, err := next(ctx, req)
+			var resultBytes int64
+			if err == nil && result != nil {
+				var marshalErr error
+				resultBytes, marshalErr = serializedResultBytes(result)
+				if marshalErr != nil {
+					m.logger.ErrorContext(ctx, "tool result is not JSON serializable",
+						slog.String("tool", req.Params.Name),
+						logpkg.ErrAttr(marshalErr))
+					result = tools.InternalErrorResult("Internal server error: tool result could not be serialized. Retry once; if it persists, report this as a server bug.")
+					resultBytes, _ = serializedResultBytes(result)
+				}
+			}
 
 			// Determine error status: either a Go error or an MCP tool result error.
 			isErr := err != nil || (result != nil && result.IsError)
@@ -780,7 +794,6 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			// Always emit the result size — even zero — so it matches the log
 			// field and downstream aggregations (avg, histogram) don't drop
 			// empty-result tool calls as nulls.
-			resultBytes := approxResultBytes(result)
 			span.SetAttributes(otelpkg.MCPToolResultBytesKey.Int64(resultBytes))
 			if err != nil {
 				span.RecordError(err)
@@ -838,7 +851,7 @@ func (m *MCPServer) completeUnobservedToolCall(ctx context.Context, rawResult an
 		errorType = toolOTelErrorType(nil, result)
 	}
 	errorCode := toolerrors.Code(result)
-	resultBytes := approxResultBytes(result)
+	resultBytes, _ := serializedResultBytes(result)
 
 	span := trace.SpanFromContext(ctx)
 	span.SetName(string(mcp.MethodToolsCall))
@@ -966,21 +979,15 @@ func toolErrorType(err error, result *mcp.CallToolResult) string {
 	return "tool_error"
 }
 
-// approxResultBytes sums the length of text content entries in a tool result.
-// Binary blobs are ignored (we don't want to materialize them just to measure).
-func approxResultBytes(result *mcp.CallToolResult) int64 {
+func serializedResultBytes(result *mcp.CallToolResult) (int64, error) {
 	if result == nil {
-		return 0
+		return 0, nil
 	}
-	var total int64
-	for _, c := range result.Content {
-		tc, ok := c.(mcp.TextContent)
-		if !ok {
-			continue
-		}
-		total += int64(len(tc.Text))
+	encoded, err := result.MarshalJSON()
+	if err != nil {
+		return 0, err
 	}
-	return total
+	return int64(len(encoded)), nil
 }
 
 func (m *MCPServer) runStdio(ctx context.Context, s *server.MCPServer) error {

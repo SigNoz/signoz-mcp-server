@@ -35,6 +35,12 @@ plans/
 
 - Avoid long inline code comments unless needed; keep comments concise and non-redundant.
 
+## Guardrail Changes
+
+- Follow `guardrails/README.md`; keep policy in `policy.go`, the sorted `TestGuardrail_*` inventory in `tests.txt`, and package-sensitive tests beside their packages.
+- Never weaken a guardrail merely to pass CI. Document intentional relaxations in the feature context log and PR summary.
+- Run the workflow lint, focused guardrail suite, and full test suite documented in `guardrails/README.md` before handoff.
+
 ## Documentation & Metadata Sync Checklist
 
 When adding, renaming, or removing MCP tools/resources/configuration, update docs and metadata in the same PR.

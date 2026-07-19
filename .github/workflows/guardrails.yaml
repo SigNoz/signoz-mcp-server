@@ -1,0 +1,59 @@
+name: guardrails
+
+on:
+  pull_request:
+    branches:
+      - main
+  pull_request_target:
+    types:
+      - labeled
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: contract
+    if: |
+      (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Verify guardrail test inventory
+        shell: bash
+        run: |
+          if ! diff -u guardrails/tests.txt <(LC_ALL=C sort -u guardrails/tests.txt); then
+            echo "::error::guardrails/tests.txt must be sorted and contain no duplicates."
+            exit 1
+          fi
+
+          expected_tests="$(cat guardrails/tests.txt)"
+          actual_tests="$(
+            go test -list '^TestGuardrail_' ./... |
+              sed -n '/^TestGuardrail_/p' |
+              LC_ALL=C sort
+          )"
+
+          if ! diff -u \
+            <(printf '%s\n' "$expected_tests") \
+            <(printf '%s\n' "$actual_tests"); then
+            echo "::error::Guardrail test inventory changed. Review the change and update guardrails/tests.txt."
+            exit 1
+          fi
+
+          printf 'Discovered %s guarded tests.\n' "$(printf '%s\n' "$actual_tests" | wc -l | tr -d ' ')"
+
+      - name: Run guardrail tests
+        run: |
+          go test -count=1 -run '^TestGuardrail_' ./...

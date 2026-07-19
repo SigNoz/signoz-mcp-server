@@ -16,6 +16,7 @@ const (
 	CodeLicenseUnavailable = "LICENSE_UNAVAILABLE"
 	CodeCanceled           = "CANCELED"
 	CodeTimeout            = "TIMEOUT"
+	CodeInternalError      = "INTERNAL_ERROR"
 
 	CodeOutOfScopeURL  = "OUT_OF_SCOPE_URL"
 	CodeDocNotFound    = "DOC_NOT_FOUND"
@@ -35,6 +36,7 @@ var knownCodes = map[string]struct{}{
 	CodeLicenseUnavailable: {},
 	CodeCanceled:           {},
 	CodeTimeout:            {},
+	CodeInternalError:      {},
 	CodeOutOfScopeURL:      {},
 	CodeDocNotFound:        {},
 	CodeHeadingMissing:     {},

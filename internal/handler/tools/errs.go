@@ -86,6 +86,10 @@ const (
 
 	// CodeTimeout marks an upstream HTTP timeout response.
 	CodeTimeout = toolerrors.CodeTimeout
+
+	// CodeInternalError marks a server-side result-shaping or serialization
+	// defect. The caller cannot repair this by changing tool arguments.
+	CodeInternalError = toolerrors.CodeInternalError
 )
 
 const statusClientClosedConnection = 499
@@ -110,6 +114,12 @@ var assistantAuthEnvelopeCodes = map[string]struct{}{
 // coded error results.
 func errorWithCode(code, message string) *mcp.CallToolResult {
 	return errorWithStructuredContent(code, message, nil)
+}
+
+// InternalErrorResult is used by the transport boundary when a handler
+// produced a result that cannot be represented as JSON-RPC.
+func InternalErrorResult(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeInternalError, message)
 }
 
 func errorWithStructuredContent(code, message string, fields map[string]any) *mcp.CallToolResult {

@@ -420,7 +420,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(clickhouseLogsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseLogsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -437,7 +437,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(clickhouseLogsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseLogsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -454,7 +454,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(clickhouseMetricsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseMetricsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -471,7 +471,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(clickhouseMetricsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseMetricsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -488,7 +488,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(clickhouseTracesSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseTracesSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -505,7 +505,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(clickhouseTracesExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseTracesExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -522,7 +522,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(promqlExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, promqlExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -539,7 +539,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(queryBuilderExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, queryBuilderExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -556,7 +556,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(dashboardInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, dashboardInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -573,7 +573,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(widgetsInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, widgetsInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
@@ -590,7 +590,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 		mcp.WithMIMEType("text/plain"),
 	)
 
-	s.AddResource(widgetsExamplesResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, widgetsExamplesResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,

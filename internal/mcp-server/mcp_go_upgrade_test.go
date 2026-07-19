@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/attribute"
@@ -129,6 +131,57 @@ func TestProductionOutputMismatchPassesOriginalThrough(t *testing.T) {
 	b, _ := json.Marshal(response)
 	if bytes.Contains(b, []byte(`"isError":true`)) || !bytes.Contains(b, []byte(`"count":"wrong"`)) {
 		t.Fatalf("output mismatch must pass the original result through: %s", b)
+	}
+}
+
+func TestGuardrail_ToolResultsRemainJSONSafeThroughProductionTransport(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     any
+		wantError bool
+		wantJSON  string
+	}{
+		{name: "nan", value: math.NaN(), wantError: true},
+		{name: "positive infinity", value: math.Inf(1), wantError: true},
+		{name: "negative infinity", value: math.Inf(-1), wantError: true},
+		{name: "large integer", value: int64(9007199254740993), wantJSON: "9007199254740993"},
+		{name: "invalid utf8", value: string([]byte{'a', 0xff, 'b'})},
+		{name: "control characters", value: "line\nnull\x00tab\t"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+			logger := logpkg.New("error")
+			h := tools.NewHandler(logger, cfg)
+			m := NewMCPServer(logger, h, cfg, noopanalytics.New(), nil)
+			s := m.newSDKServer()
+
+			h.AddTool(s, mcp.NewTool("json_safety_probe"), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return mcp.NewToolResultStructured(map[string]any{"value": tt.value}, "ok"), nil
+			})
+			response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"json_safety_probe","arguments":{}}}`))
+			encoded, err := json.Marshal(response)
+			if err != nil {
+				t.Fatalf("JSON-RPC response is not serializable: %v", err)
+			}
+			if !json.Valid(encoded) {
+				t.Fatalf("JSON-RPC response is invalid: %q", encoded)
+			}
+
+			if tt.wantError {
+				if !bytes.Contains(encoded, []byte(`"isError":true`)) || !bytes.Contains(encoded, []byte(toolerrors.CodeInternalError)) {
+					t.Fatalf("unsafe numeric result must become a coded tool error: %s", encoded)
+				}
+				return
+			}
+			if bytes.Contains(encoded, []byte(`"isError":true`)) {
+				t.Fatalf("JSON-safe value was rejected: %s", encoded)
+			}
+			if tt.wantJSON != "" && !bytes.Contains(encoded, []byte(tt.wantJSON)) {
+				t.Fatalf("serialized response lost exact value %s: %s", tt.wantJSON, encoded)
+			}
+		})
 	}
 }
 

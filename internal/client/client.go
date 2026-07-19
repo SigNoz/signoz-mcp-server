@@ -383,31 +383,35 @@ const (
 // never get invalid JSON.
 const maxResponseBytes int64 = 64 << 20 // 64 MiB
 
-// doRequest performs an HTTP request with standard headers, timeout, status
-// checking, body reading, and retry with exponential backoff for transient
-// failures (429, 502, 503, 504, network errors).
-func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.Reader, timeout time.Duration) (json.RawMessage, error) {
+// doRequest performs an HTTP request with the method's default replay policy.
+// Mutating POSTs are single-attempt because the backend does not accept
+// idempotency keys and a transport failure can happen after commit.
+func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration) (json.RawMessage, error) {
+	return s.doRequestWithReplayPolicy(ctx, method, reqURL, body, timeout, isReplaySafeMethod(method))
+}
+
+// doReplaySafePost is for read-only upstream operations that happen to use
+// POST because their query payload is carried in the request body.
+func (s *SigNoz) doReplaySafePost(ctx context.Context, reqURL string, body []byte, timeout time.Duration) (json.RawMessage, error) {
+	return s.doRequestWithReplayPolicy(ctx, http.MethodPost, reqURL, body, timeout, true)
+}
+
+func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration, replaySafe bool) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Buffer the body so we can retry POST/PUT requests.
-	var bodyBytes []byte
-	if body != nil {
-		var err error
-		bodyBytes, err = io.ReadAll(body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read request body: %w", err)
-		}
-	}
-
 	var lastErr error
 	wait := retryBaseWait
+	maxAttempts := 1
+	if replaySafe {
+		maxAttempts = maxRetries
+	}
 
-	for attempt := range maxRetries {
+	for attempt := range maxAttempts {
 		var reqBody io.Reader
-		if bodyBytes != nil {
-			reqBody = bytes.NewReader(bodyBytes)
+		if body != nil {
+			reqBody = bytes.NewReader(body)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
@@ -424,7 +428,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				return nil, fmt.Errorf("request cancelled: %w", err)
 			}
 			lastErr = fmt.Errorf("failed to do request: %w", err)
-			if attempt < maxRetries-1 {
+			if attempt < maxAttempts-1 {
 				s.logger.DebugContext(ctx, "Request failed, will retry",
 					slog.String("url", reqURL),
 					slog.Int("attempt", attempt+1),
@@ -437,10 +441,17 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				wait *= retryMultiply
 				continue
 			}
-			s.logger.WarnContext(ctx, "Request failed after retries exhausted",
-				slog.String("url", reqURL),
-				slog.Int("attempt", attempt+1),
-				logpkg.ErrAttr(err))
+			if maxAttempts > 1 {
+				s.logger.WarnContext(ctx, "Request failed after retries exhausted",
+					slog.String("url", reqURL),
+					slog.Int("attempt", attempt+1),
+					logpkg.ErrAttr(err))
+			} else {
+				s.logger.WarnContext(ctx, "Request failed and method is not replay-safe",
+					slog.String("url", reqURL),
+					slog.String("method", method),
+					logpkg.ErrAttr(err))
+			}
 			break
 		}
 
@@ -461,7 +472,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		// Retry on transient server errors.
-		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
+		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts-1 {
 			statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 			lastErr = statusErr
 			s.logger.DebugContext(ctx, "Retryable status, will retry",
@@ -478,7 +489,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			continue
 		}
 
-		retryable := isRetryableStatus(resp.StatusCode)
+		retryable := replaySafe && isRetryableStatus(resp.StatusCode)
 		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 		attrs := []any{
 			slog.String("url", reqURL),
@@ -506,6 +517,15 @@ func newHTTPStatusError(statusCode int, respBody []byte) *HTTPStatusError {
 
 func isRetryableStatus(code int) bool {
 	return code == 429 || code == 502 || code == 503 || code == 504
+}
+
+func isReplaySafeMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodPut, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
@@ -639,7 +659,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching services from SigNoz",
 		slog.String("start", start), slog.String("end", end))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
@@ -648,7 +668,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	bodyBytes, _ := json.Marshal(payload)
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service top operations", slog.String("service", service))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
@@ -661,7 +681,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
@@ -673,13 +693,13 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v2/rules", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating alert rule")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, alertJSON, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v2/rules/%s", s.baseURL, url.PathEscape(ruleID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating alert rule", slog.String("ruleID", ruleID))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, alertJSON, DashboardWriteTimeout)
 	return err
 }
 
@@ -713,13 +733,13 @@ func (s *SigNoz) GetView(ctx context.Context, viewID string) (json.RawMessage, e
 func (s *SigNoz) CreateView(ctx context.Context, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating saved view")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, body, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating saved view", slog.String("viewID", viewID))
-	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(body), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPut, reqURL, body, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) DeleteView(ctx context.Context, viewID string) (json.RawMessage, error) {
@@ -803,7 +823,7 @@ func (s *SigNoz) CreateDashboard(ctx context.Context, dashboard types.Dashboard)
 	}
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, dashboardJSON, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error {
@@ -814,7 +834,7 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 	}
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard", slog.String("id", id))
-	_, err = s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	_, err = s.doRequest(ctx, http.MethodPut, reqURL, dashboardJSON, DashboardWriteTimeout)
 	return err
 }
 
@@ -823,7 +843,7 @@ func (s *SigNoz) UpdateDashboard(ctx context.Context, id string, dashboard types
 func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard (raw)")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, dashboardJSON, DashboardWriteTimeout)
 }
 
 // UpdateDashboardRaw updates a dashboard from pre-validated JSON bytes,
@@ -831,7 +851,7 @@ func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (
 func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard (raw)", slog.String("id", id))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, dashboardJSON, DashboardWriteTimeout)
 	return err
 }
 
@@ -860,13 +880,13 @@ func (s *SigNoz) GetNotificationChannel(ctx context.Context, id string) (json.Ra
 func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating notification channel")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 }
 
 func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating notification channel", slog.String("id", id))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }
 
@@ -892,12 +912,12 @@ func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int)
 	reqURL := fmt.Sprintf("%s/api/v2/metrics/treemap", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metrics treemap",
 		slog.Int("limit", limit))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/channels/test", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing notification channel")
-	_, err := s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }
