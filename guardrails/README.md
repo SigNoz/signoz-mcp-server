@@ -13,12 +13,19 @@ access to unexported retry, registration, middleware, and server-composition hel
 
 ## Invariants covered
 
-- MCP names, descriptions, schemas, and nesting stay within reviewed wire budgets.
+- MCP names and descriptions stay within reviewed byte budgets; schema shape is constrained by reviewed property inventories and nesting depth.
 - Advertised `signoz://` pointers resolve to non-empty resources with matching metadata.
 - Tools, resources, templates, and prompts cannot silently overwrite duplicate registrations.
 - Mutating POST requests are not replayed after ambiguous failures; audited read-only POSTs may retry.
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content.
+
+The guardrails intentionally do not impose a total serialized-schema byte ceiling.
+Complex tools may need extensive field-local schema guidance; review material catalog
+growth through normal code and client compatibility review. This is separate from JSON
+arguments sent in a tool call: streamable HTTP request bodies retain the configurable
+`MCP_MAX_REQUEST_BYTES` limit (4 MiB by default), while that middleware does not apply
+to stdio.
 
 ## Changing a guardrail
 

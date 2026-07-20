@@ -11,11 +11,11 @@ Schemas supported:
 - **v2alpha1** for threshold_rule and promql_rule — structured thresholds + evaluation + notificationSettings. Applied automatically.
 - **v1** for anomaly_rule — top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
-## CRITICAL: Before Creating an Alert
-1. ALWAYS read signoz://alert/examples for complete working payloads (the canonical SigNoz PR #11023 examples plus a Cost Meter cumulative-budget example).
-2. Use signoz_get_alert on an existing alert to study the exact structure your SigNoz instance expects.
+## Before Creating or Updating an Alert
+1. Read signoz://alert/examples for complete alert payloads, including a Cost Meter cumulative-budget example.
+2. Before updating, use signoz_get_alert and merge the requested change into the complete current rule because update is a full replacement.
 3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
-4. NOTIFICATION CHANNELS: Before creating an alert, call signoz_list_notification_channels and verify every user-selected name exists. If no channel was selected or a name is invalid, present the available names and ask the user to choose; if none exist, use signoz_create_notification_channel. signoz_create_alert also validates names and returns available choices, but treat that as fallback for stale or changed channel data, not normal discovery. Never guess.
+4. NOTIFICATION CHANNELS: Before creating an alert, call signoz_list_notification_channels and verify every user-selected name exists. Do the same before updating. If no channel was selected or a name is invalid, show the available names and ask the user to choose; if none exist, use signoz_create_notification_channel. Never guess. The server requires at least one existing valid channel even when notificationSettings.usePolicy=true. If a verified channel is removed or renamed before the write, validation returns the current names so you can retry.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
@@ -24,7 +24,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
 5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*) — the backend indexes them.
-6. **Configure thresholds.** Tier name (critical | error | warning | info), op, matchType, target. Include only channel names verified with signoz_list_notification_channels; if no valid selection exists, ask the user before creating the alert.
+6. **Configure thresholds.** Tier name (critical | error | warning | info), op, matchType, target. Include only channel names verified with signoz_list_notification_channels; if no valid selection exists, ask the user before creating or updating the alert.
 7. **Evaluation.** Leave defaults (evalWindow=5m, frequency=1m) unless the user asked for a different window.
 8. **Notification.** Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
 
@@ -202,7 +202,7 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 - **recoveryTarget**: hysteresis value to avoid flapping (e.g. target=80%, recoveryTarget=75%). null uses the target itself as the recovery point.
 - **matchType**: canonical at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total).
 - **op**: canonical above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=.
-- **channels**: notification channel names for this tier. Discover via signoz_list_notification_channels. Ignored when notificationSettings.usePolicy is true.
+- **channels**: existing notification channel names for this tier. Verify every name via signoz_list_notification_channels before mutation. Policy routing ignores these when notificationSettings.usePolicy=true, but current MCP validation still requires at least one existing valid channel reference in the payload.
 
 ### Choosing targetUnit
 - Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds" — set target=5, targetUnit="s". SigNoz converts during evaluation.
@@ -264,7 +264,7 @@ A general evaluation kind, independent of signal/source — use it for any perio
 - **renotify.enabled**: whether to re-send alerts at interval.
 - **renotify.interval**: re-notify interval (e.g. 15m, 30m, 1h, 4h).
 - **renotify.alertStates**: accepted values are firing and nodata. Any other value is rejected.
-- **usePolicy**: routing mode. false (default) = deliver to the channels listed in each threshold entry. true = ignore per-threshold channels and route via the org-level notification policy matching on labels.
+- **usePolicy**: routing mode. false (default) = deliver to the channels listed in each threshold entry. true = ignore per-threshold channels for routing and use the org-level notification policy matching on labels. The server still requires at least one existing valid channel when true.
 
 ## Labels & Routing
 
@@ -296,7 +296,7 @@ Example: deployment.environment = "production" AND threshold.name = "critical"
 |--------------------------------|-----------------------|-------------------|
 | false (default) | present | Send to the listed channels directly |
 | false | absent | Fall back to rule-level preferredChannels |
-| true | (ignored) | Match alert labels against the org-level routing policy; send to policy-matched channels |
+| true | ignored for routing, but one existing valid reference is still required by current MCP validation | Match alert labels against the org-level routing policy; send to policy-matched channels |
 
 ## Annotations
 - Use {{$value}} for the current metric value.
@@ -365,14 +365,17 @@ User-facing docs. Cite these back to the user when they want to understand a con
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.
-// The examples below mirror the canonical payloads in SigNoz PR #11023, plus a Cost Meter example
+// The examples below are based on the payloads in SigNoz PR #11023, plus a Cost Meter example
 // (pkg/apiserver/signozapiserver/ruler_examples.go). Keep this list in sync
 // with upstream when that file changes.
-const Examples = `# SigNoz Alert Rule — Examples (mirrors SigNoz PR #11023)
+const Examples = `# SigNoz Alert Rule Examples
 
-These examples mirror the canonical payloads in SigNoz PR #11023
-(pkg/apiserver/signozapiserver/ruler_examples.go). Threshold and PromQL rules
-use v2alpha1; the anomaly example uses the v1 shape.
+These examples are based on SigNoz PR #11023
+(pkg/apiserver/signozapiserver/ruler_examples.go) and include a Cost Meter
+cumulative-budget alert. Threshold and PromQL rules use v2alpha1; the anomaly
+example uses the v1 shape. Adapt each example to the target workspace.
+
+**Before using any example:** channel names such as slack-platform, pagerduty-oncall, and my-channel are illustrative and may not exist in the target workspace. Call signoz_list_notification_channels, let the user select from the returned names, and replace every example channel name before create/update. Never copy or guess a channel name. The current MCP validation requires at least one existing valid channel reference even when notificationSettings.usePolicy=true.
 
 ## 1. metric_threshold_single — metric threshold, single builder query
 Fires when a pod consumes more than 80% of its requested CPU for the whole evaluation window.
@@ -1051,7 +1054,7 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
 1. Metrics signal → object aggregation shape ({metricName, timeAggregation, spaceAggregation}). Logs/traces → expression shape ({expression: "count()"}).
 2. selectedQueryName should reference the query or formula that determines the alert.
 3. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects.
-4. Channel names in thresholds.spec[].channels must match exactly the names from signoz_list_notification_channels.
+4. Before create/update, channel names in thresholds.spec[].channels must be selected from and match exactly the names returned by signoz_list_notification_channels; every name in the examples is illustrative.
 5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency at the top level and op/matchType/target/algorithm/seasonality under condition — no thresholds block, no auto-generated evaluation.
 6. absentFor is in minutes (= consecutive evaluation cycles when frequency is 1m).
 `

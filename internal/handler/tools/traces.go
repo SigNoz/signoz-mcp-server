@@ -24,11 +24,8 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 	// aggregate_traces: compute statistics over traces with GROUP BY
 	aggregateTracesTool := mcp.NewTool("signoz_aggregate_traces",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Aggregate traces to compute statistics like count, average, sum, min, max, or percentiles over spans, optionally grouped by fields. "+
-			"Use this for questions like 'p99 latency by service', 'error count per operation', 'request rate by endpoint', 'average duration by span kind'. "+
-			"Also use this for error analysis — set error='true' and groupBy='service.name' to analyze error patterns across services. "+
-			"Defaults to last 1 hour if no time specified."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants custom aggregate statistics over spans—counts, rates, latency percentiles, grouped/top-N breakdowns, or time series—not individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans or trace-ID discovery, and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour."),
 		mcp.WithString("aggregation", mcp.Required(), mcp.Description("Aggregation function to apply. One of: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate")),
 		mcp.WithString("aggregateOn", mcp.Description("Field name to aggregate on (e.g., 'duration_nano'). Required for all aggregations except count and rate.")),
 		mcp.WithString("groupBy", mcp.Description("Comma-separated list of field names to group results by (e.g., 'service.name' or 'service.name, name'). Leave empty for a single aggregate value.")),
@@ -51,11 +48,8 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 
 	searchTracesTool := mcp.NewTool("signoz_search_traces",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Search traces with flexible filtering. Supports free-form filter expressions, optional service/operation/error filters, and duration filtering. "+
-			"Use service param to scope to a single service, or filter param for any filter expression. "+
-			"For traces filter syntax and field contexts, read signoz://traces/query-builder-guide. "+
-			"Defaults to last 1 hour if no time specified."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants individual raw span rows matching service, operation, error, duration, or field filters, or needs to discover trace IDs. It returns paginated spans, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. Defaults to the last 1 hour."),
 		mcp.WithString("filter", mcp.Description(tracesFilterParamDescription+" Combined with shortcut params using AND.")),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by.")),
 		mcp.WithString("operation", mcp.Description("Operation/span name to filter by.")),
@@ -65,17 +59,17 @@ func (h *Handler) RegisterTracesHandlers(s *server.MCPServer) {
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of traces to return (default: 100, max: 10000; higher values are clamped — paginate with offset)")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Offset for pagination (default: 0)")),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped — paginate with offset).")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of span rows to skip for pagination (default: 0).")),
 	)
 
 	h.addTool(s, searchTracesTool, h.handleSearchTraces)
 
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get comprehensive trace information including all spans, metadata, and span hierarchy/relationships. Defaults to last 6 hours if no time specified."),
-		mcp.WithString("traceId", mcp.Required(), mcp.Description("Trace ID to get details for")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis."),
+		mcp.WithString("traceId", mcp.Required(), mcp.Description("Known trace ID to retrieve. Discover it with signoz_search_traces when the user has not supplied one.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),

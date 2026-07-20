@@ -18,14 +18,9 @@ func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
 		mcp.WithOutputSchema[map[string]signozclient.MetricUsage](),
 		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
-			"Given a list of metric names, return which dashboards and alerts reference each one. "+
-				"Accepts up to 50 metric names per call — split larger lists into batches of 50 and merge results. "+
-				"Each result entry contains dashboards (list), alerts (list), and error (string). "+
-				"When error is non-empty, the lookup for that metric failed (e.g. older SigNoz version or transient 5xx) "+
-				"and any dashboards/alerts lists are partial and unreliable — do not treat the metric as unused. "+
-				"Use this to understand metric dependencies before making drop or reduction decisions."),
+			"Use this when the user needs to know which dashboards and alerts reference known metric names, especially before dropping or reducing telemetry. It returns dashboards, alerts, and an error for each metric, with up to 50 unique names per call. Do not use it for ingestion ranking (signoz_get_top_metrics) or label cardinality (signoz_check_metric_cardinality). A non-empty per-metric error means that entry is partial and unreliable; never interpret it as proof that the metric is unused."),
 		mcp.WithString("searchContext",
-			mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+			mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithArray("metricNames",
 			mcp.Required(),
 			mcp.WithStringItems(),

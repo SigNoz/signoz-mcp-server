@@ -15,10 +15,8 @@ func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_get_top_metrics",
 		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
-			"Return top 100 metrics ranked by ingested sample volume with pre-computed percentages. "+
-				"Use this for questions like 'which metrics cost the most?', 'top metrics by sample count', "+
-				"'what is driving my metrics ingestion volume?', 'metrics by ingestion cost'."),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+			"Use this when the user wants to know which metrics drive ingestion volume or cost. It returns a fixed top 100 ranked by ingested sample count with pre-computed percentages for the requested window. Do not use it for metric values or trends (signoz_query_metrics), dashboard or alert dependencies (signoz_check_metric_usage), or label cardinality (signoz_check_metric_cardinality). This ranking has no offset pagination."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithString("timeRange", mcp.DefaultString("7d"), mcp.Description(timeRangeDesc("Defaults to '7d' (a cost-analysis window); if the query times out, retry with '3d', then '24h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds. When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds. When both start and end are provided, they override timeRange.")),

@@ -21,7 +21,7 @@ const (
 
 type CreateAlertInput struct {
 	AlertRule
-	SearchContext string `json:"searchContext,omitempty" jsonschema:"The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string `json:"searchContext,omitempty" jsonschema:"Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses."`
 }
 
 type UpdateAlertInput struct {
@@ -31,7 +31,7 @@ type UpdateAlertInput struct {
 	ID           string `json:"id,omitempty" jsonschema:"UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."`
 	LegacyRuleID string `json:"ruleId,omitempty" jsonschema:"Deprecated alias for 'id'."`
 	AlertRule
-	SearchContext string `json:"searchContext,omitempty" jsonschema:"The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."`
+	SearchContext string `json:"searchContext,omitempty" jsonschema:"Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses."`
 }
 
 // AlertRule is the payload for creating an alert rule via POST /api/v2/rules.
@@ -49,7 +49,7 @@ type AlertRule struct {
 	Annotations       map[string]string `json:"annotations,omitempty" jsonschema:"Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values."`
 	Disabled          bool              `json:"disabled,omitempty" jsonschema:"Whether the alert rule is disabled. Defaults to false (enabled)."`
 	Source            string            `json:"source,omitempty" jsonschema:"Source URL for the alert. Set automatically."`
-	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema:"Notification channel names to send alerts to. Use signoz_list_notification_channels to discover available channel names."`
+	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema:"Existing notification channel names. Before create/update, verify every name with signoz_list_notification_channels; never guess. The current MCP validation requires at least one valid channel reference across preferredChannels or thresholds.spec[].channels."`
 	Version           string            `json:"version,omitempty" jsonschema:"API version. Always v5. Set automatically if omitted."`
 
 	// v1-schema fields (used only when ruleType=anomaly_rule).
@@ -80,7 +80,7 @@ type AlertCondition struct {
 	Op          string      `json:"op,omitempty" jsonschema:"v1 (anomaly_rule) only. Comparison operator applied to the anomaly score - same accepted values as threshold.op (above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds)."`
 	MatchType   string      `json:"matchType,omitempty" jsonschema:"v1 (anomaly_rule) only. Match type - same accepted values as threshold.matchType (at_least_once, all_the_times, on_average/avg, in_total/sum, last)."`
 	Target      interface{} `json:"target,omitempty" jsonschema:"v1 (anomaly_rule) only. Threshold value compared against the anomaly score."`
-	Algorithm   string      `json:"algorithm,omitempty" jsonschema:"v1 (anomaly_rule) only. Anomaly detection algorithm. Accepted values include standard (z-score based). Used only when ruleType=anomaly_rule."`
+	Algorithm   string      `json:"algorithm,omitempty" jsonschema:"v1 (anomaly_rule) only. Anomaly detection algorithm; the supported value is standard (z-score based)."`
 	Seasonality string      `json:"seasonality,omitempty" jsonschema:"v1 (anomaly_rule) only. Seasonality pattern for anomaly detection: hourly, daily, or weekly."`
 
 	// Threshold configuration (v2alpha1 schema). Required for threshold_rule
@@ -191,7 +191,7 @@ type BasicThreshold struct {
 	RecoveryTarget *float64 `json:"recoveryTarget,omitempty" jsonschema:"Hysteresis - value at which a firing alert is considered resolved. Useful to avoid flapping near the threshold (e.g. target=80 percent, recoveryTarget=75 percent). Use null to use the threshold target itself as the recovery point."`
 	MatchType      string   `json:"matchType" jsonschema:"How to evaluate the threshold. Canonical: at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total). Numeric 1-5 also accepted but discouraged."`
 	CompareOp      string   `json:"op" jsonschema:"Comparison operator. Canonical literals: above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=. Numeric 1-7 also accepted but discouraged."`
-	Channels       []string `json:"channels,omitempty" jsonschema:"Notification channel names for this threshold tier. Use signoz_list_notification_channels to discover available names. Ignored when notificationSettings.usePolicy is true."`
+	Channels       []string `json:"channels,omitempty" jsonschema:"Existing notification channel names for this threshold tier. Verify every name with signoz_list_notification_channels before create/update. The server still requires at least one valid channel in the payload even though routing ignores threshold channels when notificationSettings.usePolicy=true."`
 }
 
 // AlertEvaluation holds the evaluation schedule for v2 schema alerts.
@@ -221,7 +221,7 @@ type NotificationSettings struct {
 	GroupBy           []string  `json:"groupBy,omitempty" jsonschema:"Fields to group alert notifications by (e.g. service.name, k8s.namespace.name). Reduces notification noise by batching alerts with the same group key."`
 	NewGroupEvalDelay string    `json:"newGroupEvalDelay,omitempty" jsonschema:"Grace period (Go duration string, e.g. 2m) during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online."`
 	Renotify          *Renotify `json:"renotify,omitempty" jsonschema:"Re-notification configuration."`
-	UsePolicy         bool      `json:"usePolicy,omitempty" jsonschema:"Routing mode. false (default) = deliver to channels listed in each threshold entry. true = ignore per-threshold channels and route via the org-level notification policy matching on labels."`
+	UsePolicy         bool      `json:"usePolicy,omitempty" jsonschema:"Routing mode. false (default) sends to per-threshold channels; true routes through the org-level policy matching on labels. The server still requires at least one existing channel name in the payload when this is true."`
 }
 
 // Renotify controls re-notification behavior.

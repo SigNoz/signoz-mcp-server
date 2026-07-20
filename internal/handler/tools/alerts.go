@@ -46,7 +46,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	alertsTool := mcp.NewTool("signoz_list_alerts",
 		mcp.WithOutputSchema[alertListOutput](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription("Use this when the user wants current firing, silenced, or inhibited Alertmanager alert instances and their state, severity, timing, and rule IDs. Do not use it for configured rules or history: use signoz_list_alert_rules for rule summaries, signoz_get_alert for one definition, or signoz_get_alert_history for its timeline. Filter by alert labels, state, or receiver before paginating."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alerts to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip for pagination. Default: 0.")),
@@ -61,8 +61,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	alertRulesTool := mcp.NewTool("signoz_list_alert_rules",
 		mcp.WithOutputSchema[alertRuleListOutput](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Lists configured alert rules from GET /api/v2/rules, including inactive/OK and disabled rules. Use signoz_list_alerts for current Alertmanager alert instances.\n\nReturns ruleId, alert, alertType, ruleType, state, disabled, severity, labels, createdAt, and updatedAt. Use signoz_get_alert for the full rule definition.\n\nPAGINATION: Supports 'limit' and 'offset'. Response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. Default: limit=50 (max 1000, clamped), offset=0."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants configured alert-rule summaries, including inactive/OK and disabled rules. It returns rule IDs, names, types, state, severity, labels, and timestamps; use signoz_get_alert with an ID for the full definition. Do not use it for current firing/silenced/inhibited instances: use signoz_list_alerts. Paginate with limit and offset."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of alert rules to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip for pagination. Default: 0.")),
 	)
@@ -70,21 +70,21 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 
 	getAlertTool := mcp.NewTool("signoz_get_alert",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get the rule definition for a specific alert rule by id (GET /api/v2/rules/{id}).\n\nResponse shape depends on the SigNoz server version. Post-#10997 servers return the canonical Rule type with audit fields createdAt/updatedAt/createdBy/updatedBy; older servers return GettableRule with createAt/updateAt/createBy/updateBy (no 'd')."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants one configured alert rule's full definition, or before signoz_update_alert so unchanged fields can be preserved. It requires a known rule ID; use signoz_list_alert_rules to discover IDs. Do not use it for current alert instances or firing history: use signoz_list_alerts or signoz_get_alert_history."),
 		// Not declared mcp.Required(): the legacy alias "ruleId" must remain a
 		// valid call for schema-aware clients that validate args against the
 		// advertised inputSchema. The handler validates that one of id/ruleId is
 		// present. See readResourceID.
-		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required.")),
+		mcp.WithString("id", mcp.Description("Alert rule ID (UUIDv7 on v2 servers). Required; obtain it from signoz_list_alert_rules.")),
 	)
 	h.addTool(s, getAlertTool, h.handleGetAlert)
 
 	alertHistoryTool := mcp.NewTool("signoz_get_alert_history",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get alert firing history for a specific alert rule. Defaults to the last 6 hours. Use 'state' and 'filter' to narrow results. For the next page, pass data.nextCursor as 'cursor' and repeat the original query filters and time range."),
-		mcp.WithString("id", mcp.Description("Alert rule ID. Required.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants alert firing history or the state-transition timeline of one configured rule; use signoz_list_alerts for current instances and signoz_get_alert for the rule definition. It requires a rule ID from signoz_list_alert_rules, defaults to the last 6 hours, and supports state/filter narrowing. For the next page, pass data.nextCursor as cursor and repeat the original filters, time range, and order."),
+		mcp.WithString("id", mcp.Description("Alert rule ID. Required; obtain it from signoz_list_alert_rules.")),
 		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start timestamp in unix milliseconds (optional, defaults to 6 hours ago).")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End timestamp in unix milliseconds (optional, defaults to now).")),
@@ -103,7 +103,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 			"Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. "+
 				"Supported cases are v2alpha1 threshold alerts over metrics, logs, traces, or exceptions; v2alpha1 PromQL alerts; and metric-only v1 anomaly alerts, which use top-level evalWindow/frequency and no thresholds, evaluation, or schemaVersion. "+
 				"Before composing the payload, read signoz://alert/instructions and signoz://alert/examples; for PromQL also read signoz://promql/instructions. "+
-				"At least one valid notification channel is required. Before creating, call signoz_list_notification_channels to verify user-provided names or offer available names for user selection; never guess. If create-time validation still finds a missing or invalid name, present the returned choices and retry.",
+				"At least one valid notification channel is required, even when notificationSettings.usePolicy=true. Before creating, call signoz_list_notification_channels to verify user-provided names or show available names and ask the user to choose; never guess. If validation still rejects a channel name, show the current names and retry.",
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
@@ -113,12 +113,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_update_alert",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Updates an existing alert rule in SigNoz (PUT /api/v2/rules/{id}). Replaces the full rule configuration.\n\n"+
-				"CRITICAL: Read signoz://alert/instructions and signoz://alert/examples before generating the payload. "+
-				"When ruleType=promql_rule, also read signoz://promql/instructions — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form. "+
-				"Always fetch the current rule with signoz_get_alert first and merge changes on top of it — PUT replaces the full rule.\n\n"+
-				"The rule payload is the same shape as signoz_create_alert. All the same validation rules apply, including "+
-				"the notification-channel presence check.",
+			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: first call signoz_get_alert and merge the requested change while preserving every other field. Before composing, read signoz://alert/instructions and signoz://alert/examples; for PromQL also read signoz://promql/instructions. Before updating, call signoz_list_notification_channels to verify every selected channel name or show available names and ask the user to choose; never guess. At least one valid channel is required even when notificationSettings.usePolicy=true. If validation still rejects a channel name, show the current names and retry.",
 		),
 		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
@@ -127,9 +122,9 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 	deleteAlertTool := mcp.NewTool(
 		"signoz_delete_alert",
 		withDeleteToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithString("id", mcp.Description("UUIDv7 of the alert rule to delete. Required. The server validates the UUID format and returns invalid_input on bad values.")),
-		mcp.WithDescription("Deletes an alert rule by ID (DELETE /api/v2/rules/{id}). Irreversible. Confirm with the user before calling."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithString("id", mcp.Description("Alert rule UUIDv7. Required; obtain it from signoz_list_alert_rules.")),
+		mcp.WithDescription("Use this when the user explicitly wants to permanently delete a configured alert rule. Resolve its ID with signoz_list_alert_rules and confirm the exact rule first. If both steps are already complete, call this tool directly without repeating list/get preflight. Do not use it to disable a rule or clear a firing instance."),
 	)
 	h.addTool(s, deleteAlertTool, h.handleDeleteAlert)
 
@@ -718,15 +713,16 @@ func (h *Handler) registerAlertResources(s *server.MCPServer) {
 	alertInstructions := mcp.NewResource(
 		"signoz://alert/instructions",
 		"Alert Rule Instructions",
-		mcp.WithResourceDescription("SigNoz alert rule creation guide: alert types, rule types, condition structure, threshold configuration (v2alpha1 schema), composite query format, filter expressions, labels, routing, and notification settings."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before creating or updating an alert. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. For payload examples, read signoz://alert/examples."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(alert.Instructions))),
 	)
 
 	h.addResource(s, alertInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     alert.Instructions,
 			},
 		}, nil
@@ -735,15 +731,16 @@ func (h *Handler) registerAlertResources(s *server.MCPServer) {
 	alertExamples := mcp.NewResource(
 		"signoz://alert/examples",
 		"Alert Rule Examples",
-		mcp.WithResourceDescription("Complete working alert rule examples for all types: metrics threshold, logs with v2 multi-threshold routing, traces latency, PromQL, ClickHouse SQL exceptions, anomaly detection, and formula-based alerts."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this after signoz://alert/instructions when you need alert payload examples for metrics, logs, traces, exceptions, PromQL, anomalies, formulas, tiered thresholds, cumulative alerts, or notification settings. Verify every example channel name with signoz_list_notification_channels."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(alert.Examples))),
 	)
 
 	h.addResource(s, alertExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     alert.Examples,
 			},
 		}, nil

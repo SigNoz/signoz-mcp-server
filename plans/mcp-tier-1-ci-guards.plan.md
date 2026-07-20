@@ -12,7 +12,7 @@ PR #247 already established initialized-wire instruction/description budgets and
 
 ### Tranche A — Wire and transport safety
 - Keep all budget measurements at the initialized MCP wire boundary.
-- Add tool-name, combined official-alias, total input-schema byte, and schema-nesting budgets.
+- Keep tool-name, combined official-alias, and schema-nesting budgets. Do not impose a total serialized-schema byte ceiling; retain reviewed top-level property inventories for unusually wide schemas.
 - Route tools, resources, resource templates, and prompts through checked registration helpers that fail on duplicate keys before mcp-go can overwrite them.
 - Scan every advertised catalog surface for `signoz://` pointers and read each referenced static resource through the in-process MCP client; require non-empty content and matching MIME metadata.
 - Make retries operation-aware: GET and idempotent PUT/DELETE may retry; a POST-specific helper permits retries only for audited read-only queries; create, test-notification, and other mutating POSTs are single-attempt because the upstream APIs have no idempotency keys. Pass the callers' existing byte slices through the internal request API and create a fresh reader per permitted attempt without copying the body.

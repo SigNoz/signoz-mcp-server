@@ -26,7 +26,7 @@ ERROR: If you use aggregateOperator or aggregateAttribute, the dashboard may not
 
 Every builder query and formula must carry an explicit positive limit and non-empty editor-model orderBy. Dashboard payloads use orderBy entries shaped as {columnName, order}; do not copy the Query Range v5 wire field named order into a dashboard.
 
-Use limit: 100 by default for raw list panels, or the same smaller positive value as an intentional pageSize. Order trace lists by timestamp desc and log lists by timestamp desc then id desc. Use limit: 100 for standalone graph, table, pie, and value queries; order by the primary aggregation descending. Formula outputs use limit: 100 and __result desc, while every base query referenced by a formula uses limit: 10000 because base limits are applied before formula evaluation. Narrow filters/grouping when formula-input cardinality can exceed 10000. For time-series panels, each limit ranks groups over the whole selected window, so a short-lived locally significant series can fall outside the returned top N.
+Use limit: 100 by default for raw list panels, or the same smaller value as an intentional pageSize. Order trace lists by timestamp desc and log lists by timestamp desc then id desc. Use limit: 100 for standalone graph, table, pie, and value queries; order by the primary aggregation descending. Formula outputs use limit: 100 and __result desc, while every base query referenced by a formula uses limit: 10000 because base limits are applied before formula evaluation. Narrow filters/grouping when formula-input cardinality can exceed 10000. For time-series panels, each limit ranks groups over the whole selected window, so a short-lived locally significant series can fall outside the returned top N.
 
 === FIELD NAMING CONVENTIONS ===
 
@@ -202,7 +202,7 @@ Simple: filter: expression: service.name in $service_name
 
 Multiple Conditions: filter: expression: service.name in $service_name AND has_error = true
 
-With Variables: filter: expression: service.name in $service_name telemetry.sdk.language in $language
+With Variables: filter: expression: service.name in $service_name AND telemetry.sdk.language in $language
 
 Existence Check: filter: expression: llm.model_name EXISTS
 
@@ -218,7 +218,7 @@ ERROR: Invalid operators cause filter errors. ERROR: Missing $ prefix for variab
 
 For calculated metrics (like error rate):
 
-builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = 'true' limit: 10000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 10000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
+builder: queryData: - queryName: A dataSource: traces expression: A disabled: true # Disable base queries aggregations: - expression: count() filter: expression: has_error = true limit: 10000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = false limit: 10000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
 
 ERROR: Not disabling base queries shows multiple series. ERROR: Invalid formula syntax causes calculation errors. SOLUTION: Always set disabled: true for base queries when using formulas.
 
@@ -300,7 +300,7 @@ panelTypes: value title: Total Requests query: queryType: builder builder: query
 
 --- Value: Error Rate (with Formula) ---
 
-panelTypes: value title: Error Rate yAxisUnit: percentunit query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A disabled: true aggregations: - expression: count() filter: expression: has_error = 'true' limit: 10000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = 'false' limit: 10000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
+panelTypes: value title: Error Rate yAxisUnit: percentunit query: queryType: builder builder: queryData: - queryName: A dataSource: traces expression: A disabled: true aggregations: - expression: count() filter: expression: has_error = true limit: 10000 orderBy: - columnName: count() order: desc - queryName: B dataSource: traces expression: B disabled: true aggregations: - expression: count() filter: expression: has_error = false limit: 10000 orderBy: - columnName: count() order: desc queryFormulas: - queryName: F1 expression: A / (A+B) limit: 100 orderBy: - columnName: __result order: desc
 
 
 === WIDGET TYPES ===
@@ -319,12 +319,12 @@ Example: Token Usage (from Anthropic API)
         -
           aggregations:
             -
-              expression: sum(llm.token_count.prompt) ) )
+              expression: sum(llm.token_count.prompt)
           dataSource: traces
           disabled: true
           expression: A
           filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
+            expression: service.name in $service_name AND telemetry.sdk.language in $language AND llm.model_name in $llm_model
           limit: 10000
           orderBy:
             -
@@ -339,7 +339,7 @@ Example: Token Usage (from Anthropic API)
           disabled: true
           expression: B
           filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
+            expression: service.name in $service_name AND telemetry.sdk.language in $language AND llm.model_name in $llm_model
           limit: 10000
           orderBy:
             -
@@ -409,7 +409,7 @@ Example: Latency (P95) (from Anthropic API)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
+            expression: service.name in $service_name AND telemetry.sdk.language in $language AND llm.model_name in $llm_model
           limit: 100
           orderBy:
             -
@@ -470,7 +470,7 @@ Example: Number of Requests (from Anthropic API)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model llm.provider = 'anthropic'
+            expression: service.name in $service_name AND telemetry.sdk.language in $language AND llm.model_name in $llm_model AND llm.provider = 'anthropic'
           groupBy:
             -
               dataType: string
@@ -546,7 +546,7 @@ Example: Errors (from Anthropic API)
           dataSource: traces
           expression: A
           filter:
-            expression: has_error = true service.name IN $service_name
+            expression: has_error = true AND service.name IN $service_name
           orderBy:
             -
               columnName: timestamp
@@ -638,7 +638,7 @@ Example: Errors (from Autogen)
           dataSource: traces
           expression: A
           filter:
-            expression: has_error = true service.name IN $service_name
+            expression: has_error = true AND service.name IN $service_name
           filters:
             items:
               -
@@ -807,7 +807,7 @@ Example: Model Distribution (from Anthropic API)
           dataSource: traces
           expression: A
           filter:
-            expression: llm.model_name EXISTS service.name in $service_name AND llm.provider = 'anthropic' AND llm.model_name EXISTS
+            expression: service.name in $service_name AND llm.provider = 'anthropic' AND llm.model_name EXISTS
           groupBy:
             -
               dataType: string
@@ -874,7 +874,7 @@ Example: Model Distribution (from Autogen)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name gen_ai.request.model EXISTS
+            expression: service.name in $service_name AND gen_ai.request.model EXISTS
           groupBy:
             -
               dataType: string
@@ -941,7 +941,7 @@ Example: Model Distribution (from Azure OpenAI API)
           dataSource: traces
           expression: A
           filter:
-            expression: llm.model_name EXISTS service.name in $service_name AND llm.model_name EXISTS
+            expression: service.name in $service_name AND llm.model_name EXISTS
           groupBy:
             -
               dataType: string
@@ -1105,7 +1105,7 @@ Example: Agents (from Autogen)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name gen_ai.agent.name EXISTS gen_ai.operation.name = 'invoke_agent'
+            expression: service.name in $service_name AND gen_ai.agent.name EXISTS AND gen_ai.operation.name = 'invoke_agent'
           groupBy:
             -
               dataType: string
@@ -1177,7 +1177,7 @@ Example: Tools (from Autogen)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name gen_ai.tool.name EXISTS gen_ai.operation.name = 'execute_tool'
+            expression: service.name in $service_name AND gen_ai.tool.name EXISTS AND gen_ai.operation.name = 'execute_tool'
           groupBy:
             -
               dataType: string
@@ -1241,11 +1241,11 @@ Example: Input Tokens (from Anthropic API)
         -
           aggregations:
             -
-              expression: sum(llm.token_count.prompt) )
+              expression: sum(llm.token_count.prompt)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
+            expression: service.name in $service_name AND telemetry.sdk.language in $language AND llm.model_name in $llm_model
           limit: 100
           orderBy:
             -
@@ -1302,11 +1302,11 @@ Example: Output Tokens (from Anthropic API)
         -
           aggregations:
             -
-              expression: sum(llm.token_count.completion) )
+              expression: sum(llm.token_count.completion)
           dataSource: traces
           expression: A
           filter:
-            expression: service.name in $service_name telemetry.sdk.language in $language llm.model_name in $llm_model
+            expression: service.name in $service_name AND telemetry.sdk.language in $language AND llm.model_name in $llm_model
           limit: 100
           orderBy:
             -
@@ -1368,7 +1368,7 @@ Example: Error Rate (from Anthropic API)
           disabled: true
           expression: A
           filter:
-            expression: has_error = 'true' service.name in $service_name
+            expression: has_error = true AND service.name in $service_name
           limit: 10000
           orderBy:
             -
@@ -1383,7 +1383,7 @@ Example: Error Rate (from Anthropic API)
           disabled: true
           expression: B
           filter:
-            expression: has_error = 'false' service.name in $service_name
+            expression: has_error = false AND service.name in $service_name
           limit: 10000
           orderBy:
             -

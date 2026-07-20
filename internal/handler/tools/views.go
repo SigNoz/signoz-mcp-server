@@ -42,12 +42,11 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 
 	listTool := mcp.NewTool("signoz_list_views",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List SigNoz saved Explorer views for a given sourcePage. A saved view is a reusable Explorer query (filters, aggregations, panel type) — supported for the Logs, Traces, Metrics, and Cost Meter Explorer pages. "+
-			"IMPORTANT: Supports pagination via 'limit' and 'offset'. The response includes 'pagination' with 'total', 'hasMore', and 'nextOffset'. When searching for a specific view, ALWAYS check 'pagination.hasMore' — if true, continue paging with 'nextOffset' until you find the item or 'hasMore' is false. Never conclude a view doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("sourcePage", mcp.Required(), mcp.Description(`Required. Which Explorer to list views for. One of: "traces", "logs", "metrics", "meter". Cost Meter views are filed under "meter" (not "metrics").`)),
-		mcp.WithString("name", mcp.Description("Optional partial-match filter on view name (applied server-side).")),
-		mcp.WithString("category", mcp.Description("Optional partial-match filter on view category (applied server-side).")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants to discover saved Explorer views or find a view UUID for one Logs, Traces, Metrics, or Cost Meter page. A view stores an Explorer query; it is not a multi-widget dashboard. Apply name/category filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition."),
+		mcp.WithString("sourcePage", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Explorer whose views to list: "traces", "logs", "metrics", or "meter". Use "meter" for Cost Meter, not "metrics".`)),
+		mcp.WithString("name", mcp.Description("Partial, server-side match on the saved-view name. Omit to include every name.")),
+		mcp.WithString("category", mcp.Description("Partial, server-side match on the saved-view category. Omit to include every category.")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
 	)
@@ -55,8 +54,8 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 
 	getTool := mcp.NewTool("signoz_get_view",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Fetch a single SigNoz saved view by UUID. Use the returned object as the base for signoz_update_view — the update is a full-body replace."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants the complete definition of one known saved Explorer view. Use signoz_list_views first when its UUID is unknown. The returned data object is the required base for signoz_update_view because updates fully replace a view. Do not use this for multi-widget dashboards; use signoz_get_dashboard."),
 		// Not mcp.Required(): the legacy alias "viewId" must remain a valid call
 		// for schema-aware clients. The handler validates id/viewId presence.
 		mcp.WithString("id", mcp.Description("Saved view UUID. Use signoz_list_views to discover IDs. Required.")),
@@ -65,16 +64,9 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 
 	createTool := mcp.NewTool("signoz_create_view",
 		withCreateToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Create a new SigNoz saved Explorer view.\n\n"+
-				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
-				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
-				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics/meter\n\n"+
-				"Required fields: name, sourcePage (one of traces|logs|metrics|meter), compositeQuery (object). "+
-				"A Cost Meter view uses sourcePage \"meter\" with signal \"metrics\" and source \"meter\" in each builder spec. "+
-				"Optional: category, tags, extraData. Server populates id, createdAt/By, updatedAt/By — "+
-				"do not send them.",
+			"Use this when the user wants to save one reusable Explorer query for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Cost Meter views use sourcePage=\"meter\" while each builder spec uses signal=\"metrics\" and source=\"meter\". Do not send server-populated IDs or timestamps.",
 		),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Display name of the view.")),
 		mcp.WithString("sourcePage", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
@@ -87,16 +79,9 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 
 	updateTool := mcp.NewTool("signoz_update_view",
 		withUpdateToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Replace an existing SigNoz saved view (HTTP PUT — full body replace).\n\n"+
-				"CRITICAL: You MUST read these resources BEFORE composing a payload:\n"+
-				"1. signoz://view/instructions — REQUIRED: SavedView field schema and sourcePage rules\n"+
-				"2. signoz://view/examples — REQUIRED: full working payloads for traces/logs/metrics/meter\n\n"+
-				"Pass the view's UUID as id and the full SavedView body as view. "+
-				"ALWAYS call signoz_get_view first, modify the `data` object it returns, "+
-				"and pass that under the `view` field here. Partial bodies will wipe unspecified fields. "+
-				"Do not send id/createdAt/createdBy/updatedAt/updatedBy inside `view` — the server ignores them.",
+			"Use this when the user wants to change an existing saved Explorer view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Read signoz://view/instructions and signoz://view/examples when changing sourcePage or compositeQuery; skip them for name-, category-, or tags-only changes when you already have the complete fetched view. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
 		),
 		mcp.WithString("id", mcp.Description("UUID of the view to replace. Required.")),
 		mcp.WithObject("view",
@@ -104,24 +89,25 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 			mcp.Properties(savedViewSchemaProperties()),
 			mcp.AdditionalProperties(true),
 			withRequiredFields("name", "sourcePage", "compositeQuery"),
-			mcp.Description("Full SavedView body representing the complete post-update state. Call signoz_get_view first and pass its data field back here."),
+			mcp.Description("Complete saved view after the requested changes. Start with the data returned by signoz_get_view and pass the full object here."),
 		),
 	)
 	h.addTool(s, updateTool, h.handleUpdateView)
 
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		withDeleteToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Permanently delete a SigNoz saved view by UUID. This cannot be undone."),
-		mcp.WithString("id", mcp.Description("UUID of the view to delete. Required.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards, which use signoz_delete_dashboard."),
+		mcp.WithString("id", mcp.Description("UUID of the saved view to delete. Required; use signoz_list_views to discover it.")),
 	)
 	h.addTool(s, deleteTool, h.handleDeleteView)
 
 	viewInstructions := mcp.NewResource(
 		"signoz://view/instructions",
 		"Saved View Instructions",
-		mcp.WithResourceDescription("SigNoz saved-view schema: SavedView fields, sourcePage values, compositeQuery rules, and the GET-then-PUT update flow."),
+		mcp.WithResourceDescription("Read this before creating or updating a saved Explorer view. It explains view fields, sourcePage, Query Builder v5, Cost Meter views, and how to read a view before replacing it. It does not describe dashboards."),
 		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(views.Instructions))),
 	)
 	h.addResource(s, viewInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
@@ -136,8 +122,9 @@ func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
 	viewExamples := mcp.NewResource(
 		"signoz://view/examples",
 		"Saved View Examples",
-		mcp.WithResourceDescription("Complete SavedView payloads — one per sourcePage (traces, logs, metrics, meter) — suitable for signoz_create_view."),
+		mcp.WithResourceDescription("Read this after signoz://view/instructions when composing a saved Explorer view. It provides complete Query Builder v5 payloads for traces, logs, metrics, and Cost Meter source pages."),
 		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(views.Examples))),
 	)
 	h.addResource(s, viewExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{

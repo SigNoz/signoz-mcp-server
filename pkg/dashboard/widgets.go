@@ -41,6 +41,10 @@ Query Resources [REQUIRED]:
 - ClickHouse traces: signoz://dashboard/clickhouse-schema-for-traces and signoz://dashboard/clickhouse-traces-example
 - PromQL: signoz://promql/instructions
 
+Field Discovery:
+- When a Query Builder field name is not already known, call signoz_get_field_keys with the widget's signal and fieldContext before composing the query; use signoz_get_field_values when observed values help verify the filter.
+- Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
+
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
 - ALWAYS set legend when groupBy is used on series-producing charts. Without legend, SigNoz shows raw query identifiers.

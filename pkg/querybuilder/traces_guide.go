@@ -21,6 +21,20 @@ Examples:
   has_error = true AND k8s.namespace.name = 'prod'
   (has_error = true OR duration_nano > 1000000000) AND service.name = 'checkout'
 
+== FIELD DISCOVERY ==
+
+Unknown keys hard-error. Built-in span columns are stable, but resource and span/tag attributes depend
+on this workspace's instrumentation. Do not guess unfamiliar field names. Discover keys, then confirm
+their observed values before filtering:
+  signoz_get_field_keys(signal="traces", fieldContext="span")
+  signoz_get_field_keys(signal="traces", fieldContext="resource")
+  signoz_get_field_keys(signal="traces", fieldContext="attribute")
+  signoz_get_field_values(signal="traces", name="<field>", fieldContext="<matching context>")
+
+The fieldContext value "tag" is accepted as an alias for "attribute" by the discovery tools; Query
+Builder selectFields and groupBy use "tag". The resource and tag names below are common examples, not
+a complete catalog for every workspace.
+
 == FIELD NAMES — THREE CATEGORIES ==
 
 --- 1. Built-in span columns (snake_case, fieldContext: "span") ---
@@ -90,7 +104,7 @@ Every builder_query must include a positive limit and explicit order.
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
 time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
-smaller positive limit only when the user asks for top N; use a larger positive override when completeness
+smaller limit only when the user asks for top N; use a larger limit when completeness
 matters more than response size.
 
 == COMPLETE WORKING EXAMPLES ==

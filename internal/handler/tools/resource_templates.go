@@ -3,13 +3,17 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -22,8 +26,8 @@ func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 	h.addResourceTemplate(s,
 		mcp.NewResourceTemplate(
 			"signoz://alert/{id}/summary",
-			"Alert Summary",
-			mcp.WithTemplateDescription("Get alert configuration and recent history for a specific alert rule."),
+			"Alert Definition and Recent History",
+			mcp.WithTemplateDescription("Use this resource with a rule ID from signoz_list_alert_rules to read one live alert definition and up to 10 history records from the preceding six hours. Use signoz_get_alert or signoz_get_alert_history when a tool call is preferred."),
 			mcp.WithTemplateMIMEType("application/json"),
 		),
 		h.handleAlertSummaryResource,
@@ -32,8 +36,8 @@ func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
 	h.addResourceTemplate(s,
 		mcp.NewResourceTemplate(
 			"signoz://dashboard/{id}/summary",
-			"Dashboard Summary",
-			mcp.WithTemplateDescription("Get dashboard metadata and widget list for a specific dashboard."),
+			"Dashboard Definition",
+			mcp.WithTemplateDescription("Use this resource with an ID from signoz_list_dashboards to read the full live dashboard definition, including widgets and variables. Use signoz_get_dashboard when a tool call is preferred."),
 			mcp.WithTemplateMIMEType("application/json"),
 		),
 		h.handleDashboardSummaryResource,
@@ -58,23 +62,36 @@ func (h *Handler) handleAlertSummaryResource(ctx context.Context, req mcp.ReadRe
 		return nil, fmt.Errorf("failed to get alert: %w", err)
 	}
 
+	asOf := timeutil.NowMillis()
+	historyStart := asOf - int64((6*time.Hour)/time.Millisecond)
 	historyReq := types.AlertHistoryRequest{
-		Start: timeutil.HoursAgoMillis(6),
-		End:   timeutil.NowMillis(),
+		Start: historyStart,
+		End:   asOf,
 		Order: "desc",
 		Limit: 10,
 	}
 	historyData, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 	if err != nil {
-		// History fetch is best-effort; include alert data even if history fails
+		var statusErr *signozclient.HTTPStatusError
+		if errors.As(err, &statusErr) && (statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusForbidden) {
+			return nil, fmt.Errorf("failed to get alert history: %w", err)
+		}
 		h.logger.WarnContext(ctx, "Failed to get alert history", slog.String("ruleId", ruleID), logpkg.ErrAttr(err))
 	}
 
-	summary := map[string]json.RawMessage{
-		"alert": alertData,
+	summary := map[string]any{
+		"alert":            alertData,
+		"asOf":             asOf,
+		"historyAvailable": err == nil,
+		"historyWindow": map[string]int64{
+			"start": historyStart,
+			"end":   asOf,
+		},
 	}
-	if historyData != nil {
+	if err == nil {
 		summary["recentHistory"] = historyData
+	} else {
+		summary["warnings"] = []string{"Recent alert history is unavailable; retry this resource or use signoz_get_alert_history."}
 	}
 
 	data, err := json.Marshal(summary)

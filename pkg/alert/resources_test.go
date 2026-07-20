@@ -12,9 +12,11 @@ var formulaVariablePattern = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.T) {
 	for _, required := range []string{
 		"Before creating an alert, call signoz_list_notification_channels",
+		"Do the same before updating",
 		"verify every user-selected name exists",
-		"present the available names and ask the user to choose",
-		"fallback for stale or changed channel data, not normal discovery",
+		"show the available names and ask the user to choose",
+		"requires at least one existing valid channel even when notificationSettings.usePolicy=true",
+		"validation returns the current names so you can retry",
 		"verified with signoz_list_notification_channels",
 		"Never guess",
 	} {

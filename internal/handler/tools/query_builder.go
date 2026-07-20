@@ -21,9 +21,9 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Use this only when the user needs a raw SigNoz Query Builder v5 envelope for multi-query, formulas, PromQL, ClickHouse SQL, or another shape the higher-level tools cannot express. "+
+			"Use this only when the user needs a SigNoz Query Builder v5 request that the dedicated log, trace, and metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
 				"Before composing the query, read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas also require the metrics guide, and PromQL requires signoz://promql/instructions. "+
 				"For predictable formulas, explicitly set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server normalizes omissions.",
@@ -36,15 +36,16 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
 		"Traces Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax, canonical built-in span columns, explicit raw/aggregate result bounds and ordering, and executable examples for raw, scalar, and time-series queries."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.TracesQueryBuilderGuide))),
 	)
 
 	h.addResource(s, tracesQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     querybuilder.TracesQueryBuilderGuide,
 			},
 		}, nil
@@ -53,15 +54,16 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	logsQueryBuilderGuide := mcp.NewResource(
 		"signoz://logs/query-builder-guide",
 		"Logs Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 logs guide: filter expression syntax, explicit raw/aggregate result bounds and ordering, stable timestamp/id pagination, body search, and executable examples for raw, scalar, and time-series queries."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body and JSON-path search, row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.LogsQueryBuilderGuide))),
 	)
 
 	h.addResource(s, logsQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     querybuilder.LogsQueryBuilderGuide,
 			},
 		}, nil

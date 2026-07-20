@@ -6,12 +6,15 @@ const MetricsGuide = `# Metrics Aggregation Guide
 
 ## Pre-Query Checklist
 
-Before querying any metric, call **signoz_list_metrics** with the metric name to get:
+If the exact metric name is known, call **signoz_query_metrics** directly. When ` + "`metricType`" + ` is
+omitted, the tool looks up the metric and auto-fetches:
 - **type**: gauge, sum, histogram, exponential_histogram
 - **temporality**: cumulative, delta, unspecified
 - **isMonotonic**: true/false (only relevant for type=sum)
 
-These fields determine which aggregations are valid and which defaults are applied.
+These fields determine which aggregations are valid and which defaults are applied. Use
+**signoz_list_metrics** first only when discovering a metric name, inspecting catalog metadata, or
+supplying metadata manually.
 
 ---
 
@@ -55,7 +58,7 @@ Valid reduceTo values: sum, count, avg, min, max, last, median
 1. **rate/increase on a gauge** → Invalid. Rate measures change over time, but gauges represent instantaneous values. Use avg, latest, or sum instead.
 2. **timeAggregation on histogram** → Ignored. Histogram time aggregation is handled automatically by the backend. Only set spaceAggregation (p50-p99).
 3. **sum/avg/min/max spaceAggregation on histogram** → Invalid. Histograms must use percentile aggregations (p50, p75, p90, p95, p99).
-4. **Missing temporality for counters** → Always pass temporality from signoz_list_metrics. Cumulative vs delta affects how rate is computed.
+4. **Providing only metricType for a counter** → This bypasses metadata auto-fetch and can leave temporality or monotonicity unspecified. Either omit metricType so all metadata is fetched, or pass the matching values from signoz_list_metrics.
 
 ---
 
@@ -64,8 +67,8 @@ Valid reduceTo values: sum, count, avg, min, max, last, median
 When specifying groupBy fields, the fieldContext is auto-detected:
 
 **Resource attributes** (fieldContext="resource"):
-Prefixes: k8s., container., host., cloud., deployment., process.
-Examples: k8s.namespace.name, k8s.pod.name, host.name, container.id
+Prefixes: k8s., container., host., cloud., deployment., process., service., telemetry., os.
+Examples: k8s.namespace.name, host.name, container.id, service.name, os.type
 
 **Metric attributes** (fieldContext="attribute"):
 Everything else. Examples: service_name, http.method, status_code
