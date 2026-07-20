@@ -14,14 +14,9 @@ func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_check_metric_cardinality",
 		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
-			"Return label/attribute keys for a single metric with their cardinality counts and sample "+
-				"values, sorted highest-cardinality first. The values field on each attribute entry contains a "+
-				"sample of actual label values, which helps determine whether high cardinality is real "+
-				"(e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric "+
-				"is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion "+
-				"cost entirely — more impactful than trimming its labels."),
+			"Use this when the user wants to find high-cardinality labels or attributes on one metric. It returns keys sorted by cardinality count with sample values, helping distinguish unbounded values such as UUIDs from bounded dimensions such as status codes. Do not use it to find dashboard or alert dependencies (signoz_check_metric_usage) or rank metric ingestion (signoz_get_top_metrics). This does not show whether the metric is used; check usage before recommending a drop."),
 		mcp.WithString("searchContext",
-			mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+			mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithString("metricName",
 			mcp.Required(),
 			mcp.Description("Name of the metric to inspect. Example: 'k8s.container.memory_limit'.")),

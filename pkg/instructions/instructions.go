@@ -19,4 +19,6 @@ const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, trace
 5. **Convert timestamps programmatically.** SigNoz start/end and time-series timestamps are Unix milliseconds. Never convert them mentally; use a date/time function before presenting them.
 
 6. **Use returned webUrl values verbatim.** Resource results include SigNoz deep links. Never construct links from IDs or the instance URL.
+
+7. **Prepare mutations with reads.** For replacements, get the current object and preserve unchanged fields. Resolve names and IDs with read-only list/get calls first; mutation-time validation is only a changed-state fallback.
 `

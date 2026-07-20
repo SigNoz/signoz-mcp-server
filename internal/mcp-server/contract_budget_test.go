@@ -25,7 +25,6 @@ const (
 	maxTopLevelProperties        = guardrails.MaxTopLevelProperties
 	maxToolNameBytes             = guardrails.MaxToolNameBytes
 	maxCombinedToolNameBytes     = guardrails.MaxCombinedToolNameBytes
-	maxSerializedSchemaBytes     = guardrails.MaxSerializedSchemaBytes
 	maxInputSchemaNestingDepth   = guardrails.MaxInputSchemaNestingDepth
 )
 
@@ -150,7 +149,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_create_alert": {
 				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "Before creating", "signoz_list_notification_channels", "verify user-provided names", "create-time validation", "missing or invalid", "never guess"},
+				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "Before creating", "signoz_list_notification_channels", "verify user-provided names", "If validation still rejects a channel name", "never guess"},
 			},
 			"signoz_create_dashboard": {
 				prefix:   "Use this when",
@@ -162,7 +161,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_execute_builder_query": {
 				prefix:   "Use this only when",
-				required: []string{"higher-level tools cannot express", "signoz_search_logs", "signoz_aggregate_traces", "signoz_query_metrics", "signoz://metrics-aggregation-guide", "input builder_query limit to 10000", "builder_formula result limit to 100", "non-empty spec.order"},
+				required: []string{"dedicated log, trace, and metric tools cannot express", "signoz_search_logs", "signoz_aggregate_traces", "signoz_query_metrics", "signoz://metrics-aggregation-guide", "input builder_query limit to 10000", "builder_formula result limit to 100", "non-empty spec.order"},
 			},
 		}
 		for toolName, contract := range selectionContracts {
@@ -213,8 +212,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 		}
 	})
 
-	t.Run("tool names and schema envelopes", func(t *testing.T) {
-		maxSchemaTool, maxSchemaBytes := "", 0
+	t.Run("tool names and schema nesting", func(t *testing.T) {
 		maxDepthTool, maxDepth := "", 0
 		for _, tool := range listedTools {
 			if got := len(tool.Name); got > maxToolNameBytes {
@@ -231,33 +229,6 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			}
 
 			schema := inputSchema(t, tool)
-			encodedInput, err := json.Marshal(schema)
-			if err != nil {
-				t.Fatalf("marshal %s input schema: %v", tool.Name, err)
-			}
-			serializedSchemaBytes := len(encodedInput)
-			encodedTool, err := json.Marshal(tool)
-			if err != nil {
-				t.Fatalf("marshal %s tool: %v", tool.Name, err)
-			}
-			var wireTool map[string]any
-			if err := json.Unmarshal(encodedTool, &wireTool); err != nil {
-				t.Fatalf("decode %s tool: %v", tool.Name, err)
-			}
-			if outputSchema, ok := wireTool["outputSchema"]; ok {
-				encodedOutput, err := json.Marshal(outputSchema)
-				if err != nil {
-					t.Fatalf("marshal %s output schema: %v", tool.Name, err)
-				}
-				serializedSchemaBytes += len(encodedOutput)
-			}
-			if serializedSchemaBytes > maxSchemaBytes {
-				maxSchemaTool, maxSchemaBytes = tool.Name, serializedSchemaBytes
-			}
-			if serializedSchemaBytes > maxSerializedSchemaBytes {
-				t.Errorf("%s schemas = %d bytes, limit %d", tool.Name, serializedSchemaBytes, maxSerializedSchemaBytes)
-			}
-
 			depth := schemaNestingDepth(schema)
 			if depth > maxDepth {
 				maxDepthTool, maxDepth = tool.Name, depth
@@ -266,7 +237,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 				t.Errorf("%s input schema nesting depth = %d, limit %d", tool.Name, depth, maxInputSchemaNestingDepth)
 			}
 		}
-		t.Logf("maximum input schema=%s (%d bytes); maximum nesting=%s (depth %d)", maxSchemaTool, maxSchemaBytes, maxDepthTool, maxDepth)
+		t.Logf("maximum input schema nesting=%s (depth %d)", maxDepthTool, maxDepth)
 	})
 }
 

@@ -21,8 +21,8 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 	searchTool := mcp.NewTool("signoz_search_docs",
 		mcp.WithOutputSchema[docsindex.SearchResponse](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Search official SigNoz documentation with BM25 over full markdown content. Use this for ANY SigNoz product question: how-to, feature usage, setup, config, API, deployment, instrumentation, OpenTelemetry integration with SigNoz, and troubleshooting. Call before data tools for ambiguous how-to questions, and after data tools when live telemetry results are confusing. Do not use for fetching actual telemetry, live alert state, or dashboard contents."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user asks a SigNoz product, setup, instrumentation, configuration, API, deployment, or troubleshooting question and no exact documentation page is selected. Returns ranked official-doc matches with URLs and snippets. Do not use for live tenant data; use signoz_fetch_doc when a result or exact docs URL needs full content."),
 		// Not Required() so the legacy "query" alias (#367) stays valid for
 		// schema-validating clients; the handler still enforces "is required".
 		mcp.WithString("searchText", mcp.Description("Natural-language or keyword query to search in official SigNoz docs.")),
@@ -38,8 +38,8 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 	fetchTool := mcp.NewTool("signoz_fetch_doc",
 		mcp.WithOutputSchema[docsindex.FetchResult](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Fetch full markdown for one official SigNoz documentation page from the local docs index. Use after signoz_search_docs when a result needs detail, exact commands, prerequisites, or a specific section. Accepts only signoz.io/docs URLs or /docs/... paths."),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this after signoz_search_docs, or when an exact official SigNoz docs URL or /docs/... path is known, to return one page's full Markdown or a requested heading. Do not use it to discover pages or query live tenant data; use signoz_search_docs for topical discovery."),
 		mcp.WithString("url", mcp.Required(), mcp.Description("Full https://signoz.io/docs/... URL or /docs/... path.")),
 		mcp.WithString("heading", mcp.Description(`Optional heading anchor ID or heading text, for example "prerequisites" or "## Prerequisites".`)),
 	)
@@ -48,7 +48,7 @@ func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
 	sitemap := mcp.NewResource(
 		docsindex.DocsSitemapURI,
 		"SigNoz Docs Sitemap",
-		mcp.WithResourceDescription("Indexed SigNoz docs sitemap used by signoz_search_docs and signoz_fetch_doc."),
+		mcp.WithResourceDescription("Use this resource when an MCP client needs the indexed official SigNoz documentation catalog and page URLs. Use signoz_search_docs for topical discovery and signoz_fetch_doc for page content."),
 		mcp.WithMIMEType("text/markdown"),
 	)
 	h.addResource(s, sitemap, h.handleDocsSitemap)

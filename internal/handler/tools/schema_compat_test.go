@@ -208,15 +208,15 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 		// top-level field (promoted from the embedded AlertRule)
 		{"create alert", []string{"alert"}, "Name of the alert rule. Must be unique and descriptive."},
 		// searchContext is authored natively in the jsonschema tag too
-		{"create alert", []string{"searchContext"}, "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."},
+		{"create alert", []string{"searchContext"}, "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses."},
 		// deep path through a slice element (queries -> items -> spec -> filter -> expression)
 		{"create alert", []string{"condition", "compositeQuery", "queries", "[]", "spec", "filter", "expression"}, "Filter expression using field operators. Example: service.name = frontend AND http.status_code >= 500. Use empty string for no filter."},
 		// direct named field on UpdateAlertInput (id is canonical; ruleId is a legacy alias)
 		{"update alert", []string{"id"}, "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."},
 		// dashboard: slice element (widgets -> items -> id)
-		{"create dashboard", []string{"widgets", "[]", "id"}, "ID for the widget"},
+		{"create dashboard", []string{"widgets", "[]", "id"}, "Unique widget ID. The matching layout item uses this value in layout[].i."},
 		// dashboard: map value schema (variables -> additionalProperties -> name)
-		{"create dashboard", []string{"variables", "{}", "name"}, "Name for the variable"},
+		{"create dashboard", []string{"variables", "{}", "name"}, "Variable name shown in the UI. Defaults to the variables map key."},
 	}
 
 	for _, c := range checks {

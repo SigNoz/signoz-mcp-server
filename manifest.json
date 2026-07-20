@@ -27,31 +27,31 @@
   "tools": [
     {
       "name": "signoz_list_metrics",
-      "description": "Search and list available metrics from SigNoz over a time range (timeRange default 1h). Set source=\"meter\" to list Cost Meter (usage/billing) metrics"
+      "description": "Discover active metric names and catalog metadata such as type, temporality, and monotonicity; use signoz_query_metrics for values or trends. Set source=\"meter\" for Cost Meter metrics"
     },
     {
       "name": "signoz_query_metrics",
-      "description": "Query metrics with smart aggregation defaults based on metric type; standalone queries and formula results use limit 100, while formula inputs use limit 10000 before evaluation, all ordered by __result desc. Set source=\"meter\" to query Cost Meter (usage/billing) data"
+      "description": "Query a known metric for scalar values, time-series trends, breakdowns, or formulas with metric-aware defaults; use signoz_list_metrics only when the metric name is unknown"
     },
     {
       "name": "signoz_get_top_metrics",
-      "description": "Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis"
+      "description": "Return the fixed top 100 metrics ranked by ingested sample volume with percentages for cost and volume analysis, not metric values or dependency usage"
     },
     {
       "name": "signoz_check_metric_usage",
-      "description": "Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one. Each result has dashboards, alerts, and error fields — a non-empty error means the lookup is incomplete and any returned lists are partial"
+      "description": "For up to 50 known metric names, return dashboard and alert references before a drop or reduction; a non-empty per-metric error means that result is partial, not unused"
     },
     {
       "name": "signoz_check_metric_cardinality",
-      "description": "Return label/attribute keys for a single metric with their cardinality counts and sample values, sorted highest-cardinality first. The values field on each attribute entry contains a sample of actual label values, which helps determine whether high cardinality is real (e.g. UUIDs, pod IDs) or bounded (e.g. namespace names, status codes). Note: if the metric is not referenced in any dashboard or alert, dropping it outright eliminates its ingestion cost entirely — more impactful than trimming its labels."
+      "description": "Return one metric's label or attribute keys sorted by cardinality with sample values; use signoz_check_metric_usage for dashboard and alert dependencies"
     },
     {
       "name": "signoz_get_field_keys",
-      "description": "Get available field keys for metrics, traces, or logs"
+      "description": "Discover available field names for filtering or grouping metrics, traces, or logs; use signoz_get_field_values after choosing a key"
     },
     {
       "name": "signoz_get_field_values",
-      "description": "Get possible values for a field key for metrics, traces, or logs"
+      "description": "Get observed values for a known metrics, traces, or logs field key; use signoz_get_field_keys when the key is unknown"
     },
     {
       "name": "signoz_list_alerts",
@@ -59,161 +59,251 @@
     },
     {
       "name": "signoz_list_alert_rules",
-      "description": "List configured alert rules via GET /api/v2/rules, including inactive/OK and disabled rules"
+      "description": "List configured alert-rule summaries, including inactive/OK and disabled rules; use signoz_get_alert for one full definition"
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get an alert rule definition by id (param 'id') via GET /api/v2/rules/{id}. Response shape differs by server version (v2 Rule vs v1 GettableRule)"
+      "description": "Get one configured alert rule's full definition by id; use before the full-replacement signoz_update_alert"
     },
     {
       "name": "signoz_get_alert_history",
-      "description": "Get alert firing history for a specific alert rule. Defaults to the last 6 hours. Use 'state' and 'filter' to narrow results. For the next page, pass data.nextCursor as 'cursor' and repeat the original query filters and time range."
+      "description": "Get one configured alert rule's firing or state-transition history; defaults to six hours and paginates with data.nextCursor"
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert rule via POST /api/v2/rules. Verify notification channel names with signoz_list_notification_channels first. Threshold/PromQL rules use v2alpha1; metric-only anomaly rules use the v1 schema"
+      "description": "Create a new alert after verifying selected notification-channel names; threshold/PromQL rules use v2alpha1 and metric-only anomaly rules use v1"
     },
     {
       "name": "signoz_update_alert",
-      "description": "Update an existing alert rule by UUIDv7 (param 'id') via PUT /api/v2/rules/{id}"
+      "description": "Fully replace an alert rule: fetch it first, preserve unchanged fields, and verify every selected notification-channel name"
     },
     {
       "name": "signoz_delete_alert",
-      "description": "Delete an alert rule by UUIDv7 (param 'id') via DELETE /api/v2/rules/{id}"
+      "description": "Permanently delete a confirmed alert rule by UUIDv7; call directly once signoz_list_alert_rules has resolved the id"
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List all dashboards with summaries"
+      "description": "List paginated tenant-dashboard summaries and discover UUIDs; use signoz_get_dashboard for widget and query definitions"
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get full dashboard configuration by id (param 'id')"
+      "description": "Get one known tenant dashboard's complete layout, variables, widgets, and queries by id"
     },
     {
       "name": "signoz_create_dashboard",
-      "description": "Create a new monitoring dashboard"
+      "description": "Create a custom multi-widget dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
     },
     {
       "name": "signoz_update_dashboard",
-      "description": "Update an existing dashboard by id (param 'id')"
+      "description": "Fully replace a dashboard after fetching its definition and preserving every unrequested field"
     },
     {
       "name": "signoz_delete_dashboard",
-      "description": "Delete a dashboard by id (param 'id')"
+      "description": "Permanently delete a confirmed tenant dashboard by id; use signoz_list_dashboards to discover the UUID"
     },
     {
       "name": "signoz_import_dashboard",
-      "description": "Create a dashboard from a curated template in the SigNoz/dashboards GitHub repo by path"
+      "description": "Create a tenant dashboard from a known curated SigNoz/dashboards template path; list templates first when the path is unknown"
     },
     {
       "name": "signoz_list_dashboard_templates",
-      "description": "List the bundled curated SigNoz dashboard template catalog so the model can pick a template by intent"
+      "description": "List the bundled curated template catalog and discover a path for signoz_import_dashboard; this is not the tenant-dashboard list"
     },
     {
       "name": "signoz_list_services",
-      "description": "List services within a given time range"
+      "description": "List paginated APM services with trace activity in a time window; use field-value discovery for arbitrary service.name values in logs"
     },
     {
       "name": "signoz_get_service_top_operations",
-      "description": "Get top operations for a service"
+      "description": "Return one traced service's built-in operation table, ranked by p99 with p50/p95/p99, calls, and errors; use signoz_aggregate_traces for custom aggregation"
     },
     {
       "name": "signoz_list_views",
-      "description": "List SigNoz saved Explorer views for a given sourcePage (traces, logs, metrics, or meter for Cost Meter views), with optional name/category filters"
+      "description": "List paginated saved Explorer views for traces, logs, metrics, or Cost Meter, with optional name/category filters"
     },
     {
       "name": "signoz_get_view",
-      "description": "Get a single SigNoz saved view by id (param 'id')"
+      "description": "Get one saved Explorer view's complete definition by id; use before the full-replacement signoz_update_view"
     },
     {
       "name": "signoz_search_docs",
-      "description": "Search official SigNoz documentation for any product, setup, instrumentation, deployment, configuration, API, or troubleshooting question"
+      "description": "Return ranked official-doc matches with URLs and snippets when no exact SigNoz documentation page is selected"
     },
     {
       "name": "signoz_fetch_doc",
-      "description": "Fetch full markdown for a single official SigNoz documentation page or heading from the local docs index"
+      "description": "Fetch one known official SigNoz documentation page's full Markdown or a requested heading"
     },
     {
       "name": "signoz_create_view",
-      "description": "Create a new SigNoz saved Explorer view"
+      "description": "Save one reusable Explorer query after reading both view authoring resources; use signoz_create_dashboard for a multi-widget dashboard"
     },
     {
       "name": "signoz_update_view",
-      "description": "Replace an existing SigNoz saved view (full-body PUT; param 'id')"
+      "description": "Fully replace a fetched saved view while preserving other fields; read its guides when changing sourcePage or compositeQuery, not for name/category/tags-only changes"
     },
     {
       "name": "signoz_delete_view",
-      "description": "Delete a SigNoz saved view by id (param 'id')"
+      "description": "Permanently delete a confirmed saved Explorer view by id; use signoz_list_views to discover the UUID"
     },
     {
       "name": "signoz_aggregate_logs",
-      "description": "Aggregate logs to compute statistics (count, avg, sum, min, max, percentiles) with canonical filter expressions; requestType scalar (default) or time_series; default limit 100 ordered by the primary aggregation; see signoz://logs/query-builder-guide"
+      "description": "Return aggregate log statistics and grouped or top-N breakdowns, not individual records; use signoz_search_logs for log rows and messages"
     },
     {
       "name": "signoz_search_logs",
-      "description": "Search logs with flexible filtering by service, severity, body text, and canonical filter expressions; see signoz://logs/query-builder-guide"
+      "description": "Return individual paginated log records; shortcut parameters need no guide, while custom filters with unfamiliar fields use the logs guide"
     },
     {
       "name": "signoz_aggregate_traces",
-      "description": "Aggregate traces to compute statistics over spans, optionally grouped by fields, with canonical filter expressions; requestType scalar (default) or time_series; default limit 100 ordered by the primary aggregation; see signoz://traces/query-builder-guide"
+      "description": "Return custom aggregate span statistics, groups, or time series; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
     },
     {
       "name": "signoz_search_traces",
-      "description": "Search traces with flexible filtering by service, operation, error, duration, and canonical filter expressions; see signoz://traces/query-builder-guide"
+      "description": "Return individual paginated span rows matching trace filters or discover trace IDs; use aggregate_traces for statistics and get_trace_details for a known trace"
     },
     {
       "name": "signoz_get_trace_details",
-      "description": "Get comprehensive trace information including all spans and hierarchy"
+      "description": "For a known trace ID, return its spans, metadata, and hierarchy within a containing time window; use signoz_search_traces when the ID is unknown"
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Raw Query Builder v5 escape hatch for unsupported multi-query/formula shapes. Prefer search/aggregate/query_metrics tools; explicitly author positive limits plus v5 order (not dashboard orderBy) for predictable bounds, while the server inserts and reports standalone/result defaults of 100 and formula-input defaults of 10000"
+      "description": "Run Query Builder v5 requests that the dedicated log, trace, or metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL; formulas use input limit 10000, result limit 100, and non-empty spec.order"
     },
     {
       "name": "signoz_list_notification_channels",
-      "description": "List all configured notification channels"
+      "description": "List paginated notification-channel summaries for exact-name verification, duplicate checks, and ID discovery; use get for provider-specific settings"
     },
     {
       "name": "signoz_create_notification_channel",
-      "description": "Create a notification channel and send a test notification"
+      "description": "Create a uniquely named notification channel after listing existing names, then send a test notification"
     },
     {
       "name": "signoz_update_notification_channel",
-      "description": "Update an existing notification channel and send a test notification"
+      "description": "Fully replace a notification channel after fetching its complete configuration, then send a test notification"
     },
     {
       "name": "signoz_get_notification_channel",
-      "description": "Get a single notification channel by ID"
+      "description": "Get all provider-specific settings for one notification channel by ID"
     },
     {
       "name": "signoz_delete_notification_channel",
-      "description": "Delete a notification channel by ID"
+      "description": "Permanently delete a confirmed notification channel by ID; call directly once resolved, but note that it does not check alert-rule references"
     }
   ],
   "resources": [
     {
+      "uri": "signoz://alert/examples",
+      "name": "Alert Rule Examples",
+      "description": "Read this after signoz://alert/instructions when you need alert payload examples for metrics, logs, traces, exceptions, PromQL, anomalies, formulas, tiered thresholds, cumulative alerts, or notification settings. Verify every example channel name with signoz_list_notification_channels.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://alert/instructions",
+      "name": "Alert Rule Instructions",
+      "description": "Read this before creating or updating an alert. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. For payload examples, read signoz://alert/examples.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/clickhouse-logs-example",
+      "name": "ClickHouse Logs Examples",
+      "description": "Read this after signoz://dashboard/clickhouse-schema-for-logs when composing a raw ClickHouse logs widget. It covers timestamp and attribute filters, resource CTEs, variables, timeseries/value shapes, and performance patterns.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/clickhouse-metrics-example",
+      "name": "ClickHouse Metrics Examples",
+      "description": "Read this after signoz://dashboard/clickhouse-schema-for-metrics when composing a raw ClickHouse metrics widget. It covers counter rates, error ratios, histogram quantiles, time-series tables, variables, and performance patterns.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/clickhouse-schema-for-logs",
+      "name": "ClickHouse Logs Schema",
+      "description": "Read this before writing ClickHouse SQL for a dashboard widget over SigNoz logs. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-logs-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/clickhouse-schema-for-metrics",
+      "name": "ClickHouse Metrics Schema",
+      "description": "Read this before writing ClickHouse SQL for a dashboard widget over SigNoz metrics. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-metrics-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/clickhouse-schema-for-traces",
+      "name": "ClickHouse Traces Schema",
+      "description": "Read this before writing ClickHouse SQL for a dashboard widget over SigNoz traces. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-traces-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/clickhouse-traces-example",
+      "name": "ClickHouse Traces Examples",
+      "description": "Read this after signoz://dashboard/clickhouse-schema-for-traces when composing a raw ClickHouse traces widget. It covers resource filters, timeseries/value/table result shapes, span events, latency analysis, and performance patterns.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/instructions",
+      "name": "Dashboard Basic Instructions",
+      "description": "Read this before creating or fully replacing a dashboard. It explains dashboard fields, metadata, variables, variable chaining, and layout. Also read signoz://dashboard/widgets-instructions for widget and query choices.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/query-builder-example",
+      "name": "Query Builder Examples",
+      "description": "Read this when composing a Query Builder dashboard widget. It covers signal-specific aggregations, filters, metric naming, grouped legends, functions, and examples; use the ClickHouse or PromQL resources instead for those query types.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/widgets-examples",
+      "name": "Dashboard Widgets Examples",
+      "description": "Read this after the dashboard and widget instructions when building panels. It includes examples by panel type, validation checks, troubleshooting, and grouped-series legends. Verify field names in the target SigNoz workspace.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/widgets-instructions",
+      "name": "Dashboard Widget Instructions",
+      "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
+      "mimeType": "text/markdown"
+    },
+    {
       "uri": "signoz://docs/sitemap",
       "name": "SigNoz Docs Sitemap",
-      "description": "Indexed sitemap used by signoz_search_docs and signoz_fetch_doc",
+      "description": "Use this resource when an MCP client needs the indexed official SigNoz documentation catalog and page URLs. Use signoz_search_docs for topical discovery and signoz_fetch_doc for page content.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://logs/query-builder-guide",
       "name": "Logs Query Builder Guide",
-      "description": "SigNoz Query Builder v5 logs guide with filter syntax, field contexts, explicit raw/aggregate result bounds and ordering, body search, and executable examples",
-      "mimeType": "text/plain"
-    },
-    {
-      "uri": "signoz://traces/query-builder-guide",
-      "name": "Traces Query Builder Guide",
-      "description": "SigNoz Query Builder v5 traces guide with filter syntax, field contexts, explicit raw/aggregate result bounds and ordering, built-in span columns, and executable examples",
-      "mimeType": "text/plain"
+      "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body and JSON-path search, row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
+      "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://metrics-aggregation-guide",
       "name": "Metrics Aggregation Guide",
-      "description": "SigNoz Query Builder v5 metrics and formula guide with aggregation defaults, standalone/result limit 100, formula-input limit 10000, __result ordering, Cost Meter examples, and whole-window top-N caveats",
-      "mimeType": "text/plain"
+      "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://promql/instructions",
+      "name": "PromQL Instructions",
+      "description": "Read this when composing a PromQL dashboard widget or promql_rule alert. It explains SigNoz's Prometheus 3.x quoted-selector form for dotted OTel metric names, resource labels, examples, and query checks; do not use it for Query Builder or ClickHouse SQL.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://traces/query-builder-guide",
+      "name": "Traces Query Builder Guide",
+      "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://view/examples",
+      "name": "Saved View Examples",
+      "description": "Read this after signoz://view/instructions when composing a saved Explorer view. It provides complete Query Builder v5 payloads for traces, logs, metrics, and Cost Meter source pages.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://view/instructions",
+      "name": "Saved View Instructions",
+      "description": "Read this before creating or updating a saved Explorer view. It explains view fields, sourcePage, Query Builder v5, Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
+      "mimeType": "text/markdown"
     }
   ],
   "compatibility": {

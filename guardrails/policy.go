@@ -11,7 +11,6 @@ const (
 	MaxTopLevelProperties        = 15
 	MaxToolNameBytes             = 48
 	MaxCombinedToolNameBytes     = 60
-	MaxSerializedSchemaBytes     = 24 << 10
 	MaxInputSchemaNestingDepth   = 13
 )
 

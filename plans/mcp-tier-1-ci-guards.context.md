@@ -59,3 +59,7 @@
 - Fable High and the unresolved PR review agreed that the registration source guard missed SDK registration methods passed as function values. The scanner now checks every matching selector expression, and its existing guarded test includes a method-value regression probe.
 - The dedicated guardrail job does not need secrets, so it now runs only on the unprivileged `pull_request` event for internal, fork, and Dependabot PRs. This removes the stale `safe-to-test` label path and avoids checking out fork code in a privileged `pull_request_target` workflow.
 - The repository's existing secret-dependent CI workflow keeps its current `safe-to-test` policy; changing that separate workflow is outside this guardrail tranche.
+
+### 2026-07-20 — Serialized-schema byte ceiling removed
+- The user explicitly chose to remove the total serialized-schema byte guardrail instead of raising or grandfathering it. Tool-name, description, top-level property inventory, and schema-nesting protections remain.
+- This policy change does not alter runtime tool-call payload limits: streamable HTTP still uses the separately configurable `MCP_MAX_REQUEST_BYTES` limit, and stdio does not use that middleware.

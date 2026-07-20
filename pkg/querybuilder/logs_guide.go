@@ -43,7 +43,7 @@ Use these directly by name in filter expressions:
 
   timestamp       datetime  - log timestamp (stored as Unix NANOSECONDS; see TIMESTAMP FORMAT)
   body            string    - rendered log body
-  severity_text   string    - DEBUG, INFO, WARN, ERROR, FATAL, etc.
+  severity_text   string    - recorded severity; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum
   severity_number number    - numeric severity when present
   trace_id        string    - linked trace identifier
   span_id         string    - linked span identifier
@@ -128,7 +128,7 @@ Every builder_query must include a positive limit and explicit order.
 
 For time_series queries with groupBy, the limit selects top groups using the ordering across the ENTIRE
 time range, not each time bucket. A short-lived spike can fall outside the selected groups. Use an explicit
-smaller positive limit only when the user asks for top N; use a larger positive override when completeness
+smaller limit only when the user asks for top N; use a larger limit when completeness
 matters more than response size.
 
 == COMPLETE WORKING EXAMPLES ==

@@ -167,7 +167,7 @@ is queried as metrics: every builder spec sets ` + "`signal:\"metrics\"`" + ` AN
   signal "metrics" + source "meter" (see Example 4).
 - stepInterval is 0 for list panels, typically 60 for minute-resolution graphs,
   and 3600 for Cost Meter (meter) views, which the backend aggregates hourly.
-- Every builder query carries a positive limit and the v5 ` + "`order`" + ` field.
+- Every builder query carries a limit and the v5 ` + "`order`" + ` field.
   The 100-group limit on a graph ranks groups over the whole selected window;
   a short-lived local spike may be outside the returned top N.
 `
