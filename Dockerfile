@@ -53,3 +53,5 @@ EXPOSE 8000
 
 # Run the application
 CMD ["./signoz-mcp-server"]
+
+HEALTHCHECK --interval=10s --timeout=2s --retries=5 CMD ["./signoz-mcp-server", "healthcheck"]

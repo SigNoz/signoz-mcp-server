@@ -27,6 +27,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		if err := runHealthcheck(); err != nil {
+			fmt.Fprintf(os.Stderr, "Healthcheck failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

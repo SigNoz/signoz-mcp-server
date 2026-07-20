@@ -10,4 +10,6 @@ ARG ARCH
 
 COPY ./target/${OS}-${ARCH}/signoz-mcp-server /usr/local/bin/signoz-mcp-server
 
+HEALTHCHECK --interval=10s --timeout=2s --retries=5 CMD ["/usr/local/bin/signoz-mcp-server", "healthcheck"]
+
 ENTRYPOINT ["/usr/local/bin/signoz-mcp-server"]

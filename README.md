@@ -310,6 +310,8 @@ MCP_SERVER_PORT=8000 \
 
 HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments should use `/livez` for `livenessProbe` and `/readyz` for `readinessProbe`.
 
+The container image uses `signoz-mcp-server healthcheck` for its Docker healthcheck. This subcommand probes the local `/livez` endpoint directly, so it works in the distroless multi-architecture image without requiring `wget`, `curl`, or a shell.
+
 | Endpoint | Purpose |
 |----------|---------|
 | `/livez` | Shallow liveness probe. Returns `200 OK` when the server process can answer HTTP requests. It does not check dependencies. |
