@@ -189,3 +189,7 @@
 - [x] Which repository/environment secrets and live SigNoz environment should Tranche D use? Resolved for Tier 2: move this decision to the linked live-upstream follow-up.
 - [x] Which conformance scenarios, if any, are legitimate expected failures with the pinned mcp-go version? Resolved for Tier 2: conformance is deferred until a stable release, so no baseline is created now.
 - [x] Who owns the weekly Devin marketplace check and where should its result be recorded? Resolved for Tier 2: move ownership and recording policy to the linked Devin follow-up.
+
+### 2026-07-21 — Streamable HTTP Accept header review
+- PR review correctly identified that the raw initialize POST advertised only `application/json`, while MCP 2025-11-25 requires clients to advertise both `application/json` and `text/event-stream`.
+- The harness now sends both media types and retains the server-specific JSON response assertion.

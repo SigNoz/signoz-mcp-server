@@ -188,7 +188,7 @@ initialize_status="$PROTOCOL_TMP_DIR/initialize.status"
 run_timed "initialize request" "$initialize_status" "$PROTOCOL_TMP_DIR/initialize.stderr" \
   curl --silent --show-error --max-time "$COMMAND_TIMEOUT_SECONDS" \
   --output "$initialize_body" --dump-header "$initialize_headers" --write-out '%{http_code}' \
-  --header 'Content-Type: application/json' --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' --header 'Accept: application/json, text/event-stream' \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"signoz-protocol-ci","version":"1.0.0"}}}' \
   "$MCP_URL"
 
