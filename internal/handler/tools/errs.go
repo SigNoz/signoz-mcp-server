@@ -176,11 +176,9 @@ func ensureCodedToolError(res *mcp.CallToolResult) (*mcp.CallToolResult, bool) {
 		return res, false
 	}
 	structured := map[string]any{"code": CodeInternalError}
-	if existing != nil {
-		for key, value := range existing {
-			if key != "code" {
-				structured[key] = value
-			}
+	for key, value := range existing {
+		if key != "code" {
+			structured[key] = value
 		}
 	}
 	res.StructuredContent = structured
