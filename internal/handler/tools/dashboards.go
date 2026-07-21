@@ -423,15 +423,26 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return notAConfigObjectError(), nil
 	}
 
-	// Extract id before validation (it's at the top level, not inside dashboard data).
+	// A fetched dashboard may arrive wrapped in the v2 {status, data:{…}} envelope
+	// (as signoz_get_dashboard returns it); operate on the inner object.
+	source := rawConfig
+	if inner, ok := rawConfig["data"].(map[string]any); ok {
+		source = inner
+	}
+
+	// id may be a top-level param or the fetched dashboard's own id.
 	uuid := readResourceID(rawConfig, "uuid")
+	if uuid == "" {
+		uuid = readResourceID(source, "uuid")
+	}
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
+
 	// Keep only updatable body fields so a fetched dashboard's read-only fields don't trip the v2 decoder.
-	updatable := make(map[string]any, len(rawConfig))
-	for k, v := range rawConfig {
+	updatable := make(map[string]any, len(source))
+	for k, v := range source {
 		if _, ok := updatableDashboardFields[k]; ok {
 			updatable[k] = v
 		}
