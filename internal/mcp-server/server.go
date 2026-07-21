@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -1301,7 +1302,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 func (m *MCPServer) buildHTTP(s *server.MCPServer) *http.Server {
 	m.logger.Info("MCP Server running in HTTP mode")
 
-	addr := fmt.Sprintf(":%s", m.config.Port)
+	addr := net.JoinHostPort(m.config.Host, m.config.Port)
 
 	mux := http.NewServeMux()
 

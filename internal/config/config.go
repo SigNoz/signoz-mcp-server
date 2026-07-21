@@ -16,6 +16,7 @@ type Config struct {
 	APIKey        string
 	LogLevel      string
 	TransportMode string
+	Host          string
 	Port          string
 
 	OAuthEnabled     bool
@@ -51,6 +52,7 @@ const (
 	SignozApiKey  = "SIGNOZ_API_KEY"
 	LogLevel      = "LOG_LEVEL"
 	TransportMode = "TRANSPORT_MODE"
+	MCPHost       = "MCP_SERVER_HOST"
 	MCPPort       = "MCP_SERVER_PORT"
 
 	SignozCustomHeaders     = "SIGNOZ_CUSTOM_HEADERS"
@@ -128,6 +130,7 @@ func LoadConfig() (*Config, error) {
 		APIKey:                  getEnv(SignozApiKey, ""),
 		LogLevel:                getEnv(LogLevel, "info"),
 		TransportMode:           getEnv(TransportMode, "stdio"),
+		Host:                    getEnv(MCPHost, ""),
 		Port:                    getEnv(MCPPort, "8000"),
 		OAuthEnabled:            getEnvBool(OAuthEnabledEnv, false),
 		OAuthTokenSecret:        getEnv(OAuthTokenSecretEnv, ""),

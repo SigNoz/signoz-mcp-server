@@ -233,6 +233,8 @@ Add this to your MCP client config (`claude_desktop_config.json`, `.cursor/mcp.j
 
 ### HTTP Mode
 
+HTTP mode listens on all interfaces by default. Set `MCP_SERVER_HOST=127.0.0.1` when the server should accept loopback connections only.
+
 #### With OAuth (Multi-Tenant / Cloud)
 
 Start the server:
@@ -885,6 +887,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → API Keys in the SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
+| `MCP_SERVER_HOST` | Host/interface for HTTP transport mode (default: empty, which listens on all interfaces). Set to `127.0.0.1` for loopback-only access. | No |
 | `MCP_SERVER_PORT` | Port for HTTP transport mode (default: `8000`)                                 | No |
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
