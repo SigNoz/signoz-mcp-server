@@ -37,6 +37,28 @@ var updateDashboardSchema []byte
 //go:embed schemas/dashboard_patch.json
 var patchDashboardSchema []byte
 
+// updatableDashboardFields are the PUT body fields (from the update schema);
+// GET-only fields like createdAt/orgId/webUrl must be dropped or v2 rejects them.
+var updatableDashboardFields = updatableFieldsFromSchema(updateDashboardSchema)
+
+func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
+	var s struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schemaJSON, &s); err != nil {
+		panic("dashboards: cannot parse embedded update schema: " + err.Error())
+	}
+	fields := make(map[string]struct{}, len(s.Properties))
+	for k := range s.Properties {
+		switch k {
+		case "id", "uuid", "searchContext": // envelope, not body
+		default:
+			fields[k] = struct{}{}
+		}
+	}
+	return fields
+}
+
 // rawInputSchema wires a pre-built JSON Schema as a tool's input schema. It
 // clears the default object InputSchema that mcp.NewTool seeds, because
 // mcp-go's Tool.MarshalJSON rejects a tool that has BOTH InputSchema and
@@ -407,13 +429,15 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
-	delete(rawConfig, "uuid")
-	delete(rawConfig, "id")
-	delete(rawConfig, "searchContext")
+	// Keep only updatable body fields so a fetched dashboard's read-only fields don't trip the v2 decoder.
+	updatable := make(map[string]any, len(rawConfig))
+	for k, v := range rawConfig {
+		if _, ok := updatableDashboardFields[k]; ok {
+			updatable[k] = v
+		}
+	}
 
-	// Pass-through: forward the post-update body to PUT /api/v2/dashboards/{uuid};
-	// the v2 API validates it.
-	body, err := json.Marshal(rawConfig)
+	body, err := json.Marshal(updatable)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to encode dashboard payload", logpkg.ErrAttr(err))
 		return mcp.NewToolResultError(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil

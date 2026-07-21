@@ -121,6 +121,59 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateDashboard_StripsReadOnlyFields(t *testing.T) {
+	var gotBody []byte
+	mock := &client.MockClient{
+		UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
+			gotBody = append([]byte(nil), dashboardJSON...)
+			return json.RawMessage(`{"status":"success","data":{"id":"d-1"}}`), nil
+		},
+	}
+
+	h := newTestHandler(mock)
+	// A fetched dashboard sent straight back through update: its read-only fields must not reach v2.
+	result, err := h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", map[string]any{
+		"id":            "d-1",
+		"searchContext": "rename it",
+		"schemaVersion": "v6",
+		"name":          "d-1",
+		"tags":          []any{},
+		"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
+		"createdAt":     "2026-01-01T00:00:00Z",
+		"updatedAt":     "2026-01-02T00:00:00Z",
+		"createdBy":     "a@b.io",
+		"updatedBy":     "a@b.io",
+		"orgId":         "org-1",
+		"locked":        false,
+		"source":        "user",
+		"webUrl":        "http://localhost:8080/dashboard/d-1",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if len(gotBody) == 0 {
+		t.Fatal("UpdateDashboardRawFn was not called")
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(gotBody, &parsed); err != nil {
+		t.Fatalf("dashboard payload should be JSON: %v\n%s", err, gotBody)
+	}
+	for _, k := range []string{"id", "uuid", "searchContext", "createdAt", "updatedAt", "createdBy", "updatedBy", "orgId", "locked", "source", "webUrl"} {
+		if _, present := parsed[k]; present {
+			t.Errorf("read-only/envelope field %q must be stripped from the PUT body: %s", k, gotBody)
+		}
+	}
+	for _, k := range []string{"schemaVersion", "name", "tags", "spec"} {
+		if _, present := parsed[k]; !present {
+			t.Errorf("updatable field %q missing from the PUT body: %s", k, gotBody)
+		}
+	}
+}
+
 func TestHandleDeleteDashboard_EmptyUUID(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{
