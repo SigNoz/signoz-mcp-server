@@ -35,6 +35,12 @@ plans/
 
 - Avoid long inline code comments unless needed; keep comments concise and non-redundant.
 
+## MCP Contract Changes
+
+Changes to client-visible MCP surfaces must follow `docs/mcp-best-practices.md`
+and its section 11 review checklist. Deterministic budgets and CI mechanics stay
+in `guardrails/README.md`.
+
 ## Guardrail Changes
 
 - Follow `guardrails/README.md`; keep policy in `policy.go`, the sorted `TestGuardrail_*` inventory in `tests.txt`, and package-sensitive tests beside their packages.
