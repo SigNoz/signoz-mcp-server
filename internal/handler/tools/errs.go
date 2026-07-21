@@ -175,6 +175,8 @@ func ensureCodedToolError(res *mcp.CallToolResult) (*mcp.CallToolResult, bool) {
 	if code != "" {
 		return res, false
 	}
+	// MCP structuredContent is object-shaped. Invalid non-object values cannot
+	// be merged, so the fallback replaces them while preserving the text block.
 	structured := map[string]any{"code": CodeInternalError}
 	for key, value := range existing {
 		if key != "code" {
@@ -423,7 +425,7 @@ func (h *Handler) logQueryFailure(ctx context.Context, msg string, err error, at
 func upstreamError(err error) *mcp.CallToolResult {
 	var statusErr *signozclient.HTTPStatusError
 	if !errors.As(err, &statusErr) {
-		return errorWithCode(CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+		return errorWithCause(err, CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
 	}
 
 	upstreamCode, upstreamMessage, upstreamType, parsedUpstreamBody := parseUpstreamErrorBody(statusErr.Body)

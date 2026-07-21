@@ -7,11 +7,11 @@ In Progress
 Tool error results are documented as carrying a stable machine-readable `code`, but many handlers still construct bare `mcp.NewToolResultError` values. Missing tenant credentials are the most important example: `GetClient` fails before any upstream request and the client receives no structured classification.
 
 ## Approach
-1. Add small shared helpers for client/auth, cause-aware cancellation/timeout handling, malformed-upstream responses, and caller-validation errors using the existing stable taxonomy. Reuse `InternalErrorResult` for local internal failures.
+1. Add small shared helpers for client/auth, cause-aware cancellation/timeout handling across local and upstream failures, malformed-upstream responses, and caller-validation errors using the existing stable taxonomy. Reuse `InternalErrorResult` for local internal failures.
 2. Replace every direct production `mcp.NewToolResultError` call outside the shared shaping helper with the appropriate coded helper, preserving existing human-readable messages.
 3. Let the docs index identify invalid query-string syntax with a typed/sentinel error that preserves Bleve's original message, so the tool handler can distinguish caller validation from cancellation, timeout, and internal index faults.
 4. Wrap the production tool-registration boundary with a fallback that assigns `INTERNAL_ERROR` to any future uncoded error result without changing already-coded results. Use one shared `toolerrors` normalization path to recognize known codes and preserve fields in any JSON-object representation.
-5. Add focused tests for missing credentials, cause-aware classification, and typed structured-content preservation. Put the source invariant in the central guardrail inventory; reject direct calls, method-value references, alternate MCP bare-error constructors, and dot imports while permitting the basic constructor only inside the shared shaping point.
+5. Add focused tests for missing credentials, cause-aware classification, and typed structured-content preservation. Put the source invariant in the central guardrail inventory; scan the tools and docs error producers, rejecting direct calls, method-value references, alternate MCP bare-error constructors, and dot imports while permitting the basic constructor only inside the shared shaping point.
 
 ## Files to Modify
 - `internal/handler/tools/errs.go` — shared coded-result helpers.

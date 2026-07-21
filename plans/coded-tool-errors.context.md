@@ -50,6 +50,15 @@
 - Promoted the constructor invariant into the sorted guardrail inventory and changed it to scan selector references, covering direct calls, method values, alternate SDK constructors, and dot imports. Typed-content cases are table-driven.
 - Exact inventory verification, workflow lint, focused package and guardrail tests, `go test -count=1 ./...`, `go vet ./...`, the race-enabled tools suite, and `git diff --check` pass. Independent reuse, correctness, and efficiency reviews found no remaining P0-P3 issues.
 
+### 2026-07-21 — Final Fable 5 review follow-ups
+- The full-PR review approved the design as proportionate and found no P0-P2 issues. It identified three P3 follow-ups: make generic upstream failures cause-aware, state the deliberate normalization of invalid non-object structured content, and include the docs error producer in the constructor guardrail.
+- Treat all three as valid in scope. The first preserves consistent client recovery codes, the second documents a protocol-shape boundary without retaining invalid content, and the third prevents docs-specific errors from falling through to a generic runtime fallback.
+
+### 2026-07-21 — Final follow-ups verified
+- Generic upstream errors now reuse `errorWithCause`, preserving `CANCELED` and `TIMEOUT` for wrapped context failures without changing HTTP-status classifications or messages. The fallback documents deliberate replacement of invalid non-object structured content.
+- The central constructor guardrail now scans both production error-producer packages: `internal/handler/tools` and `internal/docs`.
+- Focused tools/docs and guardrail tests, exact inventory verification, `go test -count=1 ./...`, `go vet ./...`, the race-enabled tools suite, workflow lint, and `git diff --check` pass. Reuse, correctness, and efficiency reviews found no P0-P3 issues.
+
 ## Open Questions
 - [x] Should this be added to PR #255? Resolved: no; PR #255 is merged, so publish a separate focused runtime PR.
 - [x] Does nerve-pod#164 cover this? Resolved: no; #164 covers the backend error envelope after an upstream request, while this change covers local/pre-upstream and response-shaping tool errors.

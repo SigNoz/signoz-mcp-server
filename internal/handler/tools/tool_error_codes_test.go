@@ -150,25 +150,27 @@ func bypass() {
 		}
 	})
 
-	paths, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatalf("glob tool sources: %v", err)
-	}
 	fileset := token.NewFileSet()
-	for _, path := range paths {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-		file, err := parser.ParseFile(fileset, path, nil, 0)
+	for _, directory := range []string{".", filepath.Join("..", "..", "docs")} {
+		paths, err := filepath.Glob(filepath.Join(directory, "*.go"))
 		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
+			t.Fatalf("glob production error sources in %s: %v", directory, err)
 		}
-		bypasses, err := uncodedToolErrorConstructorUses(fileset, file, path)
-		if err != nil {
-			t.Fatalf("scan %s: %v", path, err)
-		}
-		for _, position := range bypasses {
-			t.Errorf("MCP bare-error constructor bypasses coded helpers at %s", position)
+		for _, path := range paths {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
+			}
+			file, err := parser.ParseFile(fileset, path, nil, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			bypasses, err := uncodedToolErrorConstructorUses(fileset, file, path)
+			if err != nil {
+				t.Fatalf("scan %s: %v", path, err)
+			}
+			for _, position := range bypasses {
+				t.Errorf("MCP bare-error constructor bypasses coded helpers at %s", position)
+			}
 		}
 	}
 }

@@ -656,6 +656,8 @@ func TestErrorHelpers_StructuredCodes(t *testing.T) {
 		{"upstreamResponseError", upstreamResponseError("malformed response"), CodeUpstreamError},
 		{"validationResult", validationResult("invalid configuration"), CodeValidationFailed},
 		{"upstreamError", upstreamError(errors.New("boom")), CodeUpstreamError},
+		{"upstreamError-canceled", upstreamError(fmt.Errorf("request stopped: %w", context.Canceled)), CodeCanceled},
+		{"upstreamError-timeout", upstreamError(fmt.Errorf("request stopped: %w", context.DeadlineExceeded)), CodeTimeout},
 		{"upstreamError-unauthorized", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusUnauthorized, Body: `{}`}), CodeUnauthorized},
 		{"upstreamError-forbidden", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusForbidden, Body: `{}`}), CodePermissionDenied},
 		{"upstreamError-not-found", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusNotFound, Body: `{}`}), CodeNotFound},
