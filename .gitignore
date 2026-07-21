@@ -27,8 +27,9 @@ bundle/
 go.work
 go.work.sum
 
-# Local scripts (root-only; CI helpers under .github/scripts/ are tracked)
-/scripts/
+# Local scripts (root-only; explicitly reviewed CI helpers are tracked)
+/scripts/*
+!/scripts/test-mcp-protocol.sh
 
 # env file
 .env

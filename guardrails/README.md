@@ -9,6 +9,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 - `policy.go` contains shared limits, official aliases, and explicitly grandfathered exceptions.
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
 - `.github/workflows/guardrails.yaml` verifies the inventory and runs the guarded tests.
+- `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector compatibility check.
 - Package-local functions named `TestGuardrail_*` contain the enforcement logic.
 
 ## Invariants covered
@@ -26,6 +27,30 @@ growth through normal code and client compatibility review. This is separate fro
 arguments sent in a tool call: streamable HTTP request bodies retain the configurable
 `MCP_MAX_REQUEST_BYTES` limit (4 MiB by default), while that middleware does not apply
 to stdio.
+
+## Protocol compatibility
+
+The `protocol / inspector` check starts the production HTTP server on loopback and exercises initialization, tools, resources, resource templates, prompts, and logging through `@modelcontextprotocol/inspector-cli@1.0.0`. It runs on every pull request to `main` without credentials or a live SigNoz backend.
+
+Protocol policy is split across three review-sensitive files:
+
+- `tools/mcp-ci/package.json` and its lockfile pin the Inspector CLI.
+- `scripts/test-mcp-protocol.sh` owns the server lifecycle and selective response assertions.
+- `.github/workflows/mcp-protocol.yaml` owns the Node/Go toolchain and required check name.
+
+Keep assertions focused on usable protocol surfaces, stable identity, and non-empty result envelopes. Do not turn this check into a full catalog snapshot by pinning counts, ordering, descriptions, schemas, or ranked documentation content. `tests.txt` remains the inventory for Go `TestGuardrail_*` tests only.
+
+After the workflow succeeds once on the default branch, configure `protocol / inspector` as a required `main` branch check. Upgrade Inspector only in a reviewed dependency change that reruns the same assertions.
+
+Run the protocol lane on Ubuntu with:
+
+```bash
+npm ci --ignore-scripts --prefix tools/mcp-ci
+bash -n scripts/test-mcp-protocol.sh
+shellcheck scripts/test-mcp-protocol.sh
+actionlint .github/workflows/mcp-protocol.yaml
+scripts/test-mcp-protocol.sh
+```
 
 ## Changing a guardrail
 

@@ -89,6 +89,22 @@ func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
 	require.NoError(t, cfg.ValidateConfig())
 }
 
+func TestLoadConfig_HTTPHostDefaultsToAllInterfaces(t *testing.T) {
+	t.Setenv(MCPHost, "")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Empty(t, cfg.Host)
+}
+
+func TestLoadConfig_HTTPHostCanBeConfigured(t *testing.T) {
+	t.Setenv(MCPHost, "127.0.0.1")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", cfg.Host)
+}
+
 func TestValidateConfig_StdioRequiresConfiguredCredentials(t *testing.T) {
 	cfg := &Config{
 		TransportMode: "stdio",
