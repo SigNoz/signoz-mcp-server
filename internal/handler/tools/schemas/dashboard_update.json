@@ -110,29 +110,12 @@
           "items": {
             "$ref": "#/$defs/DashboardGridItem"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "repeatVariable": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "DashboardLink": {
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "renderVariables": {
-          "type": "boolean"
-        },
-        "targetBlank": {
-          "type": "boolean"
-        },
-        "tooltip": {
-          "type": "string"
-        },
-        "url": {
           "type": "string"
         }
       },
@@ -144,10 +127,16 @@
           "type": "boolean"
         },
         "softMax": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "softMin": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -167,7 +156,10 @@
           "items": {
             "$ref": "#/$defs/DashboardtypesThresholdWithLabel"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "visualization": {
           "$ref": "#/$defs/DashboardtypesBarChartVisualization"
@@ -272,7 +264,10 @@
           "additionalProperties": {
             "$ref": "#/$defs/DashboardtypesDatasourceSpec"
           },
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "display": {
           "$ref": "#/$defs/DashboardtypesDisplay"
@@ -288,9 +283,12 @@
         },
         "links": {
           "items": {
-            "$ref": "#/$defs/DashboardLink"
+            "$ref": "#/$defs/DashboardtypesLink"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "panels": {
           "additionalProperties": {
@@ -399,10 +397,16 @@
     "DashboardtypesHistogramBuckets": {
       "properties": {
         "bucketCount": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "bucketWidth": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "mergeAllActiveQueries": {
           "type": "boolean"
@@ -457,7 +461,10 @@
           "additionalProperties": {
             "type": "string"
           },
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "mode": {
           "$ref": "#/$defs/DashboardtypesLegendMode"
@@ -497,13 +504,36 @@
       ],
       "type": "string"
     },
+    "DashboardtypesLink": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "renderVariables": {
+          "type": "boolean"
+        },
+        "targetBlank": {
+          "type": "boolean"
+        },
+        "tooltip": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DashboardtypesListPanelSpec": {
       "properties": {
         "selectFields": {
           "items": {
             "$ref": "#/$defs/TelemetrytypesTelemetryFieldKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -566,7 +596,10 @@
           "items": {
             "$ref": "#/$defs/DashboardtypesComparisonThreshold"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "visualization": {
           "$ref": "#/$defs/DashboardtypesBasicVisualization"
@@ -763,9 +796,12 @@
         },
         "links": {
           "items": {
-            "$ref": "#/$defs/DashboardLink"
+            "$ref": "#/$defs/DashboardtypesLink"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "plugin": {
           "$ref": "#/$defs/DashboardtypesPanelPlugin"
@@ -1001,7 +1037,10 @@
           "additionalProperties": {
             "type": "string"
           },
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "decimalPrecision": {
           "$ref": "#/$defs/DashboardtypesPrecisionOption"
@@ -1018,7 +1057,10 @@
           "items": {
             "$ref": "#/$defs/DashboardtypesTableThreshold"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "visualization": {
           "$ref": "#/$defs/DashboardtypesBasicVisualization"
@@ -1160,7 +1202,10 @@
           "items": {
             "$ref": "#/$defs/DashboardtypesThresholdWithLabel"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "visualization": {
           "$ref": "#/$defs/DashboardtypesTimeSeriesVisualization"
@@ -1347,7 +1392,8 @@
       "enum": [
         "delta",
         "cumulative",
-        "unspecified"
+        "unspecified",
+        ""
       ],
       "type": "string"
     },
@@ -1361,7 +1407,8 @@
         "count",
         "count_distinct",
         "rate",
-        "increase"
+        "increase",
+        ""
       ],
       "type": "string"
     },
@@ -1411,7 +1458,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5QueryEnvelope"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -1430,7 +1480,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5FunctionArg"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "name": {
           "$ref": "#/$defs/Querybuildertypesv5FunctionName"
@@ -1519,7 +1572,10 @@
           "items": {
             "type": "string"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "value": {
           "type": "string"
@@ -1640,7 +1696,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5Function"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "having": {
           "$ref": "#/$defs/Querybuildertypesv5Having"
@@ -1658,7 +1717,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5OrderBy"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -1669,7 +1731,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5LogAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "cursor": {
           "type": "string"
@@ -1684,13 +1749,19 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5Function"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "groupBy": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "having": {
           "$ref": "#/$defs/Querybuildertypesv5Having"
@@ -1714,19 +1785,28 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5OrderBy"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "secondaryAggregations": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5SecondaryAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "selectFields": {
           "items": {
             "$ref": "#/$defs/TelemetrytypesTelemetryFieldKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "signal": {
           "type": "string",
@@ -1750,7 +1830,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5MetricAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "cursor": {
           "type": "string"
@@ -1765,13 +1848,19 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5Function"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "groupBy": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "having": {
           "$ref": "#/$defs/Querybuildertypesv5Having"
@@ -1795,19 +1884,28 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5OrderBy"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "secondaryAggregations": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5SecondaryAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "selectFields": {
           "items": {
             "$ref": "#/$defs/TelemetrytypesTelemetryFieldKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "signal": {
           "type": "string",
@@ -1831,7 +1929,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5TraceAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "cursor": {
           "type": "string"
@@ -1846,13 +1947,19 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5Function"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "groupBy": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "having": {
           "$ref": "#/$defs/Querybuildertypesv5Having"
@@ -1876,19 +1983,28 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5OrderBy"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "secondaryAggregations": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5SecondaryAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "selectFields": {
           "items": {
             "$ref": "#/$defs/TelemetrytypesTelemetryFieldKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "signal": {
           "type": "string",
@@ -1912,7 +2028,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5TraceAggregation"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "cursor": {
           "type": "string"
@@ -1930,13 +2049,19 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5Function"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "groupBy": {
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "having": {
           "$ref": "#/$defs/Querybuildertypesv5Having"
@@ -1957,7 +2082,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5OrderBy"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "returnSpansFrom": {
           "type": "string"
@@ -1966,7 +2094,10 @@
           "items": {
             "$ref": "#/$defs/TelemetrytypesTelemetryFieldKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "stepInterval": {
           "$ref": "#/$defs/Querybuildertypesv5Step"
@@ -2123,7 +2254,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5GroupByKey"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "limit": {
           "type": "integer"
@@ -2135,7 +2269,10 @@
           "items": {
             "$ref": "#/$defs/Querybuildertypesv5OrderBy"
           },
-          "type": "array"
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "stepInterval": {
           "$ref": "#/$defs/Querybuildertypesv5Step"
@@ -2191,7 +2328,8 @@
         "span",
         "resource",
         "attribute",
-        "body"
+        "body",
+        ""
       ],
       "type": "string"
     },
@@ -2201,7 +2339,8 @@
         "bool",
         "float64",
         "int64",
-        "number"
+        "number",
+        ""
       ],
       "type": "string"
     },
@@ -2209,13 +2348,15 @@
       "enum": [
         "traces",
         "logs",
-        "metrics"
+        "metrics",
+        ""
       ],
       "type": "string"
     },
     "TelemetrytypesSource": {
       "enum": [
-        "meter"
+        "meter",
+        ""
       ],
       "type": "string"
     },

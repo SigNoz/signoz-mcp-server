@@ -66,12 +66,12 @@ def rewrite_refs(node):
     """Rewrite #/components/schemas/X -> #/$defs/X and convert OAS3.0 nullable -> JSON Schema."""
     if isinstance(node, dict):
         out = {}
-        nullable = node.pop('nullable', None) if 'nullable' in node else None
+        nullable = node.get('nullable')  # read, not pop: nodes are shared across the create/update/patch closures
         for k, v in node.items():
             if k == '$ref' and isinstance(v, str) and v.startswith('#/components/schemas/'):
                 out[k] = '#/$defs/' + v.rsplit('/', 1)[1]
-            elif k in ('xml', 'externalDocs', 'discriminator') and k != 'discriminator':
-                continue  # drop OAS-only keywords not valid in JSON Schema (keep discriminator below)
+            elif k in ('xml', 'externalDocs', 'nullable'):
+                continue  # OAS-only keywords, invalid in JSON Schema (discriminator handled below)
             else:
                 out[k] = rewrite_refs(v)
         # handle discriminator mapping ref rewrite
