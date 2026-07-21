@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -114,6 +115,46 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 			t.Fatalf("fallback code = %#v, want %s", got, CodeInternalError)
 		}
 	})
+
+	t.Run("typed structured object with known code", func(t *testing.T) {
+		type structuredError struct {
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+		}
+		bare := mcp.NewToolResultError("bad input")
+		bare.StructuredContent = structuredError{Code: CodeValidationFailed, Detail: "kept"}
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return bare, nil
+		}
+		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
+		if err != nil {
+			t.Fatalf("decorator returned Go error: %v", err)
+		}
+		if result != bare {
+			t.Fatal("decorator replaced a typed, already-coded result")
+		}
+		if got := result.StructuredContent.(structuredError).Code; got != CodeValidationFailed {
+			t.Fatalf("preserved code = %q, want %q", got, CodeValidationFailed)
+		}
+	})
+
+	t.Run("typed string map with known code", func(t *testing.T) {
+		bare := mcp.NewToolResultError("unauthorized")
+		bare.StructuredContent = map[string]string{"code": CodeUnauthorized, "detail": "kept"}
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return bare, nil
+		}
+		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
+		if err != nil {
+			t.Fatalf("decorator returned Go error: %v", err)
+		}
+		if result != bare {
+			t.Fatal("decorator replaced a typed-map, already-coded result")
+		}
+		if got := result.StructuredContent.(map[string]string)["code"]; got != CodeUnauthorized {
+			t.Fatalf("preserved code = %q, want %q", got, CodeUnauthorized)
+		}
+	})
 }
 
 func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
@@ -132,7 +173,11 @@ func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
 		}
 		mcpAlias := ""
 		for _, imported := range file.Imports {
-			if strings.Trim(imported.Path.Value, `"`) != "github.com/mark3labs/mcp-go/mcp" {
+			importPath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Fatalf("unquote import in %s: %v", path, err)
+			}
+			if importPath != "github.com/mark3labs/mcp-go/mcp" {
 				continue
 			}
 			mcpAlias = "mcp"
@@ -141,21 +186,33 @@ func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
 			}
 			break
 		}
-		if mcpAlias == "" || mcpAlias == "." || mcpAlias == "_" {
+		if mcpAlias == "." {
+			t.Errorf("%s dot-imports the MCP package; use a package alias so bare error constructors remain detectable", path)
+			continue
+		}
+		if mcpAlias == "" || mcpAlias == "_" {
 			continue
 		}
 
-		isDirectConstructor := func(node ast.Node) bool {
+		bareConstructors := map[string]bool{
+			"NewToolResultError":        true,
+			"NewToolResultErrorFromErr": true,
+			"NewToolResultErrorf":       true,
+		}
+		constructorName := func(node ast.Node) (string, bool) {
 			call, ok := node.(*ast.CallExpr)
 			if !ok {
-				return false
+				return "", false
 			}
 			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || selector.Sel.Name != "NewToolResultError" {
-				return false
+			if !ok || !bareConstructors[selector.Sel.Name] {
+				return "", false
 			}
 			pkg, ok := selector.X.(*ast.Ident)
-			return ok && pkg.Name == mcpAlias
+			if !ok || pkg.Name != mcpAlias {
+				return "", false
+			}
+			return selector.Sel.Name, true
 		}
 
 		allowed := map[token.Pos]bool{}
@@ -166,7 +223,7 @@ func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
 					continue
 				}
 				ast.Inspect(function.Body, func(node ast.Node) bool {
-					if isDirectConstructor(node) {
+					if name, ok := constructorName(node); ok && name == "NewToolResultError" {
 						allowed[node.Pos()] = true
 					}
 					return true
@@ -174,11 +231,12 @@ func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
 			}
 		}
 		ast.Inspect(file, func(node ast.Node) bool {
-			if !isDirectConstructor(node) || allowed[node.Pos()] {
+			name, ok := constructorName(node)
+			if !ok || allowed[node.Pos()] {
 				return true
 			}
 			position := fileset.Position(node.Pos())
-			t.Errorf("%s calls mcp.NewToolResultError directly; use a coded helper", position)
+			t.Errorf("%s calls mcp.%s directly; use a coded helper", position, name)
 			return true
 		})
 	}

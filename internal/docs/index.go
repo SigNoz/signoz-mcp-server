@@ -37,6 +37,22 @@ var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", "
 // depending on Bleve's error text.
 var ErrInvalidSearchQuery = errors.New("invalid docs search query")
 
+type invalidSearchQueryError struct {
+	cause error
+}
+
+func (e *invalidSearchQueryError) Error() string {
+	return e.cause.Error()
+}
+
+func (e *invalidSearchQueryError) Unwrap() error {
+	return e.cause
+}
+
+func (e *invalidSearchQueryError) Is(target error) bool {
+	return target == ErrInvalidSearchQuery
+}
+
 //go:embed assets/corpus.gob.gz assets/corpus.manifest.json
 var embeddedAssets embed.FS
 
@@ -235,7 +251,7 @@ func boostedDocsQuery(raw string) (bleveQuery.Query, error) {
 	queryString := bleve.NewQueryStringQuery(raw)
 	queryString.SetBoost(0.5)
 	if err := queryString.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidSearchQuery, err)
+		return nil, &invalidSearchQueryError{cause: err}
 	}
 	return bleve.NewDisjunctionQuery(title, headings, body, sectionBreadcrumb, urlTokens, queryString), nil
 }

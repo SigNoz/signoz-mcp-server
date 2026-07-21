@@ -32,6 +32,14 @@
 - The registration fallback now preserves struct-backed and typed-map JSON objects, while the AST invariant resolves the real MCP import and permits the bare constructor only in the shared shaping helper. Removed the duplicate internal-error helper and reused `InternalErrorResult` throughout.
 - Focused docs/tools tests, `go test ./...`, `go vet ./...`, the race-enabled tools suite, and `git diff --check` all pass before the second independent review.
 
+### 2026-07-21 — Second multi-agent review
+- All three reviewers independently found that typed structured objects carrying an existing known code were normalized only after code detection, causing the fallback to replace the valid code with `INTERNAL_ERROR`. Known-code extraction will accept any JSON-object representation before the fallback runs.
+- The source invariant will cover all three bare-error constructors exposed by the MCP SDK and reject dot imports. The invalid-docs-query wrapper will retain the original Bleve parser message while still supporting typed classification.
+
+### 2026-07-21 — Second-review fixes verified
+- Known-code extraction now recognizes typed maps and structs before the registration fallback, so already-coded errors remain unchanged. The invariant rejects the SDK's basic, formatted, and error-appending bare constructors plus MCP dot imports.
+- Invalid docs syntax retains the original parser message while exposing `VALIDATION_FAILED`. Focused tests, `go test ./...`, `go vet ./...`, the race-enabled tools suite, and `git diff --check` all pass after these fixes.
+
 ## Open Questions
 - [x] Should this be added to PR #255? Resolved: no; PR #255 is merged, so publish a separate focused runtime PR.
 - [x] Does nerve-pod#164 cover this? Resolved: no; #164 covers the backend error envelope after an upstream request, while this change covers local/pre-upstream and response-shaping tool errors.

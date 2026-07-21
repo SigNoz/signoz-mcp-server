@@ -9,9 +9,9 @@ Tool error results are documented as carrying a stable machine-readable `code`, 
 ## Approach
 1. Add small shared helpers for client/auth, cause-aware cancellation/timeout handling, malformed-upstream responses, and caller-validation errors using the existing stable taxonomy. Reuse `InternalErrorResult` for local internal failures.
 2. Replace every direct production `mcp.NewToolResultError` call outside the shared shaping helper with the appropriate coded helper, preserving existing human-readable messages.
-3. Let the docs index identify invalid query-string syntax with a typed/sentinel error so the tool handler can distinguish caller validation from cancellation, timeout, and internal index faults.
-4. Wrap the production tool-registration boundary with a fallback that assigns `INTERNAL_ERROR` to any future uncoded error result without changing already-coded results. JSON-normalize object-shaped structured content before merging the fallback code.
-5. Add focused tests for missing credentials, cause-aware classification, typed structured-content preservation, and an AST invariant that permits the MCP constructor only inside the shared shaping point.
+3. Let the docs index identify invalid query-string syntax with a typed/sentinel error that preserves Bleve's original message, so the tool handler can distinguish caller validation from cancellation, timeout, and internal index faults.
+4. Wrap the production tool-registration boundary with a fallback that assigns `INTERNAL_ERROR` to any future uncoded error result without changing already-coded results. Recognize known codes in any JSON-object representation and JSON-normalize object-shaped structured content before merging only a missing fallback code.
+5. Add focused tests for missing credentials, cause-aware classification, typed structured-content preservation, and an AST invariant that rejects every MCP bare-error constructor and dot import while permitting the basic constructor only inside the shared shaping point.
 
 ## Files to Modify
 - `internal/handler/tools/errs.go` — shared coded-result helpers.

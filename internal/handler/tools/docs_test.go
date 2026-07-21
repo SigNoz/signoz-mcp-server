@@ -94,6 +94,7 @@ func TestDocsHandlers(t *testing.T) {
 		}))
 		require.NoError(t, err)
 		require.Equal(t, CodeValidationFailed, resultCode(t, result))
+		require.NotContains(t, resultText(t, result), docsindex.ErrInvalidSearchQuery.Error())
 	})
 
 	t.Run("search cancellation preserves cause", func(t *testing.T) {
