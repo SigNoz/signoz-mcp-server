@@ -1,0 +1,42 @@
+name: protocol
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspector:
+    name: inspector
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/mcp-ci/package-lock.json
+
+      - name: Install MCP Inspector CLI
+        working-directory: tools/mcp-ci
+        run: npm ci --ignore-scripts
+
+      - name: Parse protocol harness
+        run: bash -n scripts/test-mcp-protocol.sh
+
+      - name: Run MCP protocol checks
+        run: scripts/test-mcp-protocol.sh
