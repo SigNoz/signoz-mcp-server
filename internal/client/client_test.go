@@ -769,6 +769,10 @@ func TestListMetricKeys(t *testing.T) {
 }
 
 func TestListDashboards(t *testing.T) {
+	// The client's contract for this call is the wire shape, not dashboard
+	// semantics: it must target the v2 endpoint, forward pagination as query
+	// params, and pass the response body through unmodified. Dashboard domain
+	// behavior is covered by the handler and pkg/dashboard tests.
 	t.Run("forwards v2 list with pagination params", func(t *testing.T) {
 		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodGet, r.Method)
@@ -777,34 +781,33 @@ func TestListDashboards(t *testing.T) {
 			assert.Equal(t, "50", r.URL.Query().Get("offset"))
 			assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
 			w.WriteHeader(http.StatusOK)
-			v2Resp := `{"dashboards":[{"id":"dashboard-uuid-1","name":"apple","spec":{"display":{"name":"Apple Dashboard"}}}],"tags":[],"total":1}`
-			_, _ = w.Write([]byte(v2Resp))
+			_, _ = w.Write([]byte(`{"dashboards":[],"total":0}`))
 		}))
 		defer mockServer.Close()
 
 		client := NewClient(logpkg.New("debug"), mockServer.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 		result, err := client.ListDashboards(context.Background(), 25, 50)
 		require.NoError(t, err)
-
-		var response map[string]any
-		require.NoError(t, json.Unmarshal(result, &response))
-		assert.EqualValues(t, 1, response["total"])
-		dashboards, ok := response["dashboards"].([]any)
-		require.True(t, ok)
-		assert.Len(t, dashboards, 1)
+		assert.JSONEq(t, `{"dashboards":[],"total":0}`, string(result))
 	})
 
-	t.Run("server error", func(t *testing.T) {
+	// A permission failure must propagate as the typed status error (not be
+	// swallowed) so the handler can map it to a coded upstream error for re-auth.
+	t.Run("propagates upstream auth failure with status code", func(t *testing.T) {
 		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"error":"boom"}`))
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"forbidden"}`))
 		}))
 		defer mockServer.Close()
 
 		client := NewClient(logpkg.New("debug"), mockServer.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 		result, err := client.ListDashboards(context.Background(), 0, 0)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, result)
+
+		var statusErr *HTTPStatusError
+		require.True(t, errors.As(err, &statusErr), "expected typed upstream status error to propagate")
+		assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
 	})
 }
 
