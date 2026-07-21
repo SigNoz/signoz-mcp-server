@@ -91,9 +91,9 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_list_dashboards",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and pagination metadata, not panel/query definitions; use signoz_get_dashboard for one full definition. When looking for a specific dashboard, follow pagination.nextOffset while pagination.hasMore is true before concluding it is absent."),
+		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 1000 are clamped.")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; use pagination.nextOffset for the next page.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.")),
 	)
 
 	h.addTool(s, tool, h.handleListDashboards)

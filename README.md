@@ -515,7 +515,7 @@ Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_li
 
 #### `signoz_list_dashboards`
 
-Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for panel and query definitions, and follow `pagination.nextOffset` while `pagination.hasMore` is true before concluding a dashboard is absent.
+Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for panel and query definitions, and page by raising `offset` by `limit` until you have covered `total` before concluding a dashboard is absent.
 
 #### `signoz_get_dashboard`
 

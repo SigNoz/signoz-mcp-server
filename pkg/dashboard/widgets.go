@@ -83,7 +83,7 @@ Note: This panel is best used when you need to compare discrete categories (e.g.
 - Bar Chart displays frequency or aggregated values for one or more categories over time or across categories.
 - It supports data from logs, traces, or metrics.
 - You can configure the Y-axis unit, and optionally set "Soft Min/Max" to control vertical scale so small values aren't exaggerated.
-- You can add thresholds to highlight important limits: SigNoz colors the threshold label (text) or tints the panel (background) when the condition holds — it does NOT support a Grafana-style line marker. Comparison operators are '>', '<', '>=', '<=', '='.
+- You can add thresholds to highlight important limits: SigNoz colors the threshold label or tints the panel background when the condition holds — it does NOT support a Grafana-style line marker.
 
 Histogram panel [CRITICAL]:
 Note: This panel is best used to understand distribution patterns, detect skew, and analyze how values cluster across ranges.
@@ -122,12 +122,12 @@ Note: This panel is best used for any metric whose meaning depends on temporal e
 - Fill Gaps converts missing timestamps into zeros, useful when sparse data must be interpreted as absence of activity rather than missing samples.
 - Y-axis Unit formats numerical values for readability and domain correctness (bytes, durations, percentages, counts).
 - Soft Min/Max constrains the y-axis so small fluctuations aren't visually amplified or drowned out, stabilizing interpretation across charts.
-- Thresholds highlight limits, SLOs, warning levels, or expected baselines: SigNoz colors the threshold label (text) or tints the panel (background) — it does NOT render a horizontal line at the threshold value. Comparison operators are '>', '<', '>=', '<=', '='.
+- Thresholds highlight limits, SLOs, warning levels, or expected baselines: SigNoz colors the threshold label or tints the panel background — it does NOT render a horizontal line at the threshold value.
 
 Value panel [CRITICAL]:
 - Value Panel reduces a time series to a single representative number, exposing a point-in-time or aggregated metric such as current throughput, average latency, error count, or any computed summary.
 - It supports logs, traces, and metrics, as long as the underlying data can be aggregated into one value.
 - It surfaces high-salience indicators that benefit from immediate readability, functioning as a KPI-style snapshot.
-- Configuration requires selecting the signal type, selecting the metric/log/trace source, and defining the reduction function (avg, sum, max, min, latest) that collapses the series into a single output.
+- Configuration requires selecting the signal type, selecting the metric/log/trace source, and defining the reduction function that collapses the series into a single output.
   This panel is best used for top-level KPIs, summary statistics, or health indicators where only the final aggregated value—not the trend—is required.
 `
