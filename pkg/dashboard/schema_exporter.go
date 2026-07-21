@@ -13,18 +13,26 @@ import (
 // goal here make the LLM schema aware so it writes correct queries.
 
 const SchemaReadingInstructions = `
-INSTRUCTIONS FOR USING THIS CLICKHOUSE SCHEMA
+## Provenance and compatibility
+
+This reference is generated from the SigNoz OpenTelemetry Collector migrations
+bundled with this MCP server. A tenant may run a different SigNoz version or
+have schema changes not represented here. Use the reference to compose queries,
+but treat table/column/type errors returned by the target tenant as authoritative
+and revise the query rather than insisting that this bundled snapshot is exact.
+
+## Instructions for using this ClickHouse schema
+
 1. Read every table, column, and data type exactly as written.
 2. Never skip or simplify types. Use LowCardinality(...), Map(...), JSON(...),
    AggregateFunction(...), Array(...), Tuple(...), Nullable(...) exactly as shown.
-3. Do not infer or assume types. Trust only the declared type.
+3. Do not infer or assume types absent from this snapshot.
 4. When writing queries:
    • use exact column names
    • use exact data types
    • verify the column exists in the table
 5. Aliases may be used, but their type is identical to the base column.
 6. Do not hallucinate additional fields or hidden schema.
-Use this schema verbatim for all query construction.
 `
 
 var LogsSchema string

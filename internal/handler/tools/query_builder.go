@@ -20,21 +20,15 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
 	executeQuery := mcp.NewTool("signoz_execute_builder_query",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		withReadOnlyToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Execute a raw SigNoz Query Builder v5 query as an escape hatch for multi-query, formula, or other shapes the higher-level tools cannot express. "+
-				"Prefer signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for metrics.\n\n"+
-				"Read the guide for the signal you are querying: signoz://logs/query-builder-guide for logs, signoz://traces/query-builder-guide for traces, and signoz://metrics-aggregation-guide for metrics or formulas. "+
-				"Every builder_query and builder_formula must include a positive limit plus explicit v5 spec.order. Standalone omitted/null/zero bounds normalize to 100 rows or groups; builder queries referenced by a formula normalize to 10000 because base limits are applied before formula evaluation, while the formula result stays at 100. "+
-				"The v5 wire field is spec.order, not the dashboard/editor field orderBy.\n\n"+
-				"For promql envelopes also read signoz://promql/instructions — "+
-				"OTel metric names with dots MUST use the Prometheus 3.x UTF-8 quoted-selector form ({\"metric.name.with.dots\"}). "+
-				"Underscored / __name__ / bare-dotted forms silently return no data.\n\n"+
-				"See docs: https://signoz.io/docs/userguide/query-builder-v5/",
+			"Use this only when the user needs a SigNoz Query Builder v5 request that the dedicated log, trace, and metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
+				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
+				"Before composing the query, read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas also require the metrics guide, and PromQL requires signoz://promql/instructions. "+
+				"For predictable formulas, explicitly set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server normalizes omissions.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables")),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)
@@ -42,15 +36,16 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
 		"Traces Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 traces guide: filter expression syntax, canonical built-in span columns, explicit raw/aggregate result bounds and ordering, and executable examples for raw, scalar, and time-series queries."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.TracesQueryBuilderGuide))),
 	)
 
-	s.AddResource(tracesQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, tracesQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     querybuilder.TracesQueryBuilderGuide,
 			},
 		}, nil
@@ -59,15 +54,16 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	logsQueryBuilderGuide := mcp.NewResource(
 		"signoz://logs/query-builder-guide",
 		"Logs Query Builder Guide",
-		mcp.WithResourceDescription("SigNoz Query Builder v5 logs guide: filter expression syntax, explicit raw/aggregate result bounds and ordering, stable timestamp/id pagination, body search, and executable examples for raw, scalar, and time-series queries."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body and JSON-path search, row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(querybuilder.LogsQueryBuilderGuide))),
 	)
 
-	s.AddResource(logsQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, logsQueryBuilderGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     querybuilder.LogsQueryBuilderGuide,
 			},
 		}, nil
@@ -120,8 +116,8 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	}
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
-		h.logUpstreamFailure(ctx, "Failed to execute query builder v5", err)
-		return upstreamError(err), nil
+		h.logQueryFailure(ctx, "Failed to execute query builder v5", err)
+		return upstreamQueryError(err, ""), nil
 	}
 
 	h.logger.DebugContext(ctx, "Successfully executed query builder v5")

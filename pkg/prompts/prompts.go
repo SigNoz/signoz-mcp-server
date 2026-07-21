@@ -63,7 +63,7 @@ func handleDebugServiceErrors(_ context.Context, req mcp.GetPromptRequest) (*mcp
 					Type: "text",
 					Text: fmt.Sprintf(`Investigate errors for the service "%s" over the last %s. Follow these steps:
 
-1. Use signoz_search_logs with service="%s" and severity="ERROR" and timeRange="%s" to find recent error logs.
+1. Use signoz_search_logs with service="%s" and severity="ERROR" and timeRange="%s" to find recent error logs. If this fails with `+"`key service.name not found`"+`, this workspace's logs don't carry that attribute — call signoz_get_field_keys(signal="logs", fieldContext="resource") to discover available keys, pick a suitable one (e.g. k8s.deployment.name), confirm the matching value with signoz_get_field_values, and retry — or search without a service filter.
 2. Use signoz_aggregate_traces with error="true", service="%s", aggregation="count", groupBy="name", timeRange="%s" to see which operations are failing.
 3. Use signoz_get_service_top_operations with service="%s" to understand the service's operation landscape.
 4. Summarize: what errors are occurring, which operations are affected, and what the likely root cause is.`, service, timeRange, service, timeRange, service, timeRange, service),

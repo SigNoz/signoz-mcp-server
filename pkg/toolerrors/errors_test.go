@@ -17,6 +17,7 @@ func TestCode(t *testing.T) {
 		{name: "unknown", result: &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"code": "CALLER_VALUE"}}},
 		{name: "wrong shape", result: &mcp.CallToolResult{IsError: true, StructuredContent: []string{CodeTimeout}}},
 		{name: "handler code", result: &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"code": CodePermissionDenied}}, want: CodePermissionDenied},
+		{name: "internal code", result: &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"code": CodeInternalError}}, want: CodeInternalError},
 		{name: "docs code", result: &mcp.CallToolResult{IsError: true, StructuredContent: map[string]any{"code": CodeIndexNotReady}}, want: CodeIndexNotReady},
 	}
 

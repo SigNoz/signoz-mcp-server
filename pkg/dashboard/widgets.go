@@ -36,6 +36,17 @@ Selection Guidelines:
 - Use PromQL when you need: Prometheus compatibility, metric-specific functions, range vector operations
 - Avoid mixing query types within a single dashboard unless necessary for specific requirements
 
+Query Resources [REQUIRED]:
+- Query Builder: signoz://dashboard/query-builder-example
+- ClickHouse logs: signoz://dashboard/clickhouse-schema-for-logs and signoz://dashboard/clickhouse-logs-example
+- ClickHouse metrics: signoz://dashboard/clickhouse-schema-for-metrics and signoz://dashboard/clickhouse-metrics-example
+- ClickHouse traces: signoz://dashboard/clickhouse-schema-for-traces and signoz://dashboard/clickhouse-traces-example
+- PromQL: signoz://promql/instructions
+
+Field Discovery:
+- When a Query Builder field name is not already known, call signoz_get_field_keys with the widget's signal and fieldContext before composing the query; use signoz_get_field_values when observed values help verify the filter.
+- Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
+
 One query per panel [CRITICAL]:
 A panel holds exactly ONE query. Putting more than one fails backend validation (not caught by the JSON Schema): "panel must have one query". To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery — each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
 

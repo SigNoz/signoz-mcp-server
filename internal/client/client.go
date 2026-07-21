@@ -42,8 +42,13 @@ const (
 )
 
 var (
-	ErrUnauthorized  = errors.New("signoz credentials rejected")
-	defaultUserAgent = version.UserAgent()
+	ErrUnauthorized = errors.New("signoz credentials rejected")
+	// ErrInstanceNotFound means the URL resolves but no SigNoz API answers
+	// there — e.g. an expired/deactivated cloud workspace whose ingress serves
+	// an HTML 404 page. A live SigNoz API replies to the validation endpoints
+	// with JSON, even on 404.
+	ErrInstanceNotFound = errors.New("no signoz instance found at URL")
+	defaultUserAgent    = version.UserAgent()
 )
 
 // HTTPStatusError preserves status and response details from a non-2xx SigNoz API response.
@@ -186,8 +191,11 @@ func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
 	}
 
-	// 404 means the key is a service-account key; validate via service account endpoint.
-	if status == http.StatusNotFound {
+	// A JSON 404 means the key is a service-account key; validate via the
+	// service account endpoint. An HTML 404 is not a SigNoz API response at
+	// all (e.g. an expired cloud workspace's ingress page) — retrying the
+	// service-account endpoint would just hit the same page.
+	if status == http.StatusNotFound && !isHTMLBody(body) {
 		s.logger.DebugContext(ctx, "user/me returned non-user status, retrying with service_accounts/me",
 			slog.Int("status", status))
 		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
@@ -338,6 +346,13 @@ func (s *SigNoz) evaluateValidationResponse(ctx context.Context, status int, bod
 	case http.StatusUnauthorized, http.StatusForbidden:
 		s.logger.WarnContext(ctx, "SigNoz credential validation failed", slog.Int("status", status))
 		return fmt.Errorf("%w: status %d", ErrUnauthorized, status)
+	case http.StatusNotFound:
+		if isHTMLBody(body) {
+			s.logger.WarnContext(ctx, "no SigNoz API at instance URL (HTML 404)",
+				slog.String("response", logpkg.TruncBody(body)))
+			return fmt.Errorf("%w: status %d", ErrInstanceNotFound, status)
+		}
+		fallthrough
 	default:
 		truncatedBody := logpkg.TruncBody(body)
 		s.logger.WarnContext(ctx, "SigNoz credential validation returned unexpected status",
@@ -345,6 +360,16 @@ func (s *SigNoz) evaluateValidationResponse(ctx context.Context, status int, bod
 			slog.String("response", truncatedBody))
 		return fmt.Errorf("unexpected status %d: %s", status, truncatedBody)
 	}
+}
+
+// isHTMLBody reports whether a response body is a markup document (HTML/XML)
+// rather than a JSON API payload — the first non-whitespace byte of JSON is
+// never '<'. Empty and plain-text bodies conservatively count as non-HTML so
+// they keep the transient "try again" path.
+func isHTMLBody(body []byte) bool {
+	trimmed := bytes.TrimPrefix(body, []byte("\xef\xbb\xbf")) // UTF-8 BOM
+	trimmed = bytes.TrimLeft(trimmed, " \t\r\n")
+	return len(trimmed) > 0 && trimmed[0] == '<'
 }
 
 const (
@@ -359,31 +384,35 @@ const (
 // never get invalid JSON.
 const maxResponseBytes int64 = 64 << 20 // 64 MiB
 
-// doRequest performs an HTTP request with standard headers, timeout, status
-// checking, body reading, and retry with exponential backoff for transient
-// failures (429, 502, 503, 504, network errors).
-func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.Reader, timeout time.Duration) (json.RawMessage, error) {
+// doRequest performs an HTTP request with the method's default replay policy.
+// Mutating POSTs are single-attempt because the backend does not accept
+// idempotency keys and a transport failure can happen after commit.
+func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration) (json.RawMessage, error) {
+	return s.doRequestWithReplayPolicy(ctx, method, reqURL, body, timeout, isReplaySafeMethod(method))
+}
+
+// doReplaySafePost is for read-only upstream operations that happen to use
+// POST because their query payload is carried in the request body.
+func (s *SigNoz) doReplaySafePost(ctx context.Context, reqURL string, body []byte, timeout time.Duration) (json.RawMessage, error) {
+	return s.doRequestWithReplayPolicy(ctx, http.MethodPost, reqURL, body, timeout, true)
+}
+
+func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL string, body []byte, timeout time.Duration, replaySafe bool) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Buffer the body so we can retry POST/PUT requests.
-	var bodyBytes []byte
-	if body != nil {
-		var err error
-		bodyBytes, err = io.ReadAll(body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read request body: %w", err)
-		}
-	}
-
 	var lastErr error
 	wait := retryBaseWait
+	maxAttempts := 1
+	if replaySafe {
+		maxAttempts = maxRetries
+	}
 
-	for attempt := range maxRetries {
+	for attempt := range maxAttempts {
 		var reqBody io.Reader
-		if bodyBytes != nil {
-			reqBody = bytes.NewReader(bodyBytes)
+		if body != nil {
+			reqBody = bytes.NewReader(body)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
@@ -400,7 +429,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				return nil, fmt.Errorf("request cancelled: %w", err)
 			}
 			lastErr = fmt.Errorf("failed to do request: %w", err)
-			if attempt < maxRetries-1 {
+			if attempt < maxAttempts-1 {
 				s.logger.DebugContext(ctx, "Request failed, will retry",
 					slog.String("url", reqURL),
 					slog.Int("attempt", attempt+1),
@@ -413,10 +442,17 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 				wait *= retryMultiply
 				continue
 			}
-			s.logger.WarnContext(ctx, "Request failed after retries exhausted",
-				slog.String("url", reqURL),
-				slog.Int("attempt", attempt+1),
-				logpkg.ErrAttr(err))
+			if maxAttempts > 1 {
+				s.logger.WarnContext(ctx, "Request failed after retries exhausted",
+					slog.String("url", reqURL),
+					slog.Int("attempt", attempt+1),
+					logpkg.ErrAttr(err))
+			} else {
+				s.logger.WarnContext(ctx, "Request failed and method is not replay-safe",
+					slog.String("url", reqURL),
+					slog.String("method", method),
+					logpkg.ErrAttr(err))
+			}
 			break
 		}
 
@@ -437,7 +473,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 		}
 
 		// Retry on transient server errors.
-		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries-1 {
+		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts-1 {
 			statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 			lastErr = statusErr
 			s.logger.DebugContext(ctx, "Retryable status, will retry",
@@ -454,7 +490,7 @@ func (s *SigNoz) doRequest(ctx context.Context, method, reqURL string, body io.R
 			continue
 		}
 
-		retryable := isRetryableStatus(resp.StatusCode)
+		retryable := replaySafe && isRetryableStatus(resp.StatusCode)
 		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 		attrs := []any{
 			slog.String("url", reqURL),
@@ -482,6 +518,15 @@ func newHTTPStatusError(statusCode int, respBody []byte) *HTTPStatusError {
 
 func isRetryableStatus(code int) bool {
 	return code == 429 || code == 502 || code == 503 || code == 504
+}
+
+func isReplaySafeMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodPut, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
@@ -570,7 +615,7 @@ func (s *SigNoz) ListServices(ctx context.Context, start, end string) (json.RawM
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching services from SigNoz",
 		slog.String("start", start), slog.String("end", end))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error) {
@@ -579,7 +624,7 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	bodyBytes, _ := json.Marshal(payload)
 
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service top operations", slog.String("service", service))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
@@ -592,7 +637,7 @@ func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessa
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.SetAttributes(otelpkg.MCPQueryPayloadKey.String(string(body)))
 	}
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error) {
@@ -604,13 +649,13 @@ func (s *SigNoz) GetAlertHistory(ctx context.Context, ruleID string, req types.A
 func (s *SigNoz) CreateAlertRule(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v2/rules", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating alert rule")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, alertJSON, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) UpdateAlertRule(ctx context.Context, ruleID string, alertJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v2/rules/%s", s.baseURL, url.PathEscape(ruleID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating alert rule", slog.String("ruleID", ruleID))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(alertJSON), DashboardWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, alertJSON, DashboardWriteTimeout)
 	return err
 }
 
@@ -644,13 +689,13 @@ func (s *SigNoz) GetView(ctx context.Context, viewID string) (json.RawMessage, e
 func (s *SigNoz) CreateView(ctx context.Context, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating saved view")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, body, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/explorer/views/%s", s.baseURL, url.PathEscape(viewID))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating saved view", slog.String("viewID", viewID))
-	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(body), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPut, reqURL, body, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) DeleteView(ctx context.Context, viewID string) (json.RawMessage, error) {
@@ -733,7 +778,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v2/dashboards", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating dashboard (raw)")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, dashboardJSON, DashboardWriteTimeout)
 }
 
 // UpdateDashboardRaw replaces a v2 dashboard via PUT /api/v2/dashboards/{id}.
@@ -742,7 +787,7 @@ func (s *SigNoz) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (
 func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating dashboard (raw)", slog.String("id", id))
-	return s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewBuffer(dashboardJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPut, reqURL, dashboardJSON, DashboardWriteTimeout)
 }
 
 // PatchDashboardRaw applies an RFC 6902 JSON Patch to a v2 dashboard via
@@ -750,7 +795,7 @@ func (s *SigNoz) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSO
 func (s *SigNoz) PatchDashboardRaw(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v2/dashboards/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Patching dashboard (raw)", slog.String("id", id))
-	return s.doRequest(ctx, http.MethodPatch, reqURL, bytes.NewBuffer(patchJSON), DashboardWriteTimeout)
+	return s.doRequest(ctx, http.MethodPatch, reqURL, patchJSON, DashboardWriteTimeout)
 }
 
 func (s *SigNoz) DeleteDashboard(ctx context.Context, id string) error {
@@ -778,13 +823,13 @@ func (s *SigNoz) GetNotificationChannel(ctx context.Context, id string) (json.Ra
 func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/channels", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating notification channel")
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	return s.doRequest(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 }
 
 func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating notification channel", slog.String("id", id))
-	_, err := s.doRequest(ctx, http.MethodPut, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPut, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }
 
@@ -810,12 +855,12 @@ func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int)
 	reqURL := fmt.Sprintf("%s/api/v2/metrics/treemap", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching metrics treemap",
 		slog.Int("limit", limit))
-	return s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewBuffer(body), DefaultQueryTimeout)
+	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
 	reqURL := fmt.Sprintf("%s/api/v1/channels/test", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing notification channel")
-	_, err := s.doRequest(ctx, http.MethodPost, reqURL, bytes.NewReader(receiverJSON), ChannelWriteTimeout)
+	_, err := s.doRequest(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }

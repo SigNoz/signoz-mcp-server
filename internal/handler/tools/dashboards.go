@@ -67,46 +67,32 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering dashboard handlers")
 
 	tool := mcp.NewTool("signoz_list_dashboards",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("List all dashboards from SigNoz (returns summary with name, UUID, description, tags, and timestamps). IMPORTANT: This tool supports pagination using 'limit' and 'offset' parameters. The response includes a 'total' count of all dashboards. When searching for a specific dashboard, page through all results using 'offset' (increment by 'limit') until you've covered 'total'. Never conclude an item doesn't exist until you've checked all pages. Default: limit=50, offset=0."),
-		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of dashboards to return per page. Use this to paginate through large result sets. Default: 50, max: 1000 (higher values are clamped). Example: '50' for 50 results, '100' for 100 results. Must be greater than 0.")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50), offset=100 for third page, etc. Default: 0. Must be >= 0.")),
+		withReadOnlyToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and pagination metadata, not panel/query definitions; use signoz_get_dashboard for one full definition. When looking for a specific dashboard, follow pagination.nextOffset while pagination.hasMore is true before concluding it is absent."),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 1000 are clamped.")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; use pagination.nextOffset for the next page.")),
 	)
 
 	h.addTool(s, tool, h.handleListDashboards)
 
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get full details of a specific dashboard by ID (returns complete dashboard configuration with all panels and queries)"),
+		withReadOnlyToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse summaries or curated templates; use signoz_list_dashboards or signoz_list_dashboard_templates respectively."),
 		// Not mcp.Required(): the legacy alias "uuid" must remain a valid call for
 		// schema-aware clients. The handler validates id/uuid presence.
-		mcp.WithString("id", mcp.Description("Dashboard UUID. Required.")),
+		mcp.WithString("id", mcp.Description("Known dashboard UUID. Required; use signoz_list_dashboards to discover it.")),
 	)
 
 	h.addTool(s, getDashboardTool, h.handleGetDashboard)
 
 	createDashboardTool := mcp.NewTool(
 		"signoz_create_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Creates a new monitoring dashboard based on the provided Perses (v6) spec — 'display', 'variables' (array), 'panels' (map keyed by panel id), and 'layouts' (array). "+
-				"CRITICAL: You MUST read these resources BEFORE generating any dashboard output:\n"+
-				"1. signoz://dashboard/instructions - REQUIRED: Dashboard structure and basics\n"+
-				"2. signoz://dashboard/widgets-instructions - REQUIRED: Widget configuration rules\n"+
-				"3. signoz://dashboard/widgets-examples - REQUIRED: worked v6 panel examples to copy the structure from\n"+
-				"QUERY-SPECIFIC RESOURCES (read based on query type used):\n"+
-				"- For PromQL queries: signoz://promql/instructions\n"+
-				"- For Query Builder queries: signoz://dashboard/query-builder-example\n"+
-				"- For ClickHouse SQL on logs: signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
-				"- For ClickHouse SQL on metrics: signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
-				"- For ClickHouse SQL on traces: signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
-				"IMPORTANT: Follow this tool's JSON Schema exactly — 'schemaVersion' must be \"v6\" and each panel/query selects a typed plugin by its 'kind' discriminator. "+
-				"Do NOT set 'name' — omit it and the server derives one from 'spec.display.name'. "+
-				"The SigNoz API validates the payload server-side (unknown fields are rejected); if it returns an error, read the message and resubmit a corrected dashboard.",
+			"Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and panel configuration; use signoz_import_dashboard instead when a curated template fits. "+
+				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
 		),
 		rawInputSchema(createDashboardSchema),
 	)
@@ -115,22 +101,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	updateDashboardTool := mcp.NewTool(
 		"signoz_update_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Update an existing dashboard by supplying its UUID along with a fully assembled Perses (v6) dashboard JSON object (schemaVersion \"v6\", name, tags, and the full spec).\n\n"+
-				"MANDATORY FIRST STEP: Read signoz://dashboard/instructions before doing ANYTHING else. This is NON-NEGOTIABLE.\n\n"+
-				"The provided object must represent the complete post-update state, combining the current dashboard data and the intended modifications. The 'name' is IMMUTABLE — change the human title via 'spec.display.name'. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard.\n\n"+
-				"REQUIRED RESOURCES (read ALL before generating output):\n"+
-				"1. signoz://dashboard/instructions\n"+
-				"2. signoz://dashboard/widgets-instructions\n"+
-				"3. signoz://dashboard/widgets-examples\n"+
-				"CONDITIONAL RESOURCES (based on query type):\n"+
-				"• PromQL → signoz://promql/instructions\n"+
-				"• Query Builder → signoz://dashboard/query-builder-example\n"+
-				"• ClickHouse Logs → signoz://dashboard/clickhouse-schema-for-logs + signoz://dashboard/clickhouse-logs-example\n"+
-				"• ClickHouse Metrics → signoz://dashboard/clickhouse-schema-for-metrics + signoz://dashboard/clickhouse-metrics-example\n"+
-				"• ClickHouse Traces → signoz://dashboard/clickhouse-schema-for-traces + signoz://dashboard/clickhouse-traces-example\n\n"+
-				"WARNING: 'schemaVersion' must be \"v6\" and unknown fields are rejected. The SigNoz API validates server-side; on error, read the message and resubmit a corrected dashboard. Locked dashboards are rejected.",
+			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, merge only the requested changes, and preserve every other field. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. "+
+				"Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
 		),
 		rawInputSchema(updateDashboardSchema),
 	)
@@ -139,7 +113,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 
 	patchDashboardTool := mcp.NewTool(
 		"signoz_patch_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withPatchToolAnnotations(),
 		mcp.WithDescription(
 			"Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. "+
 				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
@@ -153,42 +127,33 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.addTool(s, patchDashboardTool, h.handlePatchDashboard)
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Delete a dashboard by its ID. This action is irreversible. Use signoz_list_dashboards to find dashboard IDs."),
-		mcp.WithString("id", mcp.Description("Dashboard UUID to delete. Required.")),
+		withDeleteToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views, which use signoz_delete_view."),
+		mcp.WithString("id", mcp.Description("UUID of the dashboard to delete. Required; use signoz_list_dashboards to discover it.")),
 	)
 
 	h.addTool(s, deleteDashboardTool, h.handleDeleteDashboard)
 
 	importDashboardTool := mcp.NewTool(
 		"signoz_import_dashboard",
-		mcp.WithDestructiveHintAnnotation(true),
+		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Create a new SigNoz dashboard from a curated template hosted in the SigNoz/dashboards GitHub repo. "+
-				"Takes a single 'path' argument (e.g. 'hostmetrics/hostmetrics.json' or 'postgresql/postgresql.json') "+
-				"that points to a template file on the main branch. The server fetches the JSON "+
-				"and creates the dashboard in one call — the client does not need to inline the template body. "+
-				"To discover the available paths, call signoz_list_dashboard_templates first and let the model pick the best match. "+
-				"For custom dashboards, use signoz_create_dashboard.",
+			"Use this when the user wants a new dashboard from a curated SigNoz/dashboards template, not a custom configuration. Pass a known relative template path; if it is unknown, call signoz_list_dashboard_templates first. The server fetches and validates the selected template, then creates the dashboard. Use signoz_create_dashboard for a custom layout or queries.",
 		),
-		mcp.WithString("path", mcp.Required(), mcp.Description("Template path within the SigNoz/dashboards repo, e.g. 'hostmetrics/hostmetrics.json'.")),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Relative JSON path from signoz_list_dashboard_templates, for example hostmetrics/hostmetrics.json. Do not pass a URL or absolute path.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 	)
 
 	h.addTool(s, importDashboardTool, h.handleImportDashboard)
 
 	listTemplatesTool := mcp.NewTool(
 		"signoz_list_dashboard_templates",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
+		withReadOnlyToolAnnotations(),
 		mcp.WithDescription(
-			"List all curated SigNoz dashboard templates bundled with this server. "+
-				"Returns the full catalog as a JSON array — each entry includes 'id', 'title', 'path', 'description', 'category', and 'keywords'. "+
-				"Use this to discover which template fits the user's intent, then pass the chosen 'path' to signoz_import_dashboard. "+
-				"The catalog is small enough to read in full; let the model decide the best match rather than relying on keyword scoring.",
+			"Use this when the user wants to browse curated dashboard templates or discover a path for signoz_import_dashboard. It returns the complete bundled catalog with id, title, path, description, category, and keywords. It does not list dashboards already created in the tenant; use signoz_list_dashboards for those.",
 		),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 	)
 
 	h.addTool(s, listTemplatesTool, h.handleListDashboardTemplates)
@@ -537,15 +502,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	clickhouseLogsSchemaResource := mcp.NewResource(
 		"signoz://dashboard/clickhouse-schema-for-logs",
 		"ClickHouse Logs Schema",
-		mcp.WithResourceDescription("ClickHouse schema for logs_v2, logs_v2_resource, tag_attributes_v2 and their distributed counterparts. requires dashboard instructions at signoz://dashboard/instructions"),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing ClickHouse SQL for a dashboard widget over SigNoz logs. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-logs-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.LogsSchema))),
 	)
 
-	s.AddResource(clickhouseLogsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseLogsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.LogsSchema,
 			},
 		}, nil
@@ -553,16 +519,17 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 
 	clickhouseLogsExample := mcp.NewResource(
 		"signoz://dashboard/clickhouse-logs-example",
-		"Clickhouse Examples for logs",
-		mcp.WithResourceDescription("ClickHouse SQL query examples for SigNoz logs. Includes resource filter patterns (CTE), timeseries queries, value queries, common use cases (Kubernetes clusters, error logs by service), and key patterns for timestamp filtering, attribute access (resource vs standard, indexed vs non-indexed), severity filters, variables, and performance optimization tips."),
-		mcp.WithMIMEType("text/plain"),
+		"ClickHouse Logs Examples",
+		mcp.WithResourceDescription("Read this after signoz://dashboard/clickhouse-schema-for-logs when composing a raw ClickHouse logs widget. It covers timestamp and attribute filters, resource CTEs, variables, timeseries/value shapes, and performance patterns."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.ClickhouseSqlQueryForLogs))),
 	)
 
-	s.AddResource(clickhouseLogsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseLogsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.ClickhouseSqlQueryForLogs,
 			},
 		}, nil
@@ -571,15 +538,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	clickhouseMetricsSchemaResource := mcp.NewResource(
 		"signoz://dashboard/clickhouse-schema-for-metrics",
 		"ClickHouse Metrics Schema",
-		mcp.WithResourceDescription("ClickHouse schema for samples_v4, exp_hist, time_series_v4 (and 6hrs/1day variants) and their distributed counterparts. requires dashboard instructions at signoz://dashboard/instructions"),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing ClickHouse SQL for a dashboard widget over SigNoz metrics. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-metrics-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.MetricsSchema))),
 	)
 
-	s.AddResource(clickhouseMetricsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseMetricsSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.MetricsSchema,
 			},
 		}, nil
@@ -587,16 +555,17 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 
 	clickhouseMetricsExample := mcp.NewResource(
 		"signoz://dashboard/clickhouse-metrics-example",
-		"Clickhouse Examples for Metrics",
-		mcp.WithResourceDescription("ClickHouse SQL query examples for SigNoz metrics. Includes basic queries , rate calculation patterns for counter metrics (using lagInFrame and runningDifference), error rate calculations (ratio of two metrics), histogram quantile queries for latency percentiles (P95, P99), and key patterns for time series table selection by granularity, timestamp filtering, label filtering, time interval aggregation, variables, and performance optimization"),
-		mcp.WithMIMEType("text/plain"),
+		"ClickHouse Metrics Examples",
+		mcp.WithResourceDescription("Read this after signoz://dashboard/clickhouse-schema-for-metrics when composing a raw ClickHouse metrics widget. It covers counter rates, error ratios, histogram quantiles, time-series tables, variables, and performance patterns."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.ClickhouseSqlQueryForMetrics))),
 	)
 
-	s.AddResource(clickhouseMetricsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseMetricsExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.ClickhouseSqlQueryForMetrics,
 			},
 		}, nil
@@ -605,15 +574,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	clickhouseTracesSchemaResource := mcp.NewResource(
 		"signoz://dashboard/clickhouse-schema-for-traces",
 		"ClickHouse Traces Schema",
-		mcp.WithResourceDescription("ClickHouse schema for signoz_index_v3, signoz_spans, signoz_error_index_v2, traces_v3_resource, dependency_graph_minutes_v2, trace_summary, top_level_operations and their distributed counterparts. requires dashboard instructions at signoz://dashboard/instructions"),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before writing ClickHouse SQL for a dashboard widget over SigNoz traces. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-traces-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.TracesSchema))),
 	)
 
-	s.AddResource(clickhouseTracesSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseTracesSchemaResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.TracesSchema,
 			},
 		}, nil
@@ -621,16 +591,17 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 
 	clickhouseTracesExample := mcp.NewResource(
 		"signoz://dashboard/clickhouse-traces-example",
-		"Clickhouse Examples for Traces",
-		mcp.WithResourceDescription("ClickHouse SQL examples for SigNoz traces: resource filters, timeseries/value/table queries, span event extraction, latency analysis, and performance tips."),
-		mcp.WithMIMEType("text/plain"),
+		"ClickHouse Traces Examples",
+		mcp.WithResourceDescription("Read this after signoz://dashboard/clickhouse-schema-for-traces when composing a raw ClickHouse traces widget. It covers resource filters, timeseries/value/table result shapes, span events, latency analysis, and performance patterns."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.ClickhouseSqlQueryForTraces))),
 	)
 
-	s.AddResource(clickhouseTracesExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, clickhouseTracesExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.ClickhouseSqlQueryForTraces,
 			},
 		}, nil
@@ -639,15 +610,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	promqlExample := mcp.NewResource(
 		"signoz://promql/instructions",
 		"PromQL Instructions",
-		mcp.WithResourceDescription("SigNoz PromQL guide — used by promql_rule alerts and PromQL dashboard widgets. Covers OTel dotted metric names (Prometheus 3.x UTF-8 quoted selector form), the anti-pattern table of forms that return no data, dotted resource attributes in by() and label matchers, examples by metric type, and the pre-flight checklist for PromQL alerts."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this when composing a PromQL dashboard widget or promql_rule alert. It explains SigNoz's Prometheus 3.x quoted-selector form for dotted OTel metric names, resource labels, examples, and query checks; do not use it for Query Builder or ClickHouse SQL."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(promql.Instructions))),
 	)
 
-	s.AddResource(promqlExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, promqlExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     promql.Instructions,
 			},
 		}, nil
@@ -656,15 +628,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	queryBuilderExample := mcp.NewResource(
 		"signoz://dashboard/query-builder-example",
 		"Query Builder Examples",
-		mcp.WithResourceDescription("SigNoz Query Builder reference: CRITICAL OpenTelemetry metric naming conventions (dot vs underscore suffixes), filtering, aggregation, legend formatting for grouped charts, search syntax, operators, field existence behavior, full-text search, functions, advanced examples, and best practices."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this when composing a Query Builder dashboard widget. It covers signal-specific aggregations, filters, metric naming, grouped legends, functions, and examples; use the ClickHouse or PromQL resources instead for those query types."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.Querybuilder))),
 	)
 
-	s.AddResource(queryBuilderExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, queryBuilderExample, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.Querybuilder,
 			},
 		}, nil
@@ -673,15 +646,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	dashboardInstructions := mcp.NewResource(
 		"signoz://dashboard/instructions",
 		"Dashboard Basic Instructions",
-		mcp.WithResourceDescription("SigNoz v6 (Perses-schema) dashboard basics: display (title/tags/description), the grid layout (positions + the content.$ref panel linkage), and variable configuration (prefer DynamicVariable, $var reference, and the rule to always ask which panels a variable applies to). For WHICH panel/query type to choose, see signoz://dashboard/widgets-instructions."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this before creating or fully replacing a dashboard. It explains dashboard fields, metadata, variables, variable chaining, and layout. Also read signoz://dashboard/widgets-instructions for widget and query choices."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.Basics))),
 	)
 
-	s.AddResource(dashboardInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, dashboardInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.Basics,
 			},
 		}, nil
@@ -689,16 +663,17 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 
 	widgetsInstructions := mcp.NewResource(
 		"signoz://dashboard/widgets-instructions",
-		"Dashboard Panels & Queries Guide (v6)",
-		mcp.WithResourceDescription("Conceptual guidance for SigNoz dashboards: which query type (Query Builder / ClickHouse SQL / PromQL) and which panel type to choose for a given intent, plus legend and layout conventions. Structure-agnostic — for the exact v6 (Perses) JSON shape see signoz://dashboard/instructions."),
-		mcp.WithMIMEType("text/plain"),
+		"Dashboard Widget Instructions",
+		mcp.WithResourceDescription("Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.WidgetsInstructions))),
 	)
 
-	s.AddResource(widgetsInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, widgetsInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.WidgetsInstructions,
 			},
 		}, nil
@@ -707,15 +682,16 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	widgetsExamplesResource := mcp.NewResource(
 		"signoz://dashboard/widgets-examples",
 		"Dashboard Widgets Examples",
-		mcp.WithResourceDescription("Worked v6 (Perses) widget examples — real round-tripped panel payloads (timeseries, list, pie, table, value/number) to copy the structure from; one panel per example. For the rules behind them see signoz://dashboard/instructions and signoz://dashboard/widgets-instructions."),
-		mcp.WithMIMEType("text/plain"),
+		mcp.WithResourceDescription("Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.WidgetExamples))),
 	)
 
-	s.AddResource(widgetsExamplesResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	h.addResource(s, widgetsExamplesResource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 		return []mcp.ResourceContents{
 			mcp.TextResourceContents{
 				URI:      req.Params.URI,
-				MIMEType: "text/plain",
+				MIMEType: "text/markdown",
 				Text:     dashboard.WidgetExamples,
 			},
 		}, nil

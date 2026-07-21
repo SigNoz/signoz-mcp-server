@@ -20,28 +20,11 @@ var expectedOutputSchemaTools = []string{
 	"signoz_search_docs",
 }
 
-func registerAllToolHandlers(h *Handler, s *server.MCPServer) {
-	h.RegisterMetricsHandlers(s)
-	h.RegisterTopMetricsHandlers(s)
-	h.RegisterMetricUsageHandlers(s)
-	h.RegisterFieldsHandlers(s)
-	h.RegisterAlertsHandlers(s)
-	h.RegisterDashboardHandlers(s)
-	h.RegisterServiceHandlers(s)
-	h.RegisterQueryBuilderV5Handlers(s)
-	h.RegisterLogsHandlers(s)
-	h.RegisterViewHandlers(s)
-	h.RegisterDocsHandlers(s)
-	h.RegisterTracesHandlers(s)
-	h.RegisterNotificationChannelHandlers(s)
-	h.RegisterMetricCardinalityHandlers(s)
-}
-
 func registeredTestTools(t *testing.T) map[string]*server.ServerTool {
 	t.Helper()
 	h := newTestHandler(nil)
 	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
-	registerAllToolHandlers(h, s)
+	h.RegisterAllToolHandlers(s)
 	return s.ListTools()
 }
 

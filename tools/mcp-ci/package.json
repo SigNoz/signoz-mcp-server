@@ -1,0 +1,11 @@
+{
+  "name": "signoz-mcp-protocol-ci",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.7.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector-cli": "1.0.0"
+  }
+}

@@ -10,11 +10,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
@@ -24,10 +26,13 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+var initClickhouseSchemaOnce sync.Once
+
 // buildTestServer creates a fully-wired MCPServer suitable for in-process
 // integration testing. It mirrors the real server setup in server.go.
 func buildTestServer(t *testing.T) *server.MCPServer {
 	t.Helper()
+	initClickhouseSchemaOnce.Do(dashboard.InitClickhouseSchema)
 
 	log := logpkg.New("error")
 	cfg := &config.Config{
@@ -43,22 +48,11 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 		server.WithInstructions(instructions.ServerInstructions),
 	)
 
-	handler.RegisterMetricsHandlers(s)
-	handler.RegisterTopMetricsHandlers(s)
-	handler.RegisterMetricUsageHandlers(s)
-	handler.RegisterFieldsHandlers(s)
-	handler.RegisterAlertsHandlers(s)
-	handler.RegisterDashboardHandlers(s)
-	handler.RegisterServiceHandlers(s)
-	handler.RegisterQueryBuilderV5Handlers(s)
-	handler.RegisterLogsHandlers(s)
-	handler.RegisterViewHandlers(s)
-	handler.RegisterDocsHandlers(s)
-	handler.RegisterTracesHandlers(s)
-	handler.RegisterNotificationChannelHandlers(s)
-	handler.RegisterMetricCardinalityHandlers(s)
+	handler.RegisterAllToolHandlers(s)
 	handler.RegisterResourceTemplates(s)
-	prompts.RegisterPrompts(s.AddPrompt)
+	prompts.RegisterPrompts(func(prompt mcp.Prompt, promptHandler server.PromptHandlerFunc) {
+		handler.RegisterPrompt(s, prompt, promptHandler)
+	})
 
 	return s
 }
@@ -106,7 +100,16 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 	}
 }
 
-func manifestToolNames(t *testing.T) []string {
+type manifestDocument struct {
+	Tools []struct {
+		Name string `json:"name"`
+	} `json:"tools"`
+	Resources []struct {
+		URI string `json:"uri"`
+	} `json:"resources"`
+}
+
+func readManifest(t *testing.T) manifestDocument {
 	t.Helper()
 
 	_, filename, _, ok := runtime.Caller(0)
@@ -117,14 +120,17 @@ func manifestToolNames(t *testing.T) []string {
 	if err != nil {
 		t.Fatalf("read manifest.json: %v", err)
 	}
-	var manifest struct {
-		Tools []struct {
-			Name string `json:"name"`
-		} `json:"tools"`
-	}
+	var manifest manifestDocument
 	if err := json.Unmarshal(b, &manifest); err != nil {
 		t.Fatalf("parse manifest.json: %v", err)
 	}
+	return manifest
+}
+
+func manifestToolNames(t *testing.T) []string {
+	t.Helper()
+
+	manifest := readManifest(t)
 
 	names := make([]string, 0, len(manifest.Tools))
 	seen := make(map[string]struct{}, len(manifest.Tools))
@@ -140,6 +146,26 @@ func manifestToolNames(t *testing.T) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func manifestResourceURIs(t *testing.T) []string {
+	t.Helper()
+
+	manifest := readManifest(t)
+	uris := make([]string, 0, len(manifest.Resources))
+	seen := make(map[string]struct{}, len(manifest.Resources))
+	for _, resource := range manifest.Resources {
+		if resource.URI == "" {
+			t.Fatal("manifest.json contains a resource without a URI")
+		}
+		if _, ok := seen[resource.URI]; ok {
+			t.Fatalf("manifest.json contains duplicate resource URI %q", resource.URI)
+		}
+		seen[resource.URI] = struct{}{}
+		uris = append(uris, resource.URI)
+	}
+	sort.Strings(uris)
+	return uris
 }
 
 func listedToolNames(t *testing.T, listedTools []mcp.Tool) []string {
@@ -569,6 +595,104 @@ func TestIntegration_ListPrompts(t *testing.T) {
 	}
 }
 
+func TestIntegration_InitializeListAndReadResources(t *testing.T) {
+	s := buildTestServer(t)
+	ctx := context.Background()
+
+	c, err := mcpclient.NewInProcessClient(s)
+	if err != nil {
+		t.Fatalf("failed to create in-process client: %v", err)
+	}
+
+	initResult, err := c.Initialize(ctx, mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	if initResult.Capabilities.Resources == nil {
+		t.Error("expected resources capability to be present")
+	}
+
+	resourcesResult, err := c.ListResources(ctx, mcp.ListResourcesRequest{})
+	if err != nil {
+		t.Fatalf("ListResources failed: %v", err)
+	}
+
+	expectedURIs := manifestResourceURIs(t)
+	actualURIs := make([]string, 0, len(resourcesResult.Resources))
+	seenURIs := make(map[string]struct{}, len(resourcesResult.Resources))
+	seenNames := make(map[string]struct{}, len(resourcesResult.Resources))
+	for _, resource := range resourcesResult.Resources {
+		if resource.URI == "" || resource.Name == "" || resource.Description == "" || resource.MIMEType == "" {
+			t.Fatalf("resources/list contains incomplete metadata: %+v", resource)
+		}
+		if len(resource.Description) > 1024 {
+			t.Errorf("%s description = %d bytes, limit 1024", resource.URI, len(resource.Description))
+		}
+		if _, duplicate := seenURIs[resource.URI]; duplicate {
+			t.Fatalf("resources/list contains duplicate URI %q", resource.URI)
+		}
+		if _, duplicate := seenNames[resource.Name]; duplicate {
+			t.Fatalf("resources/list contains duplicate name %q", resource.Name)
+		}
+		seenURIs[resource.URI] = struct{}{}
+		seenNames[resource.Name] = struct{}{}
+		actualURIs = append(actualURIs, resource.URI)
+	}
+	sort.Strings(actualURIs)
+	if !reflect.DeepEqual(actualURIs, expectedURIs) {
+		t.Errorf("resources/list URIs differ from manifest.json\nexpected: %v\nactual: %v", expectedURIs, actualURIs)
+	}
+
+	for _, resource := range resourcesResult.Resources {
+		resource := resource
+		t.Run(resource.URI, func(t *testing.T) {
+			if resource.MIMEType != "text/markdown" {
+				t.Errorf("resource MIME type = %q, want text/markdown", resource.MIMEType)
+			}
+			// The sitemap is backed by the asynchronously built docs index, which
+			// buildTestServer deliberately does not initialize. Its readable-content
+			// contract is covered by TestE2EDocsSearchFetchAndSitemap.
+			if resource.URI == "signoz://docs/sitemap" {
+				t.Skip("requires initialized docs index")
+			}
+			if resource.Size == nil {
+				t.Fatal("static resource does not advertise its byte size")
+			}
+
+			result, err := c.ReadResource(ctx, mcp.ReadResourceRequest{
+				Params: mcp.ReadResourceParams{URI: resource.URI},
+			})
+			if err != nil {
+				t.Fatalf("ReadResource(%s) failed: %v", resource.URI, err)
+			}
+			if len(result.Contents) != 1 {
+				t.Fatalf("ReadResource(%s) returned %d content items, want 1", resource.URI, len(result.Contents))
+			}
+			content, ok := result.Contents[0].(mcp.TextResourceContents)
+			if !ok {
+				t.Fatalf("ReadResource(%s) returned %T, want TextResourceContents", resource.URI, result.Contents[0])
+			}
+			if content.URI != resource.URI {
+				t.Errorf("ReadResource(%s) content URI = %q", resource.URI, content.URI)
+			}
+			if content.MIMEType != resource.MIMEType {
+				t.Errorf("ReadResource(%s) MIME type = %q, want %q", resource.URI, content.MIMEType, resource.MIMEType)
+			}
+			if strings.TrimSpace(content.Text) == "" {
+				t.Errorf("ReadResource(%s) returned empty text", resource.URI)
+			}
+			if got, want := *resource.Size, int64(len(content.Text)); got != want {
+				t.Errorf("resource size = %d, read content size = %d", got, want)
+			}
+		})
+	}
+}
+
 func TestIntegration_ListResourceTemplates(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
@@ -593,11 +717,16 @@ func TestIntegration_ListResourceTemplates(t *testing.T) {
 		t.Fatalf("ListResourceTemplates failed: %v", err)
 	}
 
-	const expectedTemplateCount = 2
-	if len(templatesResult.ResourceTemplates) != expectedTemplateCount {
-		t.Errorf("expected %d resource templates, got %d", expectedTemplateCount, len(templatesResult.ResourceTemplates))
-		for _, rt := range templatesResult.ResourceTemplates {
-			t.Logf("  resource template: %s", rt.Name)
+	if got, want := len(templatesResult.ResourceTemplates), 2; got != want {
+		t.Fatalf("resource template count = %d, want %d", got, want)
+	}
+	for _, template := range templatesResult.ResourceTemplates {
+		if template.URITemplate == nil || template.URITemplate.Raw() == "" ||
+			template.Name == "" || template.Description == "" || template.MIMEType == "" {
+			t.Errorf("resource template has incomplete metadata: %+v", template)
+		}
+		if len(template.Description) > 1024 {
+			t.Errorf("resource template description = %d bytes, limit 1024", len(template.Description))
 		}
 	}
 }

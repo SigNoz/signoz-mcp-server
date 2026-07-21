@@ -91,18 +91,34 @@ func TestExecuteBuilderQueryAgentFacingRouting(t *testing.T) {
 	h.RegisterQueryBuilderV5Handlers(s)
 	registered := s.ListTools()["signoz_execute_builder_query"]
 	description := registered.Tool.Description
+	if !strings.HasPrefix(description, "Use this only when") {
+		t.Fatalf("execute_builder_query description must lead with its selection boundary: %q", description)
+	}
 	for _, want := range []string{
-		"escape hatch",
 		"signoz_search_logs",
 		"signoz_aggregate_traces",
 		"signoz_query_metrics",
 		"signoz://logs/query-builder-guide",
 		"signoz://traces/query-builder-guide",
 		"signoz://metrics-aggregation-guide",
-		"spec.order",
+		"input builder_query limit to 10000",
+		"builder_formula result limit to 100",
+		"non-empty spec.order",
+		"dashboard orderBy",
 	} {
 		if !strings.Contains(description, want) {
 			t.Fatalf("execute_builder_query description missing %q: %q", want, description)
+		}
+	}
+
+	query, ok := registeredToolProps(t, "signoz_execute_builder_query")["query"].(map[string]any)
+	if !ok {
+		t.Fatal("execute_builder_query query property is missing or not an object")
+	}
+	queryDescription, _ := query["description"].(string)
+	for _, want := range []string{"explicitly supply a positive spec.limit", "spec.order", "orderBy", "server inserts signal-aware defaults", "100", "10000", "formula"} {
+		if !strings.Contains(queryDescription, want) {
+			t.Fatalf("execute_builder_query query description missing %q: %q", want, queryDescription)
 		}
 	}
 }

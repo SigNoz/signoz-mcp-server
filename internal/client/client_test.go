@@ -29,6 +29,12 @@ func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
 	return slog.New(logpkg.NewContextHandler(base))
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func TestGetAlertByRuleID(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -152,11 +158,21 @@ func TestListAlertRules(t *testing.T) {
 	assert.Contains(t, string(result), `"id":"rule-1"`)
 }
 
+// expiredWorkspaceHTML mirrors the 404 page the SigNoz Cloud ingress serves
+// for expired/deactivated workspaces (captured from production logs).
+const expiredWorkspaceHTML = `<!DOCTYPE html>
+<html>
+<head><title>404 : This page does not exist :/</title></head>
+<body><p>Either the workspace has expired or the workspace does not exist.</p></body>
+</html>`
+
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
 		name            string
-		userMeStatus    int // status for /api/v1/user/me (always hit first)
-		saStatus        int // status for /api/v1/service_accounts/me (only hit on user/me 502)
+		userMeStatus    int    // status for /api/v1/user/me (always hit first)
+		userMeBody      string // body for user/me; defaults to JSON
+		saStatus        int    // status for /api/v1/service_accounts/me (only hit on user/me JSON 404)
+		saBody          string // body for service_accounts/me; defaults to JSON
 		expectedError   bool
 		checkErr        func(t *testing.T, err error)
 		expectUserMeHit bool
@@ -208,6 +224,41 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Contains(t, err.Error(), "unexpected status 500")
 			},
 		},
+		{
+			name:            "user/me HTML 404 means no instance, skips fallback",
+			userMeStatus:    http.StatusNotFound,
+			userMeBody:      expiredWorkspaceHTML,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     false,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrInstanceNotFound)
+			},
+		},
+		{
+			name:            "user/me JSON 404 falls back, HTML 404 on service_accounts/me means no instance",
+			userMeStatus:    http.StatusNotFound,
+			saStatus:        http.StatusNotFound,
+			saBody:          expiredWorkspaceHTML,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     true,
+			checkErr: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrInstanceNotFound)
+			},
+		},
+		{
+			name:            "JSON 404 on both endpoints stays a generic unexpected status",
+			userMeStatus:    http.StatusNotFound,
+			saStatus:        http.StatusNotFound,
+			expectedError:   true,
+			expectUserMeHit: true,
+			expectSAHit:     true,
+			checkErr: func(t *testing.T, err error) {
+				assert.NotErrorIs(t, err, ErrInstanceNotFound)
+				assert.Contains(t, err.Error(), "unexpected status 404")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -221,18 +272,25 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
+				body := `{"status":"ok"}`
 				switch r.URL.Path {
 				case "/api/v1/user/me":
 					userMeRequests++
 					w.WriteHeader(tt.userMeStatus)
+					if tt.userMeBody != "" {
+						body = tt.userMeBody
+					}
 				case "/api/v1/service_accounts/me":
 					saRequests++
 					w.WriteHeader(tt.saStatus)
+					if tt.saBody != "" {
+						body = tt.saBody
+					}
 				default:
 					t.Fatalf("unexpected path %s", r.URL.Path)
 				}
 
-				_, _ = w.Write([]byte(`{"status":"ok"}`))
+				_, _ = w.Write([]byte(body))
 			}))
 			defer server.Close()
 
@@ -570,7 +628,7 @@ func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
 
 	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{}`), time.Second)
 	require.Error(t, err)
 
 	var statusErr *HTTPStatusError
@@ -601,7 +659,7 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 
 	client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{}`), time.Second)
+	_, err = client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{}`), time.Second)
 	require.Error(t, err)
 
 	var statusErr *HTTPStatusError
@@ -1604,6 +1662,72 @@ func TestDoRequest_RetryOn429(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, attempts)
 	assert.Contains(t, string(result), "success")
+}
+
+func TestGuardrail_MutatingPOSTNotRetriedAfterRetryableStatus(t *testing.T) {
+	var attempts atomic.Int32
+	var requestBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		var err error
+		requestBody, err = io.ReadAll(r.Body)
+		require.NoError(t, err)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"may already have committed"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{"name":"created-once"}`), time.Second)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), attempts.Load())
+	assert.JSONEq(t, `{"name":"created-once"}`, string(requestBody))
+}
+
+func TestGuardrail_MutatingPOSTNotRetriedAfterAmbiguousTransportFailure(t *testing.T) {
+	var attempts atomic.Int32
+	var requestBody []byte
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		attempts.Add(1)
+		var err error
+		requestBody, err = io.ReadAll(req.Body)
+		require.NoError(t, err)
+		return nil, io.ErrUnexpectedEOF
+	})
+	client := NewClient(logpkg.New("error"), "http://example.invalid", "test-api-key", "SIGNOZ-API-KEY", nil)
+	client.httpClient.Transport = transport
+
+	_, err := client.doRequest(context.Background(), http.MethodPost, "http://example.invalid/api/v1/dashboards", []byte(`{"title":"created-once"}`), time.Second)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), attempts.Load())
+	assert.JSONEq(t, `{"title":"created-once"}`, string(requestBody))
+}
+
+func TestGuardrail_ReadOnlyPOSTRetries(t *testing.T) {
+	var attempts atomic.Int32
+	var requestBodies [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestBody, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		requestBodies = append(requestBodies, requestBody)
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"result":[]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	result, err := client.QueryBuilderV5(context.Background(), []byte(`{"schemaVersion":"v1"}`))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"data":{"result":[]}}`, string(result))
+	assert.Equal(t, int32(2), attempts.Load())
+	require.Len(t, requestBodies, 2)
+	for _, requestBody := range requestBodies {
+		assert.JSONEq(t, `{"schemaVersion":"v1"}`, string(requestBody))
+	}
 }
 
 func TestNewClient_SetsCustomHeaders(t *testing.T) {

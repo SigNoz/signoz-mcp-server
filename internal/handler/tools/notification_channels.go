@@ -27,16 +27,10 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.logger.Debug("Registering notification channel handlers")
 
 	listChannelsTool := mcp.NewTool("signoz_list_notification_channels",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		withReadOnlyToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"List all notification channels configured in SigNoz.\n\n"+
-				"Returns channel id, name, type (slack, webhook, pagerduty, email, opsgenie, msteams), "+
-				"configuration details, and timestamps.\n\n"+
-				"Use this tool to discover existing channels before creating new ones or to verify channel configurations.\n\n"+
-				"Results are paginated. Use 'limit' and 'offset' to page through large result sets. "+
-				"The response includes pagination metadata: total count, hasMore flag, and nextOffset for the next page.",
+			"Use this when the user wants to discover configured notification channels, verify exact channel names before creating or updating an alert, avoid a duplicate name before channel creation, or find a channel ID. It returns paginated summaries only: id, name, type, and timestamps; it does not return provider-specific settings. Use signoz_get_notification_channel with an ID for all settings.",
 		),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of channels to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.")),
@@ -45,24 +39,16 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, listChannelsTool, h.handleListNotificationChannels)
 
 	createChannelTool := mcp.NewTool("signoz_create_notification_channel",
-		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		withCreateToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Create a notification channel in SigNoz and send a test notification to verify it works.\n\n"+
+			"Use this when the user wants a new SigNoz notification channel. First call signoz_list_notification_channels and confirm the requested name is not already used. Supply the provider-specific required field documented in the input schema. A test notification is sent after creation; if the test fails, the channel still exists and the response reports the failure.\n"+
 				"SUPPORTED TYPES: slack, webhook, pagerduty, email, opsgenie, msteams\n\n"+
-				"REQUIRED FIELDS BY TYPE:\n"+
-				"- slack: name, slack_api_url (Slack incoming webhook URL)\n"+
-				"- webhook: name, webhook_url (endpoint URL)\n"+
-				"- pagerduty: name, pagerduty_routing_key (integration/routing key)\n"+
-				"- email: name, email_to (comma-separated email addresses)\n"+
-				"- opsgenie: name, opsgenie_api_key (OpsGenie API key)\n"+
-				"- msteams: name, msteams_webhook_url (MS Teams incoming webhook URL)\n\n"+
-				"After creating the channel, a test notification is always sent to verify the channel is working. "+
-				"The response includes both the channel creation result and the test notification outcome.",
+				"Use signoz_update_notification_channel to change an existing channel.",
 		),
 		// Common fields
-		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
-		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
+		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type: slack, webhook, pagerduty, email, opsgenie, or msteams.")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Unique channel name. Before creating, verify it is unused with signoz_list_notification_channels.")),
 		mcp.WithBoolean("send_resolved", boolOrStringType(), mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
 
 		// Slack fields
@@ -100,32 +86,19 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, createChannelTool, h.handleCreateNotificationChannel)
 
 	updateChannelTool := mcp.NewTool("signoz_update_notification_channel",
-		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
+		withNonIdempotentUpdateToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Update an existing notification channel in SigNoz and send a test notification to verify it works.\n\n"+
-				"IMPORTANT: This replaces the full channel configuration. All fields must be provided, not just the ones being changed.\n\n"+
+			"Use this when the user wants to change an existing SigNoz notification channel. This is a full replacement: first find the ID with signoz_list_notification_channels, then call signoz_get_notification_channel and merge the requested change while preserving the complete provider configuration and send_resolved value. Omitting send_resolved resets it to true. A test notification is sent after update; an update can succeed even when that test fails, which is reported in the response.\n"+
 				"SUPPORTED TYPES: slack, webhook, pagerduty, email, opsgenie, msteams\n\n"+
-				"REQUIRED FIELDS:\n"+
-				"- id: The UUID of the channel to update\n"+
-				"- type: Channel type (slack, webhook, pagerduty, email, opsgenie, msteams)\n"+
-				"- name: Channel name\n\n"+
-				"REQUIRED FIELDS BY TYPE:\n"+
-				"- slack: slack_api_url (Slack incoming webhook URL)\n"+
-				"- webhook: webhook_url (endpoint URL)\n"+
-				"- pagerduty: pagerduty_routing_key (integration/routing key)\n"+
-				"- email: email_to (comma-separated email addresses)\n"+
-				"- opsgenie: opsgenie_api_key (OpsGenie API key)\n"+
-				"- msteams: msteams_webhook_url (MS Teams incoming webhook URL)\n\n"+
-				"After updating the channel, a test notification is always sent to verify the channel is working. "+
-				"The response includes both the channel update result and the test notification outcome.",
+				"Do not use this for partial updates.",
 		),
 		// ID field (required for update)
-		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel to update")),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Notification channel UUID. Obtain it from signoz_list_notification_channels.")),
 		// Common fields
-		mcp.WithString("type", mcp.Required(), mcp.Description("Channel type. One of: slack, webhook, pagerduty, email, opsgenie, msteams")),
-		mcp.WithString("name", mcp.Required(), mcp.Description("Unique name for the notification channel")),
-		mcp.WithBoolean("send_resolved", boolOrStringType(), mcp.Description("Whether to send notifications when alerts resolve. Default: true.")),
+		mcp.WithString("type", mcp.Required(), mcp.Description("Complete replacement channel type: slack, webhook, pagerduty, email, opsgenie, or msteams. Preserve the current type unless the user requested a change.")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Complete replacement channel name. Preserve the current name unless the user requested a change.")),
+		mcp.WithBoolean("send_resolved", boolOrStringType(), mcp.Description("Complete replacement resolved-notification setting. Copy the current value from signoz_get_notification_channel unless changing it; omission resets to true.")),
 
 		// Slack fields
 		mcp.WithString("slack_api_url", mcp.Description("Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx")),
@@ -162,19 +135,18 @@ func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
 	h.addTool(s, updateChannelTool, h.handleUpdateNotificationChannel)
 
 	getChannelTool := mcp.NewTool("signoz_get_notification_channel",
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Get a single notification channel by ID (GET /api/v1/channels/{id}). Returns the full channel configuration including the embedded receiver config (slack/webhook/pagerduty/email/opsgenie/msteams)."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel.")),
+		withReadOnlyToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user wants all provider-specific settings for one notification channel, especially before replacing it with signoz_update_notification_channel. It requires a known channel ID; use signoz_list_notification_channels to discover IDs. Do not use it to list channel names."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Notification channel UUID. Obtain it from signoz_list_notification_channels.")),
 	)
 	h.addTool(s, getChannelTool, h.handleGetNotificationChannel)
 
 	deleteChannelTool := mcp.NewTool("signoz_delete_notification_channel",
-		mcp.WithDestructiveHintAnnotation(true),
-		mcp.WithString("searchContext", mcp.Description("The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.")),
-		mcp.WithDescription("Delete a notification channel by ID (DELETE /api/v1/channels/{id}). Irreversible. Confirm with the user before calling, and warn if the channel is referenced by existing alert rules."),
-		mcp.WithString("id", mcp.Required(), mcp.Description("The UUID of the notification channel to delete.")),
+		withDeleteToolAnnotations(),
+		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
+		mcp.WithDescription("Use this when the user explicitly wants to permanently delete a notification channel. Resolve its ID with signoz_list_notification_channels and confirm the exact channel first. If both steps are already complete, call this tool directly without repeating list/get preflight. This tool does not check whether alert rules reference the channel; inspect configured rules first when dependency safety is required."),
+		mcp.WithString("id", mcp.Required(), mcp.Description("Notification channel UUID. Obtain it from signoz_list_notification_channels.")),
 	)
 	h.addTool(s, deleteChannelTool, h.handleDeleteNotificationChannel)
 }
