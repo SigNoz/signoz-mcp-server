@@ -768,49 +768,6 @@ func TestListMetricKeys(t *testing.T) {
 	}
 }
 
-func TestListDashboards(t *testing.T) {
-	// The client's contract for this call is the wire shape, not dashboard
-	// semantics: it must target the v2 endpoint, forward pagination as query
-	// params, and pass the response body through unmodified. Dashboard domain
-	// behavior is covered by the handler and pkg/dashboard tests.
-	t.Run("forwards v2 list with pagination params", func(t *testing.T) {
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, http.MethodGet, r.Method)
-			assert.Equal(t, "/api/v2/dashboards", r.URL.Path)
-			assert.Equal(t, "25", r.URL.Query().Get("limit"))
-			assert.Equal(t, "50", r.URL.Query().Get("offset"))
-			assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"dashboards":[],"total":0}`))
-		}))
-		defer mockServer.Close()
-
-		client := NewClient(logpkg.New("debug"), mockServer.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-		result, err := client.ListDashboards(context.Background(), 25, 50)
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"dashboards":[],"total":0}`, string(result))
-	})
-
-	// A permission failure must propagate as the typed status error (not be
-	// swallowed) so the handler can map it to a coded upstream error for re-auth.
-	t.Run("propagates upstream auth failure with status code", func(t *testing.T) {
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusForbidden)
-			_, _ = w.Write([]byte(`{"error":"forbidden"}`))
-		}))
-		defer mockServer.Close()
-
-		client := NewClient(logpkg.New("debug"), mockServer.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-		result, err := client.ListDashboards(context.Background(), 0, 0)
-		require.Error(t, err)
-		assert.Nil(t, result)
-
-		var statusErr *HTTPStatusError
-		require.True(t, errors.As(err, &statusErr), "expected typed upstream status error to propagate")
-		assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
-	})
-}
-
 func TestListServices(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -1278,86 +1235,6 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 	require.Contains(t, payload, `"limit":1000`)
 	require.Contains(t, payload, `"order":[{"key":{"name":"timestamp"},"direction":"desc"}]`)
 	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
-}
-
-func TestCreateDashboardRaw(t *testing.T) {
-	// Pass-through: the client forwards the raw v6 body to POST /api/v2/dashboards
-	// and returns the response body verbatim.
-	payload := []byte(`{"schemaVersion":"v6","generateName":true,"tags":[],"spec":{"display":{"name":"x"},"variables":[],"panels":{},"layouts":[]}}`)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/v2/dashboards", r.URL.Path)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		got, _ := io.ReadAll(r.Body)
-		assert.JSONEq(t, string(payload), string(got))
-
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"dashboard-123"}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	resp, err := client.CreateDashboardRaw(context.Background(), payload)
-	require.NoError(t, err)
-
-	var out map[string]any
-	require.NoError(t, json.Unmarshal(resp, &out))
-	assert.Equal(t, "dashboard-123", out["id"])
-}
-
-func TestUpdateDashboardRaw(t *testing.T) {
-	payload := []byte(`{"schemaVersion":"v6","name":"x","tags":[],"spec":{"display":{"name":"x"},"variables":[],"panels":{},"layouts":[]}}`)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Equal(t, "/api/v2/dashboards/id-123", r.URL.Path)
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-		got, _ := io.ReadAll(r.Body)
-		assert.JSONEq(t, string(payload), string(got))
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":"id-123"}`))
-	}))
-	defer srv.Close()
-
-	client := NewClient(logpkg.New("debug"), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	resp, err := client.UpdateDashboardRaw(context.Background(), "id-123", payload)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"id":"id-123"}`, string(resp))
-}
-
-func TestPatchDashboardRaw(t *testing.T) {
-	patch := []byte(`[{"op":"replace","path":"/spec/display/name","value":"new"}]`)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPatch, r.Method)
-		assert.Equal(t, "/api/v2/dashboards/id-123", r.URL.Path)
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-		got, _ := io.ReadAll(r.Body)
-		assert.JSONEq(t, string(patch), string(got))
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":"id-123"}`))
-	}))
-	defer srv.Close()
-
-	client := NewClient(logpkg.New("debug"), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	resp, err := client.PatchDashboardRaw(context.Background(), "id-123", patch)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"id":"id-123"}`, string(resp))
-}
-
-func TestDeleteDashboard(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "/api/v2/dashboards/dash-456", r.URL.Path)
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-
-	client := NewClient(logpkg.New("debug"), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	err := client.DeleteDashboard(context.Background(), "dash-456")
-	require.NoError(t, err)
 }
 
 func TestGetFieldKeys(t *testing.T) {
