@@ -266,7 +266,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap notification channels with pagination", logpkg.ErrAttr(err))
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -349,7 +349,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return upstreamResponseError("failed to marshal response: " + err.Error()), nil
 	}
 
 	// Fail OPEN: the channel WAS created, so we do not flip IsError (avoids a
@@ -464,7 +464,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return upstreamResponseError("failed to marshal response: " + err.Error()), nil
 	}
 
 	// Fail OPEN: channel was updated; test-send and read-back failures become notes.

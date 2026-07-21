@@ -221,7 +221,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap alerts with pagination", logpkg.ErrAttr(err))
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -286,7 +286,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	resultJSON, err := paginate.Wrap(pagedRules, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap alert rules with pagination", logpkg.ErrAttr(err))
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil

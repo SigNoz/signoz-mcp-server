@@ -564,6 +564,31 @@ func TestHandleCreateNotificationChannel_CreateError(t *testing.T) {
 	}
 }
 
+func TestHandleCreateNotificationChannel_MalformedSuccessResponseIsUpstreamError(t *testing.T) {
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "malformed-response",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+	})
+
+	result, err := h.handleCreateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("resultCode = %q, want %q", got, CodeUpstreamError)
+	}
+}
+
 func TestHandleCreateNotificationChannel_TestFails(t *testing.T) {
 	mock := &client.MockClient{
 		CreateNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
@@ -763,6 +788,35 @@ func TestHandleUpdateNotificationChannel_UpdateError(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Error("expected error result when update fails")
+	}
+}
+
+func TestHandleUpdateNotificationChannel_MalformedReadBackIsUpstreamError(t *testing.T) {
+	mock := &client.MockClient{
+		UpdateNotificationChannelFn: func(ctx context.Context, id string, receiverJSON []byte) error {
+			return nil
+		},
+		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{`), nil
+		},
+		TestNotificationChannelFn: func(ctx context.Context, receiverJSON []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_update_notification_channel", map[string]any{
+		"id":            "1",
+		"type":          "slack",
+		"name":          "malformed-response",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+	})
+
+	result, err := h.handleUpdateNotificationChannel(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("resultCode = %q, want %q", got, CodeUpstreamError)
 	}
 }
 

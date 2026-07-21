@@ -84,7 +84,7 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal aggregate query payload", logpkg.ErrAttr(err))
-		return internalError("failed to marshal query payload: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal query payload: " + err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_aggregate_logs",
@@ -123,7 +123,7 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal search query payload", logpkg.ErrAttr(err))
-		return internalError("failed to marshal query payload: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal query payload: " + err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_search_logs",

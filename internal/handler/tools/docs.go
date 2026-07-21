@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -97,7 +98,11 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 		if err.Error() == docsindex.CodeIndexNotReady {
 			return docsindex.IndexNotReadyError(), nil
 		}
-		return internalError(err.Error()), nil
+		fallbackCode := CodeInternalError
+		if errors.Is(err, docsindex.ErrInvalidSearchQuery) {
+			fallbackCode = CodeValidationFailed
+		}
+		return errorWithCause(err, fallbackCode, err.Error()), nil
 	}
 	return structuredToolResult(result)
 }
@@ -124,7 +129,7 @@ func (h *Handler) handleFetchDoc(ctx context.Context, req mcp.CallToolRequest) (
 		h.meters.DocsFetches.Add(ctx, 1, metric.WithAttributes(attribute.Bool("cached", true)))
 	}
 	if err != nil {
-		return internalError(err.Error()), nil
+		return errorWithCause(err, CodeInternalError, err.Error()), nil
 	}
 	switch code {
 	case "":
@@ -138,7 +143,7 @@ func (h *Handler) handleFetchDoc(ctx context.Context, req mcp.CallToolRequest) (
 	case docsindex.CodeIndexNotReady:
 		return docsindex.IndexNotReadyError(), nil
 	default:
-		return internalError(code), nil
+		return InternalErrorResult(code), nil
 	}
 }
 

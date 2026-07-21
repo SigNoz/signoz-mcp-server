@@ -21,6 +21,17 @@
 - Added a registration-boundary fallback that preserves the original error text and existing structured fields, emits a WARN with the tool name, and assigns `INTERNAL_ERROR` only when a handler returns an uncoded error.
 - Focused package tests, the full Go test suite, `go vet ./...`, and the race-enabled tool-handler suite pass. No tool name, input schema, success result, README/manifest entry, or companion agent-skill contract changed.
 
+### 2026-07-21 — First multi-agent review
+- Three independent reuse, quality, and efficiency reviews found no blocker or critical issue, but identified valid cause-classification gaps: docs search/fetch cancellation and deadlines were labeled internal, invalid docs query syntax and whitespace-only formulas were labeled internal instead of validation failures, and malformed notification-channel success bodies were labeled internal instead of upstream contract failures.
+- Two reviewers independently found that the registration fallback preserved only `map[string]any`, dropping valid struct-backed or `map[string]string` structured objects. The fallback will JSON-normalize object-shaped content before merging the code.
+- The source invariant will resolve the actual MCP import alias and allow the constructor only inside `errorWithStructuredContent`, instead of excluding all of `errs.go`. The duplicate `internalError` alias will be removed in favor of the existing `InternalErrorResult` constructor.
+- The plan now includes a typed docs-search validation error so the handler can distinguish caller syntax from index faults without string matching. This is a classification change only; search behavior and error text remain otherwise stable.
+
+### 2026-07-21 — First-review fixes verified
+- Added cause-aware cancellation and timeout codes, a typed invalid-docs-query signal, validation classification for rejected metric formulas, and upstream classification for malformed notification-channel success bodies. Remote dashboard-template cancellation now preserves the same cause identity.
+- The registration fallback now preserves struct-backed and typed-map JSON objects, while the AST invariant resolves the real MCP import and permits the bare constructor only in the shared shaping helper. Removed the duplicate internal-error helper and reused `InternalErrorResult` throughout.
+- Focused docs/tools tests, `go test ./...`, `go vet ./...`, the race-enabled tools suite, and `git diff --check` all pass before the second independent review.
+
 ## Open Questions
 - [x] Should this be added to PR #255? Resolved: no; PR #255 is merged, so publish a separate focused runtime PR.
 - [x] Does nerve-pod#164 cover this? Resolved: no; #164 covers the backend error envelope after an upstream request, while this change covers local/pre-upstream and response-shaping tool errors.

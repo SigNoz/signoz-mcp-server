@@ -93,7 +93,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap services with pagination", logpkg.ErrAttr(err))
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil

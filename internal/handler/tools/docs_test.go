@@ -88,6 +88,34 @@ func TestDocsHandlers(t *testing.T) {
 		require.NotEmpty(t, search.Results)
 	})
 
+	t.Run("invalid search syntax is caller-correctable", func(t *testing.T) {
+		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
+			"searchText": `"unclosed`,
+		}))
+		require.NoError(t, err)
+		require.Equal(t, CodeValidationFailed, resultCode(t, result))
+	})
+
+	t.Run("search cancellation preserves cause", func(t *testing.T) {
+		canceledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		result, err := h.handleSearchDocs(canceledCtx, makeToolRequest("signoz_search_docs", map[string]any{
+			"searchText": "docker",
+		}))
+		require.NoError(t, err)
+		require.Equal(t, CodeCanceled, resultCode(t, result))
+	})
+
+	t.Run("fetch deadline preserves cause", func(t *testing.T) {
+		expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		result, err := h.handleFetchDoc(expiredCtx, makeToolRequest("signoz_fetch_doc", map[string]any{
+			"url": "/docs/install/docker/",
+		}))
+		require.NoError(t, err)
+		require.Equal(t, CodeTimeout, resultCode(t, result))
+	})
+
 	t.Run("fetch errors", func(t *testing.T) {
 		result, err := h.handleFetchDoc(ctx, makeToolRequest("signoz_fetch_doc", map[string]any{"url": "https://example.com/docs/logs/"}))
 		require.NoError(t, err)

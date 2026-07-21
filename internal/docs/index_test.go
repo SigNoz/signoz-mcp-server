@@ -27,6 +27,9 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
 
+	_, err = reg.Search(ctx, `"unclosed`, "", 3)
+	require.ErrorIs(t, err, ErrInvalidSearchQuery)
+
 	filtered, err := reg.Search(ctx, "docker", "install", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, filtered.Results)

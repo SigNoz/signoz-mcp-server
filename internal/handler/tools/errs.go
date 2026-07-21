@@ -122,10 +122,6 @@ func clientError(err error) *mcp.CallToolResult {
 	return errorWithCode(CodeUnauthorized, err.Error())
 }
 
-func internalError(message string) *mcp.CallToolResult {
-	return errorWithCode(CodeInternalError, message)
-}
-
 func upstreamResponseError(message string) *mcp.CallToolResult {
 	return errorWithCode(CodeUpstreamError, message)
 }
@@ -134,10 +130,23 @@ func validationResult(message string) *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, message)
 }
 
-// InternalErrorResult is used by the transport boundary when a handler
-// produced a result that cannot be represented as JSON-RPC.
+// InternalErrorResult reports local server-side shaping or serialization
+// failures that callers cannot correct through tool arguments.
 func InternalErrorResult(message string) *mcp.CallToolResult {
 	return errorWithCode(CodeInternalError, message)
+}
+
+// errorWithCause preserves cancellation and deadline identity while using the
+// supplied code for ordinary failures at the call site.
+func errorWithCause(err error, fallbackCode, message string) *mcp.CallToolResult {
+	code := fallbackCode
+	switch {
+	case errors.Is(err, context.Canceled):
+		code = CodeCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		code = CodeTimeout
+	}
+	return errorWithCode(code, message)
 }
 
 func errorWithStructuredContent(code, message string, fields map[string]any) *mcp.CallToolResult {
@@ -163,7 +172,7 @@ func ensureCodedToolError(res *mcp.CallToolResult) *mcp.CallToolResult {
 		return res
 	}
 	structured := map[string]any{"code": CodeInternalError}
-	if existing, ok := res.StructuredContent.(map[string]any); ok {
+	if existing, ok := normalizeStructuredObject(res.StructuredContent); ok {
 		for key, value := range existing {
 			if key != "code" {
 				structured[key] = value
@@ -172,6 +181,30 @@ func ensureCodedToolError(res *mcp.CallToolResult) *mcp.CallToolResult {
 	}
 	res.StructuredContent = structured
 	return res
+}
+
+func normalizeStructuredObject(value any) (map[string]any, bool) {
+	if value == nil {
+		return nil, false
+	}
+	if existing, ok := value.(map[string]any); ok {
+		structured := make(map[string]any, len(existing))
+		for key, field := range existing {
+			structured[key] = field
+		}
+		return structured, true
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var structured map[string]any
+	if err := decoder.Decode(&structured); err != nil || structured == nil {
+		return nil, false
+	}
+	return structured, true
 }
 
 // validationError builds a canonical result of the form:

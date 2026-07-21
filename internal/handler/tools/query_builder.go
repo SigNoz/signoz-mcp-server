@@ -88,7 +88,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	queryJSON, err := json.Marshal(queryObj)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal query object", logpkg.ErrAttr(err))
-		return internalError("failed to marshal query object: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal query object: " + err.Error()), nil
 	}
 
 	var queryPayload types.QueryPayload
@@ -107,7 +107,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	finalQueryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal validated query payload", logpkg.ErrAttr(err))
-		return internalError("failed to marshal validated query payload: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal validated query payload: " + err.Error()), nil
 	}
 
 	client, err := h.GetClient(ctx)

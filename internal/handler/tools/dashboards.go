@@ -174,7 +174,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap dashboards with pagination", logpkg.ErrAttr(err))
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -263,7 +263,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	body, err := fetchTemplate(ctx, path)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to fetch dashboard template", err, slog.String("path", path))
-		return upstreamResponseError(fmt.Sprintf("Template fetch error: %s", err.Error())), nil
+		return errorWithCause(err, CodeUpstreamError, fmt.Sprintf("Template fetch error: %s", err.Error())), nil
 	}
 
 	var rawConfig map[string]any
@@ -331,7 +331,7 @@ func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.Call
 	entries := listDashboardTemplates()
 	body, err := json.Marshal(entries)
 	if err != nil {
-		return internalError(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
+		return InternalErrorResult(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
 	}
 	return mcp.NewToolResultText(string(body)), nil
 }

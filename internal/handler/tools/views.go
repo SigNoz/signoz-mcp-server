@@ -381,7 +381,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
-		return internalError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 	return listResult(resultJSON, limitClamped), nil
 }
@@ -436,7 +436,7 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	body, err := marshalViewBody(args)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal view body", logpkg.ErrAttr(err))
-		return internalError("failed to build request body: " + err.Error()), nil
+		return InternalErrorResult("failed to build request body: " + err.Error()), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_view", slog.String("name", name), slog.String("sourcePage", sourcePage))
 
@@ -506,7 +506,7 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	stripNonBodyFields(view)
 	body, err := json.Marshal(view)
 	if err != nil {
-		return internalError("failed to build request body: " + err.Error()), nil
+		return InternalErrorResult("failed to build request body: " + err.Error()), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_view", slog.String("viewId", viewID), slog.String("sourcePage", sourcePage))
 

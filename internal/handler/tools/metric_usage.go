@@ -90,7 +90,7 @@ func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRe
 
 	out, err := json.Marshal(usage)
 	if err != nil {
-		return internalError(err.Error()), nil
+		return InternalErrorResult(err.Error()), nil
 	}
 
 	return structuredResult(out), nil

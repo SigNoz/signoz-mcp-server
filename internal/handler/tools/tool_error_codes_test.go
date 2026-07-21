@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -68,6 +69,51 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 			t.Fatalf("preserved code = %q, want %q", got, CodeValidationFailed)
 		}
 	})
+
+	t.Run("typed structured object", func(t *testing.T) {
+		type structuredDetail struct {
+			Detail string `json:"detail"`
+			Count  int64  `json:"count"`
+		}
+		bare := mcp.NewToolResultError("boom")
+		bare.StructuredContent = structuredDetail{Detail: "kept", Count: 42}
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return bare, nil
+		}
+		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
+		if err != nil {
+			t.Fatalf("decorator returned Go error: %v", err)
+		}
+		structured := resultStructuredMap(t, result)
+		if got := structured["detail"]; got != "kept" {
+			t.Fatalf("fallback detail = %#v, want kept", got)
+		}
+		if got := structured["count"]; got != json.Number("42") {
+			t.Fatalf("fallback count = %#v, want json.Number(42)", got)
+		}
+		if got := structured["code"]; got != CodeInternalError {
+			t.Fatalf("fallback code = %#v, want %s", got, CodeInternalError)
+		}
+	})
+
+	t.Run("typed string map", func(t *testing.T) {
+		bare := mcp.NewToolResultError("boom")
+		bare.StructuredContent = map[string]string{"detail": "kept"}
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return bare, nil
+		}
+		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
+		if err != nil {
+			t.Fatalf("decorator returned Go error: %v", err)
+		}
+		structured := resultStructuredMap(t, result)
+		if got := structured["detail"]; got != "kept" {
+			t.Fatalf("fallback detail = %#v, want kept", got)
+		}
+		if got := structured["code"]; got != CodeInternalError {
+			t.Fatalf("fallback code = %#v, want %s", got, CodeInternalError)
+		}
+	})
 }
 
 func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
@@ -77,19 +123,61 @@ func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
 	}
 	fileset := token.NewFileSet()
 	for _, path := range paths {
-		if strings.HasSuffix(path, "_test.go") || path == "errs.go" {
+		if strings.HasSuffix(path, "_test.go") {
 			continue
 		}
 		file, err := parser.ParseFile(fileset, path, nil, 0)
 		if err != nil {
 			t.Fatalf("parse %s: %v", path, err)
 		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			selector, ok := node.(*ast.SelectorExpr)
+		mcpAlias := ""
+		for _, imported := range file.Imports {
+			if strings.Trim(imported.Path.Value, `"`) != "github.com/mark3labs/mcp-go/mcp" {
+				continue
+			}
+			mcpAlias = "mcp"
+			if imported.Name != nil {
+				mcpAlias = imported.Name.Name
+			}
+			break
+		}
+		if mcpAlias == "" || mcpAlias == "." || mcpAlias == "_" {
+			continue
+		}
+
+		isDirectConstructor := func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return false
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok || selector.Sel.Name != "NewToolResultError" {
+				return false
+			}
+			pkg, ok := selector.X.(*ast.Ident)
+			return ok && pkg.Name == mcpAlias
+		}
+
+		allowed := map[token.Pos]bool{}
+		if path == "errs.go" {
+			for _, declaration := range file.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if !ok || function.Name.Name != "errorWithStructuredContent" {
+					continue
+				}
+				ast.Inspect(function.Body, func(node ast.Node) bool {
+					if isDirectConstructor(node) {
+						allowed[node.Pos()] = true
+					}
+					return true
+				})
+			}
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			if !isDirectConstructor(node) || allowed[node.Pos()] {
 				return true
 			}
-			position := fileset.Position(selector.Pos())
+			position := fileset.Position(node.Pos())
 			t.Errorf("%s calls mcp.NewToolResultError directly; use a coded helper", position)
 			return true
 		})
