@@ -40,6 +40,16 @@
 - Known-code extraction now recognizes typed maps and structs before the registration fallback, so already-coded errors remain unchanged. The invariant rejects the SDK's basic, formatted, and error-appending bare constructors plus MCP dot imports.
 - Invalid docs syntax retains the original parser message while exposing `VALIDATION_FAILED`. Focused tests, `go test ./...`, `go vet ./...`, the race-enabled tools suite, and `git diff --check` all pass after these fixes.
 
+### 2026-07-21 — Fable 5 high over-engineering review
+- The core helpers, registration fallback, accurate cause classification, and message-preserving docs wrapper are proportionate. The source invariant belongs in the central `TestGuardrail_*` inventory rather than only the general test lane.
+- Consolidate typed structured-content decoding into one `toolerrors` helper instead of maintaining separate code-extraction and field-normalization paths. Keep typed-field preservation, but express its four cases with a compact table-driven test.
+- Scan MCP bare-error selector references rather than calls only, so method-value aliases cannot bypass the invariant. This closes the same bypass shape already covered by the registration guardrail.
+
+### 2026-07-21 — Fable review fixes verified
+- `NormalizeStructuredContent` now performs the single object-normalization and known-code lookup used by both telemetry consumers and the registration fallback. Decorated successes skip it, and each decorated error is inspected once.
+- Promoted the constructor invariant into the sorted guardrail inventory and changed it to scan selector references, covering direct calls, method values, alternate SDK constructors, and dot imports. Typed-content cases are table-driven.
+- Exact inventory verification, workflow lint, focused package and guardrail tests, `go test -count=1 ./...`, `go vet ./...`, the race-enabled tools suite, and `git diff --check` pass. Independent reuse, correctness, and efficiency reviews found no remaining P0-P3 issues.
+
 ## Open Questions
 - [x] Should this be added to PR #255? Resolved: no; PR #255 is merged, so publish a separate focused runtime PR.
 - [x] Does nerve-pod#164 cover this? Resolved: no; #164 covers the backend error envelope after an upstream request, while this change covers local/pre-upstream and response-shaping tool errors.

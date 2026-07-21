@@ -7,11 +7,13 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -71,93 +73,83 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		}
 	})
 
-	t.Run("typed structured object", func(t *testing.T) {
-		type structuredDetail struct {
-			Detail string `json:"detail"`
-			Count  int64  `json:"count"`
-		}
-		bare := mcp.NewToolResultError("boom")
-		bare.StructuredContent = structuredDetail{Detail: "kept", Count: 42}
-		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return bare, nil
-		}
-		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
-		if err != nil {
-			t.Fatalf("decorator returned Go error: %v", err)
-		}
-		structured := resultStructuredMap(t, result)
-		if got := structured["detail"]; got != "kept" {
-			t.Fatalf("fallback detail = %#v, want kept", got)
-		}
-		if got := structured["count"]; got != json.Number("42") {
-			t.Fatalf("fallback count = %#v, want json.Number(42)", got)
-		}
-		if got := structured["code"]; got != CodeInternalError {
-			t.Fatalf("fallback code = %#v, want %s", got, CodeInternalError)
-		}
-	})
-
-	t.Run("typed string map", func(t *testing.T) {
-		bare := mcp.NewToolResultError("boom")
-		bare.StructuredContent = map[string]string{"detail": "kept"}
-		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return bare, nil
-		}
-		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
-		if err != nil {
-			t.Fatalf("decorator returned Go error: %v", err)
-		}
-		structured := resultStructuredMap(t, result)
-		if got := structured["detail"]; got != "kept" {
-			t.Fatalf("fallback detail = %#v, want kept", got)
-		}
-		if got := structured["code"]; got != CodeInternalError {
-			t.Fatalf("fallback code = %#v, want %s", got, CodeInternalError)
-		}
-	})
-
-	t.Run("typed structured object with known code", func(t *testing.T) {
-		type structuredError struct {
-			Code   string `json:"code"`
-			Detail string `json:"detail"`
-		}
-		bare := mcp.NewToolResultError("bad input")
-		bare.StructuredContent = structuredError{Code: CodeValidationFailed, Detail: "kept"}
-		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return bare, nil
-		}
-		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
-		if err != nil {
-			t.Fatalf("decorator returned Go error: %v", err)
-		}
-		if result != bare {
-			t.Fatal("decorator replaced a typed, already-coded result")
-		}
-		if got := result.StructuredContent.(structuredError).Code; got != CodeValidationFailed {
-			t.Fatalf("preserved code = %q, want %q", got, CodeValidationFailed)
-		}
-	})
-
-	t.Run("typed string map with known code", func(t *testing.T) {
-		bare := mcp.NewToolResultError("unauthorized")
-		bare.StructuredContent = map[string]string{"code": CodeUnauthorized, "detail": "kept"}
-		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return bare, nil
-		}
-		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
-		if err != nil {
-			t.Fatalf("decorator returned Go error: %v", err)
-		}
-		if result != bare {
-			t.Fatal("decorator replaced a typed-map, already-coded result")
-		}
-		if got := result.StructuredContent.(map[string]string)["code"]; got != CodeUnauthorized {
-			t.Fatalf("preserved code = %q, want %q", got, CodeUnauthorized)
-		}
-	})
 }
 
-func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
+func TestErrorCodeDecorator_TypedStructuredContent(t *testing.T) {
+	type structuredError struct {
+		Code   string `json:"code,omitempty"`
+		Detail string `json:"detail"`
+		Count  int64  `json:"count,omitempty"`
+	}
+	tests := []struct {
+		name               string
+		content            any
+		wantCode           string
+		wantCount          any
+		preserveTypedShape bool
+	}{
+		{name: "uncoded struct", content: structuredError{Detail: "kept", Count: 42}, wantCode: CodeInternalError, wantCount: json.Number("42")},
+		{name: "uncoded typed map", content: map[string]string{"detail": "kept"}, wantCode: CodeInternalError},
+		{name: "coded struct", content: structuredError{Code: CodeValidationFailed, Detail: "kept"}, wantCode: CodeValidationFailed, preserveTypedShape: true},
+		{name: "coded typed map", content: map[string]string{"code": CodeUnauthorized, "detail": "kept"}, wantCode: CodeUnauthorized, preserveTypedShape: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &Handler{logger: logpkg.New("error")}
+			bare := mcp.NewToolResultError("boom")
+			bare.StructuredContent = tt.content
+			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return bare, nil
+			}
+			result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), makeToolRequest("test_tool", map[string]any{}))
+			if err != nil {
+				t.Fatalf("decorator returned Go error: %v", err)
+			}
+			if got := toolerrors.Code(result); got != tt.wantCode {
+				t.Fatalf("code = %q, want %q", got, tt.wantCode)
+			}
+			structured, _ := toolerrors.NormalizeStructuredContent(result.StructuredContent)
+			if structured == nil {
+				t.Fatalf("structured content is not a JSON object: %#v", result.StructuredContent)
+			}
+			if got := structured["detail"]; got != "kept" {
+				t.Fatalf("detail = %#v, want kept", got)
+			}
+			if tt.wantCount != nil && structured["count"] != tt.wantCount {
+				t.Fatalf("count = %#v, want %#v", structured["count"], tt.wantCount)
+			}
+			if tt.preserveTypedShape && reflect.TypeOf(result.StructuredContent) != reflect.TypeOf(tt.content) {
+				t.Fatalf("structured content type = %T, want %T", result.StructuredContent, tt.content)
+			}
+		})
+	}
+}
+
+func TestGuardrail_ProductionToolErrorsUseCodedHelpers(t *testing.T) {
+	t.Run("detects method-value bypasses", func(t *testing.T) {
+		fileset := token.NewFileSet()
+		file, err := parser.ParseFile(fileset, "method_value.go", `package tools
+
+import "github.com/mark3labs/mcp-go/mcp"
+
+func bypass() {
+	newError := mcp.NewToolResultError
+	_ = newError
+}
+`, 0)
+		if err != nil {
+			t.Fatalf("parse method-value probe: %v", err)
+		}
+		bypasses, err := uncodedToolErrorConstructorUses(fileset, file, "method_value.go")
+		if err != nil {
+			t.Fatalf("scan method-value probe: %v", err)
+		}
+		if len(bypasses) != 1 {
+			t.Fatalf("method-value bypasses = %d, want 1", len(bypasses))
+		}
+	})
+
 	paths, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatalf("glob tool sources: %v", err)
@@ -171,73 +163,85 @@ func TestProductionToolErrorsUseCodedHelpers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %s: %v", path, err)
 		}
-		mcpAlias := ""
-		for _, imported := range file.Imports {
-			importPath, err := strconv.Unquote(imported.Path.Value)
-			if err != nil {
-				t.Fatalf("unquote import in %s: %v", path, err)
-			}
-			if importPath != "github.com/mark3labs/mcp-go/mcp" {
+		bypasses, err := uncodedToolErrorConstructorUses(fileset, file, path)
+		if err != nil {
+			t.Fatalf("scan %s: %v", path, err)
+		}
+		for _, position := range bypasses {
+			t.Errorf("MCP bare-error constructor bypasses coded helpers at %s", position)
+		}
+	}
+}
+
+func uncodedToolErrorConstructorUses(fileset *token.FileSet, file *ast.File, path string) ([]token.Position, error) {
+	mcpAlias := ""
+	var mcpImport token.Pos
+	for _, imported := range file.Imports {
+		importPath, err := strconv.Unquote(imported.Path.Value)
+		if err != nil {
+			return nil, err
+		}
+		if importPath != "github.com/mark3labs/mcp-go/mcp" {
+			continue
+		}
+		mcpAlias = "mcp"
+		mcpImport = imported.Pos()
+		if imported.Name != nil {
+			mcpAlias = imported.Name.Name
+		}
+		break
+	}
+	if mcpAlias == "." {
+		return []token.Position{fileset.Position(mcpImport)}, nil
+	}
+	if mcpAlias == "" || mcpAlias == "_" {
+		return nil, nil
+	}
+
+	bareConstructors := map[string]bool{
+		"NewToolResultError":        true,
+		"NewToolResultErrorFromErr": true,
+		"NewToolResultErrorf":       true,
+	}
+	constructorName := func(node ast.Node) (string, bool) {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || !bareConstructors[selector.Sel.Name] {
+			return "", false
+		}
+		pkg, ok := selector.X.(*ast.Ident)
+		if !ok || pkg.Name != mcpAlias {
+			return "", false
+		}
+		return selector.Sel.Name, true
+	}
+
+	allowed := map[token.Pos]bool{}
+	if filepath.Base(path) == "errs.go" {
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Name.Name != "errorWithStructuredContent" {
 				continue
 			}
-			mcpAlias = "mcp"
-			if imported.Name != nil {
-				mcpAlias = imported.Name.Name
-			}
-			break
-		}
-		if mcpAlias == "." {
-			t.Errorf("%s dot-imports the MCP package; use a package alias so bare error constructors remain detectable", path)
-			continue
-		}
-		if mcpAlias == "" || mcpAlias == "_" {
-			continue
-		}
-
-		bareConstructors := map[string]bool{
-			"NewToolResultError":        true,
-			"NewToolResultErrorFromErr": true,
-			"NewToolResultErrorf":       true,
-		}
-		constructorName := func(node ast.Node) (string, bool) {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return "", false
-			}
-			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || !bareConstructors[selector.Sel.Name] {
-				return "", false
-			}
-			pkg, ok := selector.X.(*ast.Ident)
-			if !ok || pkg.Name != mcpAlias {
-				return "", false
-			}
-			return selector.Sel.Name, true
-		}
-
-		allowed := map[token.Pos]bool{}
-		if path == "errs.go" {
-			for _, declaration := range file.Decls {
-				function, ok := declaration.(*ast.FuncDecl)
-				if !ok || function.Name.Name != "errorWithStructuredContent" {
-					continue
-				}
-				ast.Inspect(function.Body, func(node ast.Node) bool {
-					if name, ok := constructorName(node); ok && name == "NewToolResultError" {
-						allowed[node.Pos()] = true
-					}
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
 					return true
-				})
-			}
-		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			name, ok := constructorName(node)
-			if !ok || allowed[node.Pos()] {
+				}
+				if name, ok := constructorName(call.Fun); ok && name == "NewToolResultError" {
+					allowed[call.Fun.Pos()] = true
+				}
 				return true
-			}
-			position := fileset.Position(node.Pos())
-			t.Errorf("%s calls mcp.%s directly; use a coded helper", position, name)
-			return true
-		})
+			})
+		}
 	}
+
+	var bypasses []token.Position
+	ast.Inspect(file, func(node ast.Node) bool {
+		if _, ok := constructorName(node); !ok || allowed[node.Pos()] {
+			return true
+		}
+		bypasses = append(bypasses, fileset.Position(node.Pos()))
+		return true
+	})
+	return bypasses, nil
 }

@@ -3,6 +3,7 @@
 package toolerrors
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -52,30 +53,31 @@ func Code(result *mcp.CallToolResult) string {
 	if result == nil || !result.IsError {
 		return ""
 	}
-	code := structuredCode(result.StructuredContent)
-	if _, ok := knownCodes[code]; !ok {
-		return ""
-	}
+	_, code := NormalizeStructuredContent(result.StructuredContent)
 	return code
 }
 
-func structuredCode(content any) string {
-	switch value := content.(type) {
-	case map[string]any:
-		code, _ := value["code"].(string)
-		return code
-	case map[string]string:
-		return value["code"]
+// NormalizeStructuredContent returns a JSON-object representation and its
+// known error code, if present. Integer precision is preserved.
+func NormalizeStructuredContent(content any) (map[string]any, string) {
+	if content == nil {
+		return nil, ""
 	}
-	encoded, err := json.Marshal(content)
-	if err != nil {
-		return ""
+	object, ok := content.(map[string]any)
+	if !ok {
+		encoded, err := json.Marshal(content)
+		if err != nil {
+			return nil, ""
+		}
+		decoder := json.NewDecoder(bytes.NewReader(encoded))
+		decoder.UseNumber()
+		if err := decoder.Decode(&object); err != nil || object == nil {
+			return nil, ""
+		}
 	}
-	var envelope struct {
-		Code string `json:"code"`
+	code, _ := object["code"].(string)
+	if _, known := knownCodes[code]; !known {
+		code = ""
 	}
-	if err := json.Unmarshal(encoded, &envelope); err != nil {
-		return ""
-	}
-	return envelope.Code
+	return object, code
 }

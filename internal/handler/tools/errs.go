@@ -167,12 +167,16 @@ func errorWithStructuredContent(code, message string, fields map[string]any) *mc
 
 // ensureCodedToolError is the final safety net for registered tool handlers.
 // Specific call sites should still choose the most accurate stable code.
-func ensureCodedToolError(res *mcp.CallToolResult) *mcp.CallToolResult {
-	if res == nil || !res.IsError || toolerrors.Code(res) != "" {
-		return res
+func ensureCodedToolError(res *mcp.CallToolResult) (*mcp.CallToolResult, bool) {
+	if res == nil || !res.IsError {
+		return res, false
+	}
+	existing, code := toolerrors.NormalizeStructuredContent(res.StructuredContent)
+	if code != "" {
+		return res, false
 	}
 	structured := map[string]any{"code": CodeInternalError}
-	if existing, ok := normalizeStructuredObject(res.StructuredContent); ok {
+	if existing != nil {
 		for key, value := range existing {
 			if key != "code" {
 				structured[key] = value
@@ -180,31 +184,7 @@ func ensureCodedToolError(res *mcp.CallToolResult) *mcp.CallToolResult {
 		}
 	}
 	res.StructuredContent = structured
-	return res
-}
-
-func normalizeStructuredObject(value any) (map[string]any, bool) {
-	if value == nil {
-		return nil, false
-	}
-	if existing, ok := value.(map[string]any); ok {
-		structured := make(map[string]any, len(existing))
-		for key, field := range existing {
-			structured[key] = field
-		}
-		return structured, true
-	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, false
-	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.UseNumber()
-	var structured map[string]any
-	if err := decoder.Decode(&structured); err != nil || structured == nil {
-		return nil, false
-	}
-	return structured, true
+	return res, true
 }
 
 // validationError builds a canonical result of the form:
