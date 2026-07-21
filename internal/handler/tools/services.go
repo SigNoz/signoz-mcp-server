@@ -60,7 +60,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.ListServices(ctx, start, end)
 	if err != nil {
@@ -71,7 +71,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	var services []any
 	if err := json.Unmarshal(result, &services); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse services response", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		return upstreamResponseError("failed to parse response: " + err.Error()), nil
 	}
 
 	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
@@ -93,7 +93,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	resultJSON, err := paginate.Wrap(pagedServices, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap services with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return internalError("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -138,7 +138,7 @@ func (h *Handler) handleGetServiceTopOperations(ctx context.Context, req mcp.Cal
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.GetServiceTopOperations(ctx, start, end, service, tags)
 	if err != nil {

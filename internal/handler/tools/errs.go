@@ -116,6 +116,24 @@ func errorWithCode(code, message string) *mcp.CallToolResult {
 	return errorWithStructuredContent(code, message, nil)
 }
 
+// clientError classifies GetClient failures. GetClient currently fails only
+// when the request context does not contain tenant credentials.
+func clientError(err error) *mcp.CallToolResult {
+	return errorWithCode(CodeUnauthorized, err.Error())
+}
+
+func internalError(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeInternalError, message)
+}
+
+func upstreamResponseError(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeUpstreamError, message)
+}
+
+func validationResult(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeValidationFailed, message)
+}
+
 // InternalErrorResult is used by the transport boundary when a handler
 // produced a result that cannot be represented as JSON-RPC.
 func InternalErrorResult(message string) *mcp.CallToolResult {
@@ -133,6 +151,24 @@ func errorWithStructuredContent(code, message string, fields map[string]any) *mc
 			continue
 		}
 		structured[key] = value
+	}
+	res.StructuredContent = structured
+	return res
+}
+
+// ensureCodedToolError is the final safety net for registered tool handlers.
+// Specific call sites should still choose the most accurate stable code.
+func ensureCodedToolError(res *mcp.CallToolResult) *mcp.CallToolResult {
+	if res == nil || !res.IsError || toolerrors.Code(res) != "" {
+		return res
+	}
+	structured := map[string]any{"code": CodeInternalError}
+	if existing, ok := res.StructuredContent.(map[string]any); ok {
+		for key, value := range existing {
+			if key != "code" {
+				structured[key] = value
+			}
+		}
 	}
 	res.StructuredContent = structured
 	return res

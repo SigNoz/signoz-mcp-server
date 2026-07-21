@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -73,6 +74,7 @@ func (h *Handler) addTool(s *server.MCPServer, tool mcp.Tool, handler server.Too
 	if input != nil || output != nil {
 		handler = h.validationDecorator(tool.Name, input, output, handler)
 	}
+	handler = h.errorCodeDecorator(tool.Name, handler)
 	h.registerTool(s, tool, handler)
 }
 
@@ -200,6 +202,21 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			h.recordValidationMismatch(ctx, toolName, "output", path, constraint)
 		}
 		return result, nil
+	}
+}
+
+func (h *Handler) errorCodeDecorator(toolName string, next server.ToolHandlerFunc) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		result, err := next(ctx, req)
+		if err != nil || result == nil || !result.IsError || toolerrors.Code(result) != "" {
+			return result, err
+		}
+		if h.logger != nil {
+			h.logger.WarnContext(ctx, "tool returned an uncoded error result; applying fallback",
+				slog.String("gen_ai.tool.name", toolName),
+				slog.String("fallback.code", CodeInternalError))
+		}
+		return ensureCodedToolError(result), nil
 	}
 }
 

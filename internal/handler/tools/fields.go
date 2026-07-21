@@ -70,7 +70,7 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_field_keys", slog.String("signal", signal), slog.String("searchText", searchText))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.GetFieldKeys(ctx, signal, metricName, searchText, fieldContext, fieldDataType, source)
 	if err != nil {
@@ -104,7 +104,7 @@ func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequ
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_field_values", slog.String("signal", signal), slog.String("name", name))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.GetFieldValues(ctx, signal, name, metricName, searchText, fieldContext, source)
 	if err != nil {

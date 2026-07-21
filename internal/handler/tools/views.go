@@ -351,7 +351,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.ListViews(ctx, sourcePage, name, category)
 	if err != nil {
@@ -362,7 +362,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	var parsed map[string]any
 	if err := json.Unmarshal(result, &parsed); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse views response", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		return upstreamResponseError("failed to parse response: " + err.Error()), nil
 	}
 	// Upstream returns `data: null`, omits `data`, or — on some deployments —
 	// returns an empty object/scalar when there are no views. Treat any
@@ -381,7 +381,7 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap views with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return internalError("failed to marshal response: " + err.Error()), nil
 	}
 	return listResult(resultJSON, limitClamped), nil
 }
@@ -400,7 +400,7 @@ func (h *Handler) handleGetView(ctx context.Context, req mcp.CallToolRequest) (*
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.GetView(ctx, viewID)
 	if err != nil {
@@ -436,13 +436,13 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	body, err := marshalViewBody(args)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal view body", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to build request body: " + err.Error()), nil
+		return internalError("failed to build request body: " + err.Error()), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_view", slog.String("name", name), slog.String("sourcePage", sourcePage))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.CreateView(ctx, body)
 	if err != nil {
@@ -506,13 +506,13 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	stripNonBodyFields(view)
 	body, err := json.Marshal(view)
 	if err != nil {
-		return mcp.NewToolResultError("failed to build request body: " + err.Error()), nil
+		return internalError("failed to build request body: " + err.Error()), nil
 	}
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_view", slog.String("viewId", viewID), slog.String("sourcePage", sourcePage))
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	// Saved views are keyed to an Explorer; upstream PUT silently allows the
 	// sourcePage to be switched, which effectively moves the view to a
@@ -552,7 +552,7 @@ func (h *Handler) handleDeleteView(ctx context.Context, req mcp.CallToolRequest)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.DeleteView(ctx, viewID)
 	if err != nil {

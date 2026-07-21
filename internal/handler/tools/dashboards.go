@@ -127,7 +127,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.ListDashboards(ctx)
 	if err != nil {
@@ -138,7 +138,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	var dashboards map[string]any
 	if err := json.Unmarshal(result, &dashboards); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse dashboards response", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		return upstreamResponseError("failed to parse response: " + err.Error()), nil
 	}
 
 	// Upstream returns `data: null`, omits `data`, or — on some deployments —
@@ -174,7 +174,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap dashboards with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return internalError("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -194,7 +194,7 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_dashboard", slog.String("id", uuid))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.GetDashboard(ctx, uuid)
 	if err != nil {
@@ -226,13 +226,13 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Dashboard validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Dashboard validation error: %s", err.Error())), nil
+		return validationResult(fmt.Sprintf("Dashboard validation error: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_dashboard")
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 
@@ -263,27 +263,27 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	body, err := fetchTemplate(ctx, path)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to fetch dashboard template", err, slog.String("path", path))
-		return mcp.NewToolResultError(fmt.Sprintf("Template fetch error: %s", err.Error())), nil
+		return upstreamResponseError(fmt.Sprintf("Template fetch error: %s", err.Error())), nil
 	}
 
 	var rawConfig map[string]any
 	if err := json.Unmarshal(body, &rawConfig); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse template JSON", slog.String("path", path), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Template parse error: %s", err.Error())), nil
+		return upstreamResponseError(fmt.Sprintf("Template parse error: %s", err.Error())), nil
 	}
 	if len(rawConfig) == 0 {
-		return mcp.NewToolResultError("Template is empty after parsing."), nil
+		return upstreamResponseError("Template is empty after parsing."), nil
 	}
 
 	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Template validation failed", slog.String("path", path), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Template validation error: %s", err.Error())), nil
+		return upstreamResponseError(fmt.Sprintf("Template validation error: %s", err.Error())), nil
 	}
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 	if err != nil {
@@ -331,7 +331,7 @@ func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.Call
 	entries := listDashboardTemplates()
 	body, err := json.Marshal(entries)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
+		return internalError(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
 	}
 	return mcp.NewToolResultText(string(body)), nil
 }
@@ -361,13 +361,13 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	cleanJSON, err := dashboard.ValidateFromMap(dashboardRaw)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Dashboard validation failed", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Dashboard validation error: %s", err.Error())), nil
+		return validationResult(fmt.Sprintf("Dashboard validation error: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_dashboard", slog.String("uuid", uuid))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	err = client.UpdateDashboardRaw(ctx, uuid, cleanJSON)
 
@@ -393,7 +393,7 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_dashboard", slog.String("id", uuid))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	err = client.DeleteDashboard(ctx, uuid)
 	if err != nil {

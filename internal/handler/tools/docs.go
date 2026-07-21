@@ -97,7 +97,7 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 		if err.Error() == docsindex.CodeIndexNotReady {
 			return docsindex.IndexNotReadyError(), nil
 		}
-		return mcp.NewToolResultError(err.Error()), nil
+		return internalError(err.Error()), nil
 	}
 	return structuredToolResult(result)
 }
@@ -124,7 +124,7 @@ func (h *Handler) handleFetchDoc(ctx context.Context, req mcp.CallToolRequest) (
 		h.meters.DocsFetches.Add(ctx, 1, metric.WithAttributes(attribute.Bool("cached", true)))
 	}
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return internalError(err.Error()), nil
 	}
 	switch code {
 	case "":
@@ -138,7 +138,7 @@ func (h *Handler) handleFetchDoc(ctx context.Context, req mcp.CallToolRequest) (
 	case docsindex.CodeIndexNotReady:
 		return docsindex.IndexNotReadyError(), nil
 	default:
-		return mcp.NewToolResultError(code), nil
+		return internalError(code), nil
 	}
 }
 

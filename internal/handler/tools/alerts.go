@@ -181,7 +181,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
@@ -192,7 +192,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	var apiResponse types.APIAlertsResponse
 	if err := json.Unmarshal(alerts, &apiResponse); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse alerts response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(alerts)))
-		return mcp.NewToolResultError("failed to parse alerts response: " + err.Error()), nil
+		return upstreamResponseError("failed to parse alerts response: " + err.Error()), nil
 	}
 
 	// takes only meaningful data
@@ -221,7 +221,7 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	resultJSON, err := paginate.Wrap(pagedAlerts, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap alerts with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return internalError("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -233,7 +233,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	rules, err := client.ListAlertRules(ctx)
 	if err != nil {
@@ -244,7 +244,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	var apiResponse types.APIAlertRulesResponse
 	if err := json.Unmarshal(rules, &apiResponse); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse alert rules response", logpkg.ErrAttr(err), slog.String("response", logpkg.TruncBody(rules)))
-		return mcp.NewToolResultError("failed to parse alert rules response: " + err.Error()), nil
+		return upstreamResponseError("failed to parse alert rules response: " + err.Error()), nil
 	}
 
 	base, _ := util.GetSigNozURL(ctx)
@@ -286,7 +286,7 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	resultJSON, err := paginate.Wrap(pagedRules, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap alert rules with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return internalError("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -306,7 +306,7 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("id", ruleID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
@@ -424,7 +424,7 @@ func (h *Handler) handleGetAlertHistory(ctx context.Context, req mcp.CallToolReq
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	respJSON, err := client.GetAlertHistory(ctx, ruleID, historyReq)
 	if err != nil {
@@ -469,7 +469,7 @@ func (h *Handler) handleCreateAlert(ctx context.Context, req mcp.CallToolRequest
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_alert")
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	data, err := client.CreateAlertRule(ctx, cleanJSON)
@@ -506,7 +506,7 @@ func (h *Handler) handleUpdateAlert(ctx context.Context, req mcp.CallToolRequest
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_alert", slog.String("ruleId", ruleID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	if err := client.UpdateAlertRule(ctx, ruleID, cleanJSON); err != nil {
@@ -533,7 +533,7 @@ func (h *Handler) handleDeleteAlert(ctx context.Context, req mcp.CallToolRequest
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_alert", slog.String("id", ruleID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	if err := client.DeleteAlertRule(ctx, ruleID); err != nil {
@@ -557,12 +557,12 @@ func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string
 	cleanJSON, err := alert.ValidateFromMap(rawConfig)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Alert validation failed", logpkg.ErrAttr(err))
-		return nil, mcp.NewToolResultError(fmt.Sprintf("Alert validation error: %s", err.Error()))
+		return nil, validationResult(fmt.Sprintf("Alert validation error: %s", err.Error()))
 	}
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return nil, mcp.NewToolResultError(err.Error())
+		return nil, clientError(err)
 	}
 
 	availableChannels, err := fetchChannelNames(ctx, client)
@@ -574,11 +574,11 @@ func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string
 	referencedChannels := extractReferencedChannels(rawConfig)
 
 	if len(referencedChannels) == 0 {
-		return nil, mcp.NewToolResultError(formatNoChannelsError(availableChannels))
+		return nil, validationResult(formatNoChannelsError(availableChannels))
 	}
 
 	if invalid := findInvalidChannels(referencedChannels, availableChannels); len(invalid) > 0 {
-		return nil, mcp.NewToolResultError(formatInvalidChannelsError(invalid, availableChannels))
+		return nil, validationResult(formatInvalidChannelsError(invalid, availableChannels))
 	}
 
 	return cleanJSON, nil

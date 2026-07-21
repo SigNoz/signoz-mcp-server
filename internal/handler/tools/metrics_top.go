@@ -38,7 +38,7 @@ func (h *Handler) handleGetTopMetrics(ctx context.Context, req mcp.CallToolReque
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_top_metrics",
