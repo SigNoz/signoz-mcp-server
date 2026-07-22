@@ -7,11 +7,11 @@
     "url": "https://github.com/SigNoz/signoz-mcp-server",
     "source": "github"
   },
-  "version": "0.8.0",
+  "version": "0.9.0",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "docker.io/signoz/signoz-mcp-server:v0.8.0",
+      "identifier": "docker.io/signoz/signoz-mcp-server:v0.9.0",
       "transport": {
         "type": "stdio"
       }
