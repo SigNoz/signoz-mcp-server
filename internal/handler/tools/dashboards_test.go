@@ -121,6 +121,38 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	}
 }
 
+// generateName is set true only when no name is supplied (so v2 derives a
+// DNS-1123 name from spec.display.name); a caller-supplied name leaves it unset.
+func TestHandleCreateDashboard_GenerateNameDefault(t *testing.T) {
+	for _, tc := range []struct {
+		desc    string
+		name    string // "" = omit the name key
+		wantGen bool
+	}{
+		{"no name sets generateName", "", true},
+		{"name supplied leaves it unset", "my-dash", false},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var sent map[string]any
+			mock := &client.MockClient{CreateDashboardRawFn: func(ctx context.Context, b []byte) (json.RawMessage, error) {
+				_ = json.Unmarshal(b, &sent)
+				return json.RawMessage(`{"data":{"id":"x"}}`), nil
+			}}
+			args := map[string]any{"schemaVersion": "v6", "tags": []any{}, "spec": map[string]any{"display": map[string]any{"name": "Hosts"}}}
+			if tc.name != "" {
+				args["name"] = tc.name
+			}
+			res, err := newTestHandler(mock).handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", args))
+			if err != nil || res.IsError {
+				t.Fatalf("unexpected failure: err=%v result=%v", err, res.Content)
+			}
+			if got := sent["generateName"]; (got == true) != tc.wantGen {
+				t.Errorf("generateName = %v, want present=%v (body=%v)", got, tc.wantGen, sent)
+			}
+		})
+	}
+}
+
 func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 	// The handler must resolve the id, drop the {status,data} envelope and all
 	// read-only fields, and forward only updatable body fields — whether the
