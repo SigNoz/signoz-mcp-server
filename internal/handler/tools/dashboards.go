@@ -91,9 +91,14 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_list_dashboards",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
+		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. Narrow the results with the optional filter expression (by name, description, tags, creator, timestamps, or locked state). When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 1000 are clamped.")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.")),
+		mcp.WithString("filter", mcp.Description("Optional server-side filter over dashboard metadata (name, description, tags, creator, timestamps, locked state); omit to list all. "+
+			"Read signoz://dashboard/list-filter-guide for the filter DSL grammar, per-key operators, value formats, and examples. "+
+			"Example: \"name CONTAINS 'overview' AND locked = true\".")),
+		mcp.WithString("sort", mcp.Enum("updated_at", "created_at", "name"), mcp.Description("Sort field: 'updated_at' (default), 'created_at', or 'name'.")),
+		mcp.WithString("order", mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default 'desc').")),
 	)
 
 	h.addTool(s, tool, h.handleListDashboards)
@@ -187,12 +192,18 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboards")
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
+	filter, sort, order := "", "", ""
+	if args, ok := req.Params.Arguments.(map[string]any); ok {
+		filter = strings.TrimSpace(stringArg(args, "filter"))
+		sort = strings.TrimSpace(stringArg(args, "sort"))
+		order = strings.TrimSpace(stringArg(args, "order"))
+	}
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
-	resultJSON, err := client.ListDashboards(ctx, limit, offset)
+	resultJSON, err := client.ListDashboards(ctx, limit, offset, filter, sort, order)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to list dashboards", err)
 		return upstreamError(err), nil
@@ -728,6 +739,24 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 				URI:      req.Params.URI,
 				MIMEType: "text/markdown",
 				Text:     dashboard.WidgetExamples,
+			},
+		}, nil
+	})
+
+	listFilterGuide := mcp.NewResource(
+		"signoz://dashboard/list-filter-guide",
+		"Dashboard List Filter Guide",
+		mcp.WithResourceDescription("Read this to build the optional filter argument of signoz_list_dashboards. It documents the server-side metadata filter DSL: grammar (terms, AND/OR/NOT, free-text search), the filterable keys (name, description, created_by, created_at, updated_at, locked, and tag keys) with their operators and value formats, and worked examples."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.ListFilterGuide))),
+	)
+
+	h.addResource(s, listFilterGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     dashboard.ListFilterGuide,
 			},
 		}, nil
 	})

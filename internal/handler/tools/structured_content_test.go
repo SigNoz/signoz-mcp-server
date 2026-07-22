@@ -214,7 +214,7 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 				"system.cpu.time": {Dashboards: []string{"Host Metrics"}, Alerts: []string{}},
 			}, nil
 		},
-		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 			return json.RawMessage(`{"dashboards":[{"id":"d1","name":"x"}],"tags":[],"total":1}`), nil
 		},
 		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {

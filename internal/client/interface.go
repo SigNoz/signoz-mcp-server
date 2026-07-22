@@ -17,7 +17,7 @@ type Client interface {
 	ListAlertRules(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
-	ListDashboards(ctx context.Context, limit, offset int) (json.RawMessage, error)
+	ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
 	GetDashboard(ctx context.Context, id string) (json.RawMessage, error)
 	CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
 	UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error)

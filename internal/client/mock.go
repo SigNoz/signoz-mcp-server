@@ -18,7 +18,7 @@ type MockClient struct {
 	ListAlertRulesFn            func(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleIDFn          func(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistoryFn           func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
-	ListDashboardsFn            func(ctx context.Context, limit, offset int) (json.RawMessage, error)
+	ListDashboardsFn            func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
 	GetDashboardFn              func(ctx context.Context, id string) (json.RawMessage, error)
 	CreateDashboardRawFn        func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
 	UpdateDashboardRawFn        func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error)
@@ -100,9 +100,9 @@ func (m *MockClient) GetAlertHistory(ctx context.Context, ruleID string, req typ
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) ListDashboards(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+func (m *MockClient) ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 	if m.ListDashboardsFn != nil {
-		return m.ListDashboardsFn(ctx, limit, offset)
+		return m.ListDashboardsFn(ctx, limit, offset, filter, sort, order)
 	}
 	return json.RawMessage(`{}`), nil
 }

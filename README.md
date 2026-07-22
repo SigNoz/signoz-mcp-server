@@ -404,6 +404,7 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://dashboard/instructions` | Dashboard fields, variables, chaining, and layout |
 | `signoz://dashboard/widgets-instructions` | Panel choices and query-specific guides |
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
+| `signoz://dashboard/list-filter-guide` | `signoz_list_dashboards` filter DSL: grammar, per-key operators, and examples |
 | `signoz://dashboard/query-builder-example` | Dashboard Query Builder aggregations, filters, legends, and functions |
 | `signoz://promql/instructions` | PromQL widgets or alerts, especially dotted OTel metric names |
 | `signoz://dashboard/clickhouse-schema-for-logs` | Bundled logs schema snapshot for dashboard SQL |
@@ -516,6 +517,14 @@ Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_li
 #### `signoz_list_dashboards`
 
 Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for panel and query definitions, and page by raising `offset` by `limit` until you have covered `total` before concluding a dashboard is absent.
+
+- **Parameters:**
+  - `limit` (default 50), `offset` (default 0) – offset-based pagination
+  - `filter` (optional) – server-side filter DSL over dashboard metadata (name, description, tags, creator, timestamps, locked state)
+  - `sort` (optional) – `updated_at` (default), `created_at`, or `name`
+  - `order` (optional) – `asc` or `desc` (default `desc`)
+
+The `filter` DSL is a boolean expression of `key operator value` terms and bare free-text words joined with `AND`/`OR`/`NOT` and parentheses (e.g. `name CONTAINS 'overview' AND locked = true`). Read [`signoz://dashboard/list-filter-guide`](#mcp-resources) for the full grammar, the filterable keys with their operators, value formats, and worked examples; the list response also echoes the authoritative reserved-key set in `reservedKeywords`.
 
 #### `signoz_get_dashboard`
 

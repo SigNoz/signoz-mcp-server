@@ -28,7 +28,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 	}{
 		{
 			name: "list_dashboards",
-			mock: &client.MockClient{ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+			mock: &client.MockClient{ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {

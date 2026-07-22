@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1812,6 +1813,48 @@ func TestListViews(t *testing.T) {
 	assert.Contains(t, gotRawQuery, "sourcePage=traces")
 	assert.Contains(t, gotRawQuery, "name=ak")
 	assert.Contains(t, gotRawQuery, "category=ops")
+}
+
+func TestListDashboards_ForwardsFilterSortOrder(t *testing.T) {
+	var gotPath, gotMethod string
+	var gotQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[],"tags":[],"total":0}}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.ListDashboards(context.Background(), 50, 0, "name CONTAINS 'overview'", "name", "asc")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, gotMethod)
+	assert.Equal(t, "/api/v2/dashboards", gotPath)
+	// The MCP `filter` maps to the v2 API's `query` param; sort/order pass through as-is.
+	assert.Equal(t, "name CONTAINS 'overview'", gotQuery.Get("query"))
+	assert.Equal(t, "name", gotQuery.Get("sort"))
+	assert.Equal(t, "asc", gotQuery.Get("order"))
+	assert.Equal(t, "50", gotQuery.Get("limit"))
+}
+
+func TestListDashboards_OmitsEmptyListParams(t *testing.T) {
+	var gotQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[],"tags":[],"total":0}}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.ListDashboards(context.Background(), 50, 0, "", "", "")
+	require.NoError(t, err)
+	for _, p := range []string{"query", "sort", "order"} {
+		_, has := gotQuery[p]
+		assert.Falsef(t, has, "empty %s must not be sent", p)
+	}
 }
 
 func TestGetView(t *testing.T) {

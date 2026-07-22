@@ -416,7 +416,7 @@ func TestHandleImportDashboard_NotFound(t *testing.T) {
 
 func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
 		},
 	}
@@ -436,11 +436,37 @@ func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	}
 }
 
+func TestHandleListDashboards_ForwardsFilter(t *testing.T) {
+	var gotFilter, gotSort, gotOrder string
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			gotFilter, gotSort, gotOrder = filter, sort, order
+			return json.RawMessage(`{"dashboards":[],"tags":[],"total":0}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_dashboards", map[string]any{
+		"filter": "  name CONTAINS 'overview'  ",
+		"sort":   "name",
+		"order":  "asc",
+	})
+
+	if _, err := h.handleListDashboards(testCtx(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotFilter != "name CONTAINS 'overview'" {
+		t.Fatalf("expected trimmed filter forwarded to client, got %q", gotFilter)
+	}
+	if gotSort != "name" || gotOrder != "asc" {
+		t.Fatalf("expected sort/order forwarded, got sort=%q order=%q", gotSort, gotOrder)
+	}
+}
+
 func TestHandleListDashboards_AddsWebURL_WrappedEnvelope(t *testing.T) {
 	// The v2 API wraps the list in a {"data": {...}} envelope; the webUrl
 	// injection must reach entries nested under it.
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`), nil
 		},
 	}
@@ -489,7 +515,7 @@ func TestHandleCreateDashboard_AddsWebURL(t *testing.T) {
 
 func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
 		},
 	}

@@ -1044,7 +1044,7 @@ func TestHandleListDashboards_NullDataEmptyPage(t *testing.T) {
 		`{"dashboards":[],"tags":[],"total":0}`,
 	} {
 		mock := &client.MockClient{
-			ListDashboardsFn: func(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+			ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 				return json.RawMessage(body), nil
 			},
 		}

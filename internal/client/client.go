@@ -584,8 +584,9 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 // ListDashboards returns the v2 dashboard list (GET /api/v2/dashboards). The v2
 // API paginates server-side, so limit/offset are forwarded as query params and
 // the ListableDashboardV2 response ({dashboards, tags, total}) is passed through
-// verbatim.
-func (s *SigNoz) ListDashboards(ctx context.Context, limit, offset int) (json.RawMessage, error) {
+// verbatim. filter (the API's `query` filter DSL), sort, and order are forwarded
+// when non-empty; the API applies its own defaults otherwise.
+func (s *SigNoz) ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
 	params := url.Values{}
 	if limit > 0 {
@@ -593,6 +594,15 @@ func (s *SigNoz) ListDashboards(ctx context.Context, limit, offset int) (json.Ra
 	}
 	if offset > 0 {
 		params.Set("offset", strconv.Itoa(offset))
+	}
+	if filter != "" {
+		params.Set("query", filter)
+	}
+	if sort != "" {
+		params.Set("sort", sort)
+	}
+	if order != "" {
+		params.Set("order", order)
 	}
 	reqURL := fmt.Sprintf("%s/api/v2/dashboards", s.baseURL)
 	if enc := params.Encode(); enc != "" {

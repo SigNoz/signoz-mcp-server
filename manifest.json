@@ -83,7 +83,7 @@
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List paginated tenant-dashboard summaries and discover UUIDs; use signoz_get_dashboard for widget and query definitions"
+      "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for widget and query definitions"
     },
     {
       "name": "signoz_get_dashboard",
@@ -265,6 +265,12 @@
       "uri": "signoz://dashboard/widgets-instructions",
       "name": "Dashboard Widget Instructions",
       "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/list-filter-guide",
+      "name": "Dashboard List Filter Guide",
+      "description": "Read this to build the optional filter argument of signoz_list_dashboards. It documents the server-side metadata filter DSL: grammar (terms, AND/OR/NOT, free-text search), the filterable keys (name, description, created_by, created_at, updated_at, locked, and tag keys) with their operators and value formats, and worked examples.",
       "mimeType": "text/markdown"
     },
     {
