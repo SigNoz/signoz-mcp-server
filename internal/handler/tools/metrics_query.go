@@ -46,7 +46,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	// Track all decisions for the response
@@ -205,7 +205,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	// Build and execute
 	queryJSON, err := types.BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval, querySpecs, mqr.RequestType, mqr.Source)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to build query payload: %s", err.Error())), nil
+		return validationResult(fmt.Sprintf("Failed to build query payload: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Executing metrics query", slog.String("payload", logpkg.TruncBody(queryJSON)))

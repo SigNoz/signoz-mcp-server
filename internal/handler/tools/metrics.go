@@ -100,7 +100,7 @@ func (h *Handler) handleListMetrics(ctx context.Context, req mcp.CallToolRequest
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_metrics", slog.String("searchText", searchText))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.ListMetrics(ctx, start, end, limit, searchText, source)
 	if err != nil {

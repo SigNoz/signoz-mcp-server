@@ -49,7 +49,7 @@ func (h *Handler) handleCheckMetricCardinality(ctx context.Context, req mcp.Call
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	result, err := client.GetMetricCardinality(ctx, metricName, startTime, endTime)

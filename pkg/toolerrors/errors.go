@@ -2,7 +2,12 @@
 // tool result producers and telemetry consumers.
 package toolerrors
 
-import "github.com/mark3labs/mcp-go/mcp"
+import (
+	"bytes"
+	"encoding/json"
+
+	"github.com/mark3labs/mcp-go/mcp"
+)
 
 const (
 	CodeValidationFailed   = "VALIDATION_FAILED"
@@ -48,13 +53,31 @@ func Code(result *mcp.CallToolResult) string {
 	if result == nil || !result.IsError {
 		return ""
 	}
-	content, ok := result.StructuredContent.(map[string]any)
-	if !ok {
-		return ""
-	}
-	code, _ := content["code"].(string)
-	if _, ok := knownCodes[code]; !ok {
-		return ""
-	}
+	_, code := NormalizeStructuredContent(result.StructuredContent)
 	return code
+}
+
+// NormalizeStructuredContent returns a JSON-object representation and its
+// known error code, if present. Integer precision is preserved.
+func NormalizeStructuredContent(content any) (map[string]any, string) {
+	if content == nil {
+		return nil, ""
+	}
+	object, ok := content.(map[string]any)
+	if !ok {
+		encoded, err := json.Marshal(content)
+		if err != nil {
+			return nil, ""
+		}
+		decoder := json.NewDecoder(bytes.NewReader(encoded))
+		decoder.UseNumber()
+		if err := decoder.Decode(&object); err != nil || object == nil {
+			return nil, ""
+		}
+	}
+	code, _ := object["code"].(string)
+	if _, known := knownCodes[code]; !known {
+		code = ""
+	}
+	return object, code
 }

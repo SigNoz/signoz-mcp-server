@@ -231,6 +231,31 @@ func TestHandleExecuteBuilderQuery_InvalidRequestTypeIsValidationFailed(t *testi
 	}
 }
 
+func TestHandleQueryMetrics_WhitespaceFormulaIsValidationFailed(t *testing.T) {
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			t.Fatalf("upstream must not be called when formula validation fails; body=%s", body)
+			return nil, nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_query_metrics", map[string]any{
+		"metricName":  "system.cpu.time",
+		"metricType":  "gauge",
+		"timeRange":   "1h",
+		"requestType": "scalar",
+		"formula":     "   ",
+	})
+
+	result, err := h.handleQueryMetrics(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("resultCode = %q, want %q", got, CodeValidationFailed)
+	}
+}
+
 // TestParseMetricMetadataFromResponse_PartialFieldDrift (FIX D3) pins that when a
 // metric row matches by name and carries a type but is MISSING its companion
 // fields (temporality / isMonotonic), the decoded result is DETECTABLY

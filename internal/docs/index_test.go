@@ -2,6 +2,7 @@ package docs
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,10 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
 
+	_, err = reg.Search(ctx, `"unclosed`, "", 3)
+	require.ErrorIs(t, err, ErrInvalidSearchQuery)
+	require.NotContains(t, err.Error(), ErrInvalidSearchQuery.Error())
+
 	filtered, err := reg.Search(ctx, "docker", "install", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, filtered.Results)
@@ -44,6 +49,14 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 
 	err = reg.Swap(ctx, testSnapshot())
 	require.NoError(t, err)
+}
+
+func TestInvalidSearchQueryErrorPreservesCauseMessage(t *testing.T) {
+	cause := errors.New("parser detail")
+	err := &invalidSearchQueryError{cause: cause}
+	require.Equal(t, cause.Error(), err.Error())
+	require.ErrorIs(t, err, ErrInvalidSearchQuery)
+	require.ErrorIs(t, err, cause)
 }
 
 func TestTruncateContentIsUTF8Safe(t *testing.T) {

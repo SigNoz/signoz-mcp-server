@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -650,7 +651,13 @@ func TestErrorHelpers_StructuredCodes(t *testing.T) {
 		{"requireStringArg-empty", mustErr(requireStringArg(map[string]any{}, "id")), CodeValidationFailed},
 		{"notAJSONObjectError", notAJSONObjectError(), CodeValidationFailed},
 		{"notAConfigObjectError", notAConfigObjectError(), CodeValidationFailed},
+		{"clientError", clientError(errors.New("missing credentials")), CodeUnauthorized},
+		{"InternalErrorResult", InternalErrorResult("marshal failed"), CodeInternalError},
+		{"upstreamResponseError", upstreamResponseError("malformed response"), CodeUpstreamError},
+		{"validationResult", validationResult("invalid configuration"), CodeValidationFailed},
 		{"upstreamError", upstreamError(errors.New("boom")), CodeUpstreamError},
+		{"upstreamError-canceled", upstreamError(fmt.Errorf("request stopped: %w", context.Canceled)), CodeCanceled},
+		{"upstreamError-timeout", upstreamError(fmt.Errorf("request stopped: %w", context.DeadlineExceeded)), CodeTimeout},
 		{"upstreamError-unauthorized", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusUnauthorized, Body: `{}`}), CodeUnauthorized},
 		{"upstreamError-forbidden", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusForbidden, Body: `{}`}), CodePermissionDenied},
 		{"upstreamError-not-found", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusNotFound, Body: `{}`}), CodeNotFound},
@@ -662,6 +669,26 @@ func TestErrorHelpers_StructuredCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := resultCode(t, tc.res); got != tc.want {
 				t.Fatalf("%s code = %q, want %q", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestErrorWithCause(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		fallback string
+		want     string
+	}{
+		{"canceled", context.Canceled, CodeInternalError, CodeCanceled},
+		{"deadline", context.DeadlineExceeded, CodeInternalError, CodeTimeout},
+		{"fallback", errors.New("ordinary"), CodeValidationFailed, CodeValidationFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resultCode(t, errorWithCause(tc.err, tc.fallback, tc.err.Error())); got != tc.want {
+				t.Fatalf("code = %q, want %q", got, tc.want)
 			}
 		})
 	}

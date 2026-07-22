@@ -73,6 +73,7 @@ func (h *Handler) addTool(s *server.MCPServer, tool mcp.Tool, handler server.Too
 	if input != nil || output != nil {
 		handler = h.validationDecorator(tool.Name, input, output, handler)
 	}
+	handler = h.errorCodeDecorator(tool.Name, handler)
 	h.registerTool(s, tool, handler)
 }
 
@@ -198,6 +199,25 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 		if err := validateSchemaValue(output.validator, result.StructuredContent, false); err != nil {
 			path, constraint := validationMetadata(err, output.topLevelProperties)
 			h.recordValidationMismatch(ctx, toolName, "output", path, constraint)
+		}
+		return result, nil
+	}
+}
+
+func (h *Handler) errorCodeDecorator(toolName string, next server.ToolHandlerFunc) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		result, err := next(ctx, req)
+		if err != nil || result == nil || !result.IsError {
+			return result, err
+		}
+		result, appliedFallback := ensureCodedToolError(result)
+		if !appliedFallback {
+			return result, nil
+		}
+		if h.logger != nil {
+			h.logger.WarnContext(ctx, "tool returned an uncoded error result; applying fallback",
+				slog.String("gen_ai.tool.name", toolName),
+				slog.String("fallback.code", CodeInternalError))
 		}
 		return result, nil
 	}

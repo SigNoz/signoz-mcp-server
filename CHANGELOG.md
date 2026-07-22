@@ -16,6 +16,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.9.0] - 2026-07-22
+
+### Added
+- add tier 1 MCP contract guardrails ([#249](https://github.com/SigNoz/signoz-mcp-server/pull/249))
+- accurate MCP tool annotations — explicit readOnly/destructive/idempotent triples with pinned inventory test ([#245](https://github.com/SigNoz/signoz-mcp-server/pull/245))
+- add key-not-found recovery guidance and missingKeys error field ([#244](https://github.com/SigNoz/signoz-mcp-server/pull/244))
+- add explicit limits and ordering ([#241](https://github.com/SigNoz/signoz-mcp-server/pull/241))
+
+### Fixed
+- code tool error results ([#256](https://github.com/SigNoz/signoz-mcp-server/pull/256))
+- enforce wire-contract budgets ([#247](https://github.com/SigNoz/signoz-mcp-server/pull/247))
+- classify expired-workspace 404s as permanent instance-not-found errors ([#243](https://github.com/SigNoz/signoz-mcp-server/pull/243))
+- stop logging expected subscribe rejections and client cancellations at ERROR ([#242](https://github.com/SigNoz/signoz-mcp-server/pull/242))
+- align service version across signals ([#240](https://github.com/SigNoz/signoz-mcp-server/pull/240))
+
+### Changed
+- clarify full catalog metadata ([#248](https://github.com/SigNoz/signoz-mcp-server/pull/248))
+
+### Documentation
+- add best-practices guide ([#255](https://github.com/SigNoz/signoz-mcp-server/pull/255))
+
+### Other
+- add Inspector protocol CI ([#254](https://github.com/SigNoz/signoz-mcp-server/pull/254))
+- pre-release v0.8.0 ([#239](https://github.com/SigNoz/signoz-mcp-server/pull/239))
+
 ## [0.8.0] - 2026-07-15
 
 ### Added
@@ -301,3 +327,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.6.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.5.1...v0.6.0
 [0.7.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.6.0...v0.7.0
 [0.8.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.7.0...v0.8.0
+[0.9.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.8.0...v0.9.0
