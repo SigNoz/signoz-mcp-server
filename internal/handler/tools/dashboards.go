@@ -92,7 +92,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. Narrow the results with the optional filter expression (by name, description, tags, creator, timestamps, or locked state). When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
-		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 1000 are clamped.")),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 200 are clamped (the v2 API's server-side cap).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.")),
 		mcp.WithString("filter", mcp.Description("Optional server-side filter over dashboard metadata (name, description, tags, creator, timestamps, locked state); omit to list all. "+
 			"Read signoz://dashboard/list-filter-guide for the filter DSL grammar, per-key operators, value formats, and examples. "+
@@ -189,9 +189,21 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.registerDashboardResources(s)
 }
 
+// dashboardListMaxLimit is the v2 /api/v2/dashboards server-side page cap
+// (MaxListLimit). Clamping to it keeps the requested limit equal to what the
+// server returns, so paging by offset does not overshoot and silently skip rows.
+const dashboardListMaxLimit = 200
+
 func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboards")
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
+	// v2 caps the page size tighter than the shared MaxLimit; clamp to the
+	// server cap so the requested limit equals what the server returns and
+	// paging by offset does not overshoot total and silently skip rows.
+	if limit > dashboardListMaxLimit {
+		limit = dashboardListMaxLimit
+		limitClamped = true
+	}
 	filter, sort, order := "", "", ""
 	if args, ok := req.Params.Arguments.(map[string]any); ok {
 		filter = strings.TrimSpace(stringArg(args, "filter"))
@@ -218,7 +230,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 	if limitClamped {
 		return structuredResultWithNotes(resultJSON, fmt.Sprintf(
 			"Requested limit exceeded the maximum of %d and was clamped. Use offset to page through the rest.",
-			paginate.MaxLimit)), nil
+			dashboardListMaxLimit)), nil
 	}
 	return structuredResult(resultJSON), nil
 }

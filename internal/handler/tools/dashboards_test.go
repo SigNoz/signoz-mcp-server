@@ -462,6 +462,29 @@ func TestHandleListDashboards_ForwardsFilter(t *testing.T) {
 	}
 }
 
+// 500 is under the old shared cap (1000) but over the v2 cap (200), so it must
+// be clamped to 200 before forwarding, with an advisory note.
+func TestHandleListDashboards_LimitClamped(t *testing.T) {
+	var gotLimit int
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			gotLimit = limit
+			return json.RawMessage(`{"dashboards":[],"tags":[],"total":0}`), nil
+		},
+	}
+	res, err := newTestHandler(mock).handleListDashboards(testCtx(),
+		makeToolRequest("signoz_list_dashboards", map[string]any{"limit": "500"}))
+	if err != nil || res.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, res.Content)
+	}
+	if gotLimit != dashboardListMaxLimit {
+		t.Errorf("forwarded limit = %d, want clamped to %d", gotLimit, dashboardListMaxLimit)
+	}
+	if !resultNotesContain(res, "exceeded the maximum") {
+		t.Errorf("expected clamp advisory note, got: %v", allTextBlocks(res))
+	}
+}
+
 func TestHandleListDashboards_AddsWebURL_WrappedEnvelope(t *testing.T) {
 	// The v2 API wraps the list in a {"data": {...}} envelope; the webUrl
 	// injection must reach entries nested under it.
