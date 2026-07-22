@@ -308,7 +308,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	cleanJSON, err := json.Marshal(rawConfig)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to encode dashboard payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil
+		return InternalErrorResult(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_dashboard")
@@ -368,7 +368,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	cleanJSON, err := json.Marshal(rawConfig)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to encode template payload", slog.String("path", path), logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Template encode error: %s", err.Error())), nil
+		return InternalErrorResult(fmt.Sprintf("Template encode error: %s", err.Error())), nil
 	}
 
 	client, err := h.GetClient(ctx)
@@ -462,7 +462,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	body, err := json.Marshal(updatable)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to encode dashboard payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil
+		return InternalErrorResult(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_dashboard", slog.String("uuid", uuid))
@@ -501,13 +501,13 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 	// Forward the JSON Patch op array to PATCH /api/v2/dashboards/{id}.
 	body, err := json.Marshal(patch)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to encode patch: %s", err.Error())), nil
+		return InternalErrorResult(fmt.Sprintf("failed to encode patch: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_patch_dashboard", slog.String("id", uuid))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	data, err := client.PatchDashboardRaw(ctx, uuid, body)
 	if err != nil {
