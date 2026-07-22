@@ -1,0 +1,14 @@
+{
+  "beacon_manifest": "0.1",
+  "id": "SigNoz/signoz-mcp-server",
+  "name": "SigNoz MCP Server",
+  "description": "MCP server for querying SigNoz metrics, traces, logs, alerts, and dashboards via AI.",
+  "capabilities": ["mcp-server", "observability", "monitoring", "opentelemetry", "signoz"],
+  "interfaces": [
+    { "type": "http", "endpoint": "https://signoz.io/docs/ai/signoz-mcp-server/" },
+    { "type": "mcp", "endpoint": "https://github.com/SigNoz/signoz-mcp-server" }
+  ],
+  "source": "https://github.com/SigNoz/signoz-mcp-server",
+  "homepage": "https://signoz.io/docs/ai/signoz-mcp-server/",
+  "license": "MIT"
+}
