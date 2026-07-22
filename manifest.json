@@ -83,15 +83,15 @@
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for widget and query definitions"
+      "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for panel and query definitions"
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get one known tenant dashboard's complete layout, variables, widgets, and queries by id"
+      "description": "Get one known tenant dashboard's complete layout, variables, panels, and queries by id"
     },
     {
       "name": "signoz_create_dashboard",
-      "description": "Create a custom multi-widget dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
+      "description": "Create a custom multi-panel dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
     },
     {
       "name": "signoz_update_dashboard",
@@ -258,7 +258,7 @@
     {
       "uri": "signoz://dashboard/widgets-examples",
       "name": "Dashboard Widgets Examples",
-      "description": "Read this after the dashboard and widget instructions when building panels. It includes examples by panel type, validation checks, troubleshooting, and grouped-series legends. Verify field names in the target SigNoz workspace.",
+      "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
       "mimeType": "text/markdown"
     },
     {
