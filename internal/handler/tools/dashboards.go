@@ -146,7 +146,8 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
 				"e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /spec/variables/0, /tags/-. "+
 				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable) — it is far cheaper than rebuilding the full dashboard. "+
-				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected.",
+				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. "+
+				"Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
 		),
 		rawInputSchema(patchDashboardSchema),
 	)
@@ -769,6 +770,24 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 				URI:      req.Params.URI,
 				MIMEType: "text/markdown",
 				Text:     dashboard.ListFilterGuide,
+			},
+		}, nil
+	})
+
+	patchInstructions := mcp.NewResource(
+		"signoz://dashboard/patch-instructions",
+		"Dashboard Patch Instructions",
+		mcp.WithResourceDescription("Read this before calling signoz_patch_dashboard. It gives worked RFC 6902 JSON Patch recipes with exact JSON Pointer paths for targeted edits (rename, add/edit/move/remove a panel, edit a query, variables, tags), including the two-op sequences the backend requires (adding a panel needs a panel op plus a grid-item op). For the panel/query/variable JSON to use as a patch value, also read signoz://dashboard/widgets-examples and signoz://dashboard/instructions."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.PatchInstructions))),
+	)
+
+	h.addResource(s, patchInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     dashboard.PatchInstructions,
 			},
 		}, nil
 	})

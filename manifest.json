@@ -274,6 +274,12 @@
       "mimeType": "text/markdown"
     },
     {
+      "uri": "signoz://dashboard/patch-instructions",
+      "name": "Dashboard Patch Instructions",
+      "description": "Read this before calling signoz_patch_dashboard. It gives worked RFC 6902 JSON Patch recipes with exact JSON Pointer paths for targeted edits (rename, add/edit/move/remove a panel, edit a query, variables, tags), including the two-op sequences the backend requires (adding a panel needs a panel op plus a grid-item op). For the panel/query/variable JSON to use as a patch value, also read signoz://dashboard/widgets-examples and signoz://dashboard/instructions.",
+      "mimeType": "text/markdown"
+    },
+    {
       "uri": "signoz://docs/sitemap",
       "name": "SigNoz Docs Sitemap",
       "description": "Use this resource when an MCP client needs the indexed official SigNoz documentation catalog and page URLs. Use signoz_search_docs for topical discovery and signoz_fetch_doc for page content.",

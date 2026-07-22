@@ -405,6 +405,7 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://dashboard/widgets-instructions` | Panel choices and query-specific guides |
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
 | `signoz://dashboard/list-filter-guide` | `signoz_list_dashboards` filter DSL: grammar, per-key operators, and examples |
+| `signoz://dashboard/patch-instructions` | `signoz_patch_dashboard` JSON Patch recipes and exact paths (add/edit/move/remove a panel, query, variable) |
 | `signoz://dashboard/query-builder-example` | Dashboard Query Builder aggregations, filters, legends, and functions |
 | `signoz://promql/instructions` | PromQL widgets or alerts, especially dotted OTel metric names |
 | `signoz://dashboard/clickhouse-schema-for-logs` | Bundled logs schema snapshot for dashboard SQL |
@@ -567,11 +568,11 @@ Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, merg
 
 #### `signoz_patch_dashboard`
 
-Applies an RFC 6902 JSON Patch to a dashboard — a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable).
+Applies an RFC 6902 JSON Patch to a dashboard — a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths — notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
 
 - **Parameters:**
   - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
-  - `patch` (required) – Array of `{op, path, value}` operations; paths are JSON Pointers into the dashboard's postable shape, e.g. `/spec/display/name`, `/spec/panels/<panelId>`, `/tags/-`
+  - `patch` (required) – Array of `{op, path, value}` operations; paths are JSON Pointers into the dashboard's postable shape, e.g. `/spec/display/name`, `/spec/panels/<panelId>`, `/spec/layouts/0/spec/items/-`, `/tags/-`
 
 #### `signoz_list_services`
 
