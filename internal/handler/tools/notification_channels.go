@@ -164,7 +164,7 @@ func (h *Handler) handleGetNotificationChannel(ctx context.Context, req mcp.Call
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_notification_channel", slog.String("id", id))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	resp, err := client.GetNotificationChannel(ctx, id)
@@ -188,7 +188,7 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 	h.logger.DebugContext(ctx, "Tool called: signoz_delete_notification_channel", slog.String("id", id))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	if err := client.DeleteNotificationChannel(ctx, id); err != nil {
@@ -204,7 +204,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	result, err := client.ListNotificationChannels(ctx)
@@ -216,7 +216,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 	var response map[string]any
 	if err := json.Unmarshal(result, &response); err != nil {
 		h.logger.ErrorContext(ctx, "Failed to parse notification channels response", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to parse response: " + err.Error()), nil
+		return upstreamResponseError("failed to parse response: " + err.Error()), nil
 	}
 
 	// Upstream returns `data: null`, omits `data`, or returns an empty
@@ -266,7 +266,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to wrap notification channels with pagination", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
 	}
 
 	return listResult(resultJSON, limitClamped), nil
@@ -310,7 +310,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	// Step 1: Create the channel
@@ -349,7 +349,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return upstreamResponseError("failed to marshal response: " + err.Error()), nil
 	}
 
 	// Fail OPEN: the channel WAS created, so we do not flip IsError (avoids a
@@ -411,7 +411,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	// Step 1: Update the channel (204 No Content on success)
@@ -464,7 +464,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
-		return mcp.NewToolResultError("failed to marshal response: " + err.Error()), nil
+		return upstreamResponseError("failed to marshal response: " + err.Error()), nil
 	}
 
 	// Fail OPEN: channel was updated; test-send and read-back failures become notes.

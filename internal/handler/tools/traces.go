@@ -103,7 +103,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal aggregate traces query payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal query payload: " + err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_aggregate_traces",
@@ -112,7 +112,7 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
@@ -139,7 +139,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal query payload", logpkg.ErrAttr(err))
-		return mcp.NewToolResultError("failed to marshal query payload: " + err.Error()), nil
+		return InternalErrorResult("failed to marshal query payload: " + err.Error()), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_search_traces",
@@ -147,7 +147,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
@@ -197,7 +197,7 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {

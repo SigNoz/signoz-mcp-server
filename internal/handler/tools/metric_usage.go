@@ -79,7 +79,7 @@ func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRe
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return clientError(err), nil
 	}
 
 	usage, err := client.CheckMetricUsage(ctx, names)
@@ -90,7 +90,7 @@ func (h *Handler) handleCheckMetricUsage(ctx context.Context, req mcp.CallToolRe
 
 	out, err := json.Marshal(usage)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return InternalErrorResult(err.Error()), nil
 	}
 
 	return structuredResult(out), nil

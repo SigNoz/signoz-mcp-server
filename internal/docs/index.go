@@ -32,6 +32,27 @@ const snippetRuneLimit = 200
 
 var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", ".", " ")
 
+// ErrInvalidSearchQuery marks searchText that Bleve's query-string parser
+// rejects. Callers can classify it as a correctable input error without
+// depending on Bleve's error text.
+var ErrInvalidSearchQuery = errors.New("invalid docs search query")
+
+type invalidSearchQueryError struct {
+	cause error
+}
+
+func (e *invalidSearchQueryError) Error() string {
+	return e.cause.Error()
+}
+
+func (e *invalidSearchQueryError) Unwrap() error {
+	return e.cause
+}
+
+func (e *invalidSearchQueryError) Is(target error) bool {
+	return target == ErrInvalidSearchQuery
+}
+
 //go:embed assets/corpus.gob.gz assets/corpus.manifest.json
 var embeddedAssets embed.FS
 
@@ -152,11 +173,10 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	if limit > 25 {
 		limit = 25
 	}
-	// boostedDocsQuery already returns the bleveQuery.Query interface, so
-	// finalQuery is typed as the interface — that's what allows the
-	// section_slug branch below to reassign it to a ConjunctionQuery
-	// without a type mismatch.
-	finalQuery := boostedDocsQuery(query)
+	finalQuery, err := boostedDocsQuery(query)
+	if err != nil {
+		return SearchResponse{}, err
+	}
 	if sectionSlug != "" {
 		sectionQuery := bleve.NewTermQuery(sectionSlug)
 		sectionQuery.SetField("section_slugs")
@@ -211,7 +231,7 @@ func sectionBreadcrumbForFilter(fields map[string]any, sectionSlug string) (stri
 	return breadcrumb, ok
 }
 
-func boostedDocsQuery(raw string) bleveQuery.Query {
+func boostedDocsQuery(raw string) (bleveQuery.Query, error) {
 	raw = strings.TrimSpace(raw)
 	title := bleve.NewMatchQuery(raw)
 	title.SetField("title")
@@ -230,7 +250,10 @@ func boostedDocsQuery(raw string) bleveQuery.Query {
 	urlTokens.SetBoost(2.5)
 	queryString := bleve.NewQueryStringQuery(raw)
 	queryString.SetBoost(0.5)
-	return bleve.NewDisjunctionQuery(title, headings, body, sectionBreadcrumb, urlTokens, queryString)
+	if err := queryString.Validate(); err != nil {
+		return nil, &invalidSearchQueryError{cause: err}
+	}
+	return bleve.NewDisjunctionQuery(title, headings, body, sectionBreadcrumb, urlTokens, queryString), nil
 }
 
 func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (FetchResult, string, error) {

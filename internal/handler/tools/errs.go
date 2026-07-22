@@ -116,10 +116,37 @@ func errorWithCode(code, message string) *mcp.CallToolResult {
 	return errorWithStructuredContent(code, message, nil)
 }
 
-// InternalErrorResult is used by the transport boundary when a handler
-// produced a result that cannot be represented as JSON-RPC.
+// clientError classifies GetClient failures. GetClient currently fails only
+// when the request context does not contain tenant credentials.
+func clientError(err error) *mcp.CallToolResult {
+	return errorWithCode(CodeUnauthorized, err.Error())
+}
+
+func upstreamResponseError(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeUpstreamError, message)
+}
+
+func validationResult(message string) *mcp.CallToolResult {
+	return errorWithCode(CodeValidationFailed, message)
+}
+
+// InternalErrorResult reports local server-side shaping or serialization
+// failures that callers cannot correct through tool arguments.
 func InternalErrorResult(message string) *mcp.CallToolResult {
 	return errorWithCode(CodeInternalError, message)
+}
+
+// errorWithCause preserves cancellation and deadline identity while using the
+// supplied code for ordinary failures at the call site.
+func errorWithCause(err error, fallbackCode, message string) *mcp.CallToolResult {
+	code := fallbackCode
+	switch {
+	case errors.Is(err, context.Canceled):
+		code = CodeCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		code = CodeTimeout
+	}
+	return errorWithCode(code, message)
 }
 
 func errorWithStructuredContent(code, message string, fields map[string]any) *mcp.CallToolResult {
@@ -136,6 +163,28 @@ func errorWithStructuredContent(code, message string, fields map[string]any) *mc
 	}
 	res.StructuredContent = structured
 	return res
+}
+
+// ensureCodedToolError is the final safety net for registered tool handlers.
+// Specific call sites should still choose the most accurate stable code.
+func ensureCodedToolError(res *mcp.CallToolResult) (*mcp.CallToolResult, bool) {
+	if res == nil || !res.IsError {
+		return res, false
+	}
+	existing, code := toolerrors.NormalizeStructuredContent(res.StructuredContent)
+	if code != "" {
+		return res, false
+	}
+	// MCP structuredContent is object-shaped. Invalid non-object values cannot
+	// be merged, so the fallback replaces them while preserving the text block.
+	structured := map[string]any{"code": CodeInternalError}
+	for key, value := range existing {
+		if key != "code" {
+			structured[key] = value
+		}
+	}
+	res.StructuredContent = structured
+	return res, true
 }
 
 // validationError builds a canonical result of the form:
@@ -376,7 +425,7 @@ func (h *Handler) logQueryFailure(ctx context.Context, msg string, err error, at
 func upstreamError(err error) *mcp.CallToolResult {
 	var statusErr *signozclient.HTTPStatusError
 	if !errors.As(err, &statusErr) {
-		return errorWithCode(CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
+		return errorWithCause(err, CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
 	}
 
 	upstreamCode, upstreamMessage, upstreamType, parsedUpstreamBody := parseUpstreamErrorBody(statusErr.Body)
