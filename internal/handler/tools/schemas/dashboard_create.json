@@ -366,17 +366,27 @@
       ],
       "type": "object"
     },
+    "DashboardtypesDynamicVariableSignal": {
+      "enum": [
+        "traces",
+        "logs",
+        "metrics",
+        "all"
+      ],
+      "type": "string"
+    },
     "DashboardtypesDynamicVariableSpec": {
       "properties": {
         "name": {
           "type": "string"
         },
         "signal": {
-          "$ref": "#/$defs/TelemetrytypesSignal"
+          "$ref": "#/$defs/DashboardtypesDynamicVariableSignal"
         }
       },
       "required": [
-        "name"
+        "name",
+        "signal"
       ],
       "type": "object"
     },

@@ -406,6 +406,7 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
 | `signoz://dashboard/list-filter-guide` | `signoz_list_dashboards` filter DSL: grammar, per-key operators, and examples |
 | `signoz://dashboard/patch-instructions` | `signoz_patch_dashboard` JSON Patch recipes and exact paths (add/edit/move/remove a panel, query, variable) |
+| `signoz://dashboard/examples` | Complete server-verified dashboard payloads (metrics timeseries, dynamic-variable filter, number panel, multi-panel) |
 | `signoz://dashboard/query-builder-example` | Dashboard Query Builder aggregations, filters, legends, and functions |
 | `signoz://promql/instructions` | PromQL widgets or alerts, especially dotted OTel metric names |
 | `signoz://dashboard/clickhouse-schema-for-logs` | Bundled logs schema snapshot for dashboard SQL |

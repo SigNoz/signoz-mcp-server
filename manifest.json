@@ -280,6 +280,12 @@
       "mimeType": "text/markdown"
     },
     {
+      "uri": "signoz://dashboard/examples",
+      "name": "Dashboard Examples",
+      "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
+      "mimeType": "text/markdown"
+    },
+    {
       "uri": "signoz://docs/sitemap",
       "name": "SigNoz Docs Sitemap",
       "description": "Use this resource when an MCP client needs the indexed official SigNoz documentation catalog and page URLs. Use signoz_search_docs for topical discovery and signoz_fetch_doc for page content.",

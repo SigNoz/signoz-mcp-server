@@ -76,6 +76,34 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 	}
 }
 
+// TestDashboardExamplesValidateAgainstCreateSchema ties the dashboard-examples
+// resource to the embedded create schema: every complete dashboard served at
+// signoz://dashboard/examples must validate as a create payload clients are handed.
+func TestDashboardExamplesValidateAgainstCreateSchema(t *testing.T) {
+	var full jsonschema.Schema
+	if err := json.Unmarshal(createDashboardSchema, &full); err != nil {
+		t.Fatalf("create schema does not parse: %v", err)
+	}
+	resolved, err := full.Resolve(nil)
+	if err != nil {
+		t.Fatalf("create schema does not resolve: %v", err)
+	}
+	dashboards := extractJSONObjects(dashboard.DashboardExamples)
+	if len(dashboards) == 0 {
+		t.Fatal("no example dashboards extracted from dashboard.DashboardExamples")
+	}
+	for i, block := range dashboards {
+		var v any
+		if err := json.Unmarshal([]byte(block), &v); err != nil {
+			t.Errorf("example %d is not valid JSON: %v", i, err)
+			continue
+		}
+		if err := resolved.Validate(v); err != nil {
+			t.Errorf("example %d does not validate against the create schema: %v", i, err)
+		}
+	}
+}
+
 // extractJSONObjects pulls every top-level, brace-balanced JSON object (a line
 // beginning with '{' through its matching '}') out of a text blob — the panel
 // blocks embedded in the widgets-examples resource. It relies on the blocks being

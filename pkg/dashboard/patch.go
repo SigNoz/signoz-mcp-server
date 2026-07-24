@@ -25,7 +25,7 @@ Rename / edit description:
 [{"op":"replace","path":"/spec/display/name","value":"New title"}]
 [{"op":"replace","path":"/spec/display/description","value":"..."}]
 
-Add a panel (panel + grid item together):
+Add a panel (panel + grid item together). Set the grid item's "y" below every existing item (its y + height) — overlapping items are rejected ("items overlap"):
 [
   {"op":"add","path":"/spec/panels/panel-b","value":{ ...a Panel — copy a shape from signoz://dashboard/widgets-examples... }},
   {"op":"add","path":"/spec/layouts/0/spec/items/-","value":{"x":0,"y":6,"width":12,"height":6,"content":{"$ref":"#/spec/panels/panel-b"}}}

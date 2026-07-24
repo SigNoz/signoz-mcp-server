@@ -119,7 +119,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and panel configuration; use signoz_import_dashboard instead when a curated template fits. "+
-				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
+				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, signoz://dashboard/widgets-examples, and signoz://dashboard/examples (complete worked dashboards), then follow the query-specific resource linked by the widget guide.",
 		),
 		rawInputSchema(createDashboardSchema),
 	)
@@ -788,6 +788,24 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 				URI:      req.Params.URI,
 				MIMEType: "text/markdown",
 				Text:     dashboard.PatchInstructions,
+			},
+		}, nil
+	})
+
+	dashboardExamples := mcp.NewResource(
+		"signoz://dashboard/examples",
+		"Dashboard Examples",
+		mcp.WithResourceDescription("Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.DashboardExamples))),
+	)
+
+	h.addResource(s, dashboardExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     dashboard.DashboardExamples,
 			},
 		}, nil
 	})
