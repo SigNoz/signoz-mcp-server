@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,9 +19,56 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/promql"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
+
+// v2 dashboard tool input schemas, extracted from the SigNoz OpenAPI spec
+// (docs/api/openapi.yml) as self-contained JSON Schemas with the Perses plugin
+// oneOf unions intact. They are served to MCP clients verbatim via
+// WithRawInputSchema — the handlers are pure pass-throughs to the v2 API, which
+// is the authoritative validator.
+//
+//go:embed schemas/dashboard_create.json
+var createDashboardSchema []byte
+
+//go:embed schemas/dashboard_update.json
+var updateDashboardSchema []byte
+
+//go:embed schemas/dashboard_patch.json
+var patchDashboardSchema []byte
+
+// updatableDashboardFields are the PUT body fields (from the update schema);
+// GET-only fields like createdAt/orgId/webUrl must be dropped or v2 rejects them.
+var updatableDashboardFields = updatableFieldsFromSchema(updateDashboardSchema)
+
+func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
+	var s struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schemaJSON, &s); err != nil {
+		panic("dashboards: cannot parse embedded update schema: " + err.Error())
+	}
+	fields := make(map[string]struct{}, len(s.Properties))
+	for k := range s.Properties {
+		switch k {
+		case "id", "uuid", "searchContext": // envelope, not body
+		default:
+			fields[k] = struct{}{}
+		}
+	}
+	return fields
+}
+
+// rawInputSchema wires a pre-built JSON Schema as a tool's input schema. It
+// clears the default object InputSchema that mcp.NewTool seeds, because
+// mcp-go's Tool.MarshalJSON rejects a tool that has BOTH InputSchema and
+// RawInputSchema set (mcp.WithRawInputSchema alone leaves the default in place).
+func rawInputSchema(schema []byte) mcp.ToolOption {
+	return func(t *mcp.Tool) {
+		t.InputSchema = mcp.ToolInputSchema{}
+		t.RawInputSchema = json.RawMessage(schema)
+	}
+}
 
 // Template fetch configuration for signoz_import_dashboard.
 // templateRepoBaseURLVar is a var (not const) so tests can point it at a
@@ -43,9 +91,14 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_list_dashboards",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and pagination metadata, not widget/query definitions; use signoz_get_dashboard for one full definition. When looking for a specific dashboard, follow pagination.nextOffset while pagination.hasMore is true before concluding it is absent."),
-		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 1000 are clamped.")),
-		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; use pagination.nextOffset for the next page.")),
+		mcp.WithDescription("Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. Narrow the results with the optional filter expression (by name, description, tags, creator, timestamps, or locked state). When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent."),
+		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum dashboard summaries per page. Default 50; values above 200 are clamped (the v2 API's server-side cap).")),
+		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of dashboard summaries to skip. Default 0; raise by limit to page until you reach total.")),
+		mcp.WithString("filter", mcp.Description("Optional server-side filter over dashboard metadata (name, description, tags, creator, timestamps, locked state); omit to list all. "+
+			"Read signoz://dashboard/list-filter-guide for the filter DSL grammar, per-key operators, value formats, and examples. "+
+			"Example: \"name CONTAINS 'overview' AND locked = true\".")),
+		mcp.WithString("sort", mcp.Enum("updated_at", "created_at", "name"), mcp.Description("Sort field: 'updated_at' (default), 'created_at', or 'name'.")),
+		mcp.WithString("order", mcp.Enum("asc", "desc"), mcp.Description("Sort order: 'asc' or 'desc' (default 'desc').")),
 	)
 
 	h.addTool(s, tool, h.handleListDashboards)
@@ -53,7 +106,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, widgets, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse summaries or curated templates; use signoz_list_dashboards or signoz_list_dashboard_templates respectively."),
+		mcp.WithDescription("Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse summaries or curated templates; use signoz_list_dashboards or signoz_list_dashboard_templates respectively."),
 		// Not mcp.Required(): the legacy alias "uuid" must remain a valid call for
 		// schema-aware clients. The handler validates id/uuid presence.
 		mcp.WithString("id", mcp.Description("Known dashboard UUID. Required; use signoz_list_dashboards to discover it.")),
@@ -65,10 +118,10 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_create_dashboard",
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and widget configuration; use signoz_import_dashboard instead when a curated template fits. "+
-				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
+			"Use this when the user wants a custom SigNoz dashboard built from a complete title, layout, variables, and panel configuration; use signoz_import_dashboard instead when a curated template fits. "+
+				"Use signoz_create_view instead to save one Explorer query. Before composing the payload, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, signoz://dashboard/widgets-examples, and signoz://dashboard/examples (complete worked dashboards), then follow the query-specific resource linked by the widget guide.",
 		),
-		mcp.WithInputSchema[types.CreateDashboardInput](),
+		rawInputSchema(createDashboardSchema),
 	)
 
 	h.addTool(s, createDashboardTool, h.handleCreateDashboard)
@@ -77,13 +130,29 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_update_dashboard",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, merge only the requested changes, and preserve every other field. "+
-				"Use signoz_update_view instead for a saved Explorer query. Before composing changed widgets, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
+			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, merge only the requested changes, and preserve every other field. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. "+
+				"Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
 		),
-		mcp.WithInputSchema[types.UpdateDashboardInput](),
+		rawInputSchema(updateDashboardSchema),
 	)
 
 	h.addTool(s, updateDashboardTool, h.handleUpdateDashboard)
+
+	patchDashboardTool := mcp.NewTool(
+		"signoz_patch_dashboard",
+		withPatchToolAnnotations(),
+		mcp.WithDescription(
+			"Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. "+
+				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
+				"e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /spec/variables/0, /tags/-. "+
+				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable) — it is far cheaper than rebuilding the full dashboard. "+
+				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. "+
+				"Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
+		),
+		rawInputSchema(patchDashboardSchema),
+	)
+
+	h.addTool(s, patchDashboardTool, h.handlePatchDashboard)
 
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		withDeleteToolAnnotations(),
@@ -121,63 +190,50 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 	h.registerDashboardResources(s)
 }
 
+// dashboardListMaxLimit is the v2 /api/v2/dashboards server-side page cap
+// (MaxListLimit). Clamping to it keeps the requested limit equal to what the
+// server returns, so paging by offset does not overshoot and silently skip rows.
+const dashboardListMaxLimit = 200
+
 func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboards")
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
+	// v2 caps the page size tighter than the shared MaxLimit; clamp to the
+	// server cap so the requested limit equals what the server returns and
+	// paging by offset does not overshoot total and silently skip rows.
+	if limit > dashboardListMaxLimit {
+		limit = dashboardListMaxLimit
+		limitClamped = true
+	}
+	filter, sort, order := "", "", ""
+	if args, ok := req.Params.Arguments.(map[string]any); ok {
+		filter = strings.TrimSpace(stringArg(args, "filter"))
+		sort = strings.TrimSpace(stringArg(args, "sort"))
+		order = strings.TrimSpace(stringArg(args, "order"))
+	}
 
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
-	result, err := client.ListDashboards(ctx)
+	resultJSON, err := client.ListDashboards(ctx, limit, offset, filter, sort, order)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to list dashboards", err)
 		return upstreamError(err), nil
 	}
 
-	var dashboards map[string]any
-	if err := json.Unmarshal(result, &dashboards); err != nil {
-		h.logger.ErrorContext(ctx, "Failed to parse dashboards response", logpkg.ErrAttr(err))
-		return upstreamResponseError("failed to parse response: " + err.Error()), nil
-	}
-
-	// Upstream returns `data: null`, omits `data`, or — on some deployments —
-	// returns an empty object/scalar when there are no dashboards. Treat any
-	// non-array shape as zero rows rather than surfacing a format error (mirrors
-	// the list_views coerce-to-empty-page pattern).
-	var data []any
-	if raw, present := dashboards["data"]; present && raw != nil {
-		if arr, ok := raw.([]any); ok {
-			data = arr
-		} else {
-			h.logger.DebugContext(ctx, "dashboards response data was not an array; treating as empty",
-				slog.String("data", logpkg.TruncAny(raw)))
-		}
-	}
-
+	// Inject a webUrl deep link into each "dashboards" entry (keyed by "id").
+	// Fails open: any parse problem or missing base URL leaves result unchanged.
 	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
-		for _, item := range data {
-			m, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			uuid, _ := m["uuid"].(string)
-			if webURL, ok := util.ResourceWebURL(base, "dashboard", uuid); ok {
-				m["webUrl"] = webURL
-			}
-		}
+		resultJSON = util.InjectListWebURL(resultJSON, base, "dashboard", "dashboards", "id")
 	}
 
-	total := len(data)
-	pagedData := paginate.Array(data, offset, limit)
-
-	resultJSON, err := paginate.Wrap(pagedData, total, offset, limit)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to wrap dashboards with pagination", logpkg.ErrAttr(err))
-		return InternalErrorResult("failed to marshal response: " + err.Error()), nil
+	if limitClamped {
+		return structuredResultWithNotes(resultJSON, fmt.Sprintf(
+			"Requested limit exceeded the maximum of %d and was clamped. Use offset to page through the rest.",
+			dashboardListMaxLimit)), nil
 	}
-
-	return listResult(resultJSON, limitClamped), nil
+	return structuredResult(resultJSON), nil
 }
 
 func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -213,6 +269,37 @@ func enrichDashboardWebURL(ctx context.Context, data []byte, uuid string) []byte
 	return util.InjectWebURL(data, base, "dashboard", uuid)
 }
 
+// enrichCreatedDashboardWebURL injects webUrl into a create response whose id is
+// only known from the body (the server generates it). It reads just the id
+// (under a "data" envelope or at top level, "id" with a "uuid" fallback) with a
+// targeted probe that does not touch the body, then delegates the actual
+// injection to util.InjectWebURL (precision-preserving, fails open).
+func enrichCreatedDashboardWebURL(ctx context.Context, data []byte) []byte {
+	base, ok := util.GetSigNozURL(ctx)
+	if !ok || base == "" {
+		return data
+	}
+	var probe struct {
+		ID   string `json:"id"`
+		UUID string `json:"uuid"`
+		Data struct {
+			ID   string `json:"id"`
+			UUID string `json:"uuid"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(data, &probe)
+	id := probe.Data.ID
+	for _, cand := range []string{probe.Data.UUID, probe.ID, probe.UUID} {
+		if id == "" {
+			id = cand
+		}
+	}
+	if id == "" {
+		return data
+	}
+	return util.InjectWebURL(data, base, "dashboard", id)
+}
+
 func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rawConfig, ok := req.Params.Arguments.(map[string]any)
 
@@ -222,11 +309,19 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 	delete(rawConfig, "searchContext")
 
-	// Validate and normalize via the dashboardbuilder + panelbuilder pipeline.
-	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)
+	// Default to a server-generated name: if no "name" was supplied, set
+	// generateName=true so the v2 API derives a valid DNS-1123 name from
+	// spec.display.name. If a name is given, it is left as-is (generateName stays unset).
+	if name, _ := rawConfig["name"].(string); name == "" {
+		rawConfig["generateName"] = true
+	}
+
+	// Pass-through: the v2 API is the validator. Marshal the model's object and
+	// forward it to POST /api/v2/dashboards verbatim.
+	cleanJSON, err := json.Marshal(rawConfig)
 	if err != nil {
-		h.logger.WarnContext(ctx, "Dashboard validation failed", logpkg.ErrAttr(err))
-		return validationResult(fmt.Sprintf("Dashboard validation error: %s", err.Error())), nil
+		h.logger.WarnContext(ctx, "Failed to encode dashboard payload", logpkg.ErrAttr(err))
+		return InternalErrorResult(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_dashboard")
@@ -241,7 +336,8 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(string(data)), nil
+	data = enrichCreatedDashboardWebURL(ctx, data)
+	return structuredResult(data), nil
 }
 
 func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -275,10 +371,17 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 		return upstreamResponseError("Template is empty after parsing."), nil
 	}
 
-	cleanJSON, err := dashboard.ValidateFromMap(rawConfig)
+	// Pass-through (mirrors handleCreateDashboard): the v2 API is the validator,
+	// so forward the fetched template verbatim — no local validation/normalization.
+	// Default to a server-generated name when the template carries none, so the
+	// derived DNS-1123 name comes from spec.display.name.
+	if name, _ := rawConfig["name"].(string); name == "" {
+		rawConfig["generateName"] = true
+	}
+	cleanJSON, err := json.Marshal(rawConfig)
 	if err != nil {
-		h.logger.WarnContext(ctx, "Template validation failed", slog.String("path", path), logpkg.ErrAttr(err))
-		return upstreamResponseError(fmt.Sprintf("Template validation error: %s", err.Error())), nil
+		h.logger.WarnContext(ctx, "Failed to encode template payload", slog.String("path", path), logpkg.ErrAttr(err))
+		return InternalErrorResult(fmt.Sprintf("Template encode error: %s", err.Error())), nil
 	}
 
 	client, err := h.GetClient(ctx)
@@ -291,7 +394,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText(string(data)), nil
+	return structuredResult(data), nil
 }
 
 // fetchTemplate downloads a dashboard template JSON from the SigNoz/dashboards
@@ -333,7 +436,7 @@ func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.Call
 	if err != nil {
 		return InternalErrorResult(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
 	}
-	return mcp.NewToolResultText(string(body)), nil
+	return structuredResult(body), nil
 }
 
 func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -344,24 +447,35 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return notAConfigObjectError(), nil
 	}
 
-	// Extract id before validation (it's at the top level, not inside dashboard data).
+	// A fetched dashboard may arrive wrapped in the v2 {status, data:{…}} envelope
+	// (as signoz_get_dashboard returns it); operate on the inner object.
+	source := rawConfig
+	if inner, ok := rawConfig["data"].(map[string]any); ok {
+		source = inner
+	}
+
+	// id may be a top-level param or the fetched dashboard's own id.
 	uuid := readResourceID(rawConfig, "uuid")
+	if uuid == "" {
+		uuid = readResourceID(source, "uuid")
+	}
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
 
-	// Extract the dashboard sub-object for validation.
-	dashboardRaw, ok := rawConfig["dashboard"].(map[string]any)
-	if !ok || len(dashboardRaw) == 0 {
-		return validationError("dashboard", "is required and must be a valid object."), nil
+	// Keep only updatable body fields so a fetched dashboard's read-only fields don't trip the v2 decoder.
+	updatable := make(map[string]any, len(source))
+	for k, v := range source {
+		if _, ok := updatableDashboardFields[k]; ok {
+			updatable[k] = v
+		}
 	}
 
-	// Validate and normalize via the dashboardbuilder + panelbuilder pipeline.
-	cleanJSON, err := dashboard.ValidateFromMap(dashboardRaw)
+	body, err := json.Marshal(updatable)
 	if err != nil {
-		h.logger.WarnContext(ctx, "Dashboard validation failed", logpkg.ErrAttr(err))
-		return validationResult(fmt.Sprintf("Dashboard validation error: %s", err.Error())), nil
+		h.logger.WarnContext(ctx, "Failed to encode dashboard payload", logpkg.ErrAttr(err))
+		return InternalErrorResult(fmt.Sprintf("Dashboard encode error: %s", err.Error())), nil
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_dashboard", slog.String("uuid", uuid))
@@ -369,14 +483,53 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	if err != nil {
 		return clientError(err), nil
 	}
-	err = client.UpdateDashboardRaw(ctx, uuid, cleanJSON)
-
+	data, err := client.UpdateDashboardRaw(ctx, uuid, body)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to update dashboard in SigNoz", err)
 		return upstreamError(err), nil
 	}
 
-	return mcp.NewToolResultText("dashboard updated"), nil
+	data = enrichDashboardWebURL(ctx, data, uuid)
+	return structuredResult(data), nil
+}
+
+func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rawConfig, ok := req.Params.Arguments.(map[string]any)
+	if !ok || len(rawConfig) == 0 {
+		h.logger.WarnContext(ctx, "Received empty or invalid arguments map.")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: provide an object with "id" and "patch".`), nil
+	}
+
+	uuid := readResourceID(rawConfig, "uuid")
+	if uuid == "" {
+		h.logger.WarnContext(ctx, "Empty id parameter")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_dashboards to find dashboard ids.`), nil
+	}
+
+	patch, ok := rawConfig["patch"]
+	if !ok {
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "patch" is required and must be an array of RFC 6902 operations.`), nil
+	}
+
+	// Forward the JSON Patch op array to PATCH /api/v2/dashboards/{id}.
+	body, err := json.Marshal(patch)
+	if err != nil {
+		return InternalErrorResult(fmt.Sprintf("failed to encode patch: %s", err.Error())), nil
+	}
+
+	h.logger.DebugContext(ctx, "Tool called: signoz_patch_dashboard", slog.String("id", uuid))
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return clientError(err), nil
+	}
+	data, err := client.PatchDashboardRaw(ctx, uuid, body)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to patch dashboard in SigNoz", logpkg.ErrAttr(err))
+		return upstreamError(err), nil
+	}
+
+	data = enrichDashboardWebURL(ctx, data, uuid)
+	return structuredResult(data), nil
 }
 
 func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -588,7 +741,7 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 	widgetsExamplesResource := mcp.NewResource(
 		"signoz://dashboard/widgets-examples",
 		"Dashboard Widgets Examples",
-		mcp.WithResourceDescription("Read this after the dashboard and widget instructions when building panels. It includes examples by panel type, validation checks, troubleshooting, and grouped-series legends. Verify field names in the target SigNoz workspace."),
+		mcp.WithResourceDescription("Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(dashboard.WidgetExamples))),
 	)
@@ -599,6 +752,60 @@ func (h *Handler) registerDashboardResources(s *server.MCPServer) {
 				URI:      req.Params.URI,
 				MIMEType: "text/markdown",
 				Text:     dashboard.WidgetExamples,
+			},
+		}, nil
+	})
+
+	listFilterGuide := mcp.NewResource(
+		"signoz://dashboard/list-filter-guide",
+		"Dashboard List Filter Guide",
+		mcp.WithResourceDescription("Read this to build the optional filter argument of signoz_list_dashboards. It documents the server-side metadata filter DSL: grammar (terms, AND/OR/NOT, free-text search), the filterable keys (name, description, created_by, created_at, updated_at, locked, and tag keys) with their operators and value formats, and worked examples."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.ListFilterGuide))),
+	)
+
+	h.addResource(s, listFilterGuide, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     dashboard.ListFilterGuide,
+			},
+		}, nil
+	})
+
+	patchInstructions := mcp.NewResource(
+		"signoz://dashboard/patch-instructions",
+		"Dashboard Patch Instructions",
+		mcp.WithResourceDescription("Read this before calling signoz_patch_dashboard. It gives worked RFC 6902 JSON Patch recipes with exact JSON Pointer paths for targeted edits (rename, add/edit/move/remove a panel, edit a query, variables, tags), including the two-op sequences the backend requires (adding a panel needs a panel op plus a grid-item op). For the panel/query/variable JSON to use as a patch value, also read signoz://dashboard/widgets-examples and signoz://dashboard/instructions."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.PatchInstructions))),
+	)
+
+	h.addResource(s, patchInstructions, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     dashboard.PatchInstructions,
+			},
+		}, nil
+	})
+
+	dashboardExamples := mcp.NewResource(
+		"signoz://dashboard/examples",
+		"Dashboard Examples",
+		mcp.WithResourceDescription("Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions."),
+		mcp.WithMIMEType("text/markdown"),
+		mcp.WithResourceSize(int64(len(dashboard.DashboardExamples))),
+	)
+
+	h.addResource(s, dashboardExamples, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      req.Params.URI,
+				MIMEType: "text/markdown",
+				Text:     dashboard.DashboardExamples,
 			},
 		}, nil
 	})

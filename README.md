@@ -357,9 +357,10 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_update_alert` | Fully replace an alert after fetching it and verifying notification-channel names |
 | `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
-| `signoz_get_dashboard` | Get one dashboard's full layout, variables, widgets, and queries |
-| `signoz_create_dashboard` | Create a custom multi-widget dashboard |
+| `signoz_get_dashboard` | Get one dashboard's full layout, variables, panels, and queries |
+| `signoz_create_dashboard` | Create a custom multi-panel dashboard |
 | `signoz_update_dashboard` | Fully replace a fetched dashboard while preserving unrequested fields |
+| `signoz_patch_dashboard` | Apply a partial RFC 6902 JSON Patch without resending the whole dashboard |
 | `signoz_delete_dashboard` | Permanently delete a confirmed dashboard by `id` |
 | `signoz_import_dashboard` | Create a dashboard from a known curated template path |
 | `signoz_list_dashboard_templates` | List curated templates and discover an import path |
@@ -386,7 +387,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
-> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) include a `webUrl` field — an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`) — when the request carries a SigNoz instance URL.
+> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`) include a `webUrl` field — an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`) — when the request carries a SigNoz instance URL.
 
 ### Agent Routing Guidance
 
@@ -403,6 +404,9 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://dashboard/instructions` | Dashboard fields, variables, chaining, and layout |
 | `signoz://dashboard/widgets-instructions` | Panel choices and query-specific guides |
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
+| `signoz://dashboard/list-filter-guide` | `signoz_list_dashboards` filter DSL: grammar, per-key operators, and examples |
+| `signoz://dashboard/patch-instructions` | `signoz_patch_dashboard` JSON Patch recipes and exact paths (add/edit/move/remove a panel, query, variable) |
+| `signoz://dashboard/examples` | Complete server-verified dashboard payloads (metrics timeseries, dynamic-variable filter, number panel, multi-panel) |
 | `signoz://dashboard/query-builder-example` | Dashboard Query Builder aggregations, filters, legends, and functions |
 | `signoz://promql/instructions` | PromQL widgets or alerts, especially dotted OTel metric names |
 | `signoz://dashboard/clickhouse-schema-for-logs` | Bundled logs schema snapshot for dashboard SQL |
@@ -514,29 +518,35 @@ Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_li
 
 #### `signoz_list_dashboards`
 
-Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for widget and query definitions, and follow `pagination.nextOffset` while `pagination.hasMore` is true before concluding a dashboard is absent.
+Lists paginated tenant-dashboard summaries (name, UUID, description, tags, timestamps). Use `signoz_get_dashboard` for panel and query definitions, and page by raising `offset` by `limit` until you have covered `total` before concluding a dashboard is absent.
+
+- **Parameters:**
+  - `limit` (default 50), `offset` (default 0) – offset-based pagination
+  - `filter` (optional) – server-side filter DSL over dashboard metadata (name, description, tags, creator, timestamps, locked state)
+  - `sort` (optional) – `updated_at` (default), `created_at`, or `name`
+  - `order` (optional) – `asc` or `desc` (default `desc`)
+
+The `filter` DSL is a boolean expression of `key operator value` terms and bare free-text words joined with `AND`/`OR`/`NOT` and parentheses (e.g. `name CONTAINS 'overview' AND locked = true`). Read [`signoz://dashboard/list-filter-guide`](#mcp-resources) for the full grammar, the filterable keys with their operators, value formats, and worked examples; the list response also echoes the authoritative reserved-key set in `reservedKeywords`.
 
 #### `signoz_get_dashboard`
 
-Gets one known tenant dashboard's complete layout, variables, widgets, and queries. Use `signoz_list_dashboards` to discover the UUID.
+Gets one known tenant dashboard's complete layout, variables, panels, and queries. Use `signoz_list_dashboards` to discover the UUID.
 
 - **Parameters**: `id` (required) - Dashboard UUID
 
 #### `signoz_create_dashboard`
 
-Creates a custom multi-widget dashboard. Use `signoz_import_dashboard` when a curated template fits, or `signoz_create_view` to save one Explorer query. Read `signoz://dashboard/instructions`, `signoz://dashboard/widgets-instructions`, and `signoz://dashboard/widgets-examples` before composing the payload.
+Creates a custom multi-panel dashboard. Use `signoz_import_dashboard` when a curated template fits, or `signoz_create_view` to save one Explorer query. Read `signoz://dashboard/instructions`, `signoz://dashboard/widgets-instructions`, and `signoz://dashboard/widgets-examples` before composing the payload.
 
 - **Parameters:**
-  - `title` (required) – Dashboard name
-  - `description` (optional) – Short summary of what the dashboard shows
-  - `tags` (optional) – List of tags
-  - `layout` (required) – Widget positioning grid
-  - `variables` (optional) – Map of variables available for use in queries
-  - `widgets` (required) – List of widgets added to the dashboard
+  - `schemaVersion` (required) – Must be `"v6"`
+  - `name` (DNS-1123 label) or `generateName: true` to derive it from `spec.display.name`
+  - `tags` (required) – Array of key/value tags (may be empty)
+  - `spec` (required) – Perses spec: `display`, `variables` (array), `panels` (map keyed by panel id), `layouts` (array)
 
 #### `signoz_import_dashboard`
 
-Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (`main` branch). The server fetches the template JSON, validates it, and creates the dashboard in one call.
+Creates a dashboard from a curated template hosted in the [SigNoz/dashboards](https://github.com/SigNoz/dashboards) repo (`main` branch). The server fetches the template JSON and creates the dashboard in one call.
 
 When the relative template path is unknown, call `signoz_list_dashboard_templates` first. Pass its `path`, not a URL or absolute path.
 
@@ -554,14 +564,16 @@ Returns the full bundled catalog of curated SigNoz dashboard templates (id, titl
 Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, merge only the requested changes, and preserve every other field. Use `signoz_update_view` for a saved Explorer query.
 
 - **Parameters:**
-  - `id` (required) – Unique identifier of the dashboard to update
-  - `dashboard` (required) – Complete dashboard object representing the post-update state
-    - `title` (required) – Dashboard name
-    - `description` (optional) – Short summary of what the dashboard shows
-    - `tags` (optional) – List of tags applied to the dashboard
-    - `layout` (required) – Full widget positioning grid
-    - `variables` (optional) – Map of variables available for use in queries
-    - `widgets` (required) – Complete set of widgets defining the updated dashboard
+  - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
+  - `schemaVersion`, `name`, `tags`, `spec` – the complete post-update state (see the tool's JSON Schema)
+
+#### `signoz_patch_dashboard`
+
+Applies an RFC 6902 JSON Patch to a dashboard — a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths — notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
+
+- **Parameters:**
+  - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
+  - `patch` (required) – Array of `{op, path, value}` operations; paths are JSON Pointers into the dashboard's postable shape, e.g. `/spec/display/name`, `/spec/panels/<panelId>`, `/spec/layouts/0/spec/items/-`, `/tags/-`
 
 #### `signoz_list_services`
 
@@ -608,7 +620,7 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
 
 #### `signoz_list_views`
 
-List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, or Cost Meter page. A view stores one reusable Explorer query; it is not a multi-widget dashboard. Apply name/category filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
+List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, or Cost Meter page. A view stores one reusable Explorer query; it is not a multi-panel dashboard. Apply name/category filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
 
 - **Parameters**:
   - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
@@ -644,7 +656,7 @@ Fetch one known official SigNoz docs page's full Markdown or a requested heading
 
 #### `signoz_create_view`
 
-Save one reusable Explorer query. Use `signoz_create_dashboard` for a multi-widget dashboard. Cost Meter views use `sourcePage="meter"` with `signal="metrics"` and `source="meter"` in builder specs.
+Save one reusable Explorer query. Use `signoz_create_dashboard` for a multi-panel dashboard. Cost Meter views use `sourcePage="meter"` with `signal="metrics"` and `source="meter"` in builder specs.
 
 - **Parameters**: JSON payload matching the `SavedView` schema.
 - **Required**: Read both MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing any payload.

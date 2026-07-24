@@ -83,19 +83,23 @@
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List paginated tenant-dashboard summaries and discover UUIDs; use signoz_get_dashboard for widget and query definitions"
+      "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for panel and query definitions"
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get one known tenant dashboard's complete layout, variables, widgets, and queries by id"
+      "description": "Get one known tenant dashboard's complete layout, variables, panels, and queries by id"
     },
     {
       "name": "signoz_create_dashboard",
-      "description": "Create a custom multi-widget dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
+      "description": "Create a custom multi-panel dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
     },
     {
       "name": "signoz_update_dashboard",
       "description": "Fully replace a dashboard after fetching its definition and preserving every unrequested field"
+    },
+    {
+      "name": "signoz_patch_dashboard",
+      "description": "Apply an RFC 6902 JSON Patch to a dashboard by id (partial update without re-sending the whole dashboard)"
     },
     {
       "name": "signoz_delete_dashboard",
@@ -254,13 +258,31 @@
     {
       "uri": "signoz://dashboard/widgets-examples",
       "name": "Dashboard Widgets Examples",
-      "description": "Read this after the dashboard and widget instructions when building panels. It includes examples by panel type, validation checks, troubleshooting, and grouped-series legends. Verify field names in the target SigNoz workspace.",
+      "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://dashboard/widgets-instructions",
       "name": "Dashboard Widget Instructions",
       "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/list-filter-guide",
+      "name": "Dashboard List Filter Guide",
+      "description": "Read this to build the optional filter argument of signoz_list_dashboards. It documents the server-side metadata filter DSL: grammar (terms, AND/OR/NOT, free-text search), the filterable keys (name, description, created_by, created_at, updated_at, locked, and tag keys) with their operators and value formats, and worked examples.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/patch-instructions",
+      "name": "Dashboard Patch Instructions",
+      "description": "Read this before calling signoz_patch_dashboard. It gives worked RFC 6902 JSON Patch recipes with exact JSON Pointer paths for targeted edits (rename, add/edit/move/remove a panel, edit a query, variables, tags), including the two-op sequences the backend requires (adding a panel needs a panel op plus a grid-item op). For the panel/query/variable JSON to use as a patch value, also read signoz://dashboard/widgets-examples and signoz://dashboard/instructions.",
+      "mimeType": "text/markdown"
+    },
+    {
+      "uri": "signoz://dashboard/examples",
+      "name": "Dashboard Examples",
+      "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
       "mimeType": "text/markdown"
     },
     {

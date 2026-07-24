@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -768,132 +769,6 @@ func TestListMetricKeys(t *testing.T) {
 	}
 }
 
-func TestListDashboards(t *testing.T) {
-	tests := []struct {
-		name          string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedData  []map[string]interface{}
-	}{
-		{
-			name: "successful dashboards retrieval",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": []map[string]interface{}{
-					{
-						"id": "dashboard-uuid-1",
-						"data": map[string]interface{}{
-							"title":       "Apple Dashboard",
-							"description": "Apple monitoring",
-							"tags":        []string{"system", "monitoring"},
-						},
-						"createdAt": "2024-01-01T00:00:00Z",
-						"updatedAt": "2024-01-01T00:00:00Z",
-					},
-					{
-						"id": "dashboard-uuid-2",
-						"data": map[string]interface{}{
-							"title":       "Orange Dashboard",
-							"description": "Orange monitoring",
-							"tags":        []string{"app", "performance"},
-						},
-						"createdAt": "2024-01-02T00:00:00Z",
-						"updatedAt": "2024-01-02T00:00:00Z",
-					},
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: []map[string]interface{}{
-				{
-					"uuid":        "dashboard-uuid-1",
-					"name":        "Apple Dashboard",
-					"description": "Apple monitoring",
-					"tags":        []string{"system", "monitoring"},
-					"createdAt":   "2024-01-01T00:00:00Z",
-					"updatedAt":   "2024-01-01T00:00:00Z",
-				},
-				{
-					"uuid":        "dashboard-uuid-2",
-					"name":        "Orange Dashboard",
-					"description": "Orange monitoring",
-					"tags":        []string{"app", "performance"},
-					"createdAt":   "2024-01-02T00:00:00Z",
-					"updatedAt":   "2024-01-02T00:00:00Z",
-				},
-			},
-		},
-		{
-			name:          "server error",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "unauthorized",
-			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
-			statusCode:    http.StatusUnauthorized,
-			expectedError: true,
-		},
-		{
-			name:          "empty response",
-			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData:  []map[string]interface{}{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/dashboards", r.URL.Path)
-
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
-
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.ListDashboards(ctx)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-
-				if data, ok := response["data"].([]interface{}); ok {
-					assert.Equal(t, len(tt.expectedData), len(data))
-					for i, expectedDashboard := range tt.expectedData {
-						if i < len(data) {
-							if dashboard, ok := data[i].(map[string]interface{}); ok {
-								assert.Equal(t, expectedDashboard["uuid"], dashboard["uuid"])
-								assert.Equal(t, expectedDashboard["name"], dashboard["name"])
-								assert.Equal(t, expectedDashboard["description"], dashboard["description"])
-							}
-						}
-					}
-				}
-			}
-		})
-	}
-}
-
 func TestListServices(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -1361,94 +1236,6 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 	require.Contains(t, payload, `"limit":1000`)
 	require.Contains(t, payload, `"order":[{"key":{"name":"timestamp"},"direction":"desc"}]`)
 	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
-}
-
-func TestCreateDashboard(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/v1/dashboards", r.URL.Path)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		var body types.Dashboard
-		err := json.NewDecoder(r.Body).Decode(&body)
-		require.NoError(t, err)
-
-		assert.NotEmpty(t, body.Title)
-		assert.NotNil(t, body.Layout)
-		assert.NotNil(t, body.Widgets)
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","id":"dashboard-123"}`))
-	}))
-	defer server.Close()
-
-	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	d := types.Dashboard{
-		Title:   "whatever",
-		Layout:  []types.LayoutItem{},
-		Widgets: []types.Widget{},
-	}
-
-	ctx := context.Background()
-	resp, err := client.CreateDashboard(ctx, d)
-	require.NoError(t, err)
-
-	var out map[string]interface{}
-	err = json.Unmarshal(resp, &out)
-	require.NoError(t, err)
-
-	assert.Equal(t, "success", out["status"])
-	assert.Equal(t, "dashboard-123", out["id"])
-}
-
-func TestUpdateDashboard(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Equal(t, "/api/v1/dashboards/id-123", r.URL.Path)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		var body types.Dashboard
-		err := json.NewDecoder(r.Body).Decode(&body)
-		require.NoError(t, err)
-
-		assert.Equal(t, "updated-title", body.Title)
-
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	logger := logpkg.New("debug")
-	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	d := types.Dashboard{
-		Title:   "updated-title",
-		Layout:  []types.LayoutItem{},
-		Widgets: []types.Widget{},
-	}
-
-	err := client.UpdateDashboard(context.Background(), "id-123", d)
-	require.NoError(t, err)
-}
-
-func TestDeleteDashboard(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "/api/v1/dashboards/dash-456", r.URL.Path)
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	logger := logpkg.New("debug")
-	client := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	err := client.DeleteDashboard(context.Background(), "dash-456")
-	require.NoError(t, err)
 }
 
 func TestGetFieldKeys(t *testing.T) {
@@ -2026,6 +1813,48 @@ func TestListViews(t *testing.T) {
 	assert.Contains(t, gotRawQuery, "sourcePage=traces")
 	assert.Contains(t, gotRawQuery, "name=ak")
 	assert.Contains(t, gotRawQuery, "category=ops")
+}
+
+func TestListDashboards_ForwardsFilterSortOrder(t *testing.T) {
+	var gotPath, gotMethod string
+	var gotQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[],"tags":[],"total":0}}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.ListDashboards(context.Background(), 50, 0, "name CONTAINS 'overview'", "name", "asc")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, gotMethod)
+	assert.Equal(t, "/api/v2/dashboards", gotPath)
+	// The MCP `filter` maps to the v2 API's `query` param; sort/order pass through as-is.
+	assert.Equal(t, "name CONTAINS 'overview'", gotQuery.Get("query"))
+	assert.Equal(t, "name", gotQuery.Get("sort"))
+	assert.Equal(t, "asc", gotQuery.Get("order"))
+	assert.Equal(t, "50", gotQuery.Get("limit"))
+}
+
+func TestListDashboards_OmitsEmptyListParams(t *testing.T) {
+	var gotQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[],"tags":[],"total":0}}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
+	_, err := c.ListDashboards(context.Background(), 50, 0, "", "", "")
+	require.NoError(t, err)
+	for _, p := range []string{"query", "sort", "order"} {
+		_, has := gotQuery[p]
+		assert.Falsef(t, has, "empty %s must not be sent", p)
+	}
 }
 
 func TestGetView(t *testing.T) {

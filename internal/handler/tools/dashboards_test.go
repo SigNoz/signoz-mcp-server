@@ -38,11 +38,16 @@ func TestHandleDeleteDashboard_Success(t *testing.T) {
 
 	h := newTestHandler(mock)
 
-	// Step 1: create a dashboard
+	// Step 1: create a dashboard (v6/Perses shape)
 	createResult, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", map[string]any{
-		"title":   "Temp Dashboard",
-		"widgets": []any{},
-		"layout":  []any{},
+		"schemaVersion": "v6",
+		"tags":          []any{},
+		"spec": map[string]any{
+			"display":   map[string]any{"name": "Temp Dashboard"},
+			"variables": []any{},
+			"panels":    map[string]any{},
+			"layouts":   []any{},
+		},
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error on create: %v", err)
@@ -81,9 +86,14 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	h := newTestHandler(mock)
 	result, err := h.handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", map[string]any{
 		"searchContext": "create a dashboard for service latency",
-		"title":         "Latency Dashboard",
-		"widgets":       []any{},
-		"layout":        []any{},
+		"schemaVersion": "v6",
+		"tags":          []any{},
+		"spec": map[string]any{
+			"display":   map[string]any{"name": "Latency Dashboard"},
+			"variables": []any{},
+			"panels":    map[string]any{},
+			"layouts":   []any{},
+		},
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -102,8 +112,131 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	if _, hasSearchContext := parsed["searchContext"]; hasSearchContext {
 		t.Errorf("searchContext should be stripped from the API payload: %s", gotBody)
 	}
-	if parsed["title"] != "Latency Dashboard" {
-		t.Errorf("title = %v, want Latency Dashboard", parsed["title"])
+	// The v6 dashboard fields are forwarded verbatim.
+	if parsed["schemaVersion"] != "v6" {
+		t.Errorf("schemaVersion = %v, want v6", parsed["schemaVersion"])
+	}
+	if _, ok := parsed["spec"].(map[string]any); !ok {
+		t.Errorf("spec should be forwarded as an object: %s", gotBody)
+	}
+}
+
+// generateName is set true only when no name is supplied (so v2 derives a
+// DNS-1123 name from spec.display.name); a caller-supplied name leaves it unset.
+func TestHandleCreateDashboard_GenerateNameDefault(t *testing.T) {
+	for _, tc := range []struct {
+		desc    string
+		name    string // "" = omit the name key
+		wantGen bool
+	}{
+		{"no name sets generateName", "", true},
+		{"name supplied leaves it unset", "my-dash", false},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var sent map[string]any
+			mock := &client.MockClient{CreateDashboardRawFn: func(ctx context.Context, b []byte) (json.RawMessage, error) {
+				_ = json.Unmarshal(b, &sent)
+				return json.RawMessage(`{"data":{"id":"x"}}`), nil
+			}}
+			args := map[string]any{"schemaVersion": "v6", "tags": []any{}, "spec": map[string]any{"display": map[string]any{"name": "Hosts"}}}
+			if tc.name != "" {
+				args["name"] = tc.name
+			}
+			res, err := newTestHandler(mock).handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", args))
+			if err != nil || res.IsError {
+				t.Fatalf("unexpected failure: err=%v result=%v", err, res.Content)
+			}
+			if got := sent["generateName"]; (got == true) != tc.wantGen {
+				t.Errorf("generateName = %v, want present=%v (body=%v)", got, tc.wantGen, sent)
+			}
+		})
+	}
+}
+
+func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
+	// The handler must resolve the id, drop the {status,data} envelope and all
+	// read-only fields, and forward only updatable body fields — whether the
+	// caller sends a bare dashboard (id as a param) or the fetched envelope.
+	cases := []struct {
+		name string
+		args map[string]any
+	}{
+		{
+			name: "bare dashboard with read-only fields and top-level id",
+			args: map[string]any{
+				"id":            "d-1",
+				"searchContext": "rename it",
+				"schemaVersion": "v6",
+				"name":          "d-1",
+				"tags":          []any{},
+				"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
+				"createdAt":     "2026-01-01T00:00:00Z",
+				"updatedAt":     "2026-01-02T00:00:00Z",
+				"createdBy":     "a@b.io",
+				"updatedBy":     "a@b.io",
+				"orgId":         "org-1",
+				"locked":        false,
+				"source":        "user",
+				"webUrl":        "http://localhost:8080/dashboard/d-1",
+			},
+		},
+		{
+			name: "fetched {status,data} envelope with id inside data",
+			args: map[string]any{
+				"status": "success",
+				"data": map[string]any{
+					"id":            "d-1",
+					"schemaVersion": "v6",
+					"name":          "d-1",
+					"tags":          []any{},
+					"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
+					"createdAt":     "2026-01-01T00:00:00Z",
+					"orgId":         "org-1",
+					"webUrl":        "http://localhost:8080/dashboard/d-1",
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody []byte
+			var gotID string
+			mock := &client.MockClient{
+				UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
+					gotID = id
+					gotBody = append([]byte(nil), dashboardJSON...)
+					return json.RawMessage(`{"status":"success","data":{"id":"d-1"}}`), nil
+				},
+			}
+
+			h := newTestHandler(mock)
+			result, err := h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", tc.args))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.IsError {
+				t.Fatalf("handler returned error result: %v", result.Content)
+			}
+			if gotID != "d-1" {
+				t.Errorf("id = %q, want d-1", gotID)
+			}
+
+			var parsed map[string]any
+			if err := json.Unmarshal(gotBody, &parsed); err != nil {
+				t.Fatalf("PUT body should be JSON: %v\n%s", err, gotBody)
+			}
+			for _, k := range []string{"status", "data", "id", "uuid", "searchContext", "createdAt", "updatedAt", "createdBy", "updatedBy", "orgId", "locked", "source", "webUrl"} {
+				if _, present := parsed[k]; present {
+					t.Errorf("envelope/read-only field %q must not reach the PUT body: %s", k, gotBody)
+				}
+			}
+			for _, k := range []string{"schemaVersion", "name", "tags", "spec"} {
+				if _, present := parsed[k]; !present {
+					t.Errorf("updatable field %q missing from the PUT body: %s", k, gotBody)
+				}
+			}
+		})
 	}
 }
 
@@ -159,7 +292,7 @@ func withTemplateServer(t *testing.T, srv *httptest.Server) {
 }
 
 func TestHandleImportDashboard_Success(t *testing.T) {
-	template := `{"title":"Host Metrics","tags":["hostmetrics"],"layout":[],"widgets":[]}`
+	template := `{"schemaVersion":"v6","tags":[{"key":"category","value":"hostmetrics"}],"spec":{"display":{"name":"Host Metrics","description":"Host CPU and memory"}}}`
 
 	var receivedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -205,8 +338,16 @@ func TestHandleImportDashboard_Success(t *testing.T) {
 	if err := json.Unmarshal(gotBody, &parsed); err != nil {
 		t.Fatalf("payload should be JSON: %v", err)
 	}
-	if parsed["title"] != "Host Metrics" {
-		t.Errorf("title = %v, want Host Metrics", parsed["title"])
+	if parsed["schemaVersion"] != "v6" {
+		t.Errorf("schemaVersion = %v, want v6", parsed["schemaVersion"])
+	}
+	if parsed["generateName"] != true {
+		t.Errorf("generateName = %v, want true (template has no top-level name)", parsed["generateName"])
+	}
+	// Import returns the created dashboard via structuredResult (JSON-first +
+	// structuredContent), consistent with create.
+	if result.StructuredContent == nil {
+		t.Error("import result must populate structuredContent")
 	}
 }
 
@@ -307,8 +448,8 @@ func TestHandleImportDashboard_NotFound(t *testing.T) {
 
 func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":[{"uuid":"abc-123","name":"Hosts"}]}`), nil
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
 		},
 	}
 	h := newTestHandler(mock)
@@ -327,10 +468,110 @@ func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	}
 }
 
+func TestHandleListDashboards_ForwardsFilter(t *testing.T) {
+	var gotFilter, gotSort, gotOrder string
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			gotFilter, gotSort, gotOrder = filter, sort, order
+			return json.RawMessage(`{"dashboards":[],"tags":[],"total":0}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_dashboards", map[string]any{
+		"filter": "  name CONTAINS 'overview'  ",
+		"sort":   "name",
+		"order":  "asc",
+	})
+
+	if _, err := h.handleListDashboards(testCtx(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotFilter != "name CONTAINS 'overview'" {
+		t.Fatalf("expected trimmed filter forwarded to client, got %q", gotFilter)
+	}
+	if gotSort != "name" || gotOrder != "asc" {
+		t.Fatalf("expected sort/order forwarded, got sort=%q order=%q", gotSort, gotOrder)
+	}
+}
+
+// 500 is under the old shared cap (1000) but over the v2 cap (200), so it must
+// be clamped to 200 before forwarding, with an advisory note.
+func TestHandleListDashboards_LimitClamped(t *testing.T) {
+	var gotLimit int
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			gotLimit = limit
+			return json.RawMessage(`{"dashboards":[],"tags":[],"total":0}`), nil
+		},
+	}
+	res, err := newTestHandler(mock).handleListDashboards(testCtx(),
+		makeToolRequest("signoz_list_dashboards", map[string]any{"limit": "500"}))
+	if err != nil || res.IsError {
+		t.Fatalf("unexpected failure: err=%v result=%v", err, res.Content)
+	}
+	if gotLimit != dashboardListMaxLimit {
+		t.Errorf("forwarded limit = %d, want clamped to %d", gotLimit, dashboardListMaxLimit)
+	}
+	if !resultNotesContain(res, "exceeded the maximum") {
+		t.Errorf("expected clamp advisory note, got: %v", allTextBlocks(res))
+	}
+}
+
+func TestHandleListDashboards_AddsWebURL_WrappedEnvelope(t *testing.T) {
+	// The v2 API wraps the list in a {"data": {...}} envelope; the webUrl
+	// injection must reach entries nested under it.
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_list_dashboards", map[string]any{})
+
+	result, err := h.handleListDashboards(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result")
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
+		t.Fatalf("expected webUrl in wrapped-envelope output, got: %s", body)
+	}
+}
+
+func TestHandleCreateDashboard_AddsWebURL(t *testing.T) {
+	// Create echoes back the server-generated dashboard (with its id); the handler
+	// injects a webUrl deep link discovered from that body.
+	mock := &client.MockClient{
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"new-id-1","name":"hosts"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+	req := makeToolRequest("signoz_create_dashboard", map[string]any{
+		"schemaVersion": "v6",
+		"tags":          []any{},
+		"spec":          map[string]any{"display": map[string]any{"name": "Hosts"}},
+	})
+	result, err := h.handleCreateDashboard(ctxWithURL(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/new-id-1"`) {
+		t.Fatalf("expected webUrl on created dashboard, got: %s", body)
+	}
+}
+
 func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":[{"uuid":"abc-123","name":"Hosts"}]}`), nil
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
 		},
 	}
 	h := newTestHandler(mock)

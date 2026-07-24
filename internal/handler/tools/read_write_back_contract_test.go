@@ -3,65 +3,11 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
-
-func TestDashboardReadWriteBackContract(t *testing.T) {
-	const dashboardID = "dashboard-1"
-	getFixture, err := os.ReadFile("../../../pkg/dashboard/dashboardbuilder/testdata/full.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var dashboardData map[string]any
-	if err := json.Unmarshal(getFixture, &dashboardData); err != nil {
-		t.Fatal(err)
-	}
-
-	var gotID string
-	var gotBody []byte
-	h := newTestHandler(&client.MockClient{
-		UpdateDashboardRawFn: func(_ context.Context, id string, body []byte) error {
-			gotID = id
-			gotBody = append([]byte(nil), body...)
-			return nil
-		},
-	})
-	result, err := h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", map[string]any{
-		"id":        dashboardID,
-		"dashboard": dashboardData,
-	}))
-	if err != nil || result.IsError {
-		t.Fatalf("write-back failed: result=%#v err=%v", result, err)
-	}
-	if gotID != dashboardID {
-		t.Fatalf("update id = %q, want %q", gotID, dashboardID)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(gotBody, &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["title"] != "Full Dashboard" {
-		t.Fatalf("dashboard body lost data subobject: %s", gotBody)
-	}
-	if _, wrapped := body["dashboard"]; wrapped {
-		t.Fatalf("API body must be the dashboard subobject, not the MCP wrapper: %s", gotBody)
-	}
-	widgets := body["widgets"].([]any)
-	query := widgets[1].(map[string]any)["query"].(map[string]any)
-	builder := query["builder"].(map[string]any)
-	spec := builder["queryData"].([]any)[0].(map[string]any)
-	if spec["limit"] != float64(types.DefaultAggregateQueryLimit) {
-		t.Fatalf("dashboard builder limit did not survive read-write-back: %s", gotBody)
-	}
-	orderBy := spec["orderBy"].([]any)
-	if len(orderBy) != 1 || orderBy[0].(map[string]any)["columnName"] != "duration_nano" || orderBy[0].(map[string]any)["order"] != "desc" {
-		t.Fatalf("dashboard builder orderBy did not survive read-write-back: %s", gotBody)
-	}
-}
 
 func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 	for _, versionFields := range []map[string]any{

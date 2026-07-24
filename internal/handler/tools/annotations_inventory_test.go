@@ -18,6 +18,9 @@ var (
 	// Updates whose handler fires a live test notification on every call,
 	// so a repeat call re-notifies and is not idempotent.
 	nonIdempotentUpdateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: false}
+	// Patch applies an RFC 6902 JSON Patch to an existing resource: destructive,
+	// and not idempotent because a patch (e.g. an "add" to /tags/-) is not repeatable.
+	patchTriple = annotationTriple{readOnly: false, destructive: true, idempotent: false}
 )
 
 // expectedToolAnnotations pins the advertised annotation triple for every
@@ -61,6 +64,7 @@ var expectedToolAnnotations = map[string]annotationTriple{
 	"signoz_update_dashboard":            updateTriple,
 	"signoz_update_notification_channel": nonIdempotentUpdateTriple,
 	"signoz_update_view":                 updateTriple,
+	"signoz_patch_dashboard":             patchTriple,
 	"signoz_delete_alert":                deleteTriple,
 	"signoz_delete_dashboard":            deleteTriple,
 	"signoz_delete_notification_channel": deleteTriple,
