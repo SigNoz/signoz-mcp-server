@@ -268,6 +268,11 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 			if res.StructuredContent == nil {
 				t.Fatalf("%s: code-controlled tool must populate structuredContent", tc.name)
 			}
+			// MCP requires structuredContent to be an object; an array or scalar
+			// is rejected outright by client-side schema validation.
+			if _, ok := res.StructuredContent.(map[string]any); !ok {
+				t.Fatalf("%s: structuredContent must be a JSON object, got %T", tc.name, res.StructuredContent)
+			}
 			// Block 0 must remain valid, independently-parseable JSON.
 			var parsed any
 			if err := json.Unmarshal([]byte(textContent(t, res)), &parsed); err != nil {

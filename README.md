@@ -555,7 +555,7 @@ When the relative template path is unknown, call `signoz_list_dashboard_template
 
 #### `signoz_list_dashboard_templates`
 
-Returns the full bundled catalog of curated SigNoz dashboard templates (id, title, path, description, category, keywords) as a JSON array. It does not list dashboards already created in the tenant; use `signoz_list_dashboards` for those.
+Returns the full bundled catalog of curated SigNoz dashboard templates as `{"templates": [...], "total": N}`, where each entry has id, title, path, description, category, and keywords. It does not list dashboards already created in the tenant; use `signoz_list_dashboards` for those.
 
 - **Parameters:** none
 

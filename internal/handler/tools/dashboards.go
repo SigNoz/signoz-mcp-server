@@ -432,7 +432,9 @@ func (h *Handler) handleListDashboardTemplates(ctx context.Context, req mcp.Call
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_dashboard_templates")
 
 	entries := listDashboardTemplates()
-	body, err := json.Marshal(entries)
+	// Wrapped in an object because MCP requires structuredContent to be a JSON
+	// object; a bare array fails client-side schema validation.
+	body, err := json.Marshal(map[string]any{"templates": entries, "total": len(entries)})
 	if err != nil {
 		return InternalErrorResult(fmt.Sprintf("failed to encode templates: %s", err.Error())), nil
 	}

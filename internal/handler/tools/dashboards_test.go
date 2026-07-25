@@ -397,12 +397,19 @@ func TestHandleListDashboardTemplates_FullCatalog(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected TextContent, got %T", result.Content[0])
 	}
-	var entries []map[string]any
-	if err := json.Unmarshal([]byte(textContent.Text), &entries); err != nil {
-		t.Fatalf("response should be a JSON array: %v\n%s", err, textContent.Text)
+	var envelope struct {
+		Templates []map[string]any `json:"templates"`
+		Total     int              `json:"total"`
 	}
+	if err := json.Unmarshal([]byte(textContent.Text), &envelope); err != nil {
+		t.Fatalf("response should be a JSON object: %v\n%s", err, textContent.Text)
+	}
+	entries := envelope.Templates
 	if len(entries) < 50 {
 		t.Errorf("expected the full catalog (>=50 entries), got %d", len(entries))
+	}
+	if envelope.Total != len(entries) {
+		t.Errorf("total %d should match the number of templates returned (%d)", envelope.Total, len(entries))
 	}
 	// Spot-check that a known template is present and well-formed.
 	foundPostgres := false
