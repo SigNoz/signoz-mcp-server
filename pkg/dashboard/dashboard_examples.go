@@ -8,7 +8,7 @@ package dashboard
 const DashboardExamples = `
 Complete v6 (Perses) dashboard payloads for signoz_create_dashboard. Every example below was created against a live SigNoz instance and read back, so each field is server-accepted. Copy the structure, not the literal metric/attribute names. For single-panel structure and choosing a panel/query type, read signoz://dashboard/widgets-examples and signoz://dashboard/widgets-instructions; for layout and variable rules read signoz://dashboard/instructions.
 
-Payload envelope: {schemaVersion:"v6", generateName:true, tags:[...], spec:{display, variables, panels, layouts, links:[]}}. Do NOT set the top-level "name" (generateName lets the server derive it). spec.links and every panel's spec.links are required (use []).
+Payload envelope: {schemaVersion:"v6", generateName:true, tags:[...], spec:{display, variables, panels, layouts, links:[]}}. Do NOT set the top-level "name" (generateName lets the server derive it). spec.links and every panel's spec.links are optional (the examples set [] but you may omit them).
 
 Metrics Query Builder shape (used by all examples below):
 - aggregations[] entries are OBJECTS, not the {expression} string form used for logs/traces: {metricName, temporality, timeAggregation, spaceAggregation[, reduceTo]}.
