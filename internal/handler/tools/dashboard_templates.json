@@ -58,7 +58,7 @@
       "rate",
       "throughput"
     ],
-    "description": "",
+    "description": "Service APM built from span metrics. Overview: P50/P90/P99 latency, request rate, error percentage, and top operations. DB Metrics: calls per second, average duration, and error percentage by db.system. External calls: per-address rate, error percentage, and duration. Filter by deployment.environment, service.name, and top_level_operation.",
     "category": "Apm"
   },
   {
@@ -240,6 +240,22 @@
     "category": "Clickhouse"
   },
   {
+    "id": "cloudnative-pg",
+    "title": "CloudNativePG",
+    "path": "cloudnative-pg/cloudnative-pg-dashboard.json",
+    "keywords": [
+      "cloudnative",
+      "pg",
+      "cloudnativepg",
+      "cnpg",
+      "postgresql",
+      "database",
+      "metrics"
+    ],
+    "description": "CloudNativePG cluster health from the native cnpg_* instance metrics: connections, throughput, cache, replication, WAL & archiving, checkpoints, storage, and the metrics collector itself.",
+    "category": "Cloudnative Pg"
+  },
+  {
     "id": "codex",
     "title": "Codex",
     "path": "codex/codex-dashboard.json",
@@ -248,6 +264,20 @@
     ],
     "description": "",
     "category": "Codex"
+  },
+  {
+    "id": "cohere",
+    "title": "Cohere",
+    "path": "cohere/cohere-dashboard.json",
+    "keywords": [
+      "cohere",
+      "llm",
+      "opentelemetry",
+      "demo",
+      "traces"
+    ],
+    "description": "Demo dashboard for Cohere Chat, Embed, Rerank, model usage, latency, errors, token usage, and individual spans emitted by the cohere-otel service.",
+    "category": "Cohere"
   },
   {
     "id": "couchdb",
@@ -296,6 +326,20 @@
     ],
     "description": "Comprehensive monitoring dashboard for the langgenius/dify service. Covers RED metrics (Rate, Errors, Duration), HTTP endpoint performance, LLM/GenAI activity (token usage, model latency, providers), workflow & app activity, and Postgres/Redis dependencies. Built from traces and metrics observed for the service.",
     "category": "Dify"
+  },
+  {
+    "id": "dspy",
+    "title": "DSPy Observability",
+    "path": "dspy/dspy-dashboard.json",
+    "keywords": [
+      "dspy",
+      "observability",
+      "openinference",
+      "llm",
+      "ai"
+    ],
+    "description": "Reusable DSPy observability dashboard for programs instrumented with openinference-instrumentation-dspy: module/chain/tool activity, latency, model calls, and errors. Built on DSPy-native span attributes (openinference.span.kind, llm.model_name). Use the service_name picker to filter to one or more DSPy services.",
+    "category": "Dspy"
   },
   {
     "id": "ecs-infra-metrics",
@@ -355,6 +399,22 @@
     "category": "Envoy"
   },
   {
+    "id": "firecrawl",
+    "title": "Firecrawl Monitoring",
+    "path": "firecrawl/firecrawl-dashboard.json",
+    "keywords": [
+      "firecrawl",
+      "monitoring",
+      "llm",
+      "web",
+      "scraping",
+      "traces",
+      "usage"
+    ],
+    "description": "Monitors Firecrawl SDK usage instrumented by firecrawl-otel: call volume, latency, error rate, credits consumed, and results returned, broken down per operation (scrape/search/map/crawl/batch_scrape). Built on trace spans (firecrawl.operation EXISTS), so it renders for both short-lived jobs and long-running services.",
+    "category": "Firecrawl"
+  },
+  {
     "id": "flask-monitoring",
     "title": "Flask monitoring",
     "path": "flask-monitoring/flask-monitoring.json",
@@ -364,6 +424,24 @@
     ],
     "description": "",
     "category": "Flask Monitoring"
+  },
+  {
+    "id": "fluxcd",
+    "title": "FluxCD — Controllers",
+    "path": "fluxcd/fluxcd.json",
+    "keywords": [
+      "fluxcd",
+      "controllers",
+      "flux",
+      "gitops",
+      "kubernetes",
+      "control",
+      "plane",
+      "reconciliation",
+      "metrics"
+    ],
+    "description": "FluxCD controller health: reconciliation throughput, errors, duration, workqueues, runtime resources, and Kubernetes API traffic.",
+    "category": "Fluxcd"
   },
   {
     "id": "fly",
@@ -467,6 +545,21 @@
     ],
     "description": "",
     "category": "Haystack"
+  },
+  {
+    "id": "hermes",
+    "title": "Hermes Coding Agent — Observability",
+    "path": "hermes/hermes-dashboard.json",
+    "keywords": [
+      "hermes",
+      "coding",
+      "agent",
+      "observability",
+      "llm",
+      "traces"
+    ],
+    "description": "Comprehensive monitoring for the Hermes coding agent: agent sessions/turns, LLM API calls & token usage, tool-call activity, latency, and errors. Built from OTel traces (service: hermes-agent) using gen_ai.* and hermes.* span attributes. Panels are grouped top-to-bottom: Overview (scorecards), LLM/Model, Agent/Turns, Tool Calls, Errors.",
+    "category": "Hermes"
   },
   {
     "id": "hostmetrics",
@@ -622,6 +715,29 @@
   },
   {
     "id": "k8s-infra-metrics",
+    "title": "Kubernetes CronJobs: Current State and Recent Runs",
+    "path": "k8s-infra-metrics/kubernetes-cronjobs.json",
+    "keywords": [
+      "k8s",
+      "infra",
+      "metrics",
+      "kubernetes",
+      "cronjobs",
+      "cronjobs:",
+      "current",
+      "state",
+      "and",
+      "recent",
+      "runs",
+      "jobs",
+      "batch",
+      "opentelemetry"
+    ],
+    "description": "Current state shows the Jobs Kubernetes still keeps. Recent runs shows the Job runs SigNoz observed in the selected time range.",
+    "category": "K8S Infra Metrics"
+  },
+  {
+    "id": "k8s-infra-metrics",
     "title": "Kubernetes Node Metrics - Detailed",
     "path": "k8s-infra-metrics/kubernetes-node-metrics-detailed.json",
     "keywords": [
@@ -699,6 +815,145 @@
     "category": "K8S Infra Metrics"
   },
   {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes API Server",
+    "path": "k8s-system-monitoring/kubernetes-apiserver.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "apiserver",
+      "api",
+      "server",
+      "control",
+      "plane",
+      "prometheus"
+    ],
+    "description": "Standard control-plane view for kube-apiserver using Prometheus/OpenTelemetry metrics.",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes Controller Manager",
+    "path": "k8s-system-monitoring/kubernetes-controller-manager.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "controller",
+      "manager",
+      "control",
+      "plane",
+      "prometheus"
+    ],
+    "description": "Standard control-plane view for kube-controller-manager workqueues, retries, and client request pressure.",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes CoreDNS",
+    "path": "k8s-system-monitoring/kubernetes-coredns.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "coredns",
+      "dns",
+      "prometheus"
+    ],
+    "description": "Cluster DNS view for request volume, cache efficiency signals, and request duration buckets.",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes Etcd",
+    "path": "k8s-system-monitoring/kubernetes-etcd.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "etcd",
+      "control",
+      "plane",
+      "prometheus"
+    ],
+    "description": "Standard etcd view using native etcd server metrics (leadership, proposals, client request traffic, and storage latency).",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes Kube Proxy",
+    "path": "k8s-system-monitoring/kubernetes-kube-proxy.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "kube",
+      "proxy",
+      "node",
+      "prometheus"
+    ],
+    "description": "Network-agent view for kube-proxy sync loops, network programming durations, and client request rates.",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes Kubelet",
+    "path": "k8s-system-monitoring/kubernetes-kubelet.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "kubelet",
+      "node",
+      "prometheus"
+    ],
+    "description": "Node-agent view for kubelet runtime operations, pod lifecycle, and storage operation latencies.",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes Scheduler",
+    "path": "k8s-system-monitoring/kubernetes-scheduler.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "scheduler",
+      "control",
+      "plane",
+      "prometheus"
+    ],
+    "description": "Standard control-plane view for kube-scheduler queue pressure, scheduling throughput, and duration buckets.",
+    "category": "K8S System Monitoring"
+  },
+  {
+    "id": "k8s-system-monitoring",
+    "title": "Kubernetes System Overview",
+    "path": "k8s-system-monitoring/kubernetes-system-overview.json",
+    "keywords": [
+      "k8s",
+      "system",
+      "monitoring",
+      "kubernetes",
+      "overview",
+      "control",
+      "plane",
+      "node",
+      "dns",
+      "prometheus"
+    ],
+    "description": "Combined view across control-plane, node, networking, and DNS components with distro-neutral service scoping.",
+    "category": "K8S System Monitoring"
+  },
+  {
     "id": "kafka",
     "title": "Kafka Server Monitoring",
     "path": "kafka/kafka-dashboard.json",
@@ -719,9 +974,12 @@
     "keywords": [
       "keda",
       "otlp",
-      "v1"
+      "v1",
+      "opentelemetry",
+      "kubernetes",
+      "autoscaling"
     ],
-    "description": "",
+    "description": "KEDA OpenTelemetry dashboard for operator build info, scaler activity, scaler latency, scaling errors, registered resources, triggers, scale-loop latency, and CloudEventSource signals.",
     "category": "Keda"
   },
   {
@@ -737,7 +995,7 @@
       "rate",
       "throughput"
     ],
-    "description": "",
+    "description": "RED metrics for a service's key operations, grouped by operation (top 20). P50, P90, and P99 latency, request rate, and error percentage. Filter by deployment.environment and service.name.",
     "category": "Key Operations"
   },
   {
@@ -753,6 +1011,24 @@
     ],
     "description": "Kong API Gateway monitoring using the OpenTelemetry plugin (Kong 3.13+). Covers request rate, latency percentiles, error metrics, bandwidth, upstream health, and Lua memory. Variables: environment, Kong service.",
     "category": "Kong Gateway"
+  },
+  {
+    "id": "langflow",
+    "title": "Langflow — Workflow & LLM Usage Monitoring",
+    "path": "langflow/langflow-dashboard.json",
+    "keywords": [
+      "langflow",
+      "workflow",
+      "llm",
+      "usage",
+      "monitoring",
+      "gen",
+      "ai",
+      "tokens",
+      "traceloop"
+    ],
+    "description": "Monitors Langflow flows/agents with an emphasis on LLM usage: token consumption (input/output/total), per-model breakdown, LLM call latency, tool calls, agent/flow runs, errors, and recent LLM calls. Built on the gen_ai.* OpenTelemetry span attributes exported by Langflow's built-in Traceloop tracer.",
+    "category": "Langflow"
   },
   {
     "id": "litellm",
@@ -910,9 +1186,10 @@
       "ingress",
       "request",
       "handling",
-      "performance"
+      "performance",
+      "kubernetes"
     ],
-    "description": "",
+    "description": "Ingress-nginx controller request-handling performance (nginx_ingress_controller_* metrics scraped via Prometheus → OTel). Filter by ingress.",
     "category": "Nginx"
   },
   {
@@ -922,24 +1199,23 @@
     "keywords": [
       "nginx",
       "(otel)",
-      "otel"
+      "otel",
+      "metrics"
     ],
-    "description": "",
+    "description": "NGINX metrics from the OpenTelemetry nginx receiver: request throughput, accepted and handled connections, and current connections by state (active, reading, writing, waiting). Scope with the host.name and service.name variables.",
     "category": "Nginx"
   },
   {
     "id": "nginx",
-    "title": "NGINX Ingress controller [WIP by SigNoz] ",
+    "title": "NGINX Ingress controller",
     "path": "nginx/ingress-nginx-controller.json",
     "keywords": [
       "nginx",
       "ingress",
       "controller",
-      "[wip",
-      "by",
-      "signoz]"
+      "kubernetes"
     ],
-    "description": "",
+    "description": "Ingress-nginx controller health and performance — request volume, success rate, config reloads, CPU/memory, network I/O, and latency percentiles. Filter by namespace, controller class, controller pod, and ingress.",
     "category": "Nginx"
   },
   {
@@ -988,13 +1264,18 @@
   },
   {
     "id": "openclaw",
-    "title": "Openclaw Overview",
+    "title": "OpenClaw — Full Comprehensive Dashboard",
     "path": "openclaw/openclaw-dashboard.json",
     "keywords": [
       "openclaw",
-      "overview"
+      "full",
+      "comprehensive",
+      "errors",
+      "agent",
+      "auto",
+      "generated"
     ],
-    "description": "",
+    "description": "Comprehensive OpenClaw dashboard combining the Overview panels (token usage, message flow, queue & session health, error logs) with all panels from OpenClaw — Error Monitoring (agent run errors, error rate, errors by model/channel/provider, slowest operations, errored span detail).",
     "category": "Openclaw"
   },
   {
@@ -1021,6 +1302,35 @@
     "category": "Openrouter"
   },
   {
+    "id": "opentelemetry-collector",
+    "title": "OpenTelemetry Collector",
+    "path": "opentelemetry-collector/opentelemetry-collector-dashboard.json",
+    "keywords": [
+      "opentelemetry",
+      "collector",
+      "otel",
+      "metrics",
+      "infrastructure"
+    ],
+    "description": "Pipeline health for the OTel Collector: receiver throughput, processor drops, exporter delivery, queue depth, and process resources.",
+    "category": "Opentelemetry Collector"
+  },
+  {
+    "id": "pgbouncer",
+    "title": "PgBouncer",
+    "path": "pgbouncer/pgbouncer-dashboard.json",
+    "keywords": [
+      "pgbouncer",
+      "postgresql",
+      "database",
+      "connection",
+      "pool",
+      "metrics"
+    ],
+    "description": "PgBouncer connection pooler health: client/server pool states, query and transaction throughput, wait times, network, prepared statements, and per-database connections. Built on the prometheus-community pgbouncer_exporter metrics.",
+    "category": "Pgbouncer"
+  },
+  {
     "id": "pipecat",
     "title": "Pipecat",
     "path": "pipecat/pipecat-dashboard.json",
@@ -1029,6 +1339,35 @@
     ],
     "description": "",
     "category": "Pipecat"
+  },
+  {
+    "id": "planetscale",
+    "title": "PlanetScale PostgreSQL",
+    "path": "planetscale/planetscale-postgres.json",
+    "keywords": [
+      "planetscale",
+      "postgres",
+      "postgresql",
+      "database",
+      "metrics"
+    ],
+    "description": "Track PlanetScale Postgres connections, session states, PgBouncer pools, commits, locks, WAL archiving, storage, and pod resources. Use branch and role filters.",
+    "category": "Planetscale"
+  },
+  {
+    "id": "planetscale",
+    "title": "PlanetScale Vitess (MySQL)",
+    "path": "planetscale/planetscale-vitess.json",
+    "keywords": [
+      "planetscale",
+      "vitess",
+      "(mysql)",
+      "mysql",
+      "database",
+      "metrics"
+    ],
+    "description": "Track PlanetScale Vitess query rate, latency, pools, MySQL internals, replication lag, VTOrc, storage, and pod resources. Use branch, keyspace, and tablet type filters.",
+    "category": "Planetscale"
   },
   {
     "id": "postgresql",
@@ -1087,7 +1426,7 @@
       "overview",
       "database"
     ],
-    "description": "This dashboard shows the Redis instance overview. It includes latency, hit/miss rate, connections, and memory information.\n",
+    "description": "This dashboard shows the Redis instance overview. It includes latency, hit/miss rate, connections, and memory information.",
     "category": "Redis"
   },
   {
@@ -1141,6 +1480,19 @@
     "category": "Signoz Ingestion Analysis"
   },
   {
+    "id": "signoz-mcp",
+    "title": "SigNoz MCP Server",
+    "path": "signoz-mcp/signoz-mcp-dashboard.json",
+    "keywords": [
+      "signoz",
+      "mcp",
+      "server",
+      "observability"
+    ],
+    "description": "Operational dashboard for the signoz-mcp-server: tool-call rate and error rate, MCP method usage, OAuth events and failures, identity-cache health, execute_tool span latency, and log volume by severity. Use the $environment variable to scope to one or more tenant regions.",
+    "category": "Signoz Mcp"
+  },
+  {
     "id": "slurm",
     "title": "SLURM ",
     "path": "slurm/slurm.json",
@@ -1190,42 +1542,46 @@
   {
     "id": "temporal.io",
     "title": "Temporal Cloud Metrics",
-    "path": "temporal.io/Temporal Cloud Metrics.json",
+    "path": "temporal.io/temporal-cloud-metrics.json",
     "keywords": [
       "temporal",
       "io",
       "cloud",
-      "metrics"
+      "metrics",
+      "openmetrics",
+      "v1"
     ],
-    "description": "",
+    "description": "Temporal Cloud namespace metrics (temporal_cloud_v1_* emitted via the Cloud OpenMetrics endpoint). Filter by namespace.",
     "category": "Temporal.Io"
   },
   {
     "id": "temporal.io",
-    "title": "Temporal SDK Metrics",
-    "path": "temporal.io/Temporal SDK Metrics - golang.json",
+    "title": "Temporal SDK Metrics (Go)",
+    "path": "temporal.io/temporal-go-sdk-metrics.json",
     "keywords": [
       "temporal",
       "io",
+      "go",
       "sdk",
       "metrics",
-      "golang"
+      "(go)"
     ],
-    "description": "",
+    "description": "Temporal Go SDK client and worker metrics (temporal_* emitted via the go.temporal.io/sdk OpenTelemetry MetricsHandler). Filter by namespace.",
     "category": "Temporal.Io"
   },
   {
     "id": "temporal.io",
-    "title": "Temporal SDK Metrics",
-    "path": "temporal.io/Temporal SDK Metrics - typescript.json",
+    "title": "Temporal SDK Metrics (TypeScript)",
+    "path": "temporal.io/temporal-typescript-sdk-metrics.json",
     "keywords": [
       "temporal",
       "io",
+      "typescript",
       "sdk",
       "metrics",
-      "typescript"
+      "(typescript)"
     ],
-    "description": "",
+    "description": "Temporal TypeScript SDK client and worker metrics (temporal_* emitted via @temporalio Runtime OpenTelemetry telemetry). Filter by namespace.",
     "category": "Temporal.Io"
   },
   {

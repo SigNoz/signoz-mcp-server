@@ -116,13 +116,19 @@ def _build_entry(ref: str, path: str) -> dict[str, Any] | None:
 
     # Tags feed the keyword index only (the entry has no tags field). v6 tags
     # are {key, value} objects, v1 tags are plain strings; flatten both to text
-    # so _derive_keywords can tokenize them, indexing key AND value for v6.
+    # so _derive_keywords can tokenize them. The v6 templates wrap each label as
+    # {"key": "tag", "value": <label>}, so index the value and skip the generic
+    # "tag" wrapper key (it is noise); keep any genuinely meaningful key.
     raw_tags = data.get("tags")
     tags: list[str] = []
     if isinstance(raw_tags, list):
         for t in raw_tags:
             if isinstance(t, dict):
-                tags.extend(str(v) for v in (t.get("key"), t.get("value")) if v)
+                key, value = t.get("key"), t.get("value")
+                if value:
+                    tags.append(str(value))
+                if key and str(key).strip().lower() != "tag":
+                    tags.append(str(key))
             elif isinstance(t, str):
                 tags.append(t)
 
@@ -171,12 +177,19 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_OUTPUT,
         help="Output dashboard_templates.json path",
     )
+    parser.add_argument(
+        "--ref",
+        default=UPSTREAM_REF,
+        help="SigNoz/dashboards git ref (branch, tag, or SHA) to read templates from "
+        "(default: %(default)s). Use a feature branch to regenerate the catalog "
+        "before that branch merges to main.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    return regenerate(UPSTREAM_REF, args.output)
+    return regenerate(args.ref, args.output)
 
 
 if __name__ == "__main__":

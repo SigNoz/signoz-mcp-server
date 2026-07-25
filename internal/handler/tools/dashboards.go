@@ -167,7 +167,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_import_dashboard",
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants a new dashboard from a curated SigNoz/dashboards template, not a custom configuration. Pass a known relative template path; if it is unknown, call signoz_list_dashboard_templates first. The server fetches and validates the selected template, then creates the dashboard. Use signoz_create_dashboard for a custom layout or queries.",
+			"Use this when the user wants a new dashboard from a curated SigNoz/dashboards template, not a custom configuration. Pass a known relative template path; if it is unknown, call signoz_list_dashboard_templates first. The server fetches the selected template and creates the dashboard (the v2 API validates it). Use signoz_create_dashboard for a custom layout or queries.",
 		),
 		mcp.WithString("path", mcp.Required(), mcp.Description("Relative JSON path from signoz_list_dashboard_templates, for example hostmetrics/hostmetrics.json. Do not pass a URL or absolute path.")),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
