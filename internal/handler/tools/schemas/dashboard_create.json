@@ -37,17 +37,6 @@
     "spec"
   ],
   "$defs": {
-    "CommonDisplay": {
-      "properties": {
-        "description": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "CommonJSONRef": {
       "properties": {
         "$ref": {
@@ -254,15 +243,6 @@
     },
     "DashboardtypesDashboardSpec": {
       "properties": {
-        "datasources": {
-          "additionalProperties": {
-            "$ref": "#/$defs/DashboardtypesDatasourceSpec"
-          },
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "display": {
           "$ref": "#/$defs/DashboardtypesDisplay"
         },
@@ -306,50 +286,6 @@
         "panels",
         "layouts"
       ],
-      "type": "object"
-    },
-    "DashboardtypesDatasourcePlugin": {
-      "discriminator": {
-        "mapping": {
-          "signoz/Datasource": "#/$defs/DashboardtypesDatasourcePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesSigNozDatasourceSpec"
-        },
-        "propertyName": "kind"
-      },
-      "oneOf": [
-        {
-          "$ref": "#/$defs/DashboardtypesDatasourcePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesSigNozDatasourceSpec"
-        }
-      ],
-      "type": "object"
-    },
-    "DashboardtypesDatasourcePluginVariantGithubComSigNozSignozPkgTypesDashboardtypesSigNozDatasourceSpec": {
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "signoz/Datasource"
-        },
-        "spec": {
-          "$ref": "#/$defs/DashboardtypesSigNozDatasourceSpec"
-        }
-      },
-      "required": [
-        "kind",
-        "spec"
-      ],
-      "type": "object"
-    },
-    "DashboardtypesDatasourceSpec": {
-      "properties": {
-        "default": {
-          "type": "boolean"
-        },
-        "display": {
-          "$ref": "#/$defs/CommonDisplay"
-        },
-        "plugin": {
-          "$ref": "#/$defs/DashboardtypesDatasourcePlugin"
-        }
-      },
       "type": "object"
     },
     "DashboardtypesDisplay": {
@@ -1017,9 +953,6 @@
       "required": [
         "queryValue"
       ],
-      "type": "object"
-    },
-    "DashboardtypesSigNozDatasourceSpec": {
       "type": "object"
     },
     "DashboardtypesSpanGaps": {
