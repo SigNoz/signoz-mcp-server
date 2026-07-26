@@ -131,7 +131,7 @@ func (s *SigNoz) fetchMetricUsage(ctx context.Context, name string) (MetricUsage
 	}
 	var errs []string
 
-	dashURL := fmt.Sprintf("%s/api/v2/metrics/dashboards?%s", s.baseURL, query)
+	dashURL := fmt.Sprintf("%s/api/v3/metrics/dashboards?%s", s.baseURL, query)
 	s.logger.DebugContext(ctx, "Fetching metric dashboard refs", slog.String("metric", name))
 
 	dashBody, err := s.doRequest(ctx, http.MethodGet, dashURL, nil, DefaultQueryTimeout)

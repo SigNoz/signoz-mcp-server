@@ -54,6 +54,18 @@ func withNonIdempotentUpdateToolAnnotations() mcp.ToolOption {
 	}
 }
 
+// withPatchToolAnnotations marks a tool that applies a partial RFC 6902 JSON
+// Patch to an existing resource: destructive (overwrites/removes fields), and
+// not idempotent — a JSON Patch is not generally repeatable (e.g. an "add" to
+// an array such as /tags/- appends on each call), so a repeat call is not free.
+func withPatchToolAnnotations() mcp.ToolOption {
+	return func(t *mcp.Tool) {
+		mcp.WithReadOnlyHintAnnotation(false)(t)
+		mcp.WithDestructiveHintAnnotation(true)(t)
+		mcp.WithIdempotentHintAnnotation(false)(t)
+	}
+}
+
 // withDeleteToolAnnotations marks a tool that removes a resource by id:
 // destructive, and idempotent in the HTTP DELETE sense — a repeat call fails
 // with not-found upstream but causes no additional state change.

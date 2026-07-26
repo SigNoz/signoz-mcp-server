@@ -51,9 +51,9 @@ func TestIsMetricNotFound404(t *testing.T) {
 
 func TestParseDashboardNames_Deduplicates(t *testing.T) {
 	body := `{"status":"success","data":{"dashboards":[
-		{"dashboardName":"Host Metrics","dashboardId":"1","widgetId":"w1","widgetName":"CPU"},
-		{"dashboardName":"Host Metrics","dashboardId":"1","widgetId":"w2","widgetName":"Memory"},
-		{"dashboardName":"K8s Overview","dashboardId":"2","widgetId":"w3","widgetName":"Pods"}
+		{"dashboardName":"Host Metrics","dashboardId":"1","panelId":"p1","panelName":"CPU"},
+		{"dashboardName":"Host Metrics","dashboardId":"1","panelId":"p2","panelName":"Memory"},
+		{"dashboardName":"K8s Overview","dashboardId":"2","panelId":"p3","panelName":"Pods"}
 	]}}`
 	names, err := parseDashboardNames([]byte(body))
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestParseDashboardNames_EmptyArray(t *testing.T) {
 
 func TestParseDashboardNames_AllowsEmptyDashboardName(t *testing.T) {
 	body := `{"status":"success","data":{"dashboards":[
-		{"dashboardName":"","dashboardId":"1","widgetId":"w1","widgetName":"CPU"}
+		{"dashboardName":"","dashboardId":"1","panelId":"p1","panelName":"CPU"}
 	]}}`
 	names, err := parseDashboardNames([]byte(body))
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestParseDashboardNames_AllowsEmptyDashboardName(t *testing.T) {
 
 func TestParseDashboardNames_MissingDashboardName(t *testing.T) {
 	body := `{"status":"success","data":{"dashboards":[
-		{"dashboardId":"1","widgetId":"w1","widgetName":"CPU"}
+		{"dashboardId":"1","panelId":"p1","panelName":"CPU"}
 	]}}`
 	_, err := parseDashboardNames([]byte(body))
 	require.Error(t, err)
@@ -193,8 +193,8 @@ func TestCheckMetricUsage_MissingDashboardNameStoredAsPerMetricError(t *testing.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		switch r.URL.Path {
-		case "/api/v2/metrics/dashboards":
-			_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[{"dashboardId":"d1","widgetId":"w1","widgetName":"CPU"}]}}`))
+		case "/api/v3/metrics/dashboards":
+			_, _ = w.Write([]byte(`{"status":"success","data":{"dashboards":[{"dashboardId":"d1","panelId":"p1","panelName":"CPU"}]}}`))
 		case "/api/v2/metrics/alerts":
 			_, _ = w.Write([]byte(`{"status":"success","data":{"alerts":[]}}`))
 		default:
@@ -291,7 +291,7 @@ func TestCheckMetricUsage_OneSideFailurePreservesKnownUsage(t *testing.T) {
 	alertBody := `{"status":"success","data":{"alerts":[{"alertName":"High CPU","alertId":"a1"}]}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v2/metrics/dashboards":
+		case "/api/v3/metrics/dashboards":
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(dashBody))
 		case "/api/v2/metrics/alerts":
@@ -368,7 +368,7 @@ func TestCheckMetricUsage_DeduplicatesInputNames(t *testing.T) {
 		assert.Equal(t, "system.cpu/time", r.URL.Query().Get("metricName"))
 		w.WriteHeader(http.StatusOK)
 		switch r.URL.Path {
-		case "/api/v2/metrics/dashboards":
+		case "/api/v3/metrics/dashboards":
 			body, _ := json.Marshal(map[string]any{"data": map[string]any{"dashboards": []any{}}})
 			_, _ = w.Write(body)
 		case "/api/v2/metrics/alerts":

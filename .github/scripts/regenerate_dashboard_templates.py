@@ -5,7 +5,8 @@ Usage:
     python3 .github/scripts/regenerate_dashboard_templates.py
 
 Walks the SigNoz/dashboards repo at the tip of `main`, locates each template
-JSON, extracts title/description/tags, and emits the bundled index at
+JSON, extracts the title/description (v6 `spec.display.*`, falling back to v1
+top-level fields) and tags, and emits the bundled index at
 internal/handler/tools/dashboard_templates.json.
 
 The runtime fetcher (signoz_import_dashboard) also reads from `main`, so the
@@ -105,11 +106,31 @@ def _build_entry(ref: str, path: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
 
-    title = data.get("title") or path.rsplit("/", 1)[-1].removesuffix(".json")
-    description = data.get("description") or ""
-    tags = data.get("tags") or []
-    if not isinstance(tags, list):
-        tags = []
+    # v6 puts the human title/description under spec.display; fall back to the
+    # v1 top-level fields so the catalog regenerates cleanly through the
+    # migration, then to the filename.
+    spec = data.get("spec") or {}
+    display = spec.get("display") or {}
+    title = display.get("name") or data.get("title") or path.rsplit("/", 1)[-1].removesuffix(".json")
+    description = display.get("description") or data.get("description") or ""
+
+    # Tags feed the keyword index only (the entry has no tags field). v6 tags
+    # are {key, value} objects, v1 tags are plain strings; flatten both to text
+    # so _derive_keywords can tokenize them. The v6 templates wrap each label as
+    # {"key": "tag", "value": <label>}, so index the value and skip the generic
+    # "tag" wrapper key (it is noise); keep any genuinely meaningful key.
+    raw_tags = data.get("tags")
+    tags: list[str] = []
+    if isinstance(raw_tags, list):
+        for t in raw_tags:
+            if isinstance(t, dict):
+                key, value = t.get("key"), t.get("value")
+                if value:
+                    tags.append(str(value))
+                if key and str(key).strip().lower() != "tag":
+                    tags.append(str(key))
+            elif isinstance(t, str):
+                tags.append(t)
 
     return {
         "id": path.split("/", 1)[0],
@@ -156,12 +177,19 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_OUTPUT,
         help="Output dashboard_templates.json path",
     )
+    parser.add_argument(
+        "--ref",
+        default=UPSTREAM_REF,
+        help="SigNoz/dashboards git ref (branch, tag, or SHA) to read templates from "
+        "(default: %(default)s). Use a feature branch to regenerate the catalog "
+        "before that branch merges to main.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    return regenerate(UPSTREAM_REF, args.output)
+    return regenerate(args.ref, args.output)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 package dashboard
 
 const WidgetsInstructions = `
+Conceptual guidance only: WHICH query type and panel type to choose, and how to think about legends and layout. For the exact JSON shape — the panels map, plugin 'kind's, layouts, and variables — see signoz://dashboard/instructions and the create/update tool's JSON Schema.
+
 Query Type Selection [CRITICAL]:
 Choose the appropriate query type based on your data source and requirements:
 
@@ -45,6 +47,9 @@ Field Discovery:
 - When a Query Builder field name is not already known, call signoz_get_field_keys with the widget's signal and fieldContext before composing the query; use signoz_get_field_values when observed values help verify the filter.
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
+One query per panel [CRITICAL]:
+A panel holds exactly ONE query. Putting more than one fails backend validation (not caught by the JSON Schema): "panel must have one query". To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery — each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
+
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
 - ALWAYS set legend when groupBy is used on series-producing charts. Without legend, SigNoz shows raw query identifiers.
@@ -52,7 +57,7 @@ Legend Formatting [CRITICAL]:
 - Multi-key example: groupBy service.name and http.method -> legend {{service.name}} - {{http.method}}
 - Panel rules: timeseries/graph, bar, pie, histogram require legend when the query has groupBy.
 - Table panels with groupBy should usually set legend, but the columns are often self-labeling so it is recommended rather than required.
-- Value, list, and row panels do not need legend formatting.
+- Value/number and list panels do not need legend formatting.
 - PromQL legend syntax uses labels: {{label_name}}
 - ClickHouse SQL legend syntax uses result columns: {{column_name}}
 - In update flows, preserve existing legends unless you are intentionally improving them.
@@ -64,24 +69,21 @@ Panel/widgets types in dashboards [CRITICAL]:
 4. Pie Chart: proportional breakdowns.
 5. Table: multi-column data inspection.
 6. Timeseries: time-indexed metrics.
-7. Value: single aggregated metric.
+7. Value (the "Number" panel): single aggregated metric.
 
-Layout [CRITICAL]:
-- Use X, Y, W, and H as fixed grid coordinates and dimensions.
-- Keep I as the stable unique identifier for each layout entry.
-- Enforce minimum widget size with MinW and MinH to prevent collapse.
-- Apply MaxH only when bounding height is necessary.
-- Mark widgets static only when they must not move.
-- Enable dragging only when intentional to avoid accidental layout shifts.
-- Allocate sufficient height for any chart with legends.
-- Treat legend space as a mandatory vertical requirement and size H accordingly to keep legends fully visible.
+Layout (concepts):
+- Panels sit on a column-based grid: each panel has a position (where it starts) and a size (how wide and tall it is).
+- Give charts with legends enough height that the legend stays fully visible — treat legend space as a vertical requirement.
+- Keep consistent sizing within a row of similar panels, group related panels together, and don't let panels overlap.
+- Use full width for tables and wide timeseries; split a row for side-by-side comparisons.
+- For the exact layout fields and how a panel links to its grid position, see signoz://dashboard/instructions and this tool's JSON Schema.
 
 Bar chart panel [CRITICAL]:
 Note: This panel is best used when you need to compare discrete categories (e.g. service names, status codes) or track count/metric values over categories in an easy-to-read manner.
 - Bar Chart displays frequency or aggregated values for one or more categories over time or across categories.
 - It supports data from logs, traces, or metrics.
 - You can configure the Y-axis unit, and optionally set "Soft Min/Max" to control vertical scale so small values aren't exaggerated.
-- You can add thresholds (value + operator + optional color) to highlight important limits. thresholdFormat must be 'Text' (color the threshold label) or 'Background' (tint the panel when the condition holds). SigNoz does not support a Grafana-style 'Line' marker — do not set thresholdFormat to 'Line'. thresholdOperator must be one of '>', '<', '>=', '<=', '='.
+- You can add thresholds to highlight important limits: SigNoz colors the threshold label or tints the panel background when the condition holds — it does NOT support a Grafana-style line marker.
 
 Histogram panel [CRITICAL]:
 Note: This panel is best used to understand distribution patterns, detect skew, and analyze how values cluster across ranges.
@@ -120,12 +122,12 @@ Note: This panel is best used for any metric whose meaning depends on temporal e
 - Fill Gaps converts missing timestamps into zeros, useful when sparse data must be interpreted as absence of activity rather than missing samples.
 - Y-axis Unit formats numerical values for readability and domain correctness (bytes, durations, percentages, counts).
 - Soft Min/Max constrains the y-axis so small fluctuations aren't visually amplified or drowned out, stabilizing interpretation across charts.
-- Thresholds highlight limits, SLOs, warning levels, or expected baselines. thresholdFormat must be 'Text' (color the threshold label) or 'Background' (tint the panel when the condition holds). SigNoz timeseries panels do NOT render a Grafana-style horizontal line at the threshold value — do not set thresholdFormat to 'Line'. thresholdOperator must be one of '>', '<', '>=', '<=', '='.
+- Thresholds highlight limits, SLOs, warning levels, or expected baselines: SigNoz colors the threshold label or tints the panel background — it does NOT render a horizontal line at the threshold value.
 
 Value panel [CRITICAL]:
 - Value Panel reduces a time series to a single representative number, exposing a point-in-time or aggregated metric such as current throughput, average latency, error count, or any computed summary.
 - It supports logs, traces, and metrics, as long as the underlying data can be aggregated into one value.
 - It surfaces high-salience indicators that benefit from immediate readability, functioning as a KPI-style snapshot.
-- Configuration requires selecting the signal type, selecting the metric/log/trace source, and defining the reduction function (avg, sum, max, min, latest) that collapses the series into a single output.
+- Configuration requires selecting the signal type, selecting the metric/log/trace source, and defining the reduction function that collapses the series into a single output.
   This panel is best used for top-level KPIs, summary statistics, or health indicators where only the final aggregated value—not the trend—is required.
 `

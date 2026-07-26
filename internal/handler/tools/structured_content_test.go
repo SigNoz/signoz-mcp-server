@@ -214,11 +214,14 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 				"system.cpu.time": {Dashboards: []string{"Host Metrics"}, Alerts: []string{}},
 			}, nil
 		},
-		ListDashboardsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[{"uuid":"d1","title":"X"}]}`), nil
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			return json.RawMessage(`{"dashboards":[{"id":"d1","name":"x"}],"tags":[],"total":1}`), nil
 		},
 		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":{"uuid":"d1","title":"X"}}`), nil
+		},
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"id":"d-new","name":"x-abc123","spec":{"display":{"name":"X"}}}`), nil
 		},
 		ListViewsFn: func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":[{"id":"v1","name":"V"}]}`), nil
@@ -249,6 +252,8 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		{"check_metric_usage", h.handleCheckMetricUsage, makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"system.cpu.time"}})},
 		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
 		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "d1"})},
+		{"create_dashboard", h.handleCreateDashboard, makeToolRequest("signoz_create_dashboard", map[string]any{"spec": map[string]any{"display": map[string]any{"name": "X"}}})},
+		{"list_dashboard_templates", h.handleListDashboardTemplates, makeToolRequest("signoz_list_dashboard_templates", map[string]any{})},
 		{"list_views", h.handleListViews, makeToolRequest("signoz_list_views", map[string]any{"sourcePage": "logs"})},
 		{"get_view", h.handleGetView, makeToolRequest("signoz_get_view", map[string]any{"viewId": "v1"})},
 		{"list_notification_channels", h.handleListNotificationChannels, makeToolRequest("signoz_list_notification_channels", map[string]any{})},
@@ -262,6 +267,11 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 			res := runHandler(t, tc.fn, tc.req)
 			if res.StructuredContent == nil {
 				t.Fatalf("%s: code-controlled tool must populate structuredContent", tc.name)
+			}
+			// MCP requires structuredContent to be an object; an array or scalar
+			// is rejected outright by client-side schema validation.
+			if _, ok := res.StructuredContent.(map[string]any); !ok {
+				t.Fatalf("%s: structuredContent must be a JSON object, got %T", tc.name, res.StructuredContent)
 			}
 			// Block 0 must remain valid, independently-parseable JSON.
 			var parsed any

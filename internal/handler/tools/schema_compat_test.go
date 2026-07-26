@@ -62,13 +62,18 @@ func TestWriteToolInputSchemasExposeSearchContext(t *testing.T) {
 	}{
 		{
 			name:       "create dashboard",
-			tool:       mcp.NewTool("signoz_create_dashboard", mcp.WithInputSchema[types.CreateDashboardInput]()),
-			wantFields: []string{"title", "layout", "widgets", "searchContext"},
+			tool:       mcp.NewTool("signoz_create_dashboard", rawInputSchema(createDashboardSchema)),
+			wantFields: []string{"schemaVersion", "spec", "tags", "searchContext"},
 		},
 		{
 			name:       "update dashboard",
-			tool:       mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]()),
-			wantFields: []string{"id", "dashboard", "searchContext"},
+			tool:       mcp.NewTool("signoz_update_dashboard", rawInputSchema(updateDashboardSchema)),
+			wantFields: []string{"id", "schemaVersion", "spec", "searchContext"},
+		},
+		{
+			name:       "patch dashboard",
+			tool:       mcp.NewTool("signoz_patch_dashboard", rawInputSchema(patchDashboardSchema)),
+			wantFields: []string{"id", "patch", "searchContext"},
 		},
 		{
 			name:       "create alert",
@@ -213,10 +218,6 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 		{"create alert", []string{"condition", "compositeQuery", "queries", "[]", "spec", "filter", "expression"}, "Filter expression using field operators. Example: service.name = frontend AND http.status_code >= 500. Use empty string for no filter."},
 		// direct named field on UpdateAlertInput (id is canonical; ruleId is a legacy alias)
 		{"update alert", []string{"id"}, "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."},
-		// dashboard: slice element (widgets -> items -> id)
-		{"create dashboard", []string{"widgets", "[]", "id"}, "Unique widget ID. The matching layout item uses this value in layout[].i."},
-		// dashboard: map value schema (variables -> additionalProperties -> name)
-		{"create dashboard", []string{"variables", "{}", "name"}, "Variable name shown in the UI. Defaults to the variables map key."},
 	}
 
 	for _, c := range checks {
@@ -243,10 +244,8 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 // vanishing entirely rather than turning into the word "required".
 func TestTypedToolSchemasDescriptionCoverage(t *testing.T) {
 	floors := map[string]int{
-		"create alert":     89,
-		"update alert":     90,
-		"create dashboard": 197,
-		"update dashboard": 199,
+		"create alert": 89,
+		"update alert": 90,
 	}
 	for _, tc := range typedToolSchemaCases(t) {
 		t.Run(tc.name, func(t *testing.T) {
@@ -272,8 +271,9 @@ func typedToolSchemaCases(t *testing.T) []typedToolSchemaCase {
 	return []typedToolSchemaCase{
 		{"create alert", normalizedInputSchema(t, mcp.NewTool("signoz_create_alert", mcp.WithInputSchema[types.CreateAlertInput]()))},
 		{"update alert", normalizedInputSchema(t, mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]()))},
-		{"create dashboard", normalizedInputSchema(t, mcp.NewTool("signoz_create_dashboard", mcp.WithInputSchema[types.CreateDashboardInput]()))},
-		{"update dashboard", normalizedInputSchema(t, mcp.NewTool("signoz_update_dashboard", mcp.WithInputSchema[types.UpdateDashboardInput]()))},
+		// Dashboards are no longer typed-struct tools — they use embedded raw JSON
+		// Schemas (v2/Perses). Their schema is covered by TestWriteToolInputSchemasExposeSearchContext
+		// and TestUpdateStructs_IDNotSchemaRequired instead.
 	}
 }
 

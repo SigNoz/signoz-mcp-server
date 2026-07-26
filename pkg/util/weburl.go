@@ -80,6 +80,93 @@ func InjectWebURL(data []byte, base, resourceType, id string) []byte {
 	return out
 }
 
+// InjectListWebURL adds a webUrl deep link to each entry of a named array inside
+// a single passthrough JSON object — e.g. the v2 dashboards list, which the
+// backend wraps as {"data": {"dashboards": [...], "tags": [...], "total": N}}.
+// The array may sit at the top level or inside a {"data": {...}} envelope; both
+// are handled (mirroring InjectWebURL).
+//
+// Like InjectWebURL it decodes only as deep as each mutated level — the outer
+// object, the (optional) data envelope, the target array, and each entry — so
+// every untouched sibling (large int64 fields, number formatting, key order, the
+// tags/total fields, and each entry's other fields) passes through as verbatim
+// bytes rather than being re-encoded. Entries that are not objects, or whose id
+// (idKey) is missing/empty/non-string, are left untouched. On any failure —
+// empty base, unsupported type, missing array, or non-object body — it returns
+// the original bytes unchanged so enrichment can never corrupt a working response.
+func InjectListWebURL(data []byte, base, resourceType, arrayKey, idKey string) []byte {
+	if strings.TrimSpace(base) == "" {
+		return data
+	}
+	obj, ok := decodeShallowObject(data)
+	if !ok {
+		return data
+	}
+
+	// The list array may be at the top level or nested under a "data" envelope.
+	container := obj
+	wrapped := false
+	if inner, ok := decodeShallowObject(obj["data"]); ok {
+		if _, hasArr := inner[arrayKey]; hasArr {
+			container = inner
+			wrapped = true
+		}
+	}
+
+	var entries []json.RawMessage
+	if err := json.Unmarshal(container[arrayKey], &entries); err != nil || entries == nil {
+		return data
+	}
+
+	changed := false
+	for i, raw := range entries {
+		entry, ok := decodeShallowObject(raw)
+		if !ok {
+			continue
+		}
+		var id string
+		if err := json.Unmarshal(entry[idKey], &id); err != nil || strings.TrimSpace(id) == "" {
+			continue
+		}
+		webURL, ok := ResourceWebURL(base, resourceType, id)
+		if !ok {
+			continue
+		}
+		urlJSON, err := json.Marshal(webURL)
+		if err != nil {
+			continue
+		}
+		entry["webUrl"] = urlJSON
+		entryJSON, err := json.Marshal(entry)
+		if err != nil {
+			continue
+		}
+		entries[i] = entryJSON
+		changed = true
+	}
+	if !changed {
+		return data
+	}
+
+	arrJSON, err := json.Marshal(entries)
+	if err != nil {
+		return data
+	}
+	container[arrayKey] = arrJSON
+	if wrapped {
+		innerJSON, err := json.Marshal(container)
+		if err != nil {
+			return data
+		}
+		obj["data"] = innerJSON
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return data
+	}
+	return out
+}
+
 // InjectRowsResult reports what InjectRowsWebURL observed while walking a v5 raw
 // body, so callers can distinguish ordinary "no data" from a probable upstream
 // shape change. Because enrichment fails open, that drift is otherwise silent;

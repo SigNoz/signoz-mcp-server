@@ -18,12 +18,11 @@ type MockClient struct {
 	ListAlertRulesFn            func(ctx context.Context) (json.RawMessage, error)
 	GetAlertByRuleIDFn          func(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistoryFn           func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
-	ListDashboardsFn            func(ctx context.Context) (json.RawMessage, error)
-	GetDashboardFn              func(ctx context.Context, uuid string) (json.RawMessage, error)
-	CreateDashboardFn           func(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error)
-	UpdateDashboardFn           func(ctx context.Context, id string, dashboard types.Dashboard) error
+	ListDashboardsFn            func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
+	GetDashboardFn              func(ctx context.Context, id string) (json.RawMessage, error)
 	CreateDashboardRawFn        func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
-	UpdateDashboardRawFn        func(ctx context.Context, id string, dashboardJSON []byte) error
+	UpdateDashboardRawFn        func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error)
+	PatchDashboardRawFn         func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error)
 	DeleteDashboardFn           func(ctx context.Context, id string) error
 	ListServicesFn              func(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperationsFn   func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
@@ -101,32 +100,18 @@ func (m *MockClient) GetAlertHistory(ctx context.Context, ruleID string, req typ
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) ListDashboards(ctx context.Context) (json.RawMessage, error) {
+func (m *MockClient) ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
 	if m.ListDashboardsFn != nil {
-		return m.ListDashboardsFn(ctx)
+		return m.ListDashboardsFn(ctx, limit, offset, filter, sort, order)
 	}
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) GetDashboard(ctx context.Context, uuid string) (json.RawMessage, error) {
+func (m *MockClient) GetDashboard(ctx context.Context, id string) (json.RawMessage, error) {
 	if m.GetDashboardFn != nil {
-		return m.GetDashboardFn(ctx, uuid)
+		return m.GetDashboardFn(ctx, id)
 	}
 	return json.RawMessage(`{}`), nil
-}
-
-func (m *MockClient) CreateDashboard(ctx context.Context, dashboard types.Dashboard) (json.RawMessage, error) {
-	if m.CreateDashboardFn != nil {
-		return m.CreateDashboardFn(ctx, dashboard)
-	}
-	return json.RawMessage(`{}`), nil
-}
-
-func (m *MockClient) UpdateDashboard(ctx context.Context, id string, dashboard types.Dashboard) error {
-	if m.UpdateDashboardFn != nil {
-		return m.UpdateDashboardFn(ctx, id, dashboard)
-	}
-	return nil
 }
 
 func (m *MockClient) CreateDashboardRaw(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
@@ -136,11 +121,18 @@ func (m *MockClient) CreateDashboardRaw(ctx context.Context, dashboardJSON []byt
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) error {
+func (m *MockClient) UpdateDashboardRaw(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
 	if m.UpdateDashboardRawFn != nil {
 		return m.UpdateDashboardRawFn(ctx, id, dashboardJSON)
 	}
-	return nil
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) PatchDashboardRaw(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+	if m.PatchDashboardRawFn != nil {
+		return m.PatchDashboardRawFn(ctx, id, patchJSON)
+	}
+	return json.RawMessage(`{}`), nil
 }
 
 func (m *MockClient) DeleteDashboard(ctx context.Context, id string) error {
