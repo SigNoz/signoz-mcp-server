@@ -206,7 +206,8 @@ The binary is at `./bin/signoz-mcp-server`.
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
-- SigNoz v0.131.0 or newer for `signoz_check_metric_usage`
+- SigNoz v0.135.0 or newer for the dashboard tools (create/get/update/patch/list/delete/import), which use the v2/Perses dashboards API
+- SigNoz v0.135.0 or newer for `signoz_check_metric_usage` (it reads v2/Perses dashboards for dashboard usage; on older versions the dashboard half is silently empty, though alert usage alone works from v0.131.0)
 - SigNoz v0.120.0 or newer for alert-rule list/get/create/update/delete tools, and v0.118.0 or newer for alert history
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
@@ -334,7 +335,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` targets `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...`, available in SigNoz v0.131.0 and newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -474,7 +475,7 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
 
 #### `signoz_check_metric_usage`
 
-Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v2/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric. Requires SigNoz v0.131.0+.
+Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v3/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric. Dashboard usage needs SigNoz v0.135.0 (the v3 route reads v2/Perses dashboards, live in v0.135.0; older versions return empty dashboards); alert usage works from v0.131.0.
 
 - **Parameters**:
   - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
