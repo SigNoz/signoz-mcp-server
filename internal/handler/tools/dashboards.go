@@ -394,6 +394,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 		return upstreamError(err), nil
 	}
 
+	data = enrichCreatedDashboardWebURL(ctx, data)
 	return structuredResult(data), nil
 }
 

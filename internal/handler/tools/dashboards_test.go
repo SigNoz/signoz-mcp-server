@@ -366,6 +366,40 @@ func TestHandleImportDashboard_Success(t *testing.T) {
 	}
 }
 
+func TestHandleImportDashboard_AddsWebURL(t *testing.T) {
+	// Import POSTs to the same v2 create endpoint as create, so the created
+	// dashboard body carries an id; the handler injects a webUrl deep link too.
+	template := `{"schemaVersion":"v6","spec":{"display":{"name":"Host Metrics"}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(template))
+	}))
+	defer srv.Close()
+
+	origBase := templateRepoBaseURLVar
+	templateRepoBaseURLVar = srv.URL
+	t.Cleanup(func() { templateRepoBaseURLVar = origBase })
+	withTemplateServer(t, srv)
+
+	mock := &client.MockClient{
+		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"id":"new-id-1","name":"hosts"}}`), nil
+		},
+	}
+	result, err := newTestHandler(mock).handleImportDashboard(ctxWithURL(), makeToolRequest(
+		"signoz_import_dashboard", map[string]any{"path": "hostmetrics/hostmetrics.json"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/new-id-1"`) {
+		t.Fatalf("expected webUrl on imported dashboard, got: %s", body)
+	}
+}
+
 func TestHandleImportDashboard_MissingPath(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleImportDashboard(testCtx(), makeToolRequest(
