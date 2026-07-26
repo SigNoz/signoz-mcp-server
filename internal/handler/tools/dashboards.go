@@ -130,7 +130,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_update_dashboard",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, merge only the requested changes, and preserve every other field. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. "+
+			"Use this when the user wants to change an existing SigNoz dashboard. This is a full replacement, not a partial patch: fetch it with signoz_get_dashboard, take the \"data\" object out of that response, merge only the requested changes into it, and preserve every other field. Send that object's fields at the top level; the {status, data} response envelope is not accepted as input. For small, targeted edits prefer signoz_patch_dashboard, which avoids re-sending the whole dashboard. "+
 				"Use signoz_update_view instead for a saved Explorer query. Before composing changed panels, read signoz://dashboard/instructions, signoz://dashboard/widgets-instructions, and signoz://dashboard/widgets-examples, then follow the query-specific resource linked by the widget guide.",
 		),
 		rawInputSchema(updateDashboardSchema),
@@ -449,26 +449,21 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return notAConfigObjectError(), nil
 	}
 
-	// A fetched dashboard may arrive wrapped in the v2 {status, data:{…}} envelope
-	// (as signoz_get_dashboard returns it); operate on the inner object.
-	source := rawConfig
-	if inner, ok := rawConfig["data"].(map[string]any); ok {
-		source = inner
+	// The schema takes the dashboard body itself, so name the read envelope rather than failing on a missing id.
+	if _, wrapped := rawConfig["data"].(map[string]any); wrapped {
+		h.logger.WarnContext(ctx, "Received the signoz_get_dashboard response envelope instead of a dashboard body")
+		return errorWithCode(CodeValidationFailed, `Parameter validation failed: pass the dashboard body, not the signoz_get_dashboard response envelope. Extract its "data" object and send that object's fields (schemaVersion, name, tags, spec) at the top level, with "id" as a parameter.`), nil
 	}
 
-	// id may be a top-level param or the fetched dashboard's own id.
 	uuid := readResourceID(rawConfig, "uuid")
-	if uuid == "" {
-		uuid = readResourceID(source, "uuid")
-	}
 	if uuid == "" {
 		h.logger.WarnContext(ctx, "Empty id parameter")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
 
 	// Keep only updatable body fields so a fetched dashboard's read-only fields don't trip the v2 decoder.
-	updatable := make(map[string]any, len(source))
-	for k, v := range source {
+	updatable := make(map[string]any, len(rawConfig))
+	for k, v := range rawConfig {
 		if _, ok := updatableDashboardFields[k]; ok {
 			updatable[k] = v
 		}

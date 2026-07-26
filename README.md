@@ -561,7 +561,7 @@ Returns the full bundled catalog of curated SigNoz dashboard templates as `{"tem
 
 #### `signoz_update_dashboard`
 
-Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, merge only the requested changes, and preserve every other field. Use `signoz_update_view` for a saved Explorer query.
+Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, take the `data` object out of that response, merge only the requested changes into it, and send that object's fields at the top level, preserving every other field. The `{status, data}` response envelope is not accepted as input. Use `signoz_update_view` for a saved Explorer query.
 
 - **Parameters:**
   - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)

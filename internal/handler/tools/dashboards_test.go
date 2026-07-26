@@ -154,9 +154,8 @@ func TestHandleCreateDashboard_GenerateNameDefault(t *testing.T) {
 }
 
 func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
-	// The handler must resolve the id, drop the {status,data} envelope and all
-	// read-only fields, and forward only updatable body fields — whether the
-	// caller sends a bare dashboard (id as a param) or the fetched envelope.
+	// The handler must resolve the id, drop read-only fields, and forward only
+	// updatable body fields. The caller unwraps the fetched envelope itself.
 	cases := []struct {
 		name string
 		args map[string]any
@@ -178,22 +177,6 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 				"locked":        false,
 				"source":        "user",
 				"webUrl":        "http://localhost:8080/dashboard/d-1",
-			},
-		},
-		{
-			name: "fetched {status,data} envelope with id inside data",
-			args: map[string]any{
-				"status": "success",
-				"data": map[string]any{
-					"id":            "d-1",
-					"schemaVersion": "v6",
-					"name":          "d-1",
-					"tags":          []any{},
-					"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
-					"createdAt":     "2026-01-01T00:00:00Z",
-					"orgId":         "org-1",
-					"webUrl":        "http://localhost:8080/dashboard/d-1",
-				},
 			},
 		},
 	}
@@ -237,6 +220,38 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHandleUpdateDashboard_RejectsReadEnvelope(t *testing.T) {
+	// The read envelope is not an accepted input shape; the caller must unwrap
+	// "data" itself, and the error must say so rather than blaming a missing id.
+	mock := &client.MockClient{
+		UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
+			t.Fatal("handler must not call upstream for the read envelope")
+			return nil, nil
+		},
+	}
+
+	h := newTestHandler(mock)
+	result, err := h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", map[string]any{
+		"status": "success",
+		"data": map[string]any{
+			"id":            "d-1",
+			"schemaVersion": "v6",
+			"name":          "d-1",
+			"tags":          []any{},
+			"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result for the {status,data} read envelope")
+	}
+	if got := resultText(t, result); !strings.Contains(got, `"data"`) {
+		t.Errorf("error should tell the caller to extract %q, got: %s", "data", got)
 	}
 }
 

@@ -95,7 +95,7 @@
     },
     {
       "name": "signoz_update_dashboard",
-      "description": "Fully replace a dashboard after fetching its definition and preserving every unrequested field"
+      "description": "Fully replace a dashboard after fetching its definition, unwrapping the response's data object, and preserving every unrequested field"
     },
     {
       "name": "signoz_patch_dashboard",
