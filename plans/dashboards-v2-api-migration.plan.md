@@ -3,6 +3,17 @@
 ## Status
 Done
 
+## Review follow-up (2026-07-27)
+
+- Enforce the backend's exactly-one-query-per-panel invariant in both generated create/update schemas (`minItems: 1`, `maxItems: 1`) and guard it with schema validation tests.
+- Reject unknown top-level update fields locally with a deterministic `VALIDATION_FAILED` result while continuing to strip the documented read-only fields returned by `signoz_get_dashboard`.
+- Track `patch: null` validation and cancellation log-level handling separately in `SigNoz/nerve-pod#175`.
+- Defer bundled-template v6 migration/import gating and legacy v1 dashboard reads to their later follow-up work, per review scope.
+- Keep the existing update-field docs, synchronize README/manifest with the review-driven patch caveat, and make no companion agent-skills change because merged `SigNoz/agent-skills#77` already teaches exactly one panel query and the flat writable update shape.
+- Re-run focused tests, the full Go suite/build, Agent CI, and the MCP best-practices section 11 review checklist before handoff.
+
+**Outcome.** The selected fixes and review-driven guidance/test corrections are complete. Create/update schemas and the generator enforce exactly one outer panel query; the tool, generated patch schema, resource, README, and manifest explicitly say to replace query index 0 rather than append; unknown update fields fail with deterministic field-specific recovery while audited read-only/routing fields are stripped. Fable 5, Opus 5, and an independent Codex reviewer checked the final design. `go test -count=1 ./...`, the focused guardrail suite, `go vet ./...`, build, formatting/diff checks, and byte-for-byte schema regeneration are green. Agent CI passed both secret-free workflows; six other jobs could not start without repository-only credentials.
+
 - Schema extraction; client → v2 + `PatchDashboardRaw`; pass-through handlers on the shared helpers (canonical `id` + `uuid` alias, structured output); embedded JSON Schemas; `name` auto-generation; old v1 types deleted; `handleImportDashboard` made pass-through and import/list-templates tools registered against the v6 templates; list `filter`/`sort`/`order`; all v6 resources rewritten in place + registered (`instructions` = basics/layout/variables, `widgets-instructions` = concepts, `widgets-examples` = worked round-tripped panels, `list-filter-guide`, `patch-instructions` = live-verified RFC 6902 recipes, `examples` = whole v6 dashboards) and linked from the relevant tools; metric dashboard-usage moved to the v3 (Perses) endpoint; the deprecated v1 `dashboardbuilder`/`panelbuilder`/`pipeline` build-validate code removed; tests + docs synced. `go build`, `gofmt -l`, `go test ./...` green. The companion `SigNoz/agent-skills` (v6 skills) and `SigNoz/dashboards` (v6 templates) PRs land alongside this one.
 
 ## Context (brief)

@@ -166,6 +166,7 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 				"id":            "d-1",
 				"searchContext": "rename it",
 				"schemaVersion": "v6",
+				"image":         "https://example.com/dashboard.png",
 				"name":          "d-1",
 				"tags":          []any{},
 				"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
@@ -214,9 +215,88 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 					t.Errorf("envelope/read-only field %q must not reach the PUT body: %s", k, gotBody)
 				}
 			}
-			for _, k := range []string{"schemaVersion", "name", "tags", "spec"} {
+			for _, k := range []string{"schemaVersion", "image", "name", "tags", "spec"} {
 				if _, present := parsed[k]; !present {
 					t.Errorf("updatable field %q missing from the PUT body: %s", k, gotBody)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleUpdateDashboard_RejectsUnknownFields(t *testing.T) {
+	cases := []struct {
+		name          string
+		args          map[string]any
+		wantUnknown   []string
+		wantGrammar   string
+		wantOrderPair [2]string
+	}{
+		{
+			name: "complete payload with misspelled field",
+			args: map[string]any{
+				"id":            "d-1",
+				"schemaVersion": "v6",
+				"name":          "d-1",
+				"tags":          []any{},
+				"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
+				"tagz":          []any{},
+			},
+			wantUnknown: []string{`"tagz"`},
+			wantGrammar: `"tagz" is not recognized as a dashboard update field`,
+		},
+		{
+			name:        "typo-only payload cannot become a no-op",
+			args:        map[string]any{"id": "d-1", "tagz": []any{}},
+			wantUnknown: []string{`"tagz"`},
+			wantGrammar: `"tagz" is not recognized as a dashboard update field`,
+		},
+		{
+			name:          "multiple fields are reported deterministically",
+			args:          map[string]any{"id": "d-1", "zeta": true, "alpha": true},
+			wantUnknown:   []string{`"alpha"`, `"zeta"`},
+			wantGrammar:   `"alpha", "zeta" are not recognized as dashboard update fields`,
+			wantOrderPair: [2]string{`"alpha"`, `"zeta"`},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &client.MockClient{
+				UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
+					t.Fatal("handler must not call upstream for unknown update fields")
+					return nil, nil
+				},
+			}
+
+			result, err := newTestHandler(mock).handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", tc.args))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected error result for unknown update fields")
+			}
+			if code := resultCode(t, result); code != CodeValidationFailed {
+				t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+			}
+			body := resultText(t, result)
+			for _, field := range tc.wantUnknown {
+				if !strings.Contains(body, field) {
+					t.Errorf("error should name unknown field %s, got: %s", field, body)
+				}
+			}
+			if !strings.Contains(body, `"tags"`) {
+				t.Errorf("error should name accepted writable fields, got: %s", body)
+			}
+			if !strings.Contains(body, tc.wantGrammar) {
+				t.Errorf("error should use field-specific recovery grammar %q, got: %s", tc.wantGrammar, body)
+			}
+			if !strings.Contains(body, `pass "id" separately`) || !strings.Contains(body, "read-only fields") {
+				t.Errorf("error should explain routing and read-only normalization, got: %s", body)
+			}
+			if first, second := tc.wantOrderPair[0], tc.wantOrderPair[1]; first != "" {
+				if strings.Index(body, first) >= strings.Index(body, second) {
+					t.Errorf("unknown fields must be sorted in the error: %s", body)
 				}
 			}
 		})

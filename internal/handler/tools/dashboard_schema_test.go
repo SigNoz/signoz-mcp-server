@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -72,6 +73,120 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 		}
 		if err := resolved.Validate(v); err != nil {
 			t.Errorf("example %d does not validate against DashboardtypesPanel: %v", i, err)
+		}
+	}
+}
+
+// TestDashboardSchemasEnforceExactlyOnePanelQuery guards the local schema
+// correction that mirrors the backend's panel validation. The outer panel
+// queries array must contain exactly one query, while that query may itself be
+// a CompositeQuery containing multiple builder queries and formulas.
+func TestDashboardSchemasEnforceExactlyOnePanelQuery(t *testing.T) {
+	panels := extractJSONObjects(dashboard.WidgetExamples)
+	if len(panels) == 0 {
+		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
+	}
+	// The first example intentionally uses a CompositeQuery with several nested
+	// entries, proving the constraint applies only to the panel's outer array.
+	basePanel := panels[0]
+	var assertedPanel map[string]any
+	if err := json.Unmarshal([]byte(basePanel), &assertedPanel); err != nil {
+		t.Fatalf("first example panel is not valid JSON: %v", err)
+	}
+	panelSpec, ok := assertedPanel["spec"].(map[string]any)
+	if !ok {
+		t.Fatal("first example panel has no object spec")
+	}
+	outerQueries, ok := panelSpec["queries"].([]any)
+	if !ok || len(outerQueries) != 1 {
+		t.Fatalf("first example must have exactly one outer query, got %T with length %d", panelSpec["queries"], len(outerQueries))
+	}
+	outerQuery, ok := outerQueries[0].(map[string]any)
+	if !ok {
+		t.Fatal("first example's outer query is not an object")
+	}
+	querySpec, ok := outerQuery["spec"].(map[string]any)
+	if !ok {
+		t.Fatal("first example's outer query has no object spec")
+	}
+	plugin, ok := querySpec["plugin"].(map[string]any)
+	if !ok || plugin["kind"] != "signoz/CompositeQuery" {
+		t.Fatalf("first example must use signoz/CompositeQuery, got %v", querySpec["plugin"])
+	}
+	pluginSpec, ok := plugin["spec"].(map[string]any)
+	if !ok {
+		t.Fatal("first example's CompositeQuery has no object spec")
+	}
+	nestedQueries, ok := pluginSpec["queries"].([]any)
+	if !ok || len(nestedQueries) < 2 {
+		t.Fatalf("first example's CompositeQuery must have at least two nested entries, got %T with length %d", pluginSpec["queries"], len(nestedQueries))
+	}
+
+	for schemaName, raw := range map[string][]byte{
+		"create": createDashboardSchema,
+		"update": updateDashboardSchema,
+	} {
+		t.Run(schemaName, func(t *testing.T) {
+			var full jsonschema.Schema
+			if err := json.Unmarshal(raw, &full); err != nil {
+				t.Fatalf("%s schema does not parse: %v", schemaName, err)
+			}
+			panelSchema := &jsonschema.Schema{
+				Ref:  "#/$defs/DashboardtypesPanel",
+				Defs: full.Defs,
+			}
+			resolved, err := panelSchema.Resolve(nil)
+			if err != nil {
+				t.Fatalf("%s panel schema does not resolve: %v", schemaName, err)
+			}
+
+			for _, queryCount := range []int{0, 1, 2} {
+				t.Run(fmt.Sprintf("queries_%d", queryCount), func(t *testing.T) {
+					var panel map[string]any
+					if err := json.Unmarshal([]byte(basePanel), &panel); err != nil {
+						t.Fatalf("example panel is not valid JSON: %v", err)
+					}
+					spec := panel["spec"].(map[string]any)
+					queries := spec["queries"].([]any)
+					switch queryCount {
+					case 0:
+						spec["queries"] = []any{}
+					case 1:
+						// Keep the valid CompositeQuery example unchanged.
+					case 2:
+						spec["queries"] = append(queries, queries[0])
+					}
+
+					err := resolved.Validate(panel)
+					if queryCount == 1 && err != nil {
+						t.Fatalf("one outer query should validate: %v", err)
+					}
+					if queryCount != 1 && err == nil {
+						t.Fatalf("%d outer queries should fail validation", queryCount)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestPatchSchemaCarriesOneQueryRecovery(t *testing.T) {
+	var schema struct {
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(patchDashboardSchema, &schema); err != nil {
+		t.Fatalf("patch schema does not parse: %v", err)
+	}
+	description := schema.Properties["patch"].Description
+	for _, required := range []string{
+		"replace /spec/panels/<id>/spec/queries/0",
+		"never add or append a second outer query",
+		"signoz/CompositeQuery",
+	} {
+		if !strings.Contains(description, required) {
+			t.Errorf("patch description must include %q, got: %s", required, description)
 		}
 	}
 }

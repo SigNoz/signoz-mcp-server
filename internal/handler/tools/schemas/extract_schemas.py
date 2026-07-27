@@ -6,7 +6,9 @@ Generator for the embedded dashboard input schemas in this directory
 It takes the three v2 (Perses) root schemas from SigNoz's OpenAPI spec, computes
 the transitive $ref closure of each, rewrites the OAS refs into self-contained
 JSON Schema ($defs), converts OAS 3.0 `nullable: true` into JSON-Schema null
-unions, and injects the top-level `searchContext` property. The Perses plugin
+unions, injects the top-level `searchContext` property, and adds the backend's
+exactly-one-query-per-panel cardinality constraint plus patch-specific recovery
+guidance that the upstream reflector cannot express. The Perses plugin
 `oneOf`/discriminator unions are preserved (struct reflection can't express them).
 
 The MCP server is a pass-through: these schemas are served to clients verbatim
@@ -128,6 +130,26 @@ def pin_discriminators(defs):
             if prop not in req:
                 req.append(prop)
 
+def enforce_panel_query_cardinality(defs):
+    """Match the v2 backend's exactly-one-query-per-panel validation.
+
+    The upstream OpenAPI reflector currently omits the slice bounds enforced by
+    DashboardtypesPanelSpec validation. Apply them only to the panel's outer
+    queries array; CompositeQuery's nested queries array intentionally supports
+    multiple entries.
+    """
+    panel_spec = defs.get('DashboardtypesPanelSpec')
+    if panel_spec is None:
+        return
+    queries = panel_spec.get('properties', {}).get('queries')
+    if not isinstance(queries, dict) or queries.get('type') != 'array':
+        raise SystemExit('DashboardtypesPanelSpec.queries is missing or is not an array')
+    for bound in ('minItems', 'maxItems'):
+        existing = queries.get(bound)
+        if existing not in (None, 1):
+            raise SystemExit(f'DashboardtypesPanelSpec.queries has conflicting {bound}: {existing}')
+        queries[bound] = 1
+
 def build_defs(root_name):
     names = closure(root_name)
     names.discard(root_name)  # root inlined at top level; deps in $defs
@@ -135,9 +157,14 @@ def build_defs(root_name):
     for n in sorted(names):
         defs[n] = rewrite_refs(schemas[n])
     pin_discriminators(defs)
+    enforce_panel_query_cardinality(defs)
     return defs
 
 SEARCH_CTX = {"type": "string", "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."}
+PATCH_DESCRIPTION = ("RFC 6902 operations. A panel must retain exactly one outer query: "
+                     "replace /spec/panels/<id>/spec/queries/0; never add or append a second "
+                     "outer query. Use signoz/CompositeQuery inside that one query for multiple "
+                     "series. See signoz://dashboard/patch-instructions.")
 
 def assert_no_oas_refs(doc, label):
     s = json.dumps(doc)
@@ -180,6 +207,7 @@ reports['update'] = (update['required'], list(update['properties'].keys()), len(
 
 # ---- patch: id + patch(PatchableDashboardV2) + searchContext ----
 proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
+proot['description'] = PATCH_DESCRIPTION
 pdefs = build_defs('DashboardtypesPatchableDashboardV2')
 # K5 contract: `id` + `uuid` alias, neither required (only `patch` is required).
 patch = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",

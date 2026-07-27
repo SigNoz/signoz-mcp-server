@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,6 +42,27 @@ var patchDashboardSchema []byte
 // GET-only fields like createdAt/orgId/webUrl must be dropped or v2 rejects them.
 var updatableDashboardFields = updatableFieldsFromSchema(updateDashboardSchema)
 
+// dashboardUpdateIgnoredFields are routing/MCP fields plus the read-only
+// fields returned by GettableDashboardV2. They may be present when a caller
+// writes back a fetched dashboard, but they must not reach the strict PUT body.
+// Any field outside this set and updatableDashboardFields is rejected so a
+// misspelling cannot turn into a successful no-op update.
+var dashboardUpdateIgnoredFields = map[string]struct{}{
+	"id":            {},
+	"uuid":          {},
+	"searchContext": {},
+	"createdAt":     {},
+	"updatedAt":     {},
+	"createdBy":     {},
+	"updatedBy":     {},
+	"orgId":         {},
+	"locked":        {},
+	"source":        {},
+	"webUrl":        {},
+}
+
+var updatableDashboardFieldNames = sortedDashboardFieldNames(updatableDashboardFields)
+
 func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 	var s struct {
 		Properties map[string]json.RawMessage `json:"properties"`
@@ -57,6 +79,23 @@ func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 		}
 	}
 	return fields
+}
+
+func sortedDashboardFieldNames(fields map[string]struct{}) []string {
+	names := make([]string, 0, len(fields))
+	for name := range fields {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func quotedDashboardFieldNames(fields []string) string {
+	quoted := make([]string, len(fields))
+	for i, field := range fields {
+		quoted[i] = fmt.Sprintf("%q", field)
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // rawInputSchema wires a pre-built JSON Schema as a tool's input schema. It
@@ -145,6 +184,7 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 			"Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. "+
 				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
 				"e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /spec/variables/0, /tags/-. "+
+				"A panel keeps exactly one outer query: replace /spec/panels/<panelId>/spec/queries/0; never append a second one. "+
 				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable) — it is far cheaper than rebuilding the full dashboard. "+
 				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. "+
 				"Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
@@ -451,7 +491,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// The schema takes the dashboard body itself, so name the read envelope rather than failing on a missing id.
-	if _, wrapped := rawConfig["data"].(map[string]any); wrapped {
+	if _, wrapped := rawConfig["data"]; wrapped {
 		h.logger.WarnContext(ctx, "Received the signoz_get_dashboard response envelope instead of a dashboard body")
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: pass the dashboard body, not the signoz_get_dashboard response envelope. Extract its "data" object and send that object's fields (schemaVersion, name, tags, spec) at the top level, with "id" as a parameter.`), nil
 	}
@@ -462,12 +502,34 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Provide a valid dashboard UUID. Use signoz_list_dashboards tool to see available dashboards.`), nil
 	}
 
-	// Keep only updatable body fields so a fetched dashboard's read-only fields don't trip the v2 decoder.
+	// Keep the updatable body fields and strip only the known read-back/routing
+	// fields. Reject everything else so typos cannot silently become no-op edits.
 	updatable := make(map[string]any, len(rawConfig))
+	unknownFields := make([]string, 0)
 	for k, v := range rawConfig {
 		if _, ok := updatableDashboardFields[k]; ok {
 			updatable[k] = v
+			continue
 		}
+		if _, ok := dashboardUpdateIgnoredFields[k]; !ok {
+			unknownFields = append(unknownFields, k)
+		}
+	}
+	if len(unknownFields) > 0 {
+		sort.Strings(unknownFields)
+		h.logger.WarnContext(ctx, "Received unrecognized dashboard update fields", slog.String("fields", strings.Join(unknownFields, ",")))
+		recognition, pronoun := "is not recognized as a dashboard update field", "it"
+		if len(unknownFields) > 1 {
+			recognition, pronoun = "are not recognized as dashboard update fields", "them"
+		}
+		return errorWithCode(CodeValidationFailed, fmt.Sprintf(
+			"Parameter validation failed: %s %s. Remove or correct %s. Known read-only fields from signoz_get_dashboard are stripped automatically; pass %q separately. Writable dashboard fields are: %s.",
+			quotedDashboardFieldNames(unknownFields),
+			recognition,
+			pronoun,
+			"id",
+			quotedDashboardFieldNames(updatableDashboardFieldNames),
+		)), nil
 	}
 
 	body, err := json.Marshal(updatable)
