@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.10.0] - 2026-07-27
+
+### Changed
+- **Breaking change:** dashboard tools now use the v2 Perses APIs and require SigNoz v0.135.0 or later ([#260](https://github.com/SigNoz/signoz-mcp-server/pull/260))
+
+### Documentation
+- streamline CLAUDE.md and extract plan templates ([#258](https://github.com/SigNoz/signoz-mcp-server/pull/258))
+
+### Other
+- bump google.golang.org/grpc from 1.79.3 to 1.82.1 ([#259](https://github.com/SigNoz/signoz-mcp-server/pull/259))
+
 ## [0.9.0] - 2026-07-22
 
 ### Added
@@ -328,3 +340,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.7.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.6.0...v0.7.0
 [0.8.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.7.0...v0.8.0
 [0.9.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.8.0...v0.9.0
+[0.10.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.9.0...v0.10.0
