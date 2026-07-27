@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.0] - 2026-07-27
 
-### Breaking Changes
-- dashboard tools now use the v2 Perses APIs and require SigNoz v0.135.0 or later ([#260](https://github.com/SigNoz/signoz-mcp-server/pull/260))
+### Changed
+- **Breaking change:** dashboard tools now use the v2 Perses APIs and require SigNoz v0.135.0 or later ([#260](https://github.com/SigNoz/signoz-mcp-server/pull/260))
 
 ### Documentation
 - streamline CLAUDE.md and extract plan templates ([#258](https://github.com/SigNoz/signoz-mcp-server/pull/258))
