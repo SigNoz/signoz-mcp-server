@@ -191,6 +191,41 @@ func TestPatchSchemaCarriesOneQueryRecovery(t *testing.T) {
 	}
 }
 
+func TestPatchSchemaRequiresArrayButAllowsEmpty(t *testing.T) {
+	var full jsonschema.Schema
+	if err := json.Unmarshal(patchDashboardSchema, &full); err != nil {
+		t.Fatalf("patch schema does not parse: %v", err)
+	}
+	resolved, err := full.Resolve(nil)
+	if err != nil {
+		t.Fatalf("patch schema does not resolve: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		patch     any
+		wantValid bool
+	}{
+		{name: "empty array remains valid", patch: []any{}, wantValid: true},
+		{name: "null is rejected", patch: nil},
+		{name: "object is rejected", patch: map[string]any{}},
+		{name: "string is rejected", patch: "[]"},
+		{name: "number is rejected", patch: float64(1)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := resolved.Validate(map[string]any{"patch": tc.patch})
+			if tc.wantValid && err != nil {
+				t.Fatalf("valid patch payload was rejected: %v", err)
+			}
+			if !tc.wantValid && err == nil {
+				t.Fatalf("invalid patch value %T should be rejected", tc.patch)
+			}
+		})
+	}
+}
+
 // TestDashboardExamplesValidateAgainstCreateSchema ties the dashboard-examples
 // resource to the embedded create schema: every complete dashboard served at
 // signoz://dashboard/examples must validate as a create payload clients are handed.

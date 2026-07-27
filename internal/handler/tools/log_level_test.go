@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"testing"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
 // TestLogUpstreamFailureLevels pins the severity contract of the shared
@@ -62,6 +64,75 @@ func TestLogUpstreamFailureLevels(t *testing.T) {
 			}
 			if rec["filter"] != "x" {
 				t.Fatalf("filter attr = %v, want %q (extra attrs must survive the helper)", rec["filter"], "x")
+			}
+		})
+	}
+}
+
+func TestHandlePatchDashboardFailureLogLevels(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantLevel string
+		wantMsg   string
+		wantCode  string
+	}{
+		{
+			name:      "wrapped cancellation logs debug",
+			err:       fmt.Errorf("patch request aborted: %w", context.Canceled),
+			wantLevel: "DEBUG",
+			wantMsg:   "Failed to patch dashboard in SigNoz (request cancelled by client)",
+			wantCode:  CodeCanceled,
+		},
+		{
+			name:      "genuine failure logs error",
+			err:       errors.New("boom"),
+			wantLevel: "ERROR",
+			wantMsg:   "Failed to patch dashboard in SigNoz",
+			wantCode:  CodeUpstreamError,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			mock := &client.MockClient{
+				PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+					return nil, tc.err
+				},
+			}
+			h := newTestHandler(mock)
+			h.logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			result, err := h.handlePatchDashboard(context.Background(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+				"id": "d-1",
+				"patch": []any{
+					map[string]any{"op": "replace", "path": "/spec/display/name", "value": "Renamed"},
+				},
+			}))
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected upstream error result")
+			}
+			if code := resultCode(t, result); code != tc.wantCode {
+				t.Fatalf("code = %q, want %q", code, tc.wantCode)
+			}
+
+			lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+			if len(lines) < 2 {
+				t.Fatalf("expected tool-call and failure records, got %q", buf.String())
+			}
+			var rec map[string]any
+			if err := json.Unmarshal(lines[len(lines)-1], &rec); err != nil {
+				t.Fatalf("decode final log record %q: %v", lines[len(lines)-1], err)
+			}
+			if rec["level"] != tc.wantLevel {
+				t.Fatalf("level = %v, want %s", rec["level"], tc.wantLevel)
+			}
+			if rec["msg"] != tc.wantMsg {
+				t.Fatalf("msg = %v, want %q", rec["msg"], tc.wantMsg)
 			}
 		})
 	}

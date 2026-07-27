@@ -566,13 +566,14 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "id" is required. Use signoz_list_dashboards to find dashboard ids.`), nil
 	}
 
-	patch, ok := rawConfig["patch"]
-	if !ok {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "patch" is required and must be an array of RFC 6902 operations.`), nil
+	patchOps, ok := rawConfig["patch"].([]any)
+	if !ok || patchOps == nil {
+		h.logger.WarnContext(ctx, "Invalid patch parameter")
+		return validationError("patch", `must be an array of RFC 6902 operation objects. Send [] for an intentional no-op, or provide operations such as [{"op":"replace","path":"/spec/display/name","value":"New name"}].`), nil
 	}
 
 	// Forward the JSON Patch op array to PATCH /api/v2/dashboards/{id}.
-	body, err := json.Marshal(patch)
+	body, err := json.Marshal(patchOps)
 	if err != nil {
 		return InternalErrorResult(fmt.Sprintf("failed to encode patch: %s", err.Error())), nil
 	}
@@ -584,7 +585,7 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 	}
 	data, err := client.PatchDashboardRaw(ctx, uuid, body)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to patch dashboard in SigNoz", logpkg.ErrAttr(err))
+		h.logUpstreamFailure(ctx, "Failed to patch dashboard in SigNoz", err)
 		return upstreamError(err), nil
 	}
 

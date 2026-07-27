@@ -14,10 +14,7 @@
       "items": {
         "$ref": "#/$defs/DashboardtypesJSONPatchOperation"
       },
-      "type": [
-        "array",
-        "null"
-      ],
+      "type": "array",
       "description": "RFC 6902 operations. A panel must retain exactly one outer query: replace /spec/panels/<id>/spec/queries/0; never add or append a second outer query. Use signoz/CompositeQuery inside that one query for multiple series. See signoz://dashboard/patch-instructions."
     },
     "searchContext": {

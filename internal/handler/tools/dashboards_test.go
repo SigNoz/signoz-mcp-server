@@ -335,6 +335,80 @@ func TestHandleUpdateDashboard_RejectsReadEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlePatchDashboard_RejectsNonArrayPatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		patch any
+	}{
+		{name: "null", patch: nil},
+		{name: "typed nil array", patch: []any(nil)},
+		{name: "object", patch: map[string]any{}},
+		{name: "string", patch: "[]"},
+		{name: "number", patch: float64(1)},
+		{name: "boolean", patch: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &client.MockClient{
+				PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+					t.Fatal("invalid patch must not call upstream")
+					return nil, nil
+				},
+			}
+
+			result, err := newTestHandler(mock).handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+				"id":    "d-1",
+				"patch": tc.patch,
+			}))
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected validation error result")
+			}
+			if code := resultCode(t, result); code != CodeValidationFailed {
+				t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+			}
+			body := resultText(t, result)
+			for _, required := range []string{`"patch"`, "array", "RFC 6902", "Send []"} {
+				if !strings.Contains(body, required) {
+					t.Errorf("validation recovery should contain %q, got: %s", required, body)
+				}
+			}
+		})
+	}
+}
+
+func TestHandlePatchDashboard_AllowsEmptyArray(t *testing.T) {
+	var calls int
+	var gotBody []byte
+	mock := &client.MockClient{
+		PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+			calls++
+			if id != "d-1" {
+				t.Errorf("id = %q, want d-1", id)
+			}
+			gotBody = append([]byte(nil), patchJSON...)
+			return json.RawMessage(`{"status":"success","data":{"id":"d-1"}}`), nil
+		},
+	}
+
+	result, err := newTestHandler(mock).handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+		"id":    "d-1",
+		"patch": []any{},
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("empty patch should succeed: err=%v result=%v", err, result.Content)
+	}
+	if calls != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls)
+	}
+	if string(gotBody) != "[]" {
+		t.Fatalf("forwarded patch = %s, want []", gotBody)
+	}
+}
+
 func TestHandleDeleteDashboard_EmptyUUID(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{

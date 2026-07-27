@@ -150,6 +150,21 @@ def enforce_panel_query_cardinality(defs):
             raise SystemExit(f'DashboardtypesPanelSpec.queries has conflicting {bound}: {existing}')
         queries[bound] = 1
 
+def enforce_patch_array_type(schema):
+    """Reject OpenAPI's nullable patch root while preserving empty arrays.
+
+    DashboardtypesPatchableDashboardV2 is reflected as a nullable array, but
+    null is not an RFC 6902 patch document. Keep the generic nullable rewrite
+    intact for every other schema and narrow only this patch-tool root.
+    """
+    patch_type = schema.get('type')
+    if patch_type == 'array':
+        return
+    if isinstance(patch_type, list) and len(patch_type) == 2 and set(patch_type) == {'array', 'null'}:
+        schema['type'] = 'array'
+        return
+    raise SystemExit(f'DashboardtypesPatchableDashboardV2 has unexpected type: {patch_type}')
+
 def build_defs(root_name):
     names = closure(root_name)
     names.discard(root_name)  # root inlined at top level; deps in $defs
@@ -207,6 +222,7 @@ reports['update'] = (update['required'], list(update['properties'].keys()), len(
 
 # ---- patch: id + patch(PatchableDashboardV2) + searchContext ----
 proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
+enforce_patch_array_type(proot)
 proot['description'] = PATCH_DESCRIPTION
 pdefs = build_defs('DashboardtypesPatchableDashboardV2')
 # K5 contract: `id` + `uuid` alias, neither required (only `patch` is required).
