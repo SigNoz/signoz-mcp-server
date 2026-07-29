@@ -65,16 +65,42 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 	if len(panels) == 0 {
 		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
 	}
+	hasMultiEntryComposite := false
 	for i, block := range panels {
-		var v any
-		if err := json.Unmarshal([]byte(block), &v); err != nil {
+		var panel map[string]any
+		if err := json.Unmarshal([]byte(block), &panel); err != nil {
 			t.Errorf("example %d is not valid JSON: %v", i, err)
 			continue
 		}
-		if err := resolved.Validate(v); err != nil {
+		if err := resolved.Validate(panel); err != nil {
 			t.Errorf("example %d does not validate against DashboardtypesPanel: %v", i, err)
 		}
+		if panelHasMultiEntryCompositeQuery(panel) {
+			hasMultiEntryComposite = true
+		}
 	}
+	if !hasMultiEntryComposite {
+		t.Fatal("widget examples must include a CompositeQuery with multiple nested queries")
+	}
+}
+
+func panelHasMultiEntryCompositeQuery(panel map[string]any) bool {
+	spec, _ := panel["spec"].(map[string]any)
+	queries, _ := spec["queries"].([]any)
+	for _, rawQuery := range queries {
+		query, _ := rawQuery.(map[string]any)
+		querySpec, _ := query["spec"].(map[string]any)
+		plugin, _ := querySpec["plugin"].(map[string]any)
+		if plugin["kind"] != "signoz/CompositeQuery" {
+			continue
+		}
+		pluginSpec, _ := plugin["spec"].(map[string]any)
+		nestedQueries, _ := pluginSpec["queries"].([]any)
+		if len(nestedQueries) > 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // TestDashboardSchemasEnforceExactlyOnePanelQuery guards the local schema
@@ -86,40 +112,19 @@ func TestDashboardSchemasEnforceExactlyOnePanelQuery(t *testing.T) {
 	if len(panels) == 0 {
 		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
 	}
-	// The first example intentionally uses a CompositeQuery with several nested
-	// entries, proving the constraint applies only to the panel's outer array.
-	basePanel := panels[0]
-	var assertedPanel map[string]any
-	if err := json.Unmarshal([]byte(basePanel), &assertedPanel); err != nil {
-		t.Fatalf("first example panel is not valid JSON: %v", err)
+	// Select by contract rather than position so documentation examples can be
+	// reordered. Using the composite fixture also proves both schemas leave its
+	// nested queries unbounded while constraining only the outer array.
+	var basePanel string
+	for _, block := range panels {
+		var panel map[string]any
+		if err := json.Unmarshal([]byte(block), &panel); err == nil && panelHasMultiEntryCompositeQuery(panel) {
+			basePanel = block
+			break
+		}
 	}
-	panelSpec, ok := assertedPanel["spec"].(map[string]any)
-	if !ok {
-		t.Fatal("first example panel has no object spec")
-	}
-	outerQueries, ok := panelSpec["queries"].([]any)
-	if !ok || len(outerQueries) != 1 {
-		t.Fatalf("first example must have exactly one outer query, got %T with length %d", panelSpec["queries"], len(outerQueries))
-	}
-	outerQuery, ok := outerQueries[0].(map[string]any)
-	if !ok {
-		t.Fatal("first example's outer query is not an object")
-	}
-	querySpec, ok := outerQuery["spec"].(map[string]any)
-	if !ok {
-		t.Fatal("first example's outer query has no object spec")
-	}
-	plugin, ok := querySpec["plugin"].(map[string]any)
-	if !ok || plugin["kind"] != "signoz/CompositeQuery" {
-		t.Fatalf("first example must use signoz/CompositeQuery, got %v", querySpec["plugin"])
-	}
-	pluginSpec, ok := plugin["spec"].(map[string]any)
-	if !ok {
-		t.Fatal("first example's CompositeQuery has no object spec")
-	}
-	nestedQueries, ok := pluginSpec["queries"].([]any)
-	if !ok || len(nestedQueries) < 2 {
-		t.Fatalf("first example's CompositeQuery must have at least two nested entries, got %T with length %d", pluginSpec["queries"], len(nestedQueries))
+	if basePanel == "" {
+		t.Fatal("no multi-entry CompositeQuery panel found in dashboard.WidgetExamples")
 	}
 
 	for schemaName, raw := range map[string][]byte{
@@ -152,7 +157,7 @@ func TestDashboardSchemasEnforceExactlyOnePanelQuery(t *testing.T) {
 					case 0:
 						spec["queries"] = []any{}
 					case 1:
-						// Keep the valid CompositeQuery example unchanged.
+						// Keep the valid one-query example unchanged.
 					case 2:
 						spec["queries"] = append(queries, queries[0])
 					}

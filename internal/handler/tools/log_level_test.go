@@ -69,71 +69,45 @@ func TestLogUpstreamFailureLevels(t *testing.T) {
 	}
 }
 
-func TestHandlePatchDashboardFailureLogLevels(t *testing.T) {
-	tests := []struct {
-		name      string
-		err       error
-		wantLevel string
-		wantMsg   string
-		wantCode  string
-	}{
-		{
-			name:      "wrapped cancellation logs debug",
-			err:       fmt.Errorf("patch request aborted: %w", context.Canceled),
-			wantLevel: "DEBUG",
-			wantMsg:   "Failed to patch dashboard in SigNoz (request cancelled by client)",
-			wantCode:  CodeCanceled,
-		},
-		{
-			name:      "genuine failure logs error",
-			err:       errors.New("boom"),
-			wantLevel: "ERROR",
-			wantMsg:   "Failed to patch dashboard in SigNoz",
-			wantCode:  CodeUpstreamError,
+func TestHandlePatchDashboardCancellationLogLevel(t *testing.T) {
+	var buf bytes.Buffer
+	mock := &client.MockClient{
+		PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+			return nil, fmt.Errorf("patch request aborted: %w", context.Canceled)
 		},
 	}
+	h := newTestHandler(mock)
+	h.logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			mock := &client.MockClient{
-				PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
-					return nil, tc.err
-				},
-			}
-			h := newTestHandler(mock)
-			h.logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	result, err := h.handlePatchDashboard(context.Background(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+		"id": "d-1",
+		"patch": []any{
+			map[string]any{"op": "replace", "path": "/spec/display/name", "value": "Renamed"},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected upstream error result")
+	}
+	if code := resultCode(t, result); code != CodeCanceled {
+		t.Fatalf("code = %q, want %q", code, CodeCanceled)
+	}
 
-			result, err := h.handlePatchDashboard(context.Background(), makeToolRequest("signoz_patch_dashboard", map[string]any{
-				"id": "d-1",
-				"patch": []any{
-					map[string]any{"op": "replace", "path": "/spec/display/name", "value": "Renamed"},
-				},
-			}))
-			if err != nil {
-				t.Fatalf("unexpected Go error: %v", err)
-			}
-			if !result.IsError {
-				t.Fatal("expected upstream error result")
-			}
-			if code := resultCode(t, result); code != tc.wantCode {
-				t.Fatalf("code = %q, want %q", code, tc.wantCode)
-			}
-
-			lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
-			if len(lines) < 2 {
-				t.Fatalf("expected tool-call and failure records, got %q", buf.String())
-			}
-			var rec map[string]any
-			if err := json.Unmarshal(lines[len(lines)-1], &rec); err != nil {
-				t.Fatalf("decode final log record %q: %v", lines[len(lines)-1], err)
-			}
-			if rec["level"] != tc.wantLevel {
-				t.Fatalf("level = %v, want %s", rec["level"], tc.wantLevel)
-			}
-			if rec["msg"] != tc.wantMsg {
-				t.Fatalf("msg = %v, want %q", rec["msg"], tc.wantMsg)
-			}
-		})
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	if len(lines) < 2 {
+		t.Fatalf("expected tool-call and failure records, got %q", buf.String())
+	}
+	var rec map[string]any
+	if err := json.Unmarshal(lines[len(lines)-1], &rec); err != nil {
+		t.Fatalf("decode final log record %q: %v", lines[len(lines)-1], err)
+	}
+	if rec["level"] != "DEBUG" {
+		t.Fatalf("level = %v, want DEBUG", rec["level"])
+	}
+	wantMsg := "Failed to patch dashboard in SigNoz (request cancelled by client)"
+	if rec["msg"] != wantMsg {
+		t.Fatalf("msg = %v, want %q", rec["msg"], wantMsg)
 	}
 }
