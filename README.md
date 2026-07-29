@@ -570,7 +570,7 @@ Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, take
 
 #### `signoz_patch_dashboard`
 
-Applies an RFC 6902 JSON Patch to a dashboard — a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). A panel keeps exactly one outer query: replace `/spec/panels/<panelId>/spec/queries/0`; never append a second one (use `signoz/CompositeQuery` inside that one query for multiple series). Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths — notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
+Applies an RFC 6902 JSON Patch to a dashboard — a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). A panel's v2 payload keeps exactly one outer query wrapper: replace `/spec/panels/<panelId>/spec/queries/0`; never append a sibling outer wrapper. Put multiple logical queries or formulas inside that wrapper as a `signoz/CompositeQuery`. Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths — notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
 
 - **Parameters:**
   - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)

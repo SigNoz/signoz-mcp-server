@@ -7,7 +7,7 @@ It takes the three v2 (Perses) root schemas from SigNoz's OpenAPI spec, computes
 the transitive $ref closure of each, rewrites the OAS refs into self-contained
 JSON Schema ($defs), converts OAS 3.0 `nullable: true` into JSON-Schema null
 unions, injects the top-level `searchContext` property, and adds the backend's
-exactly-one-query-per-panel cardinality constraint plus patch-specific recovery
+exactly-one-outer-query-wrapper-per-panel cardinality constraint plus patch-specific recovery
 guidance that the upstream reflector cannot express. The Perses plugin
 `oneOf`/discriminator unions are preserved (struct reflection can't express them).
 
@@ -131,7 +131,7 @@ def pin_discriminators(defs):
                 req.append(prop)
 
 def enforce_panel_query_cardinality(defs):
-    """Match the v2 backend's exactly-one-query-per-panel validation.
+    """Match the v2 backend's exactly-one-outer-query-wrapper validation.
 
     The upstream OpenAPI reflector currently omits the slice bounds enforced by
     DashboardtypesPanelSpec validation. Apply them only to the panel's outer
@@ -144,6 +144,13 @@ def enforce_panel_query_cardinality(defs):
     queries = panel_spec.get('properties', {}).get('queries')
     if not isinstance(queries, dict) or queries.get('type') != 'array':
         raise SystemExit('DashboardtypesPanelSpec.queries is missing or is not an array')
+    description = ("Exactly one outer v2 query wrapper. This does not limit logical queries: "
+                   "use a signoz/CompositeQuery plugin and put multiple queries or formulas "
+                   "in its spec.queries.")
+    existing_description = queries.get('description')
+    if existing_description not in (None, description):
+        raise SystemExit('DashboardtypesPanelSpec.queries has conflicting description')
+    queries['description'] = description
     for bound in ('minItems', 'maxItems'):
         existing = queries.get(bound)
         if existing not in (None, 1):
@@ -203,10 +210,10 @@ def build_defs(root_name):
     return defs
 
 SEARCH_CTX = {"type": "string", "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."}
-PATCH_DESCRIPTION = ("RFC 6902 operations. A panel must retain exactly one outer query: "
-                     "replace /spec/panels/<panelId>/spec/queries/0; never add or append a second "
-                     "outer query. Use signoz/CompositeQuery inside that one query for multiple "
-                     "series. See signoz://dashboard/patch-instructions.")
+PATCH_DESCRIPTION = ("RFC 6902 operations. A panel's v2 payload must retain exactly one outer query "
+                     "wrapper: replace /spec/panels/<panelId>/spec/queries/0; never add or append a "
+                     "sibling outer wrapper. Use signoz/CompositeQuery inside that wrapper for "
+                     "multiple logical queries or formulas. See signoz://dashboard/patch-instructions.")
 
 def assert_no_oas_refs(doc, label):
     s = json.dumps(doc)

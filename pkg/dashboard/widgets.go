@@ -47,8 +47,8 @@ Field Discovery:
 - When a Query Builder field name is not already known, call signoz_get_field_keys with the widget's signal and fieldContext before composing the query; use signoz_get_field_values when observed values help verify the filter.
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
-One query per panel [CRITICAL]:
-A panel holds exactly ONE query; the create/update tool schemas and backend enforce it. For patch calls, replace /spec/panels/<panelId>/spec/queries/0 rather than appending a second outer query. To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery — each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
+One outer query wrapper per panel [CRITICAL]:
+A panel's v2 payload contains exactly ONE outer query wrapper; the create/update tool schemas and backend enforce that wire shape. For patch calls, replace /spec/panels/<panelId>/spec/queries/0 rather than appending a second outer wrapper. To plot multiple logical queries or compute a formula, make that wrapper a signoz/CompositeQuery, with each builder query and formula as an entry inside plugin.spec.queries. When a panel needs only one logical query and no formula, prefer setting the outer wrapper's plugin directly (e.g. signoz/BuilderQuery) — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
 
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.

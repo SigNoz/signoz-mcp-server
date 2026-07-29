@@ -181,13 +181,14 @@ func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
 		"signoz_patch_dashboard",
 		withPatchToolAnnotations(),
 		mcp.WithDescription(
-			"Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. "+
-				"Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, "+
+			"Apply an RFC 6902 JSON Patch to a v2 dashboard without resending it. "+
+				"Supply 'id' and 'patch' (an array of {op, path, value}); paths target the postable shape, "+
 				"e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /spec/variables/0, /tags/-. "+
-				"A panel keeps exactly one outer query: replace /spec/panels/<panelId>/spec/queries/0; never append a second one. "+
-				"Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable) — it is far cheaper than rebuilding the full dashboard. "+
+				"A panel has one outer query wrapper: replace /spec/panels/<panelId>/spec/queries/0; never append a sibling. "+
+				"Put multiple logical queries or formulas inside it as a signoz/CompositeQuery. "+
+				"Prefer this over signoz_update_dashboard for targeted edits. "+
 				"Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. "+
-				"Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
+				"Read signoz://dashboard/patch-instructions for recipes and exact paths (adding a panel takes two ops).",
 		),
 		rawInputSchema(patchDashboardSchema),
 	)

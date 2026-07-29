@@ -96,11 +96,11 @@ func panelHasMultiEntryCompositeQuery(panel map[string]any) bool {
 	return false
 }
 
-// TestDashboardSchemasEnforceExactlyOnePanelQuery guards the local schema
-// correction that mirrors the backend's panel validation. The outer panel
-// queries array must contain exactly one query, while that query may itself be
-// a CompositeQuery containing multiple builder queries and formulas.
-func TestDashboardSchemasEnforceExactlyOnePanelQuery(t *testing.T) {
+// TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper guards the local
+// schema correction that mirrors the backend's panel validation. The outer
+// panel queries array must contain exactly one wrapper, while its CompositeQuery
+// plugin may contain multiple builder queries and formulas.
+func TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper(t *testing.T) {
 	panels := extractJSONObjects(dashboard.WidgetExamples)
 	if len(panels) == 0 {
 		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
@@ -129,6 +129,21 @@ func TestDashboardSchemasEnforceExactlyOnePanelQuery(t *testing.T) {
 			if err := json.Unmarshal(raw, &full); err != nil {
 				t.Fatalf("%s schema does not parse: %v", schemaName, err)
 			}
+			panelSpec := full.Defs["DashboardtypesPanelSpec"]
+			if panelSpec == nil || panelSpec.Properties["queries"] == nil {
+				t.Fatalf("%s schema is missing DashboardtypesPanelSpec.queries", schemaName)
+			}
+			queryDescription := panelSpec.Properties["queries"].Description
+			for _, required := range []string{
+				"Exactly one outer v2 query wrapper",
+				"does not limit logical queries",
+				"signoz/CompositeQuery",
+				"multiple queries or formulas",
+			} {
+				if !strings.Contains(queryDescription, required) {
+					t.Errorf("%s panel queries description must include %q, got: %s", schemaName, required, queryDescription)
+				}
+			}
 			panelSchema := &jsonschema.Schema{
 				Ref:  "#/$defs/DashboardtypesPanel",
 				Defs: full.Defs,
@@ -150,17 +165,17 @@ func TestDashboardSchemasEnforceExactlyOnePanelQuery(t *testing.T) {
 					case 0:
 						spec["queries"] = []any{}
 					case 1:
-						// Keep the valid one-query example unchanged.
+						// Keep the valid one-outer-wrapper example unchanged.
 					case 2:
 						spec["queries"] = append(queries, queries[0])
 					}
 
 					err := resolved.Validate(panel)
 					if queryCount == 1 && err != nil {
-						t.Fatalf("one outer query should validate: %v", err)
+						t.Fatalf("one outer query wrapper should validate: %v", err)
 					}
 					if queryCount != 1 && err == nil {
-						t.Fatalf("%d outer queries should fail validation", queryCount)
+						t.Fatalf("%d outer query wrappers should fail validation", queryCount)
 					}
 				})
 			}
@@ -184,9 +199,11 @@ func TestPatchSchemaCarriesOneQueryRecovery(t *testing.T) {
 	}
 	description := schema.Properties["patch"].Description
 	for _, required := range []string{
+		"exactly one outer query wrapper",
 		"replace /spec/panels/<panelId>/spec/queries/0",
-		"never add or append a second outer query",
+		"never add or append a sibling outer wrapper",
 		"signoz/CompositeQuery",
+		"multiple logical queries or formulas",
 	} {
 		if !strings.Contains(description, required) {
 			t.Errorf("patch description must include %q, got: %s", required, description)

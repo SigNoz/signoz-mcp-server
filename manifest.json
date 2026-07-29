@@ -99,7 +99,7 @@
     },
     {
       "name": "signoz_patch_dashboard",
-      "description": "Apply an RFC 6902 JSON Patch to a dashboard by id; replace a panel's sole outer query rather than appending another"
+      "description": "Apply an RFC 6902 JSON Patch to a dashboard by id; replace a panel's outer query wrapper and use signoz/CompositeQuery inside it for multiple logical queries or formulas"
     },
     {
       "name": "signoz_delete_dashboard",

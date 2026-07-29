@@ -101,3 +101,12 @@ The user approved all three findings from the final multi-agent review: remove t
 
 ### 2026-07-29 — Final review fixes outcome
 The schema generator now normalizes panel paths to `<panelId>`, advertises only `/queries/0` for outer panel-query replacement, and preserves `/-` guidance for appendable arrays such as tags; the generated schema and patch resources are synchronized and regression-tested. The cancellation test now requires only the failure record, and CompositeQuery fixture ownership remains solely in the cardinality regression. Focused and full tests, guardrails, vet, build, formatting, byte-identical regeneration, and three post-fix reviews passed. Agent CI passed both runnable jobs; credentialed workflows could not start without repository-only GitHub/GoReleaser access or private `primus.workflows` access.
+
+### 2026-07-29 — Outer-query terminology correction approved
+The user clarified that a SigNoz panel supports multiple logical queries and formulas, so the phrase "one query per panel" can misstate product capability even though the v2 backend correctly requires exactly one entry in the outer `panel.spec.queries` array. Keep the create/update cardinality constraint, but describe it consistently as one outer query wrapper whose `signoz/CompositeQuery` plugin may contain multiple logical query and formula entries. Synchronize the tool, resources, README, manifest, generated schemas, tests, and PR description; accepted request shapes and runtime behavior do not change.
+
+### 2026-07-29 — Outer-query terminology correction outcome
+Client-visible tool, resource, README, manifest, and generated-schema guidance now distinguishes the required single outer v2 query wrapper from the multiple logical queries and formulas allowed inside `signoz/CompositeQuery`. The create/update schemas explain the distinction beside their unchanged `minItems: 1` and `maxItems: 1` bounds, and focused tests pin both the description and nested multi-entry example. The initial expanded tool description exceeded the 1,024-byte wire budget; it was tightened without losing the distinction. Focused tests, the full Go suite, guardrails, vet, build, formatting, byte-identical schema regeneration, and a post-change wording review passed.
+
+### 2026-07-29 — Outer-query terminology Agent CI outcome
+Agent CI passed both runnable secret-free workflows. Five credentialed workflow entries could not start because the local environment lacks repository-only Primus, Docker Hub, GitHub, and GoReleaser credentials; no runnable job failed.
