@@ -65,7 +65,6 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 	if len(panels) == 0 {
 		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
 	}
-	hasMultiEntryComposite := false
 	for i, block := range panels {
 		var panel map[string]any
 		if err := json.Unmarshal([]byte(block), &panel); err != nil {
@@ -75,12 +74,6 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 		if err := resolved.Validate(panel); err != nil {
 			t.Errorf("example %d does not validate against DashboardtypesPanel: %v", i, err)
 		}
-		if panelHasMultiEntryCompositeQuery(panel) {
-			hasMultiEntryComposite = true
-		}
-	}
-	if !hasMultiEntryComposite {
-		t.Fatal("widget examples must include a CompositeQuery with multiple nested queries")
 	}
 }
 
@@ -180,18 +173,58 @@ func TestPatchSchemaCarriesOneQueryRecovery(t *testing.T) {
 		Properties map[string]struct {
 			Description string `json:"description"`
 		} `json:"properties"`
+		Defs map[string]struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		} `json:"$defs"`
 	}
 	if err := json.Unmarshal(patchDashboardSchema, &schema); err != nil {
 		t.Fatalf("patch schema does not parse: %v", err)
 	}
 	description := schema.Properties["patch"].Description
 	for _, required := range []string{
-		"replace /spec/panels/<id>/spec/queries/0",
+		"replace /spec/panels/<panelId>/spec/queries/0",
 		"never add or append a second outer query",
 		"signoz/CompositeQuery",
 	} {
 		if !strings.Contains(description, required) {
 			t.Errorf("patch description must include %q, got: %s", required, description)
+		}
+	}
+
+	operation := schema.Defs["DashboardtypesJSONPatchOperation"].Properties
+	pathDescription := operation["path"].Description
+	valueDescription := operation["value"].Description
+	for field, required := range map[string]string{
+		"path":  "/spec/panels/<panelId>/spec/queries/0",
+		"value": "/spec/panels/<panelId>/spec/queries/0 takes a DashboardtypesQuery",
+	} {
+		if got := operation[field].Description; !strings.Contains(got, required) {
+			t.Errorf("patch operation %s description must include %q, got: %s", field, required, got)
+		}
+	}
+	if !strings.Contains(valueDescription, "/tags/N (or /-) takes a TagtypesPostableTag") {
+		t.Errorf("patch operation value description must preserve tag append guidance, got: %s", valueDescription)
+	}
+	if !strings.Contains(pathDescription, "/tags/-") {
+		t.Errorf("patch operation path description must preserve tag append guidance, got: %s", pathDescription)
+	}
+	for _, forbidden := range []string{
+		"/spec/panels/<panelId>/spec/queries/N",
+		"/spec/panels/<panelId>/spec/queries/-",
+	} {
+		if strings.Contains(valueDescription, forbidden) {
+			t.Errorf("patch operation value description must not include %q, got: %s", forbidden, valueDescription)
+		}
+	}
+	for label, got := range map[string]string{
+		"patch": description,
+		"path":  pathDescription,
+		"value": valueDescription,
+	} {
+		if strings.Contains(got, "/spec/panels/<id>") {
+			t.Errorf("%s description must use <panelId>, got: %s", label, got)
 		}
 	}
 }

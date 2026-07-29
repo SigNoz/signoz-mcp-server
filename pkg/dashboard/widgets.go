@@ -48,7 +48,7 @@ Field Discovery:
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
 One query per panel [CRITICAL]:
-A panel holds exactly ONE query; the create/update tool schemas and backend enforce it. For patch calls, replace /spec/panels/<id>/spec/queries/0 rather than appending a second outer query. To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery — each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
+A panel holds exactly ONE query; the create/update tool schemas and backend enforce it. For patch calls, replace /spec/panels/<panelId>/spec/queries/0 rather than appending a second outer query. To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery — each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
 
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.

@@ -165,6 +165,33 @@ def enforce_patch_array_type(schema):
         return
     raise SystemExit(f'DashboardtypesPatchableDashboardV2 has unexpected type: {patch_type}')
 
+def enforce_patch_operation_guidance(defs):
+    """Keep generated JSON Patch guidance consistent with panel cardinality."""
+    operation = defs.get('DashboardtypesJSONPatchOperation')
+    properties = operation.get('properties', {}) if isinstance(operation, dict) else {}
+    path = properties.get('path')
+    value = properties.get('value')
+    if not isinstance(path, dict) or not isinstance(value, dict):
+        raise SystemExit('DashboardtypesJSONPatchOperation path/value descriptions are missing')
+
+    old_panel_path = '/spec/panels/<id>'
+    panel_path = '/spec/panels/<panelId>'
+    for field in (path, value):
+        description = field.get('description', '')
+        if old_panel_path in description:
+            description = description.replace(old_panel_path, panel_path)
+        elif panel_path not in description:
+            raise SystemExit('DashboardtypesJSONPatchOperation panel path guidance is missing')
+        field['description'] = description
+
+    old_query_path = f'{panel_path}/spec/queries/N (or /-)'
+    query_path = f'{panel_path}/spec/queries/0'
+    description = value['description']
+    if old_query_path in description:
+        value['description'] = description.replace(old_query_path, query_path)
+    elif query_path not in description:
+        raise SystemExit('DashboardtypesJSONPatchOperation query path guidance is unexpected')
+
 def build_defs(root_name):
     names = closure(root_name)
     names.discard(root_name)  # root inlined at top level; deps in $defs
@@ -177,7 +204,7 @@ def build_defs(root_name):
 
 SEARCH_CTX = {"type": "string", "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."}
 PATCH_DESCRIPTION = ("RFC 6902 operations. A panel must retain exactly one outer query: "
-                     "replace /spec/panels/<id>/spec/queries/0; never add or append a second "
+                     "replace /spec/panels/<panelId>/spec/queries/0; never add or append a second "
                      "outer query. Use signoz/CompositeQuery inside that one query for multiple "
                      "series. See signoz://dashboard/patch-instructions.")
 
@@ -225,6 +252,7 @@ proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
 enforce_patch_array_type(proot)
 proot['description'] = PATCH_DESCRIPTION
 pdefs = build_defs('DashboardtypesPatchableDashboardV2')
+enforce_patch_operation_guidance(pdefs)
 # K5 contract: `id` + `uuid` alias, neither required (only `patch` is required).
 patch = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
          "properties": {

@@ -15,7 +15,7 @@
         "$ref": "#/$defs/DashboardtypesJSONPatchOperation"
       },
       "type": "array",
-      "description": "RFC 6902 operations. A panel must retain exactly one outer query: replace /spec/panels/<id>/spec/queries/0; never add or append a second outer query. Use signoz/CompositeQuery inside that one query for multiple series. See signoz://dashboard/patch-instructions."
+      "description": "RFC 6902 operations. A panel must retain exactly one outer query: replace /spec/panels/<panelId>/spec/queries/0; never add or append a second outer query. Use signoz/CompositeQuery inside that one query for multiple series. See signoz://dashboard/patch-instructions."
     },
     "searchContext": {
       "type": "string",
@@ -36,11 +36,11 @@
           "$ref": "#/$defs/DashboardtypesPatchOp"
         },
         "path": {
-          "description": "JSON Pointer (RFC 6901) into the dashboard's postable shape \u2014 e.g. /spec/display/name, /spec/panels/<id>, /spec/panels/<id>/spec/queries/0, /tags/-.",
+          "description": "JSON Pointer (RFC 6901) into the dashboard's postable shape \u2014 e.g. /spec/display/name, /spec/panels/<panelId>, /spec/panels/<panelId>/spec/queries/0, /tags/-.",
           "type": "string"
         },
         "value": {
-          "description": "Value to add/replace/test against. The expected type depends on the path. Common shapes (see referenced schemas for the exact field set): /spec/panels/<id> takes a DashboardtypesPanel; /spec/panels/<id>/spec/queries/N (or /-) takes a DashboardtypesQuery; /spec/variables/N takes a DashboardtypesVariable; /spec/layouts/N takes a DashboardtypesLayout; /tags/N (or /-) takes a TagtypesPostableTag; /spec/display/name and other leaf string fields take a string. Required for add/replace/test; ignored for remove/move/copy."
+          "description": "Value to add/replace/test against. The expected type depends on the path. Common shapes (see referenced schemas for the exact field set): /spec/panels/<panelId> takes a DashboardtypesPanel; /spec/panels/<panelId>/spec/queries/0 takes a DashboardtypesQuery; /spec/variables/N takes a DashboardtypesVariable; /spec/layouts/N takes a DashboardtypesLayout; /tags/N (or /-) takes a TagtypesPostableTag; /spec/display/name and other leaf string fields take a string. Required for add/replace/test; ignored for remove/move/copy."
         }
       },
       "required": [

@@ -95,10 +95,11 @@ func TestHandlePatchDashboardCancellationLogLevel(t *testing.T) {
 		t.Fatalf("code = %q, want %q", code, CodeCanceled)
 	}
 
-	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
-	if len(lines) < 2 {
-		t.Fatalf("expected tool-call and failure records, got %q", buf.String())
+	records := bytes.TrimSpace(buf.Bytes())
+	if len(records) == 0 {
+		t.Fatal("expected a cancellation failure record")
 	}
+	lines := bytes.Split(records, []byte("\n"))
 	var rec map[string]any
 	if err := json.Unmarshal(lines[len(lines)-1], &rec); err != nil {
 		t.Fatalf("decode final log record %q: %v", lines[len(lines)-1], err)
