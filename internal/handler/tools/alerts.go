@@ -592,7 +592,7 @@ func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string
 	}
 
 	if len(referencedChannels) == 0 {
-		return nil, validationResult(formatNoChannelsError(availableChannels, ruleType))
+		return nil, validationResult(formatNoAnomalyChannelsError(availableChannels))
 	}
 
 	if invalid := findInvalidChannels(referencedChannels, availableChannels); len(invalid) > 0 {
@@ -645,7 +645,8 @@ func fetchChannelNames(ctx context.Context, c signozclient.Client) ([]string, er
 
 func extractPreferredChannelReferences(rawConfig map[string]any) ([]string, bool) {
 	channels, _ := rawConfig["preferredChannels"].([]any)
-	return extractChannelNames(channels)
+	names, hasBlank := extractChannelNames(channels)
+	return uniqueStrings(names), hasBlank
 }
 
 func extractThresholdChannelReferences(rawConfig map[string]any) ([]string, []string, bool) {
@@ -667,8 +668,9 @@ func extractThresholdChannelReferences(rawConfig map[string]any) ([]string, []st
 		if !ok {
 			continue
 		}
-		tier := strings.TrimSpace(fmt.Sprint(spec["name"]))
-		if tier == "" || tier == "<nil>" {
+		tier, _ := spec["name"].(string)
+		tier = strings.TrimSpace(tier)
+		if tier == "" {
 			tier = fmt.Sprintf("index %d", i)
 		}
 		channels, ok := spec["channels"].([]any)
@@ -678,10 +680,6 @@ func extractThresholdChannelReferences(rawConfig map[string]any) ([]string, []st
 		}
 		names, blank := extractChannelNames(channels)
 		hasBlank = hasBlank || blank
-		if len(names) == 0 {
-			missingTiers = append(missingTiers, tier)
-			continue
-		}
 		allNames = append(allNames, names...)
 	}
 
@@ -699,8 +697,7 @@ func extractChannelNames(values []any) ([]string, bool) {
 		}
 		names = append(names, name)
 	}
-	return uniqueStrings(names), hasBlank
-
+	return names, hasBlank
 }
 
 func uniqueStrings(values []string) []string {
@@ -731,31 +728,20 @@ func findInvalidChannels(referenced, available []string) []string {
 	return invalid
 }
 
-func formatNoChannelsError(available []string, ruleType string) string {
+func formatNoAnomalyChannelsError(available []string) string {
 	var sb strings.Builder
-	sb.WriteString("No notification channels specified for direct routing. At least one existing channel is required")
-	if supportsPolicyRouting(ruleType) {
-		sb.WriteString(" unless notificationSettings.usePolicy=true selects a configured org-level routing policy")
-	}
-	sb.WriteString(".\n\n")
+	sb.WriteString("No notification channels specified for direct routing. At least one existing channel is required.\n\n")
 
 	if len(available) > 0 {
 		sb.WriteString("Available notification channels:\n")
 		for _, name := range available {
 			sb.WriteString(fmt.Sprintf("  - %s\n", name))
 		}
-		if ruleType == "anomaly_rule" {
-			sb.WriteString("\nPlease choose one or more channels and set them in preferredChannels.\n")
-		} else {
-			sb.WriteString("\nPlease set at least one channel in every condition.thresholds.spec[].channels array.\n")
-		}
+		sb.WriteString("\nPlease choose one or more channels and set them in preferredChannels.\n")
 	} else {
 		sb.WriteString("No notification channels exist yet.\n")
 	}
 	sb.WriteString("To create a new direct channel, use signoz_create_notification_channel.")
-	if supportsPolicyRouting(ruleType) {
-		sb.WriteString(" If configured org-policy routing is intended, set notificationSettings.usePolicy=true instead.")
-	}
 	return sb.String()
 }
 

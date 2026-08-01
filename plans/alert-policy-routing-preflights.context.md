@@ -45,5 +45,10 @@
 - Independent final server review found no remaining actionable issue. Formatting/imports, workflow lint, focused tests, guardrails, the full Go suite, `go vet`, build, manifest parsing, and diff checks passed.
 - Agent CI passed the two secret-free jobs; five broader jobs could not start without repository secrets, while their local format/test/vet/build equivalents passed. No live tenant resources were mutated.
 
+### 2026-08-01 — Post-review simplification
+- An Opus 5 high-effort review and three bounded reuse/quality/efficiency passes identified low-risk cleanup without changing the routing contract.
+- Remove unreachable v2 branches from the anomaly no-channel formatter, deduplicate threshold channel names only once while preserving anomaly `preferredChannels` deduplication, restore concise README quick-reference rows, drop one duplicated examples-only phrase assertion, and reflow the companion skill's query-pattern list.
+- Retain distinct create/update regressions, the complete policy-routing predicate table, policy-specific blank-channel recovery, and safety-critical resource metadata assertions because those independently protect the requested contracts.
+
 ## Open Questions
 - [x] Does `SigNoz/agent-skills` require a companion change for the corrected policy-routing and preflight-reuse contract? — Yes for policy routing; no for preflight reuse. Publish and link a focused companion PR.

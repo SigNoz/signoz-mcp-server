@@ -325,7 +325,6 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 			"Read signoz://alert/examples only when examples are still needed",
 		},
 		"signoz://alert/examples": {
-			"only when examples are still needed",
 			"V2 direct examples need verified channels on every threshold",
 			"confirmed v2 policy routing may omit them",
 			"Anomaly examples require verified top-level preferredChannels",

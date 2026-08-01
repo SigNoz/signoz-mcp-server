@@ -352,10 +352,10 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
 | `signoz_list_alert_rules` | List configured alert-rule summaries, including inactive/OK and disabled rules |
-| `signoz_get_alert` | Get a rule definition unless already fetched for the same still-current prepared update |
+| `signoz_get_alert` | Get one alert rule's full definition by `id` |
 | `signoz_get_alert_history` | Get one rule's firing or state-transition history |
 | `signoz_create_alert` | Create a v2 direct/policy-routed alert or a direct-routed v1 anomaly alert |
-| `signoz_update_alert` | Fully replace an alert using preflights from the same still-current prepared update |
+| `signoz_update_alert` | Fully replace an existing alert rule by `id` |
 | `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
 | `signoz_get_dashboard` | Get one dashboard's full layout, variables, panels, and queries |
