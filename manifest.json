@@ -46,6 +46,10 @@
       "description": "Return one metric's label or attribute keys sorted by cardinality with sample values; use signoz_check_metric_usage for dashboard and alert dependencies"
     },
     {
+      "name": "signoz_get_data_retention",
+      "description": "Return configured metrics, traces, and logs deletion retention in hours for newly ingested data, plus active custom log overrides and change status; this tool returns retention only, while ingestion volume starts with signoz_list_metrics source=\"meter\""
+    },
+    {
       "name": "signoz_get_field_keys",
       "description": "Discover available field names for filtering or grouping metrics, traces, or logs; use signoz_get_field_values after choosing a key"
     },

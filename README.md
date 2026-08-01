@@ -335,7 +335,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997. `signoz_get_data_retention` uses the custom-retention-aware logs API when available and falls back to the legacy default-log-retention API on older SigNoz versions.
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -348,6 +348,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
 | `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
+| `signoz_get_data_retention` | Return configured retention for metrics, traces, and logs, including custom log overrides |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -490,6 +491,16 @@ Return label/attribute keys for one metric with cardinality counts and sample va
   - `metricName` (required) - Metric name to inspect. Example: `k8s.container.memory_limit`
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '3d', '7d'; default: '7d'; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`
+
+#### `signoz_get_data_retention`
+
+Return the workspace's configured deletion retention for metrics, traces, and logs in one read-only call. The result includes the SigNoz Settings `webUrl`, current defaults when the backend can confirm them, change status, and ordered active custom log-retention overrides. Retention changes apply only to newly ingested data; existing data can retain an earlier TTL. This tool returns retention only; for ingestion volume, use `signoz_list_metrics` with `source="meter"`.
+
+- **Parameters**: none beyond the shared `searchContext`
+- **Example arguments**: `{"searchContext":"What retention is configured for metrics, traces, and logs?"}`
+- **Current state**: `currentStateKnown=true` means `currentRetentionHours` is the configured default for newly ingested data. When it is false, the custom-log API exposed only a pending or failed attempt; use `changeStatus` and `webUrl` for follow-up without claiming that attempt is active.
+- **Custom log rules**: `customRules` contains active ordered overrides. Each rule reports its conditions and exact retention in hours. The field is omitted for non-log signals, when there are no active overrides, or when `currentStateKnown=false`; in the last case the active overrides are unknown, not necessarily absent.
+- **UI location**: follow the returned `webUrl` to SigNoz Settings and review Retention Controls.
 
 #### `signoz_list_alerts`
 

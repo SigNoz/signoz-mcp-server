@@ -1,0 +1,6 @@
+{
+  "version": "v2",
+  "status": "success",
+  "default_ttl_days": 30,
+  "cold_storage_ttl_days": -1
+}

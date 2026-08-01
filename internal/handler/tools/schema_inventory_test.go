@@ -15,6 +15,7 @@ import (
 var expectedOutputSchemaTools = []string{
 	"signoz_check_metric_usage",
 	"signoz_fetch_doc",
+	"signoz_get_data_retention",
 	"signoz_list_alert_rules",
 	"signoz_list_alerts",
 	"signoz_search_docs",

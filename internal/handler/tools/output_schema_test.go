@@ -22,6 +22,13 @@ import (
 
 func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 	client := &signozclient.MockClient{
+		GetDataRetentionFn: func(context.Context) (*signozclient.DataRetention, error) {
+			return &signozclient.DataRetention{
+				Metrics: signozclient.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(720), ChangeStatus: "success"},
+				Traces:  signozclient.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(360), ChangeStatus: "success"},
+				Logs:    signozclient.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(360), ChangeStatus: "success"},
+			}, nil
+		},
 		ListAlertsFn: func(context.Context, types.ListAlertsParams) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":[]}`), nil
 		},
@@ -48,6 +55,9 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 		}},
 		{"signoz_check_metric_usage", func() (*mcp.CallToolResult, error) {
 			return h.handleCheckMetricUsage(testCtx(), makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"cpu"}}))
+		}},
+		{"signoz_get_data_retention", func() (*mcp.CallToolResult, error) {
+			return h.handleGetDataRetention(ctxWithURL(), makeToolRequest("signoz_get_data_retention", map[string]any{}))
 		}},
 	}
 

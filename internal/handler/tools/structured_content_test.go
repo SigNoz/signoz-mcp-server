@@ -206,6 +206,13 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 	const ruleID = "0196634d-5d66-75c4-b778-e317f49dab7a"
 	mock := &client.MockClient{
+		GetDataRetentionFn: func(context.Context) (*client.DataRetention, error) {
+			return &client.DataRetention{
+				Metrics: client.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(720), ChangeStatus: "success"},
+				Traces:  client.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(360), ChangeStatus: "success"},
+				Logs:    client.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(360), ChangeStatus: "success"},
+			}, nil
+		},
 		ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
 			return json.RawMessage(`[{"serviceName":"frontend"}]`), nil
 		},
@@ -250,6 +257,7 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 	}{
 		{"list_services", h.handleListServices, makeToolRequest("signoz_list_services", map[string]any{})},
 		{"check_metric_usage", h.handleCheckMetricUsage, makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"system.cpu.time"}})},
+		{"get_data_retention", h.handleGetDataRetention, makeToolRequest("signoz_get_data_retention", map[string]any{})},
 		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
 		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "d1"})},
 		{"create_dashboard", h.handleCreateDashboard, makeToolRequest("signoz_create_dashboard", map[string]any{"spec": map[string]any{"display": map[string]any{"name": "X"}}})},

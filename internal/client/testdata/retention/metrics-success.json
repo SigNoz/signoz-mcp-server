@@ -1,0 +1,7 @@
+{
+  "metrics_ttl_duration_hrs": 2160,
+  "metrics_move_ttl_duration_hrs": -1,
+  "expected_metrics_ttl_duration_hrs": 2160,
+  "expected_metrics_move_ttl_duration_hrs": -1,
+  "status": "success"
+}

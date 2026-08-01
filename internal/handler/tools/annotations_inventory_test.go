@@ -36,6 +36,7 @@ var expectedToolAnnotations = map[string]annotationTriple{
 	"signoz_get_alert":                   readTriple,
 	"signoz_get_alert_history":           readTriple,
 	"signoz_get_dashboard":               readTriple,
+	"signoz_get_data_retention":          readTriple,
 	"signoz_get_field_keys":              readTriple,
 	"signoz_get_field_values":            readTriple,
 	"signoz_get_notification_channel":    readTriple,

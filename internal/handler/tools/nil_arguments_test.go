@@ -83,6 +83,13 @@ func TestHandlers_NilArguments_NoPanic(t *testing.T) {
 // nil-Arguments fix. Same untyped-nil Arguments that previously panicked.
 func TestListHandlers_NilArguments_UseDefaults(t *testing.T) {
 	mock := &client.MockClient{
+		GetDataRetentionFn: func(ctx context.Context) (*client.DataRetention, error) {
+			return &client.DataRetention{
+				Metrics: client.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(720), ChangeStatus: "success"},
+				Traces:  client.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(360), ChangeStatus: "success"},
+				Logs:    client.RetentionPolicy{CurrentStateKnown: true, CurrentRetentionHours: retentionHoursPtr(360), ChangeStatus: "success"},
+			}, nil
+		},
 		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":[{"labels":{"alertname":"A","ruleId":"1","severity":"critical"},"startsAt":"","endsAt":"","status":{"state":"firing"}}]}`), nil
 		},
@@ -106,6 +113,7 @@ func TestListHandlers_NilArguments_UseDefaults(t *testing.T) {
 		{"signoz_list_services", h.handleListServices},
 		{"signoz_list_metrics", h.handleListMetrics},
 		{"signoz_get_top_metrics", h.handleGetTopMetrics},
+		{"signoz_get_data_retention", h.handleGetDataRetention},
 	}
 
 	for _, tc := range cases {

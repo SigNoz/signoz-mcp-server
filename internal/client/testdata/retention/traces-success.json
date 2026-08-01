@@ -1,0 +1,7 @@
+{
+  "traces_ttl_duration_hrs": 720,
+  "traces_move_ttl_duration_hrs": -1,
+  "expected_traces_ttl_duration_hrs": 720,
+  "expected_traces_move_ttl_duration_hrs": -1,
+  "status": "success"
+}

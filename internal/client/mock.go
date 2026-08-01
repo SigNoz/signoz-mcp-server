@@ -12,6 +12,7 @@ import (
 // otherwise returns a default empty JSON object and nil error.
 type MockClient struct {
 	GetAnalyticsIdentityFn      func(ctx context.Context) (*AnalyticsIdentity, error)
+	GetDataRetentionFn          func(ctx context.Context) (*DataRetention, error)
 	ListMetricsFn               func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	GetTopMetricsFn             func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlertsFn                func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
@@ -56,6 +57,13 @@ func (m *MockClient) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdenti
 		return m.GetAnalyticsIdentityFn(ctx)
 	}
 	return &AnalyticsIdentity{}, nil
+}
+
+func (m *MockClient) GetDataRetention(ctx context.Context) (*DataRetention, error) {
+	if m.GetDataRetentionFn != nil {
+		return m.GetDataRetentionFn(ctx)
+	}
+	return &DataRetention{}, nil
 }
 
 func (m *MockClient) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
