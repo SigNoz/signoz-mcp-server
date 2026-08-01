@@ -11,14 +11,14 @@ var formulaVariablePattern = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
 func TestAlertInstructionsDescribePolicyAwareChannelPreflight(t *testing.T) {
 	for _, required := range []string{
-		"For direct routing, require at least one existing channel reference",
-		"only if the user-selected names have not already been verified",
-		"reuse a current result instead of repeating the preflight",
-		"show the available names and ask the user to choose",
-		"For confirmed org-policy routing, set notificationSettings.usePolicy=true and omit direct channel references",
+		"same still-current prepared operation",
+		"refresh if state may have changed",
+		"every threshold tier requires verified condition.thresholds.spec[].channels",
+		"top-level preferredChannels is rejected",
+		"Confirmed v2 policy routing sets notificationSettings.usePolicy=true",
 		"every supplied name is still validated",
-		"validation returns the current names so you can retry",
-		"reuse it without repeating signoz_get_alert",
+		"V1 anomaly rules cannot use policy routing",
+		"require verified top-level preferredChannels",
 		"Never guess",
 	} {
 		if !strings.Contains(Instructions, required) {
@@ -30,6 +30,9 @@ func TestAlertInstructionsDescribePolicyAwareChannelPreflight(t *testing.T) {
 	}
 	if strings.Contains(Instructions, "requires at least one existing valid channel even when notificationSettings.usePolicy=true") {
 		t.Error("alert instructions must not retain the obsolete policy-routing channel requirement")
+	}
+	if strings.Contains(Instructions, "Fall back to rule-level preferredChannels") {
+		t.Error("alert instructions must not describe preferredChannels as a v2 routing fallback")
 	}
 }
 

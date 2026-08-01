@@ -20,5 +20,5 @@ const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, trace
 
 6. **Use returned webUrl values verbatim.** Resource results include SigNoz deep links. Never construct links from IDs or the instance URL.
 
-7. **Prepare mutations with reads.** Reuse reads from the same still-current operation; do not repeat them. Otherwise resolve names/IDs and fetch full replacement objects first. Refresh if state may have changed; preserve unchanged fields in replacements.
+7. **Prepare mutations with reads.** Reuse reads from the same still-current prepared operation; do not repeat them. Otherwise resolve names/IDs and fetch replacement objects. Refresh if state may have changed; preserve unchanged fields.
 `

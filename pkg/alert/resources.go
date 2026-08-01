@@ -12,10 +12,10 @@ Schemas supported:
 - **v1** for anomaly_rule — top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
 ## Before Creating or Updating an Alert
-1. Read signoz://alert/examples for complete alert payloads, including a Cost Meter cumulative-budget example, unless its current content was already read in this conversation.
-2. Before updating, use signoz_get_alert and merge the requested change into the complete current rule because update is a full replacement. If a complete current rule was already fetched, reuse it without repeating signoz_get_alert.
-3. Use signoz_get_field_keys to discover available attributes for filters and groupBy.
-4. NOTIFICATION ROUTING: For direct routing, require at least one existing channel reference. Call signoz_list_notification_channels only if the user-selected names have not already been verified; reuse a current result instead of repeating the preflight. If no direct channel was selected, show the available names and ask the user to choose; if none exist, use signoz_create_notification_channel. For confirmed org-policy routing, set notificationSettings.usePolicy=true and omit direct channel references. Never guess a channel name; every supplied name is still validated. If a verified name is removed or renamed before the write, validation returns the current names so you can retry.
+1. Read signoz://alert/examples for complete payloads unless already read for the same prepared operation.
+2. Update is a full replacement. Reuse signoz_get_alert only from the same still-current prepared operation; refresh if state may have changed, then preserve unchanged fields.
+3. Use signoz_get_field_keys to discover filter/groupBy attributes, reusing results from that operation.
+4. NOTIFICATION ROUTING: For v2 threshold/PromQL direct routing, every threshold tier requires verified condition.thresholds.spec[].channels and top-level preferredChannels is rejected. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit threshold channels; every supplied name is still validated. V1 anomaly rules cannot use policy routing and require verified top-level preferredChannels. Never guess names; refresh the channel list if state may have changed.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
@@ -24,7 +24,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
 5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*) — the backend indexes them.
-6. **Configure thresholds.** Tier name (critical | error | warning | info), op, matchType, target. For direct routing, include only channel names verified with signoz_list_notification_channels and ask the user if no valid selection exists. For confirmed org-policy routing, set notificationSettings.usePolicy=true and omit direct channels.
+6. **Configure thresholds.** Every threshold/PromQL rule requires tiers with name, op, matchType, and target. Direct routing requires verified channels on every tier; confirmed policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
 7. **Evaluation.** Leave defaults (evalWindow=5m, frequency=1m) unless the user asked for a different window.
 8. **Notification.** Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
 
@@ -202,7 +202,7 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 - **recoveryTarget**: hysteresis value to avoid flapping (e.g. target=80%, recoveryTarget=75%). null uses the target itself as the recovery point.
 - **matchType**: canonical at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total).
 - **op**: canonical above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=.
-- **channels**: existing notification channel names for this tier. Direct routing requires at least one valid channel reference across the payload. With notificationSettings.usePolicy=true, omit these because the org-level policy routes by labels. Verify every supplied name via signoz_list_notification_channels before mutation.
+- **channels**: existing notification channel names for this tier. Direct v2 routing requires at least one valid name on every tier; top-level preferredChannels is not a fallback. With notificationSettings.usePolicy=true, tier channels may be omitted. Verify every supplied name before mutation.
 
 ### Choosing targetUnit
 - Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds" — set target=5, targetUnit="s". SigNoz converts during evaluation.
@@ -264,14 +264,14 @@ A general evaluation kind, independent of signal/source — use it for any perio
 - **renotify.enabled**: whether to re-send alerts at interval.
 - **renotify.interval**: re-notify interval (e.g. 15m, 30m, 1h, 4h).
 - **renotify.alertStates**: accepted values are firing and nodata. Any other value is rejected.
-- **usePolicy**: routing mode. false (default) = deliver through direct channel references, with at least one valid channel required across the payload. true = ignore per-threshold channels for routing and use the org-level notification policy matching on labels; direct channel references may be omitted. Any supplied channel names are still validated.
+- **usePolicy**: v2 threshold/PromQL routing only. false (default) requires valid channels on every threshold tier. true uses the org-level policy matching on labels, so tier channels may be omitted; supplied names are still validated. Anomaly rules omit notificationSettings.
 
 ## Labels & Routing
 
 - labels.severity: MUST be one of critical, error, warning, info. When thresholds is used, threshold.name is the routing tier — set labels.severity to the highest tier the rule carries.
 - Additional labels like team, service, environment enable routing policies.
-- preferredChannels: fallback notification channel names (thresholds.channels takes priority).
-- Set usePolicy: true in notificationSettings to delegate routing to org-level policies.
+- preferredChannels: v1 anomaly direct-routing channels only; omit for v2 rules.
+- Set usePolicy: true only on v2 threshold/PromQL rules to delegate routing to org-level policies.
 
 ### Label sources available to routing policies
 Routing policies evaluate expressions against three merged label sources:
@@ -291,11 +291,11 @@ Policy expressions use a reduced operator set (not identical to query filters):
 
 Example: deployment.environment = "production" AND threshold.name = "critical"
 
-### Channel-routing modes
+### V2 channel-routing modes
 | notificationSettings.usePolicy | thresholds[].channels | Effective routing |
 |--------------------------------|-----------------------|-------------------|
-| false (default) | present | Send to the listed channels directly |
-| false | absent | Fall back to rule-level preferredChannels |
+| false (default) | present on every tier | Send each tier to its listed channels |
+| false | absent on any tier | Invalid; preferredChannels is not a v2 fallback |
 | true | omit (any supplied names are still validated) | Match alert labels against the org-level routing policy; send to policy-matched channels |
 
 ## Annotations
@@ -305,7 +305,7 @@ Example: deployment.environment = "production" AND threshold.name = "critical"
 - Common annotations: description, summary, runbook.
 
 ## Anomaly Alerts (ruleType: anomaly_rule — v1 schema)
-Anomaly rules use the **v1 schema** today. Do NOT set thresholds, evaluation, notificationSettings, or schemaVersion.
+Anomaly rules use the **v1 schema** today and direct top-level preferredChannels. Do NOT set thresholds, evaluation, notificationSettings, or schemaVersion; policy routing is unsupported.
 
 Required fields:
 - alertType: METRIC_BASED_ALERT
@@ -375,7 +375,7 @@ These examples are based on SigNoz PR #11023
 cumulative-budget alert. Threshold and PromQL rules use v2alpha1; the anomaly
 example uses the v1 shape. Adapt each example to the target workspace.
 
-**Before using any example:** channel names such as slack-platform, pagerduty-oncall, and my-channel are illustrative and may not exist in the target workspace. For direct routing, call signoz_list_notification_channels, let the user select from the returned names, and replace every example channel name before create/update. For confirmed org-policy routing, set notificationSettings.usePolicy=true and remove the illustrative direct channels instead. Never copy or guess a channel name; any supplied name is still validated.
+**Before using any example:** channel names are illustrative. For v2 direct routing, verify and replace names on every threshold tier; confirmed v2 policy routing may remove them and set notificationSettings.usePolicy=true. Anomaly examples require verified top-level preferredChannels and cannot use policy routing. Never copy or guess a name.
 
 ## 1. metric_threshold_single — metric threshold, single builder query
 Fires when a pod consumes more than 80% of its requested CPU for the whole evaluation window.
@@ -1054,7 +1054,7 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
 1. Metrics signal → object aggregation shape ({metricName, timeAggregation, spaceAggregation}). Logs/traces → expression shape ({expression: "count()"}).
 2. selectedQueryName should reference the query or formula that determines the alert.
 3. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects.
-4. Before create/update, channel names in thresholds.spec[].channels must be selected from and match exactly the names returned by signoz_list_notification_channels; every name in the examples is illustrative.
-5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency at the top level and op/matchType/target/algorithm/seasonality under condition — no thresholds block, no auto-generated evaluation.
+4. V2 direct routing requires verified channels on every threshold tier; policy routing may omit them. V1 anomaly routing uses verified top-level preferredChannels.
+5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency and condition op/matchType/target/algorithm/seasonality — no thresholds, evaluation, notificationSettings, or policy routing.
 6. absentFor is in minutes (= consecutive evaluation cycles when frequency is 1m).
 `

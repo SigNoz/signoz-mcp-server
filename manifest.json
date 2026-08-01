@@ -71,11 +71,11 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert with verified direct notification channels or org-policy routing; threshold/PromQL rules use v2alpha1 and metric-only anomaly rules use v1"
+      "description": "Create a v2 threshold/PromQL alert with per-tier direct channels or org-policy routing, or a direct-routed v1 anomaly alert"
     },
     {
       "name": "signoz_update_alert",
-      "description": "Fully replace an alert rule while preserving unchanged fields and reusing still-current fetch, resource, and notification-routing preflights from the prepared operation"
+      "description": "Fully replace an alert while preserving fields and reusing preflights only from the same still-current prepared operation"
     },
     {
       "name": "signoz_delete_alert",
@@ -198,13 +198,13 @@
     {
       "uri": "signoz://alert/examples",
       "name": "Alert Rule Examples",
-      "description": "Read this after signoz://alert/instructions only when examples are still needed. For direct routing, verify every supplied example channel name with signoz_list_notification_channels. For confirmed org-policy routing, remove illustrative direct channels and set notificationSettings.usePolicy=true.",
+      "description": "Read this after signoz://alert/instructions only when examples are still needed. V2 direct examples need verified channels on every threshold; confirmed v2 policy routing may omit them. Anomaly examples require verified top-level preferredChannels and cannot use policy routing.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://alert/instructions",
       "name": "Alert Rule Instructions",
-      "description": "Read this before creating or updating an alert unless its current content was already read for the prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. Read signoz://alert/examples only when examples are still needed.",
+      "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. Read signoz://alert/examples only when examples are still needed.",
       "mimeType": "text/markdown"
     },
     {

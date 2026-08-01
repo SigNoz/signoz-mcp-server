@@ -32,5 +32,18 @@
 - The server passed focused tests, formatting/imports, workflow lint, guardrails, the full Go suite, `go vet`, build, manifest parsing, and diff checks. Agent CI passed the secret-free Inspector and contract workflows; five repository-secret-dependent jobs could not start locally, while their format/test/vet/build equivalents passed directly.
 - The companion skill passed strict plugin validation and static checks. A baseline-versus-current policy-routing simulation showed the old skill blocking on direct-channel selection and the updated skill completing a policy-routed create; an independent grader passed the updated behavior.
 
+### 2026-08-01 — Multi-agent review corrections
+- A three-pass independent review found that the edited validation path still modeled direct v2 routing too loosely: SigNoz creates one route per threshold, so every direct-routing threshold needs its own valid channel list. Top-level `preferredChannels` is a v1/anomaly field and is not a v2 fallback.
+- Current upstream v2alpha1 validation requires `condition.thresholds` even when `alertOnAbsent=true`; remove the local absent-only exception instead of forwarding a payload that upstream rejects.
+- Scope every policy-routing description to v2 `threshold_rule`/`promql_rule`; anomaly rules remain v1 and require direct `preferredChannels`.
+- Carry the same-operation/still-current qualifier into the alert resources and README summaries so full-replacement guidance cannot encourage reuse of an old rule snapshot.
+- Add a negative companion eval proving that an unconfirmed org policy causes clarification rather than silently selecting policy routing. The broader lack of ETag protection and the channel list-to-write race remain out of scope because they are upstream/concurrency design risks, not regressions introduced by this feature.
+
+### 2026-08-01 — Follow-up implementation and review closure
+- Implemented the four scoped contract corrections and added focused regressions for v2 per-tier channels, v2 `preferredChannels` rejection, anomaly direct routing, anomaly policy rejection, and absent-only v2 rejection.
+- The companion skill now stops before writing an exact absent-only request and includes both confirmed-policy and unconfirmed-policy evals. A final review caught one permissive `preferredChannels` sentence; it was corrected and the re-review was clean.
+- Independent final server review found no remaining actionable issue. Formatting/imports, workflow lint, focused tests, guardrails, the full Go suite, `go vet`, build, manifest parsing, and diff checks passed.
+- Agent CI passed the two secret-free jobs; five broader jobs could not start without repository secrets, while their local format/test/vet/build equivalents passed. No live tenant resources were mutated.
+
 ## Open Questions
 - [x] Does `SigNoz/agent-skills` require a companion change for the corrected policy-routing and preflight-reuse contract? — Yes for policy routing; no for preflight reuse. Publish and link a focused companion PR.

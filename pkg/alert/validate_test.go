@@ -519,20 +519,12 @@ func TestValidate_AlertOnAbsentNoThreshold(t *testing.T) {
 	delete(cond, "thresholds")
 	cond["alertOnAbsent"] = true
 
-	result, err := ValidateFromMap(alert)
-	if err != nil {
-		t.Fatalf("expected no error for alertOnAbsent=true without threshold, got: %v", err)
+	_, err := ValidateFromMap(alert)
+	if err == nil {
+		t.Fatal("expected alertOnAbsent without v2 thresholds to fail")
 	}
-	if result == nil {
-		t.Fatal("expected non-nil result")
-	}
-
-	var parsed map[string]any
-	if err := json.Unmarshal(result, &parsed); err != nil {
-		t.Fatalf("failed to unmarshal result: %v", err)
-	}
-	if parsed["schemaVersion"] != "v2alpha1" {
-		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
+	if !strings.Contains(err.Error(), "condition.thresholds") {
+		t.Fatalf("expected missing-threshold error, got: %v", err)
 	}
 }
 
@@ -878,6 +870,41 @@ func TestValidate_AnomalyRule_Accepted(t *testing.T) {
 	}
 }
 
+func TestValidate_RoutingFieldsMatchSchema(t *testing.T) {
+	for _, ruleType := range []string{"threshold_rule", "promql_rule"} {
+		t.Run(ruleType+" rejects preferredChannels", func(t *testing.T) {
+			rule := minimalValidAlert()
+			rule["ruleType"] = ruleType
+			rule["preferredChannels"] = []any{"slack-alerts"}
+			_, err := ValidateFromMap(rule)
+			if err == nil || !strings.Contains(err.Error(), "preferredChannels") {
+				t.Fatalf("expected v2 preferredChannels rejection, got: %v", err)
+			}
+		})
+	}
+
+	t.Run("anomaly rejects notificationSettings", func(t *testing.T) {
+		rule := minimalValidAnomalyRule()
+		rule["notificationSettings"] = map[string]any{"usePolicy": true}
+		_, err := ValidateFromMap(rule)
+		if err == nil || !strings.Contains(err.Error(), "notificationSettings") {
+			t.Fatalf("expected anomaly notificationSettings rejection, got: %v", err)
+		}
+	})
+
+	t.Run("anomaly preserves preferredChannels", func(t *testing.T) {
+		rule := minimalValidAnomalyRule()
+		rule["preferredChannels"] = []any{"slack-alerts"}
+		out, err := ValidateFromMap(rule)
+		if err != nil {
+			t.Fatalf("expected anomaly preferredChannels to validate, got: %v", err)
+		}
+		if !strings.Contains(string(out), `"preferredChannels":["slack-alerts"]`) {
+			t.Fatalf("preferredChannels not preserved: %s", out)
+		}
+	})
+}
+
 func TestValidate_AnomalyRule_RejectsThresholds(t *testing.T) {
 	rule := minimalValidAnomalyRule()
 	rule["condition"].(map[string]any)["thresholds"] = map[string]any{
@@ -1037,7 +1064,6 @@ func TestValidate_AbsentFor_PassesThrough(t *testing.T) {
 	cond := rule["condition"].(map[string]any)
 	cond["alertOnAbsent"] = true
 	cond["absentFor"] = 15
-	delete(cond, "thresholds") // alertOnAbsent is enough to pass the v2 gate
 	out, err := ValidateFromMap(rule)
 	if err != nil {
 		t.Fatalf("expected alertOnAbsent+absentFor to validate, got: %v", err)

@@ -49,7 +49,7 @@ type AlertRule struct {
 	Annotations       map[string]string `json:"annotations,omitempty" jsonschema:"Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values."`
 	Disabled          bool              `json:"disabled,omitempty" jsonschema:"Whether the alert rule is disabled. Defaults to false (enabled)."`
 	Source            string            `json:"source,omitempty" jsonschema:"Source URL for the alert. Set automatically."`
-	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema:"Existing fallback notification channel names for direct routing. Before create/update, verify every supplied name with signoz_list_notification_channels; never guess. At least one valid channel reference across preferredChannels or thresholds.spec[].channels is required unless notificationSettings.usePolicy=true."`
+	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema:"v1 anomaly_rule only. Existing notification channel names for direct routing; at least one nonblank valid name is required. Verify every supplied name with signoz_list_notification_channels before create/update; never guess. Omit for v2alpha1 threshold_rule/promql_rule because it is not a fallback there; use each threshold's channels or notificationSettings.usePolicy=true instead."`
 	Version           string            `json:"version,omitempty" jsonschema:"API version. Always v5. Set automatically if omitted."`
 
 	// v1-schema fields (used only when ruleType=anomaly_rule).
@@ -83,9 +83,10 @@ type AlertCondition struct {
 	Algorithm   string      `json:"algorithm,omitempty" jsonschema:"v1 (anomaly_rule) only. Anomaly detection algorithm; the supported value is standard (z-score based)."`
 	Seasonality string      `json:"seasonality,omitempty" jsonschema:"v1 (anomaly_rule) only. Seasonality pattern for anomaly detection: hourly, daily, or weekly."`
 
-	// Threshold configuration (v2alpha1 schema). Required for threshold_rule
-	// and promql_rule unless alertOnAbsent is true. Omit for anomaly_rule.
-	Thresholds *AlertThresholds `json:"thresholds,omitempty" jsonschema:"v2alpha1 only (threshold_rule, promql_rule). Each threshold level (critical, error, warning, info) can route to different notification channels. Required unless alertOnAbsent is true. Omit entirely for anomaly_rule - use condition.op/matchType/target there instead."`
+	// Threshold configuration (v2alpha1 schema). Required for every
+	// threshold_rule and promql_rule, including alertOnAbsent rules. Omit for
+	// anomaly_rule.
+	Thresholds *AlertThresholds `json:"thresholds,omitempty" jsonschema:"v2alpha1 only (threshold_rule, promql_rule) and always required, including when alertOnAbsent=true. Each threshold level (critical, error, warning, info) can route independently. Omit entirely for anomaly_rule - use condition.op/matchType/target there instead."`
 }
 
 // AlertCompositeQuery contains the queries that define what data to monitor.
@@ -191,7 +192,7 @@ type BasicThreshold struct {
 	RecoveryTarget *float64 `json:"recoveryTarget,omitempty" jsonschema:"Hysteresis - value at which a firing alert is considered resolved. Useful to avoid flapping near the threshold (e.g. target=80 percent, recoveryTarget=75 percent). Use null to use the threshold target itself as the recovery point."`
 	MatchType      string   `json:"matchType" jsonschema:"How to evaluate the threshold. Canonical: at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total). Numeric 1-5 also accepted but discouraged."`
 	CompareOp      string   `json:"op" jsonschema:"Comparison operator. Canonical literals: above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=. Numeric 1-7 also accepted but discouraged."`
-	Channels       []string `json:"channels,omitempty" jsonschema:"Existing notification channel names for this threshold tier. Direct routing requires at least one valid channel across the payload. When notificationSettings.usePolicy=true, these may be omitted because the org policy routes by labels. Verify every supplied name with signoz_list_notification_channels before create/update."`
+	Channels       []string `json:"channels,omitempty" jsonschema:"Existing notification channel names for this v2 threshold tier. With direct routing, every tier requires at least one nonblank valid name; top-level preferredChannels is not a fallback. With notificationSettings.usePolicy=true, channels may be omitted, but every supplied name is still validated. Verify supplied names with signoz_list_notification_channels before create/update."`
 }
 
 // AlertEvaluation holds the evaluation schedule for v2 schema alerts.
@@ -221,7 +222,7 @@ type NotificationSettings struct {
 	GroupBy           []string  `json:"groupBy,omitempty" jsonschema:"Fields to group alert notifications by (e.g. service.name, k8s.namespace.name). Reduces notification noise by batching alerts with the same group key."`
 	NewGroupEvalDelay string    `json:"newGroupEvalDelay,omitempty" jsonschema:"Grace period (Go duration string, e.g. 2m) during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online."`
 	Renotify          *Renotify `json:"renotify,omitempty" jsonschema:"Re-notification configuration."`
-	UsePolicy         bool      `json:"usePolicy,omitempty" jsonschema:"Routing mode. false (default) sends through direct channel references and requires at least one valid name. true routes through the org-level policy matching on labels, so direct channel references may be omitted; any supplied names are still validated."`
+	UsePolicy         bool      `json:"usePolicy,omitempty" jsonschema:"v2 threshold_rule/promql_rule routing mode only. false (default) requires at least one nonblank valid channel on every threshold tier. true routes through the org-level policy matching on labels, so threshold channels may be omitted; every supplied threshold channel name is still validated. Top-level preferredChannels is rejected in both modes."`
 }
 
 // Renotify controls re-notification behavior.
