@@ -49,7 +49,7 @@ type AlertRule struct {
 	Annotations       map[string]string `json:"annotations,omitempty" jsonschema:"Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values."`
 	Disabled          bool              `json:"disabled,omitempty" jsonschema:"Whether the alert rule is disabled. Defaults to false (enabled)."`
 	Source            string            `json:"source,omitempty" jsonschema:"Source URL for the alert. Set automatically."`
-	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema:"Existing notification channel names. Before create/update, verify every name with signoz_list_notification_channels; never guess. The current MCP validation requires at least one valid channel reference across preferredChannels or thresholds.spec[].channels."`
+	PreferredChannels []string          `json:"preferredChannels,omitempty" jsonschema:"Existing fallback notification channel names for direct routing. Before create/update, verify every supplied name with signoz_list_notification_channels; never guess. At least one valid channel reference across preferredChannels or thresholds.spec[].channels is required unless notificationSettings.usePolicy=true."`
 	Version           string            `json:"version,omitempty" jsonschema:"API version. Always v5. Set automatically if omitted."`
 
 	// v1-schema fields (used only when ruleType=anomaly_rule).
@@ -191,7 +191,7 @@ type BasicThreshold struct {
 	RecoveryTarget *float64 `json:"recoveryTarget,omitempty" jsonschema:"Hysteresis - value at which a firing alert is considered resolved. Useful to avoid flapping near the threshold (e.g. target=80 percent, recoveryTarget=75 percent). Use null to use the threshold target itself as the recovery point."`
 	MatchType      string   `json:"matchType" jsonschema:"How to evaluate the threshold. Canonical: at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total). Numeric 1-5 also accepted but discouraged."`
 	CompareOp      string   `json:"op" jsonschema:"Comparison operator. Canonical literals: above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: >, <, =, !=, >=, <=. Numeric 1-7 also accepted but discouraged."`
-	Channels       []string `json:"channels,omitempty" jsonschema:"Existing notification channel names for this threshold tier. Verify every name with signoz_list_notification_channels before create/update. The server still requires at least one valid channel in the payload even though routing ignores threshold channels when notificationSettings.usePolicy=true."`
+	Channels       []string `json:"channels,omitempty" jsonschema:"Existing notification channel names for this threshold tier. Direct routing requires at least one valid channel across the payload. When notificationSettings.usePolicy=true, these may be omitted because the org policy routes by labels. Verify every supplied name with signoz_list_notification_channels before create/update."`
 }
 
 // AlertEvaluation holds the evaluation schedule for v2 schema alerts.
@@ -221,7 +221,7 @@ type NotificationSettings struct {
 	GroupBy           []string  `json:"groupBy,omitempty" jsonschema:"Fields to group alert notifications by (e.g. service.name, k8s.namespace.name). Reduces notification noise by batching alerts with the same group key."`
 	NewGroupEvalDelay string    `json:"newGroupEvalDelay,omitempty" jsonschema:"Grace period (Go duration string, e.g. 2m) during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online."`
 	Renotify          *Renotify `json:"renotify,omitempty" jsonschema:"Re-notification configuration."`
-	UsePolicy         bool      `json:"usePolicy,omitempty" jsonschema:"Routing mode. false (default) sends to per-threshold channels; true routes through the org-level policy matching on labels. The server still requires at least one existing channel name in the payload when this is true."`
+	UsePolicy         bool      `json:"usePolicy,omitempty" jsonschema:"Routing mode. false (default) sends through direct channel references and requires at least one valid name. true routes through the org-level policy matching on labels, so direct channel references may be omitted; any supplied names are still validated."`
 }
 
 // Renotify controls re-notification behavior.

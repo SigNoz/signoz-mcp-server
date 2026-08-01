@@ -9,15 +9,16 @@ import (
 
 var formulaVariablePattern = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
-func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.T) {
+func TestAlertInstructionsDescribePolicyAwareChannelPreflight(t *testing.T) {
 	for _, required := range []string{
-		"Before creating an alert, call signoz_list_notification_channels",
-		"Do the same before updating",
-		"verify every user-selected name exists",
+		"For direct routing, require at least one existing channel reference",
+		"only if the user-selected names have not already been verified",
+		"reuse a current result instead of repeating the preflight",
 		"show the available names and ask the user to choose",
-		"requires at least one existing valid channel even when notificationSettings.usePolicy=true",
+		"For confirmed org-policy routing, set notificationSettings.usePolicy=true and omit direct channel references",
+		"every supplied name is still validated",
 		"validation returns the current names so you can retry",
-		"verified with signoz_list_notification_channels",
+		"reuse it without repeating signoz_get_alert",
 		"Never guess",
 	} {
 		if !strings.Contains(Instructions, required) {
@@ -26,6 +27,9 @@ func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.
 	}
 	if strings.Contains(Instructions, "If the user explicitly names a channel, use it directly") {
 		t.Error("alert instructions must not prescribe direct use of an unvalidated channel name")
+	}
+	if strings.Contains(Instructions, "requires at least one existing valid channel even when notificationSettings.usePolicy=true") {
+		t.Error("alert instructions must not retain the obsolete policy-routing channel requirement")
 	}
 }
 

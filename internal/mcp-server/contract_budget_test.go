@@ -73,6 +73,11 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 				t.Errorf("initialize preamble missing self-contained guidance %q", required)
 			}
 		}
+		for _, required := range []string{"same still-current operation", "do not repeat them", "Refresh if state may have changed"} {
+			if !strings.Contains(instructions, required) {
+				t.Errorf("initialize instructions missing safe preflight-reuse guidance %q", required)
+			}
+		}
 	})
 
 	t.Run("tool and parameter descriptions", func(t *testing.T) {
@@ -149,7 +154,15 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_create_alert": {
 				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "Before creating", "signoz_list_notification_channels", "verify user-provided names", "If validation still rejects a channel name", "never guess"},
+				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "direct routing", "signoz_list_notification_channels", "not already been verified", "notificationSettings.usePolicy=true", "direct channel references may be omitted", "never guess"},
+			},
+			"signoz_get_alert": {
+				prefix:   "Use this when",
+				required: []string{"complete current definition is not already available for the prepared operation", "Reuse a still-current definition fetched for that operation", "instead of repeating this preflight"},
+			},
+			"signoz_update_alert": {
+				prefix:   "Use this when",
+				required: []string{"full replacement", "complete current rule has not already been fetched for this prepared operation", "reuse the still-current result without repeating the get", "only if not already read", "signoz_list_notification_channels", "do not repeat completed preflights", "notificationSettings.usePolicy=true", "direct channel references may be omitted", "If state may have changed, refresh"},
 			},
 			"signoz_create_dashboard": {
 				prefix:   "Use this when",
@@ -305,6 +318,30 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 	resourceByURI := make(map[string]mcp.Resource, len(resourcesResult.Resources))
 	for _, resource := range resourcesResult.Resources {
 		resourceByURI[resource.URI] = resource
+	}
+	resourceContracts := map[string][]string{
+		"signoz://alert/instructions": {
+			"unless its current content was already read for the prepared operation",
+			"Read signoz://alert/examples only when examples are still needed",
+		},
+		"signoz://alert/examples": {
+			"only when examples are still needed",
+			"For direct routing",
+			"For confirmed org-policy routing",
+			"notificationSettings.usePolicy=true",
+		},
+	}
+	for uri, requiredPhrases := range resourceContracts {
+		resource, ok := resourceByURI[uri]
+		if !ok {
+			t.Errorf("required alert resource %s is not present in resources/list", uri)
+			continue
+		}
+		for _, required := range requiredPhrases {
+			if !strings.Contains(resource.Description, required) {
+				t.Errorf("%s description missing state-aware guidance %q", uri, required)
+			}
+		}
 	}
 
 	referenced := make(map[string]struct{})
