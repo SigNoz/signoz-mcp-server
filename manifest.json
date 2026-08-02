@@ -26,6 +26,10 @@
   },
   "tools": [
     {
+      "name": "signoz_get_org_overview",
+      "description": "Return organization-scoped dashboard, configured alert/channel, saved-view, log-pipeline, and provider-availability-aware cloud-integration posture counts; deployment-wide signal and alert-runtime stats are explicitly excluded"
+    },
+    {
       "name": "signoz_list_metrics",
       "description": "Discover active metric names and catalog metadata such as type, temporality, and monotonicity; use signoz_query_metrics for values or trends. Set source=\"meter\" for Cost Meter metrics"
     },

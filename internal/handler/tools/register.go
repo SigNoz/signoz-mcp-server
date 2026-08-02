@@ -10,6 +10,7 @@ import (
 // register through it, so a new handler group cannot reach the server
 // without also passing the pinned-inventory tests.
 func (h *Handler) RegisterAllToolHandlers(s *server.MCPServer) {
+	h.RegisterOrgOverviewHandlers(s)
 	h.RegisterMetricsHandlers(s)
 	h.RegisterTopMetricsHandlers(s)
 	h.RegisterMetricUsageHandlers(s)

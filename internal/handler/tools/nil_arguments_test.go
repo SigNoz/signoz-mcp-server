@@ -95,6 +95,9 @@ func TestListHandlers_NilArguments_UseDefaults(t *testing.T) {
 		GetTopMetricsFn: func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
 			return json.RawMessage(`{"metrics":[]}`), nil
 		},
+		GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{}}`), nil
+		},
 	}
 	h := newTestHandler(mock)
 
@@ -106,6 +109,7 @@ func TestListHandlers_NilArguments_UseDefaults(t *testing.T) {
 		{"signoz_list_services", h.handleListServices},
 		{"signoz_list_metrics", h.handleListMetrics},
 		{"signoz_get_top_metrics", h.handleGetTopMetrics},
+		{"signoz_get_org_overview", h.handleGetOrgOverview},
 	}
 
 	for _, tc := range cases {
