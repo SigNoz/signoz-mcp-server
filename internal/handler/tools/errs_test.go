@@ -270,8 +270,9 @@ func TestUpstreamError_ForbiddenHTTPStatus(t *testing.T) {
 
 	res := upstreamError(statusErr)
 
-	if got := resultText(t, res); got != "SigNoz API error: unexpected status 403: only editors/admins can access this resource" {
-		t.Fatalf("upstreamError text = %q, want message-only status error", got)
+	wantText := "SigNoz API error: unexpected status 403: only editors/admins can access this resource. Next action: Ask a SigNoz administrator for the required access or use credentials with sufficient permissions."
+	if got := resultText(t, res); got != wantText {
+		t.Fatalf("upstreamError text = %q, want backend guidance plus recovery", got)
 	}
 	structured := resultStructuredMap(t, res)
 	if got := structured["code"]; got != CodePermissionDenied {
@@ -289,6 +290,52 @@ func TestUpstreamError_ForbiddenHTTPStatus(t *testing.T) {
 	if got := structured["upstreamType"]; got != "forbidden" {
 		t.Fatalf("upstreamType = %v, want forbidden", got)
 	}
+	if got := structured["nextAction"]; got != signozclient.AuthorizationNextAction(http.StatusForbidden) {
+		t.Fatalf("nextAction = %v, want shared permission recovery", got)
+	}
+}
+
+func TestUpstreamError_PreservesCompleteRendererGuidance(t *testing.T) {
+	res := upstreamError(&signozclient.HTTPStatusError{
+		StatusCode: http.StatusBadRequest,
+		Body: `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"query failed","url":"https://signoz.io/docs/query-errors","suggestions":["narrow the query"],` +
+			`"errors":[{"message":"unknown field","suggestions":["use service.name"]}],"retry":{"delay":2500000000}}}`,
+	})
+
+	text := resultText(t, res)
+	for _, want := range []string{"query failed (unknown field)", "Documentation: https://signoz.io/docs/query-errors", "Suggestions: narrow the query", `Suggestions for "unknown field": use service.name`, "Retry delay: 2.5s (2500000000 ns)"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("renderer guidance missing %q: %s", want, text)
+		}
+	}
+	structured := resultStructuredMap(t, res)
+	encoded, err := json.Marshal(structured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(encoded)
+	for _, want := range []string{`"upstreamURL":"https://signoz.io/docs/query-errors"`, `"upstreamSuggestions":["narrow the query"]`, `"upstreamDetails":[{"message":"unknown field","suggestions":["use service.name"]}]`, `"upstreamRetry":{"delay":2500000000}`} {
+		if !strings.Contains(wire, want) {
+			t.Fatalf("structured renderer guidance missing %s: %s", want, wire)
+		}
+	}
+}
+
+func TestPartialUpstreamFailure_PreservesSafeRendererGuidance(t *testing.T) {
+	failure := partialUpstreamFailure(&signozclient.HTTPStatusError{
+		StatusCode: http.StatusForbidden,
+		Body:       `{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"test denied","url":"https://signoz.io/docs/permissions","suggestions":["request test access"],"errors":[{"message":"test route denied","suggestions":["use permitted credentials"]}],"retry":{"delay":1000000000}}}`,
+	}, "test_notification")
+	encoded, err := json.Marshal(failure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(encoded)
+	for _, want := range []string{`"code":"PERMISSION_DENIED"`, `"nextAction":`, `"operation":"test_notification"`, `"retryPrimaryOperation":false`, `"upstreamURL":"https://signoz.io/docs/permissions"`, `"upstreamSuggestions":["request test access"]`, `"upstreamDetails":[{"message":"test route denied","suggestions":["use permitted credentials"]}]`, `"upstreamRetry":{"delay":1000000000}`} {
+		if !strings.Contains(wire, want) {
+			t.Fatalf("partial renderer guidance missing %s: %s", want, wire)
+		}
+	}
 }
 
 func TestUpstreamError_HTTPStatusPreservesWrapperContext(t *testing.T) {
@@ -301,7 +348,7 @@ func TestUpstreamError_HTTPStatusPreservesWrapperContext(t *testing.T) {
 	res := upstreamError(wrapped)
 
 	text := resultText(t, res)
-	want := `SigNoz API error: failed to auto-fetch metadata for formula query "A" (cpu.usage): unexpected status 403: only editors/admins can access this resource`
+	want := `SigNoz API error: failed to auto-fetch metadata for formula query "A" (cpu.usage): unexpected status 403: only editors/admins can access this resource. Next action: Ask a SigNoz administrator for the required access or use credentials with sufficient permissions.`
 	if text != want {
 		t.Fatalf("text = %q, want wrapper context preserved", text)
 	}
@@ -345,8 +392,9 @@ func TestUpstreamError_ParseableEnvelopeWithoutMessageDoesNotLeakRawJSON(t *test
 	})
 
 	text := resultText(t, res)
-	if text != "SigNoz API error: unexpected status 403" {
-		t.Fatalf("text = %q, want status-only text for message-less parseable envelope", text)
+	want := "SigNoz API error: unexpected status 403: permission denied. Next action: Ask a SigNoz administrator for the required access or use credentials with sufficient permissions."
+	if text != want {
+		t.Fatalf("text = %q, want canonical fallback for message-less parseable envelope", text)
 	}
 	if strings.Contains(text, `"code":"forbidden"`) || strings.Contains(text, `"code": "forbidden"`) {
 		t.Fatalf("text leaked raw auth-looking upstream code: %s", text)
@@ -355,14 +403,10 @@ func TestUpstreamError_ParseableEnvelopeWithoutMessageDoesNotLeakRawJSON(t *test
 	if got := structured["code"]; got != CodePermissionDenied {
 		t.Fatalf("code = %v, want %s", got, CodePermissionDenied)
 	}
-	if got := structured["upstreamCode"]; got != "forbidden" {
-		t.Fatalf("upstreamCode = %v, want forbidden", got)
-	}
-	if got := structured["upstreamType"]; got != "forbidden" {
-		t.Fatalf("upstreamType = %v, want forbidden", got)
-	}
-	if _, ok := structured["upstreamMessage"]; ok {
-		t.Fatalf("unexpected upstreamMessage for message-less envelope: %#v", structured)
+	for _, field := range []string{"upstreamCode", "upstreamType", "upstreamMessage"} {
+		if _, ok := structured[field]; ok {
+			t.Fatalf("unrecognized message-less renderer produced %s: %#v", field, structured)
+		}
 	}
 	if _, ok := structured["upstreamAuth"]; ok {
 		t.Fatalf("unexpected upstreamAuth for 403: %#v", structured)
@@ -413,32 +457,129 @@ func TestUpstreamError_HTTPErrorTextIsBounded(t *testing.T) {
 		Body:       unparseable,
 	})
 	text = resultText(t, res)
-	if !strings.Contains(text, "...(truncated)") {
-		t.Fatalf("unparseable text = %q, want truncated marker", text)
+	if text != "SigNoz API error: unexpected status 502" {
+		t.Fatalf("unrecognized body text = %q, want status-only fallback", text)
 	}
-	if strings.Contains(text, "tail") {
-		t.Fatalf("unparseable text leaked end of overlarge upstream body")
+	if strings.Contains(text, "<html>") || strings.Contains(text, "tail") {
+		t.Fatalf("unrecognized body leaked into client text: %q", text)
 	}
 }
 
-func TestUpstreamError_ForbiddenHTTPStatusWithUnparseableBody(t *testing.T) {
+func TestUpstreamError_AuthorizationStatusWithUnsafeBodyUsesCanonicalFallback(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		wantCode   string
+		wantText   string
+	}{
+		{
+			name:       "unauthorized",
+			statusCode: http.StatusUnauthorized,
+			wantCode:   CodeUnauthorized,
+			wantText:   "unexpected status 401: authentication failed. Next action: Re-authenticate with valid SigNoz credentials, then retry only the failed operation.",
+		},
+		{
+			name:       "forbidden",
+			statusCode: http.StatusForbidden,
+			wantCode:   CodePermissionDenied,
+			wantText:   "unexpected status 403: permission denied. Next action: Ask a SigNoz administrator for the required access or use credentials with sufficient permissions.",
+		},
+	}
+	bodies := []string{
+		"auth-body-canary plain text",
+		"<html><body>auth-body-canary</body></html>",
+		`{"status":"error","message":"auth-body-canary"`,
+		`{"message":"auth-body-canary"}`,
+		`{"status":"error","unexpected":"auth-body-canary"}`,
+		"",
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, wrapped := range []bool{false, true} {
+				for _, body := range bodies {
+					statusErr := &signozclient.HTTPStatusError{StatusCode: tc.statusCode, Body: body}
+					var err error = statusErr
+					prefix := ""
+					if wrapped {
+						err = fmt.Errorf("operation context: %w", statusErr)
+						prefix = "operation context: "
+					}
+
+					res := upstreamError(err)
+					text := resultText(t, res)
+					want := upstreamErrorPrefix + " " + prefix + tc.wantText
+					if text != want {
+						t.Fatalf("text = %q, want %q", text, want)
+					}
+					if strings.Contains(text, "auth-body-canary") || strings.Contains(text, "<html>") {
+						t.Fatalf("client text leaked authorization body: %q", text)
+					}
+
+					structured := resultStructuredMap(t, res)
+					if got := structured["code"]; got != tc.wantCode {
+						t.Fatalf("code = %v, want %s", got, tc.wantCode)
+					}
+					if got := structured["status"]; got != tc.statusCode {
+						t.Fatalf("status = %v, want %d", got, tc.statusCode)
+					}
+					for _, key := range []string{"upstreamCode", "upstreamMessage", "upstreamType", "upstreamAuth"} {
+						if _, ok := structured[key]; ok {
+							t.Fatalf("unexpected %s for unsafe body: %#v", key, structured)
+						}
+					}
+					encoded, err := json.Marshal(structured)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if strings.Contains(string(encoded), "auth-body-canary") {
+						t.Fatalf("structured content leaked authorization body: %s", encoded)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestUpstreamError_AuthorizationEnvelopeFieldsAreBoundedAndFiltered(t *testing.T) {
+	longCode := strings.Repeat("c", 512) + "code-tail-canary"
+	longType := strings.Repeat("t", 512) + "type-tail-canary"
 	res := upstreamError(&signozclient.HTTPStatusError{
 		StatusCode: http.StatusForbidden,
-		Body:       `permission denied`,
+		Body:       `{"status":"error","error":{"code":"` + longCode + `","type":"` + longType + `"}}`,
 	})
-
 	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodePermissionDenied {
-		t.Fatalf("code = %v, want %s", got, CodePermissionDenied)
+	for _, key := range []string{"upstreamCode", "upstreamType", "upstreamMessage"} {
+		if _, exists := structured[key]; exists {
+			t.Fatalf("oversized envelope unexpectedly produced %s: %#v", key, structured)
+		}
 	}
-	if got := structured["status"]; got != http.StatusForbidden {
-		t.Fatalf("status = %v, want %d", got, http.StatusForbidden)
+	encoded, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := structured["upstreamCode"]; ok {
-		t.Fatalf("unexpected upstreamCode for unparseable body: %#v", structured)
+	for _, tail := range []string{"code-tail-canary", "type-tail-canary"} {
+		if strings.Contains(string(encoded), tail) {
+			t.Fatalf("MCP result leaked %s: %s", tail, encoded)
+		}
 	}
-	if text := resultText(t, res); text != "SigNoz API error: unexpected status 403: permission denied" {
-		t.Fatalf("text = %q, want preserved status body", text)
+
+	res = upstreamError(&signozclient.HTTPStatusError{
+		StatusCode: http.StatusForbidden,
+		Body:       `{"status":"error","error":{"code":"authz_forbidden","type":"forbidden","message":"<script>token=message-secret-canary</script>"}}`,
+	})
+	encoded, err = json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(encoded)
+	for _, leaked := range []string{"<script>", "message-secret-canary"} {
+		if strings.Contains(wire, leaked) {
+			t.Fatalf("MCP result leaked filtered message content %q: %s", leaked, wire)
+		}
+	}
+	if !strings.Contains(resultText(t, res), "［REDACTED］") || !strings.Contains(resultText(t, res), "&lt;script&gt;") {
+		t.Fatalf("MCP result lacks filtered recognized guidance: %s", resultText(t, res))
 	}
 }
 

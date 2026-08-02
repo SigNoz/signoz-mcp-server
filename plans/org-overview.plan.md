@@ -18,6 +18,7 @@ Agents currently need several list calls to understand whether a workspace has l
 - Keep sentinel-derived availability and machine-readable recovery guidance for typed groups. Preserve the current AWS/Azure provider-availability semantics, and mark dashboard panel coverage as legacy-v1-only rather than presenting it as a complete v2/Perses inventory.
 - Return a coded `UPSTREAM_ERROR` when the top-level envelope or `data` object cannot be decoded, because there is then no authoritative stats bag to return. WARN when an expected typed projection is missing or invalid, while retaining every successfully decoded source entry.
 - Route authentication and permission failures through the shared coded top-level error path.
+- Advertise the v0.129.0 minimum version inline and return an immediate upgrade/fallback recovery message when the stats route returns HTTP 404.
 - Register the handler and synchronize `README.md`, `manifest.json`, mocks/interfaces, nil-argument coverage, and contract tests.
 - Record the completed companion `SigNoz/agent-skills` audit: no required change for this additive tool; optional workflow follow-up only.
 - Run formatting, focused tests, guardrails, full tests, build, an independent best-practices review, Claude Opus review, and delegated live E2E verification.

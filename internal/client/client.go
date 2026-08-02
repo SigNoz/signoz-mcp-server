@@ -58,7 +58,42 @@ type HTTPStatusError struct {
 }
 
 func (e *HTTPStatusError) Error() string {
-	return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
+	parsed := ParseUpstreamErrorBody(e.Body)
+	detail := ""
+	if parsed.Recognized {
+		detail = parsed.ClientSafeText()
+	}
+	if detail == "" {
+		switch e.StatusCode {
+		case http.StatusUnauthorized:
+			detail = "authentication failed"
+		case http.StatusForbidden:
+			detail = "permission denied"
+		}
+	}
+
+	message := fmt.Sprintf("unexpected status %d", e.StatusCode)
+	if detail != "" {
+		message += ": " + detail
+	}
+	if nextAction := AuthorizationNextAction(e.StatusCode); nextAction != "" {
+		message += ". Next action: " + nextAction
+	}
+	return message
+}
+
+// AuthorizationNextAction is the generic recovery shared by tool, resource,
+// and post-mutation partial-result paths. Registered tools supplement it with
+// the exact operation name and read/write annotation.
+func AuthorizationNextAction(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return "Re-authenticate with valid SigNoz credentials, then retry only the failed operation."
+	case http.StatusForbidden:
+		return "Ask a SigNoz administrator for the required access or use credentials with sufficient permissions."
+	default:
+		return ""
+	}
 }
 
 func (e *HTTPStatusError) truncatedBody() string {
@@ -403,6 +438,7 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 	defer cancel()
 
 	var lastErr error
+	shapeDriftLogged := false
 	wait := retryBaseWait
 	maxAttempts := 1
 	if replaySafe {
@@ -462,14 +498,47 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 		_ = resp.Body.Close()
 
 		if readErr != nil {
+			if ctx.Err() == nil && (resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices) {
+				s.logger.WarnContext(ctx, "Failed to read SigNoz error response body; preserving HTTP status",
+					slog.String("url", reqURL),
+					slog.Int("status", resp.StatusCode),
+					logpkg.ErrAttr(readErr))
+				return nil, newHTTPStatusError(resp.StatusCode, nil)
+			}
 			return nil, fmt.Errorf("failed to read response body: %w", readErr)
 		}
 		if int64(len(respBody)) > maxResponseBytes {
+			if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+				statusErr := newHTTPStatusError(resp.StatusCode, nil)
+				s.logger.WarnContext(ctx, "SigNoz request returned an oversized error response",
+					slog.String("url", reqURL),
+					slog.Int("status", resp.StatusCode),
+					slog.Int64("maximum_response_bytes", maxResponseBytes))
+				return nil, statusErr
+			}
 			return nil, fmt.Errorf("response body (status %d) exceeds maximum allowed size of %d bytes; if this was a data query, narrow it (reduce limit, time range, or cardinality)", resp.StatusCode, maxResponseBytes)
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return respBody, nil
+		}
+
+		parsedBody := ParseUpstreamErrorBody(string(respBody))
+		if !shapeDriftLogged && parsedBody.StatusError {
+			switch {
+			case !parsedBody.Recognized:
+				s.logger.WarnContext(ctx, "SigNoz error response shape is unrecognized",
+					slog.String("url", reqURL),
+					slog.Int("status", resp.StatusCode),
+					slog.Int("response.body.size_bytes", len(respBody)))
+				shapeDriftLogged = true
+			case len(parsedBody.ShapeDrift) > 0:
+				s.logger.WarnContext(ctx, "SigNoz error response optional fields have unexpected shapes",
+					slog.String("url", reqURL),
+					slog.Int("status", resp.StatusCode),
+					slog.Any("fields", parsedBody.ShapeDrift))
+				shapeDriftLogged = true
+			}
 		}
 
 		// Retry on transient server errors.

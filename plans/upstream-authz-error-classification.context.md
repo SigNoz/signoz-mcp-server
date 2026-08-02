@@ -5,6 +5,7 @@
 
 ## Reference Links
 - [SigNoz/nerve-pod#27](https://github.com/SigNoz/nerve-pod/issues/27)
+- [SigNoz/nerve-pod#49 follow-up review](https://github.com/SigNoz/nerve-pod/issues/49#issuecomment-5156802780)
 
 ## Key Decisions & Discussion Log
 ### 2026-07-03 — Initial scope
@@ -59,6 +60,64 @@
 - Independent review found that parseable envelopes without a `message` still fell back to raw JSON text.
 - Decision: once an upstream body parses as an envelope, never return the raw body in MCP text just because the message is absent; use status-only text instead.
 - Also classified legacy query-service `503` responses with `errorType: timeout` / `canceled` into `TIMEOUT` / `CANCELED`, while leaving other 503s as `UPSTREAM_ERROR`.
+
+### 2026-08-02 — Strict authorization-body sanitization and operation recovery
+- Follow-up review of nerve-pod#49 found one remaining privacy gap: an upstream 401/403 body that is not valid JSON is still copied into the MCP error text. The same review noted that authorization recovery is generic rather than tied to the failed operation.
+- Decision: never expose an unparseable 401/403 response body in MCP text or structured content. Use a canonical status-derived authentication/permission message instead. Continue preserving bounded fields from recognized JSON error envelopes, as required by ERR-6, and retain bounded raw diagnostics only in the existing server-side error log.
+- Decision: append recovery centrally at registered-tool dispatch using the tool's behavior-backed `readOnlyHint`. Read failures tell the agent to obtain access to the read operation; writes tell it to obtain permission for the write operation. Both name the exact MCP tool and give the smallest next action. Tools without an explicit annotation fall back to neutral operation wording rather than being guessed as writes.
+- This is a shared error-contract hardening change and applies uniformly to every registered tool that returns the shared upstream 401/403 result. It is being included in the existing organization-overview PR at the user's request.
+
+### 2026-08-02 — Boundary-wide sanitization after independent audit
+- A read-only audit found client-visible paths outside `upstreamError`: live resource templates return wrapped `HTTPStatusError` values directly, and notification-channel test/read-back failures can embed `err.Error()` inside successful results and warning notes after the primary mutation succeeds.
+- Decision: make `HTTPStatusError.Error()` itself body-free and actionable for 401/403 while preserving the full `Body` field for parsing and the existing bounded client WARN diagnostic. This closes tool, resource, partial-success-note, wrapper, and span-status leaks at the shared upstream boundary. Non-authorization statuses keep their existing bounded-body error text.
+- Operation recovery remains a registered-tool concern. The decorator requires the matching structured HTTP status as well as the stable code, so local missing-credential `UNAUTHORIZED` results are not conflated with an upstream 401. No viewer/editor/admin role is inferred; the only annotation-derived distinction is read, write, or unknown.
+- Verification uses a deterministic local SigNoz HTTP server plus real client methods, production read/write handlers, registered decorators, and MCP JSON-RPC serialization. It proves malformed 401/403 bodies stay off the wire, bounded diagnostics remain in server logs, and neither status is retried. Live staging cannot deterministically emit malformed authorization bodies, so no credentialed mutation is appropriate for this regression.
+
+### 2026-08-02 — Documentation and companion-skills audit
+- `README.md` now states the promised `UNAUTHORIZED` / `PERMISSION_DENIED` codes, numeric status, operation-aware recovery, and malformed-body sanitization. `manifest.json` has no general error-contract metadata, and no tool name, schema, description, or manifest entry changes in this follow-up.
+- Audited `SigNoz/agent-skills`: `signoz-mcp-setup` already teaches the 401/403 codes and recovery semantics, while `signoz-creating-alerts` carries the stronger domain-specific notification-channel permission guidance. This server change preserves those codes and is additive/sanitizing; it does not change a tool, parameter, payload shape, or taught workflow. No companion agent-skills PR is needed.
+
+### 2026-08-02 — Adversarial recognized-envelope redaction
+- Repeated protocol E2E passed but its independent reviewer found a recognized-envelope edge case: token redaction consumed only one whitespace-free value, so a Basic authorization credential or a quoted multi-word secret could leave a suffix client-visible.
+- The shared sanitizer now removes the complete authorization value through the end of its line, handles quoted named-secret values atomically, and retains the standalone Bearer-token filter. Regression fixtures cover Basic credentials, quoted passwords, named tokens, and standalone Bearer values before the shared text and structured error paths consume the message.
+
+### 2026-08-02 — Complete renderer fidelity and positive recognition
+- The final rubric and Opus reviews found that centralizing the parser exposed two broader ERR-6 gaps: documentation URLs, top-level/detail suggestions, and retry delay were discarded, while unrecognized non-auth bodies still fell through to raw client text.
+- The parser now recognizes only a complete current renderer tuple, the verified legacy `errorType` plus string `error` pair, or a complete top-level renderer tuple. A generic proxy object such as `{"status":"error","message":"..."}` is unrecognized. Every unrecognized body now produces status-only client text for all HTTP statuses; raw content remains only in bounded server diagnostics.
+- Recognized renderer code, type, message, URL, suggestions, detail messages/suggestions, and retry delay are bounded and filtered once, rendered into text for resource compatibility, and exposed independently in structured `upstream*` fields for tools and partial outcomes. The parse budget increased to 1 MiB while the detail array remains separately capped, so large real renderer envelopes retain their main fields without unbounded output.
+- Redaction was refined after Opus found that keyword-only matching destroyed legitimate prose such as `authorization: user lacks role editor`. Authorization scheme/opaque credentials, cookie headers, Bearer values, assignments, quoted secrets, and sufficiently opaque colon values are removed; ordinary authorization/token diagnostics remain faithful. Credential-shaped code/type tokens are rejected.
+
+### 2026-08-02 — Shared recovery and oversized authorization responses
+- Generic 401/403 `nextAction` now comes from the shared client boundary, so recognized and unrecognized resource errors and post-mutation partial outcomes all tell agents to re-authenticate or request the required access. Registered tools still supplement this with the exact tool and read/write annotation.
+- Notification-channel authorization failures no longer advise editing webhook/channel configuration. They explicitly say the mutation already succeeded, forbid repeating it, carry `retryPrimaryOperation:false`, and direct the agent to retry only verification; read-back recovery names `signoz_get_notification_channel`.
+- An oversized non-2xx body now returns a body-free `HTTPStatusError` instead of a generic size error. This preserves numeric status and `UNAUTHORIZED` / `PERMISSION_DENIED` classification even beyond the 64 MiB transport cap.
+
+### 2026-08-02 — Corrected companion-skills audit
+- The earlier entry's statement that payload shape did not change was too broad. Notification-channel partial outcomes do gain additive nested `code`, `status`, `operation`, `nextAction`, and `retryPrimaryOperation` fields; no existing field is removed or reinterpreted.
+- Re-audited `SigNoz/agent-skills`: no skill parses or teaches the notification `test_notification` / `read_back` payload shape. `signoz-mcp-setup` already teaches the stable 401/403 codes and recovery, and `signoz-creating-alerts` already teaches notification permission gating. Under CMP-3 this additive metadata does not require a companion PR.
+
+### 2026-08-02 — Independent optional-field, query-recovery, and retry-safety review
+- The Opus and independent MCP reviews found that strict typed decoding of optional renderer guidance could discard an otherwise verified error tuple, and that the existing QB missing-key helper still scanned raw 400 bodies outside the positive-recognition boundary. Optional URL, suggestions, detail, and retry fields now decode independently; valid siblings survive wrong-type additions, late invalid entries are still inspected after output caps, and only filtered message/detail fields can supply QB recovery keys.
+- Recognized `upstreamMessage` now remains the exact filtered renderer summary. Detail messages stay independently addressable under `upstreamDetails` and are folded only into human-readable text, avoiding duplicated/mutated structured fields.
+- A `status:"error"` body with an unknown required shape emits a distinct WARN before retry. Recognized envelopes with malformed optional fields emit a field-name-only WARN; no upstream values enter the drift signal. This also catches a transient drifted 503 even when the retry later succeeds.
+- Renderer retry delay is timing guidance, not proof that replay is safe. Registered reads add `retrySafe:true`; writes and unannotated tools add `retrySafe:false` plus a verify-current-state warning. Post-mutation nested failures retain `retryPrimaryOperation:false` and are never promoted to top-level errors that could trigger duplicate mutations.
+
+### 2026-08-02 — Executable partial recovery and operation-specific authorization wording
+- Generic shared `nextAction` owns the actual 401/403 remediation. The registered-tool decorator now adds only unique operation context: the exact failed tool and its behavior-backed read/write/neutral scope, followed by “retry only this operation” for 401. This removes duplicated recovery prose without weakening the immediate action.
+- No test-only notification-channel MCP tool exists. A successful create/update followed by a failed test-send therefore instructs the agent not to replay the mutation and to use the existing channel's Test action in the SigNoz UI after remediation. Read-back failure continues to name the callable `signoz_get_notification_channel` recovery. README now documents `status` and authorization `nextAction` as conditional nested fields rather than universal ones.
+
+### 2026-08-02 — Final adversarial renderer-sanitization boundary
+- Repeated adversarial review expanded credential filtering across quoted/dotted/prefixed/bracketed names; short and multi-word assignments; Basic/Bearer/Digest/AWS authorization forms; cookies and session fields; JWTs and common key prefixes in prose/code/type; and signed or credential-bearing URLs in every guidance channel. Documentation URLs reject query data and unsafe host/path/fragment components; prose URLs lose query/fragment data and are rendered inert.
+- Renderer prose is normalized before filtering, then raw HTML and every source Markdown bracket are made inert. The visible fullwidth `［REDACTED］` marker cannot itself become a Markdown link when attacker-controlled parentheses follow it. Known natural diagnostics such as `authorization: insufficient_permissions`, `token: signature_mismatch`, and `invalid token: signature mismatch` remain intact.
+- Full MCP JSON-RPC serialization tests cover an unrecognized proxy 401, a recognized renderer 401 containing credential-shaped fields across message/URL/suggestions/details, and malformed HTML 403 on a mutation. They assert stable status/code/recovery, no retry, no credential canary on the wire, and bounded server diagnostics.
+
+### 2026-08-02 — Final independent and Claude Opus 5 verification
+- The final bounded adversarial review returned no findings after the client sanitizer/drift suite, authorization/retry decorator suite, and 20 consecutive real MCP-wire authorization runs passed. It confirmed `retrySafe:true` is restricted to registered reads, writes/unannotated tools receive `retrySafe:false` plus state verification, and post-mutation partials retain `retryPrimaryOperation:false` and `retrySafe:false`.
+- The existing Claude review session `360efb22-52c0-4d48-8fde-cde3cc49de79` was resumed with explicit `claude-opus-5`, high effort, manual/read-only permissions, in the current repository. Its result reported no findings after re-reading the complete diff and section 11; `modelUsage.canonicalModel` confirmed `claude-opus-5`. Claude's attempted package vet command was permission-denied in manual mode; the local `go vet ./...`, focused/full tests, guardrails, build, and protocol inspector all ran separately and passed.
+- EVL-1 direct evidence is the malformed and recognized 401 `signoz_get_org_overview` MCP-wire pair. Indirect evidence is the malformed 403 `signoz_delete_dashboard` write path and nested notification partial outcomes. Negative evidence keeps local no-status `UNAUTHORIZED` and non-auth upstream 500 results outside authorization decoration. Request counters prove no 401/403 retry, and mutation retry timing is explicitly unsafe unless current state is verified.
+
+### 2026-08-02 — Maintainer stopped further review
+- A final advisory pass suggested an additional before/after model-session comparison for recovery behavior. The maintainer explicitly directed the work to stop further reviews, so that optional EVL-1 comparison was canceled before completion. The retained evidence is the deterministic direct/indirect/negative MCP-wire suite, behavior tests, completed independent reviews, and verified Opus 5 static review above.
 
 ## Open Questions
 - [x] Should alert creation succeed for the Momentic user? No. The backend correctly rejects non-editor/non-admin users; the MCP server should make that denial machine-actionable.

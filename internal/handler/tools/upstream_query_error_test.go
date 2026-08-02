@@ -28,6 +28,18 @@ func keyNotFound400(body string) *signozclient.HTTPStatusError {
 	return &signozclient.HTTPStatusError{StatusCode: http.StatusBadRequest, Body: body}
 }
 
+func legacyKeyNotFoundEnvelope(message string) string {
+	body, err := json.Marshal(map[string]any{
+		"status":    "error",
+		"errorType": "invalid_input",
+		"error":     message,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
+}
+
 func TestMissingFilterKeys(t *testing.T) {
 	tests := []struct {
 		name string
@@ -46,9 +58,19 @@ func TestMissingFilterKeys(t *testing.T) {
 		},
 		{
 			name: "multiple keys deduped in order",
-			err: keyNotFound400("Found 3 errors while parsing the search expression: " +
-				"key `service.name` not found; key `env` not found; key `service.name` not found"),
+			err: keyNotFound400(legacyKeyNotFoundEnvelope("Found 3 errors while parsing the search expression: " +
+				"key `service.name` not found; key `env` not found; key `service.name` not found")),
 			want: []string{"service.name", "env"},
+		},
+		{
+			name: "plain-text proxy body is not scanned",
+			err:  keyNotFound400("HTTP 400: key `proxy-body-canary` not found"),
+			want: nil,
+		},
+		{
+			name: "message-only proxy JSON is not scanned",
+			err:  keyNotFound400(`{"status":"error","message":"key ` + "`proxy-json-canary`" + ` not found"}`),
+			want: nil,
 		},
 		{
 			name: "wrapped error chain still detected",
@@ -90,7 +112,7 @@ func TestMissingFilterKeys_CapsSurfacedKeys(t *testing.T) {
 	for r := 'a'; r < 'a'+20; r++ {
 		b.WriteString("key `" + string(r) + ".name` not found; ")
 	}
-	got := missingFilterKeys(keyNotFound400(b.String()))
+	got := missingFilterKeys(keyNotFound400(legacyKeyNotFoundEnvelope(b.String())))
 	if len(got) != missingFilterKeysLimit {
 		t.Fatalf("len(missingFilterKeys) = %d, want cap %d", len(got), missingFilterKeysLimit)
 	}
@@ -101,11 +123,11 @@ func TestMissingFilterKeys_CapsSurfacedKeys(t *testing.T) {
 // guidance text or log attributes.
 func TestMissingFilterKeys_DropsOversizedKeys(t *testing.T) {
 	body := "key `" + strings.Repeat("x", missingFilterKeyMaxLen+1) + "` not found; key `service.name` not found"
-	got := missingFilterKeys(keyNotFound400(body))
+	got := missingFilterKeys(keyNotFound400(legacyKeyNotFoundEnvelope(body)))
 	if !reflect.DeepEqual(got, []string{"service.name"}) {
 		t.Fatalf("missingFilterKeys = %#v, want oversized key dropped", got)
 	}
-	if only := missingFilterKeys(keyNotFound400("key `" + strings.Repeat("x", missingFilterKeyMaxLen+1) + "` not found")); only != nil {
+	if only := missingFilterKeys(keyNotFound400(legacyKeyNotFoundEnvelope("key `" + strings.Repeat("x", missingFilterKeyMaxLen+1) + "` not found"))); only != nil {
 		t.Fatalf("missingFilterKeys = %#v, want nil when every key is oversized", only)
 	}
 }
@@ -115,10 +137,10 @@ func TestMissingFilterKeys_DropsOversizedKeys(t *testing.T) {
 // open, one inside it is still detected.
 func TestMissingFilterKeys_OversizedBodyScanBounded(t *testing.T) {
 	padding := strings.Repeat("x", missingFilterKeyScanBytes)
-	if got := missingFilterKeys(keyNotFound400(padding + "key `service.name` not found")); got != nil {
+	if got := missingFilterKeys(keyNotFound400(legacyKeyNotFoundEnvelope(padding + "key `service.name` not found"))); got != nil {
 		t.Fatalf("missingFilterKeys = %#v, want nil for a match beyond the scan window", got)
 	}
-	got := missingFilterKeys(keyNotFound400("key `service.name` not found" + padding))
+	got := missingFilterKeys(keyNotFound400(legacyKeyNotFoundEnvelope("key `service.name` not found" + padding)))
 	if !reflect.DeepEqual(got, []string{"service.name"}) {
 		t.Fatalf("missingFilterKeys = %#v, want detection inside the scan window of an oversized body", got)
 	}
@@ -190,10 +212,10 @@ func TestUpstreamQueryError_NoMissingKeyIsPlainUpstreamError(t *testing.T) {
 	}
 }
 
-// TestUpstreamError_FoldsAdditionalErrorDetails pins the envelope-parsing fix:
+// TestUpstreamError_FoldsAdditionalErrorDetails pins the envelope rendering:
 // newer backends put per-term details in error.errors[] and keep error.message a
-// bare summary, so the details must be folded into the surfaced message for every
-// tool using upstreamError, not just the QB wrappers.
+// bare summary. Human-readable text folds them, while structured fields retain
+// the independently addressable renderer summary and details.
 func TestUpstreamError_FoldsAdditionalErrorDetails(t *testing.T) {
 	res := upstreamError(keyNotFound400(keyNotFoundEnvelopeBody))
 
@@ -202,13 +224,17 @@ func TestUpstreamError_FoldsAdditionalErrorDetails(t *testing.T) {
 		t.Fatalf("additional error detail not folded into text: %q", text)
 	}
 	structured := resultStructuredMap(t, res)
-	if got, ok := structured["upstreamMessage"].(string); !ok || !strings.Contains(got, "key `service.name` not found") {
-		t.Fatalf("upstreamMessage missing folded detail: %#v", structured["upstreamMessage"])
+	if got := structured["upstreamMessage"]; got != "Found 1 errors while parsing the search expression." {
+		t.Fatalf("upstreamMessage = %#v, want exact renderer summary", got)
+	}
+	details, ok := structured["upstreamDetails"].([]signozclient.UpstreamErrorDetail)
+	if !ok || len(details) != 1 || details[0].Message != "key `service.name` not found" {
+		t.Fatalf("upstreamDetails missing independently preserved detail: %#v", structured["upstreamDetails"])
 	}
 }
 
 func TestUpstreamError_AdditionalDetailsDedupAndCap(t *testing.T) {
-	body := `{"status":"error","error":{"code":"invalid_input","message":"summary","errors":[` +
+	body := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":[` +
 		`{"message":"summary"},{"message":""},{"message":"d1"},{"message":"d1"},{"message":"d2"},{"message":"d3"},{"message":"d4"},{"message":"d5"},{"message":"d6"}]}}`
 	res := upstreamError(keyNotFound400(body))
 
@@ -221,10 +247,10 @@ func TestUpstreamError_AdditionalDetailsDedupAndCap(t *testing.T) {
 	}
 }
 
-// Pins the input-size bound: an error object beyond maxUpstreamErrorDetailsBytes
+// Pins the input-size bound: an error object beyond the detail-decoding budget
 // never has errors[] decoded — details drop (fail open), main fields survive.
 func TestUpstreamError_OversizedDetailArraySkippedNotDecoded(t *testing.T) {
-	huge := `[{"message":"` + strings.Repeat("x", maxUpstreamErrorDetailsBytes) + `"}]`
+	huge := `[{"message":"` + strings.Repeat("x", 96<<10) + `"}]`
 	body := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":` + huge + `}}`
 
 	res := upstreamError(keyNotFound400(body))
@@ -244,7 +270,7 @@ func TestUpstreamError_OversizedDetailArraySkippedNotDecoded(t *testing.T) {
 // detail shape we don't recognize is ignored WITHOUT discarding the independently
 // parsed type/code/message (the pre-hardening struct decode failed wholesale).
 func TestUpstreamError_AlternativeErrorsShapesKeepMainFields(t *testing.T) {
-	stringDetails := `{"status":"error","error":{"code":"invalid_input","message":"summary","errors":["key ` + "`env`" + ` not found"]}}`
+	stringDetails := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":["key ` + "`env`" + ` not found"]}}`
 	res := upstreamError(keyNotFound400(stringDetails))
 	if text := resultText(t, res); !strings.Contains(text, "summary (key `env` not found)") {
 		t.Fatalf("[]string details not folded: %q", text)

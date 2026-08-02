@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -620,6 +621,104 @@ func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
 	assert.True(t, sawTerminalWarn, "expected terminal non-retryable warning log")
 }
 
+func TestDoRequest_StatusErrorShapeDriftEmitsDistinctWarning(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantDrift bool
+	}{
+		{
+			name:      "message-only status error",
+			body:      `{"status":"error","message":"future renderer shape"}`,
+			wantDrift: true,
+		},
+		{
+			name: "recognized renderer",
+			body: `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"known shape"}}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+
+			client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+			require.Error(t, err)
+
+			var sawDrift bool
+			for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+				if line == "" {
+					continue
+				}
+				var rec map[string]any
+				require.NoError(t, json.Unmarshal([]byte(line), &rec))
+				if rec["msg"] != "SigNoz error response shape is unrecognized" {
+					continue
+				}
+				sawDrift = true
+				assert.Equal(t, "WARN", rec["level"])
+				assert.Equal(t, float64(http.StatusBadRequest), rec["status"])
+				assert.Equal(t, float64(len(tc.body)), rec["response.body.size_bytes"])
+				assert.NotContains(t, rec, "response", "drift signal must not copy the raw body")
+			}
+			assert.Equal(t, tc.wantDrift, sawDrift)
+		})
+	}
+}
+
+func TestDoRequest_OptionalRendererFieldDriftNamesFieldsOnly(t *testing.T) {
+	const body = `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","url":42,"suggestions":[false,"kept"],"errors":[42,{"message":"kept detail"}]}}`
+	var logBuf bytes.Buffer
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.Error(t, err)
+
+	var drift map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &rec))
+		if rec["msg"] == "SigNoz error response optional fields have unexpected shapes" {
+			drift = rec
+		}
+	}
+	require.NotNil(t, drift, "expected optional-field drift warning")
+	assert.Equal(t, []any{"url", "suggestions", "errors"}, drift["fields"])
+	assert.NotContains(t, drift, "response", "drift signal must carry field names, not values")
+}
+
+func TestDoRequest_RetryShapeDriftWarnsBeforeEventualSuccess(t *testing.T) {
+	var logBuf bytes.Buffer
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"error","message":"future retry shape"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), requests.Load())
+	assert.Equal(t, 1, strings.Count(logBuf.String(), `"msg":"SigNoz error response shape is unrecognized"`))
+}
+
 func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -637,6 +736,42 @@ func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
 	assert.Contains(t, statusErr.Body, "authz_forbidden")
 	assert.Contains(t, err.Error(), "unexpected status 403")
+	assert.NotContains(t, err.Error(), "authz_forbidden")
+	assert.Contains(t, err.Error(), "only editors/admins can access this resource")
+}
+
+func TestHTTPStatusError_AuthorizationBodyIsNotClientSafeText(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		want       string
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, want: "authentication failed"},
+		{name: "forbidden", statusCode: http.StatusForbidden, want: "permission denied"},
+	}
+	bodies := []string{
+		"auth-body-canary plain text",
+		"<html><body>auth-body-canary</body></html>",
+		`{"status":"error","message":"auth-body-canary"`,
+		`{"message":"auth-body-canary"}`,
+		"",
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, body := range bodies {
+				statusErr := &HTTPStatusError{StatusCode: tc.statusCode, Body: body}
+				assert.Equal(t, body, statusErr.Body, "Body must remain available to parsers and bounded server logs")
+				assert.Contains(t, statusErr.Error(), tc.want)
+				assert.NotContains(t, statusErr.Error(), "auth-body-canary")
+				assert.NotContains(t, statusErr.Error(), "<html>")
+			}
+		})
+	}
+
+	nonAuth := &HTTPStatusError{StatusCode: http.StatusBadGateway, Body: "non-auth-body-canary"}
+	assert.Equal(t, "unexpected status 502", nonAuth.Error())
+	assert.NotContains(t, nonAuth.Error(), "non-auth-body-canary", "unrecognized bodies are server diagnostics, not client-safe text")
 }
 
 func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
@@ -653,7 +788,7 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 	require.NoError(t, err)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
+		w.WriteHeader(http.StatusUnprocessableEntity)
 		_, _ = w.Write(responseBody)
 	}))
 	defer server.Close()
@@ -665,7 +800,7 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 
 	var statusErr *HTTPStatusError
 	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
-	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.Equal(t, http.StatusUnprocessableEntity, statusErr.StatusCode)
 	assert.True(t, json.Valid([]byte(statusErr.Body)), "stored body should remain parseable JSON")
 	assert.Contains(t, statusErr.Body, longMessage)
 	assert.Contains(t, err.Error(), "...(truncated)")
@@ -1959,6 +2094,51 @@ func TestDoRequest_RejectsOversizeResponse(t *testing.T) {
 	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+}
+
+func TestDoRequest_OversizeErrorPreservesHTTPStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		chunk := bytes.Repeat([]byte("x"), 1<<20)
+		var written int64
+		for written <= maxResponseBytes {
+			n, err := w.Write(chunk)
+			if err != nil {
+				return
+			}
+			written += int64(n)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+	_, err := client.doRequest(context.Background(), http.MethodDelete, server.URL, nil, 30*time.Second)
+	require.Error(t, err)
+	var statusErr *HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
+	assert.Empty(t, statusErr.Body, "oversized error body must be discarded")
+	assert.Contains(t, statusErr.Error(), "permission denied")
+	assert.Contains(t, statusErr.Error(), "Next action:")
+}
+
+func TestDoRequest_ErrorBodyReadFailurePreservesHTTPStatus(t *testing.T) {
+	client := NewClient(logpkg.New("error"), "https://example.test", "test-api-key", "SIGNOZ-API-KEY", nil)
+	client.httpClient = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Body:       io.NopCloser(iotest.ErrReader(errors.New("synthetic body read failure"))),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	_, err := client.doRequest(context.Background(), http.MethodGet, "https://example.test/api/v1/stats", nil, time.Second)
+	require.Error(t, err)
+	var statusErr *HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusUnauthorized, statusErr.StatusCode)
+	assert.Empty(t, statusErr.Body)
+	assert.Contains(t, statusErr.Error(), "Re-authenticate with valid SigNoz credentials")
 }
 
 // TestDoRequest_AllowsLargeUnderCapResponse verifies a large-but-under-cap

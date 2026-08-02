@@ -115,3 +115,8 @@
 - The delegated live test passed against staging with every one of 63 reported source keys and semantic values preserved unchanged in `data.sourceStats`; all 63 were also validated in typed projections. Metadata reconciled as reported=63, projected=63, unprojected=0, invalid=0, `projectionPartial=false`, and zero incomplete groups; cloud source availability was complete.
 - The live deployment used the JWT tokenizer, so `auth_token.count` was legitimately absent and `authentication.tokens.available=false` without making the projection partial. The opaque-token behavior is covered separately by a unit test that requires the count and emits recovery metadata when it is missing.
 - The read-only E2E created zero resources, so cleanup was not applicable. The supplied credential remained process-ephemeral and was not logged, printed, persisted, or committed.
+
+### 2026-08-02 — Minimum-version recovery follow-up
+- The issue #49 follow-up review was combined with this PR and a fresh Opus pass found that an older deployment's HTTP 404 still lacked an inline correction, even though the v0.129.0 floor was documented externally.
+- The tool description and synchronized README/manifest metadata now advertise SigNoz v0.129.0 or newer. A 404 keeps the shared `NOT_FOUND` classification and adds an immediate upgrade instruction plus a fallback to the narrower inventory and signal-query tools already named by the tool surface.
+- An adversarial E2E review caught that inactive or nonexistent cloud workspaces can also return 404. The final recovery is conditional: first verify that the configured URL points to an active deployment, then upgrade only when a reachable deployment lacks the stats route.

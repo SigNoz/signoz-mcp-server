@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -623,6 +624,58 @@ func TestHandleCreateNotificationChannel_TestFails(t *testing.T) {
 	}
 }
 
+func TestHandleCreateNotificationChannel_AuthorizationTestFailureIsSanitized(t *testing.T) {
+	const unsafeBody = `{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"test permission denied; Authorization: Basic notification-auth-body-canary notification-auth-suffix-canary"}}`
+	mock := &client.MockClient{
+		CreateNotificationChannelFn: func(context.Context, []byte) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"ch-1","name":"auth-test","type":"slack"}}`), nil
+		},
+		TestNotificationChannelFn: func(context.Context, []byte) error {
+			return &client.HTTPStatusError{StatusCode: http.StatusForbidden, Body: unsafeBody}
+		},
+	}
+	h := newTestHandler(mock)
+	result, err := h.handleCreateNotificationChannel(testCtx(), makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type":          "slack",
+		"name":          "auth-test",
+		"slack_api_url": "https://hooks.slack.com/services/invalid",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("channel creation succeeded, so the test-send warning must remain a success result")
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(encoded)
+	if strings.Contains(wire, "notification-auth-body-canary") || strings.Contains(wire, "notification-auth-suffix-canary") || strings.Contains(wire, unsafeBody) {
+		t.Fatalf("success result leaked authorization body: %s", wire)
+	}
+	if !strings.Contains(wire, "permission denied") {
+		t.Fatalf("success result lacks canonical permission guidance: %s", wire)
+	}
+	structured, ok := result.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content = %T, want object", result.StructuredContent)
+	}
+	partial, ok := structured["test_notification"].(map[string]any)
+	if !ok {
+		t.Fatalf("test_notification = %#v, want structured partial failure", structured["test_notification"])
+	}
+	if partial["code"] != CodePermissionDenied || fmt.Sprint(partial["status"]) != "403" || partial["operation"] != "test_notification" || partial["retryPrimaryOperation"] != false {
+		t.Fatalf("partial failure metadata = %#v", partial)
+	}
+	if partial["nextAction"] != client.AuthorizationNextAction(http.StatusForbidden) {
+		t.Fatalf("partial nextAction = %#v", partial["nextAction"])
+	}
+	if strings.Contains(strings.ToLower(wire), "verify its configuration") || !strings.Contains(wire, "Do not repeat the successful channel mutation") {
+		t.Fatalf("authorization failure carried unsafe mutation/configuration advice: %s", wire)
+	}
+}
+
 func TestHandleCreateNotificationChannel_SendResolvedFalse(t *testing.T) {
 	var capturedBody []byte
 	mock := &client.MockClient{
@@ -855,6 +908,62 @@ func TestHandleUpdateNotificationChannel_TestFails(t *testing.T) {
 	}
 	if !strings.Contains(text, "webhook returned 403 forbidden") {
 		t.Errorf("expected test error message in response, got: %s", text)
+	}
+}
+
+func TestHandleUpdateNotificationChannel_AuthorizationReadBackFailureIsSanitized(t *testing.T) {
+	const unsafeBody = `{"status":"error","error":{"type":"unauthorized","code":"unauthenticated","message":"invalid token; session_id=notification-readback-auth-body-canary"}}`
+	mock := &client.MockClient{
+		UpdateNotificationChannelFn: func(context.Context, string, []byte) error {
+			return nil
+		},
+		GetNotificationChannelFn: func(context.Context, string) (json.RawMessage, error) {
+			return nil, &client.HTTPStatusError{StatusCode: http.StatusUnauthorized, Body: unsafeBody}
+		},
+		TestNotificationChannelFn: func(context.Context, []byte) error {
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+	result, err := h.handleUpdateNotificationChannel(testCtx(), makeToolRequest("signoz_update_notification_channel", map[string]any{
+		"id":            "channel-1",
+		"type":          "slack",
+		"name":          "auth-readback",
+		"slack_api_url": "https://hooks.slack.com/services/T/B/x",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("channel update succeeded, so the read-back warning must remain a success result")
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(encoded)
+	if strings.Contains(wire, unsafeBody) {
+		t.Fatalf("success result leaked authorization body: %s", wire)
+	}
+	if !strings.Contains(wire, "invalid token") || !strings.Contains(wire, "Re-authenticate with valid SigNoz credentials") {
+		t.Fatalf("success result lacks recognized guidance and authentication recovery: %s", wire)
+	}
+	structured, ok := result.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content = %T, want object", result.StructuredContent)
+	}
+	partial, ok := structured["read_back"].(map[string]any)
+	if !ok {
+		t.Fatalf("read_back = %#v, want structured partial failure", structured["read_back"])
+	}
+	if partial["code"] != CodeUnauthorized || fmt.Sprint(partial["status"]) != "401" || partial["operation"] != "read_back" || partial["retryPrimaryOperation"] != false {
+		t.Fatalf("partial failure metadata = %#v", partial)
+	}
+	if partial["nextAction"] != client.AuthorizationNextAction(http.StatusUnauthorized) {
+		t.Fatalf("partial nextAction = %#v", partial["nextAction"])
+	}
+	if !strings.Contains(wire, "signoz_get_notification_channel") {
+		t.Fatalf("read-back recovery does not name the retry tool: %s", wire)
 	}
 }
 

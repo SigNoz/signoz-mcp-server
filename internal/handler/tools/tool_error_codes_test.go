@@ -3,15 +3,18 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -41,7 +44,7 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return bare, nil
 		}
-		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
+		result, err := h.errorCodeDecorator("test_tool", nil, next)(context.Background(), request)
 		if err != nil {
 			t.Fatalf("decorator returned Go error: %v", err)
 		}
@@ -61,7 +64,7 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return coded, nil
 		}
-		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
+		result, err := h.errorCodeDecorator("test_tool", nil, next)(context.Background(), request)
 		if err != nil {
 			t.Fatalf("decorator returned Go error: %v", err)
 		}
@@ -73,6 +76,150 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		}
 	})
 
+}
+
+func TestErrorCodeDecorator_AddsOperationAwareAuthorizationRecovery(t *testing.T) {
+	readOnly := true
+	write := false
+	tests := []struct {
+		name         string
+		status       int
+		code         string
+		readOnlyHint *bool
+		want         string
+	}{
+		{
+			name:         "unauthorized",
+			status:       http.StatusUnauthorized,
+			code:         CodeUnauthorized,
+			readOnlyHint: &readOnly,
+			want:         "Affected operation: `signoz_probe` failed authentication.",
+		},
+		{
+			name:         "forbidden read",
+			status:       http.StatusForbidden,
+			code:         CodePermissionDenied,
+			readOnlyHint: &readOnly,
+			want:         "lack access to this read operation (`signoz_probe`)",
+		},
+		{
+			name:         "forbidden write",
+			status:       http.StatusForbidden,
+			code:         CodePermissionDenied,
+			readOnlyHint: &write,
+			want:         "lack permission for this write operation (`signoz_probe`)",
+		},
+		{
+			name:   "forbidden unannotated",
+			status: http.StatusForbidden,
+			code:   CodePermissionDenied,
+			want:   "lack permission for this operation (`signoz_probe`)",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			coded := upstreamError(&signozclient.HTTPStatusError{
+				StatusCode: tc.status,
+				Body:       "unsafe-auth-body-canary",
+			})
+			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return coded, nil
+			}
+			h := &Handler{logger: logpkg.New("error")}
+			result, err := h.errorCodeDecorator("signoz_probe", tc.readOnlyHint, next)(context.Background(), makeToolRequest("signoz_probe", map[string]any{}))
+			if err != nil {
+				t.Fatalf("decorator returned Go error: %v", err)
+			}
+			if got := resultCode(t, result); got != tc.code {
+				t.Fatalf("code = %q, want %q", got, tc.code)
+			}
+			text := resultText(t, result)
+			if !strings.Contains(text, tc.want) {
+				t.Fatalf("text = %q, want operation recovery %q", text, tc.want)
+			}
+			if strings.Contains(text, "unsafe-auth-body-canary") {
+				t.Fatalf("text leaked upstream authorization body: %q", text)
+			}
+			for _, unsupportedInference := range []string{"viewer-level", "editor access", "admin access"} {
+				if strings.Contains(strings.ToLower(text), unsupportedInference) {
+					t.Fatalf("text inferred an unobserved role: %q", text)
+				}
+			}
+		})
+	}
+
+	t.Run("local unauthorized without upstream status is unchanged", func(t *testing.T) {
+		coded := clientError(errors.New("missing credentials"))
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return coded, nil
+		}
+		h := &Handler{logger: logpkg.New("error")}
+		result, err := h.errorCodeDecorator("signoz_probe", &readOnly, next)(context.Background(), makeToolRequest("signoz_probe", map[string]any{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := resultText(t, result); got != "missing credentials" {
+			t.Fatalf("local unauthorized text = %q, want unchanged", got)
+		}
+	})
+
+	t.Run("non-authorization upstream status is unchanged", func(t *testing.T) {
+		coded := upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusInternalServerError, Body: `{"status":"error","message":"proxy canary"}`})
+		before := resultText(t, coded)
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return coded, nil
+		}
+		h := &Handler{logger: logpkg.New("error")}
+		result, err := h.errorCodeDecorator("signoz_probe", &readOnly, next)(context.Background(), makeToolRequest("signoz_probe", map[string]any{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := resultText(t, result); got != before || strings.Contains(got, "Affected operation:") {
+			t.Fatalf("non-auth error recovery changed: before=%q after=%q", before, got)
+		}
+	})
+}
+
+func TestErrorCodeDecorator_QualifiesRendererRetryByOperationSemantics(t *testing.T) {
+	readOnly := true
+	write := false
+	tests := []struct {
+		name         string
+		readOnlyHint *bool
+		wantSafe     bool
+		wantCaution  bool
+	}{
+		{name: "read", readOnlyHint: &readOnly, wantSafe: true},
+		{name: "write", readOnlyHint: &write, wantCaution: true},
+		{name: "unannotated", wantCaution: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			coded := upstreamError(&signozclient.HTTPStatusError{
+				StatusCode: http.StatusServiceUnavailable,
+				Body:       `{"status":"error","error":{"type":"unavailable","code":"temporarily_unavailable","message":"try later","retry":{"delay":"2s"}}}`,
+			})
+			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return coded, nil
+			}
+			h := &Handler{logger: logpkg.New("error")}
+			result, err := h.errorCodeDecorator("signoz_retry_probe", tc.readOnlyHint, next)(context.Background(), makeToolRequest("signoz_retry_probe", map[string]any{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			structured := resultStructuredMap(t, result)
+			if got, ok := structured["retrySafe"].(bool); !ok || got != tc.wantSafe {
+				t.Fatalf("retrySafe = %#v, want %t", structured["retrySafe"], tc.wantSafe)
+			}
+			text := resultText(t, result)
+			caution := "may already have taken effect. Verify current state before retrying it."
+			if strings.Contains(text, caution) != tc.wantCaution {
+				t.Fatalf("caution mismatch: %q", text)
+			}
+		})
+	}
 }
 
 func TestErrorCodeDecorator_TypedStructuredContent(t *testing.T) {
@@ -102,7 +249,7 @@ func TestErrorCodeDecorator_TypedStructuredContent(t *testing.T) {
 			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return bare, nil
 			}
-			result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), makeToolRequest("test_tool", map[string]any{}))
+			result, err := h.errorCodeDecorator("test_tool", nil, next)(context.Background(), makeToolRequest("test_tool", map[string]any{}))
 			if err != nil {
 				t.Fatalf("decorator returned Go error: %v", err)
 			}

@@ -342,9 +342,11 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries an appended `Input validation notice:` text block naming the mismatched parameter so self-correcting agents can adjust. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
 
+> **Upstream and authorization errors:** an upstream SigNoz 401 or 403 that prevents the primary tool operation is returned as a top-level tool error with a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. The text gives the immediate next action and names the failed tool; 403 guidance distinguishes read access from write permission using the tool's registered annotation, without guessing the caller's role. If a notification-channel mutation succeeds but its verification or read-back then fails, the tool remains a success to prevent an unsafe duplicate mutation and reports nested partial-failure metadata (`code`, `operation`, `retryPrimaryOperation: false`, plus numeric `status` and authorization `nextAction` when available). Recognized SigNoz renderer guidance—including the exact summary message, documentation URL, top-level/detail suggestions, independently addressable detail messages, and retry delay—is preserved in bounded, filtered `upstream*` fields and text. A renderer retry delay is qualified by structured `retrySafe`: only registered read operations are marked `true`; mutations and unannotated operations are marked `false` and tell clients to verify current state before replaying. Malformed, over-budget, or non-SigNoz bodies are withheld from MCP clients for every HTTP status and retained only as bounded server-side diagnostics; a SigNoz-like `status: "error"` shape that is not recognized also emits a distinct server warning so contract drift is detectable.
+
 | Tool | Description |
 |------|-------------|
-| `signoz_get_org_overview` | Return a one-call deployment posture snapshot with typed projections plus `sourceStats` containing every field reported by the deployment stats endpoint |
+| `signoz_get_org_overview` | Return a one-call deployment posture snapshot from SigNoz v0.129.0 or newer, with typed projections plus `sourceStats` containing every field reported by the deployment stats endpoint |
 | `signoz_list_metrics` | Discover active metric names and catalog metadata |
 | `signoz_query_metrics` | Query known metrics for values, trends, breakdowns, or formulas |
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
@@ -860,7 +862,7 @@ Create a notification channel and send a test notification. First call `signoz_l
   - `name` (required) - Unique channel name, verified against `signoz_list_notification_channels`
   - `send_resolved` (optional) - Send notifications when alerts resolve. Boolean (or the strings `"true"`/`"false"`), default: true
   - Type-specific fields (required by channel type), such as `slack_api_url`, `webhook_url`, `pagerduty_routing_key`, `email_to`, `opsgenie_api_key`, or `msteams_webhook_url`
-- **Test-send behavior**: the channel is created first, then a test notification is sent. If the test fails, the tool still returns success (the channel WAS created) but appends a prominent warning note so the failure is not buried — verify the configuration and re-test.
+- **Test-send behavior**: the channel is created first, then a test notification is sent. If the test fails, the tool still returns success (the channel WAS created) but appends a prominent warning note so the failure is not buried. Do not create the channel again; verify the existing configuration and use that channel's **Test** action in the SigNoz UI.
 
 #### `signoz_update_notification_channel`
 
@@ -872,7 +874,7 @@ Fully replace an existing notification channel and send a test notification. Fir
   - `name` (required) - Channel name
   - `send_resolved` (optional) - Complete replacement setting. Copy the fetched value unless changing it; omission resets to true
   - Full channel configuration fields for the selected channel type
-- **Test-send behavior**: same as create — a failed verification test-send surfaces a prominent warning note instead of flipping the result to an error.
+- **Test-send behavior**: same as create — a failed verification test-send surfaces a prominent warning note instead of flipping the result to an error. Do not repeat the update; verify the existing channel and use its **Test** action in the SigNoz UI.
 
 #### `signoz_get_notification_channel`
 

@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -205,7 +208,7 @@ func (h *Handler) RegisterOrgOverviewHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_get_org_overview",
 		mcp.WithOutputSchema[orgOverviewOutput](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithDescription("Use this when the user needs a one-call deployment posture snapshot before inspecting specific resources. It returns typed telemetry freshness and all-time volume plus dashboard, alert, integration, access, license, and configuration posture; sourceStats preserves every reported stats field. Use signoz_list_dashboards, signoz_list_alert_rules, signoz_list_notification_channels, or signoz_list_views for exact inventories; signoz_list_metrics for metric names; signoz_list_alerts for current alert instances; and signoz_search_logs, signoz_search_traces, or signoz_query_metrics for time-windowed or per-service data. Missing fields mean unreported, not zero; dashboard panel counts cover legacy widgets only. When a typed projection is partial, metadata.incompleteGroups supplies recovery guidance. Example: 'Summarize this SigNoz deployment before we configure alerts.'"),
+		mcp.WithDescription("Use this when the user needs a one-call deployment posture snapshot before inspecting specific resources. Requires SigNoz v0.129.0 or newer. It returns typed telemetry freshness and all-time volume plus dashboard, alert, integration, access, license, and configuration posture; sourceStats preserves every reported stats field. Use signoz_list_dashboards, signoz_list_alert_rules, signoz_list_notification_channels, or signoz_list_views for exact inventories; signoz_list_metrics for metric names; signoz_list_alerts for current alert instances; and signoz_search_logs, signoz_search_traces, or signoz_query_metrics for time-windowed or per-service data. Missing fields mean unreported, not zero; dashboard panel counts cover legacy widgets only. When a typed projection is partial, metadata.incompleteGroups supplies recovery guidance. Example: 'Summarize this SigNoz deployment before we configure alerts.'"),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 	)
 
@@ -222,7 +225,19 @@ func (h *Handler) handleGetOrgOverview(ctx context.Context, _ mcp.CallToolReques
 	result, err := client.GetOrgOverview(ctx)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to get deployment overview", err)
-		return upstreamError(err), nil
+		errorResult := upstreamError(err)
+		var statusErr *signozclient.HTTPStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+			const recovery = "recovery: Verify that the configured SigNoz URL points to an active deployment. If the deployment is reachable but this route is unavailable, signoz_get_org_overview requires SigNoz v0.129.0 or newer; upgrade the deployment or use the narrower inventory and signal-query tools named in this tool's description."
+			for i, content := range errorResult.Content {
+				if text, ok := content.(mcp.TextContent); ok {
+					text.Text += "\n\n" + recovery
+					errorResult.Content[i] = text
+					break
+				}
+			}
+		}
+		return errorResult, nil
 	}
 
 	overview, driftFields, err := buildOrgOverview(result)

@@ -113,12 +113,16 @@ func TestHandleAlertSummaryResourceReportsDegradedHistory(t *testing.T) {
 func TestHandleAlertSummaryResourcePropagatesHistoryAuthorizationErrors(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
+			body := `{"status":"error","error":{"type":"unauthorized","code":"unauthenticated","message":"invalid token"}}`
+			if status == http.StatusForbidden {
+				body = `{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"permission denied"}}`
+			}
 			mock := &signozclient.MockClient{
 				GetAlertByRuleIDFn: func(context.Context, string) (json.RawMessage, error) {
 					return json.RawMessage(`{"id":"rule-1"}`), nil
 				},
 				GetAlertHistoryFn: func(context.Context, string, types.AlertHistoryRequest) (json.RawMessage, error) {
-					return nil, &signozclient.HTTPStatusError{StatusCode: status, Body: `{}`}
+					return nil, &signozclient.HTTPStatusError{StatusCode: status, Body: body}
 				},
 			}
 
@@ -132,6 +136,17 @@ func TestHandleAlertSummaryResourcePropagatesHistoryAuthorizationErrors(t *testi
 			var statusErr *signozclient.HTTPStatusError
 			if !errors.As(err, &statusErr) || statusErr.StatusCode != status {
 				t.Fatalf("error = %v, want preserved HTTP status %d", err, status)
+			}
+			if status == http.StatusUnauthorized && !strings.Contains(err.Error(), "authentication failed") {
+				if !strings.Contains(err.Error(), "invalid token") {
+					t.Fatalf("resource 401 error lacks recognized guidance: %v", err)
+				}
+			}
+			if status == http.StatusForbidden && !strings.Contains(err.Error(), "permission denied") {
+				t.Fatalf("resource 403 error lacks canonical guidance: %v", err)
+			}
+			if !strings.Contains(err.Error(), "Next action:") || !strings.Contains(err.Error(), signozclient.AuthorizationNextAction(status)) {
+				t.Fatalf("resource error lacks immediate authorization recovery: %v", err)
 			}
 		})
 	}
