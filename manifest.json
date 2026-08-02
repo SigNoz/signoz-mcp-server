@@ -47,7 +47,7 @@
     },
     {
       "name": "signoz_get_data_retention",
-      "description": "Return current and pending-target deletion retention and cold-storage movement in hours for metrics, traces, and logs, plus active or target custom log overrides and change status"
+      "description": "Return current and latest pending or failed target deletion retention and cold-storage movement in hours for metrics, traces, and logs, plus active or target custom log overrides and change status"
     },
     {
       "name": "signoz_get_field_keys",
