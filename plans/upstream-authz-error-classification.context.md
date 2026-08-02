@@ -119,5 +119,18 @@
 ### 2026-08-02 — Maintainer stopped further review
 - A final advisory pass suggested an additional before/after model-session comparison for recovery behavior. The maintainer explicitly directed the work to stop further reviews, so that optional EVL-1 comparison was canceled before completion. The retained evidence is the deterministic direct/indirect/negative MCP-wire suite, behavior tests, completed independent reviews, and verified Opus 5 static review above.
 
+### 2026-08-02 — Fable overengineering review and cleanup boundary
+- The maintainer asked for a Fable 5 review against the narrower nerve-pod#49 follow-up comment, which called only for canonical fallback text when 401/403 bodies are unparseable and operation-specific recovery. The verified `claude-fable-5` high-effort read-only session `c5a20f75-6171-4863-8c33-16f2f6cba492` judged the issue-49 portion substantially overengineered relative to that comment.
+- Cleanup preserves the independently pre-existing ERR-6 contract: positive recognition, bounded faithful renderer guidance, status-only fallback for every unrecognized body, safe filtering, recognized-only QB recovery, and detectable optional-field drift. It also preserves typed status handling and nested post-mutation failure classification required by repository rules.
+- Cleanup removes the unrelated `retrySafe` output contract, collapses the adversarial redaction matrix to high-confidence credential and markup handling, and simplifies duplicated notification recovery prose. Organization-overview source conservation and typed projection behavior remain unchanged.
+
+### 2026-08-02 — Fable cleanup review follow-up
+- The requested verified `claude-fable-5` high-effort read-only review session `e87cf121-f50d-4627-8ead-2b7e8bfd78db` found one fidelity regression in the simplified standalone Basic/Bearer matcher: ordinary prose such as “Basic authentication is required” matched as a credential. The matcher again requires a long or token-shaped value, and a regression test preserves ordinary guidance.
+- The remaining ambiguous unquoted `authorization:` / `token:` matcher and diagnostic allowlist were removed instead of expanding another prose classifier. High-confidence coverage remains for quoted authorization values, explicit schemes, named assignments, JWTs, common key prefixes, credential-bearing URLs, and active markup.
+
+### 2026-08-02 — Cleanup verification complete
+- The cleanup removes 178 lines net from the prior branch state without changing organization-overview source conservation or typed projections. Focused client/tool tests, the authorization MCP-wire race test, guardrails, the full Go suite, vet, build, formatting/imports, and diff checks pass.
+- The unchanged Inspector protocol script passed shell syntax but could not run locally because GNU `timeout` is unavailable in this macOS environment; the prior branch run and GitHub protocol check remain the protocol evidence. A focused continuation of the completed Fable session was attempted after the accepted P2 fix but Anthropic returned a session-limit error, so no additional reviewer instance was started.
+
 ## Open Questions
 - [x] Should alert creation succeed for the Momentic user? No. The backend correctly rejects non-editor/non-admin users; the MCP server should make that denial machine-actionable.

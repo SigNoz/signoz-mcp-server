@@ -334,9 +334,10 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	if testErr != nil {
 		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
 		failure := partialUpstreamFailure(testErr, "test_notification")
-		failure["message"] = testNotificationFailureMessage(name, "created", failure)
+		failureMessage, warningNote := testNotificationFailureGuidance(name, "created", failure)
+		failure["message"] = failureMessage
 		result["test_notification"] = failure
-		testFailureNote = testNotificationWarningNote(name, "created", failure)
+		testFailureNote = warningNote
 	} else {
 		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{
@@ -356,26 +357,17 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	return structuredResultWithNotes(resultJSON, testFailureNote), nil
 }
 
-// These helpers keep partial-result and prominent advisory guidance aligned
-// after a channel mutation succeeds but its verification test-send fails.
-func testNotificationFailureMessage(name, action string, failure map[string]any) string {
-	if _, authorizationFailure := failure["nextAction"]; authorizationFailure {
-		return fmt.Sprintf(
-			"Channel '%s' was %s successfully, but SigNoz rejected the verification test notification: %s. Do not repeat the successful channel mutation; follow nextAction, then open this existing channel in the SigNoz UI and use its Test action.",
-			name, action, failure["error"])
+// testNotificationFailureGuidance keeps the structured message and prominent
+// note on the same recovery path after the primary mutation succeeds.
+func testNotificationFailureGuidance(name, action string, failure map[string]any) (string, string) {
+	nextStep := "Verify this existing channel's configuration, then use its Test action in the SigNoz UI."
+	if nextAction, ok := failure["nextAction"].(string); ok {
+		nextStep = nextAction + " Then open this existing channel in the SigNoz UI and use its Test action."
 	}
-	return fmt.Sprintf("Channel '%s' was %s but the test notification failed: %s. Do not repeat the successful channel mutation; verify this existing channel's configuration, then use its Test action in the SigNoz UI.", name, action, failure["error"])
-}
-
-func testNotificationWarningNote(name, action string, failure map[string]any) string {
-	if nextAction, authorizationFailure := failure["nextAction"].(string); authorizationFailure {
-		return fmt.Sprintf(
-			"note: WARNING — notification channel %q was %s successfully, but SigNoz rejected the verification test notification: %s. Do not repeat the successful channel mutation. %s Then open this existing channel in the SigNoz UI and use its Test action.",
-			name, action, failure["error"], nextAction)
-	}
-	return fmt.Sprintf(
-		"note: WARNING — notification channel %q was %s successfully, but the verification test notification FAILED: %s. The channel exists but may not deliver alerts; verify its configuration (URL/key/credentials), then use its Test action in the SigNoz UI. Do not repeat the successful channel mutation.",
-		name, action, failure["error"])
+	message := fmt.Sprintf(
+		"Channel %q was %s successfully, but the verification test notification failed: %s. Do not repeat the successful channel mutation. %s",
+		name, action, failure["error"], nextStep)
+	return message, "note: WARNING — " + message
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -466,9 +458,10 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	if testErr != nil {
 		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
 		failure := partialUpstreamFailure(testErr, "test_notification")
-		failure["message"] = testNotificationFailureMessage(name, "updated", failure)
+		failureMessage, warningNote := testNotificationFailureGuidance(name, "updated", failure)
+		failure["message"] = failureMessage
 		result["test_notification"] = failure
-		testFailureNote = testNotificationWarningNote(name, "updated", failure)
+		testFailureNote = warningNote
 	} else {
 		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{

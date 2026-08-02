@@ -28,33 +28,22 @@ const (
 var (
 	errorTokenPattern = regexp.MustCompile(`^[A-Za-z0-9][-A-Za-z0-9._:]*$`)
 
-	// Credential names accept the separator variants commonly used by JSON,
-	// environment variables, query strings, and prose. Keeping one shared
-	// spelling prevents dotted names (api.key/session.id) from bypassing a
-	// filter that only understood underscores and hyphens.
+	// Keep filtering deliberately high-confidence. Unrecognized bodies never
+	// reach this path, so the remaining job is to remove obvious credentials
+	// without rewriting ordinary renderer guidance.
 	credentialNamePattern            = `(?:authorization|api[._-]?key|access[._-]?token|refresh[._-]?token|token|password|secret|cookie|session(?:[._-]?(?:id|token))?)`
-	strongCredentialNamePattern      = `(?:api[._-]?key|access[._-]?token|refresh[._-]?token|password|secret|session(?:[._-]?(?:id|token))?)`
+	strongCredentialNamePattern      = `(?:api[._-]?key|access[._-]?token|refresh[._-]?token|password|secret|cookie|session(?:[._-]?(?:id|token))?)`
 	secretTokenPattern               = regexp.MustCompile(`(?i)(^|[-._:])` + credentialNamePattern + `[:=]`)
 	highConfidenceSecretTokenPattern = regexp.MustCompile(`(?i)^(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|AKIA[A-Z0-9]{12,}|eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$`)
 
-	// Header/scheme patterns stop at the credential token. In particular they
-	// do not consume a following "; contact your administrator" clause.
+	// Structured schemes can contain comma-separated credential components;
+	// remove the complete line. Simpler schemes stop at prose delimiters.
 	structuredAuthorizationSecretPattern = regexp.MustCompile(`(?i)(["']?\bauthorization\b["']?[ \t]*[:=][ \t]*["']?(?:digest|aws4-hmac-sha256)[ \t]+)[^\r\n]+`)
 	authorizationSchemeSecretPattern     = regexp.MustCompile(`(?i)(["']?\bauthorization\b["']?[ \t]*[:=][ \t]*["']?(?:basic|bearer|token|apikey)[ \t]+)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^,;\r\n]+)`)
 	authorizationQuotedSecretPattern     = regexp.MustCompile(`(?i)(["']?\bauthorization\b["']?[ \t]*[:=][ \t]*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|["'][^,;\r\n]*)`)
-	ambiguousOpaqueSecretPattern         = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9])["']?(?:authorization|token)["']?[ \t]*:[ \t]*)([A-Za-z0-9._~+/=-]+)([ \t]*(?:[,;]|\r?\n|$))`)
-	diagnosticCodePattern                = regexp.MustCompile(`^(?:insufficient_permissions|signature_mismatch|permission_denied|invalid_signature|expired_token|token_expired|authentication_failed|authorization_failed|token_required|token_missing)$`)
-	structuredAuthSchemeSecretPattern    = regexp.MustCompile(`(?i)\b(?:digest|aws4-hmac-sha256)[ \t]+[A-Za-z][A-Za-z0-9_-]*[ \t]*=[^\r\n]+`)
 	authSchemeSecretPattern              = regexp.MustCompile(`(?i)\b(basic|bearer)([ \t]+)(?:[A-Za-z0-9._~+/=-]{16,}|[A-Za-z0-9]{0,64}[-._~+/=][A-Za-z0-9._~+/=-]{3,})`)
-	cookieHeaderPattern                  = regexp.MustCompile(`(?i)["']?\b(?:set-)?cookie\b["']?[ \t]*[:=][ \t]*`)
-	cookieAssignmentPattern              = regexp.MustCompile(`^[ \t]*[^=;[:space:]]+[ \t]*=`)
 	namedEqualsSecretPattern             = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9])["']?` + credentialNamePattern + `["']?[ \t]*=[ \t]*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^,;\r\n]+)`)
 	namedColonSecretPattern              = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9])["']?` + strongCredentialNamePattern + `["']?[ \t]*:[ \t]*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^,;\r\n]+)`)
-	bracketNamedSecretPattern            = regexp.MustCompile(`(?i)(\[[ \t]*["']?` + credentialNamePattern + `["']?[ \t]*\][ \t]*[:=][ \t]*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^,;\r\n]+)`)
-	namedQuotedSecretPattern             = regexp.MustCompile(`(?i)((?:^|[^A-Za-z0-9])["']?` + credentialNamePattern + `["']?[ \t]*:[ \t]*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')`)
-	strongContextualSecretPattern        = regexp.MustCompile(`(?i)(\b(?:api[ ._-]?key|access[ ._-]?token|refresh[ ._-]?token|password|secret|session[ ._-]?(?:id|token))\b(?:[ \t]+(?:is|was))?[ \t]+)([^,;[:space:]]+)`)
-	safeContextWordPattern               = regexp.MustCompile(`(?i)^(?:guidance|missing|invalid|required|expired|failed|mismatch|permissions|denied)$`)
-	contextualSecretPattern              = regexp.MustCompile(`(?i)(\btoken\b(?:[ \t]+(?:is|was))?[ \t]+)[A-Za-z0-9._~+/=-]{16,}`)
 	jwtSecretPattern                     = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
 	knownSecretPrefixPattern             = regexp.MustCompile(`(?i)(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|AKIA[A-Z0-9]{12,})`)
 	proseURLPattern                      = regexp.MustCompile(`(?i)https?://[^[:space:]<>"']+`)
@@ -424,17 +413,11 @@ func safeUpstreamErrorURL(raw json.RawMessage) (string, bool) {
 }
 
 func unsafeURLComponent(value string) bool {
-	for range 3 {
-		if strings.IndexFunc(value, unicode.IsControl) >= 0 || strings.ContainsAny(value, `<>"'`) || sensitiveURLTextPattern.MatchString(value) || jwtSecretPattern.MatchString(value) || knownSecretPrefixPattern.MatchString(value) {
-			return true
-		}
-		decoded, err := url.PathUnescape(value)
-		if err != nil || decoded == value {
-			break
-		}
-		value = decoded
+	if strings.IndexFunc(value, unicode.IsControl) >= 0 || strings.ContainsAny(value, `<>"'`) || sensitiveURLTextPattern.MatchString(value) || jwtSecretPattern.MatchString(value) || knownSecretPrefixPattern.MatchString(value) {
+		return true
 	}
-	return false
+	decoded, err := url.PathUnescape(value)
+	return err == nil && decoded != value && (strings.ContainsAny(decoded, `<>"'`) || sensitiveURLTextPattern.MatchString(decoded) || jwtSecretPattern.MatchString(decoded) || knownSecretPrefixPattern.MatchString(decoded))
 }
 
 func safeUpstreamErrorMessage(value string) string {
@@ -449,19 +432,12 @@ func safeUpstreamErrorMessage(value string) string {
 		return r
 	}, value)
 	value = sanitizeProseURLs(value)
-	value = redactCookieHeaders(value)
 	value = structuredAuthorizationSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
 	value = authorizationSchemeSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
 	value = authorizationQuotedSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
-	value = redactAmbiguousOpaqueSecrets(value)
-	value = structuredAuthSchemeSecretPattern.ReplaceAllString(value, redactedText)
 	value = authSchemeSecretPattern.ReplaceAllString(value, `$1$2`+redactedText)
-	value = bracketNamedSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
 	value = namedEqualsSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
 	value = namedColonSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
-	value = namedQuotedSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
-	value = redactStrongContextualSecrets(value)
-	value = contextualSecretPattern.ReplaceAllString(value, `${1}`+redactedText)
 	value = jwtSecretPattern.ReplaceAllString(value, redactedText)
 	value = knownSecretPrefixPattern.ReplaceAllString(value, redactedText)
 	// MCP text is Markdown. Neutralize active markup after credential parsing
@@ -469,33 +445,6 @@ func safeUpstreamErrorMessage(value string) string {
 	// source brackets and redaction markers stay inert even next to a URL.
 	value = strings.NewReplacer("<", "&lt;", ">", "&gt;", "[", "［", "]", "］").Replace(value)
 	return logpkg.TruncBody([]byte(value))
-}
-
-func redactAmbiguousOpaqueSecrets(value string) string {
-	return ambiguousOpaqueSecretPattern.ReplaceAllStringFunc(value, func(match string) string {
-		parts := ambiguousOpaqueSecretPattern.FindStringSubmatch(match)
-		if len(parts) != 4 {
-			return redactedText
-		}
-		candidate := parts[2]
-		if diagnosticCodePattern.MatchString(candidate) {
-			return match
-		}
-		return parts[1] + redactedText + parts[3]
-	})
-}
-
-func redactStrongContextualSecrets(value string) string {
-	return strongContextualSecretPattern.ReplaceAllStringFunc(value, func(match string) string {
-		parts := strongContextualSecretPattern.FindStringSubmatch(match)
-		if len(parts) != 3 {
-			return redactedText
-		}
-		if safeContextWordPattern.MatchString(parts[2]) {
-			return match
-		}
-		return parts[1] + redactedText
-	})
 }
 
 func sanitizeProseURLs(value string) string {
@@ -513,40 +462,14 @@ func sanitizeProseURLs(value string) string {
 		if unsafeURLComponent(parsed.Hostname()) || unsafeURLComponent(parsed.Path) {
 			return redactedURLText + suffix
 		}
-		// Prose URLs are not the validated renderer documentation channel.
-		// Remove all query/fragment material (including nested signed URLs),
-		// then make the remaining base visibly URL-like but Markdown-inert.
+		// Prose URLs are not the validated renderer documentation channel. Remove
+		// query and fragment material, which can carry signed credentials.
 		parsed.RawQuery = ""
 		parsed.ForceQuery = false
 		parsed.Fragment = ""
 		parsed.RawFragment = ""
-		clean := parsed.String()
-		clean = strings.Replace(clean, "://", "：//", 1)
-		return clean + suffix
+		return parsed.String() + suffix
 	})
-}
-
-func redactCookieHeaders(value string) string {
-	lines := strings.Split(value, "\n")
-	for i, line := range lines {
-		match := cookieHeaderPattern.FindStringIndex(line)
-		if match == nil {
-			continue
-		}
-		prefix := line[:match[1]]
-		segments := strings.Split(line[match[1]:], ";")
-		for j, segment := range segments {
-			if j == 0 || cookieAssignmentPattern.MatchString(segment) {
-				leading := segment[:len(segment)-len(strings.TrimLeft(segment, " \t"))]
-				segments[j] = leading + redactedText
-				continue
-			}
-			// Flags and explanatory prose are not cookie values; preserve them
-			// while continuing to redact any later assignment segment.
-		}
-		lines[i] = prefix + strings.Join(segments, ";")
-	}
-	return strings.Join(lines, "\n")
 }
 
 // ClientSafeText renders every recognized guidance field for MCP surfaces that

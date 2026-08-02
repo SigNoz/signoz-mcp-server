@@ -212,7 +212,6 @@ func (h *Handler) errorCodeDecorator(toolName string, readOnlyHint *bool, next s
 		}
 		result, appliedFallback := ensureCodedToolError(result)
 		appendAuthorizationRecovery(result, toolName, readOnlyHint)
-		appendRetrySafety(result, toolName, readOnlyHint)
 		if appliedFallback && h.logger != nil {
 			h.logger.WarnContext(ctx, "tool returned an uncoded error result; applying fallback",
 				slog.String("gen_ai.tool.name", toolName),

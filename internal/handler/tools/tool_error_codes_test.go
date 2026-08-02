@@ -181,47 +181,6 @@ func TestErrorCodeDecorator_AddsOperationAwareAuthorizationRecovery(t *testing.T
 	})
 }
 
-func TestErrorCodeDecorator_QualifiesRendererRetryByOperationSemantics(t *testing.T) {
-	readOnly := true
-	write := false
-	tests := []struct {
-		name         string
-		readOnlyHint *bool
-		wantSafe     bool
-		wantCaution  bool
-	}{
-		{name: "read", readOnlyHint: &readOnly, wantSafe: true},
-		{name: "write", readOnlyHint: &write, wantCaution: true},
-		{name: "unannotated", wantCaution: true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			coded := upstreamError(&signozclient.HTTPStatusError{
-				StatusCode: http.StatusServiceUnavailable,
-				Body:       `{"status":"error","error":{"type":"unavailable","code":"temporarily_unavailable","message":"try later","retry":{"delay":"2s"}}}`,
-			})
-			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return coded, nil
-			}
-			h := &Handler{logger: logpkg.New("error")}
-			result, err := h.errorCodeDecorator("signoz_retry_probe", tc.readOnlyHint, next)(context.Background(), makeToolRequest("signoz_retry_probe", map[string]any{}))
-			if err != nil {
-				t.Fatal(err)
-			}
-			structured := resultStructuredMap(t, result)
-			if got, ok := structured["retrySafe"].(bool); !ok || got != tc.wantSafe {
-				t.Fatalf("retrySafe = %#v, want %t", structured["retrySafe"], tc.wantSafe)
-			}
-			text := resultText(t, result)
-			caution := "may already have taken effect. Verify current state before retrying it."
-			if strings.Contains(text, caution) != tc.wantCaution {
-				t.Fatalf("caution mismatch: %q", text)
-			}
-		})
-	}
-}
-
 func TestErrorCodeDecorator_TypedStructuredContent(t *testing.T) {
 	type structuredError struct {
 		Code   string `json:"code,omitempty"`

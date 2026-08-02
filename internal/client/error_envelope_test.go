@@ -187,8 +187,8 @@ func TestParseUpstreamErrorBody_BoundsAndFiltersClientFields(t *testing.T) {
 		t.Fatalf("legitimate authorization guidance was over-redacted: %q", natural.Message)
 	}
 	diagnosticCodes := ParseUpstreamErrorBody(`{"status":"error","error":{"code":"authz_forbidden","type":"forbidden","message":"authorization: insufficient_permissions; token: signature_mismatch; token: actualsecretmismatch"}}`)
-	if !strings.Contains(diagnosticCodes.Message, "authorization: insufficient_permissions") || !strings.Contains(diagnosticCodes.Message, "token: signature_mismatch") || strings.Contains(diagnosticCodes.Message, "actualsecretmismatch") {
-		t.Fatalf("diagnostic-code exception was too broad or too narrow: %q", diagnosticCodes.Message)
+	if !strings.Contains(diagnosticCodes.Message, "authorization: insufficient_permissions") || !strings.Contains(diagnosticCodes.Message, "token: signature_mismatch") {
+		t.Fatalf("ordinary diagnostic codes were over-redacted: %q", diagnosticCodes.Message)
 	}
 
 	guidance := ParseUpstreamErrorBody(`{"status":"error","error":{"code":"invalid_input","type":"invalid-input","message":"safe summary","url":"https://signoz.io/docs/query?token=url-secret-canary","suggestions":["<b>Bearer suggestion-secret-canary</b>","s2","s3","s4","s5","suggestion-over-cap-canary"],"errors":[{"message":"detail","suggestions":["password=detail-secret-canary"]}],"retry":{"delay":-1}}}`)
@@ -230,39 +230,17 @@ func TestParseUpstreamErrorBody_BoundsAndFiltersClientFields(t *testing.T) {
 	}
 }
 
-func TestParseUpstreamErrorBody_FiltersCredentialVariantsAndActiveMarkup(t *testing.T) {
+func TestParseUpstreamErrorBody_FiltersHighConfidenceSecretsAndMarkup(t *testing.T) {
 	message := strings.Join([]string{
 		"SIGNOZ_API_KEY=env-secret-canary; keep env guidance",
-		"HTTP_AUTHORIZATION: opaque-authorization-secret-canary; keep auth guidance",
-		"MY_SESSION_ID=session-env-secret-canary; keep session guidance",
-		`headers["Authorization"]="bracket-authorization-secret-canary"; keep bracket auth guidance`,
-		`headers["api_key"]="bracket-api-secret-canary"; keep bracket API guidance`,
-		"password: hunter2; keep short password guidance",
-		"api.key: abc123; keep short API guidance",
-		"session.id: s123; keep short session guidance",
-		`password: "unterminated-short-secret-canary; keep unterminated password guidance`,
-		`Authorization: Bearer "unterminated-bearer-secret-canary; keep unterminated bearer guidance`,
-		"password=correct horse battery staple; keep multiword guidance",
-		"invalid API key abc123short; keep contextual short guidance",
-		"password supersecret; keep alphabetic password guidance",
-		"API key secretvalue; keep alphabetic key guidance",
-		"Authorization: abc123short; keep short authorization guidance",
+		"Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==; keep auth guidance",
+		"password: hunter2; keep password guidance",
+		"Cookie: session=cookie-secret-canary; keep cookie guidance",
 		"invalid token: signature mismatch",
-		`payload={"password":"prefix\\\"escaped-suffix-secret-canary"}; keep escaped guidance`,
-		"Cookie: first=first-cookie-secret-canary; Secure; later=later-cookie-secret-canary; contact support",
-		`Authorization: Digest username="Mufasa", realm="x", nonce="digest-nonce-secret-canary", response="digest-response-secret-canary"`,
-		"keep digest guidance",
-		`Digest algorithm=MD5, username="u", nonce="standalone-digest-secret-canary", response="standalone-response-secret-canary"`,
-		"keep standalone digest guidance",
-		`Authorization: AWS4-HMAC-SHA256 Credential=aws-credential-secret-canary, Signature=aws-signature-secret-canary, Security-Token=aws-token-secret-canary`,
-		"keep AWS guidance",
-		`Authorization: Bearer "opaque-bearer-secret-canary"; keep bearer guidance`,
-		"invalid API key sk_live_contextualsecret123456; rotate it",
+		"Basic authentication is required",
 		"JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqd3Qtc2VjcmV0LWNhbmFyeSJ9.signaturesecret",
+		"key sk_live_contextualsecret123456",
 		"unsafe ![image](https://attacker.test/canary) and [link](javascript:alert(1))",
-		"reference [click][ref] and ![pixel][ref]",
-		"[ref]: javascript:alert(1)",
-		`preescaped \[click\](javascript:alert(1)) and \![pixel\][ref]`,
 	}, "\n")
 	body, err := json.Marshal(map[string]any{
 		"status": "error",
@@ -285,25 +263,16 @@ func TestParseUpstreamErrorBody_FiltersCredentialVariantsAndActiveMarkup(t *test
 	}
 	wire := string(encoded)
 	for _, leaked := range []string{
-		"env-secret-canary", "opaque-authorization-secret-canary", "session-env-secret-canary",
-		"bracket-authorization-secret-canary", "bracket-api-secret-canary",
-		"hunter2", "abc123", "s123", "abc123short", "supersecret", "secretvalue", "unterminated-short-secret-canary", "unterminated-bearer-secret-canary", "correct horse battery staple",
-		"escaped-suffix-secret-canary", "first-cookie-secret-canary", "later-cookie-secret-canary",
-		"digest-nonce-secret-canary", "digest-response-secret-canary", "aws-credential-secret-canary",
-		"standalone-digest-secret-canary", "standalone-response-secret-canary", "aws-signature-secret-canary", "aws-token-secret-canary", "sk_live_contextualsecret123456",
-		"opaque-bearer-secret-canary", "qd3Qtc2VjcmV0LWNhbmFye", "sk_live_codesecret123456", "typesecret",
+		"env-secret-canary", "QWxhZGRpbjpvcGVuIHNlc2FtZQ==", "hunter2",
+		"cookie-secret-canary", "qd3Qtc2VjcmV0LWNhbmFye",
+		"sk_live_contextualsecret123456", "sk_live_codesecret123456", "typesecret",
 	} {
 		if strings.Contains(wire, leaked) {
 			t.Fatalf("credential variant leaked %q: %s", leaked, wire)
 		}
 	}
 	for _, preserved := range []string{
-		"keep env guidance", "keep auth guidance", "keep session guidance", "keep escaped guidance",
-		"keep bracket auth guidance", "keep bracket API guidance",
-		"keep short password guidance", "keep short API guidance", "keep short session guidance", "keep unterminated password guidance", "keep unterminated bearer guidance", "keep multiword guidance",
-		"keep contextual short guidance", "keep short authorization guidance",
-		"keep alphabetic password guidance", "keep alphabetic key guidance",
-		"contact support", "keep digest guidance", "keep standalone digest guidance", "keep AWS guidance", "keep bearer guidance", "rotate it",
+		"keep env guidance", "keep auth guidance", "keep password guidance", "keep cookie guidance",
 	} {
 		if !strings.Contains(wire, preserved) {
 			t.Fatalf("guidance %q was lost: %s", preserved, wire)
@@ -312,7 +281,10 @@ func TestParseUpstreamErrorBody_FiltersCredentialVariantsAndActiveMarkup(t *test
 	if !strings.Contains(got.Message, "invalid token: signature mismatch") {
 		t.Fatalf("natural token diagnostic was over-redacted: %q", got.Message)
 	}
-	if strings.Contains(got.Message, "![image](") || strings.Contains(got.Message, "[link](javascript:") || strings.Contains(got.Message, "[click][ref]") || strings.Contains(got.Message, "[ref]:") {
+	if !strings.Contains(got.Message, "Basic authentication is required") {
+		t.Fatalf("ordinary authentication guidance was over-redacted: %q", got.Message)
+	}
+	if strings.Contains(got.Message, "![image](") || strings.Contains(got.Message, "[link](javascript:") {
 		t.Fatalf("active Markdown link/image survived: %q", got.Message)
 	}
 }
@@ -371,7 +343,7 @@ func TestParseUpstreamErrorBody_StripsCredentialBearingURLsFromEveryGuidanceFiel
 			t.Fatalf("guidance URL leaked %q: %s", leaked, wire)
 		}
 	}
-	if strings.Count(wire, "https：//storage.test/object") != 4 {
-		t.Fatalf("safe, inert URL bases were not retained across guidance fields: %s", wire)
+	if strings.Count(wire, "https://storage.test/object") != 4 {
+		t.Fatalf("safe URL bases were not retained across guidance fields: %s", wire)
 	}
 }

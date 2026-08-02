@@ -224,39 +224,6 @@ func appendAuthorizationRecovery(res *mcp.CallToolResult, toolName string, readO
 	}
 }
 
-// appendRetrySafety qualifies a renderer-provided retry delay with the
-// registered operation semantics. A delay is timing guidance, not evidence
-// that a mutation is idempotent or that it failed before taking effect.
-func appendRetrySafety(res *mcp.CallToolResult, toolName string, readOnlyHint *bool) {
-	structured, _ := toolerrors.NormalizeStructuredContent(res.StructuredContent)
-	if structured == nil {
-		return
-	}
-	if _, hasRetry := structured["upstreamRetry"]; !hasRetry {
-		return
-	}
-
-	retrySafe := readOnlyHint != nil && *readOnlyHint
-	structured["retrySafe"] = retrySafe
-	res.StructuredContent = structured
-	if retrySafe {
-		return
-	}
-
-	guidance := fmt.Sprintf("The upstream retry delay is not permission to replay `%s`: this operation may already have taken effect. Verify current state before retrying it.", toolName)
-	for i, content := range res.Content {
-		text, ok := content.(mcp.TextContent)
-		if !ok {
-			continue
-		}
-		if !strings.Contains(text.Text, guidance) {
-			text.Text += "\n\n" + guidance
-			res.Content[i] = text
-		}
-		return
-	}
-}
-
 func toolErrorHTTPStatus(value any) (int, bool) {
 	switch status := value.(type) {
 	case int:
@@ -578,9 +545,6 @@ func partialUpstreamFailure(err error, operation string) map[string]any {
 	failure["success"] = false
 	failure["operation"] = operation
 	failure["retryPrimaryOperation"] = false
-	if _, hasRetry := failure["upstreamRetry"]; hasRetry {
-		failure["retrySafe"] = false
-	}
 	failure["error"] = "SigNoz API operation failed"
 	for _, content := range result.Content {
 		if text, ok := content.(mcp.TextContent); ok {
