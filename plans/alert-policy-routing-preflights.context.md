@@ -50,5 +50,12 @@
 - Remove unreachable v2 branches from the anomaly no-channel formatter, deduplicate threshold channel names only once while preserving anomaly `preferredChannels` deduplication, restore concise README quick-reference rows, drop one duplicated examples-only phrase assertion, and reflow the companion skill's query-pattern list.
 - Retain distinct create/update regressions, the complete policy-routing predicate table, policy-specific blank-channel recovery, and safety-critical resource metadata assertions because those independently protect the requested contracts.
 
+### 2026-08-02 — Actionable channel-discovery sweep
+- A full sweep found that several alert-facing descriptions said to verify or refresh channel names without naming `signoz_list_notification_channels`, leaving clients without an actionable next step.
+- Standardize the workflow across tool metadata, resources, field schemas, README, manifest, runtime recovery errors, and the companion skill: reuse a fully paginated channel result only within the same still-current prepared operation; otherwise call `signoz_list_notification_channels`; refresh only if state may have changed.
+- When no channel fits, ask the user or offer `signoz_create_notification_channel` only with a user-provided name, type, and provider configuration. Never create a channel automatically.
+- Policy routing is an alternative only when the user confirms an existing matching org notification policy; do not infer or create one.
+- Keep mutation-time channel validation as the stale-state fallback and avoid adding redundant discovery calls inside the handler.
+
 ## Open Questions
 - [x] Does `SigNoz/agent-skills` require a companion change for the corrected policy-routing and preflight-reuse contract? — Yes for policy routing; no for preflight reuse. Publish and link a focused companion PR.

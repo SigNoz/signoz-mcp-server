@@ -804,12 +804,12 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
-- **Notification routing**: V2 direct routing requires a verified channel on every threshold tier and rejects top-level `preferredChannels`. Confirmed v2 policy routing sets `notificationSettings.usePolicy=true` and may omit tier channels; supplied names are still validated. V1 anomaly routing requires verified top-level `preferredChannels`. Never guess names; refresh the channel list if state may have changed.
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned name on every tier and rejects top-level `preferredChannels`; v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config—never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
 - **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`
 
-Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse the complete rule, resources, and resolved channels only from the same still-current prepared operation; refresh affected preflights if state may have changed, then preserve unchanged fields. V2 direct routing requires verified channels on every tier; confirmed v2 policy routing may omit them. V1 anomalies require direct top-level `preferredChannels` and cannot use policy routing.
+Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed name on every tier; confirmed v2 policy routing may omit them. V1 anomalies use direct top-level `preferredChannels` and cannot use policy routing.
 
 - **Parameters**:
   - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).

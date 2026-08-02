@@ -15,6 +15,7 @@ The MCP alert validation layer is stricter than SigNoz: it rejects channel-less 
 6. Add focused create/update regressions for per-tier direct routing, v2 `preferredChannels`, policy routing, anomaly routing, absent-only payloads, and invalid/blank supplied names, plus metadata guardrails.
 7. Update `SigNoz/agent-skills` so `signoz-creating-alerts` teaches the corrected routing contract and stops when an org policy is unconfirmed; add positive and negative focused evals and link the companion PR under CMP-3.
 8. Apply the accepted post-review simplification: remove unreachable formatter branches, deduplicate threshold channels once, keep contract-bearing tests and metadata pins, and clean concise README/skill prose.
+9. Make channel discovery actionable everywhere alert authors see routing guidance: name `signoz_list_notification_channels`, reuse only a fully paginated same-operation result, refresh only when state may have changed, and require user confirmation plus provider configuration before offering `signoz_create_notification_channel` or policy routing.
 
 ## Files to Modify
 - `internal/handler/tools/alerts.go` — policy-aware validation and state-aware tool descriptions.
@@ -30,4 +31,4 @@ The MCP alert validation layer is stricter than SigNoz: it rejects channel-less 
 - `SigNoz/agent-skills/plugins/signoz/skills/signoz-creating-alerts/` — companion playbook and eval update in a linked PR.
 
 ## Verification
-Run focused alert/tool metadata tests, formatting/import checks, `go test ./...`, `go vet ./...`, `go build ./cmd/server`, manifest JSON validation, `git diff --check`, the applicable guardrail suite, and Agent CI. Validate the companion skill/eval with its repository tooling. Obtain an independent review before publishing both linked draft PRs.
+Run focused alert/tool metadata tests, formatting/import checks, `go test ./...`, `go vet ./...`, `go build ./cmd/server`, manifest JSON validation, `git diff --check`, the applicable guardrail suite, and Agent CI. Validate the companion skill/eval with its repository tooling. Sweep every changed client-visible alert surface for actionable channel discovery and obtain an independent review before publishing both linked draft PRs.

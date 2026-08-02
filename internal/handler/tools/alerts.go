@@ -101,8 +101,8 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		withCreateToolAnnotations(),
 		mcp.WithDescription(
 			"Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. "+
-				"Supported cases are v2alpha1 threshold alerts over metrics, logs, traces, or exceptions; v2alpha1 PromQL alerts; and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples when already read for the same prepared operation; for PromQL also read signoz://promql/instructions when needed. "+
-				"For v2 direct routing, every threshold tier needs a verified channel and top-level preferredChannels is rejected. V2 notificationSettings.usePolicy=true may omit threshold channels, but supplied names are validated. V1 anomaly rules cannot use policy routing and require verified top-level preferredChannels. Never guess; if validation reports a stale name, show current names and retry.",
+				"Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. "+
+				"For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. If none fits, ask the user or offer signoz_create_notification_channel with user-provided config; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
@@ -112,7 +112,7 @@ func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
 		"signoz_update_alert",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: fetch the complete current rule unless it was fetched for the same still-current prepared operation, then preserve every unchanged field. Reuse authoring resources and channel results from that operation; do not repeat completed preflights, but refresh if state may have changed. For v2 direct routing, every threshold tier needs a verified channel and preferredChannels is rejected. V2 notificationSettings.usePolicy=true may omit threshold channels, but supplied names are validated. V1 anomaly rules cannot use policy routing and require verified top-level preferredChannels.",
+			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. If no direct channel fits, ask the user or offer signoz_create_notification_channel with user-provided config; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
 		),
 		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
@@ -739,9 +739,9 @@ func formatNoAnomalyChannelsError(available []string) string {
 		}
 		sb.WriteString("\nPlease choose one or more channels and set them in preferredChannels.\n")
 	} else {
-		sb.WriteString("No notification channels exist yet.\n")
+		sb.WriteString("No notification channels exist yet. Ask the user whether to create one.\n")
 	}
-	sb.WriteString("To create a new direct channel, use signoz_create_notification_channel.")
+	sb.WriteString("If no existing channel fits, offer signoz_create_notification_channel and call it only after the user confirms the name, type, and required provider settings.")
 	return sb.String()
 }
 
@@ -753,11 +753,11 @@ func formatMissingThresholdChannelsError(missingTiers, available []string) strin
 		for _, name := range available {
 			sb.WriteString(fmt.Sprintf("  - %s\n", name))
 		}
-		sb.WriteString("\nSet valid names in each missing condition.thresholds.spec[].channels array, or create a new direct channel with signoz_create_notification_channel.")
+		sb.WriteString("\nAsk the user to choose valid names for each missing condition.thresholds.spec[].channels array. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed provider settings.")
 	} else {
-		sb.WriteString("No notification channels exist yet. Create one with signoz_create_notification_channel.")
+		sb.WriteString("No notification channels exist yet. Ask the user whether to create one with signoz_create_notification_channel; call it only with user-confirmed provider settings.")
 	}
-	sb.WriteString(" If configured org-policy routing is intended for this threshold/PromQL rule, set notificationSettings.usePolicy=true and omit threshold channels instead.")
+	sb.WriteString(" Only after the user confirms an existing matching org policy, set notificationSettings.usePolicy=true and omit threshold channels; otherwise keep direct routing and ask for channel choices.")
 	return sb.String()
 }
 
@@ -781,9 +781,9 @@ func formatInvalidChannelsError(invalid, available []string, policyRouting bool)
 		for _, name := range available {
 			sb.WriteString(fmt.Sprintf("  - %s\n", name))
 		}
-		sb.WriteString("\nPlease use one of the available channels, or create a new one with signoz_create_notification_channel.")
+		sb.WriteString("\nAsk the user to choose one of the available channels. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed provider settings.")
 	} else {
-		sb.WriteString("No notification channels exist yet. Create one with signoz_create_notification_channel first.")
+		sb.WriteString("No notification channels exist yet. Ask the user whether to create one with signoz_create_notification_channel; call it only with user-confirmed provider settings.")
 	}
 	return sb.String()
 }
@@ -792,7 +792,7 @@ func formatBlankChannelsError(policyRouting bool) string {
 	if policyRouting {
 		return "Notification channel names cannot be blank. Because notificationSettings.usePolicy=true, remove blank direct channel references."
 	}
-	return "Notification channel names cannot be blank. Replace each blank value with an existing channel name."
+	return "Notification channel names cannot be blank. Reuse a current signoz_list_notification_channels result from the same prepared operation or call it to choose replacements. If none exists, ask the user or offer signoz_create_notification_channel with user-provided config; never create automatically."
 }
 
 // registerAlertResources registers MCP resources needed for alert creation.
@@ -800,7 +800,7 @@ func (h *Handler) registerAlertResources(s *server.MCPServer) {
 	alertInstructions := mcp.NewResource(
 		"signoz://alert/instructions",
 		"Alert Rule Instructions",
-		mcp.WithResourceDescription("Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. Read signoz://alert/examples only when examples are still needed."),
+		mcp.WithResourceDescription("Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(alert.Instructions))),
 	)
@@ -818,7 +818,7 @@ func (h *Handler) registerAlertResources(s *server.MCPServer) {
 	alertExamples := mcp.NewResource(
 		"signoz://alert/examples",
 		"Alert Rule Examples",
-		mcp.WithResourceDescription("Read this after signoz://alert/instructions only when examples are still needed. V2 direct examples need verified channels on every threshold; confirmed v2 policy routing may omit them. Anomaly examples require verified top-level preferredChannels and cannot use policy routing."),
+		mcp.WithResourceDescription("Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(alert.Examples))),
 	)

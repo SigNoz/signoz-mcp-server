@@ -154,7 +154,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_create_alert": {
 				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "same prepared operation", "every threshold tier needs a verified channel", "top-level preferredChannels is rejected", "V2 notificationSettings.usePolicy=true", "V1 anomaly rules cannot use policy routing", "require verified top-level preferredChannels", "Never guess"},
+				required: []string{"signoz_update_alert", "v2alpha1 threshold/PromQL alerts", "metric-only v1 anomaly", "signoz://alert/instructions", "same still-current prepared operation", "fully paginated signoz_list_notification_channels", "signoz_create_notification_channel", "never guess or create automatically", "V2 direct routing needs a channel on every tier", "confirmed v2 policy routing may omit tier channels", "v1 anomaly uses direct preferredChannels"},
 			},
 			"signoz_get_alert": {
 				prefix:   "Use this when",
@@ -162,7 +162,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_update_alert": {
 				prefix:   "Use this when",
-				required: []string{"full replacement", "same still-current prepared operation", "preserve every unchanged field", "do not repeat completed preflights", "refresh if state may have changed", "every threshold tier needs a verified channel", "preferredChannels is rejected", "V2 notificationSettings.usePolicy=true", "V1 anomaly rules cannot use policy routing"},
+				required: []string{"full replacement", "signoz_get_alert", "same still-current prepared operation", "preserve every unchanged field", "signoz://alert/instructions", "signoz://alert/examples", "fully paginated signoz_list_notification_channels", "refreshing only if state may have changed", "signoz_create_notification_channel", "never create automatically", "V2 direct routing needs a channel on every tier", "confirmed v2 policy routing may omit tier channels", "v1 anomaly uses direct preferredChannels"},
 			},
 			"signoz_create_dashboard": {
 				prefix:   "Use this when",
@@ -322,12 +322,13 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 	resourceContracts := map[string][]string{
 		"signoz://alert/instructions": {
 			"unless its current content was already read for the same prepared operation",
+			"reuse or call signoz_list_notification_channels",
 			"Read signoz://alert/examples only when examples are still needed",
 		},
 		"signoz://alert/examples": {
-			"V2 direct examples need verified channels on every threshold",
-			"confirmed v2 policy routing may omit them",
-			"Anomaly examples require verified top-level preferredChannels",
+			"signoz_list_notification_channels",
+			"offer signoz_create_notification_channel",
+			"Confirmed v2 policy routing may omit direct channels",
 			"cannot use policy routing",
 		},
 	}

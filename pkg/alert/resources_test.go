@@ -13,13 +13,14 @@ func TestAlertInstructionsDescribePolicyAwareChannelPreflight(t *testing.T) {
 	for _, required := range []string{
 		"same still-current prepared operation",
 		"refresh if state may have changed",
-		"every threshold tier requires verified condition.thresholds.spec[].channels",
+		"fully paginated signoz_list_notification_channels",
+		"offer signoz_create_notification_channel",
+		"Never guess or create automatically",
+		"every threshold tier needs an exact returned name",
 		"top-level preferredChannels is rejected",
 		"Confirmed v2 policy routing sets notificationSettings.usePolicy=true",
-		"every supplied name is still validated",
-		"V1 anomaly rules cannot use policy routing",
-		"require verified top-level preferredChannels",
-		"Never guess",
+		"any supplied names still require verification",
+		"V1 anomaly rules use direct top-level preferredChannels and cannot use policy routing",
 	} {
 		if !strings.Contains(Instructions, required) {
 			t.Errorf("alert instructions missing notification-channel guidance %q", required)

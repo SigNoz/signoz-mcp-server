@@ -1051,6 +1051,45 @@ func TestHandleCreateAlert_PolicyRoutingRejectsBlankSuppliedChannel(t *testing.T
 	}
 }
 
+func TestHandleCreateAlert_DirectRoutingBlankChannelNamesGiveDiscoveryGuidance(t *testing.T) {
+	args := validThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = []any{""}
+
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("blank names must fail before channel lookup")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected blank direct channel to fail")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("blank channel caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	for _, required := range []string{"signoz_list_notification_channels", "same prepared operation", "signoz_create_notification_channel", "user-provided config", "never create automatically"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("blank direct-channel error missing recovery guidance %q: %q", required, text)
+		}
+	}
+}
+
 func TestHandleCreateAlert_NoChannelsReturnsAvailable(t *testing.T) {
 	mock := &client.MockClient{
 		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
@@ -1112,6 +1151,9 @@ func TestHandleCreateAlert_NoChannelsReturnsAvailable(t *testing.T) {
 	}
 	if !strings.Contains(text, "notificationSettings.usePolicy=true") {
 		t.Error("expected direct-routing error to offer configured org-policy routing")
+	}
+	if !strings.Contains(text, "user confirms an existing matching org policy") {
+		t.Error("expected policy-routing alternative to require confirmation of an existing match")
 	}
 	if strings.Contains(text, "preferredChannels") {
 		t.Fatalf("v2 direct-routing error must not offer preferredChannels: %q", text)
@@ -1408,6 +1450,9 @@ func TestHandleCreateAlert_NoChannelsExist(t *testing.T) {
 	}
 	if !strings.Contains(text, "signoz_create_notification_channel") {
 		t.Error("expected error to suggest creating a new channel")
+	}
+	if !strings.Contains(text, "Ask the user whether to create one") || !strings.Contains(text, "user-confirmed provider settings") {
+		t.Error("expected no-channel error to require user confirmation before channel creation")
 	}
 }
 
