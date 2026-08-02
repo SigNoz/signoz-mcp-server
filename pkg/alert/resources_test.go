@@ -9,16 +9,18 @@ import (
 
 var formulaVariablePattern = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
-func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.T) {
+func TestAlertInstructionsDescribePolicyAwareChannelPreflight(t *testing.T) {
 	for _, required := range []string{
-		"Before creating an alert, call signoz_list_notification_channels",
-		"Do the same before updating",
-		"verify every user-selected name exists",
-		"show the available names and ask the user to choose",
-		"requires at least one existing valid channel even when notificationSettings.usePolicy=true",
-		"validation returns the current names so you can retry",
-		"verified with signoz_list_notification_channels",
-		"Never guess",
+		"same still-current prepared operation",
+		"refresh if state may have changed",
+		"fully paginated signoz_list_notification_channels",
+		"offer signoz_create_notification_channel",
+		"Never guess or create automatically",
+		"every threshold tier needs an exact returned name",
+		"top-level preferredChannels is rejected",
+		"Confirmed v2 policy routing sets notificationSettings.usePolicy=true",
+		"any supplied names still require verification",
+		"V1 anomaly rules use direct top-level preferredChannels and cannot use policy routing",
 	} {
 		if !strings.Contains(Instructions, required) {
 			t.Errorf("alert instructions missing notification-channel guidance %q", required)
@@ -26,6 +28,12 @@ func TestAlertInstructionsPreferChannelPreflightOverCreateValidation(t *testing.
 	}
 	if strings.Contains(Instructions, "If the user explicitly names a channel, use it directly") {
 		t.Error("alert instructions must not prescribe direct use of an unvalidated channel name")
+	}
+	if strings.Contains(Instructions, "requires at least one existing valid channel even when notificationSettings.usePolicy=true") {
+		t.Error("alert instructions must not retain the obsolete policy-routing channel requirement")
+	}
+	if strings.Contains(Instructions, "Fall back to rule-level preferredChannels") {
+		t.Error("alert instructions must not describe preferredChannels as a v2 routing fallback")
 	}
 }
 
