@@ -58,3 +58,16 @@
 - Follow-up reviews for correctness, MCP contract synchronization, and overengineering all reported no remaining actionable findings. The reviewers confirmed that concurrency, v2-first probing, exact-hour legacy rereads, strict route-404 fallback, custom-rule normalization, recorded fixtures, and contract inventories are proportionate to the upstream behavior and repository requirements.
 - Verification passed after the fixes: focused client and handler tests, focused race detection, workflow lint, the focused guardrail inventory, the full Go suite, `go build ./cmd/server`, `bash -n scripts/test-mcp-protocol.sh`, `git diff --check`, and manifest JSON validation.
 - The requested Claude Opus high-effort review remains pending until Claude CLI browser authentication completes; no substitute model result is being treated as that review.
+
+### 2026-08-02 — Add current cold-storage movement
+- The user explicitly expanded the requested output to include cold-storage retention after reviewing the deletion-retention E2E result. This supersedes the earlier scope-reduction decision for cold storage, while retaining the decision not to expose pending target attempts.
+- Add `currentColdStorageMoveAfterHours` to each signal policy. It represents the currently configured time before data moves to cold storage, normalized to hours; omission means movement is disabled when `currentStateKnown=true`, and unknown when `currentStateKnown=false`.
+- Parse the current v1 `*_move_ttl_duration_hrs` fields and the v2 logs `cold_storage_ttl_days` field. Treat omission, zero, and `-1` as disabled, reject values below `-1` as contract drift, and protect day-to-hour conversion from overflow.
+- For pending or failed v2 custom-log changes, continue returning only `currentStateKnown=false` and `changeStatus`; attempted deletion, rules, and cold-storage values must not be presented as active.
+- This is an additive output-field change. README, manifest, schemas, tests, PR description, and live MCP E2E must be updated together. The companion agent-skills adoption remains a post-release follow-up because no released skill currently teaches this new tool contract.
+
+### 2026-08-02 — Support the full upstream response state
+- The user clarified that the tool should support every meaningful response state exposed by the retention APIs, not only the active deletion and cold-storage values.
+- Restore the full normalized state/target model: `targetRetentionHours`, `targetColdStorageMoveAfterHours`, and `targetCustomRules` accompany the current fields. Target fields represent pending or failed attempted configurations and must never be described as active.
+- For legacy v1 responses, current fields remain known while `expected_*` fields supply targets during `pending` or `failed` states. For v2 custom-log `pending` or `failed` responses, the API exposes only the attempted configuration, so current state remains unknown and the returned default, cold-storage, and rules populate target fields.
+- Successful or idle responses expose active/current fields and omit target fields. Unsupported versions, malformed values, missing required state fields, and invalid sentinels remain detectable contract errors rather than silently degraded output.

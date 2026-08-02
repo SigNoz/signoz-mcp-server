@@ -22,6 +22,8 @@ func TestDataRetentionTool_AdvertisesScopeAndExample(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, registered.Tool.Description, "newly ingested data")
 	assert.Contains(t, registered.Tool.Description, "currentStateKnown")
+	assert.Contains(t, registered.Tool.Description, "cold-storage")
+	assert.Contains(t, registered.Tool.Description, "target")
 	assert.Contains(t, registered.Tool.Description, "retention only")
 	assert.Contains(t, registered.Tool.Description, "signoz_list_metrics")
 	assert.Contains(t, registered.Tool.Description, `source="meter"`)
@@ -30,6 +32,9 @@ func TestDataRetentionTool_AdvertisesScopeAndExample(t *testing.T) {
 	outputSchema := string(outputSchemaJSON(registered.Tool))
 	assert.Contains(t, outputSchema, "newly ingested data")
 	assert.Contains(t, outputSchema, "Older data")
+	assert.Contains(t, outputSchema, "currentColdStorageMoveAfterHours")
+	assert.Contains(t, outputSchema, "targetColdStorageMoveAfterHours")
+	assert.Contains(t, outputSchema, "attempted targets")
 	assert.Contains(t, outputSchema, "active overrides are unknown")
 }
 
@@ -38,19 +43,22 @@ func TestHandleGetDataRetention_ReturnsStructuredSnapshotAndSettingsURL(t *testi
 		GetDataRetentionFn: func(context.Context) (*client.DataRetention, error) {
 			return &client.DataRetention{
 				Metrics: client.RetentionPolicy{
-					CurrentStateKnown:     true,
-					CurrentRetentionHours: retentionHoursPtr(720),
-					ChangeStatus:          "success",
+					CurrentStateKnown:                true,
+					CurrentRetentionHours:            retentionHoursPtr(720),
+					CurrentColdStorageMoveAfterHours: retentionHoursPtr(168),
+					ChangeStatus:                     "success",
 				},
 				Traces: client.RetentionPolicy{
 					CurrentStateKnown:     true,
 					CurrentRetentionHours: retentionHoursPtr(360),
-					ChangeStatus:          "idle",
+					TargetRetentionHours:  retentionHoursPtr(720),
+					ChangeStatus:          "pending",
 				},
 				Logs: client.RetentionPolicy{
-					CurrentStateKnown:     true,
-					CurrentRetentionHours: retentionHoursPtr(360),
-					ChangeStatus:          "success",
+					CurrentStateKnown:                true,
+					CurrentRetentionHours:            retentionHoursPtr(360),
+					CurrentColdStorageMoveAfterHours: retentionHoursPtr(72),
+					ChangeStatus:                     "success",
 					CustomRules: []client.CustomRetentionRule{{
 						Conditions:     []client.RetentionCondition{{Key: "service_name", Values: []string{"checkout"}}},
 						RetentionHours: 720,
@@ -71,6 +79,10 @@ func TestHandleGetDataRetention_ReturnsStructuredSnapshotAndSettingsURL(t *testi
 	assert.Equal(t, "https://signoz.example.com/settings", output.WebURL)
 	require.NotNil(t, output.Metrics.CurrentRetentionHours)
 	assert.EqualValues(t, 720, *output.Metrics.CurrentRetentionHours)
+	require.NotNil(t, output.Metrics.CurrentColdStorageMoveAfterHours)
+	assert.EqualValues(t, 168, *output.Metrics.CurrentColdStorageMoveAfterHours)
+	require.NotNil(t, output.Traces.TargetRetentionHours)
+	assert.EqualValues(t, 720, *output.Traces.TargetRetentionHours)
 	require.Len(t, output.Logs.CustomRules, 1)
 	assert.Equal(t, "service_name", output.Logs.CustomRules[0].Conditions[0].Key)
 

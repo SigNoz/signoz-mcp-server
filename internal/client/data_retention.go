@@ -34,14 +34,19 @@ type DataRetention struct {
 	WebURL  string          `json:"webUrl,omitempty" jsonschema:"Absolute SigNoz Settings URL where retention can be reviewed. Use this URL verbatim."`
 }
 
-// RetentionPolicy reports only the currently configured deletion retention.
+// RetentionPolicy reports the current retention configuration and the latest
+// pending or failed target when one exists.
 // CurrentStateKnown is false when the upstream API exposes a pending or failed
 // custom-log attempt but not the previously active policy.
 type RetentionPolicy struct {
-	CurrentStateKnown     bool                  `json:"currentStateKnown" jsonschema:"Whether the currently configured retention state is known. If false, report the current value as unknown and use changeStatus plus webUrl for follow-up; do not treat a pending or failed attempt as active."`
-	CurrentRetentionHours *int64                `json:"currentRetentionHours,omitempty" jsonschema:"Currently configured default deletion-retention period in hours for newly ingested data. Older data can retain an earlier TTL. Omitted when currentStateKnown is false."`
-	ChangeStatus          string                `json:"changeStatus" jsonschema:"Latest retention-change status: idle, pending, failed, or success."`
-	CustomRules           []CustomRetentionRule `json:"customRules,omitempty" jsonschema:"Active custom deletion-retention overrides for newly ingested logs. Rules are evaluated in order; the first matching rule wins. Omitted for non-log signals, when no active overrides exist, or when currentStateKnown is false; in the last case active overrides are unknown."`
+	CurrentStateKnown                bool                  `json:"currentStateKnown" jsonschema:"Whether the currently configured retention state is known. If false, report the current value as unknown and use changeStatus plus webUrl for follow-up; do not treat a pending or failed attempt as active."`
+	CurrentRetentionHours            *int64                `json:"currentRetentionHours,omitempty" jsonschema:"Currently configured default deletion-retention period in hours for newly ingested data. Older data can retain an earlier TTL. Omitted when currentStateKnown is false."`
+	CurrentColdStorageMoveAfterHours *int64                `json:"currentColdStorageMoveAfterHours,omitempty" jsonschema:"Currently configured time after ingestion before data moves to cold storage, in hours. When currentStateKnown is true, omission means cold-storage movement is disabled; when false, omission means the value is unknown."`
+	TargetRetentionHours             *int64                `json:"targetRetentionHours,omitempty" jsonschema:"Requested default deletion-retention period in hours from the latest pending or failed change. This is an attempted target, not the active value. Omitted when there is no pending or failed target."`
+	TargetColdStorageMoveAfterHours  *int64                `json:"targetColdStorageMoveAfterHours,omitempty" jsonschema:"Requested time before data moves to cold storage, in hours, from the latest pending or failed change. This is an attempted target, not the active value. When targetRetentionHours is present, omission means cold-storage movement is disabled for that target."`
+	ChangeStatus                     string                `json:"changeStatus" jsonschema:"Latest retention-change status: idle, pending, failed, or success."`
+	CustomRules                      []CustomRetentionRule `json:"customRules,omitempty" jsonschema:"Active custom deletion-retention overrides for newly ingested logs. Rules are evaluated in order; the first matching rule wins. Omitted for non-log signals, when no active overrides exist, or when currentStateKnown is false; in the last case active overrides are unknown."`
+	TargetCustomRules                []CustomRetentionRule `json:"targetCustomRules,omitempty" jsonschema:"Requested ordered custom log-retention overrides from the latest pending or failed change. These are attempted targets, not active rules. Omitted when there is no target or the target has no custom overrides."`
 }
 
 type CustomRetentionRule struct {
@@ -55,17 +60,27 @@ type RetentionCondition struct {
 }
 
 type legacyRetentionResponse struct {
-	MetricsRetentionHours *int64  `json:"metrics_ttl_duration_hrs"`
-	TracesRetentionHours  *int64  `json:"traces_ttl_duration_hrs"`
-	LogsRetentionHours    *int64  `json:"logs_ttl_duration_hrs"`
-	Status                *string `json:"status"`
+	MetricsRetentionHours               *int64  `json:"metrics_ttl_duration_hrs"`
+	MetricsColdStorageMoveHours         *int64  `json:"metrics_move_ttl_duration_hrs"`
+	ExpectedMetricsRetentionHours       *int64  `json:"expected_metrics_ttl_duration_hrs"`
+	ExpectedMetricsColdStorageMoveHours *int64  `json:"expected_metrics_move_ttl_duration_hrs"`
+	TracesRetentionHours                *int64  `json:"traces_ttl_duration_hrs"`
+	TracesColdStorageMoveHours          *int64  `json:"traces_move_ttl_duration_hrs"`
+	ExpectedTracesRetentionHours        *int64  `json:"expected_traces_ttl_duration_hrs"`
+	ExpectedTracesColdStorageMoveHours  *int64  `json:"expected_traces_move_ttl_duration_hrs"`
+	LogsRetentionHours                  *int64  `json:"logs_ttl_duration_hrs"`
+	LogsColdStorageMoveHours            *int64  `json:"logs_move_ttl_duration_hrs"`
+	ExpectedLogsRetentionHours          *int64  `json:"expected_logs_ttl_duration_hrs"`
+	ExpectedLogsColdStorageMoveHours    *int64  `json:"expected_logs_move_ttl_duration_hrs"`
+	Status                              *string `json:"status"`
 }
 
 type logsRetentionResponse struct {
-	Version              *string                 `json:"version"`
-	Status               *string                 `json:"status"`
-	DefaultRetentionDays *int64                  `json:"default_ttl_days"`
-	CustomRules          []upstreamRetentionRule `json:"ttl_conditions"`
+	Version                  *string                 `json:"version"`
+	Status                   *string                 `json:"status"`
+	DefaultRetentionDays     *int64                  `json:"default_ttl_days"`
+	ColdStorageMoveAfterDays *int64                  `json:"cold_storage_ttl_days"`
+	CustomRules              []upstreamRetentionRule `json:"ttl_conditions"`
 }
 
 type upstreamRetentionRule struct {
@@ -176,19 +191,37 @@ func (s *SigNoz) normalizeLegacyRetention(ctx context.Context, signal string, re
 		return RetentionPolicy{}, s.retentionContractError(ctx, signal, err.Error(), nil)
 	}
 
-	current, err := legacyRetentionField(signal, response)
+	current, currentColdStorageMove, target, targetColdStorageMove, err := legacyRetentionFields(signal, response)
 	if err != nil {
 		return RetentionPolicy{}, s.retentionContractError(ctx, signal, err.Error(), nil)
 	}
 	if current == nil || *current <= 0 {
 		return RetentionPolicy{}, s.retentionContractError(ctx, signal, "current retention hours are missing or non-positive", nil)
 	}
+	currentColdStorageMove, err = normalizeColdStorageMoveHours(currentColdStorageMove)
+	if err != nil {
+		return RetentionPolicy{}, s.retentionContractError(ctx, signal, "current cold-storage move hours are invalid", err)
+	}
 
-	return RetentionPolicy{
-		CurrentStateKnown:     true,
-		CurrentRetentionHours: current,
-		ChangeStatus:          status,
-	}, nil
+	policy := RetentionPolicy{
+		CurrentStateKnown:                true,
+		CurrentRetentionHours:            current,
+		CurrentColdStorageMoveAfterHours: currentColdStorageMove,
+		ChangeStatus:                     status,
+	}
+	if status != retentionStatusPending && status != retentionStatusFailed {
+		return policy, nil
+	}
+	if target == nil || *target <= 0 {
+		return RetentionPolicy{}, s.retentionContractError(ctx, signal, "target retention hours are missing or non-positive", nil)
+	}
+	targetColdStorageMove, err = normalizeColdStorageMoveHours(targetColdStorageMove)
+	if err != nil {
+		return RetentionPolicy{}, s.retentionContractError(ctx, signal, "target cold-storage move hours are invalid", err)
+	}
+	policy.TargetRetentionHours = target
+	policy.TargetColdStorageMoveAfterHours = targetColdStorageMove
+	return policy, nil
 }
 
 func (s *SigNoz) normalizeLogsRetention(ctx context.Context, response logsRetentionResponse) (RetentionPolicy, error) {
@@ -199,38 +232,54 @@ func (s *SigNoz) normalizeLogsRetention(ctx context.Context, response logsRetent
 	if err != nil {
 		return RetentionPolicy{}, s.retentionContractError(ctx, retentionSignalLogs, err.Error(), nil)
 	}
-	if status == retentionStatusPending || status == retentionStatusFailed {
-		// The v2 API exposes only the latest attempted custom-log configuration,
-		// not the previously active policy. Do not present the attempt as current.
-		return RetentionPolicy{CurrentStateKnown: false, ChangeStatus: status}, nil
-	}
 	defaultHours, err := retentionDaysToHours(response.DefaultRetentionDays)
 	if err != nil {
 		return RetentionPolicy{}, s.retentionContractError(ctx, retentionSignalLogs, "default_ttl_days is missing or invalid", err)
+	}
+	coldStorageMoveHours, err := normalizeColdStorageMoveDays(response.ColdStorageMoveAfterDays)
+	if err != nil {
+		return RetentionPolicy{}, s.retentionContractError(ctx, retentionSignalLogs, "cold_storage_ttl_days is invalid", err)
 	}
 	rules, err := normalizeCustomRetentionRules(response.CustomRules)
 	if err != nil {
 		return RetentionPolicy{}, s.retentionContractError(ctx, retentionSignalLogs, "custom retention rules are invalid", err)
 	}
 
+	if status == retentionStatusPending || status == retentionStatusFailed {
+		// The v2 API exposes only the latest attempted custom-log configuration,
+		// not the previously active policy. Preserve it as a target without
+		// presenting the attempt as current.
+		return RetentionPolicy{
+			CurrentStateKnown:               false,
+			TargetRetentionHours:            defaultHours,
+			TargetColdStorageMoveAfterHours: coldStorageMoveHours,
+			ChangeStatus:                    status,
+			TargetCustomRules:               rules,
+		}, nil
+	}
+
 	return RetentionPolicy{
-		CurrentStateKnown:     true,
-		CurrentRetentionHours: defaultHours,
-		ChangeStatus:          status,
-		CustomRules:           rules,
+		CurrentStateKnown:                true,
+		CurrentRetentionHours:            defaultHours,
+		CurrentColdStorageMoveAfterHours: coldStorageMoveHours,
+		ChangeStatus:                     status,
+		CustomRules:                      rules,
 	}, nil
 }
 
-func legacyRetentionField(signal string, response legacyRetentionResponse) (*int64, error) {
+func legacyRetentionFields(signal string, response legacyRetentionResponse) (*int64, *int64, *int64, *int64, error) {
 	switch signal {
 	case retentionSignalMetrics:
-		return response.MetricsRetentionHours, nil
+		return response.MetricsRetentionHours, response.MetricsColdStorageMoveHours,
+			response.ExpectedMetricsRetentionHours, response.ExpectedMetricsColdStorageMoveHours, nil
 	case retentionSignalTraces:
-		return response.TracesRetentionHours, nil
+		return response.TracesRetentionHours, response.TracesColdStorageMoveHours,
+			response.ExpectedTracesRetentionHours, response.ExpectedTracesColdStorageMoveHours, nil
 	case retentionSignalLogs:
-		return response.LogsRetentionHours, nil
+		return response.LogsRetentionHours, response.LogsColdStorageMoveHours,
+			response.ExpectedLogsRetentionHours, response.ExpectedLogsColdStorageMoveHours, nil
 	default:
-		return nil, fmt.Errorf("unsupported signal %q", signal)
+		return nil, nil, nil, nil, fmt.Errorf("unsupported signal %q", signal)
 	}
 }
 
@@ -257,6 +306,26 @@ func retentionDaysToHours(days *int64) (*int64, error) {
 	}
 	hours := *days * 24
 	return &hours, nil
+}
+
+func normalizeColdStorageMoveHours(hours *int64) (*int64, error) {
+	if hours == nil || *hours == 0 || *hours == -1 {
+		return nil, nil
+	}
+	if *hours < -1 {
+		return nil, errors.New("cold-storage move hours must be positive or disabled")
+	}
+	return hours, nil
+}
+
+func normalizeColdStorageMoveDays(days *int64) (*int64, error) {
+	if days == nil || *days == 0 || *days == -1 {
+		return nil, nil
+	}
+	if *days < -1 {
+		return nil, errors.New("cold-storage move days must be positive or disabled")
+	}
+	return retentionDaysToHours(days)
 }
 
 func normalizeCustomRetentionRules(upstream []upstreamRetentionRule) ([]CustomRetentionRule, error) {

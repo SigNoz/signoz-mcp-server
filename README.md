@@ -348,7 +348,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
 | `signoz_check_metric_usage` | Given a list of metric names (up to 50 per call), return which dashboards and alerts reference each one |
 | `signoz_check_metric_cardinality` | Return label/attribute keys for a single metric with cardinality counts and sample values, sorted highest-cardinality first |
-| `signoz_get_data_retention` | Return configured retention for metrics, traces, and logs, including custom log overrides |
+| `signoz_get_data_retention` | Return configured deletion retention and cold-storage movement for metrics, traces, and logs, including custom log overrides |
 | `signoz_get_field_keys` | Discover available field keys for metrics, traces, or logs |
 | `signoz_get_field_values` | Get possible values for a field key |
 | `signoz_list_alerts` | List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) |
@@ -494,12 +494,13 @@ Return label/attribute keys for one metric with cardinality counts and sample va
 
 #### `signoz_get_data_retention`
 
-Return the workspace's configured deletion retention for metrics, traces, and logs in one read-only call. The result includes the SigNoz Settings `webUrl`, current defaults when the backend can confirm them, change status, and ordered active custom log-retention overrides. Retention changes apply only to newly ingested data; existing data can retain an earlier TTL. This tool returns retention only; for ingestion volume, use `signoz_list_metrics` with `source="meter"`.
+Return the workspace's configured deletion retention and cold-storage movement for metrics, traces, and logs in one read-only call. The result includes the SigNoz Settings `webUrl`, current values when the backend can confirm them, latest pending or failed targets, change status, and ordered active or target custom log-retention overrides. All periods are normalized to hours. Retention changes apply only to newly ingested data; existing data can retain an earlier TTL. This tool returns retention only; for ingestion volume, use `signoz_list_metrics` with `source="meter"`.
 
 - **Parameters**: none beyond the shared `searchContext`
 - **Example arguments**: `{"searchContext":"What retention is configured for metrics, traces, and logs?"}`
-- **Current state**: `currentStateKnown=true` means `currentRetentionHours` is the configured default for newly ingested data. When it is false, the custom-log API exposed only a pending or failed attempt; use `changeStatus` and `webUrl` for follow-up without claiming that attempt is active.
-- **Custom log rules**: `customRules` contains active ordered overrides. Each rule reports its conditions and exact retention in hours. The field is omitted for non-log signals, when there are no active overrides, or when `currentStateKnown=false`; in the last case the active overrides are unknown, not necessarily absent.
+- **Current and target state**: `currentStateKnown=true` means `currentRetentionHours` is the configured default for newly ingested data. `targetRetentionHours` contains the latest pending or failed attempted default. When current state is unknown, use target fields and `changeStatus` without claiming the attempt is active.
+- **Cold storage**: `currentColdStorageMoveAfterHours` and `targetColdStorageMoveAfterHours` report when data moves to cold storage; this is tiering, not deletion. If current state is known, an omitted current value means movement is disabled. If a target retention value is present, an omitted target cold-storage value means movement is disabled for that target. With unknown current state, an omitted current value means unknown.
+- **Custom log rules**: `customRules` contains active ordered overrides and `targetCustomRules` contains overrides from the latest pending or failed attempt. Each rule reports its conditions and exact retention in hours. Rules are log-only and evaluated in order; the first match wins.
 - **UI location**: follow the returned `webUrl` to SigNoz Settings and review Retention Controls.
 
 #### `signoz_list_alerts`

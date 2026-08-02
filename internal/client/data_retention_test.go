@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -44,6 +45,9 @@ func TestGetDataRetention_RecordedLiveResponses(t *testing.T) {
 	} {
 		assert.True(t, policy.CurrentStateKnown, signal)
 		assert.Equal(t, retentionStatusSuccess, policy.ChangeStatus, signal)
+		assert.Nil(t, policy.CurrentColdStorageMoveAfterHours, signal)
+		assert.Nil(t, policy.TargetRetentionHours, signal)
+		assert.Nil(t, policy.TargetColdStorageMoveAfterHours, signal)
 	}
 	require.NotNil(t, result.Metrics.CurrentRetentionHours)
 	assert.EqualValues(t, 2160, *result.Metrics.CurrentRetentionHours)
@@ -93,7 +97,7 @@ func TestGetDataRetention_NormalizesAllSignals(t *testing.T) {
 					"conditions":[{"key":"service_name","values":["checkout","payment"]}],
 					"ttlDays":30
 				}],
-				"cold_storage_ttl_days":-1
+				"cold_storage_ttl_days":7
 			}`))
 		default:
 			http.Error(w, "unexpected route", http.StatusNotFound)
@@ -109,16 +113,26 @@ func TestGetDataRetention_NormalizesAllSignals(t *testing.T) {
 	assert.EqualValues(t, 720, *result.Metrics.CurrentRetentionHours)
 	assert.True(t, result.Metrics.CurrentStateKnown)
 	assert.Equal(t, retentionStatusSuccess, result.Metrics.ChangeStatus)
+	assert.Nil(t, result.Metrics.CurrentColdStorageMoveAfterHours)
+	assert.Nil(t, result.Metrics.TargetRetentionHours)
 
 	require.NotNil(t, result.Traces.CurrentRetentionHours)
 	assert.EqualValues(t, 360, *result.Traces.CurrentRetentionHours)
 	assert.True(t, result.Traces.CurrentStateKnown)
 	assert.Equal(t, retentionStatusPending, result.Traces.ChangeStatus)
+	require.NotNil(t, result.Traces.CurrentColdStorageMoveAfterHours)
+	assert.EqualValues(t, 168, *result.Traces.CurrentColdStorageMoveAfterHours)
+	require.NotNil(t, result.Traces.TargetRetentionHours)
+	assert.EqualValues(t, 720, *result.Traces.TargetRetentionHours)
+	assert.Nil(t, result.Traces.TargetColdStorageMoveAfterHours)
 
 	require.NotNil(t, result.Logs.CurrentRetentionHours)
 	assert.EqualValues(t, 360, *result.Logs.CurrentRetentionHours)
 	assert.True(t, result.Logs.CurrentStateKnown)
 	assert.Equal(t, retentionStatusSuccess, result.Logs.ChangeStatus)
+	require.NotNil(t, result.Logs.CurrentColdStorageMoveAfterHours)
+	assert.EqualValues(t, 168, *result.Logs.CurrentColdStorageMoveAfterHours)
+	assert.Nil(t, result.Logs.TargetRetentionHours)
 	require.Len(t, result.Logs.CustomRules, 1)
 	assert.EqualValues(t, 720, result.Logs.CustomRules[0].RetentionHours)
 	assert.Equal(t, "service_name", result.Logs.CustomRules[0].Conditions[0].Key)
@@ -156,7 +170,14 @@ func TestFetchLogsRetention_InFlightCustomPolicyReportsCurrentUnknown(t *testing
 			assert.Equal(t, status, policy.ChangeStatus)
 			assert.False(t, policy.CurrentStateKnown)
 			assert.Nil(t, policy.CurrentRetentionHours)
+			assert.Nil(t, policy.CurrentColdStorageMoveAfterHours)
 			assert.Empty(t, policy.CustomRules)
+			require.NotNil(t, policy.TargetRetentionHours)
+			assert.EqualValues(t, 1080, *policy.TargetRetentionHours)
+			require.NotNil(t, policy.TargetColdStorageMoveAfterHours)
+			assert.EqualValues(t, 168, *policy.TargetColdStorageMoveAfterHours)
+			require.Len(t, policy.TargetCustomRules, 1)
+			assert.EqualValues(t, 2160, policy.TargetCustomRules[0].RetentionHours)
 		})
 	}
 }
@@ -199,6 +220,11 @@ func TestFetchLogsRetention_V2LegacyRepresentationUsesExactV1Hours(t *testing.T)
 	assert.True(t, policy.CurrentStateKnown)
 	require.NotNil(t, policy.CurrentRetentionHours)
 	assert.EqualValues(t, 361, *policy.CurrentRetentionHours)
+	assert.Nil(t, policy.CurrentColdStorageMoveAfterHours)
+	require.NotNil(t, policy.TargetRetentionHours)
+	assert.EqualValues(t, 721, *policy.TargetRetentionHours)
+	require.NotNil(t, policy.TargetColdStorageMoveAfterHours)
+	assert.EqualValues(t, 169, *policy.TargetColdStorageMoveAfterHours)
 	assert.Equal(t, retentionStatusFailed, policy.ChangeStatus)
 	assert.Equal(t, 1, v2Hits)
 	assert.Equal(t, 1, v1Hits)
@@ -264,6 +290,7 @@ func TestRetentionContractDriftWarnsAndFails(t *testing.T) {
 	}{
 		{name: "unknown logs version", body: `{"version":"v3","status":"success","default_ttl_days":15}`},
 		{name: "missing logs default", body: `{"version":"v2","status":"success"}`},
+		{name: "invalid cold storage sentinel", body: `{"version":"v2","status":"success","default_ttl_days":15,"cold_storage_ttl_days":-2}`},
 		{name: "malformed JSON", body: `not json`},
 	}
 
@@ -280,6 +307,57 @@ func TestRetentionContractDriftWarnsAndFails(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, logs.String(), "Unexpected response shape from data retention endpoint")
 			assert.Contains(t, logs.String(), `"signal":"logs"`)
+		})
+	}
+}
+
+func TestNormalizeColdStorageMoveValues(t *testing.T) {
+	ptr := func(value int64) *int64 { return &value }
+
+	for _, tc := range []struct {
+		name      string
+		value     *int64
+		wantHours *int64
+		wantError bool
+	}{
+		{name: "omitted", value: nil, wantHours: nil},
+		{name: "minus one disabled", value: ptr(-1), wantHours: nil},
+		{name: "zero disabled", value: ptr(0), wantHours: nil},
+		{name: "positive hours", value: ptr(168), wantHours: ptr(168)},
+		{name: "invalid negative", value: ptr(-2), wantError: true},
+	} {
+		t.Run("hours/"+tc.name, func(t *testing.T) {
+			got, err := normalizeColdStorageMoveHours(tc.value)
+			if tc.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantHours, got)
+		})
+	}
+
+	for _, tc := range []struct {
+		name      string
+		value     *int64
+		wantHours *int64
+		wantError bool
+	}{
+		{name: "omitted", value: nil, wantHours: nil},
+		{name: "minus one disabled", value: ptr(-1), wantHours: nil},
+		{name: "zero disabled", value: ptr(0), wantHours: nil},
+		{name: "positive days", value: ptr(7), wantHours: ptr(168)},
+		{name: "invalid negative", value: ptr(-2), wantError: true},
+		{name: "overflow", value: ptr(math.MaxInt64), wantError: true},
+	} {
+		t.Run("days/"+tc.name, func(t *testing.T) {
+			got, err := normalizeColdStorageMoveDays(tc.value)
+			if tc.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantHours, got)
 		})
 	}
 }
