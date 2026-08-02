@@ -865,6 +865,268 @@ func validThresholdAlertArgs() map[string]any {
 	}
 }
 
+func policyRoutedThresholdAlertArgs() map[string]any {
+	args := validThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	delete(spec, "channels")
+	args["notificationSettings"] = map[string]any{"usePolicy": true}
+	return args
+}
+
+func validAnomalyAlertArgs() map[string]any {
+	return map[string]any{
+		"alert":      "Anomalous ingest drop",
+		"alertType":  "METRIC_BASED_ALERT",
+		"ruleType":   "anomaly_rule",
+		"evalWindow": "24h",
+		"frequency":  "3h",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "graph",
+				"queries": []any{
+					map[string]any{
+						"type": "builder_query",
+						"spec": map[string]any{
+							"name":   "A",
+							"signal": "metrics",
+							"aggregations": []any{
+								map[string]any{"metricName": "otelcol_receiver_accepted_spans", "timeAggregation": "rate", "spaceAggregation": "sum"},
+							},
+							"functions": []any{
+								map[string]any{"name": "anomaly", "args": []any{
+									map[string]any{"name": "z_score_threshold", "value": 2},
+								}},
+							},
+						},
+					},
+				},
+			},
+			"op":          "below",
+			"matchType":   "all_the_times",
+			"target":      float64(2),
+			"algorithm":   "standard",
+			"seasonality": "daily",
+		},
+	}
+}
+
+func TestUsesPolicyRouting(t *testing.T) {
+	cases := []struct {
+		name string
+		args map[string]any
+		want bool
+	}{
+		{name: "threshold policy", args: map[string]any{"ruleType": "threshold_rule", "notificationSettings": map[string]any{"usePolicy": true}}, want: true},
+		{name: "promql policy", args: map[string]any{"ruleType": "promql_rule", "notificationSettings": map[string]any{"usePolicy": true}}, want: true},
+		{name: "direct routing", args: map[string]any{"ruleType": "threshold_rule", "notificationSettings": map[string]any{"usePolicy": false}}},
+		{name: "missing settings", args: map[string]any{"ruleType": "threshold_rule"}},
+		{name: "non-boolean policy", args: map[string]any{"ruleType": "threshold_rule", "notificationSettings": map[string]any{"usePolicy": "true"}}},
+		{name: "anomaly v1", args: map[string]any{"ruleType": "anomaly_rule", "notificationSettings": map[string]any{"usePolicy": true}}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := usesPolicyRouting(tc.args); got != tc.want {
+				t.Fatalf("usesPolicyRouting() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHandleCreateAlert_PolicyRoutingAllowsNoChannels(t *testing.T) {
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("notification-channel lookup must be skipped for channel-less policy routing")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			var payload map[string]any
+			if err := json.Unmarshal(alertJSON, &payload); err != nil {
+				t.Fatalf("unmarshal alert payload: %v", err)
+			}
+			settings := payload["notificationSettings"].(map[string]any)
+			if settings["usePolicy"] != true {
+				t.Fatalf("notificationSettings.usePolicy = %v, want true", settings["usePolicy"])
+			}
+			got, _, hasBlank := extractThresholdChannelReferences(payload)
+			if hasBlank || len(got) != 0 {
+				t.Fatalf("policy-routed payload references channels %v, want none", got)
+			}
+			return json.RawMessage(`{"status":"success","data":{"id":"rule-policy"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", policyRoutedThresholdAlertArgs()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if listCalls != 0 {
+		t.Fatalf("ListNotificationChannels called %d times, want 0", listCalls)
+	}
+	if createCalls != 1 {
+		t.Fatalf("CreateAlertRule called %d times, want 1", createCalls)
+	}
+}
+
+func TestHandleCreateAlert_PolicyRoutingStillValidatesSuppliedChannels(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = []any{"missing-channel"}
+
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected invalid supplied channel to fail under policy routing")
+	}
+	if createCalls != 0 {
+		t.Fatalf("CreateAlertRule called %d times, want 0", createCalls)
+	}
+	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "missing-channel") {
+		t.Fatalf("validation error does not name invalid channel: %q", text)
+	} else if !strings.Contains(text, "remove invalid direct channel references") {
+		t.Fatalf("policy-routing error does not explain how to remove ignored invalid references: %q", text)
+	}
+}
+
+func TestHandleCreateAlert_PolicyRoutingRejectsBlankSuppliedChannel(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = []any{""}
+
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("blank names must fail before channel lookup")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected blank supplied channel to fail under policy routing")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("blank channel caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "cannot be blank") || !strings.Contains(text, "remove blank direct channel references") {
+		t.Fatalf("blank-channel error lacks policy recovery guidance: %q", text)
+	}
+}
+
+func TestHandleCreateAlert_PolicyRoutingRejectsNonArrayChannelsBeforeCalls(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = "slack-alerts"
+
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("malformed channels must fail before channel lookup")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected non-array policy-routing channels to fail")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("malformed channels caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "condition.thresholds.spec[0].channels") || !strings.Contains(text, "must be an array") {
+		t.Fatalf("unexpected validation error: %q", text)
+	}
+}
+
+func TestHandleCreateAlert_DirectRoutingBlankChannelNamesGiveDiscoveryGuidance(t *testing.T) {
+	args := validThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = []any{""}
+
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("blank names must fail before channel lookup")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected blank direct channel to fail")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("blank channel caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	for _, required := range []string{"signoz_list_notification_channels", "same prepared operation", "signoz_create_notification_channel", "user-provided config", "never create automatically"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("blank direct-channel error missing recovery guidance %q: %q", required, text)
+		}
+	}
+}
+
 func TestHandleCreateAlert_NoChannelsReturnsAvailable(t *testing.T) {
 	mock := &client.MockClient{
 		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
@@ -923,6 +1185,94 @@ func TestHandleCreateAlert_NoChannelsReturnsAvailable(t *testing.T) {
 	}
 	if !strings.Contains(text, "signoz_create_notification_channel") {
 		t.Error("expected error to mention signoz_create_notification_channel")
+	}
+	if !strings.Contains(text, "notificationSettings.usePolicy=true") {
+		t.Error("expected direct-routing error to offer configured org-policy routing")
+	}
+	if !strings.Contains(text, "user confirms an existing matching org policy") {
+		t.Error("expected policy-routing alternative to require confirmation of an existing match")
+	}
+	if strings.Contains(text, "preferredChannels") {
+		t.Fatalf("v2 direct-routing error must not offer preferredChannels: %q", text)
+	}
+}
+
+func TestHandleCreateAlert_AnomalyChannelErrorsDoNotSuggestPolicyRouting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args func() map[string]any
+		want string
+	}{
+		{
+			name: "missing channel",
+			args: validAnomalyAlertArgs,
+			want: "preferredChannels",
+		},
+		{
+			name: "invalid channel",
+			args: func() map[string]any {
+				args := validAnomalyAlertArgs()
+				args["preferredChannels"] = []any{"missing-channel"}
+				return args
+			},
+			want: "missing-channel",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &client.MockClient{
+				ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+					return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+				},
+			}
+			h := newTestHandler(mock)
+
+			result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", tc.args()))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected anomaly channel validation error")
+			}
+			text := result.Content[0].(mcp.TextContent).Text
+			if !strings.Contains(text, tc.want) {
+				t.Fatalf("anomaly channel error missing %q: %q", tc.want, text)
+			}
+			if strings.Contains(text, "notificationSettings.usePolicy") || strings.Contains(text, "org-policy routing") {
+				t.Fatalf("anomaly channel error incorrectly suggests policy routing: %q", text)
+			}
+		})
+	}
+}
+
+func TestHandleCreateAlert_AnomalyRejectsPolicyRoutingBeforeCalls(t *testing.T) {
+	args := validAnomalyAlertArgs()
+	args["notificationSettings"] = map[string]any{"usePolicy": true}
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("anomaly policy routing must fail before channel lookup")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return nil, fmt.Errorf("anomaly policy routing must fail before create")
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected anomaly notificationSettings to be rejected")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("anomaly policy routing caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "notificationSettings") || !strings.Contains(text, "preferredChannels") {
+		t.Fatalf("unexpected anomaly policy-routing error: %q", text)
 	}
 }
 
@@ -985,58 +1335,100 @@ func TestHandleCreateAlert_InvalidChannelReturnsError(t *testing.T) {
 	}
 }
 
-func TestHandleCreateAlert_PreferredChannelsValidated(t *testing.T) {
+func TestHandleCreateAlert_V2RejectsPreferredChannels(t *testing.T) {
+	args := validThresholdAlertArgs()
+	args["preferredChannels"] = []any{"slack-alerts"}
+	listCalls := 0
+	createCalls := 0
 	mock := &client.MockClient{
 		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
 			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
 		},
 		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
 			return json.RawMessage(`{"status":"success","data":{"id":"rule-789"}}`), nil
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_create_alert", map[string]any{
-		"alert":             "Test Alert",
-		"alertType":         "METRIC_BASED_ALERT",
-		"ruleType":          "threshold_rule",
-		"preferredChannels": []any{"slack-alerts"},
-		"condition": map[string]any{
-			"compositeQuery": map[string]any{
-				"queryType": "builder",
-				"queries": []any{
-					map[string]any{
-						"type": "builder_query",
-						"spec": map[string]any{
-							"name":   "A",
-							"signal": "metrics",
-							"aggregations": []any{
-								map[string]any{"expression": "count()"},
-							},
-							"filter": map[string]any{"expression": ""},
-						},
-					},
-				},
-			},
-			"thresholds": map[string]any{
-				"kind": "basic",
-				"spec": []any{
-					map[string]any{
-						"name":      "warning",
-						"target":    float64(100),
-						"op":        "1",
-						"matchType": "1",
-					},
-				},
-			},
-		},
-	})
 
-	result, err := h.handleCreateAlert(testCtx(), req)
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected v2 preferredChannels to be rejected")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("v2 preferredChannels caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "preferredChannels") || !strings.Contains(text, "must be omitted") {
+		t.Fatalf("unexpected v2 preferredChannels error: %q", text)
+	}
+}
+
+func TestHandleCreateAlert_AnomalyPreferredChannelsValidated(t *testing.T) {
+	args := validAnomalyAlertArgs()
+	args["preferredChannels"] = []any{"slack-alerts"}
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success","data":{"id":"rule-anomaly"}}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if listCalls != 1 || createCalls != 1 {
+		t.Fatalf("anomaly preferredChannels list/create calls = %d/%d, want 1/1", listCalls, createCalls)
+	}
+}
+
+func TestHandleCreateAlert_DirectRoutingRequiresChannelsOnEveryThreshold(t *testing.T) {
+	args := validThresholdAlertArgs()
+	thresholds := args["condition"].(map[string]any)["thresholds"].(map[string]any)
+	thresholds["spec"] = append(thresholds["spec"].([]any), map[string]any{
+		"name":      "critical",
+		"target":    float64(200),
+		"op":        "above",
+		"matchType": "at_least_once",
+	})
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected channel-less critical tier to fail direct routing")
+	}
+	if createCalls != 0 {
+		t.Fatalf("CreateAlertRule called %d times, want 0", createCalls)
+	}
+	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "critical") || !strings.Contains(text, "every threshold tier") {
+		t.Fatalf("missing-tier error lacks direct-routing guidance: %q", text)
 	}
 }
 
@@ -1095,6 +1487,9 @@ func TestHandleCreateAlert_NoChannelsExist(t *testing.T) {
 	}
 	if !strings.Contains(text, "signoz_create_notification_channel") {
 		t.Error("expected error to suggest creating a new channel")
+	}
+	if !strings.Contains(text, "Ask the user whether to create one") || !strings.Contains(text, "user-confirmed provider settings") {
+		t.Error("expected no-channel error to require user confirmation before channel creation")
 	}
 }
 
@@ -1172,6 +1567,92 @@ func TestHandleUpdateAlert(t *testing.T) {
 		t.Error("ruleId should be stripped from the rule body before sending")
 	}
 	assertForwardedMetricAlertBounds(t, parsed)
+}
+
+func TestHandleUpdateAlert_PolicyRoutingAllowsNoChannels(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	args["id"] = validRuleUUIDv7
+
+	listCalls := 0
+	updateCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("notification-channel lookup must be skipped for channel-less policy routing")
+		},
+		UpdateAlertRuleFn: func(ctx context.Context, ruleID string, alertJSON []byte) error {
+			updateCalls++
+			if ruleID != validRuleUUIDv7 {
+				t.Fatalf("rule ID = %q, want %q", ruleID, validRuleUUIDv7)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(alertJSON, &payload); err != nil {
+				t.Fatalf("unmarshal alert payload: %v", err)
+			}
+			settings := payload["notificationSettings"].(map[string]any)
+			if settings["usePolicy"] != true {
+				t.Fatalf("notificationSettings.usePolicy = %v, want true", settings["usePolicy"])
+			}
+			got, _, hasBlank := extractThresholdChannelReferences(payload)
+			if hasBlank || len(got) != 0 {
+				t.Fatalf("policy-routed payload references channels %v, want none", got)
+			}
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleUpdateAlert(testCtx(), makeToolRequest("signoz_update_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if listCalls != 0 {
+		t.Fatalf("ListNotificationChannels called %d times, want 0", listCalls)
+	}
+	if updateCalls != 1 {
+		t.Fatalf("UpdateAlertRule called %d times, want 1", updateCalls)
+	}
+}
+
+func TestHandleUpdateAlert_PolicyRoutingRejectsNonArrayChannelsBeforeCalls(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	args["id"] = validRuleUUIDv7
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = "slack-alerts"
+
+	listCalls := 0
+	updateCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("malformed channels must fail before channel lookup")
+		},
+		UpdateAlertRuleFn: func(ctx context.Context, ruleID string, alertJSON []byte) error {
+			updateCalls++
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleUpdateAlert(testCtx(), makeToolRequest("signoz_update_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected non-array policy-routing channels to fail")
+	}
+	if listCalls != 0 || updateCalls != 0 {
+		t.Fatalf("malformed channels caused list/update calls = %d/%d, want 0/0", listCalls, updateCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "condition.thresholds.spec[0].channels") || !strings.Contains(text, "must be an array") {
+		t.Fatalf("unexpected validation error: %q", text)
+	}
 }
 
 func assertForwardedMetricAlertBounds(t *testing.T, rule map[string]any) {

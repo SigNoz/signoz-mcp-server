@@ -354,8 +354,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_alert_rules` | List configured alert-rule summaries, including inactive/OK and disabled rules |
 | `signoz_get_alert` | Get one alert rule's full definition by `id` |
 | `signoz_get_alert_history` | Get one rule's firing or state-transition history |
-| `signoz_create_alert` | Create an alert after verifying notification-channel names |
-| `signoz_update_alert` | Fully replace an alert after fetching it and verifying notification-channel names |
+| `signoz_create_alert` | Create a v2 direct/policy-routed alert or a direct-routed v1 anomaly alert |
+| `signoz_update_alert` | Fully replace an existing alert rule by `id` |
 | `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
 | `signoz_get_dashboard` | Get one dashboard's full layout, variables, panels, and queries |
@@ -401,7 +401,7 @@ Docs tools use the same authentication path as other MCP tools.
 | Resource | Read when you need |
 |---|---|
 | `signoz://alert/instructions` | Alert schemas, fields, thresholds, evaluation, and notification workflow |
-| `signoz://alert/examples` | Alert payload examples; replace example channels with verified names |
+| `signoz://alert/examples` | Alert payload examples for v2 direct/policy routing and v1 direct anomaly routing |
 | `signoz://dashboard/instructions` | Dashboard fields, variables, chaining, and layout |
 | `signoz://dashboard/widgets-instructions` | Panel choices and query-specific guides |
 | `signoz://dashboard/widgets-examples` | Panel examples and validation patterns |
@@ -512,7 +512,7 @@ Lists configured alert-rule summaries from `GET /api/v2/rules`, including inacti
 
 #### `signoz_get_alert`
 
-Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_list_alert_rules` to discover IDs and call this before `signoz_update_alert` so unchanged fields can be preserved.
+Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_list_alert_rules` to discover IDs. Before `signoz_update_alert`, call this only when a complete current definition is not already available for the prepared operation; reuse a still-current result and preserve unchanged fields.
 
 - **Parameters**: `id` (required) - Alert rule ID (UUIDv7 on v2-capable servers).
 - **Note**: Response shape depends on the SigNoz server version. Post-#10997 servers return the canonical `Rule` type with `createdAt/updatedAt/createdBy/updatedBy`; older servers return `GettableRule` with `createAt/updateAt/createBy/updateBy` (no 'd').
@@ -803,13 +803,13 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Parameters**: JSON payload matching the SigNoz alert rule schema.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
-  - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow` and `frequency`; `condition.op`/`matchType`/`target`/`algorithm`/`seasonality`; anomaly function inside `compositeQuery.queries[].spec.functions`. Omit `thresholds`, `evaluation`, `schemaVersion`.
-- **Notification channels**: Before creating, call `signoz_list_notification_channels` to verify every selected name or show valid choices. Never guess. At least one existing valid channel is required even with `notificationSettings.usePolicy=true`. If validation still rejects a channel name, show the current names and retry.
-- **Tip**: Read MCP resources `signoz://alert/instructions` and `signoz://alert/examples` (examples based on SigNoz PR #11023, plus a Cost Meter cumulative-budget alert) before composing payloads. For `promql_rule`, also read `signoz://promql/instructions` — OTel dotted metric names require the Prometheus 3.x UTF-8 quoted-selector form.
+  - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned name on every tier and rejects top-level `preferredChannels`; v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config—never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
+- **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`
 
-Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: fetch it with `signoz_get_alert`, preserve unchanged fields, and verify every selected channel name with `signoz_list_notification_channels` before updating. If validation still rejects a channel name, show the current names and retry.
+Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed name on every tier; confirmed v2 policy routing may omit them. V1 anomalies use direct top-level `preferredChannels` and cannot use policy routing.
 
 - **Parameters**:
   - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).

@@ -317,17 +317,16 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 	isAnomaly := ruleType == "anomaly_rule"
 
 	// Anomaly rules use the v1 shape at the top level — no thresholds block.
-	// Threshold/PromQL rules must carry condition.thresholds unless they are
-	// using alertOnAbsent as the sole trigger.
+	// Every threshold/PromQL rule must carry condition.thresholds, including
+	// rules that also enable alertOnAbsent.
 	hasThresholds := mapVal(cond, "thresholds") != nil
-	hasAlertOnAbsent := boolVal(cond, "alertOnAbsent")
 
 	if isAnomaly {
 		if hasThresholds {
 			errs.Add("condition.thresholds", "must be omitted for anomaly_rule (v1 schema); use condition.op/matchType/target/algorithm/seasonality at the condition level instead")
 		}
 		validateAnomalyFields(rule, cond, errs)
-	} else if !hasThresholds && !hasAlertOnAbsent {
+	} else if !hasThresholds {
 		errs.Add("condition.thresholds", "is required (v2alpha1 schema); use condition.thresholds with kind and spec array")
 	}
 
@@ -446,6 +445,11 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 				errs.Add(prefix+".matchType", "is required (e.g. at_least_once, all_the_times, on_average, in_total, last)")
 			} else if !validMatchTypes[mt] {
 				errs.Addf(prefix+".matchType", "must be a valid match type; got %q", mt)
+			}
+			if channels, present := sm["channels"]; present && channels != nil {
+				if _, ok := channels.([]any); !ok {
+					errs.Addf(prefix+".channels", "must be an array of notification channel names; got %T", channels)
+				}
 			}
 		}
 	}
@@ -575,6 +579,16 @@ func validateCrossConstraints(rule map[string]any, errs *ValidationError) {
 	// anomaly_rule only works with METRIC_BASED_ALERT
 	if ruleType == "anomaly_rule" && alertType != "" && alertType != "METRIC_BASED_ALERT" {
 		errs.Addf("ruleType", "anomaly_rule can only be used with METRIC_BASED_ALERT, got alertType=%q", alertType)
+	}
+	switch ruleType {
+	case "anomaly_rule":
+		if raw, present := rule["notificationSettings"]; present && raw != nil {
+			errs.Add("notificationSettings", "must be omitted for anomaly_rule; policy routing is supported only for threshold_rule/promql_rule. Use top-level preferredChannels for anomaly routing")
+		}
+	case "threshold_rule", "promql_rule":
+		if raw, present := rule["preferredChannels"]; present && raw != nil {
+			errs.Add("preferredChannels", "must be omitted for threshold_rule/promql_rule; use condition.thresholds.spec[].channels for direct routing or notificationSettings.usePolicy=true for policy routing")
+		}
 	}
 
 	// promql_rule requires queryType=promql
@@ -726,13 +740,6 @@ func sliceVal(m map[string]any, key string) []any {
 		return v
 	}
 	return nil
-}
-
-func boolVal(m map[string]any, key string) bool {
-	if v, ok := m[key].(bool); ok {
-		return v
-	}
-	return false
 }
 
 // floatVal returns m[key] as a float64 when it is a JSON number.

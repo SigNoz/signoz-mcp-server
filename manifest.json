@@ -63,7 +63,7 @@
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get one configured alert rule's full definition by id; use before the full-replacement signoz_update_alert"
+      "description": "Get one configured alert rule's full definition by id when a still-current definition is not already available for the prepared signoz_update_alert operation"
     },
     {
       "name": "signoz_get_alert_history",
@@ -71,11 +71,11 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert after verifying selected notification-channel names; threshold/PromQL rules use v2alpha1 and metric-only anomaly rules use v1"
+      "description": "Create a v2 threshold/PromQL or v1 anomaly alert; direct routing resolves exact names with signoz_list_notification_channels, while confirmed v2 policy routing may omit channels"
     },
     {
       "name": "signoz_update_alert",
-      "description": "Fully replace an alert rule: fetch it first, preserve unchanged fields, and verify every selected notification-channel name"
+      "description": "Fully replace an alert using same-operation signoz_get_alert, authoring-resource, and signoz_list_notification_channels results; refresh only stale preflights"
     },
     {
       "name": "signoz_delete_alert",
@@ -198,13 +198,13 @@
     {
       "uri": "signoz://alert/examples",
       "name": "Alert Rule Examples",
-      "description": "Read this after signoz://alert/instructions when you need alert payload examples for metrics, logs, traces, exceptions, PromQL, anomalies, formulas, tiered thresholds, cumulative alerts, or notification settings. Verify every example channel name with signoz_list_notification_channels.",
+      "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://alert/instructions",
       "name": "Alert Rule Instructions",
-      "description": "Read this before creating or updating an alert. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. For payload examples, read signoz://alert/examples.",
+      "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
       "mimeType": "text/markdown"
     },
     {
