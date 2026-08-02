@@ -1051,6 +1051,43 @@ func TestHandleCreateAlert_PolicyRoutingRejectsBlankSuppliedChannel(t *testing.T
 	}
 }
 
+func TestHandleCreateAlert_PolicyRoutingRejectsNonArrayChannelsBeforeCalls(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = "slack-alerts"
+
+	listCalls := 0
+	createCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("malformed channels must fail before channel lookup")
+		},
+		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
+			createCalls++
+			return json.RawMessage(`{"status":"success"}`), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected non-array policy-routing channels to fail")
+	}
+	if listCalls != 0 || createCalls != 0 {
+		t.Fatalf("malformed channels caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "condition.thresholds.spec[0].channels") || !strings.Contains(text, "must be an array") {
+		t.Fatalf("unexpected validation error: %q", text)
+	}
+}
+
 func TestHandleCreateAlert_DirectRoutingBlankChannelNamesGiveDiscoveryGuidance(t *testing.T) {
 	args := validThresholdAlertArgs()
 	condition := args["condition"].(map[string]any)
@@ -1577,6 +1614,44 @@ func TestHandleUpdateAlert_PolicyRoutingAllowsNoChannels(t *testing.T) {
 	}
 	if updateCalls != 1 {
 		t.Fatalf("UpdateAlertRule called %d times, want 1", updateCalls)
+	}
+}
+
+func TestHandleUpdateAlert_PolicyRoutingRejectsNonArrayChannelsBeforeCalls(t *testing.T) {
+	args := policyRoutedThresholdAlertArgs()
+	args["id"] = validRuleUUIDv7
+	condition := args["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = "slack-alerts"
+
+	listCalls := 0
+	updateCalls := 0
+	mock := &client.MockClient{
+		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
+			listCalls++
+			return nil, fmt.Errorf("malformed channels must fail before channel lookup")
+		},
+		UpdateAlertRuleFn: func(ctx context.Context, ruleID string, alertJSON []byte) error {
+			updateCalls++
+			return nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleUpdateAlert(testCtx(), makeToolRequest("signoz_update_alert", args))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected non-array policy-routing channels to fail")
+	}
+	if listCalls != 0 || updateCalls != 0 {
+		t.Fatalf("malformed channels caused list/update calls = %d/%d, want 0/0", listCalls, updateCalls)
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "condition.thresholds.spec[0].channels") || !strings.Contains(text, "must be an array") {
+		t.Fatalf("unexpected validation error: %q", text)
 	}
 }
 

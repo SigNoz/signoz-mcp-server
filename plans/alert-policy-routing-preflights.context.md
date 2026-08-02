@@ -57,5 +57,10 @@
 - Policy routing is an alternative only when the user confirms an existing matching org notification policy; do not infer or create one.
 - Keep mutation-time channel validation as the stale-state fallback and avoid adding redundant discovery calls inside the handler.
 
+### 2026-08-02 — Malformed policy-routing channel review
+- Review thread `discussion_r3698096569` is valid: a present string-valued threshold `channels` field passed shape validation, was classified as a missing tier by channel extraction, and then bypassed lookup under `notificationSettings.usePolicy=true`.
+- Validate the field shape before routing-mode logic: omitted and null channels remain valid for confirmed policy routing, while every present non-null value must be an array.
+- Add shared-validator coverage plus separate create/update regressions proving malformed channels fail before notification-channel lookup or alert mutation.
+
 ## Open Questions
 - [x] Does `SigNoz/agent-skills` require a companion change for the corrected policy-routing and preflight-reuse contract? — Yes for policy routing; no for preflight reuse. Publish and link a focused companion PR.

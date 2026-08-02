@@ -16,6 +16,7 @@ The MCP alert validation layer is stricter than SigNoz: it rejects channel-less 
 7. Update `SigNoz/agent-skills` so `signoz-creating-alerts` teaches the corrected routing contract and stops when an org policy is unconfirmed; add positive and negative focused evals and link the companion PR under CMP-3.
 8. Apply the accepted post-review simplification: remove unreachable formatter branches, deduplicate threshold channels once, keep contract-bearing tests and metadata pins, and clean concise README/skill prose.
 9. Make channel discovery actionable everywhere alert authors see routing guidance: name `signoz_list_notification_channels`, reuse only a fully paginated same-operation result, refresh only when state may have changed, and require user confirmation plus provider configuration before offering `signoz_create_notification_channel` or policy routing.
+10. Reject a present, non-null, non-array v2 threshold `channels` field in the shared alert validator so policy routing cannot mistake malformed input for an omitted direct route.
 
 ## Files to Modify
 - `internal/handler/tools/alerts.go` — policy-aware validation and state-aware tool descriptions.

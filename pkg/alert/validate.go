@@ -446,6 +446,11 @@ func validateCondition(rule map[string]any, errs *ValidationError) {
 			} else if !validMatchTypes[mt] {
 				errs.Addf(prefix+".matchType", "must be a valid match type; got %q", mt)
 			}
+			if channels, present := sm["channels"]; present && channels != nil {
+				if _, ok := channels.([]any); !ok {
+					errs.Addf(prefix+".channels", "must be an array of notification channel names; got %T", channels)
+				}
+			}
 		}
 	}
 }

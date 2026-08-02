@@ -905,6 +905,30 @@ func TestValidate_RoutingFieldsMatchSchema(t *testing.T) {
 	})
 }
 
+func TestValidate_PolicyRoutingRejectsNonArrayThresholdChannels(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["notificationSettings"] = map[string]any{"usePolicy": true}
+	condition := rule["condition"].(map[string]any)
+	thresholds := condition["thresholds"].(map[string]any)
+	spec := thresholds["spec"].([]any)[0].(map[string]any)
+	spec["channels"] = "slack-alerts"
+
+	_, err := ValidateFromMap(rule)
+	if err == nil {
+		t.Fatal("expected policy-routed alert with non-array channels to fail")
+	}
+	for _, required := range []string{"condition.thresholds.spec[0].channels", "must be an array"} {
+		if !strings.Contains(err.Error(), required) {
+			t.Fatalf("validation error missing %q: %v", required, err)
+		}
+	}
+
+	spec["channels"] = nil
+	if _, err := ValidateFromMap(rule); err != nil {
+		t.Fatalf("expected null channels to remain valid for policy routing, got: %v", err)
+	}
+}
+
 func TestValidate_AnomalyRule_RejectsThresholds(t *testing.T) {
 	rule := minimalValidAnomalyRule()
 	rule["condition"].(map[string]any)["thresholds"] = map[string]any{
