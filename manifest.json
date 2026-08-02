@@ -27,7 +27,7 @@
   "tools": [
     {
       "name": "signoz_get_org_overview",
-      "description": "Return organization-scoped dashboard, configured alert/channel, saved-view, log-pipeline, and provider-availability-aware cloud-integration posture counts; deployment-wide signal and alert-runtime stats are explicitly excluded"
+      "description": "Return a one-call deployment posture snapshot with typed telemetry, infrastructure, alert, workspace, authentication, licensing, and configuration projections plus sourceStats containing every stats field reported by SigNoz"
     },
     {
       "name": "signoz_list_metrics",
