@@ -206,7 +206,6 @@ The binary is at `./bin/signoz-mcp-server`.
 ### Prerequisites
 
 - A running [SigNoz](https://signoz.io) instance
-- SigNoz v0.129.0 or newer for `signoz_get_org_overview`
 - SigNoz v0.135.0 or newer for the dashboard tools (create/get/update/patch/list/delete/import), which use the v2/Perses dashboards API
 - SigNoz v0.135.0 or newer for `signoz_check_metric_usage` (it reads v2/Perses dashboards for dashboard usage; on older versions the dashboard half is silently empty, though alert usage alone works from v0.131.0)
 - SigNoz v0.120.0 or newer for alert-rule list/get/create/update/delete tools, and v0.118.0 or newer for alert history
@@ -336,7 +335,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_get_org_overview` requires SigNoz v0.129.0 or newer. `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -346,7 +345,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 | Tool | Description |
 |------|-------------|
-| `signoz_get_org_overview` | Return a one-call deployment posture snapshot from SigNoz v0.129.0 or newer, with typed projections plus `sourceStats` containing every field reported by the deployment stats endpoint |
+| `signoz_get_org_overview` | Get the current status and overall posture of the SigNoz deployment, with typed projections plus `sourceStats` containing every reported stats field |
 | `signoz_list_metrics` | Discover active metric names and catalog metadata |
 | `signoz_query_metrics` | Query known metrics for values, trends, breakdowns, or formulas |
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
@@ -434,16 +433,13 @@ Docs tools use the same authentication path as other MCP tools.
 
 #### `signoz_get_org_overview`
 
-Return a one-call deployment posture snapshot before drilling into exact resources. `data.sourceStats` is the authoritative complete flat bag containing every key and value reported by the deployment stats endpoint, including current and future fields. Typed convenience projections cover telemetry freshness and volume, infrastructure presence, dashboards, alert rules and runtime, notification channels, saved views, log pipelines, cloud integrations, users, authentication, service accounts, roles, licensing, and configuration.
+Get the current status and overall posture of the SigNoz deployment before drilling into exact resources. `data.sourceStats` is the authoritative complete flat bag containing every key and value reported by the deployment stats endpoint, including current and future fields. Typed convenience projections cover telemetry freshness and volume, infrastructure presence, dashboards, alert rules and runtime, notification channels, saved views, log pipelines, cloud integrations, users, authentication, service accounts, roles, licensing, and configuration.
 
 - **Parameters**: no task parameters; like every tool, it accepts non-required `searchContext` for MCP observability.
 - **Authoritative source**: `sourceStats` preserves every successfully decoded entry from the upstream `data` object under its original dotted key. Use the grouped fields for convenient interpretation and `sourceStats` when exact backend coverage or a newly introduced field matters. Counts are deployment aggregates; use `signoz_list_dashboards`, `signoz_list_alert_rules`, `signoz_list_notification_channels`, or `signoz_list_views` for exact inventories; `signoz_list_metrics` for metric names; `signoz_list_alerts` for current alert instances; and `signoz_search_logs`, `signoz_search_traces`, or `signoz_query_metrics` for time-windowed or per-service data.
 - **Missing fields**: a key absent from `sourceStats` was not reported by the upstream collector and must not be interpreted as zero. The endpoint can return a partial HTTP 200 when an individual collector fails. In typed projections, a missing group total produces `available: false`; a reported zero produces `available: true`. Expected missing or invalid projection fields set `metadata.projectionPartial` and add an `incompleteGroups` entry with affected output paths, reason, next action, and exact fallback tools where available. An invalid projection value is still retained unchanged in `sourceStats` and named in `invalidProjectionFields`.
-- **Dashboard panel coverage**: `dashboards.panels.coverage` is `legacyV1WidgetsOnly`. Panel counts do not cover v2/Perses panels and per-signal values count legacy builder-query entries, not unique panels.
 - **Cloud-integration completeness**: `cloudIntegrations.sourceAvailability` reports whether both current AWS/Azure provider counts were reported. Each provider has its own `dataAvailable`; an absent provider count is never converted to zero. If neither provider is reported, source availability is `unavailable` without setting overall `metadata.projectionPartial`; this can mean cloud integrations are unsupported/edition-gated **or** both provider queries failed, so do not interpret it as “no cloud integrations configured.” If exactly one is reported, source availability is `partial` and the missing provider receives non-recursive recovery guidance. `connectedAccounts` means a non-removed account with an account ID and at least one agent report, not a recent check-in or proof that an integration service is enabled.
 - **Projection metadata**: `reportedStatCount` is the number of authoritative entries in `sourceStats`; `projectedStatCount` counts entries also represented in typed groups; and `unprojectedStatCount` counts entries available only in `sourceStats`, including future fields. `projectionPartial`, `incompleteGroups`, and `invalidProjectionFields` describe only typed-projection gaps—they do not indicate data was removed from `sourceStats` or claim endpoint-wide completeness.
-
-> **Requires [SigNoz ≥ v0.129.0](https://github.com/SigNoz/signoz/commit/287b60cbe61d06490bc1a4ddda6fe28002daf431)**, the first release with the deployment stats endpoint.
 
 #### `signoz_list_metrics`
 

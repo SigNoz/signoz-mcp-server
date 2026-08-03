@@ -15,10 +15,10 @@ Agents currently need several list calls to understand whether a workspace has l
 - Add typed convenience projections for every current stats family: `signals`, `dashboards`, `alerts`, `views`, `logPipelines`, `cloudIntegrations`, `users`, `authentication`, `serviceAccounts`, `authorization`, `license`, and `configuration`. The projections do not replace or narrow `sourceStats`.
 - Preserve missing-vs-zero and large-integer semantics. A key absent from `sourceStats` was not reported and must not be treated as zero; an invalid known projection value remains present in `sourceStats` even when it cannot populate its typed field.
 - Make completeness metadata projection-specific: reconcile `reportedStatCount`, `projectedStatCount`, and `unprojectedStatCount`; use `projectionPartial`, `incompleteGroups`, and `invalidProjectionFields` only to describe gaps in the convenience projections. Future source fields remain authoritative in `sourceStats` and increase `unprojectedStatCount` without being dropped.
-- Keep sentinel-derived availability and machine-readable recovery guidance for typed groups. Preserve the current AWS/Azure provider-availability semantics, and mark dashboard panel coverage as legacy-v1-only rather than presenting it as a complete v2/Perses inventory.
+- Keep sentinel-derived availability and machine-readable recovery guidance for typed groups. Preserve the current AWS/Azure provider-availability semantics.
 - Return a coded `UPSTREAM_ERROR` when the top-level envelope or `data` object cannot be decoded, because there is then no authoritative stats bag to return. WARN when an expected typed projection is missing or invalid, while retaining every successfully decoded source entry.
 - Route authentication and permission failures through the shared coded top-level error path.
-- Advertise the v0.129.0 minimum version inline and return an immediate upgrade/fallback recovery message when the stats route returns HTTP 404.
+- Return immediate URL/fallback recovery guidance when the stats route returns HTTP 404.
 - Register the handler and synchronize `README.md`, `manifest.json`, mocks/interfaces, nil-argument coverage, and contract tests.
 - Record the completed companion `SigNoz/agent-skills` audit: no required change for this additive tool; optional workflow follow-up only.
 - Run formatting, focused tests, guardrails, full tests, build, an independent best-practices review, Claude Opus review, and delegated live E2E verification.

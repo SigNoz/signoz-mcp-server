@@ -75,11 +75,10 @@ type orgDashboardsOverview struct {
 }
 
 type orgDashboardPanelOverview struct {
-	Coverage string  `json:"coverage" jsonschema:"Coverage of the panel counters. legacyV1WidgetsOnly excludes v2/Perses panels and counts legacy builder-query entries by signal."`
-	Count    *uint64 `json:"count,omitempty"`
-	Logs     *uint64 `json:"logs,omitempty"`
-	Metrics  *uint64 `json:"metrics,omitempty"`
-	Traces   *uint64 `json:"traces,omitempty"`
+	Count   *uint64 `json:"count,omitempty"`
+	Logs    *uint64 `json:"logs,omitempty"`
+	Metrics *uint64 `json:"metrics,omitempty"`
+	Traces  *uint64 `json:"traces,omitempty"`
 }
 
 type orgAlertsOverview struct {
@@ -208,7 +207,7 @@ func (h *Handler) RegisterOrgOverviewHandlers(s *server.MCPServer) {
 	tool := mcp.NewTool("signoz_get_org_overview",
 		mcp.WithOutputSchema[orgOverviewOutput](),
 		withReadOnlyToolAnnotations(),
-		mcp.WithDescription("Use this when the user needs a one-call deployment posture snapshot before inspecting specific resources. Requires SigNoz v0.129.0 or newer. It returns typed telemetry freshness and all-time volume plus dashboard, alert, integration, access, license, and configuration posture; sourceStats preserves every reported stats field. Use signoz_list_dashboards, signoz_list_alert_rules, signoz_list_notification_channels, or signoz_list_views for exact inventories; signoz_list_metrics for metric names; signoz_list_alerts for current alert instances; and signoz_search_logs, signoz_search_traces, or signoz_query_metrics for time-windowed or per-service data. Missing fields mean unreported, not zero; dashboard panel counts cover legacy widgets only. When a typed projection is partial, metadata.incompleteGroups supplies recovery guidance. Example: 'Summarize this SigNoz deployment before we configure alerts.'"),
+		mcp.WithDescription("Get the current status and overall posture of the SigNoz deployment in one call. Returns typed telemetry, infrastructure, dashboard, alert, integration, access, license, and configuration summaries plus sourceStats with every reported stats field. Use dedicated list and query tools for exact inventories or time-windowed data. Missing fields are unreported, not zero; metadata.incompleteGroups provides recovery guidance for partial projections."),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 	)
 
@@ -228,7 +227,7 @@ func (h *Handler) handleGetOrgOverview(ctx context.Context, _ mcp.CallToolReques
 		errorResult := upstreamError(err)
 		var statusErr *signozclient.HTTPStatusError
 		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
-			const recovery = "recovery: Verify that the configured SigNoz URL points to an active deployment. If the deployment is reachable but this route is unavailable, signoz_get_org_overview requires SigNoz v0.129.0 or newer; upgrade the deployment or use the narrower inventory and signal-query tools named in this tool's description."
+			const recovery = "recovery: Verify that the configured SigNoz URL points to an active deployment. If the deployment is reachable but this route is unavailable, use the narrower inventory and signal-query tools named in this tool's description."
 			for i, content := range errorResult.Content {
 				if text, ok := content.(mcp.TextContent); ok {
 					text.Text += "\n\n" + recovery
@@ -323,9 +322,7 @@ func buildOrgOverview(payload []byte) (orgOverviewOutput, []string, error) {
 		Status: "success",
 		Data: orgOverviewData{
 			SourceStats: sourceStats,
-			Dashboards: orgDashboardsOverview{
-				Panels: orgDashboardPanelOverview{Coverage: "legacyV1WidgetsOnly"},
-			},
+			Dashboards:  orgDashboardsOverview{},
 			Alerts: orgAlertsOverview{
 				Rules: orgAlertRulesOverview{
 					ByType:   map[string]uint64{},

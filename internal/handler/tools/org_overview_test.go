@@ -457,7 +457,7 @@ func TestHandleGetOrgOverview_NotFoundIncludesConditionalRecovery(t *testing.T) 
 			t.Fatalf("code = %q, want %q", code, CodeNotFound)
 		}
 		text := textContent(t, result)
-		for _, want := range []string{"Verify that the configured SigNoz URL points to an active deployment", "requires SigNoz v0.129.0 or newer", "narrower inventory and signal-query tools"} {
+		for _, want := range []string{"Verify that the configured SigNoz URL points to an active deployment", "narrower inventory and signal-query tools"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("404 recovery missing %q: %s", want, text)
 			}

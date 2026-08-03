@@ -120,3 +120,8 @@
 - The issue #49 follow-up review was combined with this PR and a fresh Opus pass found that an older deployment's HTTP 404 still lacked an inline correction, even though the v0.129.0 floor was documented externally.
 - The tool description and synchronized README/manifest metadata now advertise SigNoz v0.129.0 or newer. A 404 keeps the shared `NOT_FOUND` classification and adds an immediate upgrade instruction plus a fallback to the narrower inventory and signal-query tools already named by the tool surface.
 - An adversarial E2E review caught that inactive or nonexistent cloud workspaces can also return 404. The final recovery is conditional: first verify that the configured URL points to an active deployment, then upgrade only when a reachable deployment lacks the stats route.
+
+### 2026-08-03 — Maintainer PR description cleanup
+- The maintainer requested that the tool-facing description stay simple, explicitly support questions about the current status of SigNoz, and omit the SigNoz version number.
+- Decision: lead the tool, README table, and manifest descriptions with current deployment status and overall posture; remove the overview-specific version prerequisite and version-based 404 wording while retaining URL verification plus narrower-tool recovery.
+- The maintainer also classified the legacy dashboard-panel limitation as a temporary bug that should not be advertised. Remove the `legacyV1WidgetsOnly` output marker and related README/tool/schema wording rather than making it part of the client-visible contract.
