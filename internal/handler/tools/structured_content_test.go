@@ -206,6 +206,9 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 	const ruleID = "0196634d-5d66-75c4-b778-e317f49dab7a"
 	mock := &client.MockClient{
+		GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"dashboard.count":1}}`), nil
+		},
 		ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
 			return json.RawMessage(`[{"serviceName":"frontend"}]`), nil
 		},
@@ -249,6 +252,7 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		req  mcp.CallToolRequest
 	}{
 		{"list_services", h.handleListServices, makeToolRequest("signoz_list_services", map[string]any{})},
+		{"get_org_overview", h.handleGetOrgOverview, makeToolRequest("signoz_get_org_overview", map[string]any{})},
 		{"check_metric_usage", h.handleCheckMetricUsage, makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"system.cpu.time"}})},
 		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
 		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "d1"})},

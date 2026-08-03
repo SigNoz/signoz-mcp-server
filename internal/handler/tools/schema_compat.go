@@ -211,6 +211,7 @@ func (h *Handler) errorCodeDecorator(toolName string, next server.ToolHandlerFun
 			return result, err
 		}
 		result, appliedFallback := ensureCodedToolError(result)
+		appendAuthorizationOperation(result, toolName)
 		if !appliedFallback {
 			return result, nil
 		}

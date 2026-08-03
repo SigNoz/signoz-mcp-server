@@ -122,7 +122,7 @@ func captureStacktrace(skip int) string {
 		b.WriteString("\n\t")
 		b.WriteString(frame.File)
 		b.WriteString(":")
-		b.WriteString(fmt.Sprintf("%d", frame.Line))
+		fmt.Fprintf(&b, "%d", frame.Line)
 		if !more {
 			break
 		}

@@ -58,6 +58,18 @@ type HTTPStatusError struct {
 }
 
 func (e *HTTPStatusError) Error() string {
+	if e.StatusCode == http.StatusUnauthorized || e.StatusCode == http.StatusForbidden {
+		body := strings.TrimSpace(e.Body)
+		if strings.HasPrefix(body, "{") && json.Valid([]byte(body)) {
+			return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
+		}
+		switch e.StatusCode {
+		case http.StatusUnauthorized:
+			return "unexpected status 401: authentication failed"
+		case http.StatusForbidden:
+			return "unexpected status 403: permission denied"
+		}
+	}
 	return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
 }
 

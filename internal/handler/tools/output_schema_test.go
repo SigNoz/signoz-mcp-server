@@ -22,6 +22,9 @@ import (
 
 func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 	client := &signozclient.MockClient{
+		GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"dashboard.count":1}}`), nil
+		},
 		ListAlertsFn: func(context.Context, types.ListAlertsParams) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":[]}`), nil
 		},
@@ -40,6 +43,9 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 		name string
 		call func() (*mcp.CallToolResult, error)
 	}{
+		{"signoz_get_org_overview", func() (*mcp.CallToolResult, error) {
+			return h.handleGetOrgOverview(testCtx(), makeToolRequest("signoz_get_org_overview", map[string]any{}))
+		}},
 		{"signoz_list_alerts", func() (*mcp.CallToolResult, error) {
 			return h.handleListAlerts(ctxWithURL(), makeToolRequest("signoz_list_alerts", map[string]any{}))
 		}},

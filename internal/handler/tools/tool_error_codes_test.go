@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -73,6 +74,55 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		}
 	})
 
+}
+
+func TestErrorCodeDecorator_AddsOperationSpecificAuthorizationRecovery(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		wantCode   string
+		wantText   string
+	}{
+		{name: "unauthorized", statusCode: 401, wantCode: CodeUnauthorized, wantText: "Re-authenticate with valid SigNoz credentials"},
+		{name: "forbidden", statusCode: 403, wantCode: CodePermissionDenied, wantText: "Request access to this SigNoz operation"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &Handler{logger: logpkg.New("error")}
+			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return upstreamError(&signozclient.HTTPStatusError{StatusCode: tt.statusCode, Body: "secret-canary"}), nil
+			}
+			result, err := h.errorCodeDecorator("signoz_test_operation", next)(context.Background(), makeToolRequest("signoz_test_operation", map[string]any{}))
+			if err != nil {
+				t.Fatalf("decorator returned Go error: %v", err)
+			}
+			if got := resultCode(t, result); got != tt.wantCode {
+				t.Fatalf("code = %q, want %q", got, tt.wantCode)
+			}
+			text := resultText(t, result)
+			if !strings.Contains(text, "`signoz_test_operation`") || !strings.Contains(text, tt.wantText) {
+				t.Fatalf("text = %q, want operation-specific recovery", text)
+			}
+			if strings.Contains(text, "secret-canary") {
+				t.Fatalf("unparseable body leaked into text: %q", text)
+			}
+		})
+	}
+
+	t.Run("local unauthorized result is unchanged", func(t *testing.T) {
+		h := &Handler{logger: logpkg.New("error")}
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return errorWithCode(CodeUnauthorized, "missing tenant credentials"), nil
+		}
+		result, err := h.errorCodeDecorator("signoz_test_operation", next)(context.Background(), makeToolRequest("signoz_test_operation", map[string]any{}))
+		if err != nil {
+			t.Fatalf("decorator returned Go error: %v", err)
+		}
+		if got := resultText(t, result); got != "missing tenant credentials" {
+			t.Fatalf("text = %q, want local error unchanged", got)
+		}
+	})
 }
 
 func TestErrorCodeDecorator_TypedStructuredContent(t *testing.T) {

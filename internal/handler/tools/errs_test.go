@@ -424,7 +424,7 @@ func TestUpstreamError_HTTPErrorTextIsBounded(t *testing.T) {
 func TestUpstreamError_ForbiddenHTTPStatusWithUnparseableBody(t *testing.T) {
 	res := upstreamError(&signozclient.HTTPStatusError{
 		StatusCode: http.StatusForbidden,
-		Body:       `permission denied`,
+		Body:       `["secret-canary"]`,
 	})
 
 	structured := resultStructuredMap(t, res)
@@ -438,7 +438,24 @@ func TestUpstreamError_ForbiddenHTTPStatusWithUnparseableBody(t *testing.T) {
 		t.Fatalf("unexpected upstreamCode for unparseable body: %#v", structured)
 	}
 	if text := resultText(t, res); text != "SigNoz API error: unexpected status 403: permission denied" {
-		t.Fatalf("text = %q, want preserved status body", text)
+		t.Fatalf("text = %q, want canonical fallback", text)
+	}
+}
+
+func TestUpstreamError_UnauthorizedHTTPStatusWithUnparseableBody(t *testing.T) {
+	res := upstreamError(fmt.Errorf("fetch deployment stats: %w", &signozclient.HTTPStatusError{
+		StatusCode: http.StatusUnauthorized,
+		Body:       `null`,
+	}))
+
+	if code := resultCode(t, res); code != CodeUnauthorized {
+		t.Fatalf("code = %q, want %q", code, CodeUnauthorized)
+	}
+	if got := resultStructuredMap(t, res)["status"]; got != http.StatusUnauthorized {
+		t.Fatalf("status = %v, want %d", got, http.StatusUnauthorized)
+	}
+	if text := resultText(t, res); text != "SigNoz API error: fetch deployment stats: unexpected status 401: authentication failed" {
+		t.Fatalf("text = %q, want wrapper context and canonical fallback", text)
 	}
 }
 

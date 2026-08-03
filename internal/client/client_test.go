@@ -681,6 +681,32 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 	assert.NotContains(t, response, "tail")
 }
 
+func TestHTTPStatusError_UnparseableAuthorizationBodyUsesCanonicalFallback(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		want       string
+	}{
+		{name: "unauthorized plain text", statusCode: http.StatusUnauthorized, body: "expired secret-canary", want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized malformed JSON", statusCode: http.StatusUnauthorized, body: `{"token":"secret-canary"`, want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized JSON string", statusCode: http.StatusUnauthorized, body: `"secret-canary"`, want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized JSON null", statusCode: http.StatusUnauthorized, body: `null`, want: "unexpected status 401: authentication failed"},
+		{name: "forbidden HTML", statusCode: http.StatusForbidden, body: "<html>secret-canary</html>", want: "unexpected status 403: permission denied"},
+		{name: "forbidden JSON array", statusCode: http.StatusForbidden, body: `["secret-canary"]`, want: "unexpected status 403: permission denied"},
+		{name: "forbidden empty", statusCode: http.StatusForbidden, body: "", want: "unexpected status 403: permission denied"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &HTTPStatusError{StatusCode: tt.statusCode, Body: tt.body}
+			assert.Equal(t, tt.want, err.Error())
+			assert.NotContains(t, err.Error(), "secret-canary")
+			assert.Equal(t, tt.body, err.Body, "raw body remains available for bounded server diagnostics")
+		})
+	}
+}
+
 func TestListMetricKeys(t *testing.T) {
 	tests := []struct {
 		name          string

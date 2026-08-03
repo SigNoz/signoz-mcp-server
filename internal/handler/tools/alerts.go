@@ -735,7 +735,7 @@ func formatNoAnomalyChannelsError(available []string) string {
 	if len(available) > 0 {
 		sb.WriteString("Available notification channels:\n")
 		for _, name := range available {
-			sb.WriteString(fmt.Sprintf("  - %s\n", name))
+			fmt.Fprintf(&sb, "  - %s\n", name)
 		}
 		sb.WriteString("\nPlease choose one or more channels and set them in preferredChannels.\n")
 	} else {
@@ -747,11 +747,11 @@ func formatNoAnomalyChannelsError(available []string) string {
 
 func formatMissingThresholdChannelsError(missingTiers, available []string) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Direct routing requires at least one notification channel on every threshold tier. Missing channels on: %s.\n\n", strings.Join(missingTiers, ", ")))
+	fmt.Fprintf(&sb, "Direct routing requires at least one notification channel on every threshold tier. Missing channels on: %s.\n\n", strings.Join(missingTiers, ", "))
 	if len(available) > 0 {
 		sb.WriteString("Available notification channels:\n")
 		for _, name := range available {
-			sb.WriteString(fmt.Sprintf("  - %s\n", name))
+			fmt.Fprintf(&sb, "  - %s\n", name)
 		}
 		sb.WriteString("\nAsk the user to choose valid names for each missing condition.thresholds.spec[].channels array. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed provider settings.")
 	} else {
@@ -763,12 +763,12 @@ func formatMissingThresholdChannelsError(missingTiers, available []string) strin
 
 func formatInvalidChannelsError(invalid, available []string, policyRouting bool) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("The following notification channels do not exist: %s\n\n", strings.Join(invalid, ", ")))
+	fmt.Fprintf(&sb, "The following notification channels do not exist: %s\n\n", strings.Join(invalid, ", "))
 	if policyRouting {
 		if len(available) > 0 {
 			sb.WriteString("Current notification channels:\n")
 			for _, name := range available {
-				sb.WriteString(fmt.Sprintf("  - %s\n", name))
+				fmt.Fprintf(&sb, "  - %s\n", name)
 			}
 			sb.WriteString("\n")
 		}
@@ -779,7 +779,7 @@ func formatInvalidChannelsError(invalid, available []string, policyRouting bool)
 	if len(available) > 0 {
 		sb.WriteString("Available notification channels:\n")
 		for _, name := range available {
-			sb.WriteString(fmt.Sprintf("  - %s\n", name))
+			fmt.Fprintf(&sb, "  - %s\n", name)
 		}
 		sb.WriteString("\nAsk the user to choose one of the available channels. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed provider settings.")
 	} else {

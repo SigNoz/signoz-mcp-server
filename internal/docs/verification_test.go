@@ -704,7 +704,7 @@ func sitemapForEntries(entries []SitemapEntry) string {
 	var b strings.Builder
 	b.WriteString("# SigNoz Docs\n")
 	for _, entry := range entries {
-		b.WriteString(fmt.Sprintf("- [%s](%s)\n", entry.Title, entry.URL))
+		fmt.Fprintf(&b, "- [%s](%s)\n", entry.Title, entry.URL)
 	}
 	return b.String()
 }

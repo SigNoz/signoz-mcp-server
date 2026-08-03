@@ -501,6 +501,9 @@ func upstreamHTTPStatusText(statusErr *signozclient.HTTPStatusError, upstreamMes
 	message := fmt.Sprintf("unexpected status %d", statusErr.StatusCode)
 	detail := upstreamMessage
 	if detail == "" && !parsedUpstreamBody {
+		if statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusForbidden {
+			return statusErr.Error()
+		}
 		detail = statusErr.Body
 	}
 	if detail = boundedErrorDetail(detail); detail != "" {
@@ -509,11 +512,43 @@ func upstreamHTTPStatusText(statusErr *signozclient.HTTPStatusError, upstreamMes
 	return message
 }
 
+func appendAuthorizationOperation(res *mcp.CallToolResult, toolName string) {
+	structured, code := toolerrors.NormalizeStructuredContent(res.StructuredContent)
+	status, ok := structured["status"].(int)
+	if !ok {
+		return
+	}
+
+	var recovery string
+	switch {
+	case status == http.StatusUnauthorized && code == CodeUnauthorized:
+		recovery = fmt.Sprintf("Authentication failed for `%s`. Re-authenticate with valid SigNoz credentials, then retry only this operation.", toolName)
+	case status == http.StatusForbidden && code == CodePermissionDenied:
+		recovery = fmt.Sprintf("Permission denied for `%s`. Request access to this SigNoz operation, then retry only this operation.", toolName)
+	default:
+		return
+	}
+
+	for i, content := range res.Content {
+		text, ok := mcp.AsTextContent(content)
+		if !ok {
+			continue
+		}
+		text.Text += "\n\n" + recovery
+		res.Content[i] = *text
+		return
+	}
+}
+
 func boundedErrorDetail(detail string) string {
 	return logpkg.TruncBody([]byte(strings.TrimSpace(detail)))
 }
 
 func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstreamType string, parsed bool) {
+	body = strings.TrimSpace(body)
+	if !strings.HasPrefix(body, "{") {
+		return "", "", "", false
+	}
 	var envelope struct {
 		Error     json.RawMessage `json:"error"`
 		ErrorType string          `json:"errorType"`

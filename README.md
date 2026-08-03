@@ -341,8 +341,11 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries an appended `Input validation notice:` text block naming the mismatched parameter so self-correcting agents can adjust. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
 
+> **Upstream authorization errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. When the response body is invalid JSON or valid JSON that is not a non-null object, it is withheld from client text and replaced with a canonical authentication or permission message. Registered tool errors also name the failed tool and give the immediate recovery action; the bounded raw response remains available only in server-side diagnostics.
+
 | Tool | Description |
 |------|-------------|
+| `signoz_get_org_overview` | Get the current status and overall posture of the SigNoz deployment, with typed projections plus `sourceStats` containing every reported stats field |
 | `signoz_list_metrics` | Discover active metric names and catalog metadata |
 | `signoz_query_metrics` | Query known metrics for values, trends, breakdowns, or formulas |
 | `signoz_get_top_metrics` | Return top 100 metrics ranked by ingested sample volume with pre-computed percentages for cost and volume analysis |
@@ -427,6 +430,16 @@ Docs tools use the same authentication path as other MCP tools.
 
 <details>
 <summary><strong>Parameter Reference</strong></summary>
+
+#### `signoz_get_org_overview`
+
+Get the current status and overall posture of the SigNoz deployment before drilling into exact resources. `data.sourceStats` is the authoritative complete flat bag containing every key and value reported by the deployment stats endpoint, including current and future fields. Typed convenience projections cover telemetry freshness and volume, infrastructure presence, dashboards, alert rules and runtime, notification channels, saved views, log pipelines, cloud integrations, users, authentication, service accounts, roles, licensing, and configuration.
+
+- **Parameters**: no task parameters; like every tool, it accepts non-required `searchContext` for MCP observability.
+- **Authoritative source**: `sourceStats` preserves every successfully decoded entry from the upstream `data` object under its original dotted key. Use the grouped fields for convenient interpretation and `sourceStats` when exact backend coverage or a newly introduced field matters. Counts are deployment aggregates; use `signoz_list_dashboards`, `signoz_list_alert_rules`, `signoz_list_notification_channels`, or `signoz_list_views` for exact inventories; `signoz_list_metrics` for metric names; `signoz_list_alerts` for current alert instances; and `signoz_search_logs`, `signoz_search_traces`, or `signoz_query_metrics` for time-windowed or per-service data.
+- **Missing fields**: a key absent from `sourceStats` was not reported by the upstream collector and must not be interpreted as zero. The endpoint can return a partial HTTP 200 when an individual collector fails. In typed projections, a missing group total produces `available: false`; a reported zero produces `available: true`. Expected missing or invalid projection fields set `metadata.projectionPartial` and add an `incompleteGroups` entry with affected output paths, reason, next action, and exact fallback tools where available. An invalid projection value is still retained unchanged in `sourceStats` and named in `invalidProjectionFields`.
+- **Cloud-integration completeness**: `cloudIntegrations.sourceAvailability` reports whether both current AWS/Azure provider counts were reported. Each provider has its own `dataAvailable`; an absent provider count is never converted to zero. If neither provider is reported, source availability is `unavailable` without setting overall `metadata.projectionPartial`; this can mean cloud integrations are unsupported/edition-gated **or** both provider queries failed, so do not interpret it as “no cloud integrations configured.” If exactly one is reported, source availability is `partial` and the missing provider receives non-recursive recovery guidance. `connectedAccounts` means a non-removed account with an account ID and at least one agent report, not a recent check-in or proof that an integration service is enabled.
+- **Projection metadata**: `reportedStatCount` is the number of authoritative entries in `sourceStats`; `projectedStatCount` counts entries also represented in typed groups; and `unprojectedStatCount` counts entries available only in `sourceStats`, including future fields. `projectionPartial`, `incompleteGroups`, and `invalidProjectionFields` describe only typed-projection gaps—they do not indicate data was removed from `sourceStats` or claim endpoint-wide completeness.
 
 #### `signoz_list_metrics`
 
