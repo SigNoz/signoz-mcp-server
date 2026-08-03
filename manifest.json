@@ -82,6 +82,22 @@
       "description": "Permanently delete a confirmed alert rule by UUIDv7; call directly once signoz_list_alert_rules has resolved the id"
     },
     {
+      "name": "signoz_list_downtime_schedules",
+      "description": "List paginated planned-maintenance (downtime) schedules — the windows that mute alert notifications — with optional active and recurring filters"
+    },
+    {
+      "name": "signoz_get_downtime_schedule",
+      "description": "Get one planned-maintenance (downtime) schedule's full definition by UUIDv7 id, including window, recurrence, muted alert IDs, scope, status, and kind"
+    },
+    {
+      "name": "signoz_create_downtime_schedule",
+      "description": "Create a planned-maintenance (downtime) schedule to mute alert notifications during a window; omitting alertIds mutes all alert rules"
+    },
+    {
+      "name": "signoz_delete_downtime_schedule",
+      "description": "Permanently delete a confirmed planned-maintenance (downtime) schedule by UUIDv7 id, immediately ending the muting it provides"
+    },
+    {
       "name": "signoz_list_dashboards",
       "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for panel and query definitions"
     },
