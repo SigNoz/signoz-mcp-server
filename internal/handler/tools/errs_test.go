@@ -424,7 +424,7 @@ func TestUpstreamError_HTTPErrorTextIsBounded(t *testing.T) {
 func TestUpstreamError_ForbiddenHTTPStatusWithUnparseableBody(t *testing.T) {
 	res := upstreamError(&signozclient.HTTPStatusError{
 		StatusCode: http.StatusForbidden,
-		Body:       `<html>secret-canary</html>`,
+		Body:       `["secret-canary"]`,
 	})
 
 	structured := resultStructuredMap(t, res)

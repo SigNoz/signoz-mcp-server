@@ -144,3 +144,10 @@
 ### 2026-08-03 — Narrow cleanup verification complete
 - The final branch relative to `origin/main` contains the existing organization-overview feature plus the focused authorization fallback/recovery implementation and tests. The broader ERR-6 files and notification/query/retry contract changes are absent.
 - Focused client/tool tests, guardrails, the full Go suite, `go vet ./...`, `go build ./cmd/server`, formatting/imports, diff checks, and protocol-script shell syntax pass. Local workflow lint could not run because `actionlint` is not installed; the GitHub guardrail workflow remains authoritative for that check.
+
+### 2026-08-03 — Multi-agent P1: non-object JSON authorization bodies
+- A focused scope reviewer found that `json.Valid` accepted scalar, array, and `null` bodies even though the SigNoz envelope parser cannot consume those shapes. The shared fallback could therefore still echo a syntactically valid but unparseable 401/403 body.
+- Decision: treat only a non-null JSON object as a parseable authorization envelope at the shared client boundary. JSON strings, arrays, scalars, `null`, malformed JSON, HTML, plain text, and empty bodies use the same canonical body-free fallback. Add client coverage for string, array, and `null`, plus shared mapper coverage for the array case; do not add a general renderer parser or sanitizer.
+
+### 2026-08-03 — Ready-for-review handoff
+- The maintainer directed the feature plan to be marked `Done` and will move PR #267 from draft to ready for review after this focused P1 fix is pushed.

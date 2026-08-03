@@ -58,7 +58,11 @@ type HTTPStatusError struct {
 }
 
 func (e *HTTPStatusError) Error() string {
-	if !json.Valid([]byte(e.Body)) {
+	if e.StatusCode == http.StatusUnauthorized || e.StatusCode == http.StatusForbidden {
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(e.Body), &envelope); err == nil && envelope != nil {
+			return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
+		}
 		switch e.StatusCode {
 		case http.StatusUnauthorized:
 			return "unexpected status 401: authentication failed"

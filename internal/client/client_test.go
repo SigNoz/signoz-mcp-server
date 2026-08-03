@@ -690,7 +690,10 @@ func TestHTTPStatusError_UnparseableAuthorizationBodyUsesCanonicalFallback(t *te
 	}{
 		{name: "unauthorized plain text", statusCode: http.StatusUnauthorized, body: "expired secret-canary", want: "unexpected status 401: authentication failed"},
 		{name: "unauthorized malformed JSON", statusCode: http.StatusUnauthorized, body: `{"token":"secret-canary"`, want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized JSON string", statusCode: http.StatusUnauthorized, body: `"secret-canary"`, want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized JSON null", statusCode: http.StatusUnauthorized, body: `null`, want: "unexpected status 401: authentication failed"},
 		{name: "forbidden HTML", statusCode: http.StatusForbidden, body: "<html>secret-canary</html>", want: "unexpected status 403: permission denied"},
+		{name: "forbidden JSON array", statusCode: http.StatusForbidden, body: `["secret-canary"]`, want: "unexpected status 403: permission denied"},
 		{name: "forbidden empty", statusCode: http.StatusForbidden, body: "", want: "unexpected status 403: permission denied"},
 	}
 
