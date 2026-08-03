@@ -367,6 +367,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_dashboard_templates` | List curated templates and discover an import path |
 | `signoz_list_services` | List APM services with trace activity in a time range |
 | `signoz_get_service_top_operations` | Get ranked operations for one traced service |
+| `signoz_get_service_map` | Get the service dependency graph (caller → callee edges with error rate and latency) |
 | `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter and discover UUIDs |
 | `signoz_get_view` | Get one saved Explorer view's complete definition by `id` |
 | `signoz_search_docs` | Find ranked official-doc matches when no exact page is selected |
@@ -375,7 +376,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_update_view` | Fully replace a fetched saved view while preserving unrequested fields |
 | `signoz_delete_view` | Permanently delete a confirmed saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
-| `signoz_search_logs` | Return individual log records matching filters |
+| `signoz_search_logs` | Return individual log records
+ matching filters |
 | `signoz_aggregate_traces` | Aggregate span statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return individual span rows or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
@@ -597,6 +599,20 @@ Gets the built-in operation table for one traced service, ranked by p99 latency 
   - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End time in unix milliseconds (defaults to now)
   - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, for example `[{"key":"http.method","tagType":"SpanAttribute","operator":"In","stringValues":["GET"]}]`; omit for no tag filter
+
+#### `signoz_get_service_map`
+
+Returns the service dependency graph behind SigNoz's Service Map — one record per caller/callee edge with `parent`, `child`, `callCount`, `callRate`, `errorRate` (a percentage), and latency quantiles `p50`/`p75`/`p90`/`p95`/`p99` (in milliseconds). Filter to a single service with `service` plus `direction` to get just its callers or callees. Use `signoz_list_services` for the flat service list and `signoz_get_service_top_operations` for one service's operations. Edges come from a per-minute rollup table, so a very narrow window can legitimately return no edges — widen `timeRange` before concluding a dependency does not exist.
+
+- **Parameters**:
+  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
+  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago)
+  - `end` (optional) - End time in unix milliseconds (defaults to now)
+  - `service` (optional) - Exact service name to filter edges to, typically from `signoz_list_services`; omit for the full graph
+  - `direction` (optional) - Which edges to keep relative to `service`: `downstream` (services it calls), `upstream` (services that call it), or `both` (default). Requires `service`
+  - `limit` (optional) - Maximum edges per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Number of edges to skip for pagination (default: 0)
+  - `tags` (optional) - JSON-encoded `TagQueryParam` array passed as a string, applied server-side before the graph is built, for example `[{"key":"deployment.environment","tagType":"ResourceAttribute","operator":"In","stringValues":["prod"]}]`; omit for no tag filter
 
 #### `signoz_get_alert_history`
 

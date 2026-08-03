@@ -122,6 +122,10 @@
       "description": "Return one traced service's built-in operation table, ranked by p99 with p50/p95/p99, calls, and errors; use signoz_aggregate_traces for custom aggregation"
     },
     {
+      "name": "signoz_get_service_map",
+      "description": "Return the service dependency graph as caller/callee edges with call count, call rate, error rate, and latency quantiles; filter to one service's callers or callees with service plus direction"
+    },
+    {
       "name": "signoz_list_views",
       "description": "List paginated saved Explorer views for traces, logs, metrics, or Cost Meter, with optional name/category filters"
     },

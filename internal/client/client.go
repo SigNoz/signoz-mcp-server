@@ -637,6 +637,23 @@ func (s *SigNoz) GetServiceTopOperations(ctx context.Context, start, end, servic
 	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
 }
 
+// GetServiceMap fetches the service dependency graph (the call graph behind
+// SigNoz's Service Map) for a time window. start and end are nanosecond epoch
+// strings; the endpoint is a POST only because it carries a request body, so it
+// is read-only and replay-safe.
+func (s *SigNoz) GetServiceMap(ctx context.Context, start, end string, tags json.RawMessage) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/dependency_graph", s.baseURL)
+	if len(tags) == 0 {
+		tags = json.RawMessage("[]")
+	}
+	payload := map[string]any{"start": start, "end": end, "tags": tags}
+	bodyBytes, _ := json.Marshal(payload)
+
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching service dependency graph",
+		slog.String("start", start), slog.String("end", end))
+	return s.doReplaySafePost(ctx, reqURL, bodyBytes, DefaultQueryTimeout)
+}
+
 func (s *SigNoz) QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error) {
 	ctx = s.ensureTenantContext(ctx)
 	reqURL := fmt.Sprintf("%s/api/v5/query_range", s.baseURL)

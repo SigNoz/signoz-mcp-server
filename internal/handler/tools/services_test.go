@@ -129,3 +129,163 @@ func TestHandleGetServiceTopOperations_NanosecondBackwardCompat(t *testing.T) {
 		t.Fatalf("ns values must round-trip to the top-operations client unchanged: start=%s end=%s", capturedStart, capturedEnd)
 	}
 }
+
+const serviceMapFixture = `[
+	{"parent":"frontend","child":"checkout","callCount":120,"callRate":3.3,"errorRate":1.2,"p99":420.5,"p50":120.4},
+	{"parent":"checkout","child":"payments","callCount":80,"callRate":2.2,"errorRate":9.7,"p99":900.1,"p50":300.0},
+	{"parent":"cron","child":"reporting","callCount":5,"callRate":0.1,"errorRate":0,"p99":50,"p50":20}
+]`
+
+func serviceMapHandler(t *testing.T, payload string) *Handler {
+	t.Helper()
+	return newTestHandler(&client.MockClient{
+		GetServiceMapFn: func(ctx context.Context, start, end string, tags json.RawMessage) (json.RawMessage, error) {
+			return json.RawMessage(payload), nil
+		},
+	})
+}
+
+func TestHandleGetServiceMap_ReturnsAllEdgesUnfiltered(t *testing.T) {
+	h := serviceMapHandler(t, serviceMapFixture)
+	req := makeToolRequest("signoz_get_service_map", map[string]any{"timeRange": "1h"})
+
+	result, err := h.handleGetServiceMap(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %s", textContent(t, result))
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"total":3`) {
+		t.Fatalf("expected all 3 edges, got: %s", body)
+	}
+	if !strings.Contains(body, `"parent":"frontend"`) || !strings.Contains(body, `"p99":420.5`) {
+		t.Fatalf("expected upstream edge fields preserved verbatim, got: %s", body)
+	}
+}
+
+func TestHandleGetServiceMap_FiltersByServiceAndDirection(t *testing.T) {
+	tests := []struct {
+		name       string
+		direction  string
+		wantTotal  string
+		wantEdge   string
+		unwantEdge string
+	}{
+		{"downstream keeps callees", "downstream", `"total":1`, `"child":"payments"`, `"parent":"frontend"`},
+		{"upstream keeps callers", "upstream", `"total":1`, `"parent":"frontend"`, `"child":"payments"`},
+		{"both keeps either side", "both", `"total":2`, `"child":"payments"`, `"parent":"cron"`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := serviceMapHandler(t, serviceMapFixture)
+			req := makeToolRequest("signoz_get_service_map", map[string]any{
+				"service":   "checkout",
+				"direction": tc.direction,
+			})
+
+			result, err := h.handleGetServiceMap(testCtx(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.IsError {
+				t.Fatalf("handler returned error result: %s", textContent(t, result))
+			}
+			body := textContent(t, result)
+			if !strings.Contains(body, tc.wantTotal) {
+				t.Fatalf("expected %s, got: %s", tc.wantTotal, body)
+			}
+			if !strings.Contains(body, tc.wantEdge) {
+				t.Fatalf("expected edge %s, got: %s", tc.wantEdge, body)
+			}
+			if strings.Contains(body, tc.unwantEdge) {
+				t.Fatalf("expected %s to be filtered out, got: %s", tc.unwantEdge, body)
+			}
+		})
+	}
+}
+
+// direction is meaningless without a service; silently ignoring it would let an
+// agent believe it received a filtered graph.
+func TestHandleGetServiceMap_RejectsDirectionWithoutService(t *testing.T) {
+	h := serviceMapHandler(t, serviceMapFixture)
+	req := makeToolRequest("signoz_get_service_map", map[string]any{"direction": "upstream"})
+
+	result, err := h.handleGetServiceMap(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected validation error, got success: %s", textContent(t, result))
+	}
+	if !strings.Contains(textContent(t, result), "direction") {
+		t.Fatalf("expected error to name the direction field, got: %s", textContent(t, result))
+	}
+}
+
+func TestHandleGetServiceMap_RejectsUnknownDirection(t *testing.T) {
+	h := serviceMapHandler(t, serviceMapFixture)
+	req := makeToolRequest("signoz_get_service_map", map[string]any{
+		"service":   "checkout",
+		"direction": "sideways",
+	})
+
+	result, err := h.handleGetServiceMap(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected validation error for unknown direction, got: %s", textContent(t, result))
+	}
+}
+
+// /api/v1/dependency_graph is undocumented and answers with a bare array today.
+// If it ever starts using SigNoz's render.Success envelope we must still return
+// edges rather than a silent empty graph.
+func TestHandleGetServiceMap_AcceptsWrappedEnvelope(t *testing.T) {
+	h := serviceMapHandler(t, `{"status":"success","data":[{"parent":"frontend","child":"checkout","callCount":9}]}`)
+	req := makeToolRequest("signoz_get_service_map", map[string]any{})
+
+	result, err := h.handleGetServiceMap(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %s", textContent(t, result))
+	}
+	body := textContent(t, result)
+	if !strings.Contains(body, `"total":1`) || !strings.Contains(body, `"child":"checkout"`) {
+		t.Fatalf("expected wrapped envelope to be unwrapped into edges, got: %s", body)
+	}
+}
+
+func TestHandleGetServiceMap_ReportsUnparseableResponse(t *testing.T) {
+	h := serviceMapHandler(t, `not json at all`)
+	req := makeToolRequest("signoz_get_service_map", map[string]any{})
+
+	result, err := h.handleGetServiceMap(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected an error result for an unparseable response, got: %s", textContent(t, result))
+	}
+}
+
+func TestHandleGetServiceMap_RejectsMalformedExplicitTimestamps(t *testing.T) {
+	h := serviceMapHandler(t, serviceMapFixture)
+	req := makeToolRequest("signoz_get_service_map", map[string]any{
+		"start": "not-a-timestamp",
+		"end":   "1641081600000",
+	})
+
+	result, err := h.handleGetServiceMap(testCtx(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected validation error for malformed start, got: %s", textContent(t, result))
+	}
+}

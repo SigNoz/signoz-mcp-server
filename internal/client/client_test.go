@@ -1979,3 +1979,100 @@ func TestDoRequest_AllowsLargeUnderCapResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, len(body), len(got))
 }
+
+func TestGetServiceMap(t *testing.T) {
+	const start = "1640995200000000000"
+	const end = "1641081600000000000"
+
+	tests := []struct {
+		name          string
+		tags          json.RawMessage
+		expectedTags  []interface{}
+		resp          interface{}
+		statusCode    int
+		expectedError bool
+		expectedEdges int
+	}{
+		{
+			name:         "successful dependency graph retrieval",
+			tags:         json.RawMessage(`[{"key":"deployment.environment","tagType":"ResourceAttribute","operator":"In","stringValues":["prod"]}]`),
+			expectedTags: []interface{}{map[string]interface{}{"key": "deployment.environment", "tagType": "ResourceAttribute", "operator": "In", "stringValues": []interface{}{"prod"}}},
+			resp: []map[string]interface{}{
+				{"parent": "frontend", "child": "checkout", "callCount": 120.0, "callRate": 3.3, "errorRate": 1.2, "p99": 420.5},
+				{"parent": "checkout", "child": "payments", "callCount": 80.0, "callRate": 2.2, "errorRate": 9.7, "p99": 900.1},
+			},
+			statusCode:    http.StatusOK,
+			expectedEdges: 2,
+		},
+		{
+			// An omitted tag filter must still send a valid empty array; the
+			// backend rejects a null tags field.
+			name:          "nil tags defaults to empty array",
+			tags:          nil,
+			expectedTags:  []interface{}{},
+			resp:          []map[string]interface{}{},
+			statusCode:    http.StatusOK,
+			expectedEdges: 0,
+		},
+		{
+			name:          "server error",
+			tags:          nil,
+			expectedTags:  []interface{}{},
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			statusCode:    http.StatusInternalServerError,
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			tags:          nil,
+			expectedTags:  []interface{}{},
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/api/v1/dependency_graph", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				var requestBody map[string]interface{}
+				err := json.NewDecoder(r.Body).Decode(&requestBody)
+				require.NoError(t, err)
+				// start/end must be nanosecond epoch strings; the endpoint
+				// parses them with strconv.ParseInt then time.Unix(0, v).
+				assert.Equal(t, start, requestBody["start"])
+				assert.Equal(t, end, requestBody["end"])
+				assert.Equal(t, tt.expectedTags, requestBody["tags"])
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+			result, err := client.GetServiceMap(context.Background(), start, end, tt.tags)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			var edges []map[string]interface{}
+			require.NoError(t, json.Unmarshal(result, &edges))
+			assert.Len(t, edges, tt.expectedEdges)
+			if tt.expectedEdges > 0 {
+				assert.Equal(t, "frontend", edges[0]["parent"])
+				assert.Equal(t, "checkout", edges[0]["child"])
+			}
+		})
+	}
+}
