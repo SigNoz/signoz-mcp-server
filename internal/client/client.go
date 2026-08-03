@@ -581,6 +581,17 @@ func (s *SigNoz) GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawM
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
+// GetLogPipelines returns the log-ingestion pipeline configuration for one
+// agent-config version (GET /api/v1/logs/pipelines/{version}). The {version}
+// path segment is REQUIRED by the backend; callers pass the literal "latest"
+// for the currently deployed configuration. There is no get-one-pipeline-by-id
+// route, so a single pipeline is selected client-side from this response.
+func (s *SigNoz) GetLogPipelines(ctx context.Context, version string) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/logs/pipelines/%s", s.baseURL, url.PathEscape(version))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching log pipelines", slog.String("version", version))
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
 // ListDashboards returns the v2 dashboard list (GET /api/v2/dashboards). The v2
 // API paginates server-side, so limit/offset are forwarded as query params and
 // the ListableDashboardV2 response ({dashboards, tags, total}) is passed through

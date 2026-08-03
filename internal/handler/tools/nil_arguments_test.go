@@ -48,6 +48,7 @@ func TestHandlers_NilArguments_NoPanic(t *testing.T) {
 		{"signoz_delete_notification_channel", h.handleDeleteNotificationChannel},
 		{"signoz_check_metric_usage", h.handleCheckMetricUsage},
 		{"signoz_check_metric_cardinality", h.handleCheckMetricCardinality},
+		{"signoz_get_log_pipeline", h.handleGetLogPipeline},
 	}
 
 	for _, tc := range cases {

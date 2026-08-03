@@ -1979,3 +1979,93 @@ func TestDoRequest_AllowsLargeUnderCapResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, len(body), len(got))
 }
+
+func TestGetLogPipelines(t *testing.T) {
+	tests := []struct {
+		name          string
+		version       string
+		resp          map[string]interface{}
+		statusCode    int
+		expectedError bool
+	}{
+		{
+			name:    "successful latest pipelines retrieval",
+			version: "latest",
+			resp: map[string]interface{}{
+				"status": "success",
+				"data": map[string]interface{}{
+					"version":      7.0,
+					"deployStatus": "DEPLOYED",
+					"pipelines": []map[string]interface{}{
+						{
+							"id":      "p-nginx",
+							"name":    "Nginx logs",
+							"alias":   "nginx-logs",
+							"enabled": true,
+							"orderId": 1.0,
+							"config":  []map[string]interface{}{{"type": "regex_parser"}},
+						},
+					},
+				},
+			},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "no pipelines configured",
+			version:       "latest",
+			resp:          map[string]interface{}{"status": "success", "data": map[string]interface{}{"pipelines": []map[string]interface{}{}}},
+			statusCode:    http.StatusOK,
+			expectedError: false,
+		},
+		{
+			name:          "server error",
+			version:       "latest",
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			statusCode:    http.StatusInternalServerError,
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			version:       "latest",
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			statusCode:    http.StatusUnauthorized,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/logs/pipelines/latest", r.URL.Path)
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			logger := logpkg.New("debug")
+			c := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+
+			result, err := c.GetLogPipelines(context.Background(), tt.version)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			var response map[string]interface{}
+			require.NoError(t, json.Unmarshal(result, &response))
+			assert.Equal(t, "success", response["status"])
+			data, ok := response["data"].(map[string]interface{})
+			require.True(t, ok, "data should be an object")
+			_, hasPipelines := data["pipelines"]
+			assert.True(t, hasPipelines, "data should carry a pipelines key")
+		})
+	}
+}

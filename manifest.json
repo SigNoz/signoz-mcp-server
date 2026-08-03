@@ -158,6 +158,14 @@
       "description": "Return individual paginated log records; shortcut parameters need no guide, while custom filters with unfamiliar fields use the logs guide"
     },
     {
+      "name": "signoz_list_log_pipelines",
+      "description": "List log-ingestion pipeline summaries with enabled state, run order, and operator counts; use signoz_get_log_pipeline for one pipeline's full operator chain"
+    },
+    {
+      "name": "signoz_get_log_pipeline",
+      "description": "Get one log-ingestion pipeline's complete filter and ordered operator chain by id or name; use signoz_list_log_pipelines to discover both"
+    },
+    {
       "name": "signoz_aggregate_traces",
       "description": "Return custom aggregate span statistics, groups, or time series; use signoz_get_service_top_operations for one service's built-in p99-ranked operation table"
     },
