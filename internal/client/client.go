@@ -59,8 +59,8 @@ type HTTPStatusError struct {
 
 func (e *HTTPStatusError) Error() string {
 	if e.StatusCode == http.StatusUnauthorized || e.StatusCode == http.StatusForbidden {
-		var envelope map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(e.Body), &envelope); err == nil && envelope != nil {
+		body := strings.TrimSpace(e.Body)
+		if strings.HasPrefix(body, "{") && json.Valid([]byte(body)) {
 			return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
 		}
 		switch e.StatusCode {

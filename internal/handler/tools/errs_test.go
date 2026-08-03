@@ -445,7 +445,7 @@ func TestUpstreamError_ForbiddenHTTPStatusWithUnparseableBody(t *testing.T) {
 func TestUpstreamError_UnauthorizedHTTPStatusWithUnparseableBody(t *testing.T) {
 	res := upstreamError(fmt.Errorf("fetch deployment stats: %w", &signozclient.HTTPStatusError{
 		StatusCode: http.StatusUnauthorized,
-		Body:       `expired secret-canary`,
+		Body:       `null`,
 	}))
 
 	if code := resultCode(t, res); code != CodeUnauthorized {
@@ -456,9 +456,6 @@ func TestUpstreamError_UnauthorizedHTTPStatusWithUnparseableBody(t *testing.T) {
 	}
 	if text := resultText(t, res); text != "SigNoz API error: fetch deployment stats: unexpected status 401: authentication failed" {
 		t.Fatalf("text = %q, want wrapper context and canonical fallback", text)
-	}
-	if strings.Contains(resultText(t, res), "secret-canary") {
-		t.Fatalf("unparseable body leaked into text: %q", resultText(t, res))
 	}
 }
 

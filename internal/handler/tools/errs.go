@@ -545,6 +545,10 @@ func boundedErrorDetail(detail string) string {
 }
 
 func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstreamType string, parsed bool) {
+	body = strings.TrimSpace(body)
+	if !strings.HasPrefix(body, "{") {
+		return "", "", "", false
+	}
 	var envelope struct {
 		Error     json.RawMessage `json:"error"`
 		ErrorType string          `json:"errorType"`

@@ -155,3 +155,8 @@
 ### 2026-08-03 — Authorization documentation review correction
 - Automated review correctly found that README still described only invalid JSON even though the focused P1 fix also withholds valid JSON strings, arrays, scalars, and `null`.
 - Decision: document the exact boundary as invalid JSON or valid JSON that is not a non-null object. This is documentation-only and matches the existing client tests and implementation.
+
+### 2026-08-03 — Critical review of null handling and body-shape allocation
+- Automated review correctly found that unmarshalling `null` into the existing envelope struct succeeds, causing the shared mapper to drop the canonical authentication/permission detail even though the client boundary classified `null` as non-object.
+- Automated review also correctly found that decoding a potentially large authorization response into `map[string]json.RawMessage` allocates every member merely to classify its top-level shape.
+- Decision: before either path decodes an envelope, trim whitespace and require an object opener. The client then uses `json.Valid` without materializing a map; the shared parser treats all non-object JSON, including `null`, as unparsed. Reuse the existing wrapped-error test for the `null` regression rather than adding another framework or fixture.
