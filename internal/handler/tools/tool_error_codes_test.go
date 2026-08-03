@@ -3,11 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"net/http"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -44,7 +42,7 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return bare, nil
 		}
-		result, err := h.errorCodeDecorator("test_tool", nil, next)(context.Background(), request)
+		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
 		if err != nil {
 			t.Fatalf("decorator returned Go error: %v", err)
 		}
@@ -64,7 +62,7 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return coded, nil
 		}
-		result, err := h.errorCodeDecorator("test_tool", nil, next)(context.Background(), request)
+		result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), request)
 		if err != nil {
 			t.Fatalf("decorator returned Go error: %v", err)
 		}
@@ -78,105 +76,51 @@ func TestErrorCodeDecorator_CodesBareErrorsAndPreservesExistingCodes(t *testing.
 
 }
 
-func TestErrorCodeDecorator_AddsOperationAwareAuthorizationRecovery(t *testing.T) {
-	readOnly := true
-	write := false
+func TestErrorCodeDecorator_AddsOperationSpecificAuthorizationRecovery(t *testing.T) {
 	tests := []struct {
-		name         string
-		status       int
-		code         string
-		readOnlyHint *bool
-		want         string
+		name       string
+		statusCode int
+		wantCode   string
+		wantText   string
 	}{
-		{
-			name:         "unauthorized",
-			status:       http.StatusUnauthorized,
-			code:         CodeUnauthorized,
-			readOnlyHint: &readOnly,
-			want:         "Affected operation: `signoz_probe` failed authentication.",
-		},
-		{
-			name:         "forbidden read",
-			status:       http.StatusForbidden,
-			code:         CodePermissionDenied,
-			readOnlyHint: &readOnly,
-			want:         "lack access to this read operation (`signoz_probe`)",
-		},
-		{
-			name:         "forbidden write",
-			status:       http.StatusForbidden,
-			code:         CodePermissionDenied,
-			readOnlyHint: &write,
-			want:         "lack permission for this write operation (`signoz_probe`)",
-		},
-		{
-			name:   "forbidden unannotated",
-			status: http.StatusForbidden,
-			code:   CodePermissionDenied,
-			want:   "lack permission for this operation (`signoz_probe`)",
-		},
+		{name: "unauthorized", statusCode: 401, wantCode: CodeUnauthorized, wantText: "Re-authenticate with valid SigNoz credentials"},
+		{name: "forbidden", statusCode: 403, wantCode: CodePermissionDenied, wantText: "Request access to this SigNoz operation"},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			coded := upstreamError(&signozclient.HTTPStatusError{
-				StatusCode: tc.status,
-				Body:       "unsafe-auth-body-canary",
-			})
-			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return coded, nil
-			}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			h := &Handler{logger: logpkg.New("error")}
-			result, err := h.errorCodeDecorator("signoz_probe", tc.readOnlyHint, next)(context.Background(), makeToolRequest("signoz_probe", map[string]any{}))
+			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return upstreamError(&signozclient.HTTPStatusError{StatusCode: tt.statusCode, Body: "secret-canary"}), nil
+			}
+			result, err := h.errorCodeDecorator("signoz_test_operation", next)(context.Background(), makeToolRequest("signoz_test_operation", map[string]any{}))
 			if err != nil {
 				t.Fatalf("decorator returned Go error: %v", err)
 			}
-			if got := resultCode(t, result); got != tc.code {
-				t.Fatalf("code = %q, want %q", got, tc.code)
+			if got := resultCode(t, result); got != tt.wantCode {
+				t.Fatalf("code = %q, want %q", got, tt.wantCode)
 			}
 			text := resultText(t, result)
-			if !strings.Contains(text, tc.want) {
-				t.Fatalf("text = %q, want operation recovery %q", text, tc.want)
+			if !strings.Contains(text, "`signoz_test_operation`") || !strings.Contains(text, tt.wantText) {
+				t.Fatalf("text = %q, want operation-specific recovery", text)
 			}
-			if strings.Contains(text, "unsafe-auth-body-canary") {
-				t.Fatalf("text leaked upstream authorization body: %q", text)
-			}
-			for _, unsupportedInference := range []string{"viewer-level", "editor access", "admin access"} {
-				if strings.Contains(strings.ToLower(text), unsupportedInference) {
-					t.Fatalf("text inferred an unobserved role: %q", text)
-				}
+			if strings.Contains(text, "secret-canary") {
+				t.Fatalf("unparseable body leaked into text: %q", text)
 			}
 		})
 	}
 
-	t.Run("local unauthorized without upstream status is unchanged", func(t *testing.T) {
-		coded := clientError(errors.New("missing credentials"))
-		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return coded, nil
-		}
+	t.Run("local unauthorized result is unchanged", func(t *testing.T) {
 		h := &Handler{logger: logpkg.New("error")}
-		result, err := h.errorCodeDecorator("signoz_probe", &readOnly, next)(context.Background(), makeToolRequest("signoz_probe", map[string]any{}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := resultText(t, result); got != "missing credentials" {
-			t.Fatalf("local unauthorized text = %q, want unchanged", got)
-		}
-	})
-
-	t.Run("non-authorization upstream status is unchanged", func(t *testing.T) {
-		coded := upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusInternalServerError, Body: `{"status":"error","message":"proxy canary"}`})
-		before := resultText(t, coded)
 		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return coded, nil
+			return errorWithCode(CodeUnauthorized, "missing tenant credentials"), nil
 		}
-		h := &Handler{logger: logpkg.New("error")}
-		result, err := h.errorCodeDecorator("signoz_probe", &readOnly, next)(context.Background(), makeToolRequest("signoz_probe", map[string]any{}))
+		result, err := h.errorCodeDecorator("signoz_test_operation", next)(context.Background(), makeToolRequest("signoz_test_operation", map[string]any{}))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("decorator returned Go error: %v", err)
 		}
-		if got := resultText(t, result); got != before || strings.Contains(got, "Affected operation:") {
-			t.Fatalf("non-auth error recovery changed: before=%q after=%q", before, got)
+		if got := resultText(t, result); got != "missing tenant credentials" {
+			t.Fatalf("text = %q, want local error unchanged", got)
 		}
 	})
 }
@@ -208,7 +152,7 @@ func TestErrorCodeDecorator_TypedStructuredContent(t *testing.T) {
 			next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return bare, nil
 			}
-			result, err := h.errorCodeDecorator("test_tool", nil, next)(context.Background(), makeToolRequest("test_tool", map[string]any{}))
+			result, err := h.errorCodeDecorator("test_tool", next)(context.Background(), makeToolRequest("test_tool", map[string]any{}))
 			if err != nil {
 				t.Fatalf("decorator returned Go error: %v", err)
 			}

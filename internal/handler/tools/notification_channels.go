@@ -333,11 +333,12 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	var testFailureNote string
 	if testErr != nil {
 		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
-		failure := partialUpstreamFailure(testErr, "test_notification")
-		failureMessage, warningNote := testNotificationFailureGuidance(name, "created", failure)
-		failure["message"] = failureMessage
-		result["test_notification"] = failure
-		testFailureNote = warningNote
+		result["test_notification"] = map[string]any{
+			"success": false,
+			"error":   testErr.Error(),
+			"message": fmt.Sprintf("Channel '%s' was created but the test notification failed: %s. Please verify the channel configuration.", name, testErr.Error()),
+		}
+		testFailureNote = testNotificationWarningNote(name, "created", testErr)
 	} else {
 		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{
@@ -357,17 +358,13 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	return structuredResultWithNotes(resultJSON, testFailureNote), nil
 }
 
-// testNotificationFailureGuidance keeps the structured message and prominent
-// note on the same recovery path after the primary mutation succeeds.
-func testNotificationFailureGuidance(name, action string, failure map[string]any) (string, string) {
-	nextStep := "Verify this existing channel's configuration, then use its Test action in the SigNoz UI."
-	if nextAction, ok := failure["nextAction"].(string); ok {
-		nextStep = nextAction + " Then open this existing channel in the SigNoz UI and use its Test action."
-	}
-	message := fmt.Sprintf(
-		"Channel %q was %s successfully, but the verification test notification failed: %s. Do not repeat the successful channel mutation. %s",
-		name, action, failure["error"], nextStep)
-	return message, "note: WARNING — " + message
+// testNotificationWarningNote formats the prominent advisory shown when a
+// channel was created/updated successfully but its verification test-send
+// failed. Kept uniform with the other "note:" advisory blocks.
+func testNotificationWarningNote(name, action string, testErr error) string {
+	return fmt.Sprintf(
+		"note: WARNING — notification channel %q was %s successfully, but the verification test notification FAILED: %s. The channel exists but may not deliver alerts; verify its configuration (URL/key/credentials) and re-test.",
+		name, action, testErr.Error())
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -429,15 +426,12 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	// the PUT returns 204 with no body in the new API.
 	channelResp, getErr := client.GetNotificationChannel(ctx, id)
 	var readBackNote string
-	var readBackFailure map[string]any
 	if getErr != nil {
 		h.logger.WarnContext(ctx, "Channel updated but follow-up GET failed", slog.String("id", id), logpkg.ErrAttr(getErr))
-		readBackFailure = partialUpstreamFailure(getErr, "read_back")
-		readBackFailure["message"] = "The update succeeded, but the current channel state could not be re-fetched. Do not retry the update; after fixing the reported error, retry only the read-back with signoz_get_notification_channel."
 		// Fail OPEN: update succeeded; surface the unverified read-back as a note.
 		readBackNote = fmt.Sprintf(
 			"note: read-back after update failed: %s; the update itself succeeded but the returned channel state could not be re-fetched and may be stale.",
-			readBackFailure["error"])
+			getErr.Error())
 	}
 
 	// Step 2: Test the channel
@@ -447,9 +441,6 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	result := map[string]any{
 		"id": id,
 	}
-	if readBackFailure != nil {
-		result["read_back"] = readBackFailure
-	}
 	if len(channelResp) > 0 {
 		result["channel"] = json.RawMessage(channelResp)
 	}
@@ -457,11 +448,12 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	var testFailureNote string
 	if testErr != nil {
 		h.logger.WarnContext(ctx, "Test notification failed", slog.String("name", name), logpkg.ErrAttr(testErr))
-		failure := partialUpstreamFailure(testErr, "test_notification")
-		failureMessage, warningNote := testNotificationFailureGuidance(name, "updated", failure)
-		failure["message"] = failureMessage
-		result["test_notification"] = failure
-		testFailureNote = warningNote
+		result["test_notification"] = map[string]any{
+			"success": false,
+			"error":   testErr.Error(),
+			"message": fmt.Sprintf("Channel '%s' was updated but the test notification failed: %s. Please verify the channel configuration.", name, testErr.Error()),
+		}
+		testFailureNote = testNotificationWarningNote(name, "updated", testErr)
 	} else {
 		h.logger.InfoContext(ctx, "Test notification sent successfully", slog.String("name", name))
 		result["test_notification"] = map[string]any{

@@ -4,36 +4,24 @@
 Done
 
 ## Context
-SigNoz HTTP failures cross two contracts: the backend renderer response and the MCP client-facing error result. Issue #49's follow-up showed that malformed 401/403 bodies could leak verbatim and recovery did not name the failed operation. The final implementation must classify authorization failures durably, preserve recognized renderer guidance faithfully, and keep unrecognized upstream content off every MCP surface.
+The follow-up in [nerve-pod#49](https://github.com/SigNoz/nerve-pod/issues/49#issuecomment-5156802780) identifies two narrow gaps: an unparseable upstream 401/403 body can be copied into client-visible MCP text, and recovery does not identify the failed operation. Broader ERR-6 renderer fidelity work is tracked separately in [nerve-pod#191](https://github.com/SigNoz/nerve-pod/issues/191).
 
 ## Approach
-- Preserve non-2xx HTTP status and body in `HTTPStatusError`; if an error response exceeds the transport cap, discard its body but keep the typed status so 401/403 classification and recovery survive.
-- Positively recognize only current nested renderer tuples, legacy `errorType` plus string `error`, or complete top-level renderer tuples. Treat message-only proxy JSON, malformed JSON, and bodies beyond the parse budget as unrecognized.
-- Centralize bounded filtering for code, type, message, documentation URL, top-level/detail suggestions, detail messages, and retry delay. Use a compact high-confidence filter for authorization schemes, named credentials, JWTs, common key prefixes, credential-bearing URLs, and active markup without trying to classify every possible prose token.
-- Decode optional renderer fields independently so drift in one field does not erase the verified tuple or valid siblings. Record field names only and emit a distinct WARN before any transport retry; keep scanning the bounded input for late drift even after output caps are filled.
-- Preserve the exact recognized renderer summary and every other guidance field independently in structured `upstream*` fields; fold detail messages only into human-readable text. Use status-only local text for every unrecognized body and retain bounded raw body diagnostics only in server logs.
-- Classify durable HTTP status classes into the stable MCP code taxonomy, including `UNAUTHORIZED`, `PERMISSION_DENIED`, and `NOT_FOUND`, while preserving caller wrapper context.
-- Add a generic status-derived `nextAction` at the shared client boundary so resources and post-mutation partial failures get immediate 401/403 recovery. Supplement registered tool errors with exact tool-name and read/write/neutral guidance from `readOnlyHint`, without inferring viewer/editor/admin roles.
-- When notification-channel creation/update succeeds but test-send or read-back fails, keep the overall result successful to prevent duplicate mutation. Return nested `code`, `operation`, and `retryPrimaryOperation:false`, plus `status`/authorization `nextAction` when available; name `signoz_get_notification_channel` for read-back recovery and direct test-send recovery to the existing channel's SigNoz UI Test action because no test-only MCP tool exists.
-- Route QB missing-key extraction through the same positively recognized and filtered envelope fields; never scan raw 400/proxy bodies for client-visible recovery data.
-- Keep the existing 401 `upstreamAuth.code` compatibility bridge only for recognized assistant auth-envelope codes; never expose it for 403.
-- Synchronize README behavior, append-only decision history, current plan, and the companion agent-skills audit. The partial payload additions are additive and no existing skill teaches those fields, so no companion skills change is required.
+- Preserve the existing typed `HTTPStatusError`, status-derived MCP codes, and parseable JSON-envelope behavior.
+- When a 401/403 body is not valid JSON, make `HTTPStatusError.Error()` return a canonical body-free authentication or permission message. Keep the original body on the error so the existing bounded client log remains useful server-side.
+- At registered-tool dispatch, append recovery only when both the upstream status and stable authorization code match. Name the exact MCP tool and tell the caller to re-authenticate or request access before retrying that operation.
+- Leave local missing-credential errors, non-authorization statuses, notification partial outcomes, query-builder recovery, retry metadata, renderer parsing, and drift detection unchanged.
+- Document only this narrow client-visible behavior. No manifest or companion agent-skills update is needed because no tool, parameter, or payload schema changes.
 
 ## Files to Modify
-- `internal/client/client.go` and `client_test.go` — typed status preservation, body-free client errors, generic auth recovery, oversized-error behavior, pre-retry shape-drift warnings, and transport tests.
-- `internal/client/error_envelope.go` and `error_envelope_test.go` — positive recognition, independent optional-field parsing, complete renderer guidance preservation, deterministic budgets, and adversarial credential/URL/markup filtering.
-- `internal/handler/tools/errs.go` and `errs_test.go` — status classification, complete structured guidance, shared partial-failure shape, and wrapper/error tests.
-- `internal/handler/tools/schema_compat.go` and `tool_error_codes_test.go` — centralized operation-specific recovery and direct/negative decorator coverage.
-- `internal/handler/tools/notification_channels.go`, `notification_channels_test.go`, and `resource_templates_test.go` — safe partial/resource recovery paths.
-- `internal/handler/tools/authz_error_e2e_test.go` — real client/handler/decorator/MCP wire verification for unrecognized proxy JSON, recognized credential-shaped renderer fields, malformed 403, no retry, and bounded diagnostics.
-- `internal/handler/tools/upstream_query_error_test.go` and adjacent existing tests — recognized-only QB recovery, exact summary/detail separation, renderer budgets, and compatibility coverage.
-- `README.md` — stable codes/status, complete recognized guidance, unrecognized-body withholding, operation recovery, and non-retryable partial outcomes. `manifest.json` has no general error-contract metadata.
-- `plans/upstream-authz-error-classification.context.md` — append-only decisions, review repairs, eval evidence, and final CMP-3 audit.
+- `internal/client/client.go` and `internal/client/client_test.go`
+- `internal/handler/tools/errs.go` and `internal/handler/tools/errs_test.go`
+- `internal/handler/tools/schema_compat.go` and `internal/handler/tools/tool_error_codes_test.go`
+- `README.md`
+- `plans/upstream-authz-error-classification.context.md`
 
 ## Verification
-- Format and run focused client/tool suites, including the auth wire E2E normally, repeatedly, and under the race detector.
-- Run workflow lint and the focused/full guardrail commands from `guardrails/README.md`.
-- Run `go test -count=1 ./...`, `go vet ./...`, and `go build ./cmd/server`.
-- Cover direct, indirect, and negative recovery with deterministic final catalog/error wire tests. An additional before/after model-session comparison was canceled at the maintainer's explicit direction; record that decision in the context log.
-- Run one requested `claude-fable-5` high-effort read-only review after cleanup; do not restart broad adversarial review loops.
-- Do not attempt to manufacture malformed auth responses against staging: the deterministic local upstream provides the real client/protocol boundary without credential or mutation risk.
+- Run formatting and imports.
+- Run focused client and tool error tests.
+- Run guardrails, the full Go test suite, vet, and server build.
+- Inspect the final diff against `origin/main` and the PR base to confirm unrelated organization-overview work is preserved and broader ERR-6 changes are absent.

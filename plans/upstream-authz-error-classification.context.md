@@ -134,3 +134,13 @@
 
 ## Open Questions
 - [x] Should alert creation succeed for the Momentic user? No. The backend correctly rejects non-editor/non-admin users; the MCP server should make that denial machine-actionable.
+
+### 2026-08-03 — Scope split to the exact issue comment
+- The maintainer chose to keep this PR limited to the two gaps named in the nerve-pod#49 follow-up comment: canonical body-free fallback text for non-JSON 401/403 responses and recovery tied to the exact failed MCP tool.
+- Decision: remove the broader renderer-fidelity parser, redaction framework, notification partial-result contract, retry-safety metadata, query-builder recognition gating, drift warnings, and expanded protocol fixture from this PR. Preserve the independent organization-overview work already on the branch.
+- Created [SigNoz/nerve-pod#191](https://github.com/SigNoz/nerve-pod/issues/191) for the pre-existing broader ERR-6 guidance-fidelity work. That issue explicitly excludes expansion of this PR.
+- The narrow implementation keeps the raw response body on `HTTPStatusError` for the existing bounded server log, returns canonical text only when a 401/403 body is invalid JSON, and adds exact-tool recovery only for results whose structured status and authorization code agree. Local credential errors and non-authorization failures are unchanged.
+
+### 2026-08-03 — Narrow cleanup verification complete
+- The final branch relative to `origin/main` contains the existing organization-overview feature plus the focused authorization fallback/recovery implementation and tests. The broader ERR-6 files and notification/query/retry contract changes are absent.
+- Focused client/tool tests, guardrails, the full Go suite, `go vet ./...`, `go build ./cmd/server`, formatting/imports, diff checks, and protocol-script shell syntax pass. Local workflow lint could not run because `actionlint` is not installed; the GitHub guardrail workflow remains authoritative for that check.
