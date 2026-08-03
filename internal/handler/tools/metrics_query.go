@@ -241,13 +241,13 @@ func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []str
 	var b strings.Builder
 	b.WriteString("[Decisions applied]\n")
 	for _, d := range decisions {
-		b.WriteString(fmt.Sprintf("  %s\n", d))
+		fmt.Fprintf(&b, "  %s\n", d)
 	}
 	for _, w := range defaultWarnings {
-		b.WriteString(fmt.Sprintf("  WARNING: %s\n", w))
+		fmt.Fprintf(&b, "  WARNING: %s\n", w)
 	}
 	for _, w := range backendWarnings {
-		b.WriteString(fmt.Sprintf("  WARNING: backend: %s\n", w))
+		fmt.Fprintf(&b, "  WARNING: backend: %s\n", w)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

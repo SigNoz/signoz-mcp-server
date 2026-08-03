@@ -153,7 +153,7 @@ func queryBoundsDecisionsNote(applied []types.AppliedQueryBounds, requestType st
 		if bounds.OrderDefaulted {
 			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", formatQueryOrder(bounds.Order)))
 		}
-		b.WriteString(fmt.Sprintf("  %s: %s\n", bounds.QueryName, strings.Join(decisions, ", ")))
+		fmt.Fprintf(&b, "  %s: %s\n", bounds.QueryName, strings.Join(decisions, ", "))
 	}
 	if requestType == "time_series" {
 		b.WriteString("  NOTE: time_series limits select top groups using the ordering across the entire time range; a short-lived spike can fall outside the selected groups.\n")
