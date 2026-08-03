@@ -8,7 +8,7 @@ The follow-up in [nerve-pod#49](https://github.com/SigNoz/nerve-pod/issues/49#is
 
 ## Approach
 - Preserve the existing typed `HTTPStatusError`, status-derived MCP codes, and parseable JSON-envelope behavior.
-- When a 401/403 body is not valid JSON, make `HTTPStatusError.Error()` return a canonical body-free authentication or permission message. Keep the original body on the error so the existing bounded client log remains useful server-side.
+- When a 401/403 body is invalid JSON or valid non-object JSON, make `HTTPStatusError.Error()` return a canonical body-free authentication or permission message. Keep the original body on the error so the existing bounded client log remains useful server-side.
 - At registered-tool dispatch, append recovery only when both the upstream status and stable authorization code match. Name the exact MCP tool and tell the caller to re-authenticate or request access before retrying that operation.
 - Leave local missing-credential errors, non-authorization statuses, notification partial outcomes, query-builder recovery, retry metadata, renderer parsing, and drift detection unchanged.
 - Document only this narrow client-visible behavior. No manifest or companion agent-skills update is needed because no tool, parameter, or payload schema changes.

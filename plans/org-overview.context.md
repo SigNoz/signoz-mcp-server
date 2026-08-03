@@ -125,3 +125,7 @@
 - The maintainer requested that the tool-facing description stay simple, explicitly support questions about the current status of SigNoz, and omit the SigNoz version number.
 - Decision: lead the tool, README table, and manifest descriptions with current deployment status and overall posture; remove the overview-specific version prerequisite and version-based 404 wording while retaining URL verification plus narrower-tool recovery.
 - The maintainer also classified the legacy dashboard-panel limitation as a temporary bug that should not be advertised. Remove the `legacyV1WidgetsOnly` output marker and related README/tool/schema wording rather than making it part of the client-visible contract.
+
+### 2026-08-03 — Actionable 404 recovery review
+- Automated review correctly found that the simplified tool description no longer named the fallback tools referenced by the 404 error.
+- Decision: keep the general tool description concise and make the exceptional 404 result self-contained by naming the exact inventory and signal-query tools inline. The focused test pins representative fallback names so future description cleanup cannot break recovery again.

@@ -341,7 +341,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries an appended `Input validation notice:` text block naming the mismatched parameter so self-correcting agents can adjust. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
 
-> **Upstream authorization errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. When the response body is not valid JSON, it is withheld from client text and replaced with a canonical authentication or permission message. Registered tool errors also name the failed tool and give the immediate recovery action; the bounded raw response remains available only in server-side diagnostics.
+> **Upstream authorization errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. When the response body is invalid JSON or valid JSON that is not a non-null object, it is withheld from client text and replaced with a canonical authentication or permission message. Registered tool errors also name the failed tool and give the immediate recovery action; the bounded raw response remains available only in server-side diagnostics.
 
 | Tool | Description |
 |------|-------------|

@@ -151,3 +151,7 @@
 
 ### 2026-08-03 — Ready-for-review handoff
 - The maintainer directed the feature plan to be marked `Done` and will move PR #267 from draft to ready for review after this focused P1 fix is pushed.
+
+### 2026-08-03 — Authorization documentation review correction
+- Automated review correctly found that README still described only invalid JSON even though the focused P1 fix also withholds valid JSON strings, arrays, scalars, and `null`.
+- Decision: document the exact boundary as invalid JSON or valid JSON that is not a non-null object. This is documentation-only and matches the existing client tests and implementation.
