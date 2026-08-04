@@ -48,6 +48,9 @@ func TestHandlers_NilArguments_NoPanic(t *testing.T) {
 		{"signoz_delete_notification_channel", h.handleDeleteNotificationChannel},
 		{"signoz_check_metric_usage", h.handleCheckMetricUsage},
 		{"signoz_check_metric_cardinality", h.handleCheckMetricCardinality},
+		{"signoz_get_downtime_schedule", h.handleGetDowntimeSchedule},
+		{"signoz_create_downtime_schedule", h.handleCreateDowntimeSchedule},
+		{"signoz_delete_downtime_schedule", h.handleDeleteDowntimeSchedule},
 	}
 
 	for _, tc := range cases {

@@ -2005,3 +2005,253 @@ func TestDoRequest_AllowsLargeUnderCapResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, len(body), len(got))
 }
+
+func boolPointer(v bool) *bool { return &v }
+
+func TestListDowntimeSchedules(t *testing.T) {
+	tests := []struct {
+		name          string
+		active        *bool
+		recurring     *bool
+		expectedQuery string
+		statusCode    int
+		resp          map[string]interface{}
+		expectedError bool
+	}{
+		{
+			name:          "no filters omits query params",
+			expectedQuery: "",
+			statusCode:    http.StatusOK,
+			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
+		},
+		{
+			name:          "both filters true",
+			active:        boolPointer(true),
+			recurring:     boolPointer(true),
+			expectedQuery: "active=true&recurring=true",
+			statusCode:    http.StatusOK,
+			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{{"id": "s1"}}},
+		},
+		{
+			name:          "both filters false",
+			active:        boolPointer(false),
+			recurring:     boolPointer(false),
+			expectedQuery: "active=false&recurring=false",
+			statusCode:    http.StatusOK,
+			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
+		},
+		{
+			name:          "only active set",
+			active:        boolPointer(true),
+			expectedQuery: "active=true",
+			statusCode:    http.StatusOK,
+			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
+		},
+		{
+			name:          "server error",
+			statusCode:    http.StatusInternalServerError,
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			statusCode:    http.StatusUnauthorized,
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/downtime_schedules", r.URL.Path)
+				assert.Equal(t, tt.expectedQuery, r.URL.RawQuery)
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			result, err := client.ListDowntimeSchedules(context.Background(), tt.active, tt.recurring)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			var response map[string]interface{}
+			require.NoError(t, json.Unmarshal(result, &response))
+			assert.Equal(t, "success", response["status"])
+		})
+	}
+}
+
+func TestGetDowntimeSchedule(t *testing.T) {
+	const id = "0193e3a1-1d7a-7c3b-9f2a-4b8c1d2e3f40"
+	tests := []struct {
+		name          string
+		statusCode    int
+		resp          map[string]interface{}
+		expectedError bool
+	}{
+		{
+			name:       "success",
+			statusCode: http.StatusOK,
+			resp:       map[string]interface{}{"status": "success", "data": map[string]interface{}{"id": id, "name": "DB upgrade window"}},
+		},
+		{
+			name:          "server error",
+			statusCode:    http.StatusInternalServerError,
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			statusCode:    http.StatusUnauthorized,
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/v1/downtime_schedules/"+id, r.URL.Path)
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			result, err := client.GetDowntimeSchedule(context.Background(), id)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			var response map[string]interface{}
+			require.NoError(t, json.Unmarshal(result, &response))
+			assert.Equal(t, "success", response["status"])
+		})
+	}
+}
+
+func TestCreateDowntimeSchedule(t *testing.T) {
+	payload := []byte(`{"name":"DB upgrade window","schedule":{"startTime":"2026-08-04T22:00:00-04:00","endTime":"2026-08-05T02:00:00-04:00"}}`)
+
+	tests := []struct {
+		name          string
+		statusCode    int
+		resp          map[string]interface{}
+		expectedError bool
+	}{
+		{
+			name:       "created",
+			statusCode: http.StatusCreated,
+			resp:       map[string]interface{}{"status": "success", "data": map[string]interface{}{"id": "s1"}},
+		},
+		{
+			// An invalid expr-lang scope is rejected by the backend, not locally;
+			// the 400 must reach the caller intact.
+			name:          "invalid scope propagates backend 400",
+			statusCode:    http.StatusBadRequest,
+			resp:          map[string]interface{}{"status": "error", "message": "invalid scope expression"},
+			expectedError: true,
+		},
+		{
+			name:          "server error",
+			statusCode:    http.StatusInternalServerError,
+			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
+			expectedError: true,
+		},
+		{
+			name:          "unauthorized",
+			statusCode:    http.StatusUnauthorized,
+			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var attempts int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/api/v1/downtime_schedules", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+
+				body, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(payload), string(body))
+
+				w.WriteHeader(tt.statusCode)
+				responseBody, _ := json.Marshal(tt.resp)
+				_, _ = w.Write(responseBody)
+			}))
+			defer server.Close()
+
+			client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			result, err := client.CreateDowntimeSchedule(context.Background(), payload)
+
+			// A mutating POST must be single-attempt: a replay would duplicate the schedule.
+			assert.Equal(t, 1, attempts)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			var response map[string]interface{}
+			require.NoError(t, json.Unmarshal(result, &response))
+			assert.Equal(t, "success", response["status"])
+		})
+	}
+}
+
+func TestDeleteDowntimeSchedule(t *testing.T) {
+	const id = "0193e3a1-1d7a-7c3b-9f2a-4b8c1d2e3f40"
+	tests := []struct {
+		name          string
+		statusCode    int
+		expectedError bool
+	}{
+		{name: "no content", statusCode: http.StatusNoContent},
+		{name: "server error", statusCode: http.StatusInternalServerError, expectedError: true},
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, expectedError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodDelete, r.Method)
+				assert.Equal(t, "/api/v1/downtime_schedules/"+id, r.URL.Path)
+				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer server.Close()
+
+			client := NewClient(logpkg.New("debug"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			err := client.DeleteDowntimeSchedule(context.Background(), id)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
