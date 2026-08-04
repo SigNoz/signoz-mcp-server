@@ -25,4 +25,5 @@ func (h *Handler) RegisterAllToolHandlers(s *server.MCPServer) {
 	h.RegisterTracesHandlers(s)
 	h.RegisterNotificationChannelHandlers(s)
 	h.RegisterMetricCardinalityHandlers(s)
+	h.RegisterInfraHandlers(s)
 }
