@@ -236,12 +236,14 @@ func (s *SigNoz) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, 
 	if s.cachedIdentity != nil && time.Since(s.identityCachedAt) < analyticsIdentityCacheTTL {
 		if s.meters != nil {
 			attrs := otelpkg.AppendTenantURL(ctx, nil)
+			attrs = otelpkg.AppendClientSource(ctx, attrs)
 			s.meters.IdentityCacheHits.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
 		return s.cachedIdentity, nil
 	}
 	if s.meters != nil {
 		attrs := otelpkg.AppendTenantURL(ctx, nil)
+		attrs = otelpkg.AppendClientSource(ctx, attrs)
 		s.meters.IdentityCacheMisses.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 

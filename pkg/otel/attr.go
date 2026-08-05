@@ -37,9 +37,9 @@ const (
 	// Non-standard (the registry has no equivalent today); scoped under the
 	// mcp.tool.* namespace used by this server's other tool-call attrs.
 	MCPToolResultBytesKey = attribute.Key("mcp.tool.result.size_bytes")
-	// ClientSource is low-cardinality (categorical) and safe on metrics; the
-	// two assistant IDs are per-execution UUIDs and MUST NOT be applied as
-	// metric attributes.
+	// ClientSource is normalized at ingress to a bounded categorical value and
+	// is safe on metrics. The two assistant IDs are per-execution UUIDs and MUST
+	// NOT be applied as metric attributes.
 	MCPClientSourceKey         = attribute.Key("mcp.client_source")
 	MCPAssistantThreadIDKey    = attribute.Key("mcp.assistant.thread_id")
 	MCPAssistantExecutionIDKey = attribute.Key("mcp.assistant.execution_id")
@@ -75,8 +75,7 @@ func ClientSourceAttr(ctx context.Context) (attribute.KeyValue, bool) {
 	return MCPClientSourceKey.String(source), true
 }
 
-// AppendClientSource appends mcp.client_source. Safe on both span and metric
-// attribute lists — client_source is bounded categorical.
+// AppendClientSource appends the ingress-normalized mcp.client_source.
 func AppendClientSource(ctx context.Context, attrs []attribute.KeyValue) []attribute.KeyValue {
 	if attr, ok := ClientSourceAttr(ctx); ok {
 		return append(attrs, attr)

@@ -17,9 +17,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -455,14 +460,32 @@ func TestGetAnalyticsIdentity_CachesResult(t *testing.T) {
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
+	meters, err := otelpkg.NewMeters(meterProvider)
+	require.NoError(t, err)
+	client.SetMeters(meters)
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
 
 	for i := 0; i < 5; i++ {
-		identity, err := client.GetAnalyticsIdentity(context.Background())
+		identity, err := client.GetAnalyticsIdentity(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, "user-1", identity.UserID)
 	}
 
 	assert.Equal(t, 1, requests, "expected identity cache to serve repeated lookups")
+
+	var collected metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &collected))
+	for _, metricName := range []string{"mcp.identity_cache.hit", "mcp.identity_cache.miss"} {
+		sum, found := oteltest.FindInt64SumMetric(collected, metricName)
+		require.True(t, found, "%s metric not found", metricName)
+		require.Len(t, sum.DataPoints, 1, "%s datapoints", metricName)
+		attr, present := sum.DataPoints[0].Attributes.Value(otelpkg.MCPClientSourceKey)
+		require.True(t, present, "%s missing mcp.client_source", metricName)
+		assert.Equal(t, "ai-assistant", attr.AsString(), "%s mcp.client_source", metricName)
+	}
 }
 
 func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {

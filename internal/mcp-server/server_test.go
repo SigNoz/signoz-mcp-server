@@ -998,6 +998,9 @@ func TestAuthMiddlewareExpiredOAuthLogsDebugAndRecordsAuthFailureMetric(t *testi
 	if attr, ok := dp.Attributes.Value(otelpkg.MCPTenantURLKey); !ok || attr.AsString() != "https://oauth.example.com" {
 		t.Fatalf("metric mcp.tenant_url = %v, want OAuth token tenant", attr)
 	}
+	if attr, ok := dp.Attributes.Value(otelpkg.MCPClientSourceKey); !ok || attr.AsString() != util.ClientSourceUserClient {
+		t.Fatalf("metric mcp.client_source = %v, want %s", attr, util.ClientSourceUserClient)
+	}
 }
 
 func TestAuthMiddlewareMissingCredentialsLogsDebugAndRecordsAuthFailureMetric(t *testing.T) {
@@ -1021,6 +1024,7 @@ func TestAuthMiddlewareMissingCredentialsLogsDebugAndRecordsAuthFailureMetric(t 
 	server := &MCPServer{logger: newBufferedLogger(&buf, slog.LevelDebug), config: cfg, analytics: noopanalytics.New(), meters: meters}
 
 	req := httptest.NewRequest(http.MethodPost, "https://mcp.example.com/mcp", nil)
+	req.Header.Set("X-SigNoz-Client-Source", "attacker-controlled-source")
 	rr := httptest.NewRecorder()
 
 	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1062,6 +1066,9 @@ func TestAuthMiddlewareMissingCredentialsLogsDebugAndRecordsAuthFailureMetric(t 
 	}
 	if attr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.mode")); !ok || attr.AsString() != authModeNone {
 		t.Fatalf("metric mcp.auth.mode = %v, want %s", attr, authModeNone)
+	}
+	if attr, ok := dp.Attributes.Value(otelpkg.MCPClientSourceKey); !ok || attr.AsString() != util.ClientSourceOther {
+		t.Fatalf("metric mcp.client_source = %v, want %s", attr, util.ClientSourceOther)
 	}
 }
 
@@ -2104,11 +2111,13 @@ func TestLoggingMiddlewareAddsToolNameToLifecycleAndDownstreamLogs(t *testing.T)
 			_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				logger.DebugContext(ctx, "downstream tool log")
 				return tt.result, tt.err
-			})(context.Background(), mcp.CallToolRequest{
+			})(util.SetClientSource(context.Background(), "ai-assistant"), mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name: "signoz_query",
 					Arguments: map[string]any{
-						"searchContext": "find slow services",
+						"searchContext":    "find slow services",
+						"filter":           "service.name = 'api'",
+						"webhook_password": "secret-canary",
 					},
 				},
 			})
@@ -2127,6 +2136,9 @@ func TestLoggingMiddlewareAddsToolNameToLifecycleAndDownstreamLogs(t *testing.T)
 				if rec["mcp.search_context"] != "find slow services" {
 					t.Fatalf("%s mcp.search_context = %v, want search text", msg, rec["mcp.search_context"])
 				}
+				if rec["mcp.client_source"] != "ai-assistant" {
+					t.Fatalf("%s mcp.client_source = %v, want ai-assistant", msg, rec["mcp.client_source"])
+				}
 				if strings.HasPrefix(msg, "tool call ") {
 					count := strings.Count(line, `"gen_ai.tool.name":`)
 					if count != 1 {
@@ -2138,6 +2150,17 @@ func TestLoggingMiddlewareAddsToolNameToLifecycleAndDownstreamLogs(t *testing.T)
 			terminal, _ := logRecordByMessage(t, &buf, tt.terminalMsg)
 			if terminal["level"] != tt.terminalLevel {
 				t.Fatalf("%s level = %v, want %s", tt.terminalMsg, terminal["level"], tt.terminalLevel)
+			}
+			request, hasRequest := terminal["mcp.request"].(string)
+			if tt.err != nil || (tt.result != nil && tt.result.IsError) {
+				if !hasRequest || !strings.Contains(request, `service.name = 'api'`) || !strings.Contains(request, `[REDACTED]`) {
+					t.Fatalf("%s mcp.request = %v, want reproducible redacted request", tt.terminalMsg, terminal["mcp.request"])
+				}
+				if strings.Contains(request, "secret-canary") {
+					t.Fatalf("%s mcp.request leaked credential: %s", tt.terminalMsg, request)
+				}
+			} else if hasRequest {
+				t.Fatalf("successful terminal log should not carry mcp.request: %s", request)
 			}
 		})
 	}
@@ -2152,7 +2175,7 @@ func TestLoggingMiddleware_ErrorResultLogsWarn(t *testing.T) {
 	_, err := middleware(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{
 			IsError: true,
-			Content: []mcp.Content{mcp.TextContent{Text: "tool exploded"}},
+			Content: []mcp.Content{mcp.TextContent{Text: strings.Repeat("tool exploded", 1024)}},
 		}, nil
 	})(context.Background(), mcp.CallToolRequest{
 		Params: mcp.CallToolParams{Name: "signoz_query"},
@@ -2167,10 +2190,40 @@ func TestLoggingMiddleware_ErrorResultLogsWarn(t *testing.T) {
 			if rec["level"] != "WARN" {
 				t.Fatalf("level = %v, want WARN", rec["level"])
 			}
+			errorMessage, ok := rec["error_message"].(string)
+			if !ok || len(errorMessage) > 4*1024 || !strings.HasSuffix(errorMessage, "...(truncated)") {
+				t.Fatalf("error_message = %T len=%d, want bounded string", rec["error_message"], len(errorMessage))
+			}
 			return
 		}
 	}
 	t.Fatalf("tool error-result log not found in %v", records)
+}
+
+func TestRegisteredToolGoErrorLogsRequestOnce(t *testing.T) {
+	var logs bytes.Buffer
+	logger := newBufferedLogger(&logs, slog.LevelDebug)
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	handler := tools.NewHandler(logger, cfg)
+	mcpServer := NewMCPServer(logger, handler, cfg, noopanalytics.New(), nil)
+	sdkServer := mcpServer.newSDKServer()
+	handler.AddTool(sdkServer, mcp.NewTool("go_error_probe"), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return nil, errors.New("handler failed")
+	})
+
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
+	sdkServer.HandleMessage(ctx, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"go_error_probe","arguments":{"filter":"service.name = 'api'"}}}`))
+	if count := strings.Count(logs.String(), `"mcp.request":`); count != 1 {
+		t.Fatalf("mcp.request log count = %d, want exactly one; logs=%s", count, logs.String())
+	}
+	terminal, _ := logRecordByMessage(t, &logs, "tool call failed")
+	if request, ok := terminal["mcp.request"].(string); !ok || !strings.Contains(request, "go_error_probe") {
+		t.Fatalf("tool failure mcp.request = %v", terminal["mcp.request"])
+	}
+	hookLog, _ := logRecordByMessage(t, &logs, "mcp error")
+	if _, duplicated := hookLog["mcp.request"]; duplicated {
+		t.Fatalf("mcp error hook duplicated registered-tool request: %v", hookLog["mcp.request"])
+	}
 }
 
 func TestLoggingMiddleware_GoErrorLogsError(t *testing.T) {
@@ -2802,11 +2855,14 @@ func TestUnknownToolCallRecordsBoundedFallbackTelemetry(t *testing.T) {
 		t.Fatalf("new meters: %v", err)
 	}
 
+	var logs bytes.Buffer
+	logger := newBufferedLogger(&logs, slog.LevelDebug)
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-	mcpServer := NewMCPServer(logpkg.New("error"), tools.NewHandler(logpkg.New("error"), cfg), cfg, noopanalytics.New(), meters)
+	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
 	sdkServer := mcpServer.newSDKServer()
 	const requestedName = "attacker-generated-tool-name"
-	response := sdkServer.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+requestedName+`","arguments":{}}}`))
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
+	response := sdkServer.HandleMessage(ctx, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+requestedName+`","arguments":{"filter":"service.name = 'api'"}}}`))
 	encoded, err := json.Marshal(response)
 	if err != nil {
 		t.Fatalf("marshal response: %v", err)
@@ -2826,6 +2882,7 @@ func TestUnknownToolCallRecordsBoundedFallbackTelemetry(t *testing.T) {
 	for key, want := range map[attribute.Key]string{
 		otelpkg.GenAIToolNameKey:    unknownToolName,
 		attribute.Key("error.type"): "not_found",
+		otelpkg.MCPClientSourceKey:  "ai-assistant",
 	} {
 		got, ok := toolCalls.DataPoints[0].Attributes.Value(key)
 		if !ok || got.AsString() != want {
@@ -2853,6 +2910,31 @@ func TestUnknownToolCallRecordsBoundedFallbackTelemetry(t *testing.T) {
 	}
 	if strings.Contains(spans[0].Name, requestedName) {
 		t.Fatalf("span name contains unvalidated tool name: %q", spans[0].Name)
+	}
+	errorLog, _ := logRecordByMessage(t, &logs, "mcp error")
+	request, ok := errorLog["mcp.request"].(string)
+	if !ok || !strings.Contains(request, requestedName) || !strings.Contains(request, `service.name = 'api'`) {
+		t.Fatalf("unknown-tool mcp.request = %v, want handler-visible request", errorLog["mcp.request"])
+	}
+}
+
+func TestUnknownToolFailureLogUsesSeparateRequestAndErrorBounds(t *testing.T) {
+	var logs bytes.Buffer
+	logger := newBufferedLogger(&logs, slog.LevelDebug)
+	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
+	mcpServer := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), nil)
+	sdkServer := mcpServer.newSDKServer()
+	requestedName := "unknown-" + strings.Repeat("x", 8*1024)
+
+	sdkServer.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+requestedName+`","arguments":{}}}`))
+	record, _ := logRecordByMessage(t, &logs, "mcp error")
+	errorValue, ok := record["error"].(string)
+	if !ok || len(errorValue) > 4*1024 || !strings.HasSuffix(errorValue, "...(truncated)") {
+		t.Fatalf("error = %T len=%d, want 4 KiB-bounded string", record["error"], len(errorValue))
+	}
+	requestValue, ok := record["mcp.request"].(string)
+	if !ok || len(requestValue) <= 4*1024 || len(requestValue) > 1024*1024 || strings.HasSuffix(requestValue, "...(truncated)") || !json.Valid([]byte(requestValue)) {
+		t.Fatalf("mcp.request = %T len=%d, want complete JSON under 1 MiB", record["mcp.request"], len(requestValue))
 	}
 }
 

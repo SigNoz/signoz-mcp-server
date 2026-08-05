@@ -9,13 +9,18 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
+	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestDocsHandlers(t *testing.T) {
-	ctx := context.Background()
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
 
 	t.Run("index not ready", func(t *testing.T) {
 		h := newTestHandler(nil)
@@ -27,6 +32,12 @@ func TestDocsHandlers(t *testing.T) {
 
 	h, cleanup := newDocsTestHandler(t)
 	defer cleanup()
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
+	meters, err := otelpkg.NewMeters(meterProvider)
+	require.NoError(t, err)
+	h.SetMeters(meters)
 
 	t.Run("search section filter and snippet", func(t *testing.T) {
 		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
@@ -98,7 +109,7 @@ func TestDocsHandlers(t *testing.T) {
 	})
 
 	t.Run("search cancellation preserves cause", func(t *testing.T) {
-		canceledCtx, cancel := context.WithCancel(context.Background())
+		canceledCtx, cancel := context.WithCancel(ctx)
 		cancel()
 		result, err := h.handleSearchDocs(canceledCtx, makeToolRequest("signoz_search_docs", map[string]any{
 			"searchText": "docker",
@@ -108,7 +119,7 @@ func TestDocsHandlers(t *testing.T) {
 	})
 
 	t.Run("fetch deadline preserves cause", func(t *testing.T) {
-		expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		expiredCtx, cancel := context.WithDeadline(ctx, time.Now().Add(-time.Second))
 		defer cancel()
 		result, err := h.handleFetchDoc(expiredCtx, makeToolRequest("signoz_fetch_doc", map[string]any{
 			"url": "/docs/install/docker/",
@@ -156,6 +167,25 @@ func TestDocsHandlers(t *testing.T) {
 		require.Equal(t, docsindex.DocsSitemapURI, text.URI)
 		require.Contains(t, text.Text, "Send logs to SigNoz")
 	})
+
+	var collected metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &collected))
+	for _, metricName := range []string{"signoz_docs_searches_total", "signoz_docs_fetches_total"} {
+		sum, found := oteltest.FindInt64SumMetric(collected, metricName)
+		require.True(t, found, "%s metric not found", metricName)
+		for _, point := range sum.DataPoints {
+			attr, present := point.Attributes.Value(otelpkg.MCPClientSourceKey)
+			require.True(t, present, "%s missing mcp.client_source", metricName)
+			require.Equal(t, "ai-assistant", attr.AsString(), "%s mcp.client_source", metricName)
+		}
+	}
+	duration, found := oteltest.FindFloat64HistogramMetric(collected, "signoz_docs_search_duration_seconds")
+	require.True(t, found, "signoz_docs_search_duration_seconds metric not found")
+	for _, point := range duration.DataPoints {
+		attr, present := point.Attributes.Value(otelpkg.MCPClientSourceKey)
+		require.True(t, present, "signoz_docs_search_duration_seconds missing mcp.client_source")
+		require.Equal(t, "ai-assistant", attr.AsString(), "signoz_docs_search_duration_seconds mcp.client_source")
+	}
 }
 
 // TestSearchDocs_SearchTextNotSchemaRequired pins the schema-aware-client

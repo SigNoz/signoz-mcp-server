@@ -23,9 +23,9 @@ type Handler struct {
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
 	docsIndex     *docsindex.IndexRegistry
-	// validationWarned deduplicates validation WARN logs per bounded
-	// (tool, direction, path, constraint) key; see warnValidationOnce.
-	validationWarned sync.Map
+	// validationLogs rate-limits representative validation request WARNs per
+	// bounded tool/direction/path/constraint tuple; counters remain exact.
+	validationLogs sync.Map
 
 	// registrations tracks the names advertised through each composed SDK
 	// server. mcp-go stores registrations in maps and silently overwrites a

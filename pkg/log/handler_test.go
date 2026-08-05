@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -203,5 +204,123 @@ func TestTruncBody(t *testing.T) {
 	}
 	if len(got) > 4*1024 {
 		t.Fatalf("TruncBody(big) len = %d, want <= 4096", len(got))
+	}
+}
+
+func TestRedactedTruncAny(t *testing.T) {
+	slackURL := "https://hooks.slack.com/services/T1/B2/secret-slack"
+	webhookURL := "https://alerts.example.com/hook/secret-webhook"
+	teamsURL := "https://teams.example.com/webhook/secret-teams"
+	routingKey := "pagerduty-routing-secret"
+	payload := map[string]any{
+		"name": "signoz_create_notification_channel",
+		"arguments": map[string]any{
+			"webhook_password":      "secret-canary",
+			"slack_api_url":         slackURL,
+			"webhook_url":           webhookURL,
+			"msteams_webhook_url":   teamsURL,
+			"pagerduty_routing_key": routingKey,
+			"searchContext":         "configure notification channels",
+			"nested": []any{
+				map[string]any{"clientSecret": "nested-canary", "filter": "service.name = 'api'"},
+			},
+		},
+	}
+
+	got := RedactedTruncAny(payload)
+	for _, secret := range []string{"secret-canary", "nested-canary", slackURL, webhookURL, teamsURL, routingKey} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("RedactedTruncAny leaked credential %q: %s", secret, got)
+		}
+	}
+	for _, want := range []string{
+		`"name":"signoz_create_notification_channel"`,
+		`"webhook_password":"[REDACTED]"`,
+		`"slack_api_url":"[REDACTED]"`,
+		`"webhook_url":"[REDACTED]"`,
+		`"msteams_webhook_url":"[REDACTED]"`,
+		`"pagerduty_routing_key":"[REDACTED]"`,
+		`"searchContext":"configure notification channels"`,
+		`"clientSecret":"[REDACTED]"`,
+		`"filter":"service.name = 'api'"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("RedactedTruncAny = %s, want %s", got, want)
+		}
+	}
+
+	big := RedactedTruncAny(map[string]any{"query": strings.Repeat("x", requestCaptureLimit*2)})
+	if len(big) > requestCaptureLimit || !strings.HasSuffix(big, truncBodySuffix) {
+		t.Fatalf("RedactedTruncAny oversized payload len/suffix = %d/%q", len(big), big[len(big)-len(truncBodySuffix):])
+	}
+}
+
+func TestRedactedTruncAnyPreservesLargeDashboardUnderOneMiB(t *testing.T) {
+	const panelCount = 300
+	panels := make(map[string]any, panelCount)
+	for i := 0; i < panelCount; i++ {
+		id := fmt.Sprintf("panel-%03d", i)
+		panels[id] = map[string]any{
+			"kind": "Panel",
+			"spec": map[string]any{
+				"display": map[string]any{
+					"name":        fmt.Sprintf("Latency Panel %03d", i),
+					"description": strings.Repeat("service latency dashboard detail ", 48),
+				},
+			},
+		}
+	}
+	payload := map[string]any{
+		"method": "tools/call",
+		"params": map[string]any{
+			"name": "signoz_create_dashboard",
+			"arguments": map[string]any{
+				"schemaVersion": "v6",
+				"tags":          []any{},
+				"spec": map[string]any{
+					"display": map[string]any{"name": "Large Service Latency Dashboard"},
+					"panels":  panels,
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) <= truncBodyLimit || len(raw) >= requestCaptureLimit {
+		t.Fatalf("dashboard request size = %d, want between %d and %d", len(raw), truncBodyLimit, requestCaptureLimit)
+	}
+
+	got := RedactedTruncAny(payload)
+	if !json.Valid([]byte(got)) || strings.HasSuffix(got, truncBodySuffix) {
+		t.Fatalf("large dashboard capture should remain complete JSON: len=%d suffix=%t", len(got), strings.HasSuffix(got, truncBodySuffix))
+	}
+	if !strings.Contains(got, `"panel-299"`) {
+		t.Fatal("large dashboard capture omitted the final panel")
+	}
+}
+
+func TestBoundedErrAttr(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	ctx, span := tp.Tracer("t").Start(context.Background(), "op")
+	logger.ErrorContext(ctx, "failed", BoundedErrAttr(errors.New(strings.Repeat("x", truncBodyLimit*2))))
+	span.End()
+
+	var record map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := record["error"].(string)
+	if !ok || len(got) > truncBodyLimit || !strings.HasSuffix(got, truncBodySuffix) {
+		t.Fatalf("bounded error = %T len=%d suffix=%t", record["error"], len(got), strings.HasSuffix(got, truncBodySuffix))
+	}
+	spans := exporter.GetSpans()
+	if len(spans) != 1 || spans[0].Status.Code != codes.Error || spans[0].Status.Description != got {
+		t.Fatalf("bounded error span status = %#v, want Error with bounded description", spans)
 	}
 }
