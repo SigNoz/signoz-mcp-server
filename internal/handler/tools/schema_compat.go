@@ -9,7 +9,11 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -22,7 +26,12 @@ const (
 	// successful result whose arguments mismatched the advertised schema.
 	inputValidationNoticePrefix = "Input validation notice:"
 	maxValidationMetadataLength = 96
+	validationLogInterval       = time.Minute
 )
+
+type validationLogState struct {
+	nextAllowedUnixNano atomic.Int64
+}
 
 type compiledToolSchema struct {
 	validator          *jsonschema.Schema
@@ -177,7 +186,7 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 		if input != nil {
 			if err := validateArguments(input.validator, req); err != nil {
 				path, constraint := validationMetadata(err, input.topLevelProperties)
-				h.recordValidationMismatch(ctx, toolName, "input", path, constraint)
+				h.recordValidationMismatch(ctx, req, toolName, "input", path, constraint)
 				notice = inputValidationNotice(err)
 			}
 		}
@@ -193,12 +202,12 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			return result, nil
 		}
 		if result.StructuredContent == nil {
-			h.recordMissingStructuredContent(ctx, toolName)
+			h.recordMissingStructuredContent(ctx, req, toolName)
 			return result, nil
 		}
 		if err := validateSchemaValue(output.validator, result.StructuredContent, false); err != nil {
 			path, constraint := validationMetadata(err, output.topLevelProperties)
-			h.recordValidationMismatch(ctx, toolName, "output", path, constraint)
+			h.recordValidationMismatch(ctx, req, toolName, "output", path, constraint)
 		}
 		return result, nil
 	}
@@ -316,20 +325,26 @@ func boundedMetadata(value string) string {
 	return value
 }
 
-func (h *Handler) recordValidationMismatch(ctx context.Context, toolName, direction, path, constraint string) {
-	if h.warnValidationOnce(toolName, direction, path, constraint) {
-		h.logger.WarnContext(ctx, "tool schema validation mismatch (further identical mismatches suppressed; see mcp.tool.validation.mismatches)",
-			slog.String("gen_ai.tool.name", toolName),
-			slog.String("validation.direction", direction),
-			slog.String("validation.path", path),
-			slog.String("validation.constraint", constraint))
+func (h *Handler) recordValidationMismatch(ctx context.Context, req mcp.CallToolRequest, toolName, direction, path, constraint string) {
+	if h.logger.Enabled(ctx, slog.LevelWarn) {
+		if h.shouldLogValidationRequest(toolName, direction, path, constraint) {
+			h.logger.WarnContext(ctx, "tool schema validation mismatch (repeats rate-limited; see mcp.tool.validation.mismatches)",
+				slog.String("gen_ai.tool.name", toolName),
+				slog.String("validation.direction", direction),
+				slog.String("validation.path", path),
+				slog.String("validation.constraint", constraint),
+				slog.String("mcp.request", logpkg.RedactedTruncAny(req)))
+		}
 	}
 	if h.meters != nil {
-		h.meters.ToolValidationMismatches.Add(ctx, 1, metric.WithAttributes(
+		attrs := []attribute.KeyValue{
 			attribute.String("gen_ai.tool.name", toolName),
 			attribute.String("validation.direction", direction),
 			attribute.String("validation.path", path),
-			attribute.String("validation.constraint", constraint)))
+			attribute.String("validation.constraint", constraint),
+		}
+		attrs = otelpkg.AppendClientSource(ctx, attrs)
+		h.meters.ToolValidationMismatches.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 }
 
@@ -345,14 +360,35 @@ func (h *Handler) recordSchemaCompileFailure(ctx context.Context, toolName, dire
 	}
 }
 
-func (h *Handler) recordMissingStructuredContent(ctx context.Context, toolName string) {
-	if h.warnValidationOnce(toolName, "output", "<root>", "missing_structured_content") {
-		h.logger.WarnContext(ctx, "successful schema-declaring tool returned no structured content (further occurrences suppressed; see mcp.tool.output.missing_structured_content)",
-			slog.String("gen_ai.tool.name", toolName))
+func (h *Handler) recordMissingStructuredContent(ctx context.Context, req mcp.CallToolRequest, toolName string) {
+	if h.logger.Enabled(ctx, slog.LevelWarn) {
+		if h.shouldLogValidationRequest(toolName, "output", "<root>", "missing_structured_content") {
+			h.logger.WarnContext(ctx, "successful schema-declaring tool returned no structured content (repeats rate-limited; see mcp.tool.output.missing_structured_content)",
+				slog.String("gen_ai.tool.name", toolName),
+				slog.String("mcp.request", logpkg.RedactedTruncAny(req)))
+		}
 	}
 	if h.meters != nil {
-		h.meters.ToolOutputMissingStructuredContent.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("gen_ai.tool.name", toolName)))
+		attrs := []attribute.KeyValue{attribute.String("gen_ai.tool.name", toolName)}
+		attrs = otelpkg.AppendClientSource(ctx, attrs)
+		h.meters.ToolOutputMissingStructuredContent.Add(ctx, 1, metric.WithAttributes(attrs...))
+	}
+}
+
+func (h *Handler) shouldLogValidationRequest(toolName, direction, path, constraint string) bool {
+	key := toolName + "|" + direction + "|" + path + "|" + constraint
+	value, _ := h.validationLogs.LoadOrStore(key, &validationLogState{})
+	state := value.(*validationLogState)
+
+	now := time.Now().UnixNano()
+	for {
+		next := state.nextAllowedUnixNano.Load()
+		if now < next {
+			return false
+		}
+		if state.nextAllowedUnixNano.CompareAndSwap(next, now+validationLogInterval.Nanoseconds()) {
+			return true
+		}
 	}
 }
 
@@ -427,15 +463,6 @@ func openInputObjects(schema any) any {
 		}
 	}
 	return schema
-}
-
-// warnValidationOnce reports whether this (tool, direction, path, constraint)
-// key has not been logged yet this process. Metrics stay exact per event; only
-// the WARN log is deduplicated so a looping client cannot flood logs.
-func (h *Handler) warnValidationOnce(toolName, direction, path, constraint string) bool {
-	key := toolName + "|" + direction + "|" + path + "|" + constraint
-	_, seen := h.validationWarned.LoadOrStore(key, struct{}{})
-	return !seen
 }
 
 func normalizeToolOutputSchema(schema *mcp.ToolOutputSchema) {

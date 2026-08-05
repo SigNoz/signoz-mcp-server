@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/attribute"
@@ -91,8 +92,11 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 		case len(result.Results) >= 1:
 			bucket = "1-4"
 		}
-		h.meters.DocsSearches.Add(ctx, 1, metric.WithAttributes(attribute.String("result_count_bucket", bucket)))
-		h.meters.DocsSearchDuration.Record(ctx, time.Since(start).Seconds())
+		attrs := []attribute.KeyValue{attribute.String("result_count_bucket", bucket)}
+		attrs = otelpkg.AppendClientSource(ctx, attrs)
+		h.meters.DocsSearches.Add(ctx, 1, metric.WithAttributes(attrs...))
+		durationAttrs := otelpkg.AppendClientSource(ctx, nil)
+		h.meters.DocsSearchDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(durationAttrs...))
 	}
 	if err != nil {
 		if err.Error() == docsindex.CodeIndexNotReady {
@@ -126,7 +130,9 @@ func (h *Handler) handleFetchDoc(ctx context.Context, req mcp.CallToolRequest) (
 
 	result, code, err := h.docsIndex.FetchDoc(ctx, rawURL, heading)
 	if h.meters != nil && err == nil && code == "" {
-		h.meters.DocsFetches.Add(ctx, 1, metric.WithAttributes(attribute.Bool("cached", true)))
+		attrs := []attribute.KeyValue{attribute.Bool("cached", true)}
+		attrs = otelpkg.AppendClientSource(ctx, attrs)
+		h.meters.DocsFetches.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 	if err != nil {
 		return errorWithCause(err, CodeInternalError, err.Error()), nil

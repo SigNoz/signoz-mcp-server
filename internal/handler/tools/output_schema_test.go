@@ -13,6 +13,7 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/attribute"
@@ -118,7 +119,7 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 	}
 }
 
-func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
+func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	reader := sdkmetric.NewManualReader()
@@ -137,10 +138,12 @@ func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
 		return mcp.NewToolResultText("ok"), nil
 	})
 
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"webhook_password":"super-secret-value"}}}`))
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
+	response := s.HandleMessage(ctx, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"searchContext":"create a webhook","webhook_password":"super-secret-value"}}}`))
 	if !called {
 		t.Fatal("input mismatch must not block the handler call")
 	}
+	s.HandleMessage(ctx, json.RawMessage(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"searchContext":"second attempt","webhook_password":"another-secret-value"}}}`))
 	encoded, err := json.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
@@ -157,16 +160,37 @@ func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
 	if !strings.Contains(logs.String(), "tool schema validation mismatch") || !strings.Contains(logs.String(), `"validation.direction":"input"`) {
 		t.Fatalf("missing shadow mismatch warning: %s", logs.String())
 	}
-	if strings.Contains(logs.String(), "super-secret-value") {
+	if count := strings.Count(logs.String(), "tool schema validation mismatch"); count != 1 {
+		t.Fatalf("mismatch warning count = %d, want one representative request per rate-limit window; logs=%s", count, logs.String())
+	}
+	if strings.Contains(logs.String(), "super-secret-value") || strings.Contains(logs.String(), "another-secret-value") {
 		t.Fatalf("validation telemetry leaked raw argument values: %s", logs.String())
+	}
+	if !strings.Contains(logs.String(), `"mcp.request":`) || !strings.Contains(logs.String(), `create a webhook`) || !strings.Contains(logs.String(), `[REDACTED]`) {
+		t.Fatalf("validation telemetry missing reproducible redacted requests: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), `second attempt`) {
+		t.Fatalf("identical mismatch inside rate-limit window should be suppressed: %s", logs.String())
 	}
 	var collected metricdata.ResourceMetrics
 	if err := reader.Collect(context.Background(), &collected); err != nil {
 		t.Fatal(err)
 	}
 	sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.mismatches")
-	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 1 {
+	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 2 {
 		t.Fatalf("shadow mismatch counter = %#v, found=%t", sum, ok)
+	}
+	for key, want := range map[attribute.Key]string{
+		attribute.Key("gen_ai.tool.name"):      "shadow_probe",
+		attribute.Key("validation.direction"):  "input",
+		attribute.Key("validation.path"):       "/webhook_password",
+		attribute.Key("validation.constraint"): "type",
+		otelpkg.MCPClientSourceKey:             "ai-assistant",
+	} {
+		got, present := sum.DataPoints[0].Attributes.Value(key)
+		if !present || got.AsString() != want {
+			t.Fatalf("mismatch metric %s = %v, present=%t; want %q", key, got, present, want)
+		}
 	}
 }
 

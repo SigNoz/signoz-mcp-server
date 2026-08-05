@@ -656,7 +656,9 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 		m.finishMethodObservation(ctx, id, method, message, nil)
 	})
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		toolHandlerObserved := false
 		if method == mcp.MethodToolsCall {
+			_, toolHandlerObserved, _ = otelpkg.MCPToolRequestObservation(ctx)
 			m.completeUnobservedToolCall(ctx, nil, err)
 		} else if shouldObserveMethod(method) {
 			// finish returns true iff a matching observation existed (even if
@@ -676,9 +678,18 @@ func (m *MCPServer) buildHooks() *server.Hooks {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		}
-		m.logger.Log(ctx, methodErrorLogLevel(err), "mcp error",
+		level := methodErrorLogLevel(err)
+		logAttrs := []any{
 			slog.String("mcp.method.name", otelpkg.NormalizeMCPMethod(string(method))),
-			logpkg.ErrAttr(err))
+			logpkg.BoundedErrAttr(err),
+		}
+		if method == mcp.MethodToolsCall && !toolHandlerObserved && m.logger.Enabled(ctx, level) {
+			switch request := message.(type) {
+			case *mcp.CallToolRequest:
+				logAttrs = append(logAttrs, slog.String("mcp.request", logpkg.RedactedTruncAny(*request)))
+			}
+		}
+		m.logger.Log(ctx, level, "mcp error", logAttrs...)
 	})
 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
 		signozURL, ok := util.GetSigNozURL(ctx)
@@ -811,17 +822,28 @@ func (m *MCPServer) loggingMiddleware() server.ToolHandlerMiddleware {
 			case err != nil:
 				// Client-driven cancellations (context.Canceled) log at DEBUG;
 				// deadline-exceeded and real failures stay ERROR.
-				m.logger.Log(ctx, logpkg.LevelForError(err), "tool call failed",
+				level := logpkg.LevelForError(err)
+				attrs := []any{
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,
-					logpkg.ErrAttr(err))
+					logpkg.BoundedErrAttr(err),
+				}
+				if m.logger.Enabled(ctx, level) {
+					attrs = append(attrs, slog.String("mcp.request", logpkg.RedactedTruncAny(req)))
+				}
+				m.logger.Log(ctx, level, "tool call failed", attrs...)
 			case result != nil && result.IsError:
-				m.logger.WarnContext(ctx, "tool call returned error result",
+				attrs := []any{
 					slog.Duration("duration", duration),
 					slog.Bool("mcp.tool.is_error", isErr),
 					sizeAttr,
-					slog.String("error_message", extractToolErrorMessage(result)))
+					slog.String("error_message", logpkg.TruncBody([]byte(extractToolErrorMessage(result)))),
+				}
+				if m.logger.Enabled(ctx, slog.LevelWarn) {
+					attrs = append(attrs, slog.String("mcp.request", logpkg.RedactedTruncAny(req)))
+				}
+				m.logger.WarnContext(ctx, "tool call returned error result", attrs...)
 			default:
 				m.logger.DebugContext(ctx, "tool call finished",
 					slog.Duration("duration", duration),
@@ -863,6 +885,8 @@ func (m *MCPServer) completeUnobservedToolCall(ctx context.Context, rawResult an
 		otelpkg.MCPToolIsErrorKey.Bool(isErr),
 		otelpkg.MCPToolResultBytesKey.Int64(resultBytes),
 	}
+	spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
+	spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
 	if errorType != "" {
 		spanAttrs = append(spanAttrs, attribute.String("error.type", errorType))
 	}
@@ -1100,6 +1124,7 @@ func (m *MCPServer) logAuthFailure(ctx context.Context, r *http.Request, status 
 			attribute.String("mcp.auth.mode", authMode),
 		}
 		metricAttrs = otelpkg.AppendTenantURL(ctx, metricAttrs)
+		metricAttrs = otelpkg.AppendClientSource(ctx, metricAttrs)
 		m.meters.AuthFailures.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 	}
 
@@ -1131,10 +1156,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 		// 401/early-reject paths) propagates them. Values are advisory and
 		// flow into every log/span/event, so they are normalized
 		// (trim + length-cap) before being stashed.
-		clientSource := util.NormalizeCallerCorrelationValue(r.Header.Get("X-SigNoz-Client-Source"))
-		if clientSource == "" {
-			clientSource = util.ClientSourceUserClient
-		}
+		clientSource := util.NormalizeClientSource(r.Header.Get("X-SigNoz-Client-Source"))
 		ctx = util.SetClientSource(ctx, clientSource)
 		if threadID := util.NormalizeCallerCorrelationValue(r.Header.Get("X-SigNoz-Assistant-Thread-Id")); threadID != "" {
 			ctx = util.SetAssistantThreadID(ctx, threadID)
