@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -248,9 +249,55 @@ func TestRedactedTruncAny(t *testing.T) {
 		}
 	}
 
-	big := RedactedTruncAny(map[string]any{"query": strings.Repeat("x", truncBodyLimit*2)})
-	if len(big) > truncBodyLimit || !strings.HasSuffix(big, truncBodySuffix) {
+	big := RedactedTruncAny(map[string]any{"query": strings.Repeat("x", requestCaptureLimit*2)})
+	if len(big) > requestCaptureLimit || !strings.HasSuffix(big, truncBodySuffix) {
 		t.Fatalf("RedactedTruncAny oversized payload len/suffix = %d/%q", len(big), big[len(big)-len(truncBodySuffix):])
+	}
+}
+
+func TestRedactedTruncAnyPreservesLargeDashboardUnderOneMiB(t *testing.T) {
+	const panelCount = 300
+	panels := make(map[string]any, panelCount)
+	for i := 0; i < panelCount; i++ {
+		id := fmt.Sprintf("panel-%03d", i)
+		panels[id] = map[string]any{
+			"kind": "Panel",
+			"spec": map[string]any{
+				"display": map[string]any{
+					"name":        fmt.Sprintf("Latency Panel %03d", i),
+					"description": strings.Repeat("service latency dashboard detail ", 48),
+				},
+			},
+		}
+	}
+	payload := map[string]any{
+		"method": "tools/call",
+		"params": map[string]any{
+			"name": "signoz_create_dashboard",
+			"arguments": map[string]any{
+				"schemaVersion": "v6",
+				"tags":          []any{},
+				"spec": map[string]any{
+					"display": map[string]any{"name": "Large Service Latency Dashboard"},
+					"panels":  panels,
+				},
+			},
+		},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) <= truncBodyLimit || len(raw) >= requestCaptureLimit {
+		t.Fatalf("dashboard request size = %d, want between %d and %d", len(raw), truncBodyLimit, requestCaptureLimit)
+	}
+
+	got := RedactedTruncAny(payload)
+	if !json.Valid([]byte(got)) || strings.HasSuffix(got, truncBodySuffix) {
+		t.Fatalf("large dashboard capture should remain complete JSON: len=%d suffix=%t", len(got), strings.HasSuffix(got, truncBodySuffix))
+	}
+	if !strings.Contains(got, `"panel-299"`) {
+		t.Fatal("large dashboard capture omitted the final panel")
 	}
 }
 

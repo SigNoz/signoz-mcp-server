@@ -57,6 +57,12 @@
 - An unknown tool with an 8 KiB name bounded both `error` and `mcp.request` at 4,096 characters and normalized an unsupported client source to `other`.
 - The server was stopped, port 18091 was confirmed closed, the temporary directory was removed, and the credential was unset. Live metric export was deliberately disabled; metric dimensions remain covered by deterministic manual-reader tests.
 
+### 2026-08-05 — Raise failure-request capture to 1 MiB
+- A local real-middleware probe used a 637,041-byte `signoz_create_dashboard` request with 300 panels. The handler received all 637,041 bytes, but the original 4 KiB `mcp.request` log was invalid truncated JSON containing none of the panel objects, so it could not satisfy the replay goal for large dashboards.
+- The owner chose the simple bounded compromise: raise only redacted `mcp.request` captures to 1 MiB. Ordinary body/error logs and client-visible bounded error details stay at 4 KiB; changing their shared limit would be an unrelated MCP behavior change.
+- Requests at or below 1 MiB remain complete valid JSON after redaction. Larger requests retain the explicit `...(truncated)` marker; the existing 4 MiB inbound HTTP request limit is unchanged.
+- After implementation, the real logging-middleware probe passed with a 503,652-byte, 300-panel dashboard: handler and logged request sizes matched, the logged value was valid JSON, no truncation marker was present, and the final panel remained available for replay.
+
 ## Open Questions
 - [x] Should raw auth headers be logged? — No. `mcp.CallToolRequest.Header` is excluded from JSON serialization by `mcp-go`, and the failure payload helper accepts only the handler-visible request.
 - [x] Should repeated schema mismatches remain deduplicated? — Rate-limit WARN request capture per bounded mismatch tuple. The first representative request is enough to reproduce the contract mismatch; counters remain exact and the WARN points operators to the counter for total volume.

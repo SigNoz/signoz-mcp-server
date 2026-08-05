@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	truncBodyLimit  = 4 * 1024
-	truncBodySuffix = "...(truncated)"
-	redactedValue   = "[REDACTED]"
+	truncBodyLimit      = 4 * 1024
+	requestCaptureLimit = 1024 * 1024
+	truncBodySuffix     = "...(truncated)"
+	redactedValue       = "[REDACTED]"
 )
 
 var (
@@ -101,11 +102,15 @@ func LevelForError(err error) slog.Level {
 }
 
 func TruncBody(b []byte) string {
-	if len(b) <= truncBodyLimit {
+	return truncBodyAt(b, truncBodyLimit)
+}
+
+func truncBodyAt(b []byte, limit int) string {
+	if len(b) <= limit {
 		return string(b)
 	}
 
-	cutoff := truncBodyLimit - len(truncBodySuffix)
+	cutoff := limit - len(truncBodySuffix)
 	if cutoff < 0 {
 		cutoff = 0
 	}
@@ -117,18 +122,23 @@ func TruncBody(b []byte) string {
 // (e.g. response bodies of unknown size) can be logged without leaking
 // unbounded payloads into stdout or the collector pipeline.
 func TruncAny(v any) string {
+	return truncAnyAt(v, truncBodyLimit)
+}
+
+func truncAnyAt(v any, limit int) string {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return "<unmarshalable>"
 	}
-	return TruncBody(b)
+	return truncBodyAt(b, limit)
 }
 
 // RedactedTruncAny serializes a structured log payload while replacing values
 // under credential-shaped keys at any depth. It is intended for diagnostic
 // request capture: callers retain the payload's reproducible shape and
-// non-secret values without copying credentials into logs. The existing body
-// cap still applies so a single failed request cannot flood the log pipeline.
+// non-secret values without copying credentials into logs. Request captures
+// use a dedicated 1 MiB cap; ordinary body and error logs remain capped at
+// 4 KiB.
 func RedactedTruncAny(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -142,7 +152,7 @@ func RedactedTruncAny(v any) string {
 		return "<unmarshalable>"
 	}
 	decoded = redactSensitiveValues(decoded)
-	return TruncAny(decoded)
+	return truncAnyAt(decoded, requestCaptureLimit)
 }
 
 func redactSensitiveValues(value any) any {

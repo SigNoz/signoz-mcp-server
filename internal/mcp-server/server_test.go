@@ -2918,7 +2918,7 @@ func TestUnknownToolCallRecordsBoundedFallbackTelemetry(t *testing.T) {
 	}
 }
 
-func TestUnknownToolFailureLogBoundsRequestAndError(t *testing.T) {
+func TestUnknownToolFailureLogUsesSeparateRequestAndErrorBounds(t *testing.T) {
 	var logs bytes.Buffer
 	logger := newBufferedLogger(&logs, slog.LevelDebug)
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
@@ -2928,11 +2928,13 @@ func TestUnknownToolFailureLogBoundsRequestAndError(t *testing.T) {
 
 	sdkServer.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+requestedName+`","arguments":{}}}`))
 	record, _ := logRecordByMessage(t, &logs, "mcp error")
-	for _, key := range []string{"error", "mcp.request"} {
-		value, ok := record[key].(string)
-		if !ok || len(value) > 4*1024 || !strings.HasSuffix(value, "...(truncated)") {
-			t.Fatalf("%s = %T len=%d, want bounded truncated string", key, record[key], len(value))
-		}
+	errorValue, ok := record["error"].(string)
+	if !ok || len(errorValue) > 4*1024 || !strings.HasSuffix(errorValue, "...(truncated)") {
+		t.Fatalf("error = %T len=%d, want 4 KiB-bounded string", record["error"], len(errorValue))
+	}
+	requestValue, ok := record["mcp.request"].(string)
+	if !ok || len(requestValue) <= 4*1024 || len(requestValue) > 1024*1024 || strings.HasSuffix(requestValue, "...(truncated)") || !json.Valid([]byte(requestValue)) {
+		t.Fatalf("mcp.request = %T len=%d, want complete JSON under 1 MiB", record["mcp.request"], len(requestValue))
 	}
 }
 
