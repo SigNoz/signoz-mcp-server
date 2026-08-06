@@ -1,5 +1,7 @@
 # SigNoz MCP Server
 
+[![Beacon Verified](https://registry-ruby.vercel.app/api/v1/agents/SigNoz%2Fsignoz-mcp-server/badge.svg)](https://portal-five-phi-54.vercel.app/?q=signoz+mcp)
+
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![MCP Version](https://img.shields.io/badge/MCP-0.37.0-orange.svg)](https://modelcontextprotocol.io)
