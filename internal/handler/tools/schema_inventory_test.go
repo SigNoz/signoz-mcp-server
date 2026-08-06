@@ -121,7 +121,8 @@ func TestAdvertisedUpdateSchemasAcceptRealWriteBackPayloads(t *testing.T) {
 
 	// A real write-back re-PUTs a fetched v6 dashboard, including server-added
 	// fields the advertised schema doesn't model (id/uuid, audit fields). The
-	// schema must stay permissive enough to accept them.
+	// advertised schema stays open for client compatibility; the handler strips
+	// the known read-only fields and rejects other unknown fields semantically.
 	validate("signoz_update_dashboard", map[string]any{
 		"id":            "dashboard-1",
 		"uuid":          "dashboard-1",
