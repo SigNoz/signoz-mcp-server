@@ -27,6 +27,7 @@ type MockClient struct {
 	DeleteDashboardFn           func(ctx context.Context, id string) error
 	ListServicesFn              func(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperationsFn   func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
+	GetLogPipelinesFn           func(ctx context.Context, version string) (json.RawMessage, error)
 	QueryBuilderV5Fn            func(ctx context.Context, body []byte) (json.RawMessage, error)
 	ListViewsFn                 func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error)
 	GetViewFn                   func(ctx context.Context, viewID string) (json.RawMessage, error)
@@ -153,6 +154,13 @@ func (m *MockClient) DeleteDashboard(ctx context.Context, id string) error {
 func (m *MockClient) ListServices(ctx context.Context, start, end string) (json.RawMessage, error) {
 	if m.ListServicesFn != nil {
 		return m.ListServicesFn(ctx, start, end)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) GetLogPipelines(ctx context.Context, version string) (json.RawMessage, error) {
+	if m.GetLogPipelinesFn != nil {
+		return m.GetLogPipelinesFn(ctx, version)
 	}
 	return json.RawMessage(`{}`), nil
 }
