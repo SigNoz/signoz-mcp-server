@@ -23,7 +23,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Use this only when the user needs a SigNoz Query Builder v5 request that the dedicated log, trace, and metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
+			"Use this only when the user needs a SigNoz Query Builder v5 request that the dedicated log, trace, and metric tools cannot express, including multi-query requests, formulas, PromQL, ClickHouse SQL, and AI/LLM trace queries (builder_ai_query: per-trace or aggregated LLM metrics - token usage, cost, prompts/responses). "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
 				"Before composing the query, read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas also require the metrics guide, and PromQL requires signoz://promql/instructions. "+
 				"For predictable formulas, explicitly set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server normalizes omissions.",
@@ -36,7 +36,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
 	tracesQueryBuilderGuide := mcp.NewResource(
 		"signoz://traces/query-builder-guide",
 		"Traces Query Builder Guide",
-		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, AI/LLM trace queries (builder_ai_query: per-trace token usage, cost, and prompt/response previews), and examples for rows, single values, and time series."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(querybuilder.TracesQueryBuilderGuide))),
 	)

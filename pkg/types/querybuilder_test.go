@@ -310,6 +310,84 @@ func TestQueryPayloadRoundTrip_PreservesTraceOperator(t *testing.T) {
 	require.Contains(t, string(raw), `"expression":"A => B"`)
 }
 
+func TestQueryUnmarshalJSON_BuilderAIQueryPinsTracesSignal(t *testing.T) {
+	input := `{
+		"schemaVersion":"v1",
+		"start":1700000000,
+		"end":1700003600,
+		"requestType":"raw",
+		"compositeQuery":{
+			"queries":[
+				{"type":"builder_ai_query","spec":{"name":"A","filter":{"expression":"has_error = true"}}}
+			]
+		}
+	}`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(input), &payload))
+
+	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
+	require.Equal(t, "traces", spec.Signal)
+}
+
+func TestQueryPayloadValidate_BuilderAIQueryDefaultsBounds(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "raw",
+		CompositeQuery: CompositeQuery{Queries: []Query{{
+			Type: "builder_ai_query",
+			Spec: QuerySpec{Name: "A", Signal: "traces"},
+		}}},
+	}
+	require.NoError(t, payload.Validate())
+
+	got := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, DefaultRawQueryLimit, got.Limit)
+	require.Equal(t, []Order{{Key: Key{Name: "timestamp"}, Direction: "desc"}}, got.Order)
+	require.Len(t, payload.AppliedBounds, 1)
+	require.True(t, payload.AppliedBounds[0].LimitDefaulted)
+	require.True(t, payload.AppliedBounds[0].OrderDefaulted)
+}
+
+func TestQueryPayloadValidate_BuilderAIQueryTraceModeLeavesOrderToBackend(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "trace",
+		CompositeQuery: CompositeQuery{Queries: []Query{{
+			Type: "builder_ai_query",
+			Spec: QuerySpec{Name: "A", Signal: "traces"},
+		}}},
+	}
+	require.NoError(t, payload.Validate())
+
+	// Trace mode returns per-trace columns where "timestamp" is not a valid
+	// order key; the backend default (last_activity_time desc) must apply.
+	got := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
+	require.Equal(t, DefaultRawQueryLimit, got.Limit)
+	require.Empty(t, got.Order)
+	require.Len(t, payload.AppliedBounds, 1)
+	require.True(t, payload.AppliedBounds[0].LimitDefaulted)
+	require.False(t, payload.AppliedBounds[0].OrderDefaulted)
+}
+
+func TestQueryPayloadValidate_BuilderAIQueryScalarRequiresAggregations(t *testing.T) {
+	payload := QueryPayload{
+		Start:       1,
+		End:         2,
+		RequestType: "scalar",
+		CompositeQuery: CompositeQuery{Queries: []Query{{
+			Type: "builder_ai_query",
+			Spec: QuerySpec{Name: "A", Signal: "traces"},
+		}}},
+	}
+	err := payload.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing aggregations")
+}
+
 func TestQueryPayloadValidate_PromQLRequiresQuery(t *testing.T) {
 	q := &QueryPayload{
 		Start: 1,

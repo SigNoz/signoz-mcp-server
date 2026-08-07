@@ -47,6 +47,7 @@ type CompositeQuery struct {
 // Query is a single entry in CompositeQuery.Queries. Spec's concrete type
 // depends on Type:
 //   - "builder_query"          -> QuerySpec
+//   - "builder_ai_query"       -> QuerySpec (signal pinned to "traces")
 //   - "builder_formula"        -> FormulaSpec
 //   - "promql"                 -> PromQLSpec
 //   - "clickhouse_sql"         -> ClickHouseSQLSpec
@@ -120,10 +121,16 @@ func (q *Query) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("invalid builder_formula spec: %w", err)
 		}
 		q.Spec = spec
-	case "builder_query":
+	case "builder_query", "builder_ai_query":
 		var spec QuerySpec
 		if err := json.Unmarshal(shadow.Spec, &spec); err != nil {
-			return fmt.Errorf("invalid builder_query spec: %w", err)
+			return fmt.Errorf("invalid %s spec: %w", shadow.Type, err)
+		}
+		if shadow.Type == "builder_ai_query" {
+			// The backend pins AI queries to the traces signal; mirror that so
+			// signal-dependent validation and defaults apply without requiring
+			// the caller to send it.
+			spec.Signal = "traces"
 		}
 		q.Spec = spec
 	default:
@@ -343,7 +350,7 @@ func (q *QueryPayload) Validate() error {
 				return fmt.Errorf(`%s: builder_formula requires requestType "scalar" or "time_series"; received %q`, queryName, q.RequestType)
 			}
 			continue
-		case "builder_query":
+		case "builder_query", "builder_ai_query":
 			// fall through to builder validation below
 		default:
 			// builder_trace_operator, builder_sub_query, builder_join, etc.
@@ -353,7 +360,7 @@ func (q *QueryPayload) Validate() error {
 
 		spec, ok := query.Spec.(QuerySpec)
 		if !ok {
-			return fmt.Errorf("query at position %d: builder_query envelope has wrong spec type %T", i+1, query.Spec)
+			return fmt.Errorf("query at position %d: %s envelope has wrong spec type %T", i+1, query.Type, query.Spec)
 		}
 		signal := spec.Signal
 		queryName := queryDisplayName(spec.Name, i)
@@ -444,7 +451,7 @@ func (q *QueryPayload) ApplyBuilderBounds() error {
 	formulaInputs := formulaInputQueryNames(q.CompositeQuery.Queries)
 	for i, query := range q.CompositeQuery.Queries {
 		switch query.Type {
-		case "builder_query":
+		case "builder_query", "builder_ai_query":
 			spec, ok := query.Spec.(QuerySpec)
 			if !ok {
 				continue
@@ -472,12 +479,17 @@ func (q *QueryPayload) ApplyBuilderBounds() error {
 				applied.LimitDefaulted = true
 			}
 			if len(spec.Order) == 0 {
-				order, err := defaultOrderForQuery(spec, q.RequestType, i)
-				if err != nil {
-					return err
+				// builder_ai_query in trace mode returns per-trace columns, where
+				// "timestamp" is not a valid order key; leave order empty so the
+				// backend applies its own default (last_activity_time desc).
+				if !(query.Type == "builder_ai_query" && q.RequestType == "trace") {
+					order, err := defaultOrderForQuery(spec, q.RequestType, i)
+					if err != nil {
+						return err
+					}
+					spec.Order = order
+					applied.OrderDefaulted = true
 				}
-				spec.Order = order
-				applied.OrderDefaulted = true
 			} else if err := validateAuthoredOrder(spec.Order, queryName, i, guide); err != nil {
 				return err
 			}
