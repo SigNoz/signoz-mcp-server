@@ -174,92 +174,54 @@ const expiredWorkspaceHTML = `<!DOCTYPE html>
 
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
-		name            string
-		userMeStatus    int    // status for /api/v1/user/me (always hit first)
-		userMeBody      string // body for user/me; defaults to JSON
-		saStatus        int    // status for /api/v1/service_accounts/me (only hit on user/me JSON 404)
-		saBody          string // body for service_accounts/me; defaults to JSON
-		expectedError   bool
-		checkErr        func(t *testing.T, err error)
-		expectUserMeHit bool
-		expectSAHit     bool
+		name          string
+		saStatus      int    // status for /api/v1/service_accounts/me
+		saBody        string // body for service_accounts/me; defaults to JSON
+		expectedError bool
+		checkErr      func(t *testing.T, err error)
 	}{
 		{
-			name:            "user/me succeeds (legacy user-level key)",
-			userMeStatus:    http.StatusOK,
-			expectedError:   false,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "service_accounts/me succeeds",
+			saStatus:      http.StatusOK,
+			expectedError: false,
 		},
 		{
-			name:            "user/me unauthorized returns error directly",
-			userMeStatus:    http.StatusUnauthorized,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "service_accounts/me unauthorized",
+			saStatus:      http.StatusUnauthorized,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:            "user/me 404 falls back to service_accounts/me success",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusOK,
-			expectedError:   false,
-			expectUserMeHit: true,
-			expectSAHit:     true,
-		},
-		{
-			name:            "user/me 404 falls back to service_accounts/me unauthorized",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusUnauthorized,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
+			name:          "service_accounts/me forbidden",
+			saStatus:      http.StatusForbidden,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:            "user/me 500 returns error directly without fallback",
-			userMeStatus:    http.StatusInternalServerError,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "service_accounts/me 500 is an unexpected status",
+			saStatus:      http.StatusInternalServerError,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.Contains(t, err.Error(), "unexpected status 500")
 			},
 		},
 		{
-			name:            "user/me HTML 404 means no instance, skips fallback",
-			userMeStatus:    http.StatusNotFound,
-			userMeBody:      expiredWorkspaceHTML,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "HTML 404 means no SigNoz API at the instance URL",
+			saStatus:      http.StatusNotFound,
+			saBody:        expiredWorkspaceHTML,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrInstanceNotFound)
 			},
 		},
 		{
-			name:            "user/me JSON 404 falls back, HTML 404 on service_accounts/me means no instance",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusNotFound,
-			saBody:          expiredWorkspaceHTML,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
-			checkErr: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrInstanceNotFound)
-			},
-		},
-		{
-			name:            "JSON 404 on both endpoints stays a generic unexpected status",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusNotFound,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
+			name:          "JSON 404 stays a generic unexpected status",
+			saStatus:      http.StatusNotFound,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.NotErrorIs(t, err, ErrInstanceNotFound)
 				assert.Contains(t, err.Error(), "unexpected status 404")
@@ -269,7 +231,6 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			userMeRequests := 0
 			saRequests := 0
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -278,24 +239,18 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
-				body := `{"status":"ok"}`
-				switch r.URL.Path {
-				case "/api/v1/user/me":
-					userMeRequests++
-					w.WriteHeader(tt.userMeStatus)
-					if tt.userMeBody != "" {
-						body = tt.userMeBody
-					}
-				case "/api/v1/service_accounts/me":
-					saRequests++
-					w.WriteHeader(tt.saStatus)
-					if tt.saBody != "" {
-						body = tt.saBody
-					}
-				default:
-					t.Fatalf("unexpected path %s", r.URL.Path)
+				if r.URL.Path != "/api/v1/service_accounts/me" {
+					t.Errorf("unexpected path %s", r.URL.Path)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
 				}
 
+				saRequests++
+				body := `{"status":"ok"}`
+				if tt.saBody != "" {
+					body = tt.saBody
+				}
+				w.WriteHeader(tt.saStatus)
 				_, _ = w.Write([]byte(body))
 			}))
 			defer server.Close()
@@ -316,16 +271,7 @@ func TestValidateCredentials(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			if tt.expectUserMeHit {
-				assert.Equal(t, 1, userMeRequests, "expected user/me to be called")
-			} else {
-				assert.Equal(t, 0, userMeRequests, "expected user/me NOT to be called")
-			}
-			if tt.expectSAHit {
-				assert.Equal(t, 1, saRequests, "expected service_accounts/me to be called")
-			} else {
-				assert.Equal(t, 0, saRequests, "expected service_accounts/me NOT to be called")
-			}
+			assert.Equal(t, 1, saRequests, "expected exactly one service_accounts/me call")
 		})
 	}
 }
