@@ -186,37 +186,19 @@ func (s *SigNoz) setRequestHeaders(ctx context.Context, req *http.Request, warnR
 // SigNoz API so the OAuth flow can reject bad API keys or instance URLs before
 // redirecting back to the MCP client.
 //
-// It first tries the user endpoint (/api/v1/user/me). A 404 response indicates
-// the API key belongs to a service account (newer SigNoz releases), so it
-// retries against /api/v1/service_accounts/me. Any other response from user/me
-// is returned directly.
+// The OAuth flow only ever supplies a service-account API key, so this hits
+// /api/v1/service_accounts/me directly.
 func (s *SigNoz) ValidateCredentials(ctx context.Context) error {
 	ctx = s.ensureTenantContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	userURL := fmt.Sprintf("%s/api/v1/user/me", s.baseURL)
-	status, body, err := s.doValidationRequest(ctx, userURL)
+	reqURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
+	status, body, err := s.doValidationRequest(ctx, reqURL)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "SigNoz credential validation request failed",
-			slog.String("url", userURL), logpkg.ErrAttr(err))
+			slog.String("url", reqURL), logpkg.ErrAttr(err))
 		return fmt.Errorf("failed to reach SigNoz API: %w", err)
-	}
-
-	// A JSON 404 means the key is a service-account key; validate via the
-	// service account endpoint. An HTML 404 is not a SigNoz API response at
-	// all (e.g. an expired cloud workspace's ingress page) — retrying the
-	// service-account endpoint would just hit the same page.
-	if status == http.StatusNotFound && !isHTMLBody(body) {
-		s.logger.DebugContext(ctx, "user/me returned non-user status, retrying with service_accounts/me",
-			slog.Int("status", status))
-		saURL := fmt.Sprintf("%s/api/v1/service_accounts/me", s.baseURL)
-		status, body, err = s.doValidationRequest(ctx, saURL)
-		if err != nil {
-			s.logger.ErrorContext(ctx, "SigNoz credential validation request failed",
-				slog.String("url", saURL), logpkg.ErrAttr(err))
-			return fmt.Errorf("failed to reach SigNoz API: %w", err)
-		}
 	}
 
 	return s.evaluateValidationResponse(ctx, status, body)

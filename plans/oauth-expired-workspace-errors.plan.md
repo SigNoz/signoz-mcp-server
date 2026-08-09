@@ -19,10 +19,10 @@ wrong recovery path, and the failures are not attributable per-tenant because
    - New sentinel `ErrInstanceNotFound`.
    - `evaluateValidationResponse`: status 404 with a non-JSON (HTML) body ⇒
      `ErrInstanceNotFound`. JSON 404s keep the generic "unexpected status"
-     error (a real API 404 means service-account retry logic elsewhere).
-   - `ValidateCredentials`: skip the `/api/v1/service_accounts/me` retry when
-     `/api/v1/user/me` returned an HTML 404 — it is the ingress page, not a
-     "key is a service account" signal.
+     error — a SigNoz API answered, so the instance exists.
+   - `ValidateCredentials` makes a single request to
+     `/api/v1/service_accounts/me` (no user-endpoint probe, no retry), so an
+     HTML 404 there is the ingress page, not a SigNoz API response.
 2. **Branch in the OAuth handler** (`internal/oauth/handlers.go`):
    - `errors.Is(err, client.ErrInstanceNotFound)` ⇒ HTTP 404, error code
      `invalid_request`, message: "We couldn't find a SigNoz workspace at that
@@ -37,11 +37,10 @@ wrong recovery path, and the failures are not attributable per-tenant because
    `mcp.tenant_url` (today only the allowlist rejection seeds it).
 
 ## Files to Modify
-- `internal/client/client.go` — `ErrInstanceNotFound`, HTML-404 classification,
-  skip pointless service-account retry on ingress 404.
-- `internal/client/client_test.go` — cases: HTML 404 on user/me (no retry,
-  `ErrInstanceNotFound`), JSON 404 → service-account retry preserved, HTML 404
-  on the retry ⇒ `ErrInstanceNotFound`.
+- `internal/client/client.go` — `ErrInstanceNotFound`, HTML-404 classification.
+- `internal/client/client_test.go` — cases: HTML 404 from
+  `service_accounts/me` ⇒ `ErrInstanceNotFound`, JSON 404 stays a generic
+  unexpected status.
 - `internal/oauth/handlers.go` — new branch + failure reasons + context
   seeding.
 - `internal/oauth/handlers_test.go` — authorize-submit renders the permanent
