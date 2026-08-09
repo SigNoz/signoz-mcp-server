@@ -56,6 +56,12 @@
   `GetAnalyticsIdentity` sharing `evaluateValidationResponse` only changes
   error identity/log text, not behavior.
 
+### 2026-08-09 — Plan updated for single-request validation
+- PR #280 dropped the `/api/v1/user/me` probe and its JSON-404 retry;
+  `ValidateCredentials` now calls `/api/v1/service_accounts/me` directly.
+- Plan's Approach step 1 and Files to Modify rewritten to match. HTML-404 ⇒
+  `ErrInstanceNotFound` classification and the handler mapping are unchanged.
+
 ## Open Questions
 - [x] Are the failing URLs really expired deployments? — Yes; confirmed via
   ingress 404 "workspace does not exist" HTML bodies in the hosted server's
