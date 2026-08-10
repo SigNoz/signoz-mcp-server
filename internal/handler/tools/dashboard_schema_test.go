@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -65,14 +66,218 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
 	}
 	for i, block := range panels {
-		var v any
-		if err := json.Unmarshal([]byte(block), &v); err != nil {
+		var panel map[string]any
+		if err := json.Unmarshal([]byte(block), &panel); err != nil {
 			t.Errorf("example %d is not valid JSON: %v", i, err)
 			continue
 		}
-		if err := resolved.Validate(v); err != nil {
+		if err := resolved.Validate(panel); err != nil {
 			t.Errorf("example %d does not validate against DashboardtypesPanel: %v", i, err)
 		}
+	}
+}
+
+func panelHasMultiEntryCompositeQuery(panel map[string]any) bool {
+	spec, _ := panel["spec"].(map[string]any)
+	queries, _ := spec["queries"].([]any)
+	for _, rawQuery := range queries {
+		query, _ := rawQuery.(map[string]any)
+		querySpec, _ := query["spec"].(map[string]any)
+		plugin, _ := querySpec["plugin"].(map[string]any)
+		if plugin["kind"] != "signoz/CompositeQuery" {
+			continue
+		}
+		pluginSpec, _ := plugin["spec"].(map[string]any)
+		nestedQueries, _ := pluginSpec["queries"].([]any)
+		if len(nestedQueries) > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper guards the local
+// schema correction that mirrors the backend's panel validation. The outer
+// panel queries array must contain exactly one wrapper, while its CompositeQuery
+// plugin may contain multiple builder queries and formulas.
+func TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper(t *testing.T) {
+	panels := extractJSONObjects(dashboard.WidgetExamples)
+	if len(panels) == 0 {
+		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
+	}
+	// Select by contract rather than position so documentation examples can be
+	// reordered. Using the composite fixture also proves both schemas leave its
+	// nested queries unbounded while constraining only the outer array.
+	var basePanel string
+	for _, block := range panels {
+		var panel map[string]any
+		if err := json.Unmarshal([]byte(block), &panel); err == nil && panelHasMultiEntryCompositeQuery(panel) {
+			basePanel = block
+			break
+		}
+	}
+	if basePanel == "" {
+		t.Fatal("no multi-entry CompositeQuery panel found in dashboard.WidgetExamples")
+	}
+
+	for schemaName, raw := range map[string][]byte{
+		"create": createDashboardSchema,
+		"update": updateDashboardSchema,
+	} {
+		t.Run(schemaName, func(t *testing.T) {
+			var full jsonschema.Schema
+			if err := json.Unmarshal(raw, &full); err != nil {
+				t.Fatalf("%s schema does not parse: %v", schemaName, err)
+			}
+			panelSpec := full.Defs["DashboardtypesPanelSpec"]
+			if panelSpec == nil || panelSpec.Properties["queries"] == nil {
+				t.Fatalf("%s schema is missing DashboardtypesPanelSpec.queries", schemaName)
+			}
+			queryDescription := panelSpec.Properties["queries"].Description
+			for _, required := range []string{
+				"Exactly one outer v2 query wrapper",
+				"does not limit logical queries",
+				"signoz/CompositeQuery",
+				"multiple queries or formulas",
+			} {
+				if !strings.Contains(queryDescription, required) {
+					t.Errorf("%s panel queries description must include %q, got: %s", schemaName, required, queryDescription)
+				}
+			}
+			panelSchema := &jsonschema.Schema{
+				Ref:  "#/$defs/DashboardtypesPanel",
+				Defs: full.Defs,
+			}
+			resolved, err := panelSchema.Resolve(nil)
+			if err != nil {
+				t.Fatalf("%s panel schema does not resolve: %v", schemaName, err)
+			}
+
+			for _, queryCount := range []int{0, 1, 2} {
+				t.Run(fmt.Sprintf("queries_%d", queryCount), func(t *testing.T) {
+					var panel map[string]any
+					if err := json.Unmarshal([]byte(basePanel), &panel); err != nil {
+						t.Fatalf("example panel is not valid JSON: %v", err)
+					}
+					spec := panel["spec"].(map[string]any)
+					queries := spec["queries"].([]any)
+					switch queryCount {
+					case 0:
+						spec["queries"] = []any{}
+					case 1:
+						// Keep the valid one-outer-wrapper example unchanged.
+					case 2:
+						spec["queries"] = append(queries, queries[0])
+					}
+
+					err := resolved.Validate(panel)
+					if queryCount == 1 && err != nil {
+						t.Fatalf("one outer query wrapper should validate: %v", err)
+					}
+					if queryCount != 1 && err == nil {
+						t.Fatalf("%d outer query wrappers should fail validation", queryCount)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestPatchSchemaCarriesOneQueryRecovery(t *testing.T) {
+	var schema struct {
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+		Defs map[string]struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(patchDashboardSchema, &schema); err != nil {
+		t.Fatalf("patch schema does not parse: %v", err)
+	}
+	description := schema.Properties["patch"].Description
+	for _, required := range []string{
+		"exactly one outer query wrapper",
+		"replace /spec/panels/<panelId>/spec/queries/0",
+		"never add or append a sibling outer wrapper",
+		"signoz/CompositeQuery",
+		"multiple logical queries or formulas",
+	} {
+		if !strings.Contains(description, required) {
+			t.Errorf("patch description must include %q, got: %s", required, description)
+		}
+	}
+
+	operation := schema.Defs["DashboardtypesJSONPatchOperation"].Properties
+	pathDescription := operation["path"].Description
+	valueDescription := operation["value"].Description
+	for field, required := range map[string]string{
+		"path":  "/spec/panels/<panelId>/spec/queries/0",
+		"value": "/spec/panels/<panelId>/spec/queries/0 takes a DashboardtypesQuery",
+	} {
+		if got := operation[field].Description; !strings.Contains(got, required) {
+			t.Errorf("patch operation %s description must include %q, got: %s", field, required, got)
+		}
+	}
+	if !strings.Contains(valueDescription, "/tags/N (or /-) takes a TagtypesPostableTag") {
+		t.Errorf("patch operation value description must preserve tag append guidance, got: %s", valueDescription)
+	}
+	if !strings.Contains(pathDescription, "/tags/-") {
+		t.Errorf("patch operation path description must preserve tag append guidance, got: %s", pathDescription)
+	}
+	for _, forbidden := range []string{
+		"/spec/panels/<panelId>/spec/queries/N",
+		"/spec/panels/<panelId>/spec/queries/-",
+	} {
+		if strings.Contains(valueDescription, forbidden) {
+			t.Errorf("patch operation value description must not include %q, got: %s", forbidden, valueDescription)
+		}
+	}
+	for label, got := range map[string]string{
+		"patch": description,
+		"path":  pathDescription,
+		"value": valueDescription,
+	} {
+		if strings.Contains(got, "/spec/panels/<id>") {
+			t.Errorf("%s description must use <panelId>, got: %s", label, got)
+		}
+	}
+}
+
+func TestPatchSchemaRequiresArrayButAllowsEmpty(t *testing.T) {
+	var full jsonschema.Schema
+	if err := json.Unmarshal(patchDashboardSchema, &full); err != nil {
+		t.Fatalf("patch schema does not parse: %v", err)
+	}
+	resolved, err := full.Resolve(nil)
+	if err != nil {
+		t.Fatalf("patch schema does not resolve: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		patch     any
+		wantValid bool
+	}{
+		{name: "empty array remains valid", patch: []any{}, wantValid: true},
+		{name: "null is rejected", patch: nil},
+		{name: "object is rejected", patch: map[string]any{}},
+		{name: "string is rejected", patch: "[]"},
+		{name: "number is rejected", patch: float64(1)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := resolved.Validate(map[string]any{"patch": tc.patch})
+			if tc.wantValid && err != nil {
+				t.Fatalf("valid patch payload was rejected: %v", err)
+			}
+			if !tc.wantValid && err == nil {
+				t.Fatalf("invalid patch value %T should be rejected", tc.patch)
+			}
+		})
 	}
 }
 

@@ -756,7 +756,10 @@
           "items": {
             "$ref": "#/$defs/DashboardtypesQuery"
           },
-          "type": "array"
+          "type": "array",
+          "description": "Exactly one outer v2 query wrapper. This does not limit logical queries: use a signoz/CompositeQuery plugin and put multiple queries or formulas in its spec.queries.",
+          "minItems": 1,
+          "maxItems": 1
         }
       },
       "required": [

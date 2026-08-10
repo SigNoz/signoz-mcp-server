@@ -3,7 +3,7 @@ package dashboard
 const WidgetExamples = `
 Worked v6 (Perses) dashboard examples. Every payload below is a real widget created against a live SigNoz instance and read back (GET), so each field is server-accepted, not guessed. Each block is one panel — the object you place in the spec.panels map under a panel id (shown unkeyed here). Copy the structure, not the literal attribute names.
 
-For the rules behind these — which panel and query type to choose, layout, legends, the one-query-per-panel constraint, and variables — read signoz://dashboard/instructions and signoz://dashboard/widgets-instructions. For the exact field set, use the create/update tool's JSON Schema.
+For the rules behind these — which panel and query type to choose, layout, legends, the one-outer-query-wrapper-per-panel wire constraint, and variables — read signoz://dashboard/instructions and signoz://dashboard/widgets-instructions. For the exact field set, use the create/update tool's JSON Schema.
 
 Quick reference (all illustrated below):
 - Aggregations: count(), p50/p95/p99(field), avg/sum/min/max(field). Name a column with the aggregation's "alias" field (NOT "as '...'" inside the expression). Multiple aggregations = multiple entries in the aggregations[] array.
@@ -16,7 +16,7 @@ Quick reference (all illustrated below):
 
 Example: Token Usage (Timeseries with a formula over disabled base queries)
 
-A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token-usage"); a layout item links to it via content.$ref. It is a signoz/TimeSeriesPanel whose signoz/CompositeQuery sums prompt + completion tokens: two builder_query entries (A, B) marked "disabled": true and a builder_formula F1 ("A + B") left enabled, so only the summed series renders (the pattern for any computed series). Filters reference $service_name / $language / $llm_model, which are DynamicVariables declared at the dashboard level — see signoz://dashboard/instructions for variable wiring.
+A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token-usage"); a layout item links to it via content.$ref. It is a signoz/TimeSeriesPanel whose single outer query wrapper uses signoz/CompositeQuery to sum prompt + completion tokens: two builder_query entries (A, B) marked "disabled": true and a builder_formula F1 ("A + B") left enabled, so only the summed series renders (the pattern for any computed series). Filters reference $service_name / $language / $llm_model, which are DynamicVariables declared at the dashboard level — see signoz://dashboard/instructions for variable wiring.
 
 {
   "kind": "Panel",
@@ -72,9 +72,9 @@ A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token
   }
 }
 
-Example: Latency (P95) (single builder query — direct, no CompositeQuery)
+Example: Latency (P95) (single logical builder query — direct plugin, no CompositeQuery)
 
-A timeseries widget with just one query and no formula, so the panel's single query sets its plugin directly to signoz/BuilderQuery — no signoz/CompositeQuery wrapper (contrast Example 1, which uses CompositeQuery to combine two builder queries + a formula). Shows a p95(duration_nano) aggregation with an alias, a static per-query legend ("P95"), and the y-axis unit via the panel plugin's formatting.unit ("ns"). Filters reference the same dashboard-level DynamicVariables as Example 1.
+A timeseries widget with just one logical query and no formula, so the panel's outer query wrapper sets its plugin directly to signoz/BuilderQuery — no signoz/CompositeQuery wrapper (contrast Example 1, which uses CompositeQuery to combine two builder queries + a formula). Shows a p95(duration_nano) aggregation with an alias, a static per-query legend ("P95"), and the y-axis unit via the panel plugin's formatting.unit ("ns"). Filters reference the same dashboard-level DynamicVariables as Example 1.
 
 {
   "kind": "Panel",
@@ -109,7 +109,7 @@ A timeseries widget with just one query and no formula, so the panel's single qu
 
 Example: Number of Requests (single builder query with groupBy — per-series legend)
 
-A timeseries widget that groups a count() of trace spans by the service.name resource attribute, so each service renders as its own line. Like Example 2 it has a single query and no formula, so the query's plugin is signoz/BuilderQuery directly (no signoz/CompositeQuery wrapper). The groupBy entry uses "name" (the v6 field — NOT the old "key") alongside fieldContext/fieldDataType/signal, and legend "{{service.name}}" templates each series label from that groupBy key (set legend whenever a series-producing panel has a groupBy, else SigNoz shows raw query ids). The filter combines dashboard-level DynamicVariables ($service_name / $language / $llm_model) with a static condition (llm.provider = 'anthropic'). Legend sits at the bottom via the panel plugin; y-axis unit and soft min/max are left to server defaults.
+A timeseries widget that groups a count() of trace spans by the service.name resource attribute, so each service renders as its own line. Like Example 2 it has a single logical query and no formula, so the outer query wrapper's plugin is signoz/BuilderQuery directly (no signoz/CompositeQuery wrapper). The groupBy entry uses "name" (the v6 field — NOT the old "key") alongside fieldContext/fieldDataType/signal, and legend "{{service.name}}" templates each series label from that groupBy key (set legend whenever a series-producing panel has a groupBy, else SigNoz shows raw query ids). The filter combines dashboard-level DynamicVariables ($service_name / $language / $llm_model) with a static condition (llm.provider = 'anthropic'). Legend sits at the bottom via the panel plugin; y-axis unit and soft min/max are left to server defaults.
 
 {
   "kind": "Panel",
@@ -584,7 +584,7 @@ Identical to the Input Tokens value panel, summing llm.token_count.completion in
 
 Example: Error Rate (value panel — composite query with a ratio formula)
 
-A value widget computing errored ÷ total as a single percentage. Because it combines two queries with a formula, the query uses signoz/CompositeQuery (like the Token Usage graph): builder_query A (errored, disabled) and B (non-errored, disabled), plus builder_formula F1 = "A / (A + B)" left enabled so only the ratio renders. The panel is a signoz/NumberPanel with formatting.unit "percentunit". has_error is a boolean, so the filters use unquoted true/false.
+A value widget computing errored ÷ total as a single percentage. Because it combines two logical queries with a formula, the outer query wrapper uses signoz/CompositeQuery (like the Token Usage graph): builder_query A (errored, disabled) and B (non-errored, disabled), plus builder_formula F1 = "A / (A + B)" left enabled so only the ratio renders. The panel is a signoz/NumberPanel with formatting.unit "percentunit". has_error is a boolean, so the filters use unquoted true/false.
 
 {
   "kind": "Panel",

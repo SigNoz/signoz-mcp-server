@@ -6,7 +6,9 @@ Generator for the embedded dashboard input schemas in this directory
 It takes the three v2 (Perses) root schemas from SigNoz's OpenAPI spec, computes
 the transitive $ref closure of each, rewrites the OAS refs into self-contained
 JSON Schema ($defs), converts OAS 3.0 `nullable: true` into JSON-Schema null
-unions, and injects the top-level `searchContext` property. The Perses plugin
+unions, injects the top-level `searchContext` property, and adds the backend's
+exactly-one-outer-query-wrapper-per-panel cardinality constraint plus patch-specific recovery
+guidance that the upstream reflector cannot express. The Perses plugin
 `oneOf`/discriminator unions are preserved (struct reflection can't express them).
 
 The MCP server is a pass-through: these schemas are served to clients verbatim
@@ -128,6 +130,75 @@ def pin_discriminators(defs):
             if prop not in req:
                 req.append(prop)
 
+def enforce_panel_query_cardinality(defs):
+    """Match the v2 backend's exactly-one-outer-query-wrapper validation.
+
+    The upstream OpenAPI reflector currently omits the slice bounds enforced by
+    DashboardtypesPanelSpec validation. Apply them only to the panel's outer
+    queries array; CompositeQuery's nested queries array intentionally supports
+    multiple entries.
+    """
+    panel_spec = defs.get('DashboardtypesPanelSpec')
+    if panel_spec is None:
+        return
+    queries = panel_spec.get('properties', {}).get('queries')
+    if not isinstance(queries, dict) or queries.get('type') != 'array':
+        raise SystemExit('DashboardtypesPanelSpec.queries is missing or is not an array')
+    description = ("Exactly one outer v2 query wrapper. This does not limit logical queries: "
+                   "use a signoz/CompositeQuery plugin and put multiple queries or formulas "
+                   "in its spec.queries.")
+    existing_description = queries.get('description')
+    if existing_description not in (None, description):
+        raise SystemExit('DashboardtypesPanelSpec.queries has conflicting description')
+    queries['description'] = description
+    for bound in ('minItems', 'maxItems'):
+        existing = queries.get(bound)
+        if existing not in (None, 1):
+            raise SystemExit(f'DashboardtypesPanelSpec.queries has conflicting {bound}: {existing}')
+        queries[bound] = 1
+
+def enforce_patch_array_type(schema):
+    """Reject OpenAPI's nullable patch root while preserving empty arrays.
+
+    DashboardtypesPatchableDashboardV2 is reflected as a nullable array, but
+    null is not an RFC 6902 patch document. Keep the generic nullable rewrite
+    intact for every other schema and narrow only this patch-tool root.
+    """
+    patch_type = schema.get('type')
+    if patch_type == 'array':
+        return
+    if isinstance(patch_type, list) and len(patch_type) == 2 and set(patch_type) == {'array', 'null'}:
+        schema['type'] = 'array'
+        return
+    raise SystemExit(f'DashboardtypesPatchableDashboardV2 has unexpected type: {patch_type}')
+
+def enforce_patch_operation_guidance(defs):
+    """Keep generated JSON Patch guidance consistent with panel cardinality."""
+    operation = defs.get('DashboardtypesJSONPatchOperation')
+    properties = operation.get('properties', {}) if isinstance(operation, dict) else {}
+    path = properties.get('path')
+    value = properties.get('value')
+    if not isinstance(path, dict) or not isinstance(value, dict):
+        raise SystemExit('DashboardtypesJSONPatchOperation path/value descriptions are missing')
+
+    old_panel_path = '/spec/panels/<id>'
+    panel_path = '/spec/panels/<panelId>'
+    for field in (path, value):
+        description = field.get('description', '')
+        if old_panel_path in description:
+            description = description.replace(old_panel_path, panel_path)
+        elif panel_path not in description:
+            raise SystemExit('DashboardtypesJSONPatchOperation panel path guidance is missing')
+        field['description'] = description
+
+    old_query_path = f'{panel_path}/spec/queries/N (or /-)'
+    query_path = f'{panel_path}/spec/queries/0'
+    description = value['description']
+    if old_query_path in description:
+        value['description'] = description.replace(old_query_path, query_path)
+    elif query_path not in description:
+        raise SystemExit('DashboardtypesJSONPatchOperation query path guidance is unexpected')
+
 def build_defs(root_name):
     names = closure(root_name)
     names.discard(root_name)  # root inlined at top level; deps in $defs
@@ -135,9 +206,14 @@ def build_defs(root_name):
     for n in sorted(names):
         defs[n] = rewrite_refs(schemas[n])
     pin_discriminators(defs)
+    enforce_panel_query_cardinality(defs)
     return defs
 
 SEARCH_CTX = {"type": "string", "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."}
+PATCH_DESCRIPTION = ("RFC 6902 operations. A panel's v2 payload must retain exactly one outer query "
+                     "wrapper: replace /spec/panels/<panelId>/spec/queries/0; never add or append a "
+                     "sibling outer wrapper. Use signoz/CompositeQuery inside that wrapper for "
+                     "multiple logical queries or formulas. See signoz://dashboard/patch-instructions.")
 
 def assert_no_oas_refs(doc, label):
     s = json.dumps(doc)
@@ -180,7 +256,10 @@ reports['update'] = (update['required'], list(update['properties'].keys()), len(
 
 # ---- patch: id + patch(PatchableDashboardV2) + searchContext ----
 proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
+enforce_patch_array_type(proot)
+proot['description'] = PATCH_DESCRIPTION
 pdefs = build_defs('DashboardtypesPatchableDashboardV2')
+enforce_patch_operation_guidance(pdefs)
 # K5 contract: `id` + `uuid` alias, neither required (only `patch` is required).
 patch = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
          "properties": {
