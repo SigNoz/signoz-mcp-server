@@ -10,7 +10,7 @@
 ## Reference Links
 - [`docs/mcp-best-practices.md`](../docs/mcp-best-practices.md)
 - [`plans/observability-refactor.plan.md`](observability-refactor.plan.md)
-- [`plans/mcp-go-v0.56-upgrade.plan.md`](mcp-go-v0.56-upgrade.plan.md)
+- [`plans/official-go-sdk-migration.plan.md`](official-go-sdk-migration.plan.md) (successor of the retired `mcp-go-v0.56-upgrade` plan)
 
 ## Key Decisions & Discussion Log
 

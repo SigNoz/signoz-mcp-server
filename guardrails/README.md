@@ -8,6 +8,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 
 - `policy.go` contains shared limits, official aliases, and explicitly grandfathered exceptions.
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
+- `internal/mcp-server/testdata/wire-catalog/` holds the reviewed transport-level JSON-RPC responses for the discovery surface.
 - `.github/workflows/guardrails.yaml` verifies the inventory and runs the guarded tests.
 - `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector compatibility check.
 - Package-local functions named `TestGuardrail_*` contain the enforcement logic.
@@ -20,6 +21,17 @@ access to unexported retry, registration, middleware, and server-composition hel
 - Mutating POST requests are not replayed after ambiguous failures; audited read-only POSTs may retry.
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content.
+- `initialize`, `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list` match reviewed goldens byte for byte over the production HTTP transport.
+
+`TestGuardrail_WireCatalogGoldens` captures that discovery surface by POSTing
+hand-written JSON-RPC bodies at the production handler, so it stays valid across
+an MCP SDK change and can prove one preserved the client-visible catalog. It
+normalizes only the build-stamped server version and catalog ordering.
+Regenerate the goldens deliberately, then review the diff as a contract change:
+
+```bash
+go test ./internal/mcp-server -run TestGuardrail_WireCatalogGoldens -update
+```
 
 The guardrails intentionally do not impose a total serialized-schema byte ceiling.
 Complex tools may need extensive field-local schema guidance; review material catalog

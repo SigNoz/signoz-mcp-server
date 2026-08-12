@@ -1,0 +1,82 @@
+{
+  "method": "prompts/list",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "prompts/list",
+    "params": {}
+  },
+  "httpStatus": 200,
+  "framing": "json",
+  "response": {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "prompts": [
+        {
+          "arguments": [
+            {
+              "description": "Name of the metric to compare",
+              "name": "metricName",
+              "required": true
+            },
+            {
+              "description": "First time period (e.g., '24h ago to 12h ago')",
+              "name": "period1",
+              "required": true
+            },
+            {
+              "description": "Second time period (e.g., 'last 12h')",
+              "name": "period2",
+              "required": true
+            }
+          ],
+          "description": "Compare a metric across two time periods to identify changes or regressions.",
+          "name": "compare_metrics"
+        },
+        {
+          "arguments": [
+            {
+              "description": "Service name to investigate",
+              "name": "service",
+              "required": true
+            },
+            {
+              "description": "Time range to search (e.g., '1h', '6h', '24h'). Defaults to '1h'.",
+              "name": "timeRange"
+            }
+          ],
+          "description": "Investigate errors for a service — searches error logs, aggregates error traces, and lists top operations.",
+          "name": "debug_service_errors"
+        },
+        {
+          "arguments": [
+            {
+              "description": "Alert rule ID to triage",
+              "name": "alertId",
+              "required": true
+            }
+          ],
+          "description": "Triage an active alert — fetches alert details, history, related logs, and traces.",
+          "name": "incident_triage"
+        },
+        {
+          "arguments": [
+            {
+              "description": "Service name to analyze",
+              "name": "service",
+              "required": true
+            },
+            {
+              "description": "Time range to analyze (e.g., '1h', '6h', '24h'). Defaults to '1h'.",
+              "name": "timeRange"
+            }
+          ],
+          "description": "Analyze p99 latency for a service — queries latency metrics, aggregates trace durations, and identifies slow operations.",
+          "name": "latency_analysis"
+        }
+      ]
+    }
+  }
+}
