@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -25,10 +25,7 @@ func alertSummaryJSON(t *testing.T, contents []mcp.ResourceContents) map[string]
 	if len(contents) != 1 {
 		t.Fatalf("got %d resource contents, want 1", len(contents))
 	}
-	content, ok := contents[0].(mcp.TextResourceContents)
-	if !ok {
-		t.Fatalf("content type = %T, want mcp.TextResourceContents", contents[0])
-	}
+	content := contents[0]
 	if content.MIMEType != "application/json" {
 		t.Fatalf("MIME type = %q, want application/json", content.MIMEType)
 	}
@@ -158,10 +155,7 @@ func TestHandleDashboardSummaryResourceReturnsFullDefinition(t *testing.T) {
 	if len(contents) != 1 {
 		t.Fatalf("got %d resource contents, want 1", len(contents))
 	}
-	content, ok := contents[0].(mcp.TextResourceContents)
-	if !ok {
-		t.Fatalf("content type = %T, want mcp.TextResourceContents", contents[0])
-	}
+	content := contents[0]
 	if content.URI != req.Params.URI || content.MIMEType != "application/json" || content.Text != string(want) {
 		t.Fatalf("dashboard resource = %#v, want unchanged full definition", content)
 	}

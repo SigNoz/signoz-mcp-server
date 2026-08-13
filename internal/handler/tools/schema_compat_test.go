@@ -1,12 +1,56 @@
 package tools
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
 )
+
+func TestToolInvocationDecoratorRecoversToCodedInternalError(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	h := &Handler{logger: logger}
+	handler := h.toolInvocationDecorator("panic_probe", func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		panic("secret-panic-canary")
+	})
+
+	result, err := handler(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("tool panic returned protocol error: %v", err)
+	}
+	if result == nil || !result.IsError || toolerrors.Code(result) != CodeInternalError {
+		t.Fatalf("tool panic result = %#v, want coded INTERNAL_ERROR", result)
+	}
+	if strings.Contains(logs.String(), "secret-panic-canary") {
+		t.Fatal("panic value leaked into operator log")
+	}
+	if !strings.Contains(logs.String(), "tool handler panic recovered") || !strings.Contains(logs.String(), `"gen_ai.tool.name":"panic_probe"`) || !strings.Contains(logs.String(), `"stack":`) {
+		t.Fatalf("panic log missing bounded operator context: %s", logs.String())
+	}
+}
+
+type uncloneableSchema struct{}
+
+func (uncloneableSchema) MarshalJSON() ([]byte, error) { return nil, fmt.Errorf("clone boom") }
+
+func TestCloneSchemaValueFailureIsFatal(t *testing.T) {
+	defer func() {
+		got := fmt.Sprint(recover())
+		if !strings.Contains(got, "clone tool schema (type tools.uncloneableSchema): marshal:") {
+			t.Fatalf("panic = %q", got)
+		}
+	}()
+	cloneSchemaValue(uncloneableSchema{})
+}
 
 func TestNormalizeRawSchemaReplacesSchemaTrueWithEmptyObject(t *testing.T) {
 	raw := json.RawMessage(`{
@@ -281,7 +325,7 @@ func normalizedInputSchema(t *testing.T, tool mcp.Tool) map[string]any {
 	t.Helper()
 	normalizeToolSchemas(&tool)
 	var schema map[string]any
-	if err := json.Unmarshal(tool.RawInputSchema, &schema); err != nil {
+	if err := json.Unmarshal(inputSchemaJSON(tool), &schema); err != nil {
 		t.Fatalf("unmarshal input schema: %v", err)
 	}
 	return schema

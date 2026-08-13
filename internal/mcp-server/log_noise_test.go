@@ -2,16 +2,14 @@ package mcp_server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	mcpgoserver "github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -34,34 +32,16 @@ func TestInitializeDoesNotAdvertiseResourceSubscribe(t *testing.T) {
 	// when resources are advertised.
 	handler.RegisterQueryBuilderV5Handlers(s)
 
-	ctx := newAnalyticsTestContext(context.Background(), "sess-init-cap")
-	resp := s.HandleMessage(ctx, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"cap-test","version":"0.0.1"}}}`))
-
-	raw, err := json.Marshal(resp)
+	client, err := newIntegrationClient(t, s)
 	if err != nil {
-		t.Fatalf("marshal initialize response: %v", err)
+		t.Fatal(err)
 	}
-
-	var envelope struct {
-		Result struct {
-			Capabilities struct {
-				Resources *struct {
-					Subscribe bool `json:"subscribe"`
-				} `json:"resources"`
-			} `json:"capabilities"`
-		} `json:"result"`
+	result := client.client.InitializeResult()
+	if result.Capabilities.Resources == nil {
+		t.Fatal("resources capability missing from initialize result")
 	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		t.Fatalf("unmarshal initialize response %q: %v", raw, err)
-	}
-	if envelope.Result.Capabilities.Resources == nil {
-		t.Fatalf("resources capability missing from initialize result %q; expected it advertised (without subscribe) once resources are registered", raw)
-	}
-	if envelope.Result.Capabilities.Resources.Subscribe {
-		t.Fatalf("resources.subscribe advertised as true in %q; this server does not implement resources/subscribe", raw)
-	}
-	if strings.Contains(string(raw), `"subscribe":true`) {
-		t.Fatalf("initialize result advertises subscribe support: %q", raw)
+	if result.Capabilities.Resources.Subscribe {
+		t.Fatal("initialize result advertises resources.subscribe")
 	}
 }
 
@@ -75,7 +55,7 @@ func TestMethodErrorLogLevel(t *testing.T) {
 		err  error
 		want slog.Level
 	}{
-		{"resources subscribe not supported", fmt.Errorf("resources subscribe %w", mcpgoserver.ErrUnsupported), slog.LevelDebug},
+		{"resources subscribe not supported", &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "unsupported"}, slog.LevelDebug},
 		{"client canceled", fmt.Errorf(`Post "https://tenant.signoz.cloud/api/v5/query_range": %w`, context.Canceled), slog.LevelDebug},
 		{"deadline exceeded", fmt.Errorf("query: %w", context.DeadlineExceeded), slog.LevelError},
 		{"generic", errors.New("boom"), slog.LevelError},
@@ -94,24 +74,22 @@ func TestMethodErrorLogLevel(t *testing.T) {
 // protocol noise (resources/subscribe rejections, client cancellations) is
 // still emitted — fail open, never fail silent — but below ERROR, while
 // deadline-exceeded and generic failures remain ERROR.
-func TestBuildHooks_ErrorLogSeverityClassification(t *testing.T) {
+func TestReceivingMiddleware_ErrorLogSeverityClassification(t *testing.T) {
 	var buf lockedBuffer
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	mcpServer := NewMCPServer(newBufferedLogger(&buf, slog.LevelDebug), handler, cfg, noopanalytics.New(), nil)
-	hooks := mcpServer.buildHooks()
-
-	fail := func(method mcp.MCPMethod, id string, err error) {
+	middleware := mcpServer.receivingMiddleware(func(string) bool { return false })
+	fail := func(method, id string, err error) {
 		ctx := newAnalyticsTestContext(context.Background(), "sess-"+id)
-		req := &mcp.SubscribeRequest{}
-		singleHook(t, hooks.OnBeforeAny, "OnBeforeAny")(ctx, id, method, req)
-		singleHook(t, hooks.OnError, "OnError")(ctx, id, method, req, err)
+		handler := middleware(func(context.Context, string, mcp.Request) (mcp.Result, error) { return nil, err })
+		_, _ = handler(ctx, method, nil)
 	}
 
-	fail(mcp.MethodResourcesSubscribe, "req-sub", fmt.Errorf("resources subscribe %w", mcpgoserver.ErrUnsupported))
-	fail(mcp.MethodResourcesRead, "req-cancel", fmt.Errorf("read: %w", context.Canceled))
-	fail(mcp.MethodResourcesList, "req-deadline", fmt.Errorf("list: %w", context.DeadlineExceeded))
-	fail(mcp.MethodPromptsList, "req-generic", errors.New("boom"))
+	fail("resources/subscribe", "req-sub", &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "unsupported"})
+	fail("resources/read", "req-cancel", fmt.Errorf("read: %w", context.Canceled))
+	fail("resources/list", "req-deadline", fmt.Errorf("list: %w", context.DeadlineExceeded))
+	fail("prompts/list", "req-generic", errors.New("boom"))
 
 	levels := map[string]string{}
 	for _, rec := range parseJSONLogLines(t, &buf) {
@@ -124,10 +102,10 @@ func TestBuildHooks_ErrorLogSeverityClassification(t *testing.T) {
 	}
 
 	want := map[string]string{
-		string(mcp.MethodResourcesSubscribe): "DEBUG",
-		string(mcp.MethodResourcesRead):      "DEBUG",
-		string(mcp.MethodResourcesList):      "ERROR",
-		string(mcp.MethodPromptsList):        "ERROR",
+		"resources/subscribe": "DEBUG",
+		"resources/read":      "DEBUG",
+		"resources/list":      "ERROR",
+		"prompts/list":        "ERROR",
 	}
 	for method, wantLevel := range want {
 		got, ok := levels[method]

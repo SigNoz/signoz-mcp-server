@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
-
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -23,7 +21,7 @@ func registeredToolProps(t *testing.T, toolName string) map[string]any {
 	t.Helper()
 
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
@@ -36,7 +34,7 @@ func registeredToolProps(t *testing.T, toolName string) map[string]any {
 	h.RegisterViewHandlers(s)
 	h.RegisterDocsHandlers(s)
 
-	tools := s.ListTools()
+	tools := listTestTools(t, s)
 	st, ok := tools[toolName]
 	if !ok {
 		t.Fatalf("tool %q not registered", toolName)
@@ -87,9 +85,9 @@ func TestQueryToolLimitSchemaDefaults(t *testing.T) {
 
 func TestExecuteBuilderQueryAgentFacingRouting(t *testing.T) {
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterQueryBuilderV5Handlers(s)
-	registered := s.ListTools()["signoz_execute_builder_query"]
+	registered := listTestTools(t, s)["signoz_execute_builder_query"]
 	description := registered.Tool.Description
 	if !strings.HasPrefix(description, "Use this only when") {
 		t.Fatalf("execute_builder_query description must lead with its selection boundary: %q", description)
@@ -195,9 +193,9 @@ func TestAlertHistoryAgentFacingContract(t *testing.T) {
 	}
 
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterAlertsHandlers(s)
-	registered, ok := s.ListTools()["signoz_get_alert_history"]
+	registered, ok := listTestTools(t, s)["signoz_get_alert_history"]
 	if !ok {
 		t.Fatal("signoz_get_alert_history not registered")
 	}
@@ -228,11 +226,11 @@ func TestEvolvingSetsAreFreeStrings(t *testing.T) {
 	}
 	// notification-channel type lives on a handler we also need registered.
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
 	h.RegisterNotificationChannelHandlers(s)
-	registered := s.ListTools()
+	registered := listTestTools(t, s)
 
 	for _, tc := range cases {
 		t.Run(tc.tool+"/"+tc.prop, func(t *testing.T) {
@@ -303,9 +301,9 @@ func TestAggregationDescriptionDriftGuard(t *testing.T) {
 // (guarded/skippable) diffing validChannelTypes against a real instance.
 func TestChannelTypeDriftGuard(t *testing.T) {
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterNotificationChannelHandlers(s)
-	registered := s.ListTools()
+	registered := listTestTools(t, s)
 
 	// Single in-code source of truth.
 	inCode := make([]string, 0, len(validChannelTypes))

@@ -12,8 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -61,12 +60,11 @@ func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 
 // rawInputSchema wires a pre-built JSON Schema as a tool's input schema. It
 // clears the default object InputSchema that mcp.NewTool seeds, because
-// mcp-go's Tool.MarshalJSON rejects a tool that has BOTH InputSchema and
+// The descriptor contract rejects a tool that has BOTH InputSchema and
 // RawInputSchema set (mcp.WithRawInputSchema alone leaves the default in place).
 func rawInputSchema(schema []byte) mcp.ToolOption {
 	return func(t *mcp.Tool) {
-		t.InputSchema = mcp.ToolInputSchema{}
-		t.RawInputSchema = json.RawMessage(schema)
+		t.InputSchema = json.RawMessage(schema)
 	}
 }
 
@@ -85,7 +83,7 @@ var (
 	templateHTTPClient     = &http.Client{Timeout: templateFetchTimeout}
 )
 
-func (h *Handler) RegisterDashboardHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering dashboard handlers")
 
 	tool := mcp.NewTool("signoz_list_dashboards",
@@ -555,7 +553,7 @@ func (h *Handler) handleDeleteDashboard(ctx context.Context, req mcp.CallToolReq
 }
 
 // registerDashboardResources registers all MCP resources needed for dashboard creation/update.
-func (h *Handler) registerDashboardResources(s *server.MCPServer) {
+func (h *Handler) registerDashboardResources(s *mcp.Server) {
 	clickhouseLogsSchemaResource := mcp.NewResource(
 		"signoz://dashboard/clickhouse-schema-for-logs",
 		"ClickHouse Logs Schema",

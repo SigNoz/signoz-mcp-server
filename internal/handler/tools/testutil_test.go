@@ -2,14 +2,77 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"github.com/mark3labs/mcp-go/mcp"
+	official "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 )
+
+type registeredTool struct{ Tool mcp.Tool }
+
+func newMCPTestServer() *mcp.Server {
+	return official.NewServer(&official.Implementation{Name: "test", Version: "0.0.0"}, nil)
+}
+
+func listTestTools(t *testing.T, server *mcp.Server) map[string]*registeredTool {
+	t.Helper()
+	clientTransport, serverTransport := official.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+	client := official.NewClient(&official.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+	result, err := clientSession.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make(map[string]*registeredTool, len(result.Tools))
+	for _, tool := range result.Tools {
+		out[tool.Name] = &registeredTool{Tool: *tool}
+	}
+	return out
+}
+
+func callTestToolFromJSONRPC(ctx context.Context, t *testing.T, server *mcp.Server, message json.RawMessage) *mcp.CallToolResult {
+	t.Helper()
+	var request struct {
+		Params struct {
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(message, &request); err != nil {
+		t.Fatal(err)
+	}
+	clientTransport, serverTransport := official.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := official.NewClient(&official.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+	result, err := clientSession.CallTool(ctx, &official.CallToolParams{Name: request.Params.Name, Arguments: request.Params.Arguments})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
 
 // newTestHandler returns a Handler whose GetClient always returns the given mock.
 // No real HTTP client or cache is created.

@@ -7,11 +7,10 @@ import (
 	"log/slog"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
-func (h *Handler) RegisterMetricUsageHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterMetricUsageHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering metric usage handlers")
 
 	tool := mcp.NewTool("signoz_check_metric_usage",

@@ -252,6 +252,24 @@ The surface advertised at initialization is a stable executable promise.
   by the companion `SigNoz/agent-skills` repository changes, create and link
   its companion PR; internal or additive changes need no skills update.
 
+### Protocol-runtime migrations
+
+- **[CMP-4] Dual-era proof.** A runtime migration MUST exercise legacy
+  `2025-11-25` initialize/initialized flows and modern `2026-07-28`
+  discover/direct-request flows over every production transport. Exact wire
+  behavior belongs in SDK-independent raw tests; an external client such as
+  Inspector is an additional interoperability check, not the contract oracle.
+- **[CMP-5] Protocol-owned differences.** Keep client-visible tool, resource,
+  template, and prompt contracts exact. SDK-owned differences MAY be accepted
+  only when listed narrowly with old/new behavior and a focused regression
+  assertion. Discovery ordering, deprecated logging, sessionless HTTP method
+  handling, cache/result metadata, and unknown-target protocol errors MUST NOT
+  be hidden by broad golden normalization or compatibility middleware.
+- **[CMP-6] Stateless HTTP.** Production Streamable HTTP is JSON POST-only and
+  sessionless: no `Mcp-Session-Id`, no sticky routing, and 405 for MCP GET and
+  DELETE. Standardized modern headers and per-request `_meta` MUST be tested
+  independently because validation can occur before method middleware.
+
 ## 11. Evaluation and PR review checklist
 
 Deterministic facts — counts, byte budgets, schema compilation, URI integrity,
@@ -315,3 +333,4 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 **Compatibility**
 - [ ] No silent breaking change; intentional breaks carry migration note; aliases tracked, not dropped or promised forever (CMP-1, CMP-2)
 - [ ] README/manifest/docs/tests sync done; companion agent-skills outcome stated and linked when needed (CMP-3)
+- [ ] Runtime changes prove both protocol eras on every production transport and enumerate only narrow protocol-owned differences (CMP-4, CMP-5, CMP-6)

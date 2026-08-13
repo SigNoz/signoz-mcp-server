@@ -110,7 +110,7 @@
 - Preserve all four prompt definitions and deterministic `prompts/get` messages, plus focused handler-contract cases for successful structured content, fail-open notice text, coded error envelopes, omitted/null arguments, and unknown targets. Existing SDK-coupled Go tests must be ported with assertions preserved; they cannot literally remain unchanged.
 - Keep the pre-swap golden immutable during the migration. The post-swap comparison may ignore only the reviewed outer `ttlMs: 0` and `cacheScope: "public"` additions. Do not regenerate the old expected payload after the SDK swap or bless drift with a broad update.
 - Accept official malformed-stdio behavior for this migration: a malformed frame terminates the one-client process instead of returning a parse error and continuing. Pin and document the delta; do not implement a custom JSON-RPC transport without evidence that a supported client depends on continuation.
-- Simplify pre-dispatch observability: HTTP still needs a narrow outer observer because the official transport/dispatcher rejects some requests before receiving middleware. For stdio, start with receiving middleware plus bounded SDK transport logging and a coarse connection wrapper only if a focused parity test proves a missing terminal signal; do not pre-commit to token injection, a request registry, or a CAS protocol.
+- Simplify pre-dispatch observability: HTTP keeps the existing `otelhttp` span and bounded SDK diagnostics for requests rejected before receiving middleware; it does not synthesize MCP method/tool telemetry. For stdio, start with receiving middleware plus bounded SDK transport logging and a coarse connection wrapper only if a focused parity test proves a missing terminal signal; do not pre-commit to token injection, a request registry, or a CAS protocol.
 - `PropagateRequestCancellation` only affects modern HTTP requests. Characterize legacy disconnect cancellation before the swap and record the loss explicitly if no official supported hook can preserve it; do not claim full cancellation parity without proof.
 - Preserve current POST framing, DNS-rebinding behavior, unknown-resource `-32002` behavior, and graceful shutdown semantics explicitly. Prefer a repository-owned error adapter for unknown resources over the SDK's temporary `MCPGODEBUG=customresnotfounderrcode=1` switch, which is documented for removal.
 - Keep official conformance as a separate, bounded follow-up commit/PR in the issue's delivery series. Run it against a non-shipping fixture because the full official requirements use fixed test surfaces; keep real production HTTP/stdio dual-era tests as the migration merge gate. Do not duplicate the SDK's own everything server—reuse the smallest official fixture implementation that exercises this repository's server/transport composition, or narrow the conformance claim if that cannot be done honestly.
@@ -189,10 +189,99 @@
 - Regeneration is allowed only while mark3 is the sole direct MCP SDK requirement. Adding the official SDK as a direct requirement closes the update path even during a temporary dual-SDK compile stage, preventing the migration from blessing its own drift.
 - Focused oracle tests, the full `TestGuardrail_*` inventory, repeated read-only comparison, JSON fixture parsing, formatting, and `git diff --check` passed before the dependency swap.
 
+### 2026-08-13 — Runtime documentation and protocol smoke aligned
+- Updated README, architecture, MCP best practices, and guardrail guidance for official Go SDK v1.7.0, the legacy `2025-11-25` and modern `2026-07-28` lifecycles, stateless JSON POST, absent session headers, GET/DELETE 405, heartbeat removal, and the narrowly accepted protocol-owned differences.
+- Kept `manifest.json` and `server.json` unchanged after auditing them: the migration does not change their tool/resource catalog or package transport metadata. CMP-3 remains “audited, no companion change required” because no tool name, parameter, payload, description, resource content, or prompt contract changed.
+- Removed the Inspector logging capability/setLevel assertions. Added only a bounded real-binary stdio smoke for legacy initialize/list and modern discover/direct-list, including graceful SIGTERM; focused Go tests remain the authoritative 2x2 wire and header matrices.
+
+### 2026-08-13 — Runtime cutover accepted standard unknown-target wording
+- The official v1.7.0 runtime returns `-32602` with `unknown tool "<name>"` and
+  `unknown prompt "<name>"`; mark3 returned the same code with package-specific
+  wording. We accepted the official messages rather than add two response
+  rewriting shims. The frozen oracle retains the old fixtures, normalizes only
+  these exact probe responses for comparison, and separately asserts the exact
+  official code/message. Tool definitions, schemas, descriptions, resource
+  contents, prompt definitions/messages, coded tool results, and successful
+  handler responses remain unchanged.
+
+### 2026-08-13 — Runtime safety audit removed transport-parser duplication
+- A read-only runtime audit found that a planned outer body-tee observer would
+  duplicate official v1.7.0 request parsing and require cross-layer
+  deduplication state solely to synthesize MCP metrics for requests the SDK did
+  not dispatch. Removed that observer from the plan. Dispatched requests retain
+  exactly-once method/tool telemetry; pre-dispatch protocol/header/media/body
+  rejections retain the outer HTTP span/status and bounded SDK diagnostics and
+  intentionally emit zero MCP method/tool metrics.
+- Resolved legacy HTTP disconnect cancellation as an accepted capacity-impact
+  limitation: official `PropagateRequestCancellation` applies to the
+  `2026-07-28` request lifecycle only. Legacy clients retain protocol
+  `notifications/cancelled`; we will not replace the SDK transport to make an
+  ephemeral stateless legacy POST cancellable after its carrier disconnects.
+
+### 2026-08-13 — Per-request telemetry attribution restored
+- A targeted comparison against the pre-migration telemetry contract found that
+  the new receiving middleware was not reading the official request accessors.
+  Dispatched spans now carry protocol version, bounded client name/version, and
+  fixed boolean capability-presence fields; none are metric dimensions.
+- Successful modern tool/prompt/resource analytics reuse those per-request
+  protocol/client fields. `MCP Client: Initialized` remains a legacy initialize
+  event; `server/discover` is optional and does not generate a misleading
+  initialization event. Stateless legacy HTTP can retain the protocol header on
+  each POST but cannot carry initialize-only client identity into later POSTs;
+  legacy stdio retains the SDK session fallback.
+
+### 2026-08-13 — Simplification review removed dead compatibility work
+- The three-pass reuse/quality/efficiency review found that the local tool
+  request deep-cloned official client metadata, headers, token information, and
+  `_meta` even though no business handler consumed them. Removed those fields
+  and clones; receiving middleware reads protocol/client/capability data from
+  the official request where it belongs.
+- Tool arguments are now decoded once per dispatched call and shared through
+  request context by search-context extraction, the local adapter, validation,
+  and handlers. Exact raw bytes remain available for the frozen wire contract.
+- Removed schema-reference traversal that only fed constant `<root>` / `schema`
+  validation labels. Kept the same fail-open notice and telemetry values.
+- Added the remaining lean review gates: unknown-name cardinality classification
+  must use repository registration state rather than official error wording,
+  and one real registered-tool pipeline test must cover lifecycle composition.
+
+### 2026-08-13 — Final audit closed contract and security gaps
+- Tightened every accepted-difference assertion before normalizing to the frozen
+  mark3 oracle: exact validation-notice wording, cache metadata on every
+  cacheable catalog/read method, exact unknown-resource message/data, and the
+  approved legacy HTTP disconnect limitation are now explicit.
+- Added standard-library cross-origin protection around `/mcp`. This follows the
+  official v1.7.0 recommendation and complements, rather than replaces, its
+  localhost Host/DNS-rebinding check. Same-origin and non-browser requests pass;
+  cross-origin browser POSTs fail before auth or dispatch.
+- Restored span-only `mcp.search_context` after the shared one-pass argument
+  decode, while retaining its exclusion from metric dimensions.
+- Expanded the shared IOTransport matrix for both eras to cover all catalogs and
+  one deterministic tool call, resource read, and prompt get. The real-binary
+  smoke remains deliberately thin and validates framing, lifecycle, and signal
+  shutdown rather than duplicating the deterministic in-process matrix.
+
+### 2026-08-13 — Pre-publication gates and requested-review blocker
+- Full tests, focused race tests, guardrails, vet, build, formatting/imports,
+  shell syntax/lint, JSON metadata parsing, diff checks, and an isolated clean
+  module-cache `go mod verify` passed. Agent CI completed `protocol / inspector`
+  and contract guardrails; its remaining jobs did not start because the local
+  runner lacks repository Primus, Docker Hub, GoReleaser, and GitHub secrets.
+- Invoked Claude Code 2.1.229 with exact model `claude-fable-5`, effort `high`,
+  read-only plan mode, and no fallback. The response metadata confirmed
+  canonical model `claude-fable-5`, but the service returned HTTP 429 / session
+  limit with reset at 23:30 Asia/Calcutta before producing review findings.
+  This is not counted as the required review and blocks PR creation. Do not
+  substitute another model; retry Fable after reset, then run Opus 5 xhigh.
+- While publication was blocked, three additional read-only contract,
+  security/runtime, and consistency audits plus an ultra-effort final review
+  found and closed the Origin, span attribution, accepted-difference, and stdio
+  matrix gaps. These are supplementary and do not replace Fable or Opus.
+
 ## Open Questions
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.
-- [ ] Can legacy HTTP disconnect cancellation be preserved through an official supported hook? Recommended: run a focused spike; if not, record the official-SDK limitation and keep explicit `notifications/cancelled` behavior for legacy clients rather than writing a custom transport.
+- [x] Can legacy HTTP disconnect cancellation be preserved through an official supported hook? Resolved: not in v1.7.0 stateless HTTP. Accept the bounded capacity-impact limitation, retain protocol cancellation notifications, and avoid a custom transport.
 - [x] Use low-level or typed official tool registration? Resolved: low-level only for the migration.
 - [x] Preserve or retire the stateless GET heartbeat listener? Resolved: retire it; official stateless GET/DELETE return 405 and the product has no server-message use case.
 - [x] Run the full official requirements against the production catalog? Resolved: no; use a test-only fixture server plus a separate real-production compatibility matrix.

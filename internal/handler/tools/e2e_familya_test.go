@@ -29,8 +29,8 @@ import (
 	"time"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // e2eSetup builds a real SigNoz client pointed at staging using env-supplied

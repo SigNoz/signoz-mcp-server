@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -390,7 +390,7 @@ func upstreamQueryError(err error, signal string) *mcp.CallToolResult {
 		return res
 	}
 	if len(res.Content) == 1 {
-		if tc, ok := res.Content[0].(mcp.TextContent); ok {
+		if tc, ok := res.Content[0].(*mcp.TextContent); ok {
 			tc.Text += "\n\n" + missingKeyGuidance(keys, signal)
 			res.Content[0] = tc
 		}
@@ -535,7 +535,7 @@ func appendAuthorizationOperation(res *mcp.CallToolResult, toolName string) {
 			continue
 		}
 		text.Text += "\n\n" + recovery
-		res.Content[i] = *text
+		res.Content[i] = text
 		return
 	}
 }

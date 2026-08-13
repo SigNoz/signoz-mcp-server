@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -158,7 +158,7 @@ func TestHandleListAlertRules(t *testing.T) {
 			NextOffset int  `json:"nextOffset"`
 		} `json:"pagination"`
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if err := json.Unmarshal([]byte(text), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -1007,7 +1007,7 @@ func TestHandleCreateAlert_PolicyRoutingStillValidatesSuppliedChannels(t *testin
 	if createCalls != 0 {
 		t.Fatalf("CreateAlertRule called %d times, want 0", createCalls)
 	}
-	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "missing-channel") {
+	if text := result.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "missing-channel") {
 		t.Fatalf("validation error does not name invalid channel: %q", text)
 	} else if !strings.Contains(text, "remove invalid direct channel references") {
 		t.Fatalf("policy-routing error does not explain how to remove ignored invalid references: %q", text)
@@ -1045,7 +1045,7 @@ func TestHandleCreateAlert_PolicyRoutingRejectsBlankSuppliedChannel(t *testing.T
 	if listCalls != 0 || createCalls != 0 {
 		t.Fatalf("blank channel caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "cannot be blank") || !strings.Contains(text, "remove blank direct channel references") {
 		t.Fatalf("blank-channel error lacks policy recovery guidance: %q", text)
 	}
@@ -1082,7 +1082,7 @@ func TestHandleCreateAlert_PolicyRoutingRejectsNonArrayChannelsBeforeCalls(t *te
 	if listCalls != 0 || createCalls != 0 {
 		t.Fatalf("malformed channels caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "condition.thresholds.spec[0].channels") || !strings.Contains(text, "must be an array") {
 		t.Fatalf("unexpected validation error: %q", text)
 	}
@@ -1119,7 +1119,7 @@ func TestHandleCreateAlert_DirectRoutingBlankChannelNamesGiveDiscoveryGuidance(t
 	if listCalls != 0 || createCalls != 0 {
 		t.Fatalf("blank channel caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	for _, required := range []string{"signoz_list_notification_channels", "same prepared operation", "signoz_create_notification_channel", "user-provided config", "never create automatically"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("blank direct-channel error missing recovery guidance %q: %q", required, text)
@@ -1176,7 +1176,7 @@ func TestHandleCreateAlert_NoChannelsReturnsAvailable(t *testing.T) {
 	if !result.IsError {
 		t.Error("expected error result when no channels are specified")
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "slack-alerts") {
 		t.Error("expected error to list available channel 'slack-alerts'")
 	}
@@ -1233,7 +1233,7 @@ func TestHandleCreateAlert_AnomalyChannelErrorsDoNotSuggestPolicyRouting(t *test
 			if !result.IsError {
 				t.Fatal("expected anomaly channel validation error")
 			}
-			text := result.Content[0].(mcp.TextContent).Text
+			text := result.Content[0].(*mcp.TextContent).Text
 			if !strings.Contains(text, tc.want) {
 				t.Fatalf("anomaly channel error missing %q: %q", tc.want, text)
 			}
@@ -1271,7 +1271,7 @@ func TestHandleCreateAlert_AnomalyRejectsPolicyRoutingBeforeCalls(t *testing.T) 
 	if listCalls != 0 || createCalls != 0 {
 		t.Fatalf("anomaly policy routing caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
 	}
-	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "notificationSettings") || !strings.Contains(text, "preferredChannels") {
+	if text := result.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "notificationSettings") || !strings.Contains(text, "preferredChannels") {
 		t.Fatalf("unexpected anomaly policy-routing error: %q", text)
 	}
 }
@@ -1326,7 +1326,7 @@ func TestHandleCreateAlert_InvalidChannelReturnsError(t *testing.T) {
 	if !result.IsError {
 		t.Error("expected error result when channel does not exist")
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "nonexistent-channel") {
 		t.Error("expected error to mention the invalid channel name")
 	}
@@ -1362,7 +1362,7 @@ func TestHandleCreateAlert_V2RejectsPreferredChannels(t *testing.T) {
 	if listCalls != 0 || createCalls != 0 {
 		t.Fatalf("v2 preferredChannels caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
 	}
-	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "preferredChannels") || !strings.Contains(text, "must be omitted") {
+	if text := result.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "preferredChannels") || !strings.Contains(text, "must be omitted") {
 		t.Fatalf("unexpected v2 preferredChannels error: %q", text)
 	}
 }
@@ -1427,7 +1427,7 @@ func TestHandleCreateAlert_DirectRoutingRequiresChannelsOnEveryThreshold(t *test
 	if createCalls != 0 {
 		t.Fatalf("CreateAlertRule called %d times, want 0", createCalls)
 	}
-	if text := result.Content[0].(mcp.TextContent).Text; !strings.Contains(text, "critical") || !strings.Contains(text, "every threshold tier") {
+	if text := result.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "critical") || !strings.Contains(text, "every threshold tier") {
 		t.Fatalf("missing-tier error lacks direct-routing guidance: %q", text)
 	}
 }
@@ -1481,7 +1481,7 @@ func TestHandleCreateAlert_NoChannelsExist(t *testing.T) {
 	if !result.IsError {
 		t.Error("expected error result when no channels exist and none specified")
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "No notification channels exist yet") {
 		t.Error("expected error to indicate no channels exist")
 	}
@@ -1649,7 +1649,7 @@ func TestHandleUpdateAlert_PolicyRoutingRejectsNonArrayChannelsBeforeCalls(t *te
 	if listCalls != 0 || updateCalls != 0 {
 		t.Fatalf("malformed channels caused list/update calls = %d/%d, want 0/0", listCalls, updateCalls)
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "condition.thresholds.spec[0].channels") || !strings.Contains(text, "must be an array") {
 		t.Fatalf("unexpected validation error: %q", text)
 	}
@@ -1686,8 +1686,8 @@ func TestHandleUpdateAlert_RejectsNonUUIDv7(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected error result for non-UUIDv7 ruleId")
 	}
-	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, "UUIDv7") {
-		t.Errorf("expected UUIDv7 error message, got: %s", result.Content[0].(mcp.TextContent).Text)
+	if !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "UUIDv7") {
+		t.Errorf("expected UUIDv7 error message, got: %s", result.Content[0].(*mcp.TextContent).Text)
 	}
 }
 

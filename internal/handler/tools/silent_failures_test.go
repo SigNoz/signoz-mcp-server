@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // --- N3: shared boolean parser ---
@@ -291,7 +291,7 @@ func TestHandleListMetrics_NoteDoesNotClaimOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	note := res.Content[1].(mcp.TextContent).Text
+	note := res.Content[1].(*mcp.TextContent).Text
 	// Must NOT instruct the caller to paginate by offset (no offset param). The
 	// clarifying phrase "no offset paging" is fine; an "offset=" page-fetch
 	// instruction or "next page" directive is not.
@@ -356,11 +356,11 @@ func TestHandleExecuteBuilderQuery_SurfacesBackendWarning(t *testing.T) {
 	if len(result.Content) != 2 {
 		t.Fatalf("content block count = %d, want raw JSON + warning note", len(result.Content))
 	}
-	block0 := result.Content[0].(mcp.TextContent).Text
+	block0 := result.Content[0].(*mcp.TextContent).Text
 	if block0 != string(response) {
 		t.Fatalf("block 0 = %q, want raw response unchanged", block0)
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if !strings.Contains(note, warningMessage) {
 		t.Fatalf("warning note = %q, want backend warning message", note)
 	}
@@ -432,7 +432,7 @@ func TestHandleExecuteBuilderQuery_SurfacesAppliedBounds(t *testing.T) {
 	if len(result.Content) != 2 {
 		t.Fatalf("content block count = %d, want raw JSON + decisions note", len(result.Content))
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	for _, want := range []string{"[Decisions applied]", "limit=100", "timestamp desc, id desc"} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("decisions note = %q, want %q", note, want)
@@ -726,7 +726,7 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if strings.Contains(note, "hasMore=false") {
 			t.Fatalf("must not assert hasMore=false on un-countable body; note=%q", note)
 		}
@@ -747,7 +747,7 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if strings.Contains(note, "hasMore=false") {
 			t.Fatalf("must not assert hasMore=false on missing metrics key; note=%q", note)
 		}
@@ -771,7 +771,7 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if strings.Contains(note, "hasMore=false") {
 			t.Fatalf("must not assert hasMore=false on missing items; note=%q", note)
 		}
@@ -792,7 +792,7 @@ func TestHandlers_MissingLeaf_GenericNote(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if strings.Contains(note, "hasMore=false") {
 			t.Fatalf("must not assert hasMore=false on non-array samples; note=%q", note)
 		}
@@ -818,7 +818,7 @@ func TestHandlers_PresentNullLeaf_HasMoreFalse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if !strings.Contains(note, "hasMore=false") {
 			t.Fatalf("expected known-zero hasMore=false on present-null rows; note=%q", note)
 		}
@@ -835,7 +835,7 @@ func TestHandlers_PresentNullLeaf_HasMoreFalse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if !strings.Contains(note, "hasMore=false") {
 			t.Fatalf("expected known-zero hasMore=false on present-null metrics; note=%q", note)
 		}
@@ -854,7 +854,7 @@ func TestHandlers_PresentNullLeaf_HasMoreFalse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		if !strings.Contains(note, "hasMore=false") {
 			t.Fatalf("expected known-zero hasMore=false on present-null items; note=%q", note)
 		}
@@ -871,7 +871,7 @@ func TestHandlers_PresentNullLeaf_HasMoreFalse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		note := res.Content[1].(mcp.TextContent).Text
+		note := res.Content[1].(*mcp.TextContent).Text
 		// 0 returned (< cap) -> "all ranked metrics returned for this window (hasMore=false)"
 		if !strings.Contains(note, "hasMore=false") {
 			t.Fatalf("expected known-zero hasMore=false on present-null samples; note=%q", note)
@@ -917,7 +917,7 @@ func TestHandleGetAlertHistoryFamilyA_TopLevelDataArrayCompletenessNote(t *testi
 	if len(result.Content) != 2 {
 		t.Fatalf("content block count = %d, want JSON + completeness note", len(result.Content))
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if strings.Contains(note, "cannot count returned rows") {
 		t.Fatalf("must count top-level data[] alert history rows; note=%q", note)
 	}
@@ -966,7 +966,7 @@ func TestHandleGetAlertHistory_NextCursorHasMore(t *testing.T) {
 	if captured.Start != 1697385600000 || captured.End != 1697472000000 || captured.Order != "desc" {
 		t.Errorf("forwarded scope = start:%d end:%d order:%q, want explicit millisecond range and desc", captured.Start, captured.End, captured.Order)
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if !strings.Contains(note, "hasMore=true") || !strings.Contains(note, "CURSOR_XYZ") {
 		t.Fatalf("completeness note = %q, want hasMore=true naming cursor CURSOR_XYZ", note)
 	}
@@ -1000,7 +1000,7 @@ func TestHandleGetAlertHistory_ItemsExactFillNoCursor(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if !strings.Contains(note, "returned 2 rows") || !strings.Contains(note, "hasMore=false") {
 		t.Fatalf("completeness note = %q, want 2 rows / hasMore=false (exact-fill, no cursor)", note)
 	}
@@ -1026,7 +1026,7 @@ func TestHandleSearchLogs_AppendsCompletenessNote(t *testing.T) {
 	if len(result.Content) != 2 {
 		t.Fatalf("content block count = %d, want JSON + completeness note", len(result.Content))
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if !strings.Contains(note, "returned 2 rows") || !strings.Contains(note, "hasMore=false") {
 		t.Fatalf("completeness note = %q, want 2 rows / hasMore=false", note)
 	}
@@ -1125,7 +1125,7 @@ func TestHandleCreateNotificationChannel_TestFailWarningNote(t *testing.T) {
 	if len(result.Content) != 2 {
 		t.Fatalf("content block count = %d, want JSON body + warning note", len(result.Content))
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if !strings.Contains(note, "WARNING") || !strings.Contains(note, "webhook returned 403 forbidden") {
 		t.Fatalf("expected prominent warning note carrying the test error, got %q", note)
 	}
@@ -1161,7 +1161,7 @@ func TestHandleUpdateNotificationChannel_TestFailWarningNote(t *testing.T) {
 	if len(result.Content) != 2 {
 		t.Fatalf("content block count = %d, want JSON body + warning note", len(result.Content))
 	}
-	note := result.Content[1].(mcp.TextContent).Text
+	note := result.Content[1].(*mcp.TextContent).Text
 	if !strings.Contains(note, "WARNING") || !strings.Contains(note, "webhook returned 403 forbidden") {
 		t.Fatalf("expected prominent warning note carrying the test error, got %q", note)
 	}

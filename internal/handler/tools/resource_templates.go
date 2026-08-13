@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
@@ -20,7 +19,7 @@ import (
 )
 
 // RegisterResourceTemplates registers dynamic MCP resource templates.
-func (h *Handler) RegisterResourceTemplates(s *server.MCPServer) {
+func (h *Handler) RegisterResourceTemplates(s *mcp.Server) {
 	h.logger.Debug("Registering resource templates")
 
 	h.addResourceTemplate(s,

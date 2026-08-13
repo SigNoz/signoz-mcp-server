@@ -24,11 +24,11 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	official "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var updateWireCatalogGoldens = flag.Bool(
@@ -38,12 +38,13 @@ var updateWireCatalogGoldens = flag.Bool(
 )
 
 const (
-	wireCatalogGoldenDir       = "testdata/wire-catalog"
-	wireCatalogProtocolVersion = "2025-11-25"
-	wireSentinelVersion        = "<version>"
-	wireSentinelAsOf           = "<asOf>"
-	wireSentinelHistoryStart   = "<historyStart>"
-	wireSentinelHistoryEnd     = "<historyEnd>"
+	wireCatalogGoldenDir          = "testdata/wire-catalog"
+	wireCatalogProtocolVersion    = "2025-11-25"
+	wireSentinelVersion           = "<version>"
+	wireSentinelAsOf              = "<asOf>"
+	wireSentinelHistoryStart      = "<historyStart>"
+	wireSentinelHistoryEnd        = "<historyEnd>"
+	officialInputValidationNotice = "Input validation notice: the arguments did not fully match this tool's input schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Review the arguments and re-call if the results look off."
 )
 
 type wireCapture struct {
@@ -86,9 +87,13 @@ var acceptedMigrationDifferences = []struct {
 	{"cacheable methods", "result.ttlMs", "absent", "0"},
 	{"cacheable methods", "result.cacheScope", "absent", `"public"`},
 	{"resources/read", "unknown resource error", `-32002 "Resource not found"`, `-32602 "Invalid params" with official data`},
+	{"tools/call", "unknown tool error message", `tool 'signoz_unknown' not found: tool not found`, `unknown tool "signoz_unknown"`},
+	{"prompts/get", "unknown prompt error message", `prompt 'signoz_unknown' not found: prompt not found`, `unknown prompt "signoz_unknown"`},
 	{"tools/call", "successful input mismatch notice detail", "validator-library detail", "repository-owned deterministic sentence"},
 	{"2026-07-28", "result.resultType and server metadata", "absent", "present"},
 	{"HTTP GET/DELETE", "stateless transport", "listening stream / accepted DELETE", "405"},
+	{"HTTP browser POST", "cross-origin protection", "no Origin check", "cross-origin requests rejected with 403"},
+	{"legacy HTTP disconnect", "handler cancellation", "carrier cancellation propagated", "handler continues until MCP cancellation or completion"},
 	{"stdio", "malformed frame", "JSON-RPC error may continue", "connection termination"},
 }
 
@@ -191,27 +196,51 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 	})
 
 	t.Run("accepted migration differences have focused legacy assertions", func(t *testing.T) {
-		if len(acceptedMigrationDifferences) != 9 {
-			t.Fatalf("accepted migration difference count = %d, want 9", len(acceptedMigrationDifferences))
+		if len(acceptedMigrationDifferences) != 13 {
+			t.Fatalf("accepted migration difference count = %d, want 13", len(acceptedMigrationDifferences))
 		}
 		initialize := o.capture("initialize", `{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"wire-oracle","version":"1"}}`)
 		result := initialize.Response.(map[string]any)["result"].(map[string]any)
 		capabilities := result["capabilities"].(map[string]any)
-		if _, ok := capabilities["logging"]; !ok {
-			t.Fatal("legacy initialize no longer advertises capabilities.logging")
+		if _, ok := capabilities["logging"]; ok {
+			t.Fatal("official initialize unexpectedly advertises capabilities.logging")
 		}
 		if _, ok := result["ttlMs"]; ok {
-			t.Fatal("legacy initialize unexpectedly has ttlMs")
+			t.Fatalf("official initialize unexpectedly has ttlMs: %v", result["ttlMs"])
 		}
 		if _, ok := result["cacheScope"]; ok {
-			t.Fatal("legacy initialize unexpectedly has cacheScope")
+			t.Fatalf("official initialize unexpectedly has cacheScope: %v", result["cacheScope"])
+		}
+		cacheable := []struct{ method, params string }{
+			{"tools/list", `{}`},
+			{"resources/list", `{}`},
+			{"resources/templates/list", `{}`},
+			{"prompts/list", `{}`},
+			{"resources/read", `{"uri":"signoz://docs/sitemap"}`},
+		}
+		for _, tc := range cacheable {
+			cacheableResult := o.capture(tc.method, tc.params).Response.(map[string]any)["result"].(map[string]any)
+			if cacheableResult["ttlMs"] != json.Number("0") || cacheableResult["cacheScope"] != "public" {
+				t.Fatalf("official %s cache metadata = ttlMs:%v cacheScope:%v", tc.method, cacheableResult["ttlMs"], cacheableResult["cacheScope"])
+			}
 		}
 		unknown := o.capture("resources/read", `{"uri":"signoz://unknown"}`)
 		errObject := unknown.Response.(map[string]any)["error"].(map[string]any)
-		if errObject["code"] != json.Number("-32002") {
-			t.Fatalf("legacy unknown-resource code = %v", errObject["code"])
+		data, _ := errObject["data"].(map[string]any)
+		if errObject["code"] != json.Number("-32602") || errObject["message"] != "Resource not found" || data["uri"] != "signoz://unknown" {
+			t.Fatalf("official unknown-resource error = %#v, want -32602, Resource not found, and data.uri", errObject)
 		}
+		assertOfficialUnknownTargetError(t, o.capture("tools/call", `{"name":"signoz_unknown","arguments":{}}`), `unknown tool "signoz_unknown"`)
+		assertOfficialUnknownTargetError(t, o.capture("prompts/get", `{"name":"signoz_unknown","arguments":{}}`), `unknown prompt "signoz_unknown"`)
 	})
+}
+
+func assertOfficialUnknownTargetError(t *testing.T, capture wireCapture, wantMessage string) {
+	t.Helper()
+	errObject := capture.Response.(map[string]any)["error"].(map[string]any)
+	if errObject["code"] != json.Number("-32602") || errObject["message"] != wantMessage {
+		t.Fatalf("official unknown-target error = %#v, want code -32602 and message %q", errObject, wantMessage)
+	}
 }
 
 func TestWireOracleRawArgumentsCharacterization(t *testing.T) {
@@ -230,7 +259,7 @@ func TestWireOracleRawArgumentsCharacterization(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &tools.Handler{}
-			s := server.NewMCPServer("wire-oracle", "0")
+			s := official.NewServer(&official.Implementation{Name: "wire-oracle", Version: "0"}, &official.ServerOptions{Capabilities: &official.ServerCapabilities{Tools: &official.ToolCapabilities{}}})
 			called := false
 			h.AddTool(s, mcp.NewTool("raw_arguments_probe"), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				called = true
@@ -243,8 +272,17 @@ func TestWireOracleRawArgumentsCharacterization(t *testing.T) {
 				return mcp.NewToolResultText("ok"), nil
 			})
 
+			handler := official.NewStreamableHTTPHandler(func(*http.Request) *official.Server { return s }, &official.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 			raw := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":` + tt.params + `}`
-			s.HandleMessage(context.Background(), json.RawMessage(raw))
+			req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(raw))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json, text/event-stream")
+			req.Header.Set("MCP-Protocol-Version", wireCatalogProtocolVersion)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+			}
 			if !called {
 				t.Fatal("raw-wire request did not reach the registered handler")
 			}
@@ -261,17 +299,22 @@ func newWireOracle(t *testing.T) *wireOracle {
 	logger := logpkg.New("error")
 	cfg := &config.Config{TransportMode: "http", Host: "127.0.0.1", Port: "0", URL: o.upstream.URL, APIKey: "dummy-wire-key", ClientCacheSize: 8, ClientCacheTTL: time.Minute, MaxRequestBytes: 4 << 20}
 	h := tools.NewHandler(logger, cfg)
-	reg, err := docsindex.NewIndexRegistry(context.Background(), wireDocsSnapshot())
-	if err != nil {
-		t.Fatalf("create deterministic docs index: %v", err)
-	}
-	o.docs = reg
-	h.SetDocsIndex(reg)
+	o.docs = newWireDocsRegistry(t)
+	h.SetDocsIndex(o.docs)
 	m := NewMCPServer(logger, h, cfg, nil, nil)
 	s := m.newSDKServer()
 	m.registerHandlers(s)
 	o.handler = m.buildHTTP(s).Handler
 	return o
+}
+
+func newWireDocsRegistry(t *testing.T) *docsindex.IndexRegistry {
+	t.Helper()
+	registry, err := docsindex.NewIndexRegistry(context.Background(), wireDocsSnapshot())
+	if err != nil {
+		t.Fatalf("create deterministic docs index: %v", err)
+	}
+	return registry
 }
 
 func (o *wireOracle) close() {
@@ -402,6 +445,53 @@ func normalizeWireNode(node any, path string) any {
 	}
 }
 
+func normalizeAcceptedMigrationDifferences(capture wireCapture) wireCapture {
+	root, ok := capture.Response.(map[string]any)
+	if !ok {
+		return capture
+	}
+	result, _ := root["result"].(map[string]any)
+	delete(result, "ttlMs")
+	delete(result, "cacheScope")
+
+	if capture.Method == "initialize" {
+		capabilities, _ := result["capabilities"].(map[string]any)
+		if capabilities != nil {
+			capabilities["logging"] = map[string]any{}
+		}
+	}
+	if capture.Method == "tools/call" {
+		if errObject, _ := root["error"].(map[string]any); errObject["code"] == json.Number("-32602") && errObject["message"] == `unknown tool "signoz_unknown"` {
+			errObject["message"] = "tool 'signoz_unknown' not found: tool not found"
+		}
+		contents, _ := result["content"].([]any)
+		for _, raw := range contents {
+			content, _ := raw.(map[string]any)
+			text, _ := content["text"].(string)
+			if text == officialInputValidationNotice {
+				content["text"] = "Input validation notice: the arguments did not fully match this tool's input schema (jsonschema validation failed with 'mem:///signoz/tools/signoz_list_dashboards/input-schema.json#' - at '/limit': got object, want integer or string). The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
+			}
+		}
+	}
+	if capture.Method == "prompts/get" {
+		if errObject, _ := root["error"].(map[string]any); errObject["code"] == json.Number("-32602") && errObject["message"] == `unknown prompt "signoz_unknown"` {
+			errObject["message"] = "prompt 'signoz_unknown' not found: prompt not found"
+		}
+	}
+	if capture.Method == "resources/read" {
+		errObject, _ := root["error"].(map[string]any)
+		if errObject["code"] == json.Number("-32602") && errObject["message"] == "Resource not found" {
+			request, _ := capture.Request.(map[string]any)
+			params, _ := request["params"].(map[string]any)
+			uri, _ := params["uri"].(string)
+			errObject["code"] = json.Number("-32002")
+			errObject["message"] = fmt.Sprintf("handler not found for resource URI '%s': resource not found", uri)
+			delete(errObject, "data")
+		}
+	}
+	return capture
+}
+
 func sortCatalog(entries []any) {
 	sort.SliceStable(entries, func(i, j int) bool { return catalogIdentity(entries[i]) < catalogIdentity(entries[j]) })
 }
@@ -517,6 +607,9 @@ func normalizeAlertTemplateTimestamps(t *testing.T, response any) {
 
 func assertWireGolden(t *testing.T, name string, value any) {
 	t.Helper()
+	if capture, ok := value.(wireCapture); ok {
+		value = normalizeAcceptedMigrationDifferences(capture)
+	}
 	actual, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		t.Fatal(err)

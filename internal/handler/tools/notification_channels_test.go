@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 func TestHandleListNotificationChannels_Success(t *testing.T) {
@@ -28,7 +28,7 @@ func TestHandleListNotificationChannels_Success(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	var resp map[string]any
 	if err := json.Unmarshal([]byte(text), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
@@ -84,7 +84,7 @@ func TestHandleListNotificationChannels_Empty(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	var resp map[string]any
 	if err := json.Unmarshal([]byte(text), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
@@ -117,7 +117,7 @@ func TestHandleListNotificationChannels_APIError(t *testing.T) {
 	if !result.IsError {
 		t.Error("expected error result for API failure")
 	}
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "connection refused") {
 		t.Errorf("expected error message in result, got: %s", text)
 	}
@@ -143,7 +143,7 @@ func TestHandleListNotificationChannels_Pagination(t *testing.T) {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	var resp map[string]any
 	if err := json.Unmarshal([]byte(text), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
@@ -215,7 +215,7 @@ func TestHandleCreateNotificationChannel_Slack(t *testing.T) {
 	}
 
 	// Verify response contains test_notification success
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, `"success":true`) {
 		t.Errorf("expected test_notification success in response, got: %s", text)
 	}
@@ -614,7 +614,7 @@ func TestHandleCreateNotificationChannel_TestFails(t *testing.T) {
 		t.Fatal("expected success result (channel was created, test failure is in the response body)")
 	}
 
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, `"success":false`) {
 		t.Errorf("expected test_notification failure in response, got: %s", text)
 	}
@@ -744,7 +744,7 @@ func TestHandleUpdateNotificationChannel_Slack(t *testing.T) {
 		t.Errorf("expected channel=#updated-alerts, got %v", cfg["channel"])
 	}
 
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, `"success":true`) {
 		t.Errorf("expected test_notification success in response, got: %s", text)
 	}
@@ -849,7 +849,7 @@ func TestHandleUpdateNotificationChannel_TestFails(t *testing.T) {
 		t.Fatal("expected success result (channel was updated, test failure is in the response body)")
 	}
 
-	text := result.Content[0].(mcp.TextContent).Text
+	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, `"success":false`) {
 		t.Errorf("expected test_notification failure in response, got: %s", text)
 	}
@@ -962,7 +962,7 @@ func TestHandleListNotificationChannels_TopLevelName(t *testing.T) {
 	}
 
 	var resp map[string]any
-	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &resp); err != nil {
+	if err := json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 	data := resp["data"].([]any)

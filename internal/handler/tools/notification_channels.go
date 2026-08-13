@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
@@ -23,7 +22,7 @@ var validChannelTypes = map[string]bool{
 	"msteams":   true,
 }
 
-func (h *Handler) RegisterNotificationChannelHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterNotificationChannelHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering notification channel handlers")
 
 	listChannelsTool := mcp.NewTool("signoz_list_notification_channels",

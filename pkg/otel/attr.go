@@ -25,13 +25,18 @@ const (
 // extensions this server uses for multi-tenant attribution and are not
 // defined by the spec.
 const (
-	MCPMethodKey          = attribute.Key("mcp.method.name")
-	MCPProtocolVersionKey = attribute.Key("mcp.protocol.version")
-	MCPSearchContextKey   = attribute.Key("mcp.search_context")
-	MCPTenantURLKey       = attribute.Key("mcp.tenant_url")
-	MCPToolIsErrorKey     = attribute.Key("mcp.tool.is_error")
-	MCPToolErrorCodeKey   = attribute.Key("mcp.tool.error.code")
-	MCPQueryPayloadKey    = attribute.Key("mcp.query.payload")
+	MCPMethodKey            = attribute.Key("mcp.method.name")
+	MCPProtocolVersionKey   = attribute.Key("mcp.protocol.version")
+	MCPClientNameKey        = attribute.Key("mcp.client.name")
+	MCPClientVersionKey     = attribute.Key("mcp.client.version")
+	MCPClientRootsKey       = attribute.Key("mcp.client.capability.roots")
+	MCPClientSamplingKey    = attribute.Key("mcp.client.capability.sampling")
+	MCPClientElicitationKey = attribute.Key("mcp.client.capability.elicitation")
+	MCPSearchContextKey     = attribute.Key("mcp.search_context")
+	MCPTenantURLKey         = attribute.Key("mcp.tenant_url")
+	MCPToolIsErrorKey       = attribute.Key("mcp.tool.is_error")
+	MCPToolErrorCodeKey     = attribute.Key("mcp.tool.error.code")
+	MCPQueryPayloadKey      = attribute.Key("mcp.query.payload")
 	// MCPToolResultBytes approximates the size, in bytes, of the text content
 	// returned by a tool call — sum of `len(Text)` across TextContent entries.
 	// Non-standard (the registry has no equivalent today); scoped under the

@@ -15,22 +15,23 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
-	"github.com/SigNoz/signoz-mcp-server/pkg/instructions"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/prompts"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
-	mcpclient "github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var initClickhouseSchemaOnce sync.Once
 
 // buildTestServer creates a fully-wired MCPServer suitable for in-process
 // integration testing. It mirrors the real server setup in server.go.
-func buildTestServer(t *testing.T) *server.MCPServer {
+func buildTestServer(t *testing.T) *mcp.Server {
+	return buildTestServerWithDocs(t, nil)
+}
+
+func buildTestServerWithDocs(t *testing.T, docs *docsindex.IndexRegistry) *mcp.Server {
 	t.Helper()
 	initClickhouseSchemaOnce.Do(dashboard.InitClickhouseSchema)
 
@@ -40,39 +41,71 @@ func buildTestServer(t *testing.T) *server.MCPServer {
 		ClientCacheTTL:  5 * time.Minute,
 	}
 	handler := tools.NewHandler(log, cfg)
+	if docs != nil {
+		handler.SetDocsIndex(docs)
+	}
 
-	s := server.NewMCPServer("SigNozMCP", version.Version,
-		server.WithLogging(),
-		server.WithToolCapabilities(false),
-		server.WithRecovery(),
-		server.WithInstructions(instructions.ServerInstructions),
-	)
-
-	handler.RegisterAllToolHandlers(s)
-	handler.RegisterResourceTemplates(s)
-	prompts.RegisterPrompts(func(prompt mcp.Prompt, promptHandler server.PromptHandlerFunc) {
-		handler.RegisterPrompt(s, prompt, promptHandler)
-	})
-
+	m := NewMCPServer(log, handler, cfg, nil, nil)
+	s := m.newSDKServer()
+	m.registerHandlers(s)
 	return s
+}
+
+type integrationClient struct {
+	client *mcp.ClientSession
+	server *mcp.ServerSession
+}
+
+func newIntegrationClient(t *testing.T, server *mcp.Server) (*integrationClient, error) {
+	t.Helper()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: version.Version}, &mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{}})
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		serverSession.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { clientSession.Close(); serverSession.Close() })
+	return &integrationClient{client: clientSession, server: serverSession}, nil
+}
+
+func (c *integrationClient) Initialize(context.Context, *mcp.InitializeParams) (*mcp.InitializeResult, error) {
+	return c.client.InitializeResult(), nil
+}
+func (c *integrationClient) ListTools(ctx context.Context, params *mcp.ListToolsParams) (*mcp.ListToolsResult, error) {
+	return c.client.ListTools(ctx, params)
+}
+func (c *integrationClient) ListPrompts(ctx context.Context, params *mcp.ListPromptsParams) (*mcp.ListPromptsResult, error) {
+	return c.client.ListPrompts(ctx, params)
+}
+func (c *integrationClient) ListResources(ctx context.Context, params *mcp.ListResourcesParams) (*mcp.ListResourcesResult, error) {
+	return c.client.ListResources(ctx, params)
+}
+func (c *integrationClient) ListResourceTemplates(ctx context.Context, params *mcp.ListResourceTemplatesParams) (*mcp.ListResourceTemplatesResult, error) {
+	return c.client.ListResourceTemplates(ctx, params)
+}
+func (c *integrationClient) ReadResource(ctx context.Context, params *mcp.ReadResourceParams) (*mcp.ReadResourceResult, error) {
+	return c.client.ReadResource(ctx, params)
 }
 
 func TestIntegration_InitializeAndListTools(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	initResult, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    "test-client",
-				Version: version.Version,
-			},
+	initResult, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo: &mcp.Implementation{
+			Name:    "test-client",
+			Version: version.Version,
 		},
 	})
 	if err != nil {
@@ -87,7 +120,7 @@ func TestIntegration_InitializeAndListTools(t *testing.T) {
 	}
 
 	// List tools and verify parity with manifest metadata.
-	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	toolsResult, err := c.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
@@ -168,7 +201,7 @@ func manifestResourceURIs(t *testing.T) []string {
 	return uris
 }
 
-func listedToolNames(t *testing.T, listedTools []mcp.Tool) []string {
+func listedToolNames(t *testing.T, listedTools []*mcp.Tool) []string {
 	t.Helper()
 
 	names := make([]string, 0, len(listedTools))
@@ -191,24 +224,22 @@ func TestIntegration_ListToolsInputSchemasAreOpenAPICompatible(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    "test-client",
-				Version: version.Version,
-			},
+	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo: &mcp.Implementation{
+			Name:    "test-client",
+			Version: version.Version,
 		},
 	}); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	toolsResult, err := c.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
@@ -232,24 +263,22 @@ func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    "test-client",
-				Version: version.Version,
-			},
+	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo: &mcp.Implementation{
+			Name:    "test-client",
+			Version: version.Version,
 		},
 	}); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	toolsResult, err := c.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
@@ -287,24 +316,22 @@ func TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription(t *testing
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    "test-client",
-				Version: version.Version,
-			},
+	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo: &mcp.Implementation{
+			Name:    "test-client",
+			Version: version.Version,
 		},
 	}); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	toolsResult, err := c.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
@@ -358,28 +385,26 @@ func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T)
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    "test-client",
-				Version: version.Version,
-			},
+	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo: &mcp.Implementation{
+			Name:    "test-client",
+			Version: version.Version,
 		},
 	}); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	toolsResult, err := c.ListTools(ctx, mcp.ListToolsRequest{})
+	toolsResult, err := c.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
-	toolsByName := make(map[string]mcp.Tool, len(toolsResult.Tools))
+	toolsByName := make(map[string]*mcp.Tool, len(toolsResult.Tools))
 	for _, tool := range toolsResult.Tools {
 		toolsByName[tool.Name] = tool
 	}
@@ -446,33 +471,26 @@ func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
-		},
+	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
 	}); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	res, err := c.ReadResource(ctx, mcp.ReadResourceRequest{
-		Params: mcp.ReadResourceParams{URI: "signoz://promql/instructions"},
-	})
+	res, err := c.ReadResource(ctx, &mcp.ReadResourceParams{URI: "signoz://promql/instructions"})
 	if err != nil {
 		t.Fatalf("ReadResource(signoz://promql/instructions) failed: %v", err)
 	}
 	if len(res.Contents) == 0 {
 		t.Fatal("expected resource contents, got none")
 	}
-	tc, ok := res.Contents[0].(mcp.TextResourceContents)
-	if !ok {
-		t.Fatalf("expected TextResourceContents, got %T", res.Contents[0])
-	}
+	tc := res.Contents[0]
 	if tc.URI != "signoz://promql/instructions" {
 		t.Errorf("URI = %q, want signoz://promql/instructions", tc.URI)
 	}
@@ -489,7 +507,7 @@ func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
 	}
 }
 
-func inputSchema(t *testing.T, tool mcp.Tool) map[string]any {
+func inputSchema(t *testing.T, tool *mcp.Tool) map[string]any {
 	t.Helper()
 
 	b, err := json.Marshal(tool.InputSchema)
@@ -566,22 +584,20 @@ func TestIntegration_ListPrompts(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	_, err = c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
-		},
+	_, err = c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
 	})
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	promptsResult, err := c.ListPrompts(ctx, mcp.ListPromptsRequest{})
+	promptsResult, err := c.ListPrompts(ctx, &mcp.ListPromptsParams{})
 	if err != nil {
 		t.Fatalf("ListPrompts failed: %v", err)
 	}
@@ -599,16 +615,14 @@ func TestIntegration_InitializeListAndReadResources(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	initResult, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
-		},
+	initResult, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
 	})
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
@@ -617,7 +631,7 @@ func TestIntegration_InitializeListAndReadResources(t *testing.T) {
 		t.Error("expected resources capability to be present")
 	}
 
-	resourcesResult, err := c.ListResources(ctx, mcp.ListResourcesRequest{})
+	resourcesResult, err := c.ListResources(ctx, &mcp.ListResourcesParams{})
 	if err != nil {
 		t.Fatalf("ListResources failed: %v", err)
 	}
@@ -660,23 +674,18 @@ func TestIntegration_InitializeListAndReadResources(t *testing.T) {
 			if resource.URI == "signoz://docs/sitemap" {
 				t.Skip("requires initialized docs index")
 			}
-			if resource.Size == nil {
+			if resource.Size == 0 {
 				t.Fatal("static resource does not advertise its byte size")
 			}
 
-			result, err := c.ReadResource(ctx, mcp.ReadResourceRequest{
-				Params: mcp.ReadResourceParams{URI: resource.URI},
-			})
+			result, err := c.ReadResource(ctx, &mcp.ReadResourceParams{URI: resource.URI})
 			if err != nil {
 				t.Fatalf("ReadResource(%s) failed: %v", resource.URI, err)
 			}
 			if len(result.Contents) != 1 {
 				t.Fatalf("ReadResource(%s) returned %d content items, want 1", resource.URI, len(result.Contents))
 			}
-			content, ok := result.Contents[0].(mcp.TextResourceContents)
-			if !ok {
-				t.Fatalf("ReadResource(%s) returned %T, want TextResourceContents", resource.URI, result.Contents[0])
-			}
+			content := result.Contents[0]
 			if content.URI != resource.URI {
 				t.Errorf("ReadResource(%s) content URI = %q", resource.URI, content.URI)
 			}
@@ -686,7 +695,7 @@ func TestIntegration_InitializeListAndReadResources(t *testing.T) {
 			if strings.TrimSpace(content.Text) == "" {
 				t.Errorf("ReadResource(%s) returned empty text", resource.URI)
 			}
-			if got, want := *resource.Size, int64(len(content.Text)); got != want {
+			if got, want := resource.Size, int64(len(content.Text)); got != want {
 				t.Errorf("resource size = %d, read content size = %d", got, want)
 			}
 		})
@@ -697,22 +706,20 @@ func TestIntegration_ListResourceTemplates(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
 
-	_, err = c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test", Version: version.Version},
-		},
+	_, err = c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
 	})
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	templatesResult, err := c.ListResourceTemplates(ctx, mcp.ListResourceTemplatesRequest{})
+	templatesResult, err := c.ListResourceTemplates(ctx, &mcp.ListResourceTemplatesParams{})
 	if err != nil {
 		t.Fatalf("ListResourceTemplates failed: %v", err)
 	}
@@ -721,7 +728,7 @@ func TestIntegration_ListResourceTemplates(t *testing.T) {
 		t.Fatalf("resource template count = %d, want %d", got, want)
 	}
 	for _, template := range templatesResult.ResourceTemplates {
-		if template.URITemplate == nil || template.URITemplate.Raw() == "" ||
+		if template.URITemplate == "" ||
 			template.Name == "" || template.Description == "" || template.MIMEType == "" {
 			t.Errorf("resource template has incomplete metadata: %+v", template)
 		}

@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 const aggregateRequestTypeDescription = `Result shape. "scalar" (default) returns one value or a grouped/ranked table over the full time range; use it for totals, percentiles, and top lists. "time_series" returns time-bucketed values, with one series per group when grouped; use it for spikes, trends, changes over time, or questions about when something happened.`

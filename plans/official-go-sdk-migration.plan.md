@@ -62,10 +62,10 @@ Official v1.7.0 differs at each of those seams. This plan freezes the old wire c
 3. Schema mismatch remains fail-open and detectable; ordinary tool errors remain coded `isError` results, not JSON-RPC errors.
 4. The real production catalog remains exactly 43 tools, 22 resources, 2 templates, and 4 prompts unless baseline refresh reveals an intentional upstream change.
 5. The pre-swap characterization baseline is immutable during the SDK migration. Every delta must be either fixed or recorded in a small, path-specific accepted-differences table with rationale and a regression assertion; there is no broad ignore list.
-6. HTTP request order is `otelhttp -> mux -> observe -> maxBytes -> auth -> official MCP handler`; the observer is read-only/bounded, and `maxBytes` remains the authoritative body limit.
+6. HTTP request order is `otelhttp -> mux -> maxBytes -> auth -> official MCP handler`; `maxBytes` remains the authoritative body limit.
 7. Production HTTP is stateless, emits no `Mcp-Session-Id`, requires no sticky routing, and preserves current JSON POST framing with `JSONResponse: true`.
 8. The migration intentionally omits `capabilities.logging`, does not guarantee or actively suppress legacy `logging/setLevel`, accepts official discovery ordering, and uses official `-32602` resource-not-found semantics. These decisions are documented rather than hidden behind compatibility shims.
-9. Every safely decoded HTTP request produces one terminal method observation and, for `tools/call`, one terminal tool observation across success/error/cancellation/panic paths. Unparseable bytes retain transport logs/spans without invented method metrics; stdio parity is measured before adding fallback machinery.
+9. Every request that reaches official SDK dispatch produces one terminal method observation and, for `tools/call`, one terminal tool observation across success/error/cancellation/panic paths. Pre-dispatch transport/lifecycle rejections retain the outer HTTP span/status and bounded SDK diagnostics without fabricated MCP metrics; stdio parity is measured before adding fallback machinery.
 10. Conformance fixtures never enter the production dependency graph, discovery results, README, manifest, or guardrail inventory.
 
 ## Delivery Plan
@@ -108,6 +108,9 @@ Canonicalization must not remove nested array order, false values, null-vs-absen
 - top-level discovery collection ordering;
 - outer `result.ttlMs: 0` and `result.cacheScope: "public"` on cacheable methods;
 - unknown `resources/read` code `-32002 -> -32602` with the official message/data;
+- unknown tool and prompt responses keep `-32602` but use the official SDK's
+  standard `unknown tool "<name>"` / `unknown prompt "<name>"` messages instead
+  of mark3-specific wording;
 - fail-open input-validation notice detail from validator-library error text to the exact repository-owned sentence defined in Phase 1; the notice prefix and best-effort behavior remain;
 - modern-only `resultType` and server metadata;
 - transport differences already named in this plan (GET/DELETE 405, malformed-stdio termination, and any approved legacy-disconnect limitation).
@@ -157,8 +160,9 @@ Add a small internal tool-contract layer with only the pieces used by this repos
 - official `*jsonschema.Schema` definitions/builders for the currently used primitive/object/array/raw/typed operations, using `json.RawMessage` only for valid schemas that the typed representation cannot round-trip without changing advertised JSON;
 - typed schema generation through the same `google/jsonschema-go` configuration used by the official SDK;
 - explicit annotation conversion, including false-valued booleans and pointer defaults;
-- a local request type exposing decoded `Arguments`, exact `RawArguments`, `GetArguments()`, tool name, protocol version, client identity/capabilities, and request metadata needed by current policies;
-- one adapter from official `*mcp.CallToolRequest` to the local request.
+- a local request type exposing only decoded `Arguments`, exact `RawArguments`, `GetArguments()`, and tool name—the fields current business handlers consume;
+- one adapter from official `*mcp.CallToolRequest` to the local request. Protocol/client/capability metadata stays on the official request and is consumed by receiving middleware instead of being cloned into an unused second request model;
+- one request-scoped argument decode shared by search-context extraction, the adapter, repository validation, and business handlers. Retain the exact raw bytes for compatibility characterization without reparsing them in validation.
 
 All registration-time descriptor/schema transforms must be copy-on-write. Definitions may be reused by production, tests, and the conformance profile, so normalization or annotation conversion must not mutate the original `mcp.Tool`, `*jsonschema.Schema`, `Properties`, property schemas, `Extra` maps, `Required` slices, or raw-schema bytes. Add original-unchanged, repeat-registration, and concurrent-registration race tests. Clone only the branches actually modified; do not add a general deep-copy framework.
 
@@ -172,7 +176,7 @@ The adapter's JSON contract is frozen by table tests:
 | number literals | current float64 behavior, including the characterized >2^53 rounding |
 | numeric strings | exact strings retained for per-field parsers |
 | arrays/primitives | retained and surfaced without adapter panic; handler/policy determines outcome |
-| malformed JSON | protocol parse error before handler, with one terminal observation |
+| malformed JSON | protocol parse error before handler, with HTTP transport observation only |
 
 Do not use blanket `UseNumber`, bind all arguments into generated structs, apply schema defaults, or reject unknown fields.
 
@@ -186,12 +190,12 @@ construct/normalize official schema
 -> adapt raw request to repository request
 -> fail-open input/output validation decorator
 -> coded-error decorator
--> per-tool observability/result-safety decorator
+-> per-tool context/panic-safety decorator
 -> duplicate-registration claim
 -> official (*mcp.Server).AddTool
 ```
 
-Add one order-sensitive test whose decorators record entry/exit and whose handler returns a coded result. It must prove validation, coded-error enforcement, result safety, and tool observability execute in the documented nesting order and still return through official `Server.callTool` finalization.
+Add one registered-pipeline test through official dispatch. It must prove validation, coded-error enforcement, panic safety, result safety, and terminal tool observability compose without duplicate lifecycle signals.
 
 The policy layer continues to:
 
@@ -263,12 +267,7 @@ Do not advertise logging. Do not add middleware to preserve or suppress legacy `
 Wrap the SDK's `slog.Logger` with a bounded/redacting adapter. Preserve its useful transport diagnostics, but demote the known modern removed-method probe and graceful `server run cancelled` record from ERROR to DEBUG; never demote arbitrary internal/session failures. Pin message/attribute matching in tests so an upstream wording change fails rather than broadening the downgrade.
 
 #### 2.2 Consolidate method lifecycle observability
-Replace mark3 hooks and `pkg/otel/mcp.go` tracer integration with official receiving middleware plus the existing `otelhttp` request span. Receiving middleware only sees messages that pass the official HTTP transport's body/header checks, so split observation deliberately:
-
-- an HTTP terminal-observation wrapper sits immediately outside `maxBytes(auth(officialHandler))` and inside the route mux/`otelhttp` wrapper. It records status and headers and tees the original body into a metadata buffer with an independent fixed 64 KiB ceiling (or the smaller positive request limit); downstream `maxBytes` remains authoritative for early `Content-Length`, chunked, and read-time rejection. If capture exceeds the observer ceiling, stop buffering and fall back to HTTP-only telemetry while the downstream request continues unchanged. The observer decodes method/ID/name only after downstream completely consumes the tee. It never prereads or rewinds. For modern requests prefer validated `Mcp-Method`/`Mcp-Name` headers; for partial/unread bodies emit HTTP-only telemetry rather than inventing an MCP target;
-- official receiving middleware owns every request that reaches SDK dispatch;
-- both share request-scoped state/atomic completion markers so exactly one layer emits method/tool terminal telemetry;
-- malformed/unreadable bodies that cannot establish a trustworthy MCP method remain HTTP-only observations rather than being mislabeled.
+Replace mark3 hooks and `pkg/otel/mcp.go` tracer integration with official receiving middleware plus the existing `otelhttp` request span. Receiving middleware owns every request that reaches official SDK dispatch. Transport/lifecycle validation that happens earlier remains visible through the outer HTTP span/status and bounded SDK diagnostics but emits no MCP method/tool metric. Do not tee and reparse request bodies or add cross-layer duplicate-suppression state solely to synthesize MCP telemetry for calls the SDK did not dispatch; focused tests pin zero MCP metric emission on representative pre-dispatch failures.
 
 For stdio, first measure the public v1.7.0 pipeline: request checks, param unmarshal, modern metadata/lifecycle gating, malformed frames, and SDK error logging can occur before receiving middleware. Preserve receiving middleware for dispatched requests and configure bounded repository logging. Add only the smallest exported-interface `Connection` decorator needed by a failing parity test—for example, a coarse pre-dispatch rejection count. Do not inject observation tokens, build a request registry/CAS handshake, or reimplement framing by default.
 
@@ -277,14 +276,14 @@ Pin the known malformed-frame delta: mark3 returns a parse error and keeps readi
 The receiving method observer must:
 
 - start before dispatch and terminate in a defer;
-- decorate the active HTTP/stdio span with normalized method, tenant URL, caller correlation, protocol version, client name/version, and bounded capability metadata;
-- extract client metadata from each modern request and legacy initialize/session state;
-- classify success, coded tool error, handler-level invalid params, unknown tool/resource/prompt, panic, client cancellation, deadline, and internal error; transport/lifecycle rejections that occur before middleware belong to the outer HTTP or stdio transport paths above;
+- decorate the active HTTP/stdio span with normalized method, tenant URL, caller correlation, protocol version, bounded client name/version, and an allowlist of boolean capability-presence flags; keep client/protocol/capability fields off metrics;
+- extract client metadata from each modern request and from legacy session state where the transport retains it. Stateless legacy HTTP attributes the protocol header on every call and client identity on `initialize`, but cannot carry initialize-only client identity into later independent POSTs;
+- classify success, coded tool error, handler-level invalid params, unknown tool/resource/prompt, panic, client cancellation, deadline, and internal error after dispatch; transport/lifecycle rejections that occur before middleware remain transport observations;
 - emit one method count/duration/log/span terminal outcome, even if the context cancels before downstream returns;
 - preserve DEBUG severity for expected unsupported probes and cancellations, ERROR for real protocol/internal failures;
 - schedule existing analytics without losing `WaitForAnalytics` shutdown behavior.
 
-Tool-specific observation remains a registration decorator and must produce one tool count/duration/log/analytics event for normal handlers. Receiving/outer HTTP fallback logic covers unknown tools and valid tool calls rejected before the decorator. Remove the current mark3 observation tombstone machinery only after parity tests prove the receiving/outer coordination covers every HTTP race; stdio keeps the simplest measured behavior rather than mirroring HTTP machinery automatically.
+Tool-specific observation remains registration-owned for context/panic safety, while receiving middleware emits one terminal tool count/duration/log/analytics outcome for both registered calls and dispatched unknown-tool failures. Remove the mark3 observation tombstone machinery; the defer-based receiver has no cross-layer state or cleanup race. Stdio keeps the same dispatched-request observer without mirroring HTTP transport internals.
 
 #### 2.3 Add explicit panic recovery
 Add recovery inside the receiving lifecycle observer and around tool invocation as needed so:
@@ -309,19 +308,25 @@ MaxRequestBodyBytes:          mapped config limit (>0 unchanged, <=0 becomes -1)
 DisableLocalhostProtection:   false (preserve current protection)
 ```
 
+Wrap the resulting `/mcp` chain in the standard library's
+`http.NewCrossOriginProtection().Handler(...)`, as official v1.7.0 recommends.
+Accept non-browser and same-origin requests; reject cross-origin browser POSTs
+before body limiting, authentication, or SDK dispatch. Keep the SDK's separate
+localhost Host/DNS-rebinding protection enabled.
+
 Retain outer composition exactly:
 
 ```text
 otelhttp(
   mux{
-    /mcp: observe(maxBytes(auth(officialHandler)))
+    /mcp: crossOrigin(maxBytes(auth(officialHandler)))
     /livez, /readyz, /healthz
     custom OAuth metadata/register/authorize/token routes
   }
 )
 ```
 
-Keep the outer body limiter to preserve early `Content-Length` 413 behavior and current direct-config semantics; pass the same mapped limit to the official handler for bounded downstream reads. Assert auth is not called for an early oversize rejection and the SDK is not called for an auth rejection.
+Keep the outer body limiter to preserve early `Content-Length` 413 behavior and current direct-config semantics; pass the same mapped limit to the official handler for bounded downstream reads. The ordering is fixed structurally and by focused limit/auth tests; do not add an injectable transport solely to count internal entries.
 
 `JSONResponse: true` is load-bearing: official v1.7.0 otherwise changes every single-response POST from the current `application/json` body to SSE framing. Keep localhost/DNS-rebinding protection enabled, port the existing loopback/non-loopback Host matrix, and make an explicit future security decision rather than disabling it to fix a harness Host header.
 
@@ -374,7 +379,7 @@ Add production-handler tests for this minimum matrix:
 | Transport | `2025-11-25` | `2026-07-28` |
 |---|---|---|
 | HTTP | initialize + initialized notification, all lists, deterministic call/read/get | `server/discover`, then direct lists/call/read/get without initialize and with per-request `_meta` |
-| stdio | same legacy lifecycle through the real binary | discover and direct per-request calls through the real binary |
+| stdio | initialize + initialized notification, all lists, deterministic call/read/get through the official IO transport; thin real-binary framing/shutdown smoke | discover and direct lists/call/read/get through the official IO transport; thin real-binary framing/shutdown smoke |
 
 Drive both transports from the same logical request/expectation fixtures where framing permits; transport-specific assertions remain beside the shared semantic expectations. Do not maintain two independently curated catalog matrices.
 
@@ -392,6 +397,7 @@ Modern assertions:
 - direct calls work without initialize;
 - required protocol version/client capabilities and optional client info are read from each request independently;
 - two consecutive callers do not leak identity/capabilities across requests;
+- the existing `MCP Client: Initialized` analytics event remains legacy-only; successful modern tool/prompt/resource events carry request protocol/client identity without fabricating an initialization event for optional `server/discover`;
 - modern result/meta/cache fields are accepted as intentional protocol additions, not backported into the legacy golden.
 - modern `logging/setLevel` is rejected by the official lifecycle gate.
 
@@ -402,10 +408,11 @@ For modern HTTP, send correct headers, then independently mismatch:
 - `Mcp-Method` vs JSON-RPC `method`;
 - `Mcp-Name` vs `tools/call.params.name`.
 
-Each mismatch must reject with the official standardized header-mismatch JSON-RPC code (`-32020`), preserve the request ID, omit `Mcp-Session-Id`, avoid the tool handler/upstream client, and still produce one method/tool terminal observation through the outer fallback with tenant/correlation fields where auth succeeded. Separately test missing/invalid required client capabilities as invalid params (`-32602`), a capability-gated fixture request as missing required capability (`-32021`), unsupported modern protocol metadata (`-32022`), missing/mismatched protocol headers (`-32020` or invalid params exactly as official v1.7.0 specifies), malformed headers, and legacy requests without modern headers.
+Each mismatch must reject with the official standardized header-mismatch JSON-RPC code (`-32020`), preserve the request ID, omit `Mcp-Session-Id`, avoid the tool handler/upstream client, remain visible on the outer HTTP span/status, and emit zero MCP method/tool metrics because official dispatch did not occur. Separately test missing/invalid required client capabilities as invalid params (`-32602`), a capability-gated fixture request as missing required capability (`-32021`), unsupported modern protocol metadata (`-32022`), missing/mismatched protocol headers (`-32020` or invalid params exactly as official v1.7.0 specifies), malformed headers, and legacy requests without modern headers.
 
 #### 3.3 Keep Inspector as an independent initialized-client lane
-Run the pinned Inspector against the actual production binary over HTTP and stdio. Exercise:
+Run the pinned Inspector against the actual production binary over HTTP, and a
+small bounded raw-client smoke against the real stdio binary. Exercise:
 
 - tool/resource/template/prompt lists;
 - `signoz_search_docs` deterministic call;
@@ -427,7 +434,10 @@ shellcheck scripts/test-mcp-protocol.sh
 MCP_PROTOCOL_SUITE=inspector scripts/test-mcp-protocol.sh
 ```
 
-Expected result: Inspector HTTP and stdio initialized-client lanes pass, the raw production matrix independently proves both eras, modern calls never initialize, legacy calls still do, and mismatch probes reject before handler execution.
+Expected result: the Inspector HTTP initialized-client lane and real-binary
+legacy/modern stdio smokes pass, the Go raw production matrix independently
+proves both eras, modern calls never initialize, legacy calls still do, and
+mismatch probes reject before handler execution.
 
 ### Phase 4 — Add honest official conformance coverage as a bounded post-merge follow-up
 
@@ -481,7 +491,9 @@ Keep the existing stable `protocol / inspector` check and add `protocol / confor
 
 If the team wants wire-schema failures from non-scored scenarios to block too, add explicit report post-processing and document that policy; the conformance CLI exit code does not promote them by itself.
 
-Do not use `tier-check`; repository/client assessment and GitHub tokens are outside this server gate. The official runner covers HTTP only, so Inspector remains responsible for stdio.
+Do not use `tier-check`; repository/client assessment and GitHub tokens are
+outside this server gate. The official runner covers HTTP only, so the raw Go
+matrix and bounded real-binary smoke remain responsible for stdio.
 
 Verification for Phase 4:
 
@@ -673,7 +685,7 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 - STOP if a successful POST changes from HTTP 200 `application/json`, production HTTP emits/accepts `Mcp-Session-Id`, requires sticky state, or does not return 405 for stateless GET/DELETE.
 - STOP if a standardized header mismatch reaches the handler, returns a code other than `-32020`, or lacks the request ID.
 - STOP if auth/request-limit/readiness/DNS-rebinding/shutdown order changes, graceful stdio cancellation exits non-zero or logs as an operational error, or legacy disconnect cancellation changes without an explicitly approved limitation and capacity-impact note.
-- STOP if any SDK-dispatched or safely decoded HTTP path loses or duplicates terminal method/tool telemetry, leaves spans open, leaks client metadata between modern requests, or loses tenant/correlation attribution. For stdio, stop on loss of existing dispatched-request telemetry or unbounded/raw transport logs; add fallback machinery only in response to a named failing parity test. Do not label wholly unparseable frames with an invented method.
+- STOP if any SDK-dispatched path loses or duplicates terminal method/tool telemetry, leaves spans open, leaks client metadata between modern requests, or loses tenant/correlation attribution. Pre-dispatch HTTP paths must remain on HTTP telemetry only and emit zero MCP method/tool metrics. For stdio, stop on loss of existing dispatched-request telemetry or unbounded/raw transport logs; add fallback machinery only in response to a named failing parity test. Do not label wholly unparseable frames with an invented method.
 - STOP if the full official requirements are pointed directly at the production SigNoz catalog or missing fixtures are hidden with broad baselines.
 - STOP if fixture code/surfaces/MRTR/Tasks/Apps enter `cmd/server`, production discovery, README, manifest, or guardrail inventories.
 - STOP if a blocking prerelease conformance dependency is not approved; rewrite the acceptance claim rather than silently substituting an older suite.
@@ -688,6 +700,6 @@ Before creating the runtime PR—and again before creating every later PR in thi
 - The immutable SDK-free characterization covers every advertised tool schema/description/annotation and every resource/template/prompt descriptor; compact digests cover all deterministic resource/prompt payloads; literal fixtures cover shape-sensitive handlers/errors. Only the named accepted differences remain, and independent inventories, budgets, normalization, structured-result, and coded-error tests pass.
 - The production HTTP/stdio × legacy/modern matrix and exact standardized-header tests pass.
 - Official frozen `--requirements` sets for both eras pass against the minimal isolated shared-stack fixture in the bounded follow-up with no broad baseline; fixture leakage guards pass. If maintainers approve narrower selected-scenario scope instead, the plan/issue claim is updated before coding.
-- Auth/OAuth, request limits, readiness, JSON POST framing, DNS-rebinding protection, approved cancellation behavior, shutdown, panic recovery, and HTTP exactly-once observability retain parity; stdio behavior is measured, bounded, and documents malformed-frame termination.
+- Auth/OAuth, request limits, readiness, JSON POST framing, DNS-rebinding protection, approved cancellation behavior, shutdown, panic recovery, and dispatched-request exactly-once observability retain parity; pre-dispatch HTTP failures remain transport-only, while stdio behavior is measured, bounded, and documents malformed-frame termination.
 - README, architecture, MCP best practices, guardrails, manifest/server metadata, and CMP-3 statement are synchronized.
 - Representative client results are recorded, all repository gates pass, and the plan status is updated to `Done` only after the feature ships.

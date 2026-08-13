@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
@@ -37,7 +36,7 @@ func validateSourcePage(sp string) error {
 
 // RegisterViewHandlers registers the unified saved-views CRUD tools plus
 // the signoz://view/instructions and signoz://view/examples resources.
-func (h *Handler) RegisterViewHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering view handlers")
 
 	listTool := mcp.NewTool("signoz_list_views",

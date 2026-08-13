@@ -28,10 +28,10 @@ type Handler struct {
 	validationLogs sync.Map
 
 	// registrations tracks the names advertised through each composed SDK
-	// server. mcp-go stores registrations in maps and silently overwrites a
+	// server. The official SDK stores registrations in maps and replaces a
 	// prior entry, so every production registration must pass through the
 	// checked helpers in registration.go.
-	registrationMu sync.Mutex
+	registrationMu sync.RWMutex
 	registrations  map[registrationKey]struct{}
 
 	// clientOverride, when non-nil, is returned by GetClient instead of

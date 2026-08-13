@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 // Composite annotation options, one per tool class. Every registered tool must
