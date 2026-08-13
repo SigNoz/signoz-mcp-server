@@ -622,8 +622,8 @@ func requestTelemetryAttrs(request mcp.Request) []attribute.KeyValue {
 	}
 	if capabilities := serverRequest.ClientCapabilities(); capabilities != nil {
 		attrs = append(attrs,
-			otelpkg.MCPClientRootsKey.Bool(capabilities.RootsV2 != nil),
-			otelpkg.MCPClientSamplingKey.Bool(capabilities.Sampling != nil),
+			otelpkg.MCPClientRootsKey.Bool(capabilities.RootsV2 != nil),     //nolint:staticcheck // Legacy MCP clients may still advertise roots during the deprecation window.
+			otelpkg.MCPClientSamplingKey.Bool(capabilities.Sampling != nil), //nolint:staticcheck // Legacy MCP clients may still advertise sampling during the deprecation window.
 			otelpkg.MCPClientElicitationKey.Bool(capabilities.Elicitation != nil),
 		)
 	}

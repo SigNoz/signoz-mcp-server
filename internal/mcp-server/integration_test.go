@@ -66,10 +66,13 @@ func newIntegrationClient(t *testing.T, server *mcp.Server) (*integrationClient,
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: version.Version}, &mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{}})
 	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
 	if err != nil {
-		serverSession.Close()
+		_ = serverSession.Close()
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { clientSession.Close(); serverSession.Close() })
+	t.Cleanup(func() {
+		_ = clientSession.Close()
+		_ = serverSession.Close()
+	})
 	return &integrationClient{client: clientSession, server: serverSession}, nil
 }
 

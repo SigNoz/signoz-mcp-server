@@ -293,6 +293,20 @@
   tested `tools/call` method-metric exclusion—were not demonstrated production
   defects and require no migration workaround.
 
+### 2026-08-13 — PR lint follow-up
+- GitHub `lint / go` exposed nine mechanical findings not covered by the local
+  pre-publication commands: four unchecked test-session cleanup errors, three
+  deprecated-capability reads, one switch simplification, and one dead test
+  helper. Build, test, format, dependency, contract, and Inspector checks were
+  already green.
+- Explicitly ignored cleanup-only close errors, used active elicitation for the
+  request-isolation test, simplified the test switch, and removed the unused
+  helper. Kept legacy roots/sampling span attribution with two line-scoped
+  `staticcheck` suppressions because official v1.7.0 still exposes those
+  deprecated capabilities during its compatibility window. No runtime contract
+  or client-visible surface changed, so the completed Grok review remains
+  applicable.
+
 ## Open Questions
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.

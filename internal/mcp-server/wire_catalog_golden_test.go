@@ -328,20 +328,20 @@ func (o *wireOracle) close() {
 
 func (o *wireOracle) serveUpstream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	switch {
-	case r.URL.Path == "/api/v2/dashboards/dashboard-wire":
+	switch r.URL.Path {
+	case "/api/v2/dashboards/dashboard-wire":
 		body := `{"data":{"title":"Checkout RED","widgets":[{"title":"Request rate"}],"variables":{"service":{"type":"DYNAMIC"}}}}`
 		o.mu.Lock()
 		o.dashboardRequestBody = []byte(body)
 		o.mu.Unlock()
 		_, _ = w.Write([]byte(body))
-	case r.URL.Path == "/api/v2/dashboards":
+	case "/api/v2/dashboards":
 		_, _ = w.Write([]byte(`{"dashboards":[],"tags":[],"total":0}`))
-	case r.URL.Path == "/api/v1/channels":
+	case "/api/v1/channels":
 		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"channel-wire","name":"on-call","type":"email","data":"{}"}]}`))
-	case r.URL.Path == "/api/v2/rules/rule-wire":
+	case "/api/v2/rules/rule-wire":
 		_, _ = w.Write([]byte(`{"data":{"id":"rule-wire","alert":"Checkout errors"}}`))
-	case r.URL.Path == "/api/v2/rules/rule-wire/history/timeline":
+	case "/api/v2/rules/rule-wire/history/timeline":
 		start, _ := parseInt64(r.URL.Query(), "start")
 		end, _ := parseInt64(r.URL.Query(), "end")
 		limit, _ := parseInt(r.URL.Query(), "limit")

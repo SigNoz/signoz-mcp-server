@@ -60,13 +60,13 @@ func callTestToolFromJSONRPC(ctx context.Context, t *testing.T, server *mcp.Serv
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer serverSession.Close()
+	defer func() { _ = serverSession.Close() }()
 	client := official.NewClient(&official.Implementation{Name: "test", Version: "0.0.0"}, nil)
 	clientSession, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer clientSession.Close()
+	defer func() { _ = clientSession.Close() }()
 	result, err := clientSession.CallTool(ctx, &official.CallToolParams{Name: request.Params.Name, Arguments: request.Params.Arguments})
 	if err != nil {
 		t.Fatal(err)

@@ -24,7 +24,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
@@ -184,13 +183,6 @@ func spanAttrValue(attrs []attribute.KeyValue, key attribute.Key) (attribute.Val
 		}
 	}
 	return attribute.Value{}, false
-}
-
-func startTestMCPSpan(ctx context.Context, method string) (context.Context, trace.Span) {
-	return otel.Tracer("signoz-mcp-server").Start(ctx, method,
-		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(otelpkg.MCPMethodKey.String(method)),
-	)
 }
 
 func callReceiving(t *testing.T, server *MCPServer, ctx context.Context, method string, req mcp.Request, result mcp.Result, err error) (mcp.Result, error) {

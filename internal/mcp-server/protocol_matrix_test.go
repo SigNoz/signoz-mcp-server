@@ -166,8 +166,8 @@ func TestProductionHTTPModernCallerMetadataIsRequestScoped(t *testing.T) {
 	m.registerHandlers(server)
 
 	type caller struct {
-		name     string
-		sampling bool
+		name        string
+		elicitation bool
 	}
 	var mu sync.Mutex
 	var callers []caller
@@ -179,7 +179,7 @@ func TestProductionHTTPModernCallerMetadataIsRequestScoped(t *testing.T) {
 					entry.name = info.Name
 				}
 				if capabilities := request.ClientCapabilities(); capabilities != nil {
-					entry.sampling = capabilities.Sampling != nil
+					entry.elicitation = capabilities.Elicitation != nil
 				}
 				mu.Lock()
 				callers = append(callers, entry)
@@ -193,7 +193,7 @@ func TestProductionHTTPModernCallerMetadataIsRequestScoped(t *testing.T) {
 	metas := []map[string]any{
 		{
 			"io.modelcontextprotocol/protocolVersion":    modernProtocolVersion,
-			"io.modelcontextprotocol/clientCapabilities": map[string]any{"sampling": map[string]any{}},
+			"io.modelcontextprotocol/clientCapabilities": map[string]any{"elicitation": map[string]any{}},
 			"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "caller-a", "version": "1"},
 		},
 		{
@@ -212,7 +212,7 @@ func TestProductionHTTPModernCallerMetadataIsRequestScoped(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	want := []caller{{name: "caller-a", sampling: true}, {name: "caller-b", sampling: false}}
+	want := []caller{{name: "caller-a", elicitation: true}, {name: "caller-b", elicitation: false}}
 	if !reflect.DeepEqual(callers, want) {
 		t.Fatalf("request-scoped callers = %#v, want %#v", callers, want)
 	}
