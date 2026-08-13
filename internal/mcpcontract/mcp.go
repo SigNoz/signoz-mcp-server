@@ -84,7 +84,7 @@ func AdaptToolHandler(next ToolHandlerFunc) official.ToolHandler {
 		name := ""
 		if req != nil && req.Params != nil {
 			name = req.Params.Name
-			raw = append(raw, req.Params.Arguments...)
+			raw = req.Params.Arguments
 		}
 		cached, ok := ctx.Value(decodedToolArguments{}).(decodedToolArguments)
 		if !ok {
@@ -146,16 +146,8 @@ func NewTool(name string, opts ...ToolOption) Tool {
 	return t
 }
 
-func NewToolWithRawSchema(name, description string, schema json.RawMessage) Tool {
-	return Tool{Name: name, Description: description, InputSchema: append(json.RawMessage(nil), schema...)}
-}
-
 func WithDescription(description string) ToolOption {
 	return func(t *Tool) { t.Description = description }
-}
-
-func WithRawInputSchema(schema json.RawMessage) ToolOption {
-	return func(t *Tool) { t.InputSchema = append(json.RawMessage(nil), schema...) }
 }
 
 func WithInputSchema[T any]() ToolOption {

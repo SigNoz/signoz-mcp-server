@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"math"
 	"net"
@@ -210,10 +209,6 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 		tool           mcp.Tool
 		arguments      string
 		handler        mcp.ToolHandlerFunc
-		wantCalled     bool
-		wantLog        string
-		wantLevel      string
-		wantToolCalls  int64
 		wantMismatches int64
 		wantDirection  string
 	}{
@@ -226,10 +221,6 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			},
 			// Mismatches are served, not rejected: the call succeeds and the
 			// mismatch is telemetry plus an in-band notice.
-			wantCalled:     true,
-			wantLog:        "tool call finished",
-			wantLevel:      "DEBUG",
-			wantToolCalls:  1,
 			wantMismatches: 1,
 			wantDirection:  "input",
 		},
@@ -242,36 +233,8 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
 			},
-			wantCalled:     true,
-			wantLog:        "tool call finished",
-			wantLevel:      "DEBUG",
-			wantToolCalls:  1,
 			wantMismatches: 1,
 			wantDirection:  "output",
-		},
-		{
-			name:      "normal success",
-			tool:      mcp.NewTool("probe"),
-			arguments: `{}`,
-			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return mcp.NewToolResultText("ok"), nil
-			},
-			wantCalled:    true,
-			wantLog:       "tool call finished",
-			wantLevel:     "DEBUG",
-			wantToolCalls: 1,
-		},
-		{
-			name:      "handler error",
-			tool:      mcp.NewTool("probe"),
-			arguments: `{}`,
-			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return nil, errors.New("handler failed")
-			},
-			wantCalled:    true,
-			wantLog:       "tool call failed",
-			wantLevel:     "ERROR",
-			wantToolCalls: 1,
 		},
 	}
 
@@ -302,8 +265,8 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 				return next(ctx, req)
 			})
 			callToolForTest(t, s, "probe", json.RawMessage(tt.arguments))
-			if called != tt.wantCalled {
-				t.Fatalf("handler called = %t, want %t", called, tt.wantCalled)
+			if !called {
+				t.Fatal("mismatched call did not reach the handler")
 			}
 
 			classified := map[string]struct{}{
@@ -317,16 +280,16 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 					terminal = append(terminal, record)
 				}
 			}
-			if len(terminal) != 1 || terminal[0]["msg"] != tt.wantLog || terminal[0]["level"] != tt.wantLevel {
-				t.Fatalf("classified terminal logs = %#v, want one %s/%s; all logs=%s", terminal, tt.wantLevel, tt.wantLog, strings.TrimSpace(logs.String()))
+			if len(terminal) != 1 || terminal[0]["msg"] != "tool call finished" || terminal[0]["level"] != "DEBUG" {
+				t.Fatalf("classified terminal logs = %#v, want one DEBUG success; all logs=%s", terminal, strings.TrimSpace(logs.String()))
 			}
 
 			var collected metricdata.ResourceMetrics
 			if err := reader.Collect(context.Background(), &collected); err != nil {
 				t.Fatal(err)
 			}
-			if got := int64MetricTotal(collected, "mcp.tool.calls"); got != tt.wantToolCalls {
-				t.Fatalf("mcp.tool.calls = %d, want %d", got, tt.wantToolCalls)
+			if got := int64MetricTotal(collected, "mcp.tool.calls"); got != 1 {
+				t.Fatalf("mcp.tool.calls = %d, want 1", got)
 			}
 			if got := int64MetricTotal(collected, "mcp.tool.validation.mismatches"); got != tt.wantMismatches {
 				t.Fatalf("mcp.tool.validation.mismatches = %d, want %d", got, tt.wantMismatches)

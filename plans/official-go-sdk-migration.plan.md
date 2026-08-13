@@ -62,7 +62,7 @@ Official v1.7.0 differs at each of those seams. This plan freezes the old wire c
 3. Schema mismatch remains fail-open and detectable; ordinary tool errors remain coded `isError` results, not JSON-RPC errors.
 4. The real production catalog remains exactly 43 tools, 22 resources, 2 templates, and 4 prompts unless baseline refresh reveals an intentional upstream change.
 5. The pre-swap characterization baseline is immutable during the SDK migration. Every delta must be either fixed or recorded in a small, path-specific accepted-differences table with rationale and a regression assertion; there is no broad ignore list.
-6. HTTP request order is `otelhttp -> mux -> maxBytes -> auth -> official MCP handler`; `maxBytes` remains the authoritative body limit.
+6. HTTP request order is `otelhttp -> mux -> cross-origin protection -> maxBytes -> auth -> official MCP handler`; `maxBytes` remains the authoritative body limit.
 7. Production HTTP is stateless, emits no `Mcp-Session-Id`, requires no sticky routing, and preserves current JSON POST framing with `JSONResponse: true`.
 8. The migration intentionally omits `capabilities.logging`, does not guarantee or actively suppress legacy `logging/setLevel`, accepts official discovery ordering, and uses official `-32602` resource-not-found semantics. These decisions are documented rather than hidden behind compatibility shims.
 9. Every request that reaches official SDK dispatch produces one terminal method observation and, for `tools/call`, one terminal tool observation across success/error/cancellation/panic paths. Pre-dispatch transport/lifecycle rejections retain the outer HTTP span/status and bounded SDK diagnostics without fabricated MCP metrics; stdio parity is measured before adding fallback machinery.
@@ -74,8 +74,8 @@ Official v1.7.0 differs at each of those seams. This plan freezes the old wire c
 
 Implementation checkpoint: complete on 2026-08-13. The frozen oracle was
 captured and verified on mark3 before any direct official-SDK dependency was
-added. Its regeneration gate closes as soon as the official SDK becomes a
-direct requirement, including during a temporary dual-SDK compile stage.
+added. The production branch now contains no regeneration path; the oracle is
+compare-only.
 
 #### 0.1 Refresh and inventory
 - Refresh from `origin/main`, record the implementation-base SHA in both plan files, and rerun the scoped drift command above.
@@ -84,7 +84,7 @@ direct requirement, including during a temporary dual-SDK compile stage.
 - Confirm the current request-size, auth, readiness, shutdown, and stdio cancellation tests before touching dependencies.
 
 #### 0.2 Create the SDK-free wire oracle as the first migration commit
-Before changing `go.mod`, add and commit the complete Phase 0 oracle on the migration branch while production still runs mark3. Hand-written JSON-RPC requests drive the real production HTTP handler, the capture imports no MCP SDK type, and each fixture records the request, HTTP status, Content-Type/framing, and decoded response. Add the shared `registerHandlers` production seam, the guardrail inventory entry, and a namespaced explicit update flag.
+Before changing `go.mod`, add and commit the complete Phase 0 oracle on the migration branch while production still runs mark3. Hand-written JSON-RPC requests drive the real production HTTP handler, the capture imports no MCP SDK type, and each fixture records the request, HTTP status, Content-Type/framing, and decoded response. Add the shared `registerHandlers` production seam and guardrail inventory entry. Remove the one-time capture/update path before the dependency-changing commit so the official runtime cannot rewrite its own baseline.
 
 The closed, unmerged [PR #283](https://github.com/SigNoz/signoz-mcp-server/pull/283) at `cd188cb` is historical design input only. Reuse its narrow raw-HTTP harness ideas where they still match this plan, but do not treat the PR/branch as a prerequisite, merge target, or source of truth, and do not cherry-pick its obsolete plan decisions or incomplete discovery-only fixture set wholesale.
 
@@ -117,7 +117,7 @@ Canonicalization must not remove nested array order, false values, null-vs-absen
 
 Every entry names the exact old/new values, has a focused assertion, and is called out in the PR. Any other difference fails with a concise JSON path or digest mismatch. Future product-contract changes update source/baseline separately; do not expand the table merely to make the migration pass.
 
-Make the freeze mechanical without a second manifest system: generation lives behind a Phase 0-only build tag or separate helper that is removed/disabled before `go.mod` changes. Ordinary tests only read fixtures. A post-swap `go test` command must have no path that overwrites them.
+Make the freeze mechanical without a second manifest system: generation is a Phase 0-only operation whose helper is removed before `go.mod` changes. Ordinary tests only read fixtures. A post-swap `go test` command has no path that overwrites them.
 
 Keep the assertions in these independent tests as migration oracles. Their SDK-coupled harnesses must be ported, so they cannot literally remain unchanged; review the assertion diff separately from mechanical type changes:
 
@@ -250,7 +250,7 @@ Replace `newSDKServer` with one fully configured-and-registered official server 
 
 Assert legacy `initialize` matches the canonical baseline and modern `server/discover` advertises the intended server identity, capabilities appropriate to the modern protocol, and the transport-filtered official version set. For v1.7.0 that set is `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`; tests must require at least the issue's two target eras and make any future SDK version-list drift reviewable.
 
-Keep the structure lean within `internal/mcp-server` rather than introducing a public inventory framework:
+Keep the structure lean within `internal/mcp-server` rather than introducing a public inventory framework. The following are ownership boundaries, not required file scaffolding:
 
 ```text
 server.go              lifecycle: New, Run, Shutdown, analytics drain
@@ -260,7 +260,7 @@ transport_stdio.go     stdio context, run, and cancellation normalization
 observability.go       receiving/tool observers, panic recovery, bounded SDK logger
 ```
 
-Build new migration code in these ownership files; do not perform a separate move-only refactor first, and do not split small helpers merely to match the external repository.
+Keep these responsibilities cohesive; do not perform a separate move-only refactor or split small helpers merely to match the external repository.
 
 Do not advertise logging. Do not add middleware to preserve or suppress legacy `logging/setLevel`; official v1.7.0's legacy handling is incidental rather than a product contract. Assert only that initialize omits the capability and that the SDK rejects the method for modern requests. Accept official resource-not-found `-32602` and official feature ordering without receiving-middleware rewrites.
 
@@ -431,7 +431,7 @@ Verification for Phase 3:
 npm ci --ignore-scripts --prefix tools/mcp-ci
 bash -n scripts/test-mcp-protocol.sh
 shellcheck scripts/test-mcp-protocol.sh
-MCP_PROTOCOL_SUITE=inspector scripts/test-mcp-protocol.sh
+scripts/test-mcp-protocol.sh
 ```
 
 Expected result: the Inspector HTTP initialized-client lane and real-binary
@@ -502,7 +502,6 @@ node tools/mcp-ci/node_modules/@modelcontextprotocol/conformance/dist/index.js \
   list --server --requirements 2025-11-25
 node tools/mcp-ci/node_modules/@modelcontextprotocol/conformance/dist/index.js \
   list --server --requirements 2026-07-28
-MCP_PROTOCOL_SUITE=conformance scripts/test-mcp-protocol.sh
 actionlint .github/workflows/mcp-protocol.yaml
 ```
 
@@ -537,6 +536,40 @@ For each, record exact client version, transport, negotiated protocol era, disco
 
 Deterministic wire goldens, raw dual-era tests, and Inspector block the runtime migration merge. The separate conformance follow-up must land before issue #194 closes or release promotion. Unless the open question is resolved differently, credentialed native-client smokes also block release promotion rather than untrusted pull requests.
 
+Completed runtime-PR staging evidence on 2026-08-13:
+
+- 35/35 selected read-only build-tagged live tests passed; all channel/view and
+  other mutation tests were excluded.
+- The built production binary passed HTTP and stdio under both `2025-11-25`
+  and `2026-07-28`, including all four catalog counts, representative local
+  resource/prompt reads, coded validation, one live read-only backend tool,
+  stateless HTTP method/session behavior, and clean shutdown.
+- The read-only matrix created no staging resource. The later OAuth run used one
+  temporary viewer service account and expiring key; the key was revoked and
+  verified unauthorized, and the account was deleted (retained only as the
+  backend's soft-deleted audit row).
+
+Browser OAuth and the actual Assistant consumer subsequently passed on the
+built server, including DCR, PKCE, consent, code/token/refresh, bearer
+challenges, live read-only calls, coded validation, correlation, and log-secret
+scans. That run found and fixed one auth-precedence defect: server-issued OAuth
+tokens are now decrypted before considering `X-SigNoz-URL`, so their encrypted
+tenant is authoritative and cannot be downgraded into a direct bearer.
+
+Representative native clients were also exercised against the built binary.
+Codex completed catalog, local docs, and coded-error calls; Claude connected and
+read the catalogs but its provider account limit blocked invocation before MCP;
+Cursor initialized and listed all tools, while its noninteractive invocation
+was rejected client-side before `tools/call`. The actual SigNoz Assistant
+consumer path completed live success and coded-error calls through OAuth with
+exact correlation, which is the production consumer boundary for this server.
+
+The final Opus review additionally required real-transport proof for two
+observability contracts. Production HTTP initialize now proves the legacy
+client analytics event through the SDK-created server request, and HTTP
+tool-failure tests prove request capture projects only marshalable MCP params,
+redacts credential-shaped arguments, and cannot copy headers or token state.
+
 ### Phase 6 — Final verification and delivery
 
 Run the runtime migration PR's documented gates from a clean checkout:
@@ -547,7 +580,7 @@ bash -n scripts/test-mcp-protocol.sh
 shellcheck scripts/test-mcp-protocol.sh
 actionlint .github/workflows/mcp-protocol.yaml
 actionlint .github/workflows/guardrails.yaml
-MCP_PROTOCOL_SUITE=inspector scripts/test-mcp-protocol.sh
+scripts/test-mcp-protocol.sh
 
 go test -count=1 -run '^TestGuardrail_' ./...
 go test -count=1 ./...
@@ -564,11 +597,9 @@ git diff --check
 
 Both formatting commands must print nothing. Run the configured GitHub `lint`, `fmt`, `test`, `deps`, `build`, guardrail, and Inspector jobs.
 
-When Phase 4 is present—either in the runtime PR or its linked follow-up—also run:
-
-```bash
-MCP_PROTOCOL_SUITE=conformance scripts/test-mcp-protocol.sh
-```
+When Phase 4 is present in its linked follow-up, run the exact pinned
+conformance-runner command introduced by that PR; do not overload the production
+Inspector script with an unused suite variable.
 
 Require the conformance job before completing this plan and closing issue #194. Promote `protocol / conformance` to a required check only after its first clean default-branch bootstrap.
 
@@ -615,16 +646,16 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 
 ### Server, transport, and observability
 - `internal/mcp-server/server.go` — lifecycle, shared state, `Run`, shutdown, and analytics drain.
-- New focused files in the same package: `server_factory.go`, `transport_http.go`, `transport_stdio.go`, and `observability.go` with the ownership boundaries in Phase 2.1. Avoid a public inventory/config framework.
+- Keep factory/transport/observability ownership cohesive within `internal/mcp-server`; split files only when it improves navigation. Avoid a public inventory/config framework.
 - `pkg/otel/mcp.go` — remove/replace mark3 tracer coupling while preserving shared MCP attributes/helpers.
 - Focused files under `pkg/otel/`, `pkg/log/`, `pkg/analytics/`, or `internal/util/` only where required to carry per-request protocol/client/capability metadata.
 
 ### Characterization and focused tests
 - New `internal/mcp-server/testdata/wire-catalog/` with complete descriptor/schema catalogs, compact per-entry resource/prompt content digests, and literal shape-sensitive tool/resource/prompt/error results.
 - New `internal/mcp-server/wire_catalog_golden_test.go` with the SDK-free raw-HTTP harness, top-level identity sorting, deterministic mocks/docs index, path-level diff reporting, and the small accepted-differences table; no second contract fixture or duplicate full payload corpus. The closed #283 implementation may be consulted as historical input, but this plan owns the final behavior.
-- New `internal/mcp-server/protocol_http_test.go` — dual-era HTTP and standardized-header matrix.
+- `internal/mcp-server/protocol_matrix_test.go` and `protocol_headers_test.go` — dual-era HTTP/stdio and standardized-header matrices.
 - New/updated stdio and cancellation tests under `internal/mcp-server/`.
-- `internal/mcp-server/server_test.go`, `integration_test.go`, `docs_http_test.go`, `mcp_go_upgrade_test.go`, `nil_arguments_e2e_test.go`, `contract_budget_test.go` — port harnesses, preserve assertions.
+- `internal/mcp-server/server_test.go`, `integration_test.go`, `e2e_docs_test.go`, `mcp_go_upgrade_test.go`, `nil_arguments_e2e_test.go`, `contract_budget_test.go` — port harnesses, preserve assertions.
 - `internal/handler/tools/*_test.go`, especially registration/schema/normalization/output/structured/error inventories — port types while retaining behavior.
 - `pkg/otel/mcp_test.go`, `pkg/toolerrors/errors_test.go`, `pkg/prompts/*_test.go` — official types and lifecycle parity.
 
@@ -694,15 +725,13 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 ## Done Criteria
 The runtime migration PR is mergeable when Phases 0–3, 5, and the applicable Phase 6 gates pass. If conformance is split, keep this plan `In Progress` and the issue open; mark it `Done` only after Phase 4 also lands.
 
-Before creating each PR in this delivery series, run the independent read-only
-review model explicitly requested by the maintainer for that PR. For the
-runtime PR, Fable 5 high was unavailable and the maintainer explicitly replaced
-the original Fable/Opus sequence with Grok 4.6; exact
-`cursor-grok-4.6-xhigh` reviewed `30acf69..HEAD` in read-only plan mode and
-reported no P1/P2 findings. Record exact model/mode/scope evidence and findings
-in the context log, fix every accepted finding, rerun affected focused checks
-plus the PR's complete gates, and repeat the review when fixes materially
-change the reviewed surface. Never substitute a model silently.
+Before creating each PR in this delivery series, run at most two independent
+read-only reviews of the same surface. For this runtime PR, use Fable 5 high for
+the primary overengineering review and Opus 5 xhigh for the final exhaustive
+correctness/security review. Record exact model/mode/scope evidence and
+findings in the context log, fix every accepted finding, and rerun affected
+focused checks plus the PR's complete gates. Grok 4.6 may review a distinct
+targeted question later, but must not duplicate either review.
 
 - Mark3 imports and dependency are gone; official Go SDK v1.7.0 (or a separately reviewed newer stable target) owns HTTP and stdio.
 - The immutable SDK-free characterization covers every advertised tool schema/description/annotation and every resource/template/prompt descriptor; compact digests cover all deterministic resource/prompt payloads; literal fixtures cover shape-sensitive handlers/errors. Only the named accepted differences remain, and independent inventories, budgets, normalization, structured-result, and coded-error tests pass.

@@ -1,20 +1,17 @@
 package mcp_server
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -29,12 +26,6 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	official "github.com/modelcontextprotocol/go-sdk/mcp"
-)
-
-var updateWireCatalogGoldens = flag.Bool(
-	"signoz-wire-oracle-update",
-	false,
-	"rewrite the pre-migration wire oracle (available only while mark3labs/mcp-go is the production SDK)",
 )
 
 const (
@@ -108,9 +99,6 @@ type wireOracle struct {
 }
 
 func TestGuardrail_WireCatalogGoldens(t *testing.T) {
-	if *updateWireCatalogGoldens {
-		assertLegacySDKCanGenerateWireGoldens(t)
-	}
 	o := newWireOracle(t)
 	t.Cleanup(o.close)
 
@@ -616,18 +604,9 @@ func assertWireGolden(t *testing.T, name string, value any) {
 	}
 	actual = append(actual, '\n')
 	path := filepath.Join(wireCatalogGoldenDir, name)
-	if *updateWireCatalogGoldens {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, actual, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
 	expected, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read %s: %v; regenerate on the pre-migration SDK with -signoz-wire-oracle-update", path, err)
+		t.Fatalf("read immutable pre-migration wire oracle %s: %v", path, err)
 	}
 	if bytes.Equal(expected, actual) {
 		return
@@ -657,124 +636,6 @@ func truncateWireLine(value string) string {
 		return value[:240] + "..."
 	}
 	return value
-}
-
-func assertLegacySDKCanGenerateWireGoldens(t *testing.T) {
-	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate wire oracle source")
-	}
-	moduleFile := filepath.Join(filepath.Dir(filename), "..", "..", "go.mod")
-	goMod, err := os.ReadFile(moduleFile)
-	if err != nil {
-		t.Fatalf("read go.mod: %v", err)
-	}
-	hasLegacy, hasOfficial := directMCPRequirements(goMod)
-	if !hasLegacy || hasOfficial {
-		t.Fatal("golden regeneration is disabled after the production SDK migration; fixtures are an immutable mark3 baseline")
-	}
-}
-
-func TestWireOracleRegenerationSDKGate(t *testing.T) {
-	tests := []struct {
-		name         string
-		goMod        string
-		wantLegacy   bool
-		wantOfficial bool
-	}{
-		{
-			name: "legacy only",
-			goMod: `module example.com/oracle
-
-require github.com/mark3labs/mcp-go v0.56.0
-`,
-			wantLegacy: true,
-		},
-		{
-			name: "dual SDK direct requirements",
-			goMod: `module example.com/oracle
-
-require (
-	github.com/mark3labs/mcp-go v0.56.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
-)
-`,
-			wantLegacy:   true,
-			wantOfficial: true,
-		},
-		{
-			name: "official only indirect does not close generation gate",
-			goMod: `module example.com/oracle
-
-require github.com/mark3labs/mcp-go v0.56.0
-
-require github.com/modelcontextprotocol/go-sdk v1.7.0 // indirect
-`,
-			wantLegacy: true,
-		},
-		{
-			name: "module graph comments are ignored",
-			goMod: `module example.com/oracle
-
-require github.com/mark3labs/mcp-go v0.56.0
-
-// github.com/modelcontextprotocol/go-sdk is present only in the transitive graph.
-`,
-			wantLegacy: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotLegacy, gotOfficial := directMCPRequirements([]byte(tt.goMod))
-			if gotLegacy != tt.wantLegacy || gotOfficial != tt.wantOfficial {
-				t.Fatalf("directMCPRequirements() = (%t, %t), want (%t, %t)", gotLegacy, gotOfficial, tt.wantLegacy, tt.wantOfficial)
-			}
-		})
-	}
-}
-
-func directMCPRequirements(goMod []byte) (hasLegacy, hasOfficial bool) {
-	const (
-		legacyModule   = "github.com/mark3labs/mcp-go"
-		officialModule = "github.com/modelcontextprotocol/go-sdk"
-	)
-
-	inRequireBlock := false
-	scanner := bufio.NewScanner(bytes.NewReader(goMod))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !inRequireBlock {
-			if line == "require (" {
-				inRequireBlock = true
-				continue
-			}
-			if !strings.HasPrefix(line, "require ") {
-				continue
-			}
-			line = strings.TrimSpace(strings.TrimPrefix(line, "require "))
-		} else if line == ")" {
-			inRequireBlock = false
-			continue
-		}
-
-		declaration, comment, _ := strings.Cut(line, "//")
-		if strings.Contains(comment, "indirect") {
-			continue
-		}
-		fields := strings.Fields(declaration)
-		if len(fields) < 2 {
-			continue
-		}
-		switch fields[0] {
-		case legacyModule:
-			hasLegacy = true
-		case officialModule:
-			hasOfficial = true
-		}
-	}
-	return hasLegacy, hasOfficial
 }
 
 func decodeJSON(t *testing.T, data []byte) any {

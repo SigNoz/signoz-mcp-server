@@ -48,6 +48,32 @@ func TestProductionHTTPPreDispatchRejectionEmitsNoMCPMetrics(t *testing.T) {
 	}
 }
 
+func TestProductionHTTPDeclaredBodyLimitPrecedesAuthentication(t *testing.T) {
+	logger := logpkg.New("error")
+	cfg := &config.Config{
+		URL:             "https://tenant.example.com",
+		ClientCacheSize: 1,
+		ClientCacheTTL:  time.Minute,
+		MaxRequestBytes: 16,
+	}
+	m := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), nil)
+	handler := m.buildHTTP(m.newSDKServer()).Handler
+
+	oversized := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 17)))
+	oversizedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(oversizedResponse, oversized)
+	if oversizedResponse.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized status = %d, want 413", oversizedResponse.Code)
+	}
+
+	unauthenticated := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("{}"))
+	unauthenticatedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(unauthenticatedResponse, unauthenticated)
+	if unauthenticatedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("under-limit unauthenticated status = %d, want 401", unauthenticatedResponse.Code)
+	}
+}
+
 func TestProductionHTTPStatelessMethods(t *testing.T) {
 	oracle := newWireOracle(t)
 	t.Cleanup(oracle.close)

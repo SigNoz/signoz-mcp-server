@@ -464,7 +464,7 @@ func TestAnalyticsLifecycleEventsAndCorrelation(t *testing.T) {
 	}{
 		{
 			method: "initialize",
-			req: &mcp.InitializeRequest{Params: &mcp.InitializeParams{
+			req: &mcp.ServerRequest[*mcp.InitializeParams]{Params: &mcp.InitializeParams{
 				ProtocolVersion: "2025-11-25",
 				ClientInfo:      &mcp.Implementation{Name: "claude-desktop", Version: "1.2.3"},
 			}},
@@ -518,6 +518,139 @@ func TestAnalyticsLifecycleEventsAndCorrelation(t *testing.T) {
 	}
 	if got := byEvent[analytics.EventToolCalled].attrs[analytics.AttrErrorType]; got != "permission_denied" {
 		t.Fatalf("tool errorType = %v", got)
+	}
+}
+
+func TestProductionHTTPInitializeEmitsClientAnalytics(t *testing.T) {
+	identity := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/service_accounts/me" {
+			t.Fatalf("identity path = %q, want /api/v1/service_accounts/me", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","name":"bot","email":"svc@example.com","orgId":"org-1"}}`))
+	}))
+	defer identity.Close()
+
+	logger := logpkg.New("error")
+	cfg := &config.Config{
+		URL:              identity.URL,
+		APIKey:           "key",
+		ClientCacheSize:  1,
+		ClientCacheTTL:   time.Minute,
+		MaxRequestBytes:  1 << 20,
+		AnalyticsEnabled: true,
+		TransportMode:    "http",
+	}
+	spy := &spyAnalytics{enabled: true}
+	handler := tools.NewHandler(logger, cfg)
+	server := NewMCPServer(logger, handler, cfg, spy, nil)
+	httpHandler := server.buildHTTP(server.newSDKServer()).Handler
+	body := protocolRequestJSON(t, 301, "initialize", map[string]any{
+		"protocolVersion": "2025-11-25",
+		"capabilities":    map[string]any{},
+		"clientInfo":      map[string]any{"name": "real-http-client", "version": "9.1"},
+	})
+	response := protocolPOST(t, httpHandler, body, http.Header{
+		"X-SigNoz-Client-Source":          {"ai-assistant"},
+		"X-SigNoz-Assistant-Thread-Id":    {"thread-http"},
+		"X-SigNoz-Assistant-Execution-Id": {"execution-http"},
+	})
+	if response.status != http.StatusOK {
+		t.Fatalf("initialize status = %d, want 200; body=%s", response.status, response.body)
+	}
+	if err := server.WaitForAnalytics(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, tracked := spy.snapshot()
+	if len(tracked) != 1 || tracked[0].event != analytics.EventClientInitialized {
+		t.Fatalf("initialize analytics = %#v, want one %q event", tracked, analytics.EventClientInitialized)
+	}
+	for key, want := range map[string]any{
+		analytics.AttrClientName:           "real-http-client",
+		analytics.AttrClientVersion:        "9.1",
+		analytics.AttrProtocolVersion:      "2025-11-25",
+		analytics.AttrClientSource:         "ai-assistant",
+		analytics.AttrAssistantThreadID:    "thread-http",
+		analytics.AttrAssistantExecutionID: "execution-http",
+	} {
+		if got := tracked[0].attrs[key]; got != want {
+			t.Fatalf("initialize analytics %s = %v, want %v", key, got, want)
+		}
+	}
+}
+
+func TestProductionHTTPFailureLogsProjectRequestParams(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		handler    mcpcontract.ToolHandlerFunc
+		message    string
+		wantStatus int
+	}{
+		{
+			name: "coded result",
+			handler: func(context.Context, mcpcontract.CallToolRequest) (*mcpcontract.CallToolResult, error) {
+				result := mcpcontract.NewToolResultError("denied")
+				result.StructuredContent = map[string]any{"code": tools.CodePermissionDenied}
+				return result, nil
+			},
+			message:    "tool call returned error result",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "Go error",
+			handler: func(context.Context, mcpcontract.CallToolRequest) (*mcpcontract.CallToolResult, error) {
+				return nil, errors.New("handler failed")
+			},
+			message:    "tool call failed",
+			wantStatus: http.StatusOK,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs lockedBuffer
+			logger := newBufferedLogger(&logs, slog.LevelDebug)
+			cfg := &config.Config{
+				URL:             "https://tenant.example.com",
+				APIKey:          "test-key",
+				ClientCacheSize: 1,
+				ClientCacheTTL:  time.Minute,
+				MaxRequestBytes: 1 << 20,
+			}
+			handler := tools.NewHandler(logger, cfg)
+			server := NewMCPServer(logger, handler, cfg, noopanalytics.New(), nil)
+			sdkServer := server.newSDKServer()
+			handler.AddTool(sdkServer, mcpcontract.NewTool("http_failure_probe"), tt.handler)
+
+			body := protocolRequestJSON(t, 302, "tools/call", map[string]any{
+				"name": "http_failure_probe",
+				"arguments": map[string]any{
+					"apiKey": "argument-secret-canary",
+					"filter": "service.name = checkout",
+				},
+			})
+			response := protocolPOST(t, server.buildHTTP(sdkServer).Handler, body, http.Header{
+				"Cookie":               {"session=header-secret-canary"},
+				"Mcp-Protocol-Version": {"2025-11-25"},
+			})
+			if response.status != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", response.status, tt.wantStatus, response.body)
+			}
+
+			record, _ := logRecordByMessage(t, &logs, tt.message)
+			requestText, ok := record["mcp.request"].(string)
+			if !ok || requestText == "<unmarshalable>" {
+				t.Fatalf("mcp.request = %#v, want marshalable params", record["mcp.request"])
+			}
+			for _, want := range []string{"http_failure_probe", "service.name = checkout", "[REDACTED]"} {
+				if !strings.Contains(requestText, want) {
+					t.Fatalf("mcp.request = %q, want %q", requestText, want)
+				}
+			}
+			for _, secret := range []string{"argument-secret-canary", "header-secret-canary"} {
+				if strings.Contains(logs.String(), secret) {
+					t.Fatalf("failure logs leaked %q", secret)
+				}
+			}
+		})
 	}
 }
 

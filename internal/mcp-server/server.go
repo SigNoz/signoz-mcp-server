@@ -726,7 +726,7 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 			logpkg.BoundedErrAttr(err),
 		}
 		if m.logger.Enabled(ctx, level) {
-			attrs = append(attrs, slog.String("mcp.request", logpkg.RedactedTruncAny(request)))
+			attrs = append(attrs, slog.String("mcp.request", redactedRequestParams(request)))
 		}
 		m.logger.Log(ctx, level, "tool call failed", attrs...)
 	case result != nil && result.IsError:
@@ -737,7 +737,7 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 			slog.String("error_message", logpkg.TruncBody([]byte(extractToolErrorMessage(result)))),
 		}
 		if m.logger.Enabled(ctx, slog.LevelWarn) {
-			attrs = append(attrs, slog.String("mcp.request", logpkg.RedactedTruncAny(request)))
+			attrs = append(attrs, slog.String("mcp.request", redactedRequestParams(request)))
 		}
 		m.logger.WarnContext(ctx, "tool call returned error result", attrs...)
 	default:
@@ -748,7 +748,7 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 	}
 
 	m.recordToolMetrics(ctx, toolName, isErr, errorType, errorCode, duration)
-	m.trackToolCall(ctx, request, toolName, isErr, duration, toolErrorType(err, result))
+	m.trackToolCall(ctx, request, toolName, isErr, duration, toolAnalyticsErrorType(errorType, errorCode))
 	if result != nil {
 		return result
 	}
@@ -765,31 +765,42 @@ func (m *MCPServer) trackMethodAnalytics(ctx context.Context, method string, req
 	}
 	props := map[string]any{analytics.AttrTenantURL: signozURL}
 	attachRequestAnalytics(request, props)
-	switch req := request.(type) {
-	case *mcp.InitializeRequest:
-		if req.Params != nil && req.Params.ClientInfo != nil {
-			props[analytics.AttrClientName] = req.Params.ClientInfo.Name
-			props[analytics.AttrClientVersion] = req.Params.ClientInfo.Version
-			props[analytics.AttrProtocolVersion] = req.Params.ProtocolVersion
+	var params mcp.Params
+	if request != nil {
+		params = request.GetParams()
+	}
+	switch method {
+	case "initialize":
+		if initializeParams, ok := params.(*mcp.InitializeParams); ok && initializeParams != nil && initializeParams.ClientInfo != nil {
+			props[analytics.AttrClientName] = initializeParams.ClientInfo.Name
+			props[analytics.AttrClientVersion] = initializeParams.ClientInfo.Version
+			props[analytics.AttrProtocolVersion] = initializeParams.ProtocolVersion
 		}
 		if initialized, ok := result.(*mcp.InitializeResult); ok && initialized.ProtocolVersion != "" {
 			props[analytics.AttrProtocolVersion] = initialized.ProtocolVersion
 		}
 		attachCallerCorrelation(ctx, props)
 		m.trackEventAsync(ctx, analytics.EventClientInitialized, props)
-	case *mcp.GetPromptRequest:
-		if req.Params != nil {
-			props[analytics.AttrPromptName] = req.Params.Name
+	case "prompts/get":
+		if promptParams, ok := params.(*mcp.GetPromptParams); ok && promptParams != nil {
+			props[analytics.AttrPromptName] = promptParams.Name
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventPromptFetched, props)
 		}
-	case *mcp.ReadResourceRequest:
-		if req.Params != nil {
-			props[analytics.AttrResourceURI] = req.Params.URI
+	case "resources/read":
+		if resourceParams, ok := params.(*mcp.ReadResourceParams); ok && resourceParams != nil {
+			props[analytics.AttrResourceURI] = resourceParams.URI
 			attachCallerCorrelation(ctx, props)
 			m.trackEventAsync(ctx, analytics.EventResourceFetched, props)
 		}
 	}
+}
+
+func redactedRequestParams(request mcp.Request) string {
+	if request == nil {
+		return logpkg.RedactedTruncAny(nil)
+	}
+	return logpkg.RedactedTruncAny(request.GetParams())
 }
 
 func (m *MCPServer) recordToolMetrics(ctx context.Context, toolName string, isErr bool, errorType, errorCode string, duration time.Duration) {
@@ -862,27 +873,11 @@ func extractToolErrorMessage(result *mcp.CallToolResult) string {
 	return "tool returned error result"
 }
 
-// toolErrorType classifies a tool-call failure into a small, bounded set of
-// categories so dashboards can split errors without exploding cardinality.
-// Structured result codes are authoritative; display text is never parsed.
-// Returns "" when there is no error.
-func toolErrorType(err error, result *mcp.CallToolResult) string {
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return "timeout"
-		}
-		if errors.Is(err, context.Canceled) {
-			return "cancelled"
-		}
-		return "internal"
+func toolAnalyticsErrorType(errorType, errorCode string) string {
+	if errorCode != "" {
+		return strings.ToLower(errorCode)
 	}
-	if result == nil || !result.IsError {
-		return ""
-	}
-	if code := toolerrors.Code(result); code != "" {
-		return strings.ToLower(code)
-	}
-	return "tool_error"
+	return errorType
 }
 
 func serializedResultBytes(result *mcp.CallToolResult) (int64, error) {
@@ -1045,7 +1040,8 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			rootSpan.SetAttributes(otelpkg.AppendCallerCorrelation(ctx, nil)...)
 		}
 
-		// Extract X-SigNoz-URL custom header (takes precedence over JWT audience)
+		// Extract the direct-credential tenant header. A server-issued OAuth
+		// token's encrypted tenant remains authoritative.
 		customURL := r.Header.Get("X-SigNoz-URL")
 
 		// SigNoz classifies credentials by header name, not token shape, so
@@ -1069,15 +1065,7 @@ func (m *MCPServer) authMiddleware(next http.Handler) http.Handler {
 			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 		} else if authHeader != "" {
 			token := stripBearerPrefix(authHeader)
-			if customURL != "" {
-				// Direct (non-OAuth) credential: honor the ingress header and
-				// forward as Authorization: Bearer regardless of token shape.
-				// Service-account API keys must use the SIGNOZ-API-KEY header.
-				apiKey = "Bearer " + token
-				authMode = authModeAuthorizationBearer
-				ctx = util.SetAPIKey(ctx, apiKey)
-				ctx = util.SetAuthHeader(ctx, "Authorization")
-			} else if m.config.OAuthEnabled {
+			if m.config.OAuthEnabled {
 				decryptedAPIKey, decryptedURL, _, _, err := oauth.DecryptToken(token, []byte(m.config.OAuthTokenSecret))
 				switch {
 				case err == nil:
@@ -1258,9 +1246,8 @@ func (m *MCPServer) buildHTTP(s *mcp.Server) *http.Server {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		// WriteTimeout and IdleTimeout are intentionally left at 0 (no timeout)
-		// because MCP uses long-lived SSE connections for streaming responses.
-		// Setting these would prematurely kill active MCP sessions.
+		// WriteTimeout remains 0 because a long-running tool call may legitimately
+		// exceed the request read timeout. IdleTimeout inherits the same default.
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 

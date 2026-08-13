@@ -19,9 +19,9 @@ subgraph Startup["Server Initialization"]
 end
 
 subgraph StdioPath["Stdio Transport — Single Tenant"]
-    MODE -->|stdio| STDIO["ServeStdio"]
-    STDIO --> CTXFUNC["StdioContextFunc"]
-    CTXFUNC --> SETCTX_S["Set apiKey and signozURL<br/>from env into ctx"]
+    MODE -->|stdio| STDIO["runStdio"]
+    STDIO --> CTXFUNC["Seed API key, auth header,<br/>SigNoz URL, and client source"]
+    CTXFUNC --> SETCTX_S["official Server.Run<br/>with StdioTransport"]
     SETCTX_S --> TOOL_S["Tool Handler Called"]
 end
 
@@ -149,8 +149,8 @@ server-initiated messages.
 
 Successful MCP calls remain HTTP 200 `application/json`. The outer HTTP server
 provides OpenTelemetry request spans. MCP requests pass through `otelhttp`, the
-server mux, the request-size limit, authentication, and finally the official
-SDK handler; SDK receiving middleware records the method/tool lifecycle after
+server mux, cross-origin protection, the request-size limit, authentication,
+and finally the official SDK handler; SDK receiving middleware records the method/tool lifecycle after
 protocol validation. Standard-library cross-origin protection rejects browser
 POSTs whose Origin does not match the MCP endpoint before authentication or
 dispatch, while non-browser and same-origin clients continue normally. Modern body/header metadata is validated by the official
@@ -160,8 +160,8 @@ disconnect-only cancellation is not guaranteed by the official transport.
 
 The migration intentionally accepts the official SDK's protocol-owned behavior:
 no advertised logging capability, no discovery-order guarantee, standard
-invalid-params responses for unknown tools/resources/prompts, and modern cache
-and result metadata. Tool descriptions, schemas, annotations, resource content,
+invalid-params responses for unknown tools/resources/prompts, cache metadata on
+cacheable responses in both eras, and modern result/server metadata. Tool descriptions, schemas, annotations, resource content,
 prompt content, structured tool results, and coded tool errors remain unchanged.
 
 ### Stdio

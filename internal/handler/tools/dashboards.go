@@ -23,9 +23,8 @@ import (
 
 // v2 dashboard tool input schemas, extracted from the SigNoz OpenAPI spec
 // (docs/api/openapi.yml) as self-contained JSON Schemas with the Perses plugin
-// oneOf unions intact. They are served to MCP clients verbatim via
-// WithRawInputSchema — the handlers are pure pass-throughs to the v2 API, which
-// is the authoritative validator.
+// oneOf unions intact. They are served to MCP clients verbatim; the handlers
+// are pure pass-throughs to the v2 API, which is the authoritative validator.
 //
 //go:embed schemas/dashboard_create.json
 var createDashboardSchema []byte
@@ -58,10 +57,7 @@ func updatableFieldsFromSchema(schemaJSON []byte) map[string]struct{} {
 	return fields
 }
 
-// rawInputSchema wires a pre-built JSON Schema as a tool's input schema. It
-// clears the default object InputSchema that mcp.NewTool seeds, because
-// The descriptor contract rejects a tool that has BOTH InputSchema and
-// RawInputSchema set (mcp.WithRawInputSchema alone leaves the default in place).
+// rawInputSchema replaces the default object schema with a pre-built schema.
 func rawInputSchema(schema []byte) mcp.ToolOption {
 	return func(t *mcp.Tool) {
 		t.InputSchema = json.RawMessage(schema)

@@ -45,30 +45,6 @@ func TestInitializeDoesNotAdvertiseResourceSubscribe(t *testing.T) {
 	}
 }
 
-// TestMethodErrorLogLevel pins the hook-level severity classification:
-// rejections of unadvertised optional capabilities (server.ErrUnsupported,
-// e.g. resources/subscribe) and client cancellations log at DEBUG, while
-// deadline-exceeded and generic errors stay ERROR.
-func TestMethodErrorLogLevel(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want slog.Level
-	}{
-		{"resources subscribe not supported", &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "unsupported"}, slog.LevelDebug},
-		{"client canceled", fmt.Errorf(`Post "https://tenant.signoz.cloud/api/v5/query_range": %w`, context.Canceled), slog.LevelDebug},
-		{"deadline exceeded", fmt.Errorf("query: %w", context.DeadlineExceeded), slog.LevelError},
-		{"generic", errors.New("boom"), slog.LevelError},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := methodErrorLogLevel(tc.err); got != tc.want {
-				t.Fatalf("methodErrorLogLevel(%v) = %v, want %v", tc.err, got, tc.want)
-			}
-		})
-	}
-}
-
 // TestBuildHooks_ErrorLogSeverityClassification exercises the OnError hook
 // end-to-end through a debug-level buffered logger and asserts that expected
 // protocol noise (resources/subscribe rejections, client cancellations) is
@@ -80,16 +56,16 @@ func TestReceivingMiddleware_ErrorLogSeverityClassification(t *testing.T) {
 	handler := tools.NewHandler(logpkg.New("error"), cfg)
 	mcpServer := NewMCPServer(newBufferedLogger(&buf, slog.LevelDebug), handler, cfg, noopanalytics.New(), nil)
 	middleware := mcpServer.receivingMiddleware(func(string) bool { return false })
-	fail := func(method, id string, err error) {
-		ctx := newAnalyticsTestContext(context.Background(), "sess-"+id)
+	fail := func(method string, err error) {
+		ctx := context.Background()
 		handler := middleware(func(context.Context, string, mcp.Request) (mcp.Result, error) { return nil, err })
 		_, _ = handler(ctx, method, nil)
 	}
 
-	fail("resources/subscribe", "req-sub", &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "unsupported"})
-	fail("resources/read", "req-cancel", fmt.Errorf("read: %w", context.Canceled))
-	fail("resources/list", "req-deadline", fmt.Errorf("list: %w", context.DeadlineExceeded))
-	fail("prompts/list", "req-generic", errors.New("boom"))
+	fail("resources/subscribe", &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "unsupported"})
+	fail("resources/read", fmt.Errorf("read: %w", context.Canceled))
+	fail("resources/list", fmt.Errorf("list: %w", context.DeadlineExceeded))
+	fail("prompts/list", errors.New("boom"))
 
 	levels := map[string]string{}
 	for _, rec := range parseJSONLogLines(t, &buf) {

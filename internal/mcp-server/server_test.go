@@ -85,10 +85,6 @@ func (s *spyAnalytics) snapshot() (identify []analyticsCall, track []analyticsCa
 
 var _ analytics.Analytics = (*spyAnalytics)(nil)
 
-func newAnalyticsTestContext(ctx context.Context, sessionID string) context.Context {
-	return ctx
-}
-
 func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool, failureMessage string) {
 	t.Helper()
 
@@ -321,7 +317,7 @@ func TestNormalizeSigNozURL_CanonicalizesOrigin(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
+func TestAuthMiddlewareOAuthBearerIgnoresCustomURL(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:     true,
 		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
@@ -339,28 +335,110 @@ func TestAuthMiddlewareAcceptsOAuthBearerToken(t *testing.T) {
 		t.Fatalf("EncryptToken() error = %v", err)
 	}
 
+	for _, customURL := range []string{"", "https://oauth.example.com", "https://other.example.com", "://malformed"} {
+		t.Run(customURL, func(t *testing.T) {
+			server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			if customURL != "" {
+				req.Header.Set("X-SigNoz-URL", customURL)
+			}
+
+			rr := httptest.NewRecorder()
+			server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				apiKey, _ := util.GetAPIKey(r.Context())
+				authHeader, _ := util.GetAuthHeader(r.Context())
+				signozURL, _ := util.GetSigNozURL(r.Context())
+				w.Header().Set("X-API-Key", apiKey)
+				w.Header().Set("X-Auth-Header", authHeader)
+				w.Header().Set("X-SigNoz-URL", signozURL)
+				w.WriteHeader(http.StatusOK)
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+			}
+			if got := rr.Header().Get("X-API-Key"); got != "oauth-api-key" {
+				t.Fatalf("api key = %q, want %q", got, "oauth-api-key")
+			}
+			if got := rr.Header().Get("X-Auth-Header"); got != "SIGNOZ-API-KEY" {
+				t.Fatalf("auth header = %q, want %q", got, "SIGNOZ-API-KEY")
+			}
+			if got := rr.Header().Get("X-SigNoZ-URL"); got != "https://oauth.example.com" {
+				t.Fatalf("signoz URL = %q, want %q", got, "https://oauth.example.com")
+			}
+		})
+	}
+}
+
+func TestAuthMiddlewareExpiredOAuthBearerDoesNotDowngradeWithCustomURL(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:     true,
+		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:   "https://mcp.example.com",
+	}
+	token, err := oauth.EncryptToken(
+		"oauth-api-key",
+		"https://oauth.example.com",
+		"client-1",
+		time.Now().UTC().Add(-time.Hour),
+		[]byte(cfg.OAuthTokenSecret),
+	)
+	if err != nil {
+		t.Fatalf("EncryptToken() error = %v", err)
+	}
+
 	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	// req.Header.Set("X-SigNoz-URL", "https://1.1.1.1")
+	req.Header.Set("X-SigNoz-URL", "https://other.example.com")
 
 	rr := httptest.NewRecorder()
-	server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiKey, _ := util.GetAPIKey(r.Context())
-		signozURL, _ := util.GetSigNozURL(r.Context())
-		w.Header().Set("X-API-Key", apiKey)
-		w.Header().Set("X-SigNoz-URL", signozURL)
-		w.WriteHeader(http.StatusOK)
+	server.authMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("next handler should not be called")
 	})).ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
 	}
-	if rr.Header().Get("X-API-Key") != "oauth-api-key" {
-		t.Fatalf("api key = %q, want %q", rr.Header().Get("X-API-Key"), "oauth-api-key")
+	wantHeader := `Bearer error="invalid_token", error_description="access token expired", resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`
+	if got := rr.Header().Get("WWW-Authenticate"); got != wantHeader {
+		t.Fatalf("WWW-Authenticate = %q, want %q", got, wantHeader)
 	}
-	if rr.Header().Get("X-SigNoz-URL") != "https://oauth.example.com" {
-		t.Fatalf("signoz URL = %q, want %q", rr.Header().Get("X-SigNoz-URL"), "https://oauth.example.com")
+}
+
+func TestAuthMiddlewareOAuthBearerEnforcesEmbeddedURLAllowlist(t *testing.T) {
+	cfg := &config.Config{
+		OAuthEnabled:         true,
+		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
+		OAuthIssuerURL:       "https://mcp.example.com",
+		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
+	}
+	token, err := oauth.EncryptToken(
+		"oauth-api-key",
+		"https://blocked.example.com",
+		"client-1",
+		time.Now().UTC().Add(time.Hour),
+		[]byte(cfg.OAuthTokenSecret),
+	)
+	if err != nil {
+		t.Fatalf("EncryptToken() error = %v", err)
+	}
+
+	server := &MCPServer{logger: logpkg.New("error"), config: cfg, analytics: noopanalytics.New()}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	// A caller-supplied allowed tenant cannot override the tenant encrypted in
+	// the server-issued token.
+	req.Header.Set("X-SigNoz-URL", "https://allowed.us.signoz.cloud")
+
+	rr := httptest.NewRecorder()
+	server.authMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
 	}
 }
 
@@ -1178,9 +1256,7 @@ func TestReceivingMiddlewareToolOutcomes(t *testing.T) {
 			if tt.panicValue != nil {
 				wantLog = "mcp handler panic recovered"
 			}
-			if _, _ = logRecordByMessage(t, &logs, wantLog); false {
-				t.Fatal("unreachable")
-			}
+			_, _ = logRecordByMessage(t, &logs, wantLog)
 			spans := traceExporter.GetSpans()
 			if len(spans) != 1 || spans[0].Name != "tools/call probe" {
 				t.Fatalf("spans = %#v, want one tools/call probe span", spans)
@@ -1331,54 +1407,26 @@ func TestReceivingMiddlewareUnknownMethodUsesBoundedDimensionsOnce(t *testing.T)
 	}
 }
 
-func TestToolErrorType(t *testing.T) {
+func TestToolAnalyticsErrorType(t *testing.T) {
 	tests := []struct {
-		name   string
-		err    error
-		result *mcp.CallToolResult
-		want   string
+		name      string
+		errorType string
+		errorCode string
+		want      string
 	}{
 		{name: "no error", want: ""},
-		{name: "deadline exceeded", err: context.DeadlineExceeded, want: "timeout"},
-		{name: "cancelled", err: context.Canceled, want: "cancelled"},
-		{name: "generic go error", err: errors.New("boom"), want: "internal"},
-		{
-			name: "structured permission denied",
-			result: &mcp.CallToolResult{IsError: true,
-				Content:           []mcp.Content{&mcp.TextContent{Text: "arbitrary display text"}},
-				StructuredContent: map[string]any{"code": tools.CodePermissionDenied}},
-			want: "permission_denied",
-		},
-		{
-			name: "structured rate limited",
-			result: &mcp.CallToolResult{IsError: true,
-				Content:           []mcp.Content{&mcp.TextContent{Text: "not a rate-limit phrase"}},
-				StructuredContent: map[string]any{"code": tools.CodeRateLimited}},
-			want: "rate_limited",
-		},
-		{
-			name: "display text is not classified",
-			result: &mcp.CallToolResult{IsError: true,
-				Content: []mcp.Content{&mcp.TextContent{Text: "unexpected status 503 upstream"}}},
-			want: "tool_error",
-		},
-		{
-			name:   "result error generic",
-			result: &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "missing field"}}},
-			want:   "tool_error",
-		},
-		{
-			name:   "non-error result",
-			result: &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}},
-			want:   "",
-		},
+		{name: "timeout", errorType: "timeout", want: "timeout"},
+		{name: "cancelled", errorType: "cancelled", want: "cancelled"},
+		{name: "generic tool error", errorType: "tool_error", want: "tool_error"},
+		{name: "coded error wins", errorType: "tool_error", errorCode: tools.CodePermissionDenied, want: "permission_denied"},
+		{name: "rate limit code", errorType: "tool_error", errorCode: tools.CodeRateLimited, want: "rate_limited"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := toolErrorType(tt.err, tt.result)
+			got := toolAnalyticsErrorType(tt.errorType, tt.errorCode)
 			if got != tt.want {
-				t.Errorf("toolErrorType = %q, want %q", got, tt.want)
+				t.Errorf("toolAnalyticsErrorType = %q, want %q", got, tt.want)
 			}
 		})
 	}

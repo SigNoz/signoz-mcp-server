@@ -307,6 +307,147 @@
   or client-visible surface changed, so the completed Grok review remains
   applicable.
 
+### 2026-08-13 — Credential-safe staging E2E
+- Extracted only the staging base URL and bearer credential from the supplied
+  browser curl; cookies, browser fingerprint headers, and Sentry/PostHog tracing
+  data were unnecessary. The credential stayed transient and was never printed
+  or written to a repository file.
+- Ran 35 selected read-only build-tagged staging tests: 35 passed, zero failed,
+  and zero skipped. Explicitly excluded notification-channel send/lifecycle,
+  mutation structured-content, and saved-view CRUD tests.
+- Built the PR binary and ran the HTTP/stdio x legacy `2025-11-25`/modern
+  `2026-07-28` matrix against staging. Every cell observed 43 tools, 22 static
+  resources, two resource templates, and four prompts; preserved a coded
+  `VALIDATION_FAILED` result; completed a live read-only
+  `signoz_list_services` call; and shut down cleanly.
+- Both HTTP eras returned no `Mcp-Session-Id`; GET and DELETE returned 405 with
+  `Allow: POST`. Legacy used initialize/initialized, while modern used
+  `server/discover` and direct requests with the required standard headers.
+  No tenant resources were created, so no cleanup was required.
+- A full browser OAuth success test cannot reuse the supplied user-session JWT:
+  the repository OAuth form validates a service-account API key through
+  `SIGNOZ-API-KEY`. A temporary staging service account was created without a
+  role or key, and work paused at the required confirmation boundary before
+  assigning viewer access or creating/revoking credentials.
+
+### 2026-08-13 — Staging mutation and cleanup authorization
+- The maintainer explicitly authorized broader staging E2E, including temporary
+  resource and credential creation, provided every temporary resource is
+  deleted and verified absent afterward. Resume the paused OAuth lifecycle with
+  the built-in viewer role and shortest-practical key lifetime; keep all other
+  client checks read-only unless a temporary artifact materially improves the
+  test, and apply the same verified-cleanup rule.
+
+### 2026-08-13 — Live Assistant OAuth regression and fix
+- Full browser DCR, PKCE, consent, authorization-code exchange, refresh, bearer
+  challenges, and live MCP calls passed against the built PR server, but the
+  actual SigNoz AI Assistant consumer initially exposed a release blocker. It
+  always sends the server-issued OAuth bearer together with `X-SigNoz-URL`; the
+  middleware used the presence of that header to skip OAuth decryption and
+  forwarded the encrypted token upstream as a direct bearer, yielding coded
+  `UNAUTHORIZED`.
+- Changed only credential precedence: with OAuth enabled, first attempt to
+  decrypt every Authorization bearer. A valid token's encrypted API key and
+  tenant are authoritative and auxiliary custom-URL metadata is ignored; an
+  expired server token always returns the OAuth 401 challenge. Only a bearer
+  that is not a server token retains the existing direct-Authorization fallback
+  through `X-SigNoz-URL` or configured URL. This removes tenant-override and
+  expiry-downgrade ambiguity without adding a compatibility shim or new wire
+  error.
+- Regression tests cover valid OAuth with absent, matching, conflicting, and
+  malformed custom URLs, plus expired OAuth with a conflicting header. Existing
+  tables retain opaque/JWT direct bearer, configured URL, OAuth-disabled, URL
+  validation, and allowlist behavior. Focused normal/race tests, full MCP/OAuth
+  package tests, full repository tests, vet, and build passed.
+- The rebuilt live rerun passed OAuth access and refreshed-token calls with the
+  Assistant header set. The real Assistant `McpToolClient` saw all 43 tools,
+  completed one live read-only services call, returned coded
+  `VALIDATION_FAILED` for an empty dashboard request, and emitted exactly one
+  correctly correlated terminal record for each call. Eight concrete
+  credential canaries were absent from bounded server logs.
+- Cleanup was verified: the temporary key disappeared and returned 401 from the
+  service-account identity endpoint; the temporary account became DELETED
+  (staging retains its audit row but it is not ACTIVE); previously issued OAuth
+  tokens then produced coded upstream `UNAUTHORIZED`. Local callback/server
+  listeners, binaries, logs, harnesses, and in-memory browser secrets were
+  removed.
+
+### 2026-08-13 — Fable 5 high overengineering review
+- After the model limit reset, the maintainer restored the original review
+  sequence and capped identical review scopes at two models: Fable 5 high first
+  for overengineering, then Opus 5 xhigh for exhaustive correctness/security.
+  Grok 4.6 remains available only for a distinct targeted question, not as a
+  duplicate third opinion.
+- Exact `claude-fable-5-high` reviewed the complete branch plus the live OAuth
+  fix in read-only plan mode. It found no unjustified major component: the
+  43-tool fixture dominates additions by design, production Go remains roughly
+  size-neutral, and the narrow `internal/mcpcontract` adapter avoids a much
+  riskier rewrite of every tool definition.
+- Accepted its concrete simplifications: removed the permanently closed
+  wire-oracle regeneration flag, Go-module parser, and parser test; removed two
+  unused/test-only contract exports and stale raw-schema comments; deleted a
+  redundant pure log-level table and no-op/dead test scaffolding; narrowed the
+  validation telemetry table to its two unique mismatch cases; reused existing
+  error classification; avoided one raw-argument copy; and corrected the plan's
+  cross-origin middleware order. The branch additions fell from 16,215 to
+  16,069 before final formatting/gates, without deleting contract fixtures or
+  weakening a client-visible assertion.
+- Rejected suggestions that would trade away named invariants: exact raw
+  argument bytes remain exposed to handlers, the outer body-limit layer remains
+  for pre-auth declared-length rejection and middleware-order parity, literal
+  prompt fixtures remain readable shape evidence, and the explicit OAuth-token
+  early return remains a clear tenant-authority boundary.
+
+### 2026-08-14 — Opus 5 xhigh exhaustive review
+- Exact `claude-opus-5-thinking-xhigh` reviewed the post-Fable complete branch
+  in read-only plan mode. Per the maintainer's two-model cap, this was the final
+  review of the runtime PR surface; no Grok review was added for the same work.
+- It found two migration-caused P1 observability regressions hidden by
+  synthetic tests. Legacy initialize analytics switched on the client-side
+  `mcp.InitializeRequest`, while official v1.7.0 dispatches a server-side
+  `ServerRequest[*InitializeParams]`. HTTP failure logs serialized the whole
+  server request, whose transport `Extra` contains a callback and cannot be
+  marshaled, so `mcp.request` became `<unmarshalable>`.
+- Fixed initialize analytics by dispatch method plus `request.GetParams()`, and
+  added a real HTTP initialize test asserting the client/protocol/correlation
+  event. Failure logs now serialize only `CallToolParamsRaw`, which preserves
+  name/arguments while structurally excluding headers, token info, and the SDK
+  callback. Real HTTP coded-error and Go-error tests assert useful content,
+  argument redaction, no header/cookie leakage, and no sentinel fallback.
+- Added a focused OAuth-token allowlist test: an allowed caller header cannot
+  override a disallowed tenant encrypted in the server-issued token. Updated
+  README validation-notice wording, official stdio/middleware/cache docs, the
+  long-running POST timeout rationale, and stale plan commands/filenames.
+- Repeated the CMP-3 search across `SigNoz/agent-skills` and
+  `signoz-ai-assistant`; neither teaches or parses the old validator-detail
+  notice wording, so no companion skills change is required.
+- Opus also identified pre-existing OAuth hardening opportunities (registration
+  body bounds, broader private-address rejection, single-use codes, and refresh
+  rotation). They are not caused by this SDK migration and were not folded into
+  its scope; track them independently rather than obscuring this PR's runtime
+  revert boundary.
+
+### 2026-08-14 — Final post-review verification
+- Reran formatting, the guardrail suite, the full repository suite, focused
+  race tests, vet, build, module tidy/verification with a clean module cache,
+  exact `golangci-lint v2.12.2`, shell/JSON/workflow checks, and the complete
+  real-binary protocol script after applying the Fable/Opus findings. All
+  executable repository checks passed.
+- Agent CI independently completed the contract and Inspector workflows. Its
+  five remaining `ci.yaml` jobs could not start locally because the runner does
+  not have repository Primus and Docker Hub credentials; those were environment
+  setup blockers, not test or lint failures. The equivalent commands passed
+  directly, and the pushed commit's GitHub checks were already green before
+  this final patch.
+- Added one production-stack order assertion: a declared oversized `/mcp`
+  request returns 413 before authentication, while an under-limit request with
+  no credential returns 401. This proves the retained outer limiter's purpose
+  without adding an injectable middleware framework.
+- Final branch accounting is 16,377 additions and 3,635 deletions: production
+  code is net -7 lines, tests plus immutable fixtures are net +11,304, and
+  plans/docs/CI are net +1,445. The 8,997-line exact 43-tool catalog fixture is
+  the majority of the apparent growth and is intentionally readable JSON.
+
 ## Open Questions
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.

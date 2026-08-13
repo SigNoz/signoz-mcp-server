@@ -283,7 +283,11 @@ func TestSchemaCompileFailureRegistersFailOpenAndCounts(t *testing.T) {
 	}
 	h := &Handler{logger: logger, meters: meters}
 	s := newMCPTestServer()
-	tool := mcp.NewToolWithRawSchema("broken_schema_probe", "probe", json.RawMessage(`{"type":"object","properties":{"value":{"$ref":"missing.json"}}}`))
+	tool := mcp.Tool{
+		Name:        "broken_schema_probe",
+		Description: "probe",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"value":{"$ref":"missing.json"}}}`),
+	}
 	called := false
 	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		called = true
