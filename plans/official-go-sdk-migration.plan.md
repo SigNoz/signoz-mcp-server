@@ -694,7 +694,15 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 ## Done Criteria
 The runtime migration PR is mergeable when Phases 0–3, 5, and the applicable Phase 6 gates pass. If conformance is split, keep this plan `In Progress` and the issue open; mark it `Done` only after Phase 4 also lands.
 
-Before creating the runtime PR—and again before creating every later PR in this delivery series—run two independent read-only reviews in this order: Claude Fable 5 at high effort focused on overengineering, then Claude Opus 5 at xhigh effort for exhaustive correctness/security/contract review. Record the exact model/effort evidence and findings in the context log, fix every accepted finding, rerun affected focused checks plus the PR's complete gates, and repeat the corresponding review when fixes materially change the reviewed surface. A failed, unavailable, or unverified model review is a publication blocker; do not substitute another model silently.
+Before creating each PR in this delivery series, run the independent read-only
+review model explicitly requested by the maintainer for that PR. For the
+runtime PR, Fable 5 high was unavailable and the maintainer explicitly replaced
+the original Fable/Opus sequence with Grok 4.6; exact
+`cursor-grok-4.6-xhigh` reviewed `30acf69..HEAD` in read-only plan mode and
+reported no P1/P2 findings. Record exact model/mode/scope evidence and findings
+in the context log, fix every accepted finding, rerun affected focused checks
+plus the PR's complete gates, and repeat the review when fixes materially
+change the reviewed surface. Never substitute a model silently.
 
 - Mark3 imports and dependency are gone; official Go SDK v1.7.0 (or a separately reviewed newer stable target) owns HTTP and stdio.
 - The immutable SDK-free characterization covers every advertised tool schema/description/annotation and every resource/template/prompt descriptor; compact digests cover all deterministic resource/prompt payloads; literal fixtures cover shape-sensitive handlers/errors. Only the named accepted differences remain, and independent inventories, budgets, normalization, structured-result, and coded-error tests pass.

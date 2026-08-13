@@ -278,6 +278,21 @@
   found and closed the Origin, span attribution, accepted-difference, and stdio
   matrix gaps. These are supplementary and do not replace Fable or Opus.
 
+### 2026-08-13 — Maintainer-authorized Grok 4.6 publication review
+- The maintainer explicitly replaced the unavailable Fable/Opus publication
+  gate with one Grok 4.6 subagent review for this runtime PR; this is an
+  intentional substitution, not a silent model fallback.
+- Ran the complete committed range `30acf69..HEAD` through exact model
+  `cursor-grok-4.6-xhigh` in read-only plan mode. It reviewed overengineering,
+  SDK/runtime semantics, preserved catalogs and content, auth/security,
+  cancellation, panic recovery, observability, dual-era transports, tests,
+  docs, and accepted differences. Result: no verified P1/P2 findings.
+- Review evidence: `model=cursor-grok-4.6-xhigh`, `mode=plan/read-only`,
+  `scope=30acf69..HEAD`. Its only residual notes—blank URI/MIME adapter failure
+  coverage, concurrent-registration race coverage, and the intentionally
+  tested `tools/call` method-metric exclusion—were not demonstrated production
+  defects and require no migration workaround.
+
 ## Open Questions
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.
