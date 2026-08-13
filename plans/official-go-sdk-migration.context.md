@@ -498,7 +498,45 @@
   annotations, resources, templates, prompts, and structured results remain
   unchanged.
 
+### 2026-08-14 — Stacked conformance audit and STOP condition
+- After PR #286 returned to ready with seven green checks, created
+  `codex/official-go-sdk-conformance` at exact parent `0e33180` as requested.
+  No conformance PR has been opened yet; its eventual base will be the runtime
+  branch while stacked, then `main` after #286 merges.
+- Verified current official sources and npm metadata. Stable/latest remains
+  `0.1.16`; exact prerelease `0.2.0-alpha.11` is the only current package with
+  frozen `--requirements 2025-11-25` and `--requirements 2026-07-28`, and one
+  alpha.11 pin can run both eras. The package was published from git commit
+  `c321dd32035556e6769d3724a8ee97d87c3faaac`.
+- Added that exact package to `tools/mcp-ci`. Its initial compatible dependency
+  resolution contained four dev-only advisories; kept alpha.11 fixed and moved
+  only transitive packages within their declared ranges. A clean `npm ci`,
+  both requirement-list commands, and `npm audit` now pass with zero findings.
+- Enumerated the requirement sets: the server leg scores 30 legacy scenarios
+  and 37 modern scenarios. Full coverage requires nearly all behavior in the
+  official Go SDK's 1,316-line everything server, including media/mixed
+  content, completion, logging/progress, sampling/elicitation, subscriptions,
+  four fixture prompts, and fourteen MRTR scenarios. A supposedly minimal
+  local fixture would therefore be a large upstream copy and mostly retest SDK
+  code; the plan's explicit STOP condition is satisfied.
+- Ran a no-write production-binary spike with fake tenant credentials. Six
+  catalog-independent legacy scenarios and six modern scenarios passed with
+  wire-schema checks. Modern `server-stateless` passed 24 of 28 scored checks;
+  the four remaining checks were untestable solely because production omits
+  three named diagnostic `test_*` tools, as intended by issue #194's out-of-
+  scope product-feature rule.
+- The next implementation decision materially changes the claim: either add a
+  lean selected-scenario production lane and revise #194's full-suite
+  acceptance wording, or accept a large nonshipping fixture to satisfy all
+  frozen requirements. Do not silently pick one or disguise missing fixture
+  behavior with a broad baseline.
+
 ## Open Questions
+- [ ] Which honest conformance claim should the stacked PR ship? Recommended:
+  selected catalog-independent official scenarios against the actual
+  production binary, with #194's full-suite acceptance wording revised. The
+  alternative is a large nonshipping fixture recreating nearly all of the
+  official 1,316-line everything server to pass all 30/37 scored scenarios.
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.
 - [x] Can legacy HTTP disconnect cancellation be preserved through an official supported hook? Resolved: not in v1.7.0 stateless HTTP. Accept the bounded capacity-impact limitation, retain protocol cancellation notifications, and avoid a custom transport.
@@ -514,4 +552,8 @@
 - [x] Replace the custom OAuth flow with SDK helpers? Resolved: no; explicitly out of scope.
 - [x] Does `SigNoz/agent-skills` require a planned companion change? Resolved for the intended design: no, subject to a repeat audit of the implementation diff.
 - [x] Include nerve-pod#191/#164 in the SDK migration PR? Resolved: no. Merge the #194 runtime migration PR first, then implement #191 as the complete successor scope for #164 in one independent official-SDK follow-up.
-- [x] Use stacked PRs for the SDK migration? Resolved: no. Use one atomic runtime PR from `main`, with the pre-swap oracle as its first green commit, then a sequential post-merge conformance PR; keep ERR-6 as an independent post-runtime branch from `main`. Closed, unmerged #283 is reference material only.
+- [x] Use stacked PRs for the SDK migration? Resolved by latest maintainer
+  direction: keep runtime PR #286 atomic against `main`, then temporarily stack
+  the conformance successor on its ready branch and rebase/retarget after #286
+  merges. Keep ERR-6 independent from `main`. Closed, unmerged #283 is
+  reference material only.

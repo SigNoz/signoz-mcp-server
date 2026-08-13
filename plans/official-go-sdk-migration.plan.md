@@ -439,9 +439,13 @@ legacy/modern stdio smokes pass, the Go raw production matrix independently
 proves both eras, modern calls never initialize, legacy calls still do, and
 mismatch probes reject before handler execution.
 
-### Phase 4 — Add honest official conformance coverage as a bounded post-merge follow-up
+### Phase 4 — Add honest official conformance coverage in the stacked follow-up
 
-Deliver this phase as one explicitly linked, sequential follow-up PR branched from `main` only after the production runtime PR has merged and the raw dual-era matrix is green. Do not open it as a child PR based on the unmerged runtime branch: the repository's CI, guardrail, and protocol workflows trigger only for pull requests targeting `main`, and the repository squash-merges and deletes merged branches. The runtime PR may merge without conformance, but this plan remains `In Progress` and issue #194 does not close until the conformance PR lands. Do not split any other phase into another tracker merely to reduce the diff.
+The maintainer requested that this phase begin from the ready runtime branch as
+a stacked PR. Target `codex/official-go-sdk-migration` while #286 is open, then
+rebase/retarget to `main` after #286 merges. The raw dual-era matrix is already
+green. This plan remains `In Progress` and issue #194 stays open until the
+conformance claim below is resolved and delivered.
 
 #### 4.1 Pin the official referee
 - Add an exact `@modelcontextprotocol/conformance` version to `tools/mcp-ci/package.json` and lockfile. At planning time the applicable package is prerelease `0.2.0-alpha.11`; confirm the exact current release before implementation and use a stable `0.2.x` instead if one now provides both frozen requirements sets.
@@ -465,6 +469,39 @@ Factor production server construction just enough that both binaries exercise th
 - request-size/logging transport plumbing where relevant.
 
 The fixture binary may expose the official `test_*`, `test://`, and test prompt surfaces required by the frozen requirements. It may implement callback/subscription/MRTR fixtures only in this profile. It must not import SigNoz credentials or call a live backend. If passing the frozen set requires duplicating most of upstream's everything server and therefore mostly retests unmodified SDK behavior, stop: record upstream pinned SDK evidence and ask maintainers whether issue #194 should accept explicit selected scenarios instead. Do not silently change the claim or add a broad expected-failures baseline.
+
+Implementation audit on 2026-08-14 triggered that STOP condition. Exact
+`0.2.0-alpha.11` requires 30 scored legacy server scenarios and 37 scored
+modern server scenarios, plus report-only cases. The fixed fixture contract
+requires image/audio/mixed content, logging/progress, completion,
+sampling/elicitation, resource subscriptions, four prompts, and fourteen MRTR
+scenarios backed by diagnostic `test_*` tools. The official Go SDK fixture is
+1,316 lines. Recreating it locally would copy most of the upstream fixture and
+would primarily retest official SDK internals rather than SigNoz composition.
+
+The actual production binary passed every catalog-independent scenario probed:
+
+- legacy: `server-initialize`, `ping`, `tools-list`, `resources-list`,
+  `prompts-list`, and `dns-rebinding-protection`;
+- modern: `tools-list`, `resources-list`, `sep-2164-resource-not-found`,
+  `prompts-list`, `dns-rebinding-protection`, and `caching`;
+- modern `server-stateless` passed 24/28 scored checks. Its four failures were
+  explicitly untestable because production correctly omits the suite's
+  `test_missing_capability`, `test_streaming_elicitation`, and
+  `test_logging_tool` diagnostic fixtures.
+
+Do not proceed past the exact dependency pin until the maintainer chooses one
+of these honest claims:
+
+1. **Recommended lean claim:** run the catalog-independent scenarios against
+   the actual production binary for both eras, optionally retain the 24/28
+   `server-stateless` result with four check-level expected failures, and state
+   clearly that this is selected official conformance—not the frozen full
+   requirement sets. Update issue #194's acceptance wording before closing it.
+2. **Full frozen claim:** implement the large nonshipping fixture needed for
+   all 30/37 scored server scenarios through shared composition. Accept that
+   most fixture behavior duplicates the upstream everything server; keep
+   exhaustive leakage guards and do not add it to production catalogs.
 
 Run separate profiles/processes as the frozen requirement sets require:
 
