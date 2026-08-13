@@ -845,14 +845,7 @@ func (m *MCPServer) trackToolCall(ctx context.Context, request mcp.Request, tool
 
 func toolOTelErrorType(err error, result *mcp.CallToolResult) string {
 	if err != nil {
-		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			return "timeout"
-		case errors.Is(err, context.Canceled):
-			return "cancelled"
-		default:
-			return "internal"
-		}
+		return methodErrorType(err)
 	}
 	if result != nil && result.IsError {
 		return "tool_error"
@@ -897,7 +890,11 @@ func (m *MCPServer) runStdio(ctx context.Context, s *mcp.Server) error {
 	ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
 	ctx = util.SetSigNozURL(ctx, m.config.URL)
 	ctx = util.SetClientSource(ctx, util.ClientSourceUserClient)
-	if err := s.Run(ctx, &mcp.StdioTransport{}); err != nil {
+	return runPersistentTransport(ctx, s, &mcp.StdioTransport{})
+}
+
+func runPersistentTransport(ctx context.Context, s *mcp.Server, transport mcp.Transport) error {
+	if err := s.Run(ctx, transport); err != nil {
 		if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 			return nil
 		}

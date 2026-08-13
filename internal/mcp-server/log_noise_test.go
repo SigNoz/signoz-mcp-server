@@ -93,3 +93,43 @@ func TestReceivingMiddleware_ErrorLogSeverityClassification(t *testing.T) {
 		}
 	}
 }
+
+func TestSDKLogHandlerDemotesExactExpectedNoise(t *testing.T) {
+	tests := []struct {
+		name      string
+		msg       string
+		attrs     []any
+		wantLevel slog.Level
+	}{
+		{name: "cancelled server run", msg: "server run cancelled", wantLevel: slog.LevelDebug},
+		{name: "removed logging method", msg: "method removed in the new protocol", attrs: []any{"method", "logging/setLevel"}, wantLevel: slog.LevelDebug},
+		{name: "different cancellation message", msg: "server run cancelled by peer", wantLevel: slog.LevelError},
+		{name: "different removed method", msg: "method removed in the new protocol", attrs: []any{"method", "resources/subscribe"}, wantLevel: slog.LevelError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
+				t.Run(level.String(), func(t *testing.T) {
+					var buf lockedBuffer
+					logger := newBufferedLogger(&buf, level)
+					slog.New(&sdkLogHandler{next: logger.Handler()}).Error(tt.msg, tt.attrs...)
+
+					records := parseJSONLogLines(t, &buf)
+					if tt.wantLevel < level {
+						if len(records) != 0 {
+							t.Fatalf("records = %#v, want record filtered below %s", records, level)
+						}
+						return
+					}
+					if len(records) != 1 {
+						t.Fatalf("records = %#v, want one %s record", records, tt.wantLevel)
+					}
+					if records[0]["msg"] != tt.msg || records[0]["level"] != tt.wantLevel.String() {
+						t.Fatalf("record = %#v, want msg=%q level=%s", records[0], tt.msg, tt.wantLevel)
+					}
+				})
+			}
+		})
+	}
+}

@@ -42,9 +42,18 @@ func TestOfficialDescriptorConversionMatchesFrozenToolCatalog(t *testing.T) {
 		return fixture.Response.Result.Tools[i]["name"].(string) < fixture.Response.Result.Tools[j]["name"].(string)
 	})
 
-	gotJSON, _ := json.Marshal(got)
-	wantJSON, _ := json.Marshal(fixture.Response.Result.Tools)
+	gotJSON, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON, err := json.Marshal(fixture.Response.Result.Tools)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(gotJSON) != string(wantJSON) {
+		if len(got) != len(fixture.Response.Result.Tools) {
+			t.Fatalf("official descriptor conversion changed frozen tool count: got %d, want %d", len(got), len(fixture.Response.Result.Tools))
+		}
 		for i := range got {
 			g, _ := json.Marshal(got[i])
 			w, _ := json.Marshal(fixture.Response.Result.Tools[i])
@@ -52,5 +61,6 @@ func TestOfficialDescriptorConversionMatchesFrozenToolCatalog(t *testing.T) {
 				t.Fatalf("official descriptor conversion changed frozen tool %q\n got: %s\nwant: %s", got[i]["name"], g, w)
 			}
 		}
+		t.Fatal("official descriptor conversion changed frozen tool catalog")
 	}
 }

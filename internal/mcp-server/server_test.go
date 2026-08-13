@@ -1310,6 +1310,7 @@ func TestReceivingMiddlewareUnknownToolIsBoundedAndCountedOnce(t *testing.T) {
 	for key, want := range map[attribute.Key]string{
 		otelpkg.GenAIToolNameKey:   unknownToolName,
 		otelpkg.MCPClientSourceKey: "ai-assistant",
+		"error.type":               "invalid_params",
 	} {
 		got, ok := toolCalls.DataPoints[0].Attributes.Value(key)
 		if !ok || got.AsString() != want {
@@ -1335,6 +1336,7 @@ func TestReceivingMiddlewareUnknownToolIsBoundedAndCountedOnce(t *testing.T) {
 		otelpkg.MCPMethodKey:          "tools/call",
 		otelpkg.GenAIToolNameKey:      unknownToolName,
 		otelpkg.GenAIOperationNameKey: "execute_tool",
+		"error.type":                  "invalid_params",
 	} {
 		got, ok := spanAttrValue(spans[0].Attributes, key)
 		if !ok || got.AsString() != want {

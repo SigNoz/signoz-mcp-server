@@ -3,7 +3,6 @@ package mcp_server
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -161,11 +160,7 @@ func TestProductionServerRunCancellationIsNormalizedByStdioWrapper(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		err := server.Run(ctx, &mcp.IOTransport{Reader: clientToServerReader, Writer: serverToClientWriter})
-		if errors.Is(err, context.Canceled) {
-			err = nil
-		}
-		done <- err
+		done <- runPersistentTransport(ctx, server, &mcp.IOTransport{Reader: clientToServerReader, Writer: serverToClientWriter})
 	}()
 	cancel()
 

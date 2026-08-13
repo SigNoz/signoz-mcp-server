@@ -179,6 +179,9 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 		}
 		for _, tc := range cases {
 			capture := o.capture(tc.method, tc.params)
+			if tc.file == "tool-success-fail-open-input.json" {
+				assertOfficialInputValidationNotice(t, capture)
+			}
 			assertWireGolden(t, tc.file, capture)
 		}
 	})
@@ -221,6 +224,28 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 		assertOfficialUnknownTargetError(t, o.capture("tools/call", `{"name":"signoz_unknown","arguments":{}}`), `unknown tool "signoz_unknown"`)
 		assertOfficialUnknownTargetError(t, o.capture("prompts/get", `{"name":"signoz_unknown","arguments":{}}`), `unknown prompt "signoz_unknown"`)
 	})
+}
+
+func assertOfficialInputValidationNotice(t *testing.T, capture wireCapture) {
+	t.Helper()
+	contents := resultArray(t, capture.Response, "content")
+	var notices []string
+	for _, raw := range contents {
+		content, _ := raw.(map[string]any)
+		text, _ := content["text"].(string)
+		if strings.HasPrefix(text, "Input validation notice:") {
+			notices = append(notices, text)
+		}
+	}
+	if len(notices) != 1 {
+		t.Fatalf("official fail-open response has %d validation notices, want 1", len(notices))
+	}
+	if strings.Contains(notices[0], "jsonschema validation failed") {
+		t.Fatalf("official fail-open response leaked validator detail: %q", notices[0])
+	}
+	if notices[0] != officialInputValidationNotice {
+		t.Fatalf("official fail-open validation notice = %q, want %q", notices[0], officialInputValidationNotice)
+	}
 }
 
 func assertOfficialUnknownTargetError(t *testing.T, capture wireCapture, wantMessage string) {

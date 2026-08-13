@@ -448,6 +448,33 @@
   plans/docs/CI are net +1,445. The 8,997-line exact 43-tool catalog fixture is
   the majority of the apparent growth and is intentionally readable JSON.
 
+### 2026-08-14 — Maintainer-requested final Opus/Grok review gate
+- The maintainer changed the publication gate after the first ready transition:
+  return PR #286 to draft, run Opus 5 xhigh and Grok 4.6 in parallel over the
+  final pushed commit, resolve their findings, then make the PR ready and start
+  the conformance work as a stacked PR. This supersedes the earlier no-stacking
+  delivery decision for the immediate conformance successor.
+- Exact `claude-opus-5-thinking-xhigh` and `cursor-grok-4.6-xhigh` ran in
+  read-only plan mode against `30acf69..06f9224`. Opus reported no
+  migration-caused P1/P2 findings. Grok found one P2 test-oracle hole: the raw
+  HTTP fail-open capture normalized the new validation notice without first
+  asserting its exact live wording, so a regression to old validator detail
+  could pass through another same-SDK test.
+- Fixed the P2 by asserting exactly one live HTTP notice with the complete
+  deterministic repository-owned sentence and no old `jsonschema validation
+  failed` detail before golden normalization. Kept the frozen pre-migration
+  fixture unchanged.
+- Accepted only the reviewers' lean P3 corrections: close the descriptor
+  parity test's dropped-last false-pass/addition panic; exercise the production
+  stdio cancellation normalization through one private transport helper; pin
+  the SDK logger's two exact demotions and near-match behavior; and classify an
+  official unknown-tool `-32602` as `invalid_params` rather than `internal` in
+  bounded tool telemetry.
+- Deferred broader pre-dispatch zero-metric enumeration, per-property schema
+  revalidation for validation-path diagnostics, stale historical-plan wording,
+  and pre-existing OAuth hardening. None is a migration blocker, and adding
+  those mechanisms here would expand scope beyond the verified findings.
+
 ## Open Questions
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.

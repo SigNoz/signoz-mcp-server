@@ -603,13 +603,16 @@ Inspector script with an unused suite variable.
 
 Require the conformance job before completing this plan and closing issue #194. Promote `protocol / conformance` to a required check only after its first clean default-branch bootstrap.
 
-Recommended delivery sequence uses sequential PRs targeting `main`, not a stacked PR chain:
+Updated maintainer direction uses a temporary stack for the immediate
+conformance successor: PR #286 still targets `main`, and the conformance PR is
+branched from PR #286 after it becomes ready. Rebase the conformance PR onto
+`main` after #286 merges; keep ERR-6 independent.
 
 1. Branch one atomic runtime migration PR from refreshed `main`.
 2. Its first green commit is `test(mcp): freeze pre-migration wire contracts`. Create the complete Phase 0 SDK-free oracle and capture all fixtures while the branch still uses mark3; run the Phase 0 gates and review the fixture diff before changing `go.mod` in any later commit.
 3. Later commits in the same PR implement Phases 1–3 and 5: the complete dependency/type/registration/runtime/transport/observability cutover, ported existing tests, raw dual-era tests, Inspector updates, documentation, metadata, and CMP-3 result. Never regenerate the pre-swap fixtures after the first dependency-changing commit. Use logical commits for review, but do not create adapter-only, tool-family, transport-only, or observability-only PRs: no intermediate boundary is both production-functional and free of temporary dual-SDK shims.
 4. Merge the runtime PR only when its complete parity and production gates pass. The clean operational/revert boundary is mark3 runtime versus official runtime.
-5. Branch the Phase 4 conformance PR from the new post-migration `main`. It contains only the pinned referee, non-shipping fixture, leakage guards, CI job, and conformance-specific documentation. Keep #194 open until it lands.
+5. Branch the Phase 4 conformance PR from the ready runtime branch as a stacked PR targeting that branch. It contains only the pinned referee, non-shipping fixture, leakage guards, CI job, and conformance-specific documentation. After #286 merges, rebase/retarget it to `main`. Keep #194 open until it lands.
 6. After the runtime PR merges, the conformance PR and the independent #191/#164 ERR-6 follow-up may proceed in parallel from `main`; neither depends on the other.
 
 ### Post-merge follow-up — ERR-6 guidance fidelity (#191 and #164)
