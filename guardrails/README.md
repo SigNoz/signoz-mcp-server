@@ -8,6 +8,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 
 - `policy.go` contains shared limits, official aliases, and explicitly grandfathered exceptions.
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
+- `internal/mcp-server/testdata/wire-catalog/` holds the immutable pre-migration JSON-RPC oracle.
 - `.github/workflows/guardrails.yaml` verifies the inventory and runs the guarded tests.
 - `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector compatibility check.
 - Package-local functions named `TestGuardrail_*` contain the enforcement logic.
@@ -20,6 +21,25 @@ access to unexported retry, registration, middleware, and server-composition hel
 - Mutating POST requests are not replayed after ambiguous failures; audited read-only POSTs may retry.
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content.
+- The production HTTP handler preserves discovery descriptors, deterministic resource and prompt contents, and representative tool/error results across the MCP SDK migration.
+
+`TestGuardrail_WireCatalogGoldens` sends hand-written JSON-RPC requests through
+the production HTTP handler and imports no MCP SDK type. It compares complete
+catalog entries, compact content inventories, and small shape-sensitive literal
+results. Only request IDs, the build-stamped server version, and top-level
+discovery ordering are normalized; nested order, null, false, schema keywords,
+annotations, MIME types, and `_meta` remain significant.
+
+Ordinary test runs are read-only. Before the SDK migration, maintainers may
+deliberately regenerate and review the baseline with:
+
+```bash
+go test ./internal/mcp-server -run '^TestGuardrail_WireCatalogGoldens$' \
+  -signoz-wire-oracle-update
+```
+
+The test refuses regeneration once `github.com/mark3labs/mcp-go` is removed
+from `go.mod`, so post-swap tests cannot overwrite the pre-swap contract.
 
 The guardrails intentionally do not impose a total serialized-schema byte ceiling.
 Complex tools may need extensive field-local schema guidance; review material catalog

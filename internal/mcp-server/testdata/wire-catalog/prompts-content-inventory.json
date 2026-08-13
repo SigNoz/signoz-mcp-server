@@ -1,0 +1,50 @@
+[
+  {
+    "identity": "compare_metrics",
+    "description": "Compare http.server.duration across two periods",
+    "contents": [
+      {
+        "index": 0,
+        "kind": "text",
+        "serializedLength": 536,
+        "sha256": "63b939664dee846bcd14fee8e353f6df7141ea808330eeedc7211e7d8a0fa962"
+      }
+    ]
+  },
+  {
+    "identity": "debug_service_errors",
+    "description": "Debug errors for checkout",
+    "contents": [
+      {
+        "index": 0,
+        "kind": "text",
+        "serializedLength": 1001,
+        "sha256": "72998684a253874788ece7b9907f6ee8525dd837667ebe683f5d7249c478525c"
+      }
+    ]
+  },
+  {
+    "identity": "incident_triage",
+    "description": "Triage alert rule-wire",
+    "contents": [
+      {
+        "index": 0,
+        "kind": "text",
+        "serializedLength": 784,
+        "sha256": "a22ee05395d30d3daf0d7a193ef1556c8e27374355d77d633b02a3bda055aca0"
+      }
+    ]
+  },
+  {
+    "identity": "latency_analysis",
+    "description": "Latency analysis for checkout",
+    "contents": [
+      {
+        "index": 0,
+        "kind": "text",
+        "serializedLength": 856,
+        "sha256": "335665dadf7340744fcdeaafcd61557e25220855e46e58173661dfa169a460a9"
+      }
+    ]
+  }
+]

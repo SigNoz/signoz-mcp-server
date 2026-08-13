@@ -305,14 +305,7 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		}
 	}()
 
-	// Register all handlers
-	m.handler.RegisterAllToolHandlers(s)
-	m.handler.RegisterResourceTemplates(s)
-
-	// Register prompts
-	prompts.RegisterPrompts(func(prompt mcp.Prompt, handler server.PromptHandlerFunc) {
-		m.handler.RegisterPrompt(s, prompt, handler)
-	})
+	m.registerHandlers(s)
 
 	m.logger.InfoContext(ctx, "All handlers registered successfully")
 
@@ -339,6 +332,16 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		return nil
 	}
 	return m.runStdio(ctx, s)
+}
+
+// registerHandlers publishes the full production catalog through one seam used
+// by Run and by the SDK-independent wire compatibility oracle.
+func (m *MCPServer) registerHandlers(s *server.MCPServer) {
+	m.handler.RegisterAllToolHandlers(s)
+	m.handler.RegisterResourceTemplates(s)
+	prompts.RegisterPrompts(func(prompt mcp.Prompt, handler server.PromptHandlerFunc) {
+		m.handler.RegisterPrompt(s, prompt, handler)
+	})
 }
 
 func (m *MCPServer) newSDKServer() *server.MCPServer {

@@ -1,0 +1,174 @@
+{
+  "method": "resources/list",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "resources/list",
+    "params": {}
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "resources": [
+        {
+          "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
+          "mimeType": "text/markdown",
+          "name": "Alert Rule Examples",
+          "size": 28452,
+          "uri": "signoz://alert/examples"
+        },
+        {
+          "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
+          "mimeType": "text/markdown",
+          "name": "Alert Rule Instructions",
+          "size": 22526,
+          "uri": "signoz://alert/instructions"
+        },
+        {
+          "description": "Read this after signoz://dashboard/clickhouse-schema-for-logs when composing a raw ClickHouse logs widget. It covers timestamp and attribute filters, resource CTEs, variables, timeseries/value shapes, and performance patterns.",
+          "mimeType": "text/markdown",
+          "name": "ClickHouse Logs Examples",
+          "size": 7531,
+          "uri": "signoz://dashboard/clickhouse-logs-example"
+        },
+        {
+          "description": "Read this before writing ClickHouse SQL for a dashboard widget over SigNoz logs. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-logs-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag.",
+          "mimeType": "text/markdown",
+          "name": "ClickHouse Logs Schema",
+          "size": 4505,
+          "uri": "signoz://dashboard/clickhouse-schema-for-logs"
+        },
+        {
+          "description": "Read this after signoz://dashboard/clickhouse-schema-for-metrics when composing a raw ClickHouse metrics widget. It covers counter rates, error ratios, histogram quantiles, time-series tables, variables, and performance patterns.",
+          "mimeType": "text/markdown",
+          "name": "ClickHouse Metrics Examples",
+          "size": 11224,
+          "uri": "signoz://dashboard/clickhouse-metrics-example"
+        },
+        {
+          "description": "Read this before writing ClickHouse SQL for a dashboard widget over SigNoz metrics. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-metrics-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag.",
+          "mimeType": "text/markdown",
+          "name": "ClickHouse Metrics Schema",
+          "size": 7191,
+          "uri": "signoz://dashboard/clickhouse-schema-for-metrics"
+        },
+        {
+          "description": "Read this after signoz://dashboard/clickhouse-schema-for-traces when composing a raw ClickHouse traces widget. It covers resource filters, timeseries/value/table result shapes, span events, latency analysis, and performance patterns.",
+          "mimeType": "text/markdown",
+          "name": "ClickHouse Traces Examples",
+          "size": 8423,
+          "uri": "signoz://dashboard/clickhouse-traces-example"
+        },
+        {
+          "description": "Read this before writing ClickHouse SQL for a dashboard widget over SigNoz traces. It lists tables and columns from the schema bundled with this server. Also read signoz://dashboard/clickhouse-traces-example. If the live SigNoz instance rejects a table or column, follow that error because the bundled schema may lag.",
+          "mimeType": "text/markdown",
+          "name": "ClickHouse Traces Schema",
+          "size": 17539,
+          "uri": "signoz://dashboard/clickhouse-schema-for-traces"
+        },
+        {
+          "description": "Read this before creating or fully replacing a dashboard. It explains dashboard fields, metadata, variables, variable chaining, and layout. Also read signoz://dashboard/widgets-instructions for widget and query choices.",
+          "mimeType": "text/markdown",
+          "name": "Dashboard Basic Instructions",
+          "size": 7305,
+          "uri": "signoz://dashboard/instructions"
+        },
+        {
+          "description": "Read this when assembling a complete dashboard (panels + layout) with signoz_create_dashboard, or for a worked metrics Query Builder panel. It provides whole server-verified v6 create payloads: a timeseries grouped by an attribute, the same with a dynamic variable used as a filter, a number/value panel, and a multi-panel dashboard. For single-panel shapes see signoz://dashboard/widgets-examples; for layout and variable rules see signoz://dashboard/instructions.",
+          "mimeType": "text/markdown",
+          "name": "Dashboard Examples",
+          "size": 14508,
+          "uri": "signoz://dashboard/examples"
+        },
+        {
+          "description": "Read this to build the optional filter argument of signoz_list_dashboards. It documents the server-side metadata filter DSL: grammar (terms, AND/OR/NOT, free-text search), the filterable keys (name, description, created_by, created_at, updated_at, locked, and tag keys) with their operators and value formats, and worked examples.",
+          "mimeType": "text/markdown",
+          "name": "Dashboard List Filter Guide",
+          "size": 3497,
+          "uri": "signoz://dashboard/list-filter-guide"
+        },
+        {
+          "description": "Read this before calling signoz_patch_dashboard. It gives worked RFC 6902 JSON Patch recipes with exact JSON Pointer paths for targeted edits (rename, add/edit/move/remove a panel, edit a query, variables, tags), including the two-op sequences the backend requires (adding a panel needs a panel op plus a grid-item op). For the panel/query/variable JSON to use as a patch value, also read signoz://dashboard/widgets-examples and signoz://dashboard/instructions.",
+          "mimeType": "text/markdown",
+          "name": "Dashboard Patch Instructions",
+          "size": 4012,
+          "uri": "signoz://dashboard/patch-instructions"
+        },
+        {
+          "description": "Read this when choosing or building dashboard widgets. It explains when to use each panel type, required layout and legend fields, and which detailed guide to read for each query type. Also read signoz://dashboard/instructions.",
+          "mimeType": "text/markdown",
+          "name": "Dashboard Widget Instructions",
+          "size": 10928,
+          "uri": "signoz://dashboard/widgets-instructions"
+        },
+        {
+          "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
+          "mimeType": "text/markdown",
+          "name": "Dashboard Widgets Examples",
+          "size": 28797,
+          "uri": "signoz://dashboard/widgets-examples"
+        },
+        {
+          "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body and JSON-path search, row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
+          "mimeType": "text/markdown",
+          "name": "Logs Query Builder Guide",
+          "size": 10242,
+          "uri": "signoz://logs/query-builder-guide"
+        },
+        {
+          "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
+          "mimeType": "text/markdown",
+          "name": "Metrics Aggregation Guide",
+          "size": 11430,
+          "uri": "signoz://metrics-aggregation-guide"
+        },
+        {
+          "description": "Read this when composing a PromQL dashboard widget or promql_rule alert. It explains SigNoz's Prometheus 3.x quoted-selector form for dotted OTel metric names, resource labels, examples, and query checks; do not use it for Query Builder or ClickHouse SQL.",
+          "mimeType": "text/markdown",
+          "name": "PromQL Instructions",
+          "size": 10468,
+          "uri": "signoz://promql/instructions"
+        },
+        {
+          "description": "Read this when composing a Query Builder dashboard widget. It covers signal-specific aggregations, filters, metric naming, grouped legends, functions, and examples; use the ClickHouse or PromQL resources instead for those query types.",
+          "mimeType": "text/markdown",
+          "name": "Query Builder Examples",
+          "size": 16562,
+          "uri": "signoz://dashboard/query-builder-example"
+        },
+        {
+          "description": "Read this after signoz://view/instructions when composing a saved Explorer view. It provides complete Query Builder v5 payloads for traces, logs, metrics, and Cost Meter source pages.",
+          "mimeType": "text/markdown",
+          "name": "Saved View Examples",
+          "size": 5737,
+          "uri": "signoz://view/examples"
+        },
+        {
+          "description": "Read this before creating or updating a saved Explorer view. It explains view fields, sourcePage, Query Builder v5, Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
+          "mimeType": "text/markdown",
+          "name": "Saved View Instructions",
+          "size": 5805,
+          "uri": "signoz://view/instructions"
+        },
+        {
+          "description": "Use this resource when an MCP client needs the indexed official SigNoz documentation catalog and page URLs. Use signoz_search_docs for topical discovery and signoz_fetch_doc for page content.",
+          "mimeType": "text/markdown",
+          "name": "SigNoz Docs Sitemap",
+          "uri": "signoz://docs/sitemap"
+        },
+        {
+          "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
+          "mimeType": "text/markdown",
+          "name": "Traces Query Builder Guide",
+          "size": 9720,
+          "uri": "signoz://traces/query-builder-guide"
+        }
+      ]
+    }
+  }
+}
