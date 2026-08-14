@@ -193,7 +193,7 @@ func TestParseUpstreamErrorBody_DropsUnsafeValuesWhole(t *testing.T) {
 		`"type":"access.token:type-secret-canary","code":"api.key:code-secret-canary",` +
 		`"message":"SIGNOZ_API_KEY=message-secret-canary",` +
 		`"url":"https://signoz.io/docs?token=url-secret-canary",` +
-		`"suggestions":["client_secret=suggestion-secret-canary","client_secret: colon-suggestion-secret-canary","refresh token: refresh-colon-secret-canary","Bearer abcdefghijk1234","authorization: request editor access","token: signature mismatch"],` +
+		`"suggestions":["client_secret=suggestion-secret-canary","client_secret: colon-suggestion-secret-canary","refresh token: refresh-colon-secret-canary","authorization: auth123secretcanary","authorization: AWS4-HMAC-SHA256 aws123secretcanary","Bearer abcdefghijk1234","authorization: request editor access","authorization: permission denied","authorization: AWS4-HMAC-SHA256 missing","authorization: AWS4-HMAC-SHA256.","token: signature mismatch"],` +
 		`"errors":[{"message":"<script>detail-canary</script>","suggestions":["![x](https://attacker.test/canary)","keep detail guidance"]},{"message":"api key with key: backend-colon-secret-canary doesn't exist.","suggestions":[]}]` +
 		`}}`
 
@@ -203,17 +203,20 @@ func TestParseUpstreamErrorBody_DropsUnsafeValuesWhole(t *testing.T) {
 	assert.Empty(t, got.Type)
 	assert.Empty(t, got.Message)
 	assert.Empty(t, got.URL)
-	assert.Equal(t, []string{"authorization: request editor access", "token: signature mismatch"}, got.Suggestions)
+	assert.Equal(t, []string{"authorization: request editor access", "authorization: permission denied", "authorization: AWS4-HMAC-SHA256 missing", "authorization: AWS4-HMAC-SHA256.", "token: signature mismatch"}, got.Suggestions)
 	require.Len(t, got.Details, 1)
 	assert.Empty(t, got.Details[0].Message)
 	assert.Equal(t, []string{"keep detail guidance"}, got.Details[0].Suggestions)
 	assert.Equal(t, []string{"code", "message", "type", "url", "suggestions", "errors"}, got.DriftFields)
 
 	wire := got.ClientSafeText()
-	for _, secret := range []string{"code-secret-canary", "type-secret-canary", "message-secret-canary", "url-secret-canary", "suggestion-secret-canary", "colon-suggestion-secret-canary", "refresh-colon-secret-canary", "backend-colon-secret-canary", "abcdefghijk1234", "detail-canary", "attacker.test"} {
+	for _, secret := range []string{"code-secret-canary", "type-secret-canary", "message-secret-canary", "url-secret-canary", "suggestion-secret-canary", "colon-suggestion-secret-canary", "refresh-colon-secret-canary", "auth123secretcanary", "aws123secretcanary", "backend-colon-secret-canary", "abcdefghijk1234", "detail-canary", "attacker.test"} {
 		assert.NotContains(t, wire, secret)
 	}
 	assert.Contains(t, wire, "authorization: request editor access")
+	assert.Contains(t, wire, "authorization: permission denied")
+	assert.Contains(t, wire, "authorization: AWS4-HMAC-SHA256 missing")
+	assert.Contains(t, wire, "authorization: AWS4-HMAC-SHA256.")
 	assert.Contains(t, wire, "token: signature mismatch")
 	assert.Contains(t, wire, "keep detail guidance")
 }

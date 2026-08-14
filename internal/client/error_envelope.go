@@ -33,6 +33,7 @@ var (
 	unquotedCredentialPattern   = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])` + namedCredentialPattern + `\s*:\s*[-A-Za-z0-9._~+/=]{4,}(?:$|[^-A-Za-z0-9._~+/=])`)
 	credentialTokenPattern      = regexp.MustCompile(`(?i)^(?:signoz[._-]?api[._-]?key|api[._-]?key|client[._-]?secret|access[._-]?token|refresh[._-]?token|authorization|password|passwd|secret|cookie|session(?:[._-]?(?:id|token))?):[-A-Za-z0-9._~+/]{4,}$`)
 	authorizationHeaderPattern  = regexp.MustCompile(`(?i)\bauthorization\s*:\s*(?:basic|bearer|digest|token|apikey|aws4-hmac-sha256)\s+[A-Za-z0-9._~+/=-]{8,}`)
+	opaqueAuthorizationPattern  = regexp.MustCompile(`(?i)\bauthorization\s*:\s*([A-Za-z0-9._~+/=-]{8,})(?:$|[^A-Za-z0-9._~+/=-])`)
 	authorizationTokenPattern   = regexp.MustCompile(`(?i)\b(?:basic|bearer|digest|token|apikey|aws4-hmac-sha256)\s+([A-Za-z0-9._~+/=-]{8,})`)
 	cookieHeaderPattern         = regexp.MustCompile(`(?i)\bcookie\s*:\s*[^\r\n]*=`)
 	jwtPattern                  = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b`)
@@ -363,6 +364,17 @@ func unsafeGuidance(value string) bool {
 }
 
 func containsLikelyAuthorizationToken(value string) bool {
+	for _, match := range opaqueAuthorizationPattern.FindAllStringSubmatch(value, -1) {
+		candidate := match[1]
+		if strings.EqualFold(strings.TrimRight(candidate, "."), "aws4-hmac-sha256") {
+			continue
+		}
+		if strings.IndexFunc(candidate, func(r rune) bool {
+			return !unicode.IsLetter(r)
+		}) >= 0 {
+			return true
+		}
+	}
 	for _, match := range authorizationTokenPattern.FindAllStringSubmatch(value, -1) {
 		candidate := match[1]
 		if strings.IndexFunc(candidate, func(r rune) bool {

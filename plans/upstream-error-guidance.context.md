@@ -176,6 +176,57 @@
   do not add another protocol matrix. Also correct the three reference links
   that used an invalid long form of the verified SigNoz commit SHA.
 
+### 2026-08-14 — PR #289 opaque authorization review
+- A second automated P1 correctly identified that an unquoted opaque value such
+  as `authorization: abc123secret` was outside both the scheme-header matcher
+  and the explicit named-credential matcher, so it could reach text,
+  structured guidance, and error logs.
+- Two independent read-only agents reproduced the bypass before editing.
+  SigNoz `origin/main` had advanced to
+  `2dcd4d9a668118928a9bc43a3057ff705a65b2ba`; the pinned renderer/auth files
+  remain unchanged, and the dirty sibling checkout was not modified. Current
+  source does not emit that exact literal, but the renderer still accepts
+  arbitrary provider- and user-derived detail strings.
+- Keep `authorization` out of the broad named matcher. Add one dedicated
+  eight-character opaque-value capture and classify it as a credential only
+  when it contains a digit or token punctuation. This rejects token-shaped
+  values while preserving alphabetic prose such as
+  `authorization: request editor access` and
+  `authorization: permission denied`.
+- Extend the existing parser, retry-log, and serialized-handler canaries. The
+  delegated E2E should run only after the final patch review and should cover
+  both live current-renderer guidance and the exact synthetic no-leak envelope
+  through the actual binary; no additional checked-in wire matrix is needed.
+- The first pre-push patch review caught that the long known scheme
+  `AWS4-HMAC-SHA256` itself satisfied the opaque token heuristic. Exempt that
+  exact scheme only in the bare-authorization path and pin
+  `authorization: AWS4-HMAC-SHA256 missing` as preserved guidance; scheme plus
+  an actual token remains covered by the existing header matcher.
+- A second boundary pass caught sentence-final punctuation being captured as
+  part of the scheme. Ignore trailing periods only for that exact scheme-name
+  comparison, and pin both `authorization: AWS4-HMAC-SHA256.` as safe and the
+  same scheme followed by an opaque token as unsafe.
+
+### 2026-08-14 — Final opaque-authorization E2E
+- A delegated E2E built the exact uncommitted working tree and exercised the
+  actual HTTP server in both eras. Live staging modern direct calls and legacy
+  initialize/initialized calls returned identical recognized v5 Query Builder
+  guidance with stable `VALIDATION_FAILED`/400 classification, exact summary,
+  one detail, and the documentation URL; no session header or drift WARN was
+  emitted.
+- A fake local SigNoz backend then returned one recognized envelope containing
+  both unsafe opaque authorization values and safe request-editor,
+  permission-denied, and punctuated AWS4 scheme guidance. Legacy and modern
+  calls preserved every safe phrase in text/structure, omitted both unsafe
+  canaries from the complete wire and server log, and emitted exactly one
+  value-free drift WARN per call.
+- No resource was mutated. Browser credential references were cleared, all
+  listeners stopped, ports closed, and temporary binaries/logs were moved to
+  Trash. One non-blocking text-only presentation difference remains: a backend
+  suggestion already ending in a period can render with `..`; structured
+  guidance is exact, and punctuation normalization is outside this security
+  fix.
+
 ## Open Questions
 - [x] Which issues does this PR close? #191 and overlapping #164.
 - [x] Which envelopes are trusted? Verified nested renderer generations and

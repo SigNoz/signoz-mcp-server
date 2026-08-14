@@ -516,7 +516,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	var logBuf bytes.Buffer
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"api_key: temporary-outage-secret-canary"}}`))
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"authorization: auth123temporary-secret-canary"}}`))
 	}))
 	defer server.Close()
 
@@ -561,7 +561,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	assert.True(t, sawRetryDebug, "expected intermediate retry log at DEBUG")
 	assert.True(t, sawTerminalWarn, "expected terminal retry exhaustion log at WARN")
 	assert.Equal(t, 1, driftWarnings, "shape drift must be warned once per request across retries")
-	assert.NotContains(t, logBuf.String(), "temporary-outage-secret-canary")
+	assert.NotContains(t, logBuf.String(), "auth123temporary-secret-canary")
 }
 
 func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {

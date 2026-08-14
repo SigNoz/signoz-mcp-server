@@ -343,7 +343,7 @@ func TestUpstreamError_PreservesCompleteRendererGuidance(t *testing.T) {
 func TestUpstreamError_UsesFilteredRendererGuidance(t *testing.T) {
 	res := upstreamError(&signozclient.HTTPStatusError{
 		StatusCode: http.StatusBadRequest,
-		Body:       `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJoYW5kbGVyLWNhbmFyeSJ9.signature","url":"https://signoz.io/docs/query-errors?token=sk_live_urlcanary123456","suggestions":["<script>sk_live_suggestioncanary123456</script>","api_key: handler-colon-canary123456"],"errors":[{"message":"password=sk_live_detailcanary123456","suggestions":["Bearer sk_live_detailhintcanary123456","client_secret: detail-colon-canary123456"]}]}}`,
+		Body:       `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJoYW5kbGVyLWNhbmFyeSJ9.signature","url":"https://signoz.io/docs/query-errors?token=sk_live_urlcanary123456","suggestions":["<script>sk_live_suggestioncanary123456</script>","api_key: handler-colon-canary123456","authorization: auth123handler-canary123456"],"errors":[{"message":"password=sk_live_detailcanary123456","suggestions":["Bearer sk_live_detailhintcanary123456","client_secret: detail-colon-canary123456"]}]}}`,
 	})
 
 	wire, err := json.Marshal(res)
@@ -355,6 +355,7 @@ func TestUpstreamError_UsesFilteredRendererGuidance(t *testing.T) {
 		"sk_live_urlcanary123456",
 		"sk_live_suggestioncanary123456",
 		"handler-colon-canary123456",
+		"auth123handler-canary123456",
 		"sk_live_detailcanary123456",
 		"sk_live_detailhintcanary123456",
 		"detail-colon-canary123456",
