@@ -39,6 +39,7 @@ var (
 	jwtPattern                  = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b`)
 	knownSecretPattern          = regexp.MustCompile(`(?i)\b(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|AKIA[A-Z0-9]{12,})\b`)
 	activeMarkupPattern         = regexp.MustCompile(`(?is)<\s*/?\s*(?:a|audio|base|body|button|embed|form|frame|frameset|head|html|iframe|img|input|link|math|meta|object|script|source|style|svg|template|video)\b[^>]*>|<\s*/?\s*[a-z][a-z0-9-]*\s+[^>]+>|!?\[[^\]\r\n]*\]\([^\)\r\n]*\)`)
+	statusErrorPrefixPattern    = regexp.MustCompile(`^\s*\{\s*"status"\s*:\s*"error"(?:\s*[,}]|\s*$)`)
 	oversizedRendererPattern    = regexp.MustCompile(`^\s*\{\s*"status"\s*:\s*"error"\s*,\s*"error"\s*:\s*\{`)
 )
 
@@ -83,6 +84,10 @@ func ParseUpstreamErrorBody(body string) UpstreamErrorBody {
 
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+		probe := body[:min(len(body), maxEnvelopeProbeBytes)]
+		if statusErrorPrefixPattern.MatchString(probe) {
+			return UpstreamErrorBody{StatusError: true, DriftFields: []string{"envelope"}}
+		}
 		return UpstreamErrorBody{}
 	}
 	status, ok := rawJSONString(envelope["status"])
@@ -126,16 +131,18 @@ func ParseUpstreamErrorBody(body string) UpstreamErrorBody {
 	}
 
 	errorType, typeOK := requiredJSONString(envelope["errorType"])
-	legacyMessage, messageOK := requiredJSONString(rawError)
+	legacyMessage, messageOK := rawJSONString(rawError)
 	if typeOK && messageOK {
 		parsed.Recognized = true
 		parsed.Type = safeErrorToken(errorType)
-		parsed.Message = safeGuidanceText(legacyMessage)
 		if parsed.Type == "" {
 			parsed.addDrift("errorType")
 		}
-		if parsed.Message == "" {
-			parsed.addDrift("error")
+		if strings.TrimSpace(legacyMessage) != "" {
+			parsed.Message = safeGuidanceText(legacyMessage)
+			if parsed.Message == "" {
+				parsed.addDrift("error")
+			}
 		}
 		return parsed
 	}

@@ -570,7 +570,7 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requests.Add(1) == 1 {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"error","message":"temporary outage"}`))
+			_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"temporary-outage-canary"}} trailing`))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -601,6 +601,8 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 		case "SigNoz request returned unexpected status":
 			t.Fatalf("unexpected terminal warn log on eventual success: %v", rec)
 		case errorEnvelopeWarning:
+			assert.Equal(t, false, rec["recognized"])
+			assert.Equal(t, []any{"envelope"}, rec["fields"])
 			driftWarnings++
 		}
 		if _, ok := rec["retries_exhausted"]; ok {
@@ -610,6 +612,7 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 
 	assert.True(t, sawRetryDebug, "expected intermediate retry log before success")
 	assert.Equal(t, 1, driftWarnings, "transient shape drift must remain detectable")
+	assert.NotContains(t, logBuf.String(), "temporary-outage-canary")
 }
 
 func TestDoRequest_OversizedRendererWarnsOnceWithoutParsingValues(t *testing.T) {

@@ -227,6 +227,26 @@
   guidance is exact, and punctuation normalization is outside this security
   fix.
 
+### 2026-08-14 — Final review scope and trusted-backend boundary
+- Four new automated threads were audited read-only against the parser, the
+  pre-PR behavior, and refreshed SigNoz `origin/main`. Preserve the two narrow
+  contract guarantees: a present empty legacy `error` string still carries its
+  `errorType` classification, and a malformed/trailing response beginning with
+  the source-order `status:"error"` prefix emits one value-free drift WARN even
+  when a later retry succeeds.
+- Keep both corrections local: use string decoding rather than non-empty-string
+  decoding for the legacy message; on JSON failure, inspect only a bounded,
+  anchored prefix and never parse partial values. Extend existing parser,
+  classification, and retry-success tables only. No protocol matrix or live
+  E2E is warranted.
+- The user explicitly set SigNoz as a trusted backend. Therefore do not expand
+  this PR into an exhaustive URL-fragment credential parser or reference-style
+  Markdown sanitizer. Current production error URLs are backend-owned
+  documentation links with legitimate anchors, and no authoritative error
+  guidance emits reference-style links/images. The existing filters remain
+  bounded defense in depth for known, high-confidence forms rather than a
+  promise to recognize every possible secret or markup syntax.
+
 ## Open Questions
 - [x] Which issues does this PR close? #191 and overlapping #164.
 - [x] Which envelopes are trusted? Verified nested renderer generations and

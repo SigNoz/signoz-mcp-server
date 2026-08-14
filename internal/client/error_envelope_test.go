@@ -69,6 +69,11 @@ func TestParseUpstreamErrorBody_HistoricalAndLegacyShapes(t *testing.T) {
 			wantType: "invalid_input",
 			wantText: "key not found",
 		},
+		{
+			name:     "legacy type with empty guidance",
+			body:     `{"status":"error","errorType":"timeout","error":""}`,
+			wantType: "timeout",
+		},
 	}
 
 	for _, tc := range tests {
@@ -99,7 +104,9 @@ func TestParseUpstreamErrorBody_PositiveRecognitionBoundary(t *testing.T) {
 		{name: "wrong status", body: `{"status":"fail","error":{"code":"invalid_input","message":"bad"}}`},
 		{name: "missing status", body: `{"error":{"code":"invalid_input","message":"bad"}}`},
 		{name: "array", body: `["bad"]`},
-		{name: "malformed", body: `{"status":"error"`},
+		{name: "unrelated malformed", body: `{"other":`},
+		{name: "truncated status error", body: `{"status":"error"`, statusError: true, drift: []string{"envelope"}},
+		{name: "status error with trailing JSON", body: `{"status":"error","error":{"code":"invalid_input","message":"bad"}} trailing`, statusError: true, drift: []string{"envelope"}},
 		{name: "oversized", body: strings.Repeat(" ", maxErrorEnvelopeBytes+1)},
 		{
 			name:        "oversized verified renderer prefix is value-free drift",

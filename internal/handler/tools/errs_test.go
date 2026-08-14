@@ -776,6 +776,12 @@ func TestUpstreamError_StatusDerivedCodes(t *testing.T) {
 			want:   CodeTimeout,
 		},
 		{
+			name:   "legacy timeout with empty guidance",
+			status: http.StatusServiceUnavailable,
+			body:   `{"status":"error","errorType":"timeout","error":""}`,
+			want:   CodeTimeout,
+		},
+		{
 			name:   "legacy canceled service unavailable",
 			status: http.StatusServiceUnavailable,
 			body:   `{"status":"error","errorType":"canceled","error":"query canceled"}`,

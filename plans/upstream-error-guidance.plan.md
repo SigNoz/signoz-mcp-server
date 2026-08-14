@@ -23,9 +23,12 @@ successful result.
 - Recognize only:
   1. `status:"error"` plus nested object `error` with non-empty string `code`
      and `message`; preserve optional string `type`.
-  2. `status:"error"` plus non-empty string `errorType` and string `error`.
+  2. `status:"error"` plus non-empty string `errorType` and a present string
+     `error`; an empty string carries classification but no guidance.
 - Reject top-level renderer tuples, message-only proxy JSON, non-error status,
-  non-object roots, malformed/trailing JSON, and over-budget bodies.
+  non-object roots, malformed/trailing JSON, and over-budget bodies. On JSON
+  decode failure, an anchored source-order `status:"error"` prefix is only a
+  value-free drift signal; never parse or expose its partial fields.
 - Decode `url`, `suggestions`, `errors`, and `retry` independently. Support
   verified historical detail objects with `message` and modern detail
   suggestions.
@@ -38,13 +41,16 @@ successful result.
   only the corresponding small URL/token/suggestion caps.
 - Trim and deduplicate safe guidance in source order. Continue inspecting
   entries after output caps so wrong-type drift remains detectable.
-- Drop, rather than rewrite, an individual field containing a high-confidence
-  named credential assignment/token, disallowed control character, genuinely
-  active HTML, or active Markdown link/image. Preserve ordinary diagnostic
-  prose—including angle-bracket placeholders and authentication wording—
-  verbatim, and signal the fixed field name when a non-empty value is dropped.
+- Treat SigNoz as the trusted producer of renderer guidance; these checks are
+  bounded defense in depth, not a general secret or markup scanner. Drop,
+  rather than rewrite, an individual field containing a source-backed,
+  high-confidence named credential assignment/token, disallowed control
+  character, genuinely active HTML, or inline Markdown link/image. Preserve
+  ordinary diagnostic prose—including angle-bracket placeholders and
+  authentication wording—verbatim, and signal the fixed field name when a
+  non-empty value is dropped.
 - Accept only absolute `http`/`https` documentation URLs with a host, no
-  userinfo/control characters, and no credential-bearing component.
+  userinfo/control characters, and no known sensitive query credentials.
 
 ### 3. Make the entire shared error boundary safe and observable
 - Make `HTTPStatusError.Error()` render recognized safe guidance or a local
