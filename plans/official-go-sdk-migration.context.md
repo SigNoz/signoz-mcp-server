@@ -628,6 +628,22 @@
   processes had already stopped, and its exact `/tmp/conf-review` artifacts
   were removed.
 
+### 2026-08-14 — Migration delivery completed and ERR-6 successor started
+- Runtime PR [#286](https://github.com/SigNoz/signoz-mcp-server/pull/286)
+  and selected-conformance PR
+  [#287](https://github.com/SigNoz/signoz-mcp-server/pull/287) merged to
+  `main`; nerve-pod [#194](https://github.com/SigNoz/nerve-pod/issues/194)
+  closed. The paired migration plan is now `Done`.
+- A manual `protocol` workflow dispatch on merged `main` passed both Inspector
+  and conformance. Promoting `conformance` to a required ruleset check remains
+  an owner-only repository-setting action: the available CLI and signed-in
+  browser identities can read the ruleset but receive GitHub's permission-
+  masked 404 on update. No protection setting was changed.
+- Started the independent ERR-6 successor from merged `main`. One focused PR
+  will implement nerve-pod #191 as the complete scope for overlapping #164;
+  it will not reopen the SDK migration or alter any tool schema, description,
+  resource, template, prompt, or success payload.
+
 ## Open Questions
 - [x] Which honest conformance claim should the stacked PR ship? Resolved:
   selected catalog-independent official scenarios against the actual

@@ -94,15 +94,6 @@ const (
 
 const statusClientClosedConnection = 499
 
-// maxUpstreamErrorDetails bounds how many error.errors[] detail messages are folded
-// into the surfaced upstream message; the body is upstream-controlled input.
-const maxUpstreamErrorDetails = 5
-
-// maxUpstreamErrorDetailsBytes caps the error-object size for which errors[]
-// details are extracted: non-2xx bodies can reach 64 MiB and json.RawMessage
-// copies the field's bytes, so oversized objects skip extraction (fail open).
-const maxUpstreamErrorDetailsBytes = 16 << 10
-
 var assistantAuthEnvelopeCodes = map[string]struct{}{
 	"forbidden":       {},
 	"token_expired":   {},
@@ -306,14 +297,24 @@ const (
 )
 
 // missingFilterKeys extracts the filter keys a QB v5 400 reported as absent from
-// the workspace's field metadata. Returns nil for anything other than an HTTP 400
-// whose body carries the key-not-found wording.
+// the workspace's field metadata. It scans only the bounded, filtered summary
+// and detail messages of a positively recognized SigNoz error envelope.
 func missingFilterKeys(err error) []string {
 	var statusErr *signozclient.HTTPStatusError
 	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusBadRequest {
 		return nil
 	}
-	body := statusErr.Body
+	parsed := signozclient.ParseUpstreamErrorBody(statusErr.Body)
+	if !parsed.Recognized {
+		return nil
+	}
+	var candidate strings.Builder
+	candidate.WriteString(parsed.Message)
+	for _, detail := range parsed.Details {
+		candidate.WriteByte('\n')
+		candidate.WriteString(detail.Message)
+	}
+	body := candidate.String()
 	if len(body) > missingFilterKeyScanBytes {
 		body = body[:missingFilterKeyScanBytes]
 	}
@@ -428,27 +429,39 @@ func upstreamError(err error) *mcp.CallToolResult {
 		return errorWithCause(err, CodeUpstreamError, fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error()))
 	}
 
-	upstreamCode, upstreamMessage, upstreamType, parsedUpstreamBody := parseUpstreamErrorBody(statusErr.Body)
-	message := upstreamHTTPErrorMessage(err, statusErr, upstreamMessage, parsedUpstreamBody)
+	parsed := signozclient.ParseUpstreamErrorBody(statusErr.Body)
+	message := fmt.Sprintf("%s %s", upstreamErrorPrefix, err.Error())
 	fields := map[string]any{
 		"status": statusErr.StatusCode,
 	}
-	if upstreamCode != "" {
-		fields["upstreamCode"] = upstreamCode
+	if parsed.Code != "" {
+		fields["upstreamCode"] = parsed.Code
 	}
-	if upstreamMessage != "" {
-		fields["upstreamMessage"] = boundedErrorDetail(upstreamMessage)
+	if parsed.Message != "" {
+		fields["upstreamMessage"] = parsed.Message
 	}
-	if upstreamType != "" {
-		fields["upstreamType"] = upstreamType
+	if parsed.Type != "" {
+		fields["upstreamType"] = parsed.Type
+	}
+	if parsed.URL != "" {
+		fields["upstreamURL"] = parsed.URL
+	}
+	if len(parsed.Suggestions) > 0 {
+		fields["upstreamSuggestions"] = parsed.Suggestions
+	}
+	if len(parsed.Details) > 0 {
+		fields["upstreamDetails"] = parsed.Details
+	}
+	if parsed.Retry != nil {
+		fields["upstreamRetry"] = parsed.Retry
 	}
 	if statusErr.StatusCode == http.StatusUnauthorized {
-		if _, ok := assistantAuthEnvelopeCodes[upstreamCode]; ok {
-			fields["upstreamAuth"] = map[string]string{"code": upstreamCode}
+		if _, ok := assistantAuthEnvelopeCodes[parsed.Code]; ok {
+			fields["upstreamAuth"] = map[string]string{"code": parsed.Code}
 		}
 	}
 
-	return errorWithStructuredContent(upstreamCodeForStatus(statusErr.StatusCode, upstreamType), message, fields)
+	return errorWithStructuredContent(upstreamCodeForStatus(statusErr.StatusCode, parsed.Type), message, fields)
 }
 
 func upstreamCodeForStatus(status int, upstreamType string) string {
@@ -486,32 +499,6 @@ func upstreamCodeForStatus(status int, upstreamType string) string {
 	}
 }
 
-func upstreamHTTPErrorMessage(err error, statusErr *signozclient.HTTPStatusError, upstreamMessage string, parsedUpstreamBody bool) string {
-	statusText := upstreamHTTPStatusText(statusErr, upstreamMessage, parsedUpstreamBody)
-	rawMessage := err.Error()
-	if rawStatusText := statusErr.Error(); rawStatusText != "" && strings.Contains(rawMessage, rawStatusText) {
-		rawMessage = strings.Replace(rawMessage, rawStatusText, statusText, 1)
-	} else {
-		rawMessage = statusText
-	}
-	return fmt.Sprintf("%s %s", upstreamErrorPrefix, rawMessage)
-}
-
-func upstreamHTTPStatusText(statusErr *signozclient.HTTPStatusError, upstreamMessage string, parsedUpstreamBody bool) string {
-	message := fmt.Sprintf("unexpected status %d", statusErr.StatusCode)
-	detail := upstreamMessage
-	if detail == "" && !parsedUpstreamBody {
-		if statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusForbidden {
-			return statusErr.Error()
-		}
-		detail = statusErr.Body
-	}
-	if detail = boundedErrorDetail(detail); detail != "" {
-		return fmt.Sprintf("%s: %s", message, detail)
-	}
-	return message
-}
-
 func appendAuthorizationOperation(res *mcp.CallToolResult, toolName string) {
 	structured, code := toolerrors.NormalizeStructuredContent(res.StructuredContent)
 	status, ok := structured["status"].(int)
@@ -542,110 +529,6 @@ func appendAuthorizationOperation(res *mcp.CallToolResult, toolName string) {
 
 func boundedErrorDetail(detail string) string {
 	return logpkg.TruncBody([]byte(strings.TrimSpace(detail)))
-}
-
-func parseUpstreamErrorBody(body string) (upstreamCode, upstreamMessage, upstreamType string, parsed bool) {
-	body = strings.TrimSpace(body)
-	if !strings.HasPrefix(body, "{") {
-		return "", "", "", false
-	}
-	var envelope struct {
-		Error     json.RawMessage `json:"error"`
-		ErrorType string          `json:"errorType"`
-		Type      string          `json:"type"`
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
-	}
-	if err := json.Unmarshal([]byte(body), &envelope); err != nil {
-		return "", "", "", false
-	}
-	if len(envelope.Error) > 0 && string(envelope.Error) != "null" {
-		var nested struct {
-			Type    string `json:"type"`
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		}
-		if err := json.Unmarshal(envelope.Error, &nested); err == nil {
-			upstreamType = nested.Type
-			upstreamCode = nested.Code
-			upstreamMessage = nested.Message
-			// Newer backends carry the per-term detail in error.errors[]; fold it
-			// in via a size-gated second decode — json.RawMessage copies the
-			// field's bytes, so oversized objects never decode errors[] at all.
-			if len(envelope.Error) <= maxUpstreamErrorDetailsBytes {
-				var withDetails struct {
-					Errors json.RawMessage `json:"errors"`
-				}
-				if err := json.Unmarshal(envelope.Error, &withDetails); err == nil {
-					switch details := upstreamErrorDetails(withDetails.Errors, upstreamMessage); {
-					case len(details) == 0:
-					case upstreamMessage == "":
-						upstreamMessage = strings.Join(details, "; ")
-					default:
-						upstreamMessage = upstreamMessage + " (" + strings.Join(details, "; ") + ")"
-					}
-				}
-			}
-		} else {
-			var message string
-			if err := json.Unmarshal(envelope.Error, &message); err == nil {
-				upstreamMessage = message
-			}
-		}
-	}
-	if upstreamType == "" {
-		upstreamType = envelope.Type
-	}
-	if upstreamType == "" {
-		upstreamType = envelope.ErrorType
-	}
-	if upstreamCode == "" {
-		upstreamCode = envelope.Code
-	}
-	if upstreamMessage == "" {
-		upstreamMessage = envelope.Message
-	}
-	return upstreamCode, upstreamMessage, upstreamType, true
-}
-
-// upstreamErrorDetails decodes error.errors[] best-effort ([{"message":...}]
-// or []string); any other or oversized shape yields nil so a drifted detail
-// array never discards the main fields (the caller's size gate makes the check
-// here defense in depth). Details are trimmed, deduped, and capped.
-func upstreamErrorDetails(raw json.RawMessage, mainMessage string) []string {
-	if len(raw) == 0 || len(raw) > maxUpstreamErrorDetailsBytes {
-		return nil
-	}
-	var messages []string
-	var structured []struct {
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(raw, &structured); err == nil {
-		messages = make([]string, 0, len(structured))
-		for _, additional := range structured {
-			messages = append(messages, additional.Message)
-		}
-	} else if err := json.Unmarshal(raw, &messages); err != nil {
-		return nil
-	}
-
-	seen := map[string]struct{}{mainMessage: {}}
-	details := make([]string, 0, maxUpstreamErrorDetails)
-	for _, message := range messages {
-		detail := strings.TrimSpace(message)
-		if detail == "" {
-			continue
-		}
-		if _, dup := seen[detail]; dup {
-			continue
-		}
-		seen[detail] = struct{}{}
-		details = append(details, detail)
-		if len(details) == maxUpstreamErrorDetails {
-			break
-		}
-	}
-	return details
 }
 
 // notFoundError marks a referenced resource that does not exist. The message is

@@ -1,0 +1,1 @@
+{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"The query is invalid.","url":"https://signoz.io/docs/userguide/search-troubleshooting/","errors":[{"message":"field `service.nam` was not found","suggestions":["did you mean: `service.name`"]}],"retry":{"delay":5000000000},"suggestions":["Use an existing field key."]}}
