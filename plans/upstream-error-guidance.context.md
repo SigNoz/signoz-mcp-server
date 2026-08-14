@@ -14,9 +14,9 @@
 ## Reference Links
 - [SigNoz/nerve-pod#191 — Align MCP upstream errors with ERR-6 guidance fidelity](https://github.com/SigNoz/nerve-pod/issues/191)
 - [SigNoz/nerve-pod#164 — Preserve SigNoz backend error guidance in MCP results](https://github.com/SigNoz/nerve-pod/issues/164)
-- [Current SigNoz error JSON contract](https://github.com/SigNoz/signoz/blob/abf60c0878a994c846e8722a09bd2be869fde455/pkg/errors/http.go)
-- [Current SigNoz HTTP error renderer](https://github.com/SigNoz/signoz/blob/abf60c0878a994c846e8722a09bd2be869fde455/pkg/http/render/render.go)
-- [Current renderer wire tests](https://github.com/SigNoz/signoz/blob/abf60c0878a994c846e8722a09bd2be869fde455/pkg/http/render/render_test.go)
+- [Current SigNoz error JSON contract](https://github.com/SigNoz/signoz/blob/abf60c0af3697bad5e0b47f7ef67d30ca303a10f/pkg/errors/http.go)
+- [Current SigNoz HTTP error renderer](https://github.com/SigNoz/signoz/blob/abf60c0af3697bad5e0b47f7ef67d30ca303a10f/pkg/http/render/render.go)
+- [Current renderer wire tests](https://github.com/SigNoz/signoz/blob/abf60c0af3697bad5e0b47f7ef67d30ca303a10f/pkg/http/render/render_test.go)
 - [MCP best practices — ERR-6 and CMP-3](../docs/mcp-best-practices.md)
 
 ## Key Decisions & Discussion Log
@@ -154,6 +154,27 @@
   one client package, but the immutable error value may be interpreted at the
   client, handler, and Query Builder boundaries. Memoizing error-path parsing
   would add state and complexity without changing the bounded contract.
+
+### 2026-08-14 — PR #289 unquoted-colon credential review
+- An unresolved automated P1 correctly identified that explicit unquoted
+  colon values such as `api_key: abc123secret` and
+  `client_secret: abc123secret` bypassed the initial `=` and quoted-colon
+  matchers and could reach MCP text, structured guidance, and error logs.
+- Two independent read-only agents reproduced the bypass and reviewed the
+  smallest fix before any push. The sibling SigNoz repository's `origin/main`
+  ref was refreshed to `abf60c0af3697bad5e0b47f7ef67d30ca303a10f`; its renderer
+  copies arbitrary message/detail/suggestion strings, and current source has
+  credential-bearing phrases such as `api key with key: %s` and
+  `refresh token: %s`. The sibling's two unrelated dirty frontend files were
+  not touched.
+- Add one unquoted-colon matcher limited to explicit named credentials and the
+  source-backed `api key with key` phrase. Generic `token:`, `secret:`,
+  `cookie:`, `session:`, and ordinary `authorization:` prose remain outside
+  this matcher, preserving existing benign diagnostic tests. Existing fixed-
+  field drift logging detects any dropped non-empty value.
+- Extend the existing parser, client-log, and serialized-handler canary tests;
+  do not add another protocol matrix. Also correct the three reference links
+  that used an invalid long form of the verified SigNoz commit SHA.
 
 ## Open Questions
 - [x] Which issues does this PR close? #191 and overlapping #164.

@@ -21,13 +21,16 @@ const (
 	maxErrorTokenBytes    = 128
 	maxErrorURLBytes      = 2 << 10
 	maxEnvelopeProbeBytes = 256
+
+	namedCredentialPattern = `(?:signoz[ ._-]?api[ ._-]?key|api[ ._-]?key(?:\s+with\s+key)?|client[ ._-]?secret|access[ ._-]?token|refresh[ ._-]?token|password|passwd)`
 )
 
 var (
 	errorTokenPattern = regexp.MustCompile(`^[A-Za-z0-9][-A-Za-z0-9._:]*$`)
 
-	credentialAssignmentPattern = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(?:signoz[._-]?api[._-]?key|api[._-]?key|client[._-]?secret|access[._-]?token|refresh[._-]?token|authorization|password|passwd)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)`)
-	quotedCredentialPattern     = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(?:signoz[._-]?api[._-]?key|api[._-]?key|client[._-]?secret|access[._-]?token|refresh[._-]?token|authorization|password|passwd)\s*:\s*(?:"[^"]+"|'[^']+')`)
+	credentialAssignmentPattern = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(?:` + namedCredentialPattern + `|authorization)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)`)
+	quotedCredentialPattern     = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(?:` + namedCredentialPattern + `|authorization)\s*:\s*(?:"[^"]+"|'[^']+')`)
+	unquotedCredentialPattern   = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])` + namedCredentialPattern + `\s*:\s*[-A-Za-z0-9._~+/=]{4,}(?:$|[^-A-Za-z0-9._~+/=])`)
 	credentialTokenPattern      = regexp.MustCompile(`(?i)^(?:signoz[._-]?api[._-]?key|api[._-]?key|client[._-]?secret|access[._-]?token|refresh[._-]?token|authorization|password|passwd|secret|cookie|session(?:[._-]?(?:id|token))?):[-A-Za-z0-9._~+/]{4,}$`)
 	authorizationHeaderPattern  = regexp.MustCompile(`(?i)\bauthorization\s*:\s*(?:basic|bearer|digest|token|apikey|aws4-hmac-sha256)\s+[A-Za-z0-9._~+/=-]{8,}`)
 	authorizationTokenPattern   = regexp.MustCompile(`(?i)\b(?:basic|bearer|digest|token|apikey|aws4-hmac-sha256)\s+([A-Za-z0-9._~+/=-]{8,})`)
@@ -351,6 +354,7 @@ func unsafeGuidance(value string) bool {
 	return activeMarkupPattern.MatchString(value) ||
 		credentialAssignmentPattern.MatchString(value) ||
 		quotedCredentialPattern.MatchString(value) ||
+		unquotedCredentialPattern.MatchString(value) ||
 		authorizationHeaderPattern.MatchString(value) ||
 		containsLikelyAuthorizationToken(value) ||
 		cookieHeaderPattern.MatchString(value) ||

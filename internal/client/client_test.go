@@ -516,7 +516,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	var logBuf bytes.Buffer
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"SIGNOZ_API_KEY=temporary-outage-secret-canary"}}`))
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"api_key: temporary-outage-secret-canary"}}`))
 	}))
 	defer server.Close()
 

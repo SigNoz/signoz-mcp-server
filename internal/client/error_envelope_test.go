@@ -193,8 +193,8 @@ func TestParseUpstreamErrorBody_DropsUnsafeValuesWhole(t *testing.T) {
 		`"type":"access.token:type-secret-canary","code":"api.key:code-secret-canary",` +
 		`"message":"SIGNOZ_API_KEY=message-secret-canary",` +
 		`"url":"https://signoz.io/docs?token=url-secret-canary",` +
-		`"suggestions":["client_secret=suggestion-secret-canary","Bearer abcdefghijk1234","authorization: request editor access","token: signature mismatch"],` +
-		`"errors":[{"message":"<script>detail-canary</script>","suggestions":["![x](https://attacker.test/canary)","keep detail guidance"]}]` +
+		`"suggestions":["client_secret=suggestion-secret-canary","client_secret: colon-suggestion-secret-canary","refresh token: refresh-colon-secret-canary","Bearer abcdefghijk1234","authorization: request editor access","token: signature mismatch"],` +
+		`"errors":[{"message":"<script>detail-canary</script>","suggestions":["![x](https://attacker.test/canary)","keep detail guidance"]},{"message":"api key with key: backend-colon-secret-canary doesn't exist.","suggestions":[]}]` +
 		`}}`
 
 	got := ParseUpstreamErrorBody(body)
@@ -210,7 +210,7 @@ func TestParseUpstreamErrorBody_DropsUnsafeValuesWhole(t *testing.T) {
 	assert.Equal(t, []string{"code", "message", "type", "url", "suggestions", "errors"}, got.DriftFields)
 
 	wire := got.ClientSafeText()
-	for _, secret := range []string{"code-secret-canary", "type-secret-canary", "message-secret-canary", "url-secret-canary", "suggestion-secret-canary", "abcdefghijk1234", "detail-canary", "attacker.test"} {
+	for _, secret := range []string{"code-secret-canary", "type-secret-canary", "message-secret-canary", "url-secret-canary", "suggestion-secret-canary", "colon-suggestion-secret-canary", "refresh-colon-secret-canary", "backend-colon-secret-canary", "abcdefghijk1234", "detail-canary", "attacker.test"} {
 		assert.NotContains(t, wire, secret)
 	}
 	assert.Contains(t, wire, "authorization: request editor access")
