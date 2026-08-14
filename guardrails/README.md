@@ -10,7 +10,8 @@ access to unexported retry, registration, middleware, and server-composition hel
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
 - `internal/mcp-server/testdata/wire-catalog/` holds the immutable pre-migration JSON-RPC oracle.
 - `.github/workflows/guardrails.yaml` verifies the inventory and runs the guarded tests.
-- `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector compatibility check.
+- `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector and
+  selected official conformance checks.
 - Package-local functions named `TestGuardrail_*` contain the enforcement logic.
 
 ## Invariants covered
@@ -52,16 +53,50 @@ an independent initialized-client check for tools, resources, resource
 templates, and prompts. It runs on every pull request to `main` without
 credentials or a live SigNoz backend.
 
+The separate `protocol / conformance` check pins
+`@modelcontextprotocol/conformance@0.2.0-alpha.11` and runs selected official
+scenarios against the same real `cmd/server` HTTP binary. It supplies a fake
+API key and `https://example.invalid`; the selected catalog operations do not
+contact a live SigNoz backend. Each scenario runs independently through the
+official CLI:
+
+```text
+node tools/mcp-ci/node_modules/@modelcontextprotocol/conformance/dist/index.js \
+  server --url http://127.0.0.1:<port>/mcp \
+  --scenario <name> --spec-version <version> --output-dir <temp>
+```
+
+The exact selected scenarios are:
+
+- legacy `2025-11-25`: `server-initialize`, `ping`, `tools-list`,
+  `resources-list`, `prompts-list`, `dns-rebinding-protection`;
+- modern `2026-07-28`: `tools-list`, `resources-list`,
+  `sep-2164-resource-not-found`, `prompts-list`,
+  `dns-rebinding-protection`, `caching`.
+
+This is selected official conformance, not a claim that the full frozen
+requirements pass. The unselected requirements depend on diagnostic fixture
+tools and product features that SigNoz intentionally does not expose. Do not
+add an everything-server copy, separate fixture binary, expected-failures
+baseline, or `--requirements` claim to make those scenarios appear applicable.
+The SDK-free wire oracle, focused Go matrices, and Inspector continue to own
+complete SigNoz catalog and transport compatibility.
+
 Focused Go matrices own exact HTTP and stdio wire behavior: both protocol eras,
 standardized modern headers, JSON Content-Type/Accept handling, stateless
 GET/DELETE 405 responses, absent `Mcp-Session-Id`, cancellation, and accepted
 official-SDK differences. Do not duplicate those matrices in the shell script.
 
-Protocol policy is split across three review-sensitive files:
+Protocol policy is split across these review-sensitive files:
 
-- `tools/mcp-ci/package.json` and its lockfile pin the Inspector CLI.
-- `scripts/test-mcp-protocol.sh` owns the server lifecycle and selective response assertions.
-- `.github/workflows/mcp-protocol.yaml` owns the Node/Go toolchain and required check name.
+- `tools/mcp-ci/package.json` and its lockfile pin the Inspector and official
+  conformance CLIs exactly.
+- `scripts/test-mcp-protocol.sh` owns the Inspector server lifecycle and
+  selective response assertions.
+- `scripts/test-mcp-conformance.sh` owns the selected official scenario list,
+  production server lifecycle, and temporary report cleanup.
+- `.github/workflows/mcp-protocol.yaml` owns the Node/Go toolchain and the
+  separate `protocol / inspector` and `protocol / conformance` check names.
 
 Keep assertions focused on usable protocol surfaces, stable identity, and
 non-empty result envelopes. Do not assert deprecated logging behavior or turn
@@ -69,17 +104,23 @@ this check into a full catalog snapshot by pinning counts, ordering,
 descriptions, schemas, or ranked documentation content. `tests.txt` remains the
 inventory for Go `TestGuardrail_*` tests only.
 
-After the workflow succeeds once on the default branch, configure `protocol / inspector` as a required `main` branch check. Upgrade Inspector only in a reviewed dependency change that reruns the same assertions.
-
 Run the protocol lane on Ubuntu with:
 
 ```bash
 npm ci --ignore-scripts --prefix tools/mcp-ci
 bash -n scripts/test-mcp-protocol.sh
 shellcheck scripts/test-mcp-protocol.sh
+bash -n scripts/test-mcp-conformance.sh
+shellcheck scripts/test-mcp-conformance.sh
 actionlint .github/workflows/mcp-protocol.yaml
 scripts/test-mcp-protocol.sh
+scripts/test-mcp-conformance.sh
 ```
+
+After each check succeeds once on the default branch, configure both
+`protocol / inspector` and `protocol / conformance` as required `main` branch
+checks. Upgrade either CLI only in a reviewed dependency change that reruns its
+documented assertions; do not float a dist-tag or version range.
 
 ## Changing a guardrail
 

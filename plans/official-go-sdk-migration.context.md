@@ -531,18 +531,96 @@
   frozen requirements. Do not silently pick one or disguise missing fixture
   behavior with a broad baseline.
 
+### 2026-08-14 — Maintainer-approved selected production conformance
+- The maintainer approved the lean claim. Pin exact prerelease
+  `@modelcontextprotocol/conformance@0.2.0-alpha.11` and run six
+  catalog-independent official scenarios per protocol era against the real
+  production `cmd/server` binary. This is **selected official conformance**;
+  neither the plan, CI check, nor PR may claim that the full frozen
+  `--requirements` sets pass.
+- The selected legacy `2025-11-25` scenarios are `server-initialize`, `ping`,
+  `tools-list`, `resources-list`, `prompts-list`, and
+  `dns-rebinding-protection`. The selected modern `2026-07-28` scenarios are
+  `tools-list`, `resources-list`, `sep-2164-resource-not-found`,
+  `prompts-list`, `dns-rebinding-protection`, and `caching`.
+- Do not add `internal/mcpconformance`, `cmd/conformance-server`, an
+  everything-server copy, fixture-only product surfaces, an expected-failures
+  baseline, or the partial `server-stateless` result. Those alternatives add
+  substantial code while primarily retesting official SDK behavior. Existing
+  SDK-free wire goldens, focused Go protocol matrices, guardrails, and the
+  Inspector lane continue to own complete SigNoz catalog and transport
+  behavior; the selected official runner is an independent referee for the
+  production composition it can exercise honestly.
+- The stacked conformance PR is CI-only: dependency/lockfile, bounded harness,
+  workflow, and documentation changes. It must not change production runtime
+  code or any client-visible tool schema, description, resource content,
+  prompt, or result contract.
+- Credentialed Assistant and native-client E2E remains a protected
+  release-promotion gate, not a pull-request check. It passed on exact runtime
+  commit `0e33180`: 39/39 top-level live tests plus 29/29 subtests; 43/43 real
+  `tools/call` invocations; 22/22 static resources, 2/2 resource templates,
+  and 4/4 prompts; and create/update/read-back/delete/verify-gone lifecycles
+  for notification channels, views, dashboards (including JSON Patch and
+  import), and disabled alerts. OAuth DCR, browser consent, state/CSRF, PKCE,
+  token exchange/refresh/revocation, the real Assistant consumer, and Codex,
+  Claude Code, and Cursor calls also passed, with all temporary resources and
+  credentials deleted and verified gone.
+- Notification-channel read-back did not return the webhook URL in a
+  byte-comparable form, which is an acceptable server-side secret-redaction
+  boundary; its update, delete, and verify-gone checks passed.
+- Raw MCP wire retained the coded validation result. Claude preserved
+  `isError` but hid the structured error code, while Cursor rewrote
+  `isError:true` to false and removed `structuredContent`; those are recorded
+  client presentation limitations, not server contract changes.
+
+### 2026-08-14 — Selected production conformance implemented
+- Added one bounded `scripts/test-mcp-conformance.sh` harness and a separate
+  `protocol / conformance` job. The existing Inspector job and production Go
+  runtime are unchanged; no fixture package, test-only binary, diagnostic
+  catalog, or expected-failures baseline was added.
+- All twelve approved scenarios passed locally against the real production
+  HTTP binary with fake `example.invalid` credentials. The harness verifies
+  the exact alpha.11 package and CLI versions, bounds readiness and each
+  scenario, preserves per-scenario diagnostics on failure, and removes the
+  server process and temporary reports on every exit path.
+- Updated nerve-pod #194 so its scope and acceptance criteria explicitly name
+  selected catalog-independent production conformance rather than full frozen
+  suites. Updated runtime PR #286 with the final exhaustive E2E evidence and
+  the stacked conformance follow-up wording.
+- Local gates passed: clean `npm ci` with zero advisories, Bash parsing,
+  ShellCheck, actionlint, both protocol scripts, `go test -count=1 ./...`,
+  `go vet ./...`, `go build ./cmd/server`, and `git diff --check`.
+
+### 2026-08-14 — Local workflow validation of selected conformance
+- Agent CI completed the three jobs that can start without repository secrets:
+  `guardrails / contract`, `protocol / inspector`, and the new
+  `protocol / conformance` all passed. The five `ci.yaml` jobs were blocked at
+  startup by unavailable Primus and Docker Hub credentials; no code step in
+  those jobs ran or failed. Their equivalent direct formatting, lint, test,
+  dependency, and build commands are covered by the local gates above.
+- Agent CI also listed release/docs/version workflows that require GitHub or
+  GoReleaser credentials; those are unrelated protected-environment blockers,
+  not conformance or code failures. Its temporary runners were removed.
+
 ## Open Questions
-- [ ] Which honest conformance claim should the stacked PR ship? Recommended:
+- [x] Which honest conformance claim should the stacked PR ship? Resolved:
   selected catalog-independent official scenarios against the actual
-  production binary, with #194's full-suite acceptance wording revised. The
-  alternative is a large nonshipping fixture recreating nearly all of the
-  official 1,316-line everything server to pass all 30/37 scored scenarios.
-- [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
-- [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.
+  production binary. Do not recreate the everything-server fixture or claim
+  the full 30/37 frozen requirement sets.
+- [x] Is exact prerelease `@modelcontextprotocol/conformance@0.2.0-alpha.11`
+  acceptable as a release-blocking referee? Resolved: yes. Keep the exact pin
+  and lockfile, document that it is prerelease, and upgrade deliberately after
+  a reviewed stable release provides the needed scenario interface.
+- [x] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes
+  block merge or only release promotion? Resolved: release promotion. The
+  protected gate passed on `0e33180`; deterministic raw, Inspector, selected
+  conformance, and repository checks remain merge-blocking.
 - [x] Can legacy HTTP disconnect cancellation be preserved through an official supported hook? Resolved: not in v1.7.0 stateless HTTP. Accept the bounded capacity-impact limitation, retain protocol cancellation notifications, and avoid a custom transport.
 - [x] Use low-level or typed official tool registration? Resolved: low-level only for the migration.
 - [x] Preserve or retire the stateless GET heartbeat listener? Resolved: retire it; official stateless GET/DELETE return 405 and the product has no server-message use case.
-- [x] Run the full official requirements against the production catalog? Resolved: no; use a test-only fixture server plus a separate real-production compatibility matrix.
+- [x] Run the full official requirements against the production catalog?
+  Resolved: no. Run only the named catalog-independent scenarios against the
+  real production binary, with no test-only fixture server or broad baseline.
 - [x] Preserve legacy logging? Resolved: no; omit `capabilities.logging`, add no shim or parity assertion for legacy `logging/setLevel`, and let the official SDK reject it for modern requests.
 - [x] Preserve catalog order? Resolved: no; compare top-level discovery collections order-insensitively while retaining all fields and nested order.
 - [x] Preserve mark3's unknown-resource `-32002`? Resolved: no; accept official `-32602 Invalid Params` and document it.
