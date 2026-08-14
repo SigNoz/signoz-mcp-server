@@ -130,7 +130,7 @@ func TestInputMismatchServedWithNoticeThroughProductionPipeline(t *testing.T) {
 		t.Fatalf("handler result must be preserved: %s", b)
 	}
 	// The appended notice tells self-correcting agents what to fix.
-	for _, want := range []string{"input validation notice", "best-effort", "re-call"} {
+	for _, want := range []string{"input validation notice", `parameter \"value\"`, "best-effort", "re-call"} {
 		if !bytes.Contains(bytes.ToLower(b), []byte(want)) {
 			t.Fatalf("notice is not actionable (missing %q): %s", want, b)
 		}

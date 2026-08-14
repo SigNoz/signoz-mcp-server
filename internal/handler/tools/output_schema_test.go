@@ -147,7 +147,12 @@ func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(encoded), inputValidationNoticeText) {
+	const wantNotice = `Input validation notice: parameter "webhook_password" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.`
+	encodedNotice, err := json.Marshal(wantNotice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, encodedNotice[1:len(encodedNotice)-1]) {
 		t.Fatalf("successful result missing exact in-band validation notice: %s", encoded)
 	}
 	if !strings.Contains(string(encoded), `"ok"`) {
@@ -182,7 +187,7 @@ func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *
 	for key, want := range map[attribute.Key]string{
 		attribute.Key("gen_ai.tool.name"):      "shadow_probe",
 		attribute.Key("validation.direction"):  "input",
-		attribute.Key("validation.path"):       "<root>",
+		attribute.Key("validation.path"):       "webhook_password",
 		attribute.Key("validation.constraint"): "schema",
 		otelpkg.MCPClientSourceKey:             "ai-assistant",
 	} {

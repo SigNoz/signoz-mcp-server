@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,6 +51,89 @@ func TestCloneSchemaValueFailureIsFatal(t *testing.T) {
 		}
 	}()
 	cloneSchemaValue(uncloneableSchema{})
+}
+
+func TestValidationDiagnosisUsesOnlyAdvertisedTopLevelParameters(t *testing.T) {
+	compiled, err := compileToolSchema("diagnostic_probe", "input", json.RawMessage(`{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"type":"object",
+		"properties":{
+			"schemaVersion":{"type":"string"},
+			"spec":{"$ref":"#/$defs/spec"},
+			"tags":{"type":"array"}
+		},
+		"required":["schemaVersion","spec","tags"],
+		"additionalProperties":false,
+		"$defs":{"spec":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.diagnostic == nil {
+		t.Fatal("top-level diagnostic schema did not compile with local $defs")
+	}
+
+	tests := []struct {
+		name           string
+		value          any
+		wantParameters []string
+		wantPath       string
+		wantConstraint string
+	}{
+		{
+			name:           "local ref property mismatch",
+			value:          map[string]any{"schemaVersion": "v1", "spec": "wrong", "tags": []any{}},
+			wantParameters: []string{"spec"},
+			wantPath:       "spec",
+			wantConstraint: "schema",
+		},
+		{
+			name:           "missing required fields",
+			value:          map[string]any{},
+			wantParameters: []string{"schemaVersion", "spec", "tags"},
+			wantPath:       "<multiple>",
+			wantConstraint: "required",
+		},
+		{
+			name:           "unknown client key is not reflected",
+			value:          map[string]any{"schemaVersion": "v1", "spec": map[string]any{"name": "ok"}, "tags": []any{}, "attacker-controlled-secret": true},
+			wantPath:       "<root>",
+			wantConstraint: "schema",
+		},
+		{
+			name:           "non-object remains root attributed",
+			value:          "wrong",
+			wantPath:       "<root>",
+			wantConstraint: "type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := diagnoseValidationMismatch(compiled, tt.value, true)
+			if !reflect.DeepEqual(got.parameters, tt.wantParameters) || got.path != tt.wantPath || got.constraint != tt.wantConstraint {
+				t.Fatalf("diagnosis = %#v, want parameters=%v path=%q constraint=%q", got, tt.wantParameters, tt.wantPath, tt.wantConstraint)
+			}
+			if strings.Contains(inputValidationNotice(got), "attacker-controlled-secret") {
+				t.Fatal("validation notice reflected an undeclared client key")
+			}
+		})
+	}
+}
+
+func TestInputValidationNoticeNamesSafeParametersWithoutValidatorDetail(t *testing.T) {
+	got := inputValidationNotice(validationMismatch{
+		parameters: []string{"limit"},
+		path:       "limit",
+		constraint: "schema",
+	})
+	want := `Input validation notice: parameter "limit" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.`
+	if got != want {
+		t.Fatalf("notice = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(got, inputValidationNoticePrefix) {
+		t.Fatalf("notice does not use inputValidationNoticePrefix: %q", got)
+	}
 }
 
 func TestNormalizeRawSchemaReplacesSchemaTrueWithEmptyObject(t *testing.T) {

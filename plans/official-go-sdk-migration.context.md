@@ -475,6 +475,29 @@
   and pre-existing OAuth hardening. None is a migration blocker, and adding
   those mechanisms here would expand scope beyond the verified findings.
 
+### 2026-08-14 — Restore actionable fail-open validation guidance
+- The maintainer found that `inputValidationNoticePrefix` had become a
+  test-only sentinel while production ignored the validation error and emitted
+  one generic sentence. This was safe but no longer told agents which argument
+  to repair, so the earlier deferral of parameter attribution is superseded.
+- A focused Opus 5 xhigh review confirmed the lean safe design: compile one
+  repository-owned diagnostic probe per tool from the advertised top-level
+  properties, required fields, and local definitions. On the mismatch path,
+  validate only declared properties and derive missing required fields without
+  parsing validator-library error strings. Parameter names are schema-owned;
+  client keys, values, schema URIs, and validator text never enter the notice
+  or metric dimensions. Complex root-only failures retain the generic fallback.
+- The notice now uses `inputValidationNoticePrefix`, names one or more safely
+  attributed top-level parameters, and preserves best-effort execution.
+  Telemetry uses the parameter name for one mismatch, `<multiple>` for several,
+  and `<root>` when attribution is unavailable. The frozen pre-migration wire
+  fixture remains unchanged; only the exact accepted new-side assertion moves.
+- Repeated CMP-3 search across `SigNoz/agent-skills` and
+  `signoz-ai-assistant`; neither teaches nor parses validation-notice wording,
+  so no companion change is required. Tool names, schemas, descriptions,
+  annotations, resources, templates, prompts, and structured results remain
+  unchanged.
+
 ## Open Questions
 - [ ] Is an exactly pinned prerelease `@modelcontextprotocol/conformance` dependency acceptable as a release-blocking referee until its `0.2.x` line becomes stable? Recommended: yes; use its frozen `--requirements` sets, document the exception, and upgrade deliberately when stable.
 - [ ] Should protected SigNoz AI Assistant/Claude Code/Codex/Cursor smokes block merge or block only release promotion? Recommended: keep deterministic raw/Inspector/conformance checks merge-blocking and make credentialed native-client checks protected pre-release gates with an explicit owner.

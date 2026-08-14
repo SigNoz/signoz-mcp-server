@@ -111,7 +111,7 @@ Canonicalization must not remove nested array order, false values, null-vs-absen
 - unknown tool and prompt responses keep `-32602` but use the official SDK's
   standard `unknown tool "<name>"` / `unknown prompt "<name>"` messages instead
   of mark3-specific wording;
-- fail-open input-validation notice detail from validator-library error text to the exact repository-owned sentence defined in Phase 1; the notice prefix and best-effort behavior remain;
+- fail-open input-validation notice detail from validator-library error text to repository-owned parameter attribution defined in Phase 1; the notice prefix and best-effort behavior remain;
 - modern-only `resultType` and server metadata;
 - transport differences already named in this plan (GET/DELETE 405, malformed-stdio termination, and any approved legacy-disconnect limitation).
 
@@ -199,7 +199,7 @@ Add one registered-pipeline test through official dispatch. It must prove valida
 
 The policy layer continues to:
 
-- append a stable repository-owned input validation notice only to successful mismatched calls. Do not parse or embed validator-library error text. Pin this exact replacement: `Input validation notice: the arguments did not fully match this tool's input schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Review the arguments and re-call if the results look off.` Keep telemetry metadata at the deterministic `<root>` / `schema` fallback unless it can be derived independently of validator error strings;
+- append a stable repository-owned input validation notice only to successful mismatched calls. Do not parse or embed validator-library error text. Independently diagnose missing required fields and mismatched declared top-level properties from the advertised schema; name those schema-owned parameters in the notice and telemetry, using `<multiple>` for multi-parameter metric attribution. Keep the deterministic generic notice and `<root>` / `schema` telemetry fallback for complex root-only mismatches. Never reflect client-provided keys or values;
 - keep output mismatch and missing structured content telemetry-only;
 - preserve authorization operation fields and fallback error codes;
 - serialize the entire official `CallToolResult` with `json.Marshal` for size/JSON-safety checks;

@@ -45,6 +45,8 @@ func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
 			t.Errorf("compile %s input schema: %v", name, err)
 		} else if compiled == nil {
 			t.Errorf("compile %s input schema returned nil", name)
+		} else if len(compiled.properties) > 0 && compiled.diagnostic == nil {
+			t.Errorf("compile %s input diagnostic schema returned nil", name)
 		}
 		var schema any
 		if err := json.Unmarshal(inputRaw, &schema); err != nil {

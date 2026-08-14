@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,7 +26,7 @@ const (
 	inputValidationNoticePrefix = "Input validation notice:"
 	maxValidationMetadataLength = 96
 	validationLogInterval       = time.Minute
-	inputValidationNoticeText   = "Input validation notice: the arguments did not fully match this tool's input schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Review the arguments and re-call if the results look off."
+	inputValidationNoticeAdvice = " The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
 )
 
 type validationLogState struct {
@@ -33,7 +34,16 @@ type validationLogState struct {
 }
 
 type compiledToolSchema struct {
-	validator *jsonschema.Resolved
+	validator      *jsonschema.Resolved
+	diagnostic     *jsonschema.Resolved
+	properties     []string
+	requiredFields []string
+}
+
+type validationMismatch struct {
+	parameters []string
+	path       string
+	constraint string
 }
 
 var schemaMapFields = map[string]struct{}{
@@ -179,7 +189,39 @@ func compileToolSchema(toolName, direction string, raw json.RawMessage) (*compil
 	if err != nil {
 		return nil, fmt.Errorf("compile schema: %w", err)
 	}
-	return &compiledToolSchema{validator: validator}, nil
+
+	properties := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		properties = append(properties, name)
+	}
+	sort.Strings(properties)
+	requiredFields := append([]string(nil), schema.Required...)
+	sort.Strings(requiredFields)
+
+	var diagnostic *jsonschema.Resolved
+	if len(properties) > 0 {
+		// Keep only the keywords needed to validate one declared top-level
+		// property at a time. Local definitions remain available so schemas such
+		// as the dashboard spec can still resolve their internal references.
+		probe := &jsonschema.Schema{
+			Schema:      schema.Schema,
+			Type:        "object",
+			Properties:  schema.Properties,
+			Defs:        schema.Defs,
+			Definitions: schema.Definitions,
+		}
+		probeURL := fmt.Sprintf("mem:///signoz/tools/%s/%s-diagnostic-schema.json", toolName, direction)
+		// Diagnosis is advisory. If a future schema cannot compile independently,
+		// retain the primary validator and fall back to <root>/schema metadata.
+		diagnostic, _ = probe.Resolve(&jsonschema.ResolveOptions{BaseURI: probeURL})
+	}
+
+	return &compiledToolSchema{
+		validator:      validator,
+		diagnostic:     diagnostic,
+		properties:     properties,
+		requiredFields: requiredFields,
+	}, nil
 }
 
 // validationDecorator owns schema validation and never rejects a call.
@@ -193,8 +235,9 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 		var notice string
 		if input != nil {
 			if err := validateArguments(input.validator, req); err != nil {
-				h.recordValidationMismatch(ctx, req, toolName, "input", "<root>", "schema")
-				notice = inputValidationNotice(err)
+				mismatch := diagnoseValidationMismatch(input, req.Params.Arguments, true)
+				h.recordValidationMismatch(ctx, req, toolName, "input", mismatch.path, mismatch.constraint)
+				notice = inputValidationNotice(mismatch)
 			}
 		}
 
@@ -213,7 +256,8 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			return result, nil
 		}
 		if err := validateSchemaValue(output.validator, result.StructuredContent, false); err != nil {
-			h.recordValidationMismatch(ctx, req, toolName, "output", "<root>", "schema")
+			mismatch := diagnoseValidationMismatch(output, result.StructuredContent, false)
+			h.recordValidationMismatch(ctx, req, toolName, "output", mismatch.path, mismatch.constraint)
 		}
 		return result, nil
 	}
@@ -263,13 +307,97 @@ func validateSchemaValue(schema *jsonschema.Resolved, value any, nilAsObject boo
 	return schema.Validate(value)
 }
 
-// inputValidationNotice is appended to a successful result when the
-// arguments did not match the advertised schema. Wording stays soft on
-// purpose: the schema layer cannot know whether the handler ignored the
-// value, replaced it with a default, or normalized it anyway (a too-narrow
-// schema on our side also lands here until telemetry drives a widening fix).
-func inputValidationNotice(_ error) string {
-	return inputValidationNoticeText
+// diagnoseValidationMismatch attributes a failed full-schema validation using
+// only repository-owned schema metadata. It never parses validator error text
+// and never reflects client-provided keys into responses or metric dimensions.
+func diagnoseValidationMismatch(schema *compiledToolSchema, value any, nilAsObject bool) validationMismatch {
+	if value == nil && nilAsObject {
+		value = map[string]any{}
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return validationMismatch{path: "<root>", constraint: "type"}
+	}
+
+	constraints := make(map[string]string)
+	for _, name := range schema.requiredFields {
+		if _, present := object[name]; !present {
+			constraints[name] = "required"
+		}
+	}
+	if schema.diagnostic != nil {
+		for _, name := range schema.properties {
+			propertyValue, present := object[name]
+			if !present {
+				continue
+			}
+			if err := schema.diagnostic.Validate(map[string]any{name: propertyValue}); err != nil {
+				constraints[name] = "schema"
+			}
+		}
+	}
+
+	parameters := make([]string, 0, len(constraints))
+	for name := range constraints {
+		parameters = append(parameters, name)
+	}
+	sort.Strings(parameters)
+	if len(parameters) == 0 {
+		return validationMismatch{path: "<root>", constraint: "schema"}
+	}
+	if len(parameters) == 1 {
+		name := parameters[0]
+		return validationMismatch{
+			parameters: parameters,
+			path:       boundedMetadata(name),
+			constraint: constraints[name],
+		}
+	}
+
+	constraint := constraints[parameters[0]]
+	for _, name := range parameters[1:] {
+		if constraints[name] != constraint {
+			constraint = "schema"
+			break
+		}
+	}
+	return validationMismatch{parameters: parameters, path: "<multiple>", constraint: constraint}
+}
+
+// inputValidationNotice is appended to a successful result when the arguments
+// did not match the advertised schema. Parameter names come only from the
+// advertised schema; values and validator-library error text never reach the
+// client. Wording stays soft because handlers may still normalize the input.
+func inputValidationNotice(mismatch validationMismatch) string {
+	var detail string
+	switch len(mismatch.parameters) {
+	case 0:
+		detail = " the arguments did not fully match this tool's input schema."
+	case 1:
+		if mismatch.constraint == "required" {
+			detail = fmt.Sprintf(" required parameter %q was missing.", mismatch.parameters[0])
+		} else {
+			detail = fmt.Sprintf(" parameter %q did not fully match its advertised schema.", mismatch.parameters[0])
+		}
+	default:
+		if mismatch.constraint == "required" {
+			detail = fmt.Sprintf(" required parameters %s were missing.", quotedParameterList(mismatch.parameters))
+		} else {
+			detail = fmt.Sprintf(" parameters %s did not fully match their advertised schemas.", quotedParameterList(mismatch.parameters))
+		}
+	}
+	return inputValidationNoticePrefix + detail + inputValidationNoticeAdvice
+}
+
+func quotedParameterList(parameters []string) string {
+	quoted := make([]string, len(parameters))
+	for i, parameter := range parameters {
+		quoted[i] = fmt.Sprintf("%q", parameter)
+	}
+	if len(quoted) == 2 {
+		return quoted[0] + " and " + quoted[1]
+	}
+	return strings.Join(quoted[:len(quoted)-1], ", ") + ", and " + quoted[len(quoted)-1]
 }
 
 func boundedMetadata(value string) string {
