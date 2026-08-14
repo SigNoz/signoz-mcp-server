@@ -6,6 +6,7 @@
     "node": ">=22.7.5"
   },
   "devDependencies": {
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
     "@modelcontextprotocol/inspector-cli": "1.0.0"
   }
 }

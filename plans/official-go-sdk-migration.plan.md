@@ -43,7 +43,9 @@ Official v1.7.0 differs at each of those seams. This plan freezes the old wire c
 - Freeze this surface with compact, reviewable fixtures: complete catalog JSON for descriptors/schemas, per-entry content digests and metadata for all deterministic resource/prompt payloads, and literal fixtures for small or shape-sensitive results.
 - Support legacy `2025-11-25` initialize/list/call/read/get and modern `2026-07-28` discover/direct-call flows over HTTP and stdio.
 - Preserve direct API-key and OAuth auth branches, middleware order, request limits, readiness, cancellation, shutdown, tenant/correlation attribution, and exactly-once observability.
-- Add deterministic production compatibility and official conformance gates without exposing conformance-only product behavior.
+- Add deterministic production compatibility and selected official conformance
+  gates against the real binary without exposing conformance-only product
+  behavior or claiming the full fixture requirements.
 - Keep README, architecture, manifest metadata, guardrails, and CMP-3 documentation truthful.
 
 ## Non-goals
@@ -54,7 +56,8 @@ Official v1.7.0 differs at each of those seams. This plan freezes the old wire c
 - MRTR confirmations, input-required product flows, Tasks, MCP Apps, sampling, elicitation, resource subscriptions, or new server-to-client traffic in production.
 - Replacing the custom OAuth product flow with official SDK OAuth helpers.
 - Refactoring unrelated handler/business logic or changing upstream SigNoz API behavior.
-- Treating fixture-only conformance features as part of the production contract.
+- Recreating fixture-only conformance features or claiming them as part of the
+  production contract.
 
 ## Invariants
 1. `Handler.addTool` remains the only production tool registration and policy path.
@@ -66,7 +69,9 @@ Official v1.7.0 differs at each of those seams. This plan freezes the old wire c
 7. Production HTTP is stateless, emits no `Mcp-Session-Id`, requires no sticky routing, and preserves current JSON POST framing with `JSONResponse: true`.
 8. The migration intentionally omits `capabilities.logging`, does not guarantee or actively suppress legacy `logging/setLevel`, accepts official discovery ordering, and uses official `-32602` resource-not-found semantics. These decisions are documented rather than hidden behind compatibility shims.
 9. Every request that reaches official SDK dispatch produces one terminal method observation and, for `tools/call`, one terminal tool observation across success/error/cancellation/panic paths. Pre-dispatch transport/lifecycle rejections retain the outer HTTP span/status and bounded SDK diagnostics without fabricated MCP metrics; stdio parity is measured before adding fallback machinery.
-10. Conformance fixtures never enter the production dependency graph, discovery results, README, manifest, or guardrail inventory.
+10. Conformance runs only the approved catalog-independent scenarios against
+    `cmd/server`; no conformance fixture package, binary, surface, or broad
+    baseline is added.
 
 ## Delivery Plan
 
@@ -164,7 +169,13 @@ Add a small internal tool-contract layer with only the pieces used by this repos
 - one adapter from official `*mcp.CallToolRequest` to the local request. Protocol/client/capability metadata stays on the official request and is consumed by receiving middleware instead of being cloned into an unused second request model;
 - one request-scoped argument decode shared by search-context extraction, the adapter, repository validation, and business handlers. Retain the exact raw bytes for compatibility characterization without reparsing them in validation.
 
-All registration-time descriptor/schema transforms must be copy-on-write. Definitions may be reused by production, tests, and the conformance profile, so normalization or annotation conversion must not mutate the original `mcp.Tool`, `*jsonschema.Schema`, `Properties`, property schemas, `Extra` maps, `Required` slices, or raw-schema bytes. Add original-unchanged, repeat-registration, and concurrent-registration race tests. Clone only the branches actually modified; do not add a general deep-copy framework.
+All registration-time descriptor/schema transforms must be copy-on-write.
+Definitions may be reused by production and tests, so normalization or
+annotation conversion must not mutate the original `mcp.Tool`,
+`*jsonschema.Schema`, `Properties`, property schemas, `Extra` maps, `Required`
+slices, or raw-schema bytes. Add original-unchanged, repeat-registration, and
+concurrent-registration race tests. Clone only the branches actually modified;
+do not add a general deep-copy framework.
 
 The adapter's JSON contract is frozen by table tests:
 
@@ -239,7 +250,11 @@ Expected result: `rg` prints no production mark3 import or santhosh validator de
 ### Phase 2 — Swap server composition, transport, and observability
 
 #### 2.1 Construct the official server explicitly
-Replace `newSDKServer` with one fully configured-and-registered official server factory used by HTTP, stdio, in-process tests, and, later, the test-only conformance binary. Callers supply only the bounded profile differences; they must not reassemble capabilities, middleware order, recovery, or registration independently. The production profile sets:
+Replace `newSDKServer` with one fully configured-and-registered official server
+factory used by HTTP, stdio, and in-process tests. Callers supply only the
+bounded transport differences; they must not reassemble capabilities,
+middleware order, recovery, or registration independently. The production
+profile sets:
 
 - implementation name/version and existing instructions;
 - explicit non-logging capabilities matching the intended migrated surface, with non-nil empty tools/prompts/resources capability structs so `listChanged` remains absent/false rather than inferred true;
@@ -439,73 +454,89 @@ legacy/modern stdio smokes pass, the Go raw production matrix independently
 proves both eras, modern calls never initialize, legacy calls still do, and
 mismatch probes reject before handler execution.
 
-### Phase 4 — Add honest official conformance coverage as a bounded post-merge follow-up
+### Phase 4 — Add selected official conformance in the stacked follow-up
 
-Deliver this phase as one explicitly linked, sequential follow-up PR branched from `main` only after the production runtime PR has merged and the raw dual-era matrix is green. Do not open it as a child PR based on the unmerged runtime branch: the repository's CI, guardrail, and protocol workflows trigger only for pull requests targeting `main`, and the repository squash-merges and deletes merged branches. The runtime PR may merge without conformance, but this plan remains `In Progress` and issue #194 does not close until the conformance PR lands. Do not split any other phase into another tracker merely to reduce the diff.
+The maintainer approved a lean selected-scenario claim on 2026-08-14. Begin
+this phase from the ready runtime branch as a stacked PR targeting
+`codex/official-go-sdk-migration`; rebase/retarget to `main` after #286 merges.
+This plan remains `In Progress` and issue #194 stays open until this phase
+lands.
 
 #### 4.1 Pin the official referee
-- Add an exact `@modelcontextprotocol/conformance` version to `tools/mcp-ci/package.json` and lockfile. At planning time the applicable package is prerelease `0.2.0-alpha.11`; confirm the exact current release before implementation and use a stable `0.2.x` instead if one now provides both frozen requirements sets.
-- Record why a prerelease is blocking if still necessary. Never use `latest`, `next`, or an unbounded range.
-- Use the runner's frozen `--requirements 2025-11-25` and `--requirements 2026-07-28` sets; `--requirements` replaces `--suite` and `--spec-version`. Start with no expected-failures file. Any proposed entry requires a per-check root-cause review; never baseline a whole scenario or inherit the upstream SDK baseline as this repository's result.
+- Pin exact prerelease
+  `@modelcontextprotocol/conformance@0.2.0-alpha.11` in
+  `tools/mcp-ci/package.json` and its lockfile. The maintainer approved the
+  prerelease because it is the first published runner that supports both target
+  protocol eras through the required scenario interface.
+- Never use `latest`, `next`, a version range, or an inherited upstream
+  baseline. Upgrade to a stable release only in a separately reviewed
+  dependency change that reruns the same selected scenarios.
+- Call the runner through the locally installed package. The CI and PR must say
+  **selected official conformance**, not full conformance or passing frozen
+  `--requirements` sets.
 
-#### 4.2 Reuse the smallest non-shipping official fixture profile
-The official frozen requirements call fixed fixture names and cannot run truthfully against the SigNoz catalog. Use go-sdk v1.7.0's own `conformance/everything-server` as the upstream behavior reference. Do not copy that large server into this repository or claim that rerunning it alone proves SigNoz composition. First enumerate the exact frozen requirements with `list --requirements <revision>`, then implement the smallest local fixture profile capable of passing them through this repository's option builder, low-level registration adapter, panic/lifecycle middleware, and HTTP wrapper composition. If that necessarily duplicates most of the upstream everything server, stop and resolve the scope/acceptance claim with maintainers rather than adding baselines.
+#### 4.2 Run only catalog-independent scenarios against production
 
-```text
-internal/mcpconformance/       # fixture registrations/behavior only
-cmd/conformance-server/       # CI-only entry point
-```
+Build and start the real `cmd/server` HTTP binary on loopback with a fake API
+key and `https://example.invalid`, so no credential or live SigNoz backend is
+required. Invoke each named official scenario independently with the matching
+protocol version:
 
-Factor production server construction just enough that both binaries exercise the same:
+- legacy `2025-11-25`: `server-initialize`, `ping`, `tools-list`,
+  `resources-list`, `prompts-list`, `dns-rebinding-protection`;
+- modern `2026-07-28`: `tools-list`, `resources-list`,
+  `sep-2164-resource-not-found`, `prompts-list`,
+  `dns-rebinding-protection`, `caching`.
 
-- official SDK version and server option builder;
-- descriptor/registration adapters;
-- receiving/panic/observability middleware;
-- Streamable HTTP option assembly and header validation;
-- request-size/logging transport plumbing where relevant.
+Each invocation must succeed, including its official wire-schema checks. Keep
+bounded per-scenario reports in a temporary directory for failure diagnostics,
+then clean up the server process and temporary files on both success and
+failure.
 
-The fixture binary may expose the official `test_*`, `test://`, and test prompt surfaces required by the frozen requirements. It may implement callback/subscription/MRTR fixtures only in this profile. It must not import SigNoz credentials or call a live backend. If passing the frozen set requires duplicating most of upstream's everything server and therefore mostly retests unmodified SDK behavior, stop: record upstream pinned SDK evidence and ask maintainers whether issue #194 should accept explicit selected scenarios instead. Do not silently change the claim or add a broad expected-failures baseline.
+Do not add `internal/mcpconformance`, `cmd/conformance-server`, an official
+everything-server copy, diagnostic `test_*` tools/resources/prompts, a broad
+expected-failures file, or a partial `server-stateless` baseline. Full frozen
+requirements cover fixture-only sampling, elicitation, subscriptions,
+completion, progress/logging, media, and MRTR behavior absent from the SigNoz
+product; recreating those fixtures would overengineer this production-runtime
+migration and mostly retest the SDK.
 
-Run separate profiles/processes as the frozen requirement sets require:
+The selected runner does not own complete product compatibility. Existing
+SDK-free wire goldens, guardrails, focused Go HTTP/stdio matrices, and the
+Inspector lane remain authoritative for the complete SigNoz catalog, both
+transports, standardized headers, coded results, and all intentional migration
+differences.
 
-- legacy `2025-11-25`: stateful when required by the frozen sampling/elicitation/subscription scenarios;
-- modern `2026-07-28`: stateless and sessionless.
+This follow-up changes only CI dependencies, its bounded harness/workflow, and
+documentation. It must not change production Go code or any client-visible
+tool schema, description, resource content, prompt, or result contract.
 
-This profile difference is confined to the conformance binary. The production endpoint remains stateless for both eras and is covered by Phase 3.
+#### 4.3 Add a separate CI job
 
-#### 4.3 Add leakage guards
-- `cmd/server` dependency closure must not include `internal/mcpconformance`.
-- Production `tools/list`, resources, templates, and prompts must not contain `test_*`, `test://`, or conformance prompt names.
-- Fixture surfaces must not appear in `manifest.json`, README tables, initialized-wire budgets, or production catalog counts.
-- MRTR, Tasks, and Apps must remain absent from production discovery.
+Keep `protocol / inspector` unchanged and add `protocol / conformance`. The
+new job installs the exact lockfile, runs the bounded production-binary script,
+and fails if any of the twelve named scenario invocations fails. It needs no
+repository/client assessment, GitHub token, SigNoz credential, fixture server,
+or expected-failures file.
 
-#### 4.4 Add a separate CI job
-Keep the existing stable `protocol / inspector` check and add `protocol / conformance`. The conformance job:
+The official runner covers HTTP only. Focused Go tests and the existing
+real-binary protocol script continue to own stdio and the complete 2×2
+HTTP/stdio × legacy/modern matrix.
 
-- builds the test-only fixture binary;
-- starts bounded legacy and modern processes on different loopback ports;
-- runs `server --requirements 2025-11-25` and `server --requirements 2026-07-28` separately;
-- retains each report for failure diagnostics without uploading secrets;
-- fails on every required scored scenario and its synthetic wire-schema failure;
-- reports non-required extension/pending outcomes separately without enabling those features in production.
-
-If the team wants wire-schema failures from non-scored scenarios to block too, add explicit report post-processing and document that policy; the conformance CLI exit code does not promote them by itself.
-
-Do not use `tier-check`; repository/client assessment and GitHub tokens are
-outside this server gate. The official runner covers HTTP only, so the raw Go
-matrix and bounded real-binary smoke remain responsible for stdio.
-
-Verification for Phase 4:
+Local verification for Phase 4:
 
 ```bash
-node tools/mcp-ci/node_modules/@modelcontextprotocol/conformance/dist/index.js \
-  list --server --requirements 2025-11-25
-node tools/mcp-ci/node_modules/@modelcontextprotocol/conformance/dist/index.js \
-  list --server --requirements 2026-07-28
+npm ci --ignore-scripts --prefix tools/mcp-ci
+bash -n scripts/test-mcp-conformance.sh
+shellcheck scripts/test-mcp-conformance.sh
 actionlint .github/workflows/mcp-protocol.yaml
+scripts/test-mcp-conformance.sh
 ```
 
-Expected result: both frozen requirement sets pass against the isolated shared-stack fixture with no broad baseline, and the production 2×2 raw matrix independently proves the SigNoz endpoint/catalog. If maintainers explicitly approve selected-scenario scope instead, rewrite this phase and the acceptance claim before implementation.
+Expected result: all six selected scenarios for each era pass against the real
+production binary, no live backend is contacted, and the script leaves no
+server process or temporary artifacts. This result does not imply that all
+30/37 frozen server scenarios pass.
 
 ### Phase 5 — Documentation, companion audit, and representative clients
 
@@ -513,7 +544,9 @@ Expected result: both frozen requirement sets pass against the isolated shared-s
 - `README.md`: supported protocol-era/transport table, `server/discover` and legacy initialize behavior, stateless POST-only endpoint, no session ID, and unchanged client configuration.
 - `docs/architecture.md`: official SDK ownership, per-request modern identity/capabilities, receiving middleware, HTTP wrapper order, `JSONResponse: true`, explicit GET/DELETE 405, removal of heartbeat, malformed-stdio behavior, cancellation limitations, and shutdown behavior.
 - `docs/mcp-best-practices.md`: record the dual-era review expectations and exact compatibility/conformance ownership if section 11 needs it.
-- `guardrails/README.md`: runtime/tool pins, raw/Inspector/conformance layers, required check names, update procedure, no-baseline/leakage policy, and local commands.
+- `guardrails/README.md`: runtime/tool pins, raw/Inspector/selected-conformance
+  ownership, required check names, update procedure, no-full-suite-claim
+  policy, and local commands.
 - `manifest.json`: expect no semantic tool/resource change; compare rather than churn. Update only SDK/protocol metadata fields that genuinely describe the new endpoint.
 - `server.json`: audit after refreshing main; it is already at v0.12.0 on `30acf69`, so change only metadata that is genuinely made stale by the SDK migration.
 - Remove stale mark3 references from comments and documentation.
@@ -532,43 +565,51 @@ Use a delegated, credential-safe protected/manual run for live clients:
 - Cursor;
 - at least one local stdio client configuration.
 
-For each, record exact client version, transport, negotiated protocol era, discover/initialize outcome, catalog success, a read-only `signoz_search_docs` call, one coded validation/error result, auth mode, session-header absence for HTTP, and Assistant correlation behavior. Do not create or mutate tenant resources. Never print or persist credentials.
+For each, record exact client version, transport, negotiated protocol era,
+discover/initialize outcome, catalog success, a real tool call, one coded
+validation/error result, auth mode, session-header absence for HTTP, and
+Assistant correlation behavior. Temporary staging mutations are allowed only
+for a named lifecycle check; delete every created object and credential and
+verify it is gone. Never print or persist credentials.
 
-Deterministic wire goldens, raw dual-era tests, and Inspector block the runtime migration merge. The separate conformance follow-up must land before issue #194 closes or release promotion. Unless the open question is resolved differently, credentialed native-client smokes also block release promotion rather than untrusted pull requests.
+Deterministic wire goldens, raw dual-era tests, Inspector, and selected official
+conformance block their respective PRs. Credentialed Assistant and native-
+client smokes are a protected release-promotion gate rather than an untrusted
+pull-request check.
 
-Completed runtime-PR staging evidence on 2026-08-13:
+Completed protected E2E evidence on exact runtime commit `0e33180`:
 
-- 35/35 selected read-only build-tagged live tests passed; all channel/view and
-  other mutation tests were excluded.
-- The built production binary passed HTTP and stdio under both `2025-11-25`
-  and `2026-07-28`, including all four catalog counts, representative local
-  resource/prompt reads, coded validation, one live read-only backend tool,
-  stateless HTTP method/session behavior, and clean shutdown.
-- The read-only matrix created no staging resource. The later OAuth run used one
-  temporary viewer service account and expiring key; the key was revoked and
-  verified unauthorized, and the account was deleted (retained only as the
-  backend's soft-deleted audit row).
+- 39/39 top-level staging tests and 29/29 subtests passed with zero failures or
+  skips. The actual production binary passed HTTP and stdio under legacy
+  `2025-11-25` and modern `2026-07-28`, including stateless/session behavior,
+  coded validation, live backend calls, and clean shutdown.
+- Every client-visible surface was exercised: 43/43 tools were invoked through
+  real MCP `tools/call`; 22/22 static resources and 2/2 live resource templates
+  were read; and 4/4 prompts were generated.
+- Notification channels, cloned views, cloned dashboards, dashboard JSON
+  Patch, dashboard import, and cloned disabled alerts each completed the
+  applicable create/read/update/read-back/delete/verify-gone lifecycle. All
+  temporary staging resources were independently scanned and confirmed absent.
+  Notification-channel GET did not expose its webhook URL in a byte-comparable
+  form; treat that as acceptable secret redaction because update, deletion,
+  and verify-gone still passed.
+- Browser OAuth passed metadata, DCR, consent, state/CSRF, PKCE rejection and
+  success, code exchange, refresh, bearer challenges, revocation, and token
+  invalidation. Temporary viewer credentials were revoked and verified 401;
+  service accounts were deleted and confirmed inactive. Credential canaries
+  were absent from bounded logs.
+- The real SigNoz Assistant `McpToolClient`, Codex, Claude Code, and Cursor all
+  completed real MCP calls against the built binary. Assistant success,
+  validation, OAuth tenant precedence, and terminal correlation passed.
+- Raw MCP wire preserved `isError:true` and the structured validation code.
+  Claude retained `isError` but hid the structured code; Cursor rewrote
+  `isError:true` to false and removed `structuredContent`. These are documented
+  client presentation limitations, not server output regressions.
 
-Browser OAuth and the actual Assistant consumer subsequently passed on the
-built server, including DCR, PKCE, consent, code/token/refresh, bearer
-challenges, live read-only calls, coded validation, correlation, and log-secret
-scans. That run found and fixed one auth-precedence defect: server-issued OAuth
-tokens are now decrypted before considering `X-SigNoz-URL`, so their encrypted
-tenant is authoritative and cannot be downgraded into a direct bearer.
-
-Representative native clients were also exercised against the built binary.
-Codex completed catalog, local docs, and coded-error calls; Claude connected and
-read the catalogs but its provider account limit blocked invocation before MCP;
-Cursor initialized and listed all tools, while its noninteractive invocation
-was rejected client-side before `tools/call`. The actual SigNoz Assistant
-consumer path completed live success and coded-error calls through OAuth with
-exact correlation, which is the production consumer boundary for this server.
-
-The final Opus review additionally required real-transport proof for two
-observability contracts. Production HTTP initialize now proves the legacy
-client analytics event through the SDK-created server request, and HTTP
-tool-failure tests prove request capture projects only marshalable MCP params,
-redacts credential-shaped arguments, and cannot copy headers or token state.
+Real-transport tests also prove legacy initialize analytics and tool-failure
+request projection through the SDK-created server request. Captured request
+data remains marshalable, redacts credential-shaped arguments, and cannot copy
+headers or token state.
 
 ### Phase 6 — Final verification and delivery
 
@@ -597,9 +638,15 @@ git diff --check
 
 Both formatting commands must print nothing. Run the configured GitHub `lint`, `fmt`, `test`, `deps`, `build`, guardrail, and Inspector jobs.
 
-When Phase 4 is present in its linked follow-up, run the exact pinned
-conformance-runner command introduced by that PR; do not overload the production
-Inspector script with an unused suite variable.
+When Phase 4 is present in its linked follow-up, also run:
+
+```bash
+bash -n scripts/test-mcp-conformance.sh
+shellcheck scripts/test-mcp-conformance.sh
+scripts/test-mcp-conformance.sh
+```
+
+Keep this selected official lane separate from the production Inspector script.
 
 Require the conformance job before completing this plan and closing issue #194. Promote `protocol / conformance` to a required check only after its first clean default-branch bootstrap.
 
@@ -612,7 +659,11 @@ branched from PR #286 after it becomes ready. Rebase the conformance PR onto
 2. Its first green commit is `test(mcp): freeze pre-migration wire contracts`. Create the complete Phase 0 SDK-free oracle and capture all fixtures while the branch still uses mark3; run the Phase 0 gates and review the fixture diff before changing `go.mod` in any later commit.
 3. Later commits in the same PR implement Phases 1–3 and 5: the complete dependency/type/registration/runtime/transport/observability cutover, ported existing tests, raw dual-era tests, Inspector updates, documentation, metadata, and CMP-3 result. Never regenerate the pre-swap fixtures after the first dependency-changing commit. Use logical commits for review, but do not create adapter-only, tool-family, transport-only, or observability-only PRs: no intermediate boundary is both production-functional and free of temporary dual-SDK shims.
 4. Merge the runtime PR only when its complete parity and production gates pass. The clean operational/revert boundary is mark3 runtime versus official runtime.
-5. Branch the Phase 4 conformance PR from the ready runtime branch as a stacked PR targeting that branch. It contains only the pinned referee, non-shipping fixture, leakage guards, CI job, and conformance-specific documentation. After #286 merges, rebase/retarget it to `main`. Keep #194 open until it lands.
+5. Branch the Phase 4 conformance PR from the ready runtime branch as a stacked
+   PR targeting that branch. It contains only the pinned referee, bounded
+   selected-scenario production script, separate CI job, and conformance-
+   specific documentation. After #286 merges, rebase/retarget it to `main`.
+   Keep #194 open until it lands.
 6. After the runtime PR merges, the conformance PR and the independent #191/#164 ERR-6 follow-up may proceed in parallel from `main`; neither depends on the other.
 
 ### Post-merge follow-up — ERR-6 guidance fidelity (#191 and #164)
@@ -662,12 +713,16 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 - `internal/handler/tools/*_test.go`, especially registration/schema/normalization/output/structured/error inventories — port types while retaining behavior.
 - `pkg/otel/mcp_test.go`, `pkg/toolerrors/errors_test.go`, `pkg/prompts/*_test.go` — official types and lifecycle parity.
 
-### Protocol CI and fixture conformance
+### Protocol CI and selected official conformance
 - `tools/mcp-ci/package.json`, `package-lock.json` — exact Inspector and conformance pins.
-- `scripts/test-mcp-protocol.sh` — 2×2 production matrix and conformance suite modes.
+- `scripts/test-mcp-protocol.sh` — existing Inspector and bounded real-binary
+  production checks; do not add conformance modes to it.
+- `scripts/test-mcp-conformance.sh` — twelve named official scenarios against
+  the real production HTTP binary, with bounded process/artifact cleanup.
 - `.github/workflows/mcp-protocol.yaml` — retain Inspector check, add conformance check.
-- Minimal `internal/mcpconformance/` and `cmd/conformance-server/` only if needed to wrap/reuse the pinned official fixture catalog and shared server/transport composition.
-- `guardrails/policy.go`, `guardrails/tests.txt` only if new package-sensitive leakage tests meet guardrail ownership rules; otherwise keep tests beside packages.
+- Do not add `internal/mcpconformance`, `cmd/conformance-server`, fixture
+  catalogs, or package-sensitive leakage guardrails; the approved design has no
+  fixture code to leak.
 
 ### Docs and metadata
 - `README.md`, `docs/architecture.md`, `docs/mcp-best-practices.md`, `guardrails/README.md` — protocol/runtime/CI behavior.
@@ -686,8 +741,7 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 | Auth/request limit/wrapper order | focused handler tests | real-binary protocol harness |
 | Cancellation/shutdown/readiness | race-focused Go tests | real process cleanup in scripts |
 | Exactly-once telemetry | in-memory/fake meter/span/log/analytics tests | staging Assistant correlation smoke |
-| Official conformance | frozen `--requirements` sets against isolated shared-stack fixture | production 2×2 raw matrix (different claim) |
-| Fixture non-leakage | dependency/catalog tests | manifest/README audit |
+| Selected official conformance | six named scenarios per era against real `cmd/server` HTTP | production 2×2 raw matrix (broader SigNoz claim) |
 
 ## Risks
 - **HIGH — Catalog drift:** different schema/annotation structs and SDK serialization can change valid but client-sensitive JSON.
@@ -695,11 +749,16 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 - **HIGH — Handler decode drift:** raw arguments, nil semantics, float precision, defaults, aliases, or unknown fields can change behavior across all 43 tools.
 - **HIGH — Error-channel drift:** generic SDK helpers can turn coded tool failures into JSON-RPC errors or replace structured recovery content.
 - **HIGH — Observability lifecycle:** replacing hooks/tracer/middleware can duplicate or lose terminal metrics, spans, logs, analytics, tenant, or Assistant correlation.
-- **HIGH — False conformance claim:** full official scenarios require fixture names/features absent from the production catalog; direct production runs or broad baselines would be misleading.
+- **HIGH — False conformance claim:** selected production scenarios must not be
+  described as the full 30/37 frozen requirement sets; full requirements need
+  fixture names and product features intentionally absent from SigNoz.
 - **MEDIUM — Capability/pagination drift:** official inference defaults (`listChanged`, page size) can alter initialize/discover/list responses beyond the accepted logging removal.
 - **MEDIUM — Transport drift:** official JSON/SSE default, stateless GET/DELETE 405, request-cap defaults, legacy disconnect cancellation, malformed stdio, DNS-rebinding protection, and `Server.Run` cancellation/logging differ from mark3.
-- **MEDIUM — Prerelease CI referee:** the applicable conformance package may still be prerelease and needs an exact, reviewed pin.
-- **MEDIUM — Shared-SDK blind spot:** server and some tests use the same SDK; raw wire, Inspector, canonical fixtures, and the external conformance runner remain necessary.
+- **MEDIUM — Prerelease CI referee:** the approved referee is prerelease and
+  therefore requires the exact reviewed pin plus deliberate upgrades.
+- **MEDIUM — Shared-SDK blind spot:** server and some tests use the same SDK;
+  raw wire, Inspector, immutable catalog fixtures, and the selected external
+  conformance runner remain necessary independent layers.
 - **LOW — Documentation/version drift:** `server.json` is current at v0.12.0 on the planning baseline, but SDK/protocol documentation and metadata can still become stale during the migration.
 
 ## STOP Conditions
@@ -720,9 +779,14 @@ The eventual PR title should follow repository convention, for example `feat(mcp
 - STOP if a standardized header mismatch reaches the handler, returns a code other than `-32020`, or lacks the request ID.
 - STOP if auth/request-limit/readiness/DNS-rebinding/shutdown order changes, graceful stdio cancellation exits non-zero or logs as an operational error, or legacy disconnect cancellation changes without an explicitly approved limitation and capacity-impact note.
 - STOP if any SDK-dispatched path loses or duplicates terminal method/tool telemetry, leaves spans open, leaks client metadata between modern requests, or loses tenant/correlation attribution. Pre-dispatch HTTP paths must remain on HTTP telemetry only and emit zero MCP method/tool metrics. For stdio, stop on loss of existing dispatched-request telemetry or unbounded/raw transport logs; add fallback machinery only in response to a named failing parity test. Do not label wholly unparseable frames with an invented method.
-- STOP if the full official requirements are pointed directly at the production SigNoz catalog or missing fixtures are hidden with broad baselines.
-- STOP if fixture code/surfaces/MRTR/Tasks/Apps enter `cmd/server`, production discovery, README, manifest, or guardrail inventories.
-- STOP if a blocking prerelease conformance dependency is not approved; rewrite the acceptance claim rather than silently substituting an older suite.
+- STOP if CI or documentation claims full conformance or frozen
+  `--requirements` coverage from the selected scenario set, or if missing
+  fixtures are hidden with any baseline.
+- STOP if fixture code/surfaces/MRTR/Tasks/Apps, an everything-server copy, or
+  a separate conformance binary is added; the approved lane must exercise the
+  existing production `cmd/server`.
+- STOP if the exact approved prerelease pin is floated or silently replaced;
+  any upgrade requires a reviewed dependency change and the same scenario gate.
 - STOP release if a representative client fails or a taught contract changes without a linked `SigNoz/agent-skills` companion PR.
 
 ## Done Criteria
@@ -739,7 +803,10 @@ targeted question later, but must not duplicate either review.
 - Mark3 imports and dependency are gone; official Go SDK v1.7.0 (or a separately reviewed newer stable target) owns HTTP and stdio.
 - The immutable SDK-free characterization covers every advertised tool schema/description/annotation and every resource/template/prompt descriptor; compact digests cover all deterministic resource/prompt payloads; literal fixtures cover shape-sensitive handlers/errors. Only the named accepted differences remain, and independent inventories, budgets, normalization, structured-result, and coded-error tests pass.
 - The production HTTP/stdio × legacy/modern matrix and exact standardized-header tests pass.
-- Official frozen `--requirements` sets for both eras pass against the minimal isolated shared-stack fixture in the bounded follow-up with no broad baseline; fixture leakage guards pass. If maintainers approve narrower selected-scenario scope instead, the plan/issue claim is updated before coding.
+- Exact `@modelcontextprotocol/conformance@0.2.0-alpha.11` passes the six named
+  legacy and six named modern scenarios against the real production binary,
+  with no fixture server, expected-failures baseline, live credential, or full
+  `--requirements` claim.
 - Auth/OAuth, request limits, readiness, JSON POST framing, DNS-rebinding protection, approved cancellation behavior, shutdown, panic recovery, and dispatched-request exactly-once observability retain parity; pre-dispatch HTTP failures remain transport-only, while stdio behavior is measured, bounded, and documents malformed-frame termination.
 - README, architecture, MCP best practices, guardrails, manifest/server metadata, and CMP-3 statement are synchronized.
 - Representative client results are recorded, all repository gates pass, and the plan status is updated to `Done` only after the feature ships.
