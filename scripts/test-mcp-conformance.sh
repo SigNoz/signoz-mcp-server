@@ -11,7 +11,7 @@ MCP_CONFORMANCE_PORT=${MCP_CONFORMANCE_PORT:-18081}
 MCP_URL="http://${MCP_CONFORMANCE_HOST}:${MCP_CONFORMANCE_PORT}/mcp"
 READY_URL="http://${MCP_CONFORMANCE_HOST}:${MCP_CONFORMANCE_PORT}/readyz"
 READINESS_TIMEOUT_SECONDS=30
-SCENARIO_TIMEOUT_SECONDS=60
+SCENARIO_TIMEOUT_SECONDS=30
 
 CONFORMANCE_TMP_DIR=""
 SERVER_PID=""
@@ -55,6 +55,7 @@ stop_server_for_cleanup() {
 cleanup() {
   local status=$?
   local checks_file=""
+  set +e
   trap - EXIT INT TERM
 
   if [[ $status -ne 0 ]]; then
@@ -111,6 +112,10 @@ run_scenario() {
     --output-dir "$CURRENT_RESULTS_DIR" \
     >"$CURRENT_STDOUT" 2>"$CURRENT_STDERR"
 
+  if grep -q '^SKIPPED:' "$CURRENT_STDOUT"; then
+    fail "Scenario ${scenario} was skipped at ${spec_version}; every selected scenario must run"
+  fi
+
   printf 'passed: %s / %s\n' "$spec_version" "$scenario"
 }
 
@@ -133,11 +138,6 @@ CURRENT_STDERR="$CONFORMANCE_TMP_DIR/setup.stderr"
 
 if [[ ! -f "$CONFORMANCE_PACKAGE_DIR/package.json" || ! -f "$CONFORMANCE_CLI" ]]; then
   fail "MCP conformance runner is not installed; run npm ci in tools/mcp-ci"
-fi
-
-installed_package_version=$(node -p "require('$CONFORMANCE_PACKAGE_DIR/package.json').version")
-if [[ "$installed_package_version" != "$CONFORMANCE_VERSION" ]]; then
-  fail "MCP conformance package ${CONFORMANCE_VERSION} is required; found ${installed_package_version}"
 fi
 
 installed_runner_version=$(node "$CONFORMANCE_CLI" --version)

@@ -602,6 +602,32 @@
   GoReleaser credentials; those are unrelated protected-environment blockers,
   not conformance or code failures. Its temporary runners were removed.
 
+### 2026-08-14 — Opus/Grok pre-ready review of stacked conformance
+- Exact `claude-opus-5-thinking-xhigh` and `cursor-grok-4.6-xhigh` reviewed
+  only `0e33180..61271ec` plus the resulting harness fixes in read-only mode.
+  No third review model ran.
+- Opus found one P1 false-green: alpha.11 prints `SKIPPED:` and exits zero when
+  a scenario is incompatible with the requested version. The harness now
+  rejects every skipped selected scenario. It also enables best-effort
+  diagnostics inside the EXIT trap before cleanup, reduces each scenario
+  timeout to 30 seconds so the twelve-scenario worst case fits the ten-minute
+  job, and removes a redundant path-sensitive package-version probe.
+- Opus's stacked-PR trigger finding is handled operationally: the permanent
+  pull-request filter remains scoped to `main`; dispatch the same workflow on
+  the stacked branch and link its run, then let it rerun automatically after
+  #287 is retargeted to `main`. The compatible transitive lock refresh is
+  intentional and documented because the initial clean install contained four
+  dev-only advisories; the final lock audits at zero.
+- Grok's first invocation returned no result and was discarded. A single
+  bounded retry inspected the fixed tree, verified the four harness fixes
+  against local alpha.11, and its resumed final verdict reported no remaining
+  actionable findings. This was completion of the same requested review, not a
+  third model or duplicate review pass.
+- Re-ran Bash parsing, ShellCheck, actionlint, all twelve selected scenarios,
+  and cleanup/port checks after the fixes; all passed. Opus's sandboxed review
+  processes had already stopped, and its exact `/tmp/conf-review` artifacts
+  were removed.
+
 ## Open Questions
 - [x] Which honest conformance claim should the stacked PR ship? Resolved:
   selected catalog-independent official scenarios against the actual
