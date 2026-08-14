@@ -28,6 +28,15 @@ func keyNotFound400(body string) *signozclient.HTTPStatusError {
 	return &signozclient.HTTPStatusError{StatusCode: http.StatusBadRequest, Body: body}
 }
 
+func legacyErrorBody(errorType, message string) string {
+	body, _ := json.Marshal(map[string]any{
+		"status":    "error",
+		"errorType": errorType,
+		"error":     message,
+	})
+	return string(body)
+}
+
 func TestMissingFilterKeys(t *testing.T) {
 	tests := []struct {
 		name string
@@ -46,8 +55,8 @@ func TestMissingFilterKeys(t *testing.T) {
 		},
 		{
 			name: "multiple keys deduped in order",
-			err: keyNotFound400("Found 3 errors while parsing the search expression: " +
-				"key `service.name` not found; key `env` not found; key `service.name` not found"),
+			err: keyNotFound400(legacyErrorBody("invalid_input", "Found 3 errors while parsing the search expression: "+
+				"key `service.name` not found; key `env` not found; key `service.name` not found")),
 			want: []string{"service.name", "env"},
 		},
 		{
@@ -56,8 +65,18 @@ func TestMissingFilterKeys(t *testing.T) {
 			want: []string{"service.name"},
 		},
 		{
-			name: "400 without the key-not-found wording",
-			err:  keyNotFound400(`{"status":"error","error":{"code":"invalid_input","message":"bad step interval"}}`),
+			name: "recognized 400 without the key-not-found wording",
+			err:  keyNotFound400(`{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad step interval","errors":[],"suggestions":[]}}`),
+			want: nil,
+		},
+		{
+			name: "unrecognized plain 400 cannot trigger recovery",
+			err:  keyNotFound400("key `service.name` not found"),
+			want: nil,
+		},
+		{
+			name: "unrecognized proxy 400 cannot trigger recovery",
+			err:  keyNotFound400(`{"status":"error","message":"key ` + "`service.name`" + ` not found"}`),
 			want: nil,
 		},
 		{
@@ -90,7 +109,7 @@ func TestMissingFilterKeys_CapsSurfacedKeys(t *testing.T) {
 	for r := 'a'; r < 'a'+20; r++ {
 		b.WriteString("key `" + string(r) + ".name` not found; ")
 	}
-	got := missingFilterKeys(keyNotFound400(b.String()))
+	got := missingFilterKeys(keyNotFound400(legacyErrorBody("invalid_input", b.String())))
 	if len(got) != missingFilterKeysLimit {
 		t.Fatalf("len(missingFilterKeys) = %d, want cap %d", len(got), missingFilterKeysLimit)
 	}
@@ -101,24 +120,23 @@ func TestMissingFilterKeys_CapsSurfacedKeys(t *testing.T) {
 // guidance text or log attributes.
 func TestMissingFilterKeys_DropsOversizedKeys(t *testing.T) {
 	body := "key `" + strings.Repeat("x", missingFilterKeyMaxLen+1) + "` not found; key `service.name` not found"
-	got := missingFilterKeys(keyNotFound400(body))
+	got := missingFilterKeys(keyNotFound400(legacyErrorBody("invalid_input", body)))
 	if !reflect.DeepEqual(got, []string{"service.name"}) {
 		t.Fatalf("missingFilterKeys = %#v, want oversized key dropped", got)
 	}
-	if only := missingFilterKeys(keyNotFound400("key `" + strings.Repeat("x", missingFilterKeyMaxLen+1) + "` not found")); only != nil {
+	if only := missingFilterKeys(keyNotFound400(legacyErrorBody("invalid_input", "key `"+strings.Repeat("x", missingFilterKeyMaxLen+1)+"` not found"))); only != nil {
 		t.Fatalf("missingFilterKeys = %#v, want nil when every key is oversized", only)
 	}
 }
 
-// Pins the byte bound on the raw-body scan: only the first
-// missingFilterKeyScanBytes are examined — a match beyond the window fails
-// open, one inside it is still detected.
-func TestMissingFilterKeys_OversizedBodyScanBounded(t *testing.T) {
+// Parsed guidance is bounded before this helper scans it: a key beyond the
+// window fails open, while one at the beginning remains actionable.
+func TestMissingFilterKeys_ParsedGuidanceScanBounded(t *testing.T) {
 	padding := strings.Repeat("x", missingFilterKeyScanBytes)
-	if got := missingFilterKeys(keyNotFound400(padding + "key `service.name` not found")); got != nil {
+	if got := missingFilterKeys(keyNotFound400(legacyErrorBody("invalid_input", padding+"key `service.name` not found"))); got != nil {
 		t.Fatalf("missingFilterKeys = %#v, want nil for a match beyond the scan window", got)
 	}
-	got := missingFilterKeys(keyNotFound400("key `service.name` not found" + padding))
+	got := missingFilterKeys(keyNotFound400(legacyErrorBody("invalid_input", "key `service.name` not found"+padding)))
 	if !reflect.DeepEqual(got, []string{"service.name"}) {
 		t.Fatalf("missingFilterKeys = %#v, want detection inside the scan window of an oversized body", got)
 	}
@@ -137,8 +155,10 @@ func TestUpstreamQueryError_LogsGuidanceAndStructuredKeys(t *testing.T) {
 	res := upstreamQueryError(keyNotFound400(keyNotFoundEnvelopeBody), "logs")
 
 	text := resultText(t, res)
-	if !strings.HasPrefix(text, "SigNoz API error: unexpected status 400: Found 1 errors while parsing the search expression. (key `service.name` not found)") {
-		t.Fatalf("text should keep the upstream message with folded detail, got %q", text)
+	for _, want := range []string{"Found 1 errors while parsing the search expression.", "key `service.name` not found"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("text should keep upstream summary/detail %q, got %q", want, text)
+		}
 	}
 	for _, want := range []string{
 		"`service.name`, which does not exist in this workspace's logs data",
@@ -177,7 +197,7 @@ func TestUpstreamQueryError_TracesAndGenericSignalWording(t *testing.T) {
 }
 
 func TestUpstreamQueryError_NoMissingKeyIsPlainUpstreamError(t *testing.T) {
-	err := keyNotFound400(`{"status":"error","error":{"code":"invalid_input","message":"bad step interval"}}`)
+	err := keyNotFound400(`{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad step interval","errors":[],"suggestions":[]}}`)
 
 	got := upstreamQueryError(err, "logs")
 	want := upstreamError(err)
@@ -190,11 +210,9 @@ func TestUpstreamQueryError_NoMissingKeyIsPlainUpstreamError(t *testing.T) {
 	}
 }
 
-// TestUpstreamError_FoldsAdditionalErrorDetails pins the envelope-parsing fix:
-// newer backends put per-term details in error.errors[] and keep error.message a
-// bare summary, so the details must be folded into the surfaced message for every
-// tool using upstreamError, not just the QB wrappers.
-func TestUpstreamError_FoldsAdditionalErrorDetails(t *testing.T) {
+// Newer backends put per-term details in error.errors[] and keep error.message a
+// bare summary. Text renders both while structured fields keep them independent.
+func TestUpstreamError_PreservesSummaryAndDetailsIndependently(t *testing.T) {
 	res := upstreamError(keyNotFound400(keyNotFoundEnvelopeBody))
 
 	text := resultText(t, res)
@@ -202,65 +220,15 @@ func TestUpstreamError_FoldsAdditionalErrorDetails(t *testing.T) {
 		t.Fatalf("additional error detail not folded into text: %q", text)
 	}
 	structured := resultStructuredMap(t, res)
-	if got, ok := structured["upstreamMessage"].(string); !ok || !strings.Contains(got, "key `service.name` not found") {
-		t.Fatalf("upstreamMessage missing folded detail: %#v", structured["upstreamMessage"])
+	if got := structured["upstreamMessage"]; got != "Found 1 errors while parsing the search expression." {
+		t.Fatalf("upstreamMessage = %#v, want exact renderer summary", got)
 	}
-}
-
-func TestUpstreamError_AdditionalDetailsDedupAndCap(t *testing.T) {
-	body := `{"status":"error","error":{"code":"invalid_input","message":"summary","errors":[` +
-		`{"message":"summary"},{"message":""},{"message":"d1"},{"message":"d1"},{"message":"d2"},{"message":"d3"},{"message":"d4"},{"message":"d5"},{"message":"d6"}]}}`
-	res := upstreamError(keyNotFound400(body))
-
-	text := resultText(t, res)
-	if !strings.Contains(text, "summary (d1; d2; d3; d4; d5)") {
-		t.Fatalf("details not deduped/capped as expected: %q", text)
+	encoded, err := json.Marshal(structured["upstreamDetails"])
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(text, "d6") {
-		t.Fatalf("detail cap exceeded: %q", text)
-	}
-}
-
-// Pins the input-size bound: an error object beyond maxUpstreamErrorDetailsBytes
-// never has errors[] decoded — details drop (fail open), main fields survive.
-func TestUpstreamError_OversizedDetailArraySkippedNotDecoded(t *testing.T) {
-	huge := `[{"message":"` + strings.Repeat("x", maxUpstreamErrorDetailsBytes) + `"}]`
-	body := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":` + huge + `}}`
-
-	res := upstreamError(keyNotFound400(body))
-
-	text := resultText(t, res)
-	if !strings.Contains(text, "summary") || strings.Contains(text, "summary (") {
-		t.Fatalf("oversized details should be skipped, main message kept: %q", text[:min(len(text), 200)])
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["upstreamCode"]; got != "invalid_input" {
-		t.Fatalf("upstreamCode = %v, want invalid_input preserved for oversized errors[]", got)
-	}
-}
-
-// TestUpstreamError_AlternativeErrorsShapesKeepMainFields pins the fail-open
-// contract of the errors[] decoding: a []string detail array still folds, and a
-// detail shape we don't recognize is ignored WITHOUT discarding the independently
-// parsed type/code/message (the pre-hardening struct decode failed wholesale).
-func TestUpstreamError_AlternativeErrorsShapesKeepMainFields(t *testing.T) {
-	stringDetails := `{"status":"error","error":{"code":"invalid_input","message":"summary","errors":["key ` + "`env`" + ` not found"]}}`
-	res := upstreamError(keyNotFound400(stringDetails))
-	if text := resultText(t, res); !strings.Contains(text, "summary (key `env` not found)") {
-		t.Fatalf("[]string details not folded: %q", text)
-	}
-
-	malformed := `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"summary","errors":{"weird":"object"}}}`
-	res = upstreamError(keyNotFound400(malformed))
-	if text := resultText(t, res); !strings.Contains(text, "summary") {
-		t.Fatalf("main message lost on malformed errors shape: %q", text)
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["upstreamCode"]; got != "invalid_input" {
-		t.Fatalf("upstreamCode = %v, want invalid_input preserved despite malformed errors[]", got)
-	}
-	if got := structured["upstreamMessage"]; got != "summary" {
-		t.Fatalf("upstreamMessage = %v, want summary preserved despite malformed errors[]", got)
+	if got := string(encoded); got != `[{"message":"key `+"`service.name`"+` not found"}]` {
+		t.Fatalf("upstreamDetails = %s, want independently preserved detail", got)
 	}
 }
 

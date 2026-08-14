@@ -39,6 +39,7 @@ const (
 	// analyticsIdentityCacheTTL keeps /me out of the hot analytics path;
 	// identity rarely changes, so 10 min is long enough to absorb bursts.
 	analyticsIdentityCacheTTL = 10 * time.Minute
+	errorEnvelopeWarning      = "SigNoz error envelope drift or unsafe guidance detected"
 )
 
 var (
@@ -58,23 +59,20 @@ type HTTPStatusError struct {
 }
 
 func (e *HTTPStatusError) Error() string {
-	if e.StatusCode == http.StatusUnauthorized || e.StatusCode == http.StatusForbidden {
-		body := strings.TrimSpace(e.Body)
-		if strings.HasPrefix(body, "{") && json.Valid([]byte(body)) {
-			return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
-		}
-		switch e.StatusCode {
-		case http.StatusUnauthorized:
-			return "unexpected status 401: authentication failed"
-		case http.StatusForbidden:
-			return "unexpected status 403: permission denied"
+	parsed := ParseUpstreamErrorBody(e.Body)
+	if parsed.Recognized {
+		if detail := parsed.ClientSafeText(); detail != "" {
+			return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, detail)
 		}
 	}
-	return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, e.truncatedBody())
-}
-
-func (e *HTTPStatusError) truncatedBody() string {
-	return logpkg.TruncBody([]byte(e.Body))
+	switch e.StatusCode {
+	case http.StatusUnauthorized:
+		return "unexpected status 401: authentication failed"
+	case http.StatusForbidden:
+		return "unexpected status 403: permission denied"
+	default:
+		return fmt.Sprintf("unexpected status %d", e.StatusCode)
+	}
 }
 
 // AnalyticsIdentity is the identity tuple used for analytics attribution.
@@ -340,21 +338,22 @@ func (s *SigNoz) evaluateValidationResponse(ctx context.Context, status int, bod
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		s.logger.WarnContext(ctx, "SigNoz credential validation failed", slog.Int("status", status))
+		s.logger.WarnContext(ctx, "SigNoz credential validation failed",
+			slog.Int("status", status),
+			slog.Int("response.body.size_bytes", len(body)))
 		return fmt.Errorf("%w: status %d", ErrUnauthorized, status)
 	case http.StatusNotFound:
 		if isHTMLBody(body) {
 			s.logger.WarnContext(ctx, "no SigNoz API at instance URL (HTML 404)",
-				slog.String("response", logpkg.TruncBody(body)))
+				slog.Int("response.body.size_bytes", len(body)))
 			return fmt.Errorf("%w: status %d", ErrInstanceNotFound, status)
 		}
 		fallthrough
 	default:
-		truncatedBody := logpkg.TruncBody(body)
 		s.logger.WarnContext(ctx, "SigNoz credential validation returned unexpected status",
 			slog.Int("status", status),
-			slog.String("response", truncatedBody))
-		return fmt.Errorf("unexpected status %d: %s", status, truncatedBody)
+			slog.Int("response.body.size_bytes", len(body)))
+		return errors.New(newHTTPStatusError(status, body).Error())
 	}
 }
 
@@ -399,6 +398,7 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 	defer cancel()
 
 	var lastErr error
+	errorEnvelopeDriftWarned := false
 	wait := retryBaseWait
 	maxAttempts := 1
 	if replaySafe {
@@ -468,15 +468,32 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 			return respBody, nil
 		}
 
+		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
+		if !errorEnvelopeDriftWarned {
+			parsedError := ParseUpstreamErrorBody(statusErr.Body)
+			if parsedError.StatusError && (!parsedError.Recognized || len(parsedError.DriftFields) > 0) {
+				attrs := []any{
+					slog.Int("status", resp.StatusCode),
+					slog.Int("attempt", attempt+1),
+					slog.Int("response.body.size_bytes", len(respBody)),
+					slog.Bool("recognized", parsedError.Recognized),
+				}
+				if len(parsedError.DriftFields) > 0 {
+					attrs = append(attrs, slog.Any("fields", append([]string(nil), parsedError.DriftFields...)))
+				}
+				s.logger.WarnContext(ctx, errorEnvelopeWarning, attrs...)
+				errorEnvelopeDriftWarned = true
+			}
+		}
+
 		// Retry on transient server errors.
 		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts-1 {
-			statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 			lastErr = statusErr
 			s.logger.DebugContext(ctx, "Retryable status, will retry",
 				slog.String("url", reqURL),
 				slog.Int("status", resp.StatusCode),
 				slog.Int("attempt", attempt+1),
-				slog.String("response", statusErr.truncatedBody()))
+				slog.Int("response.body.size_bytes", len(respBody)))
 			select {
 			case <-ctx.Done():
 				return nil, fmt.Errorf("retry aborted: %w", lastErr)
@@ -487,13 +504,12 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 		}
 
 		retryable := replaySafe && isRetryableStatus(resp.StatusCode)
-		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
 		attrs := []any{
 			slog.String("url", reqURL),
 			slog.Int("status", resp.StatusCode),
 			slog.Int("attempt", attempt+1),
+			slog.Int("response.body.size_bytes", len(respBody)),
 			slog.Bool("retryable", retryable),
-			slog.String("response", statusErr.truncatedBody()),
 		}
 		if retryable {
 			attrs = append(attrs, slog.Bool("retries_exhausted", true))

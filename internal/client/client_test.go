@@ -276,6 +276,54 @@ func TestValidateCredentials(t *testing.T) {
 	}
 }
 
+func TestEvaluateValidationResponse_DoesNotLogOrReturnRawBody(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		checkError func(*testing.T, error)
+	}{
+		{
+			name:   "HTML 404 keeps instance-not-found classification",
+			status: http.StatusNotFound,
+			body:   "<html>SIGNOZ_API_KEY=validation-secret-canary</html>",
+			checkError: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrInstanceNotFound)
+			},
+		},
+		{
+			name:   "generic status uses body-free fallback",
+			status: http.StatusInternalServerError,
+			body:   `{"status":"error","message":"SIGNOZ_API_KEY=validation-secret-canary"}`,
+			checkError: func(t *testing.T, err error) {
+				assert.Equal(t, "unexpected status 500", err.Error())
+				var statusErr *HTTPStatusError
+				assert.False(t, errors.As(err, &statusErr), "credential validation keeps its plain error contract")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), "https://example.test", "key", SignozApiKey, nil)
+
+			err := client.evaluateValidationResponse(context.Background(), tc.status, []byte(tc.body))
+			require.Error(t, err)
+			tc.checkError(t, err)
+			assert.NotContains(t, err.Error(), "validation-secret-canary")
+			assert.NotContains(t, logBuf.String(), "validation-secret-canary")
+
+			lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+			require.Len(t, lines, 1)
+			var record map[string]any
+			require.NoError(t, json.Unmarshal([]byte(lines[0]), &record))
+			assert.NotContains(t, record, "response")
+			assert.Equal(t, float64(len(tc.body)), record["response.body.size_bytes"])
+		})
+	}
+}
+
 func TestGetAnalyticsIdentity(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -468,7 +516,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	var logBuf bytes.Buffer
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"status":"error","message":"temporary outage"}`))
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"SIGNOZ_API_KEY=temporary-outage-secret-canary"}}`))
 	}))
 	defer server.Close()
 
@@ -481,6 +529,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
 	var sawRetryDebug bool
 	var sawTerminalWarn bool
+	var driftWarnings int
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -491,17 +540,28 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 		switch rec["msg"] {
 		case "Retryable status, will retry":
 			assert.Equal(t, "DEBUG", rec["level"])
+			assert.NotContains(t, rec, "response")
+			assert.NotZero(t, rec["response.body.size_bytes"])
 			sawRetryDebug = true
 		case "SigNoz request returned unexpected status":
 			assert.Equal(t, "WARN", rec["level"])
 			assert.Equal(t, true, rec["retryable"])
 			assert.Equal(t, true, rec["retries_exhausted"])
+			assert.NotContains(t, rec, "response")
+			assert.NotZero(t, rec["response.body.size_bytes"])
 			sawTerminalWarn = true
+		case errorEnvelopeWarning:
+			assert.NotZero(t, rec["response.body.size_bytes"])
+			assert.Equal(t, true, rec["recognized"])
+			assert.Equal(t, []any{"message"}, rec["fields"])
+			driftWarnings++
 		}
 	}
 
 	assert.True(t, sawRetryDebug, "expected intermediate retry log at DEBUG")
 	assert.True(t, sawTerminalWarn, "expected terminal retry exhaustion log at WARN")
+	assert.Equal(t, 1, driftWarnings, "shape drift must be warned once per request across retries")
+	assert.NotContains(t, logBuf.String(), "temporary-outage-secret-canary")
 }
 
 func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
@@ -526,6 +586,7 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
 	var sawRetryDebug bool
+	var driftWarnings int
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -535,9 +596,12 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 
 		switch rec["msg"] {
 		case "Retryable status, will retry":
+			assert.NotContains(t, rec, "response")
 			sawRetryDebug = true
 		case "SigNoz request returned unexpected status":
 			t.Fatalf("unexpected terminal warn log on eventual success: %v", rec)
+		case errorEnvelopeWarning:
+			driftWarnings++
 		}
 		if _, ok := rec["retries_exhausted"]; ok {
 			t.Fatalf("unexpected retries_exhausted field on eventual success path: %v", rec)
@@ -545,6 +609,38 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 	}
 
 	assert.True(t, sawRetryDebug, "expected intermediate retry log before success")
+	assert.Equal(t, 1, driftWarnings, "transient shape drift must remain detectable")
+}
+
+func TestDoRequest_OversizedRendererWarnsOnceWithoutParsingValues(t *testing.T) {
+	var logBuf bytes.Buffer
+	responseBody := `{"status":"error","error":{"code":"invalid_input","message":"oversized-secret-canary` +
+		strings.Repeat("x", maxErrorEnvelopeBytes) + `"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", SignozApiKey, nil)
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.Error(t, err)
+	assert.Equal(t, "unexpected status 503", err.Error())
+	assert.NotContains(t, logBuf.String(), "oversized-secret-canary")
+
+	warnings := 0
+	for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		if record["msg"] != errorEnvelopeWarning {
+			continue
+		}
+		warnings++
+		assert.Equal(t, false, record["recognized"])
+		assert.Equal(t, []any{"envelope"}, record["fields"])
+		assert.Equal(t, float64(len(responseBody)), record["response.body.size_bytes"])
+	}
+	assert.Equal(t, 1, warnings, "oversized renderer drift must be warned once across retries")
 }
 
 func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
@@ -645,12 +741,12 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 	var rec map[string]any
 	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &rec))
 	assert.Equal(t, "SigNoz request returned unexpected status", rec["msg"])
-	response, _ := rec["response"].(string)
-	assert.Contains(t, response, "...(truncated)")
-	assert.NotContains(t, response, "tail")
+	assert.NotContains(t, rec, "response")
+	assert.NotContains(t, logBuf.String(), longMessage)
+	assert.NotContains(t, logBuf.String(), "tail")
 }
 
-func TestHTTPStatusError_UnparseableAuthorizationBodyUsesCanonicalFallback(t *testing.T) {
+func TestHTTPStatusError_UnrecognizedBodyUsesStatusFallback(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
@@ -664,6 +760,8 @@ func TestHTTPStatusError_UnparseableAuthorizationBodyUsesCanonicalFallback(t *te
 		{name: "forbidden HTML", statusCode: http.StatusForbidden, body: "<html>secret-canary</html>", want: "unexpected status 403: permission denied"},
 		{name: "forbidden JSON array", statusCode: http.StatusForbidden, body: `["secret-canary"]`, want: "unexpected status 403: permission denied"},
 		{name: "forbidden empty", statusCode: http.StatusForbidden, body: "", want: "unexpected status 403: permission denied"},
+		{name: "bad request HTML", statusCode: http.StatusBadRequest, body: "<html>secret-canary</html>", want: "unexpected status 400"},
+		{name: "internal proxy JSON", statusCode: http.StatusInternalServerError, body: `{"status":"error","message":"secret-canary"}`, want: "unexpected status 500"},
 	}
 
 	for _, tt := range tests {
@@ -671,9 +769,25 @@ func TestHTTPStatusError_UnparseableAuthorizationBodyUsesCanonicalFallback(t *te
 			err := &HTTPStatusError{StatusCode: tt.statusCode, Body: tt.body}
 			assert.Equal(t, tt.want, err.Error())
 			assert.NotContains(t, err.Error(), "secret-canary")
-			assert.Equal(t, tt.body, err.Body, "raw body remains available for bounded server diagnostics")
+			assert.Equal(t, tt.body, err.Body, "raw body remains available to the recognized-envelope parser")
 		})
 	}
+}
+
+func TestHTTPStatusError_RecognizedBodyUsesSafeGuidance(t *testing.T) {
+	err := &HTTPStatusError{
+		StatusCode: http.StatusBadRequest,
+		Body: `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad query",` +
+			`"url":"https://signoz.io/docs/search","suggestions":["narrow the query"],` +
+			`"errors":[{"message":"bad field","suggestions":["use an existing field"]}],"retry":{"delay":1000000000}}}`,
+	}
+
+	got := err.Error()
+	assert.Contains(t, got, "unexpected status 400: bad query (bad field)")
+	assert.Contains(t, got, "Documentation: https://signoz.io/docs/search")
+	assert.Contains(t, got, "Suggestions: narrow the query")
+	assert.Contains(t, got, "Suggestions for \"bad field\": use an existing field")
+	assert.Contains(t, got, "Retry delay: 1s (1000000000 ns)")
 }
 
 func TestListMetricKeys(t *testing.T) {
