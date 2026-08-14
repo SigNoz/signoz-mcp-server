@@ -247,6 +247,23 @@
   bounded defense in depth for known, high-confidence forms rather than a
   promise to recognize every possible secret or markup syntax.
 
+### 2026-08-14 — Oversized drift and bounded text recovery
+- Two final P2 threads were checked against the trusted SigNoz source and known
+  consumers. Reuse the anchored, 256-byte `status:"error"` prefix at the
+  over-64-KiB gate and remove the narrower renderer-only matcher. This remains
+  value-free drift detection and now covers source-valid intervening top-level
+  fields without parsing any oversized content.
+- Preserve usable recovery text when a long summary coexists with URL,
+  top-level suggestions, detail suggestions, or retry guidance. The Assistant
+  proxy keeps error text but reduces structured content to `{code}`, and SigNoz
+  can construct long summaries from unrestricted invalid field/reference
+  names, so tail-only truncation can lose all recovery guidance for a real
+  consumer.
+- Keep the existing 4-KiB aggregate bound. Add one local deterministic join
+  that gives every present labeled section a non-empty share and reallocates
+  unused space from short sections. Replace the existing aggregate-bound test;
+  do not add handler, wire, or live E2E cases.
+
 ## Open Questions
 - [x] Which issues does this PR close? #191 and overlapping #164.
 - [x] Which envelopes are trusted? Verified nested renderer generations and

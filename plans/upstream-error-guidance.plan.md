@@ -73,7 +73,9 @@ successful result.
   - `upstreamRetry: {delay}` where delay is integer nanoseconds
 - Render the same guidance in the text block with fixed labels. Fold detail
   messages into text, not `upstreamMessage`, so downstream text-only consumers
-  remain useful while structured fields remain faithful.
+  remain useful while structured fields remain faithful. Within the aggregate
+  text bound, preserve a non-empty prefix of every present labeled section and
+  deterministically reallocate space left by shorter sections.
 - Restrict Query Builder missing-key extraction to the recognized safe summary
   and details. Preserve its local guidance and `missingKeys` as additive data.
 - Leave notification-channel partial-success semantics, retry policy,

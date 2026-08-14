@@ -617,7 +617,7 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 
 func TestDoRequest_OversizedRendererWarnsOnceWithoutParsingValues(t *testing.T) {
 	var logBuf bytes.Buffer
-	responseBody := `{"status":"error","error":{"code":"invalid_input","message":"oversized-secret-canary` +
+	responseBody := `{"status":"error","requestId":"req-1","error":{"code":"invalid_input","message":"oversized-secret-canary` +
 		strings.Repeat("x", maxErrorEnvelopeBytes) + `"}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

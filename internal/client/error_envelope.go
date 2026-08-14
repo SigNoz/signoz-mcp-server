@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,14 +16,16 @@ import (
 )
 
 const (
-	maxErrorEnvelopeBytes = 64 << 10
-	maxErrorArrayBytes    = 16 << 10
-	maxErrorArrayItems    = 5
-	maxErrorTokenBytes    = 128
-	maxErrorURLBytes      = 2 << 10
-	maxEnvelopeProbeBytes = 256
+	maxErrorEnvelopeBytes  = 64 << 10
+	maxErrorArrayBytes     = 16 << 10
+	maxErrorArrayItems     = 5
+	maxErrorTokenBytes     = 128
+	maxErrorURLBytes       = 2 << 10
+	maxEnvelopeProbeBytes  = 256
+	maxClientSafeTextBytes = 4 << 10
 
-	namedCredentialPattern = `(?:signoz[ ._-]?api[ ._-]?key|api[ ._-]?key(?:\s+with\s+key)?|client[ ._-]?secret|access[ ._-]?token|refresh[ ._-]?token|password|passwd)`
+	namedCredentialPattern     = `(?:signoz[ ._-]?api[ ._-]?key|api[ ._-]?key(?:\s+with\s+key)?|client[ ._-]?secret|access[ ._-]?token|refresh[ ._-]?token|password|passwd)`
+	clientTextTruncationSuffix = "...(truncated)"
 )
 
 var (
@@ -40,7 +43,6 @@ var (
 	knownSecretPattern          = regexp.MustCompile(`(?i)\b(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|AKIA[A-Z0-9]{12,})\b`)
 	activeMarkupPattern         = regexp.MustCompile(`(?is)<\s*/?\s*(?:a|audio|base|body|button|embed|form|frame|frameset|head|html|iframe|img|input|link|math|meta|object|script|source|style|svg|template|video)\b[^>]*>|<\s*/?\s*[a-z][a-z0-9-]*\s+[^>]+>|!?\[[^\]\r\n]*\]\([^\)\r\n]*\)`)
 	statusErrorPrefixPattern    = regexp.MustCompile(`^\s*\{\s*"status"\s*:\s*"error"(?:\s*[,}]|\s*$)`)
-	oversizedRendererPattern    = regexp.MustCompile(`^\s*\{\s*"status"\s*:\s*"error"\s*,\s*"error"\s*:\s*\{`)
 )
 
 // UpstreamErrorBody is the bounded, client-safe subset of a positively
@@ -76,7 +78,7 @@ func ParseUpstreamErrorBody(body string) UpstreamErrorBody {
 	}
 	if len(body) > maxErrorEnvelopeBytes {
 		probe := body[:min(len(body), maxEnvelopeProbeBytes)]
-		if oversizedRendererPattern.MatchString(probe) {
+		if statusErrorPrefixPattern.MatchString(probe) {
 			return UpstreamErrorBody{StatusError: true, DriftFields: []string{"envelope"}}
 		}
 		return UpstreamErrorBody{}
@@ -494,5 +496,42 @@ func (e UpstreamErrorBody) ClientSafeText() string {
 	if e.Retry != nil {
 		parts = append(parts, fmt.Sprintf("Retry delay: %s (%d ns)", time.Duration(e.Retry.Delay), e.Retry.Delay))
 	}
-	return logpkg.TruncBody([]byte(strings.Join(parts, ". ")))
+	return joinBoundedErrorText(parts)
+}
+
+func joinBoundedErrorText(parts []string) string {
+	const separator = ". "
+
+	joined := strings.Join(parts, separator)
+	if len(joined) <= maxClientSafeTextBytes {
+		return joined
+	}
+
+	contentBudget := maxClientSafeTextBytes - len(separator)*(len(parts)-1)
+	order := make([]int, len(parts))
+	for i := range parts {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return len(parts[order[i]]) < len(parts[order[j]])
+	})
+
+	bounded := make([]string, len(parts))
+	remaining := contentBudget
+	for pos, partIndex := range order {
+		limit := min(len(parts[partIndex]), remaining/(len(order)-pos))
+		bounded[partIndex] = truncateErrorTextPart(parts[partIndex], limit)
+		remaining -= limit
+	}
+	return strings.Join(bounded, separator)
+}
+
+func truncateErrorTextPart(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	if limit <= len(clientTextTruncationSuffix) {
+		return value[:limit]
+	}
+	return value[:limit-len(clientTextTruncationSuffix)] + clientTextTruncationSuffix
 }

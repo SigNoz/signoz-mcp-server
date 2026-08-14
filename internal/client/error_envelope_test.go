@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,8 +110,8 @@ func TestParseUpstreamErrorBody_PositiveRecognitionBoundary(t *testing.T) {
 		{name: "status error with trailing JSON", body: `{"status":"error","error":{"code":"invalid_input","message":"bad"}} trailing`, statusError: true, drift: []string{"envelope"}},
 		{name: "oversized", body: strings.Repeat(" ", maxErrorEnvelopeBytes+1)},
 		{
-			name:        "oversized verified renderer prefix is value-free drift",
-			body:        `{"status":"error","error":{"code":"invalid_input","message":"untrusted-canary` + strings.Repeat("x", maxErrorEnvelopeBytes) + `"}}`,
+			name:        "oversized status error with intervening field is value-free drift",
+			body:        `{"status":"error","requestId":"req-1","error":{"code":"invalid_input","message":"untrusted-canary` + strings.Repeat("x", maxErrorEnvelopeBytes) + `"}}`,
 			statusError: true,
 			drift:       []string{"envelope"},
 		},
@@ -260,15 +261,29 @@ func TestParseUpstreamErrorBody_PreservesBenignGuidanceAndURL(t *testing.T) {
 	assert.Empty(t, got.DriftFields)
 }
 
-func TestUpstreamErrorBody_ClientSafeTextHasAggregateBound(t *testing.T) {
+func TestUpstreamErrorBody_ClientSafeTextBoundsAndPreservesEveryGuidanceSection(t *testing.T) {
 	got := (UpstreamErrorBody{
-		Message:     strings.Repeat("m", 3000),
-		Suggestions: []string{strings.Repeat("s", 3000) + "tail-canary"},
+		Message:     "summary-canary " + strings.Repeat("m", 5000),
+		URL:         "https://signoz.io/docs/recovery-url-canary",
+		Suggestions: []string{"top-suggestion-canary " + strings.Repeat("s", 5000)},
+		Details: []UpstreamErrorDetail{{
+			Message:     "detail context",
+			Suggestions: []string{"detail-suggestion-canary " + strings.Repeat("d", 5000)},
+		}},
+		Retry: &UpstreamErrorRetry{Delay: int64(time.Second)},
 	}).ClientSafeText()
 
 	assert.LessOrEqual(t, len(got), 4*1024)
-	assert.True(t, strings.HasSuffix(got, "...(truncated)"))
-	assert.NotContains(t, got, "tail-canary")
+	assert.Contains(t, got, "...(truncated)")
+	for _, want := range []string{
+		"summary-canary",
+		"recovery-url-canary",
+		"top-suggestion-canary",
+		"detail-suggestion-canary",
+		"Retry delay: 1s",
+	} {
+		assert.Contains(t, got, want)
+	}
 }
 
 func TestParseUpstreamErrorBody_RetryRequiresIntegerNanoseconds(t *testing.T) {
