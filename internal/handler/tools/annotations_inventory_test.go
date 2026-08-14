@@ -85,11 +85,11 @@ func TestRegisteredToolAnnotationsMatchPinnedInventory(t *testing.T) {
 			continue
 		}
 		ann := entry.Tool.Annotations
-		if ann.ReadOnlyHint == nil || ann.DestructiveHint == nil || ann.IdempotentHint == nil {
+		if ann == nil || ann.DestructiveHint == nil {
 			t.Errorf("tool %s does not set the full annotation triple explicitly (readOnly=%v destructive=%v idempotent=%v)", name, ann.ReadOnlyHint, ann.DestructiveHint, ann.IdempotentHint)
 			continue
 		}
-		got := annotationTriple{readOnly: *ann.ReadOnlyHint, destructive: *ann.DestructiveHint, idempotent: *ann.IdempotentHint}
+		got := annotationTriple{readOnly: ann.ReadOnlyHint, destructive: *ann.DestructiveHint, idempotent: ann.IdempotentHint}
 		if got != want {
 			t.Errorf("tool %s advertises annotation triple %+v, pinned %+v", name, got, want)
 		}

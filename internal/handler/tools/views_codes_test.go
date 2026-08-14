@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 // TestViewValidationErrorsCarryCode pins the #365 downstream contract for the

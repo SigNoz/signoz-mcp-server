@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
@@ -14,7 +13,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
-func (h *Handler) RegisterServiceHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterServiceHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering service handlers")
 
 	listTool := mcp.NewTool("signoz_list_services",

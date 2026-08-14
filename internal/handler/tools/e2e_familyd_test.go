@@ -28,9 +28,9 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // The e2e helpers below carry a "D" suffix (e2eEnvD / e2eHandlerD / firstTextD)

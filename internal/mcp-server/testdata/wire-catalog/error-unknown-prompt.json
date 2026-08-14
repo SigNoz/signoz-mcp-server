@@ -1,0 +1,24 @@
+{
+  "method": "prompts/get",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "prompts/get",
+    "params": {
+      "arguments": {},
+      "name": "signoz_unknown"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "error": {
+      "code": -32602,
+      "message": "prompt 'signoz_unknown' not found: prompt not found"
+    },
+    "id": 0,
+    "jsonrpc": "2.0"
+  }
+}

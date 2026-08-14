@@ -9,8 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/alert"
@@ -40,7 +39,7 @@ var alertHistoryStateValues = []string{
 	"inactive", "pending", "recovering", "firing", "nodata", "disabled",
 }
 
-func (h *Handler) RegisterAlertsHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering alerts handlers")
 
 	alertsTool := mcp.NewTool("signoz_list_alerts",
@@ -796,7 +795,7 @@ func formatBlankChannelsError(policyRouting bool) string {
 }
 
 // registerAlertResources registers MCP resources needed for alert creation.
-func (h *Handler) registerAlertResources(s *server.MCPServer) {
+func (h *Handler) registerAlertResources(s *mcp.Server) {
 	alertInstructions := mcp.NewResource(
 		"signoz://alert/instructions",
 		"Alert Rule Instructions",

@@ -1,0 +1,28 @@
+{
+  "method": "resources/read",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "resources/read",
+    "params": {
+      "uri": "signoz://docs/sitemap"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "contents": [
+        {
+          "mimeType": "text/markdown",
+          "text": "- [Send logs](https://signoz.io/docs/logs-management/send-logs/)\n- [Install Docker](https://signoz.io/docs/install/docker/)\n",
+          "uri": "signoz://docs/sitemap"
+        }
+      ]
+    }
+  }
+}

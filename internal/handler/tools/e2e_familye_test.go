@@ -34,10 +34,10 @@ import (
 	"time"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // e2eEnvE reads the live instance URL + token from the environment, skipping the

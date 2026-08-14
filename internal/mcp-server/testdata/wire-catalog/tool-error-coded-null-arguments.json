@@ -1,0 +1,32 @@
+{
+  "method": "tools/call",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "arguments": null,
+      "name": "signoz_get_alert"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "Parameter validation failed: \"id\" is required. Provide a valid alert rule ID (UUID format). Example: {\"id\": \"0196634d-5d66-75c4-b778-e317f49dab7a\"}",
+          "type": "text"
+        }
+      ],
+      "isError": true,
+      "structuredContent": {
+        "code": "VALIDATION_FAILED"
+      }
+    }
+  }
+}

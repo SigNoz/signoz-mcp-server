@@ -9,11 +9,10 @@ import (
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -163,7 +162,7 @@ func TestDocsHandlers(t *testing.T) {
 		contents, err := h.handleDocsSitemap(ctx, mcp.ReadResourceRequest{Params: mcp.ReadResourceParams{URI: docsindex.DocsSitemapURI}})
 		require.NoError(t, err)
 		require.Len(t, contents, 1)
-		text := contents[0].(mcp.TextResourceContents)
+		text := contents[0]
 		require.Equal(t, docsindex.DocsSitemapURI, text.URI)
 		require.Contains(t, text.Text, "Send logs to SigNoz")
 	})
@@ -198,10 +197,10 @@ func TestDocsHandlers(t *testing.T) {
 // tools.
 func TestSearchDocs_SearchTextNotSchemaRequired(t *testing.T) {
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterDocsHandlers(s)
 
-	tools := s.ListTools()
+	tools := listTestTools(t, s)
 	st, ok := tools["signoz_search_docs"]
 	require.True(t, ok, "signoz_search_docs not registered")
 

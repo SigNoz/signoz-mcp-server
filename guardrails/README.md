@@ -8,6 +8,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 
 - `policy.go` contains shared limits, official aliases, and explicitly grandfathered exceptions.
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
+- `internal/mcp-server/testdata/wire-catalog/` holds the immutable pre-migration JSON-RPC oracle.
 - `.github/workflows/guardrails.yaml` verifies the inventory and runs the guarded tests.
 - `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector compatibility check.
 - Package-local functions named `TestGuardrail_*` contain the enforcement logic.
@@ -20,6 +21,19 @@ access to unexported retry, registration, middleware, and server-composition hel
 - Mutating POST requests are not replayed after ambiguous failures; audited read-only POSTs may retry.
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content.
+- The production HTTP handler preserves discovery descriptors, deterministic resource and prompt contents, and representative tool/error results across the MCP SDK migration.
+
+`TestGuardrail_WireCatalogGoldens` sends hand-written JSON-RPC requests through
+the production HTTP handler and imports no MCP SDK type. It compares complete
+catalog entries, compact content inventories, and small shape-sensitive literal
+results. Only request IDs, the build-stamped server version, and top-level
+discovery ordering are normalized; nested order, null, false, schema keywords,
+annotations, MIME types, and `_meta` remain significant.
+
+The oracle is compare-only and has no regeneration path. It was captured before
+the SDK swap and is intentionally immutable; an intentional future contract
+change must update the specific fixture through normal review, never by
+re-recording the full catalog from the new runtime.
 
 The guardrails intentionally do not impose a total serialized-schema byte ceiling.
 Complex tools may need extensive field-local schema guidance; review material catalog
@@ -30,7 +44,18 @@ to stdio.
 
 ## Protocol compatibility
 
-The `protocol / inspector` check starts the production HTTP server on loopback and exercises initialization, tools, resources, resource templates, prompts, and logging through `@modelcontextprotocol/inspector-cli@1.0.0`. It runs on every pull request to `main` without credentials or a live SigNoz backend.
+The `protocol / inspector` check builds the real production binary. A bounded
+raw stdio smoke verifies both legacy `2025-11-25` initialize/initialized and
+modern `2026-07-28` discover/direct-call lifecycles. The script then starts the
+HTTP server on loopback and uses `@modelcontextprotocol/inspector-cli@1.0.0` as
+an independent initialized-client check for tools, resources, resource
+templates, and prompts. It runs on every pull request to `main` without
+credentials or a live SigNoz backend.
+
+Focused Go matrices own exact HTTP and stdio wire behavior: both protocol eras,
+standardized modern headers, JSON Content-Type/Accept handling, stateless
+GET/DELETE 405 responses, absent `Mcp-Session-Id`, cancellation, and accepted
+official-SDK differences. Do not duplicate those matrices in the shell script.
 
 Protocol policy is split across three review-sensitive files:
 
@@ -38,7 +63,11 @@ Protocol policy is split across three review-sensitive files:
 - `scripts/test-mcp-protocol.sh` owns the server lifecycle and selective response assertions.
 - `.github/workflows/mcp-protocol.yaml` owns the Node/Go toolchain and required check name.
 
-Keep assertions focused on usable protocol surfaces, stable identity, and non-empty result envelopes. Do not turn this check into a full catalog snapshot by pinning counts, ordering, descriptions, schemas, or ranked documentation content. `tests.txt` remains the inventory for Go `TestGuardrail_*` tests only.
+Keep assertions focused on usable protocol surfaces, stable identity, and
+non-empty result envelopes. Do not assert deprecated logging behavior or turn
+this check into a full catalog snapshot by pinning counts, ordering,
+descriptions, schemas, or ranked documentation content. `tests.txt` remains the
+inventory for Go `TestGuardrail_*` tests only.
 
 After the workflow succeeds once on the default branch, configure `protocol / inspector` as a required `main` branch check. Upgrade Inspector only in a reviewed dependency change that reruns the same assertions.
 

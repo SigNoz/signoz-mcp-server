@@ -5,8 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	mcpclient "github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
@@ -31,24 +30,20 @@ func TestE2E_GetAlert_NoArguments_ReturnsValidationError(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
-	c, err := mcpclient.NewInProcessClient(s)
+	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
 	}
-	if _, err := c.Initialize(ctx, mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "test-client", Version: version.Version},
-		},
+	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo:      &mcp.Implementation{Name: "test-client", Version: version.Version},
 	}); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	// Deliberately leave Arguments unset — this is what a client sending no
 	// "arguments" object produces after a JSON round-trip.
-	res, err := c.CallTool(ctx, mcp.CallToolRequest{
-		Params: mcp.CallToolParams{Name: "signoz_get_alert"},
-	})
+	res, err := c.client.CallTool(ctx, &mcp.CallToolParams{Name: "signoz_get_alert"})
 
 	// Pre-fix the recovered panic surfaces here as a non-nil transport error.
 	if err != nil {

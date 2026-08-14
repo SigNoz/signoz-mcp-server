@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"sort"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // Tool names themselves are pinned by the manifest-parity integration test;
@@ -21,12 +19,12 @@ var expectedOutputSchemaTools = []string{
 	"signoz_search_docs",
 }
 
-func registeredTestTools(t *testing.T) map[string]*server.ServerTool {
+func registeredTestTools(t *testing.T) map[string]*registeredTool {
 	t.Helper()
 	h := newTestHandler(nil)
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterAllToolHandlers(s)
-	return s.ListTools()
+	return listTestTools(t, s)
 }
 
 func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
@@ -47,6 +45,8 @@ func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
 			t.Errorf("compile %s input schema: %v", name, err)
 		} else if compiled == nil {
 			t.Errorf("compile %s input schema returned nil", name)
+		} else if len(compiled.properties) > 0 && compiled.diagnostic == nil {
+			t.Errorf("compile %s input diagnostic schema returned nil", name)
 		}
 		var schema any
 		if err := json.Unmarshal(inputRaw, &schema); err != nil {

@@ -1,22 +1,21 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
+	"runtime/debug"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/google/jsonschema-go/jsonschema"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -27,6 +26,7 @@ const (
 	inputValidationNoticePrefix = "Input validation notice:"
 	maxValidationMetadataLength = 96
 	validationLogInterval       = time.Minute
+	inputValidationNoticeAdvice = " The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
 )
 
 type validationLogState struct {
@@ -34,8 +34,16 @@ type validationLogState struct {
 }
 
 type compiledToolSchema struct {
-	validator          *jsonschema.Schema
-	topLevelProperties map[string]struct{}
+	validator      *jsonschema.Resolved
+	diagnostic     *jsonschema.Resolved
+	properties     []string
+	requiredFields []string
+}
+
+type validationMismatch struct {
+	parameters []string
+	path       string
+	constraint string
 }
 
 var schemaMapFields = map[string]struct{}{
@@ -67,7 +75,8 @@ var schemaArrayFields = map[string]struct{}{
 	"prefixItems": {},
 }
 
-func (h *Handler) addTool(s *server.MCPServer, tool mcp.Tool, handler server.ToolHandlerFunc) {
+func (h *Handler) addTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerFunc) {
+	tool = cloneTool(tool)
 	normalizeToolSchemas(&tool)
 
 	input, inputErr := compileToolSchema(tool.Name, "input", inputSchemaJSON(tool))
@@ -83,20 +92,76 @@ func (h *Handler) addTool(s *server.MCPServer, tool mcp.Tool, handler server.Too
 		handler = h.validationDecorator(tool.Name, input, output, handler)
 	}
 	handler = h.errorCodeDecorator(tool.Name, handler)
+	handler = h.toolInvocationDecorator(tool.Name, handler)
 	h.registerTool(s, tool, handler)
+}
+
+// toolInvocationDecorator is the repository-owned safety boundary around every
+// registered tool. The official SDK intentionally does not recover panics.
+// Keep panic details operator-side and return the same coded error channel used
+// by ordinary tool failures instead of leaking a panic value as JSON-RPC text.
+func (h *Handler) toolInvocationDecorator(toolName string, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+		ctx = util.SetToolName(ctx, toolName)
+		if h.logger != nil {
+			h.logger.DebugContext(ctx, "tool call started")
+		}
+		defer func() {
+			if recover() == nil {
+				return
+			}
+			if h.logger != nil {
+				h.logger.ErrorContext(ctx, "tool handler panic recovered",
+					slog.String("gen_ai.tool.name", toolName),
+					logpkg.ErrAttr(fmt.Errorf("tool handler panic")),
+					slog.String("stack", logpkg.TruncBody(debug.Stack())))
+			}
+			result = InternalErrorResult("Internal server error: tool handler failed unexpectedly. Retry once; if it persists, report this as a server bug.")
+			err = nil
+		}()
+		return next(ctx, req)
+	}
+}
+
+func cloneTool(tool mcp.Tool) mcp.Tool {
+	clone := tool
+	clone.InputSchema = cloneSchemaValue(tool.InputSchema)
+	clone.OutputSchema = cloneSchemaValue(tool.OutputSchema)
+	if tool.Annotations != nil {
+		annotations := *tool.Annotations
+		if tool.Annotations.DestructiveHint != nil {
+			value := *tool.Annotations.DestructiveHint
+			annotations.DestructiveHint = &value
+		}
+		if tool.Annotations.OpenWorldHint != nil {
+			value := *tool.Annotations.OpenWorldHint
+			annotations.OpenWorldHint = &value
+		}
+		clone.Annotations = &annotations
+	}
+	clone.Icons = append([]mcp.Icon(nil), tool.Icons...)
+	return clone
+}
+
+func cloneSchemaValue(schema any) any {
+	if schema == nil {
+		return nil
+	}
+	b, err := json.Marshal(schema)
+	if err != nil {
+		panic(fmt.Errorf("clone tool schema (type %T): marshal: %w", schema, err))
+	}
+	return append(json.RawMessage(nil), b...)
 }
 
 // AddTool exposes the production registration path to server composition and
 // end-to-end tests while keeping all built-in registrations on h.addTool.
-func (h *Handler) AddTool(s *server.MCPServer, tool mcp.Tool, handler server.ToolHandlerFunc) {
+func (h *Handler) AddTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHandlerFunc) {
 	h.addTool(s, tool, handler)
 }
 
 func inputSchemaJSON(tool mcp.Tool) json.RawMessage {
-	if len(tool.RawInputSchema) > 0 {
-		return tool.RawInputSchema
-	}
-	if tool.InputSchema.Type == "" && len(tool.InputSchema.Properties) == 0 && len(tool.InputSchema.Required) == 0 && tool.InputSchema.AdditionalProperties == nil {
+	if tool.InputSchema == nil {
 		return nil
 	}
 	b, _ := json.Marshal(tool.InputSchema)
@@ -104,10 +169,7 @@ func inputSchemaJSON(tool mcp.Tool) json.RawMessage {
 }
 
 func outputSchemaJSON(tool mcp.Tool) json.RawMessage {
-	if len(tool.RawOutputSchema) > 0 {
-		return tool.RawOutputSchema
-	}
-	if tool.OutputSchema.Type == "" && len(tool.OutputSchema.Properties) == 0 && len(tool.OutputSchema.Required) == 0 {
+	if tool.OutputSchema == nil {
 		return nil
 	}
 	b, _ := json.Marshal(tool.OutputSchema)
@@ -118,60 +180,48 @@ func compileToolSchema(toolName, direction string, raw json.RawMessage) (*compil
 	if len(raw) == 0 {
 		return nil, nil
 	}
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-	if err != nil {
+	var schema jsonschema.Schema
+	if err := json.Unmarshal(raw, &schema); err != nil {
 		return nil, fmt.Errorf("decode schema: %w", err)
 	}
 	resourceURL := fmt.Sprintf("mem:///signoz/tools/%s/%s-schema.json", toolName, direction)
-	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource(resourceURL, doc); err != nil {
-		return nil, fmt.Errorf("register schema: %w", err)
-	}
-	validator, err := compiler.Compile(resourceURL)
+	validator, err := schema.Resolve(&jsonschema.ResolveOptions{BaseURI: resourceURL})
 	if err != nil {
 		return nil, fmt.Errorf("compile schema: %w", err)
 	}
+
+	properties := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		properties = append(properties, name)
+	}
+	sort.Strings(properties)
+	requiredFields := append([]string(nil), schema.Required...)
+	sort.Strings(requiredFields)
+
+	var diagnostic *jsonschema.Resolved
+	if len(properties) > 0 {
+		// Keep only the keywords needed to validate one declared top-level
+		// property at a time. Local definitions remain available so schemas such
+		// as the dashboard spec can still resolve their internal references.
+		probe := &jsonschema.Schema{
+			Schema:      schema.Schema,
+			Type:        "object",
+			Properties:  schema.Properties,
+			Defs:        schema.Defs,
+			Definitions: schema.Definitions,
+		}
+		probeURL := fmt.Sprintf("mem:///signoz/tools/%s/%s-diagnostic-schema.json", toolName, direction)
+		// Diagnosis is advisory. If a future schema cannot compile independently,
+		// retain the primary validator and fall back to <root>/schema metadata.
+		diagnostic, _ = probe.Resolve(&jsonschema.ResolveOptions{BaseURI: probeURL})
+	}
+
 	return &compiledToolSchema{
-		validator:          validator,
-		topLevelProperties: schemaTopLevelProperties(raw),
+		validator:      validator,
+		diagnostic:     diagnostic,
+		properties:     properties,
+		requiredFields: requiredFields,
 	}, nil
-}
-
-func schemaTopLevelProperties(raw json.RawMessage) map[string]struct{} {
-	var root map[string]any
-	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil
-	}
-	node := resolveLocalSchemaRef(root, root)
-	properties, _ := node["properties"].(map[string]any)
-	out := make(map[string]struct{}, len(properties))
-	for name := range properties {
-		out[name] = struct{}{}
-	}
-	return out
-}
-
-func resolveLocalSchemaRef(root, node map[string]any) map[string]any {
-	ref, _ := node["$ref"].(string)
-	if !strings.HasPrefix(ref, "#/") {
-		return node
-	}
-	var current any = root
-	for _, segment := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
-		m, ok := current.(map[string]any)
-		if !ok {
-			return node
-		}
-		current, ok = m[strings.ReplaceAll(strings.ReplaceAll(segment, "~1", "/"), "~0", "~")]
-		if !ok {
-			return node
-		}
-	}
-	resolved, ok := current.(map[string]any)
-	if !ok {
-		return node
-	}
-	return resolved
 }
 
 // validationDecorator owns schema validation and never rejects a call.
@@ -180,14 +230,14 @@ func resolveLocalSchemaRef(root, node map[string]any) map[string]any {
 // agents that don't still get a usable answer. Output mismatches and missing
 // structured content are telemetry-only (fail open, never silent) — they are
 // our defects, not the caller's.
-func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, next server.ToolHandlerFunc) server.ToolHandlerFunc {
+func (h *Handler) validationDecorator(toolName string, input, output *compiledToolSchema, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var notice string
 		if input != nil {
 			if err := validateArguments(input.validator, req); err != nil {
-				path, constraint := validationMetadata(err, input.topLevelProperties)
-				h.recordValidationMismatch(ctx, req, toolName, "input", path, constraint)
-				notice = inputValidationNotice(err)
+				mismatch := diagnoseValidationMismatch(input, req.Params.Arguments, true)
+				h.recordValidationMismatch(ctx, req, toolName, "input", mismatch.path, mismatch.constraint)
+				notice = inputValidationNotice(mismatch)
 			}
 		}
 
@@ -206,14 +256,14 @@ func (h *Handler) validationDecorator(toolName string, input, output *compiledTo
 			return result, nil
 		}
 		if err := validateSchemaValue(output.validator, result.StructuredContent, false); err != nil {
-			path, constraint := validationMetadata(err, output.topLevelProperties)
-			h.recordValidationMismatch(ctx, req, toolName, "output", path, constraint)
+			mismatch := diagnoseValidationMismatch(output, result.StructuredContent, false)
+			h.recordValidationMismatch(ctx, req, toolName, "output", mismatch.path, mismatch.constraint)
 		}
 		return result, nil
 	}
 }
 
-func (h *Handler) errorCodeDecorator(toolName string, next server.ToolHandlerFunc) server.ToolHandlerFunc {
+func (h *Handler) errorCodeDecorator(toolName string, next mcp.ToolHandlerFunc) mcp.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		result, err := next(ctx, req)
 		if err != nil || result == nil || !result.IsError {
@@ -233,24 +283,17 @@ func (h *Handler) errorCodeDecorator(toolName string, next server.ToolHandlerFun
 	}
 }
 
-// validateArguments validates the exact wire bytes when the SDK preserved
-// them, avoiding the marshal round-trip of the decoded argument tree.
-func validateArguments(schema *jsonschema.Schema, req mcp.CallToolRequest) error {
-	raw := req.Params.RawArguments
-	if len(raw) == 0 {
-		return validateSchemaValue(schema, req.Params.Arguments, true)
+// validateArguments receives the ordinary JSON tree decoded once at the
+// server boundary (or by the adapter in focused handler tests).
+func validateArguments(schema *jsonschema.Resolved, req mcp.CallToolRequest) error {
+	value := req.Params.Arguments
+	if value == nil {
+		value = map[string]any{}
 	}
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-	if err != nil {
-		return fmt.Errorf("decode validation value: %w", err)
-	}
-	if doc == nil {
-		doc = map[string]any{}
-	}
-	return schema.Validate(doc)
+	return schema.Validate(value)
 }
 
-func validateSchemaValue(schema *jsonschema.Schema, value any, nilAsObject bool) error {
+func validateSchemaValue(schema *jsonschema.Resolved, value any, nilAsObject bool) error {
 	if value == nil && nilAsObject {
 		value = map[string]any{}
 	}
@@ -258,63 +301,103 @@ func validateSchemaValue(schema *jsonschema.Schema, value any, nilAsObject bool)
 	if err != nil {
 		return fmt.Errorf("encode validation value: %w", err)
 	}
-	normalized, err := jsonschema.UnmarshalJSON(bytes.NewReader(b))
-	if err != nil {
+	if err := json.Unmarshal(b, &value); err != nil {
 		return fmt.Errorf("decode validation value: %w", err)
 	}
-	return schema.Validate(normalized)
+	return schema.Validate(value)
 }
 
-// inputValidationNotice is appended to a successful result when the
-// arguments did not match the advertised schema. Wording stays soft on
-// purpose: the schema layer cannot know whether the handler ignored the
-// value, replaced it with a default, or normalized it anyway (a too-narrow
-// schema on our side also lands here until telemetry drives a widening fix).
-func inputValidationNotice(err error) string {
-	detail := strings.Join(strings.Fields(err.Error()), " ")
-	return fmt.Sprintf(
-		"%s the arguments did not fully match this tool's input schema (%s). The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.",
-		inputValidationNoticePrefix, boundedErrorDetail(detail))
-}
+// diagnoseValidationMismatch attributes a failed full-schema validation using
+// only repository-owned schema metadata. It never parses validator error text
+// and never reflects client-provided keys into responses or metric dimensions.
+func diagnoseValidationMismatch(schema *compiledToolSchema, value any, nilAsObject bool) validationMismatch {
+	if value == nil && nilAsObject {
+		value = map[string]any{}
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return validationMismatch{path: "<root>", constraint: "type"}
+	}
 
-func validationMetadata(err error, topLevelProperties map[string]struct{}) (string, string) {
-	var validationErr *jsonschema.ValidationError
-	if !errors.As(err, &validationErr) {
-		return "<root>", "decode"
-	}
-	leaf := validationErr
-	for len(leaf.Causes) > 0 {
-		leaf = leaf.Causes[0]
-	}
-	path := boundedSchemaPath(leaf.InstanceLocation, topLevelProperties)
-	constraint := "schema"
-	if leaf.ErrorKind != nil {
-		keywordPath := leaf.ErrorKind.KeywordPath()
-		if len(keywordPath) > 0 {
-			constraint = boundedMetadata(keywordPath[len(keywordPath)-1])
+	constraints := make(map[string]string)
+	for _, name := range schema.requiredFields {
+		if _, present := object[name]; !present {
+			constraints[name] = "required"
 		}
 	}
-	return path, constraint
+	if schema.diagnostic != nil {
+		for _, name := range schema.properties {
+			propertyValue, present := object[name]
+			if !present {
+				continue
+			}
+			if err := schema.diagnostic.Validate(map[string]any{name: propertyValue}); err != nil {
+				constraints[name] = "schema"
+			}
+		}
+	}
+
+	parameters := make([]string, 0, len(constraints))
+	for name := range constraints {
+		parameters = append(parameters, name)
+	}
+	sort.Strings(parameters)
+	if len(parameters) == 0 {
+		return validationMismatch{path: "<root>", constraint: "schema"}
+	}
+	if len(parameters) == 1 {
+		name := parameters[0]
+		return validationMismatch{
+			parameters: parameters,
+			path:       boundedMetadata(name),
+			constraint: constraints[name],
+		}
+	}
+
+	constraint := constraints[parameters[0]]
+	for _, name := range parameters[1:] {
+		if constraints[name] != constraint {
+			constraint = "schema"
+			break
+		}
+	}
+	return validationMismatch{parameters: parameters, path: "<multiple>", constraint: constraint}
 }
 
-func boundedSchemaPath(segments []string, topLevelProperties map[string]struct{}) string {
-	if len(segments) == 0 {
-		return "<root>"
-	}
-	var parts []string
-	if _, ok := topLevelProperties[segments[0]]; ok {
-		parts = append(parts, segments[0])
-	} else {
-		parts = append(parts, "{}")
-	}
-	for _, segment := range segments[1:] {
-		if _, err := strconv.Atoi(segment); err == nil {
-			parts = append(parts, "[]")
+// inputValidationNotice is appended to a successful result when the arguments
+// did not match the advertised schema. Parameter names come only from the
+// advertised schema; values and validator-library error text never reach the
+// client. Wording stays soft because handlers may still normalize the input.
+func inputValidationNotice(mismatch validationMismatch) string {
+	var detail string
+	switch len(mismatch.parameters) {
+	case 0:
+		detail = " the arguments did not fully match this tool's input schema."
+	case 1:
+		if mismatch.constraint == "required" {
+			detail = fmt.Sprintf(" required parameter %q was missing.", mismatch.parameters[0])
 		} else {
-			parts = append(parts, "{}")
+			detail = fmt.Sprintf(" parameter %q did not fully match its advertised schema.", mismatch.parameters[0])
+		}
+	default:
+		if mismatch.constraint == "required" {
+			detail = fmt.Sprintf(" required parameters %s were missing.", quotedParameterList(mismatch.parameters))
+		} else {
+			detail = fmt.Sprintf(" parameters %s did not fully match their advertised schemas.", quotedParameterList(mismatch.parameters))
 		}
 	}
-	return boundedMetadata("/" + strings.Join(parts, "/"))
+	return inputValidationNoticePrefix + detail + inputValidationNoticeAdvice
+}
+
+func quotedParameterList(parameters []string) string {
+	quoted := make([]string, len(parameters))
+	for i, parameter := range parameters {
+		quoted[i] = fmt.Sprintf("%q", parameter)
+	}
+	if len(quoted) == 2 {
+		return quoted[0] + " and " + quoted[1]
+	}
+	return strings.Join(quoted[:len(quoted)-1], ", ") + ", and " + quoted[len(quoted)-1]
 }
 
 func boundedMetadata(value string) string {
@@ -393,17 +476,22 @@ func (h *Handler) shouldLogValidationRequest(toolName, direction, path, constrai
 }
 
 func normalizeToolSchemas(tool *mcp.Tool) {
-	if len(tool.RawInputSchema) > 0 {
-		tool.RawInputSchema = normalizeRawInputSchema(tool.RawInputSchema)
-	} else {
-		normalizeToolArgumentsSchema(&tool.InputSchema)
-	}
+	tool.InputSchema = normalizeSchemaValue(tool.InputSchema, true)
+	tool.OutputSchema = normalizeSchemaValue(tool.OutputSchema, false)
+}
 
-	if len(tool.RawOutputSchema) > 0 {
-		tool.RawOutputSchema = normalizeRawSchema(tool.RawOutputSchema)
-	} else if tool.OutputSchema.Type != "" {
-		normalizeToolOutputSchema(&tool.OutputSchema)
+func normalizeSchemaValue(schema any, input bool) any {
+	if schema == nil {
+		return nil
 	}
+	b, err := json.Marshal(schema)
+	if err != nil {
+		return schema
+	}
+	if input {
+		return normalizeRawInputSchema(b)
+	}
+	return normalizeRawSchema(b)
 }
 
 func normalizeRawInputSchema(raw json.RawMessage) json.RawMessage {
@@ -432,22 +520,6 @@ func normalizeRawSchema(raw json.RawMessage) json.RawMessage {
 	return b
 }
 
-func normalizeToolArgumentsSchema(schema *mcp.ToolInputSchema) {
-	for name, propertySchema := range schema.Properties {
-		schema.Properties[name] = openInputObjects(normalizeJSONSchema(propertySchema))
-	}
-	for name, defSchema := range schema.Defs {
-		schema.Defs[name] = openInputObjects(normalizeJSONSchema(defSchema))
-	}
-	if schema.AdditionalProperties != nil {
-		if closed, ok := schema.AdditionalProperties.(bool); ok && !closed {
-			schema.AdditionalProperties = nil
-		} else {
-			schema.AdditionalProperties = openInputObjects(normalizeJSONSchema(schema.AdditionalProperties))
-		}
-	}
-}
-
 func openInputObjects(schema any) any {
 	switch typed := schema.(type) {
 	case map[string]any:
@@ -463,18 +535,6 @@ func openInputObjects(schema any) any {
 		}
 	}
 	return schema
-}
-
-func normalizeToolOutputSchema(schema *mcp.ToolOutputSchema) {
-	for name, propertySchema := range schema.Properties {
-		schema.Properties[name] = normalizeJSONSchema(propertySchema)
-	}
-	for name, defSchema := range schema.Defs {
-		schema.Defs[name] = normalizeJSONSchema(defSchema)
-	}
-	if schema.AdditionalProperties != nil {
-		schema.AdditionalProperties = normalizeJSONSchema(schema.AdditionalProperties)
-	}
 }
 
 func normalizeJSONSchema(schema any) any {

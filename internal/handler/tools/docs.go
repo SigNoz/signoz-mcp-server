@@ -8,16 +8,15 @@ import (
 	"log/slog"
 	"time"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 )
 
-func (h *Handler) RegisterDocsHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering docs handlers")
 
 	searchTool := mcp.NewTool("signoz_search_docs",

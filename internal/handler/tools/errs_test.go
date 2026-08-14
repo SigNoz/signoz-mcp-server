@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 )

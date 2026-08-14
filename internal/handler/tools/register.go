@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 // RegisterAllToolHandlers registers every tool handler group on s. It is the
@@ -9,7 +9,7 @@ import (
 // (internal/mcp-server) and the schema/annotation inventory tests all
 // register through it, so a new handler group cannot reach the server
 // without also passing the pinned-inventory tests.
-func (h *Handler) RegisterAllToolHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterAllToolHandlers(s *mcp.Server) {
 	h.RegisterOrgOverviewHandlers(s)
 	h.RegisterMetricsHandlers(s)
 	h.RegisterTopMetricsHandlers(s)

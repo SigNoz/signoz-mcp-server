@@ -1,0 +1,46 @@
+{
+  "method": "tools/call",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "arguments": {},
+      "name": "signoz_list_notification_channels"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"data\":[{\"createdAt\":null,\"id\":\"channel-wire\",\"name\":\"on-call\",\"type\":\"email\",\"updatedAt\":null}],\"pagination\":{\"total\":1,\"offset\":0,\"limit\":50,\"hasMore\":false,\"nextOffset\":-1}}",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "data": [
+          {
+            "createdAt": null,
+            "id": "channel-wire",
+            "name": "on-call",
+            "type": "email",
+            "updatedAt": null
+          }
+        ],
+        "pagination": {
+          "hasMore": false,
+          "limit": 50,
+          "nextOffset": -1,
+          "offset": 0,
+          "total": 1
+        }
+      }
+    }
+  }
+}

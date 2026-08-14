@@ -4,13 +4,12 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
 )
 
-func (h *Handler) RegisterMetricsHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterMetricsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering metrics handlers")
 
 	listMetricsTool := mcp.NewTool("signoz_list_metrics",

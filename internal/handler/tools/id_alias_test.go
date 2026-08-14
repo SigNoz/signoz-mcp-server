@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // These tests pin the K5 contract: every CRUD resource id is read from the

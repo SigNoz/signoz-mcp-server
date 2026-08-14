@@ -13,15 +13,15 @@ subgraph Startup["Server Initialization"]
     LOG --> OTEL["Init OpenTelemetry<br/>(Tracer, Meter; OTLP export only when configured)"]
     OTEL --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
-    CHSCHEMA --> MCPSRV["NewMCPServer"]
+    CHSCHEMA --> MCPSRV["NewMCPServer<br/>official MCP Go SDK v1.7.0"]
     MCPSRV --> REGISTER["Register all tool handlers<br/>(Org Overview, Metrics, TopMetrics, MetricUsage, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Docs, Traces)"]
     REGISTER --> MODE{"TransportMode?"}
 end
 
 subgraph StdioPath["Stdio Transport — Single Tenant"]
-    MODE -->|stdio| STDIO["ServeStdio"]
-    STDIO --> CTXFUNC["StdioContextFunc"]
-    CTXFUNC --> SETCTX_S["Set apiKey and signozURL<br/>from env into ctx"]
+    MODE -->|stdio| STDIO["runStdio"]
+    STDIO --> CTXFUNC["Seed API key, auth header,<br/>SigNoz URL, and client source"]
+    CTXFUNC --> SETCTX_S["official Server.Run<br/>with StdioTransport"]
     SETCTX_S --> TOOL_S["Tool Handler Called"]
 end
 
@@ -127,27 +127,51 @@ HIT --> CLIENT
 LOOKUP -.->|read/write| LRU_C
 ```
 
-## Stateless Transport
+## MCP Runtime and Transports
 
-The Streamable HTTP transport (`/mcp`) runs fully stateless: the server is built with
-`WithStateLess(true)`, so it issues no `Mcp-Session-Id` and registers no session state for
-POST requests. (An open GET listening stream still holds transient SDK-level stream state for
-its lifetime, which is harmless here — see below.) Every request is self-contained — auth
-credentials and the SigNoz URL are resolved per request in `authMiddleware` (from the OAuth
-token, headers, or env), tools and resources are static, and the server uses no sampling or
-server→client messaging.
+The runtime is `github.com/modelcontextprotocol/go-sdk` v1.7.0. The same
+production catalog supports both lifecycle models on HTTP and stdio:
 
-Any instance can therefore serve any request behind a plain round-robin load balancer — no
-sticky sessions or session affinity — mirroring the OAuth token design below. It also avoids
-the per-session maps the MCP SDK would otherwise accumulate, and aligns with the MCP
-`2026-07-28` spec direction of removing the protocol-level session model. Clients may still
-open a GET listening stream; a periodic heartbeat keeps it alive through intermediary proxies.
+| Protocol era | Lifecycle and request identity |
+|---|---|
+| `2025-11-25` | The client performs `initialize` and `notifications/initialized`; initialize telemetry records negotiated client and protocol information. |
+| `2026-07-28` | The client may call `server/discover` and then send requests directly. Protocol version, client identity, and client capabilities come from each request's `_meta`, so they are never shared between callers. |
 
-The successful `initialize` request emits `MCP Client: Initialized` with its client
-name/version and negotiated protocol version. This is client-adoption telemetry, not a
-session lifecycle signal: there is still no reliable cross-request session identity for
-attaching `ClientInfo` to later tool events. Per-request `clientSource` and assistant
-correlation headers remain available on tool telemetry.
+### Streamable HTTP
+
+The `/mcp` handler uses the official SDK with `Stateless: true` and
+`JSONResponse: true`. Requests are authenticated and resolve the SigNoz URL on
+every POST. The handler does not issue or require `Mcp-Session-Id`; inbound
+session headers have no effect, so any instance can serve any request without sticky routing. `GET /mcp` and
+`DELETE /mcp` return `405 Method Not Allowed`; the former GET listener and its
+heartbeat were intentionally removed because this server sends no
+server-initiated messages.
+
+Successful MCP calls remain HTTP 200 `application/json`. The outer HTTP server
+provides OpenTelemetry request spans. MCP requests pass through `otelhttp`, the
+server mux, cross-origin protection, the request-size limit, authentication,
+and finally the official SDK handler; SDK receiving middleware records the method/tool lifecycle after
+protocol validation. Standard-library cross-origin protection rejects browser
+POSTs whose Origin does not match the MCP endpoint before authentication or
+dispatch, while non-browser and same-origin clients continue normally. Modern body/header metadata is validated by the official
+transport before dispatch. Request cancellation is propagated for modern HTTP
+calls; legacy clients should use MCP cancellation notifications because
+disconnect-only cancellation is not guaranteed by the official transport.
+
+The migration intentionally accepts the official SDK's protocol-owned behavior:
+no advertised logging capability, no discovery-order guarantee, standard
+invalid-params responses for unknown tools/resources/prompts, cache metadata on
+cacheable responses in both eras, and modern result/server metadata. Tool descriptions, schemas, annotations, resource content,
+prompt content, structured tool results, and coded tool errors remain unchanged.
+
+### Stdio
+
+Stdio uses the official newline-delimited JSON transport and the same dual-era
+catalog. API credentials, SigNoz URL, and default client source are seeded into
+the process context. SIGTERM/context cancellation is normalized as graceful
+shutdown. An invalid JSON frame terminates that one-client process under the
+official SDK; the server does not carry a custom framing layer solely to retain
+the previous parse-error-and-continue behavior.
 
 ## OAuth 2.1 — Stateless Token Design
 

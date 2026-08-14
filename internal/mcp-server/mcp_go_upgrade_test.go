@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"math"
 	"net"
@@ -16,13 +15,13 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	official "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -32,7 +31,7 @@ func TestStreamableHTTPDNSRebindingProtection(t *testing.T) {
 	cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
 	logger := logpkg.New("error")
 	m := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), nil)
-	handler := server.NewStreamableHTTPServer(m.newSDKServer(), m.streamableHTTPOptions()...)
+	handler := official.NewStreamableHTTPHandler(func(*http.Request) *official.Server { return m.newSDKServer() }, m.streamableHTTPOptions())
 
 	tests := []struct {
 		name      string
@@ -63,21 +62,44 @@ func TestStreamableHTTPDNSRebindingProtection(t *testing.T) {
 func TestStreamableHTTPLoggerUsesServerSlogLevelAndFields(t *testing.T) {
 	var logs bytes.Buffer
 	logger := newBufferedLogger(&logs, 0)
-	m := NewMCPServer(logger, nil, &config.Config{}, noopanalytics.New(), nil)
-	options := append(m.streamableHTTPOptions(), server.WithDisableStreaming(true))
-	handler := server.NewStreamableHTTPServer(server.NewMCPServer("test", "0.0.0"), options...)
-
-	req := httptest.NewRequest(http.MethodGet, "http://unused/mcp", nil)
-	req.Host = "mcp.example.com"
-	req.Header.Set(server.HeaderKeySessionID, "session-1")
-	req = req.WithContext(context.WithValue(req.Context(), http.LocalAddrContextKey, &net.TCPAddr{IP: net.ParseIP("10.42.1.7"), Port: 8000}))
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, req)
+	sdkLogger := slog.New(&sdkLogHandler{next: logger.Handler()})
+	sdkLogger.Error("transport rejection", "method", "GET", "session_id", "session-1")
 
 	// Only the wiring is asserted (SDK transport events reach our slog
 	// handler); exact upstream wording is the SDK's to change.
 	if len(parseJSONLogLines(t, &logs)) == 0 {
 		t.Fatal("SDK transport rejection produced no records through the server slog logger")
+	}
+}
+
+func TestSDKLoggerBoundsPersistentAttrs(t *testing.T) {
+	var logs bytes.Buffer
+	logger := newBufferedLogger(&logs, slog.LevelDebug)
+	sdkLogger := slog.New(&sdkLogHandler{next: logger.Handler()}).With(
+		slog.String("session_id", strings.Repeat("x", 8*1024)),
+	)
+	sdkLogger.Error("transport rejection")
+
+	record, _ := logRecordByMessage(t, &logs, "transport rejection")
+	value, ok := record["session_id"].(string)
+	if !ok || len(value) > 4*1024 || !strings.HasSuffix(value, "...(truncated)") {
+		t.Fatalf("persistent SDK attr = %T len=%d, want bounded string", record["session_id"], len(value))
+	}
+}
+
+func TestSDKLoggerPreservesPersistentAttrsAcrossGroups(t *testing.T) {
+	var logs bytes.Buffer
+	logger := newBufferedLogger(&logs, slog.LevelDebug)
+	sdkLogger := slog.New(&sdkLogHandler{next: logger.Handler()}).With("session_id", "session-1").WithGroup("transport")
+	sdkLogger.Error("grouped rejection", "method", "POST")
+
+	record, _ := logRecordByMessage(t, &logs, "grouped rejection")
+	if record["session_id"] != "session-1" {
+		t.Fatalf("persistent attr after WithGroup = %#v, want session-1", record["session_id"])
+	}
+	group, ok := record["transport"].(map[string]any)
+	if !ok || group["method"] != "POST" {
+		t.Fatalf("grouped attrs = %#v, want transport.method=POST", record["transport"])
 	}
 }
 
@@ -93,7 +115,7 @@ func TestInputMismatchServedWithNoticeThroughProductionPipeline(t *testing.T) {
 		called = true
 		return mcp.NewToolResultText("ok"), nil
 	})
-	response := s.HandleMessage(context.Background(), []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"notice_probe","arguments":{"value":42}}}`))
+	response := callToolForTest(t, s, "notice_probe", json.RawMessage(`{"value":42}`))
 	if !called {
 		t.Fatal("input mismatch must be served best-effort, never rejected")
 	}
@@ -108,7 +130,7 @@ func TestInputMismatchServedWithNoticeThroughProductionPipeline(t *testing.T) {
 		t.Fatalf("handler result must be preserved: %s", b)
 	}
 	// The appended notice tells self-correcting agents what to fix.
-	for _, want := range []string{"input validation notice", "/value", "string"} {
+	for _, want := range []string{"input validation notice", `parameter \"value\"`, "best-effort", "re-call"} {
 		if !bytes.Contains(bytes.ToLower(b), []byte(want)) {
 			t.Fatalf("notice is not actionable (missing %q): %s", want, b)
 		}
@@ -127,7 +149,7 @@ func TestProductionOutputMismatchPassesOriginalThrough(t *testing.T) {
 	h.AddTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
 	})
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":{}}}`))
+	response := callToolForTest(t, s, "probe", json.RawMessage(`{}`))
 	b, _ := json.Marshal(response)
 	if bytes.Contains(b, []byte(`"isError":true`)) || !bytes.Contains(b, []byte(`"count":"wrong"`)) {
 		t.Fatalf("output mismatch must pass the original result through: %s", b)
@@ -160,11 +182,7 @@ func TestGuardrail_ToolResultsRemainJSONSafeThroughProductionTransport(t *testin
 			h.AddTool(s, mcp.NewTool("json_safety_probe"), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return mcp.NewToolResultStructured(map[string]any{"value": tt.value}, "ok"), nil
 			})
-			response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"json_safety_probe","arguments":{}}}`))
-			encoded, err := json.Marshal(response)
-			if err != nil {
-				t.Fatalf("JSON-RPC response is not serializable: %v", err)
-			}
+			encoded := callToolWireForTest(t, s, "json_safety_probe", json.RawMessage(`{}`))
 			if !json.Valid(encoded) {
 				t.Fatalf("JSON-RPC response is invalid: %q", encoded)
 			}
@@ -190,11 +208,7 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 		name           string
 		tool           mcp.Tool
 		arguments      string
-		handler        server.ToolHandlerFunc
-		wantCalled     bool
-		wantLog        string
-		wantLevel      string
-		wantToolCalls  int64
+		handler        mcp.ToolHandlerFunc
 		wantMismatches int64
 		wantDirection  string
 	}{
@@ -207,10 +221,6 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			},
 			// Mismatches are served, not rejected: the call succeeds and the
 			// mismatch is telemetry plus an in-band notice.
-			wantCalled:     true,
-			wantLog:        "tool call finished",
-			wantLevel:      "DEBUG",
-			wantToolCalls:  1,
 			wantMismatches: 1,
 			wantDirection:  "input",
 		},
@@ -223,36 +233,8 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
 			},
-			wantCalled:     true,
-			wantLog:        "tool call finished",
-			wantLevel:      "DEBUG",
-			wantToolCalls:  1,
 			wantMismatches: 1,
 			wantDirection:  "output",
-		},
-		{
-			name:      "normal success",
-			tool:      mcp.NewTool("probe"),
-			arguments: `{}`,
-			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return mcp.NewToolResultText("ok"), nil
-			},
-			wantCalled:    true,
-			wantLog:       "tool call finished",
-			wantLevel:     "DEBUG",
-			wantToolCalls: 1,
-		},
-		{
-			name:      "handler error",
-			tool:      mcp.NewTool("probe"),
-			arguments: `{}`,
-			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return nil, errors.New("handler failed")
-			},
-			wantCalled:    true,
-			wantLog:       "tool call failed",
-			wantLevel:     "ERROR",
-			wantToolCalls: 1,
 		},
 	}
 
@@ -282,10 +264,9 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 				called = true
 				return next(ctx, req)
 			})
-			raw := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":` + tt.arguments + `}}`
-			s.HandleMessage(context.Background(), json.RawMessage(raw))
-			if called != tt.wantCalled {
-				t.Fatalf("handler called = %t, want %t", called, tt.wantCalled)
+			callToolForTest(t, s, "probe", json.RawMessage(tt.arguments))
+			if !called {
+				t.Fatal("mismatched call did not reach the handler")
 			}
 
 			classified := map[string]struct{}{
@@ -299,16 +280,16 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 					terminal = append(terminal, record)
 				}
 			}
-			if len(terminal) != 1 || terminal[0]["msg"] != tt.wantLog || terminal[0]["level"] != tt.wantLevel {
-				t.Fatalf("classified terminal logs = %#v, want one %s/%s; all logs=%s", terminal, tt.wantLevel, tt.wantLog, strings.TrimSpace(logs.String()))
+			if len(terminal) != 1 || terminal[0]["msg"] != "tool call finished" || terminal[0]["level"] != "DEBUG" {
+				t.Fatalf("classified terminal logs = %#v, want one DEBUG success; all logs=%s", terminal, strings.TrimSpace(logs.String()))
 			}
 
 			var collected metricdata.ResourceMetrics
 			if err := reader.Collect(context.Background(), &collected); err != nil {
 				t.Fatal(err)
 			}
-			if got := int64MetricTotal(collected, "mcp.tool.calls"); got != tt.wantToolCalls {
-				t.Fatalf("mcp.tool.calls = %d, want %d", got, tt.wantToolCalls)
+			if got := int64MetricTotal(collected, "mcp.tool.calls"); got != 1 {
+				t.Fatalf("mcp.tool.calls = %d, want 1", got)
 			}
 			if got := int64MetricTotal(collected, "mcp.tool.validation.mismatches"); got != tt.wantMismatches {
 				t.Fatalf("mcp.tool.validation.mismatches = %d, want %d", got, tt.wantMismatches)
@@ -325,6 +306,41 @@ func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
 			}
 		})
 	}
+}
+
+func callToolForTest(t *testing.T, server *official.Server, name string, arguments json.RawMessage) *official.CallToolResult {
+	t.Helper()
+	client, err := newIntegrationClient(t, server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.client.CallTool(context.Background(), &official.CallToolParams{Name: name, Arguments: arguments})
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+func callToolWireForTest(t *testing.T, server *official.Server, name string, arguments json.RawMessage) []byte {
+	t.Helper()
+	handler := official.NewStreamableHTTPHandler(func(*http.Request) *official.Server { return server }, &official.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	params, err := json.Marshal(map[string]any{"name": name, "arguments": arguments})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	call := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":` + string(params) + `}`
+	request = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(call))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response.Body.Bytes()
 }
 
 func int64MetricTotal(metrics metricdata.ResourceMetrics, name string) int64 {

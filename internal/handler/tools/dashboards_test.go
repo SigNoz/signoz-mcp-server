@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
@@ -442,7 +442,7 @@ func TestHandleListDashboardTemplates_FullCatalog(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error: %v", result.Content)
 	}
-	textContent, ok := result.Content[0].(mcp.TextContent)
+	textContent, ok := result.Content[0].(*mcp.TextContent)
 	if !ok {
 		t.Fatalf("expected TextContent, got %T", result.Content[0])
 	}

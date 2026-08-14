@@ -14,9 +14,8 @@ import (
 	"strings"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 type orgOverviewOutput struct {
@@ -201,7 +200,7 @@ type orgOverviewIncompleteGroup struct {
 	NextTools  []string `json:"nextTools,omitempty"`
 }
 
-func (h *Handler) RegisterOrgOverviewHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterOrgOverviewHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering organization overview handlers")
 
 	tool := mcp.NewTool("signoz_get_org_overview",
@@ -229,7 +228,7 @@ func (h *Handler) handleGetOrgOverview(ctx context.Context, _ mcp.CallToolReques
 		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
 			const recovery = "recovery: Verify that the configured SigNoz URL points to an active deployment. If the deployment is reachable but this route is unavailable, use signoz_list_dashboards, signoz_list_alert_rules, signoz_list_notification_channels, signoz_list_views, signoz_list_metrics, signoz_list_alerts, signoz_search_logs, signoz_search_traces, or signoz_query_metrics as appropriate."
 			for i, content := range errorResult.Content {
-				if text, ok := content.(mcp.TextContent); ok {
+				if text, ok := content.(*mcp.TextContent); ok {
 					text.Text += "\n\n" + recovery
 					errorResult.Content[i] = text
 					break

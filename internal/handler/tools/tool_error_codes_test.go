@@ -13,9 +13,9 @@ import (
 	"testing"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestToolHandlers_MissingCredentialsAreCoded(t *testing.T) {
@@ -181,7 +181,7 @@ func TestGuardrail_ProductionToolErrorsUseCodedHelpers(t *testing.T) {
 		fileset := token.NewFileSet()
 		file, err := parser.ParseFile(fileset, "method_value.go", `package tools
 
-import "github.com/mark3labs/mcp-go/mcp"
+import mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 func bypass() {
 	newError := mcp.NewToolResultError
@@ -233,7 +233,7 @@ func uncodedToolErrorConstructorUses(fileset *token.FileSet, file *ast.File, pat
 		if err != nil {
 			return nil, err
 		}
-		if importPath != "github.com/mark3labs/mcp-go/mcp" {
+		if importPath != "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract" {
 			continue
 		}
 		mcpAlias = "mcp"

@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![MCP Version](https://img.shields.io/badge/MCP-0.37.0-orange.svg)](https://modelcontextprotocol.io)
+[![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25_%7C_2026--07--28-orange.svg)](https://modelcontextprotocol.io)
 
 A Model Context Protocol (MCP) server that provides seamless access to SigNoz observability data through AI assistants and LLMs. Query metrics, traces, logs, alerts, dashboards, and services using natural language.
 
@@ -13,6 +13,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - [Connect to SigNoz Cloud](#connect-to-signoz-cloud)
 - [Self-Hosted Installation](#self-hosted-installation)
 - [Connect to Self-Hosted SigNoz](#connect-to-self-hosted-signoz)
+- [MCP Protocol Compatibility](#mcp-protocol-compatibility)
 - [What Can You Do With It?](#what-can-you-do-with-it)
 - [Available Tools](#available-tools)
 - [Environment Variables](#environment-variables)
@@ -309,6 +310,27 @@ MCP_SERVER_PORT=8000 \
 }
 ```
 
+## MCP Protocol Compatibility
+
+SigNoz uses the official MCP Go SDK v1.7.0 and supports both current lifecycle
+models over HTTP and stdio:
+
+| Protocol era | Lifecycle |
+|---|---|
+| `2025-11-25` | Legacy clients use `initialize`, then `notifications/initialized`, before ordinary requests. |
+| `2026-07-28` | Clients may call `server/discover`, then send direct requests carrying protocol and client capabilities in per-request `_meta`; no initialize handshake is required. |
+
+The HTTP `/mcp` endpoint is stateless and sessionless. MCP messages use JSON
+`POST` requests and successful responses use `application/json`; the server does
+not issue or require `Mcp-Session-Id`. `GET /mcp` and `DELETE /mcp` return
+`405 Method Not Allowed`, so deployments need neither sticky routing nor the old
+GET listener/heartbeat. Existing client configuration does not change.
+
+The server intentionally does not advertise the deprecated logging capability.
+Discovery ordering is not a compatibility guarantee. Unknown tools, resources,
+and prompts use the official SDK's standard invalid-params behavior rather than
+legacy implementation-specific wording or error codes.
+
 ### HTTP Probe Endpoints
 
 HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments should use `/livez` for `livenessProbe` and `/readyz` for `readinessProbe`.
@@ -339,7 +361,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
-> **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries an appended `Input validation notice:` text block naming the mismatched parameter so self-correcting agents can adjust. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
+> **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries a deterministic appended `Input validation notice:` naming the affected top-level parameter when it can be derived safely from the advertised schema. Complex root-only mismatches use a generic fallback. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
 
 > **Upstream authorization errors:** upstream SigNoz 401 and 403 tool failures carry a stable structured `code` (`UNAUTHORIZED` or `PERMISSION_DENIED`) and numeric `status`. When the response body is invalid JSON or valid JSON that is not a non-null object, it is withheld from client text and replaced with a canonical authentication or permission message. Registered tool errors also name the failed tool and give the immediate recovery action; the bounded raw response remains available only in server-side diagnostics.
 

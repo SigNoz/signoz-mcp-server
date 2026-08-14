@@ -1,0 +1,28 @@
+{
+  "method": "resources/read",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "resources/read",
+    "params": {
+      "uri": "signoz://dashboard/dashboard-wire/summary"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "contents": [
+        {
+          "mimeType": "application/json",
+          "text": "{\"data\":{\"title\":\"Checkout RED\",\"widgets\":[{\"title\":\"Request rate\"}],\"variables\":{\"service\":{\"type\":\"DYNAMIC\"}}}}",
+          "uri": "signoz://dashboard/dashboard-wire/summary"
+        }
+      ]
+    }
+  }
+}

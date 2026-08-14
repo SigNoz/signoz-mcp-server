@@ -7,15 +7,14 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-func (h *Handler) RegisterQueryBuilderV5Handlers(s *server.MCPServer) {
+func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	h.logger.Debug("Registering query builder v5 handlers")
 
 	// SigNoz Query Builder v5 tool - LLM builds structured query JSON and executes it
