@@ -147,7 +147,17 @@ url = "https://mcp.<region>.signoz.cloud/mcp"
 enabled = true
 ```
 
-Grok Build starts the OAuth flow the first time it connects, so no API key is stored in the config file.
+Adding the server does not authenticate it. Start Grok Build, run `/mcps`, select the `signoz` server, and complete the OAuth flow in your browser:
+
+```bash
+grok
+```
+
+```
+/mcps
+```
+
+No API key is stored in the config file; credentials are saved separately once the OAuth flow completes.
 
 Use `-s project` on the `add` command to write to `./.grok/config.toml` instead, so the server is shared with everyone working in that directory.
 
