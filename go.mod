@@ -1,6 +1,6 @@
 module github.com/SigNoz/signoz-mcp-server
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/SigNoz/signoz-otel-collector v0.129.12
