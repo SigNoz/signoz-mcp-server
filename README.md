@@ -131,6 +131,43 @@ codex mcp login signoz
 
 Then run `/mcp` inside Codex to verify the connection.
 
+### Grok Build
+
+Run this command to add the hosted SigNoz MCP server:
+
+```bash
+grok mcp add -t http signoz https://mcp.<region>.signoz.cloud/mcp
+```
+
+Or add this configuration to `~/.grok/config.toml`:
+
+```toml
+[mcp_servers.signoz]
+url = "https://mcp.<region>.signoz.cloud/mcp"
+enabled = true
+```
+
+Adding the server does not authenticate it. Start Grok Build, run `/mcps`, select the `signoz` server, and complete the OAuth flow in your browser:
+
+```bash
+grok
+```
+
+```
+/mcps
+```
+
+No API key is stored in the config file; credentials are saved separately once the OAuth flow completes.
+
+Use `-s project` on the `add` command to write to `./.grok/config.toml` instead, so the server is shared with everyone working in that directory.
+
+Verify the connection with:
+
+```bash
+grok mcp list
+grok mcp doctor
+```
+
 ### SigNoz Cloud Authentication
 
 When you add the hosted MCP URL to your client, the client initiates an authentication flow. You will be prompted to enter:
