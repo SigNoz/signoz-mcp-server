@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.13.0] - 2026-08-19
+
+### Added
+- migrate to the official Go SDK ([#286](https://github.com/SigNoz/signoz-mcp-server/pull/286))
+
+### Fixed
+- preserve recognized backend error guidance ([#289](https://github.com/SigNoz/signoz-mcp-server/pull/289))
+
+### Documentation
+- add Grok Build MCP configuration ([#292](https://github.com/SigNoz/signoz-mcp-server/pull/292))
+
+### Other
+- upgrade to go 1.26 ([#290](https://github.com/SigNoz/signoz-mcp-server/pull/290))
+- add selected official conformance ([#287](https://github.com/SigNoz/signoz-mcp-server/pull/287))
+
 ## [0.12.0] - 2026-08-12
 
 ### Changed
@@ -359,3 +375,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.10.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.9.0...v0.10.0
 [0.11.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.10.0...v0.11.0
 [0.12.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.11.0...v0.12.0
+[0.13.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.12.0...v0.13.0
