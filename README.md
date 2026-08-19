@@ -1,6 +1,6 @@
 # SigNoz MCP Server
 
-[![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25_%7C_2026--07--28-orange.svg)](https://modelcontextprotocol.io)
 
