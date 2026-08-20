@@ -66,3 +66,27 @@
       Only the lines mirroring changed tool/param descriptions were synced, as
       CLAUDE.md requires. README-original prose still has ~21 em dashes and a few
       unspaced ones (`Irreversible—discover`); offered to the user as a follow-up.
+
+### 2026-08-21 — second pass: writing-craft read (personal:writing skill)
+- Re-read all 43 tool descriptions, server instructions, prompts, and guides for
+  reader-effort problems (ambiguity, ordering, decoding) rather than slop patterns.
+- Verdict: the catalog is structurally sound — consistent shape (purpose → sibling
+  routing → caveats), consistent concept handles, sharpest constraint late. Six
+  genuine first-pass-misreading fixes applied:
+  1. Server instructions rule 7: reuse guidance arrived before the reader knew what
+     the reads are. Reordered to context-first. First attempt reworded the
+     "same still-current prepared operation" handle and tripped
+     TestGuardrail_WireContractBudgets, which pins that phrase — correctly, since
+     tool descriptions use the handle verbatim and rule 7 is its anchor. Final fix
+     reorders only, keeping all three pinned phrases; guardrail unchanged.
+  2. signoz_get_dashboard: dropped "respectively" (forces backward pair-mapping).
+  3./4. signoz_delete_dashboard / signoz_delete_view: "views, which use
+     signoz_delete_view" misattaches (views don't use the tool) → "delete those with".
+  5. signoz_list_alerts: "for its timeline" had a fuzzy antecedent → "one rule's".
+  6. signoz_query_metrics: "results use top 100" decoded poorly → "are capped at the
+     top 100". Also widgets_examples.go: causal "since" → "because".
+- Deliberately not edited: the dense preflight-reuse sentences in create/update_alert
+  ("reuse ... only from the same still-current prepared operation; otherwise call it,
+  refreshing only if state may have changed"). They are hard reading but encode
+  reviewed contract semantics with a now-anchored handle; rewording risks drift.
+- CMP-3: grepped agent-skills for every changed string; zero matches. No companion PR.

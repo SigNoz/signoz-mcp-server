@@ -110,7 +110,7 @@
           "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
           "mimeType": "text/markdown",
           "name": "Dashboard Widgets Examples",
-          "size": 28797,
+          "size": 28799,
           "uri": "signoz://dashboard/widgets-examples"
         },
         {

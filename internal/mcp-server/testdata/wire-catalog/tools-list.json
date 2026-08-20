@@ -3451,7 +3451,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views, which use signoz_delete_view.",
+          "description": "Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views; delete those with signoz_delete_view.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -3501,7 +3501,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards, which use signoz_delete_dashboard.",
+          "description": "Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -3752,7 +3752,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse summaries or curated templates; use signoz_list_dashboards or signoz_list_dashboard_templates respectively.",
+          "description": "Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse: signoz_list_dashboards lists tenant summaries and signoz_list_dashboard_templates lists curated templates.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -5010,7 +5010,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants current firing, silenced, or inhibited Alertmanager alert instances and their state, severity, timing, and rule IDs. Do not use it for configured rules or history: use signoz_list_alert_rules for rule summaries, signoz_get_alert for one definition, or signoz_get_alert_history for its timeline. Filter by alert labels, state, or receiver before paginating.",
+          "description": "Use this when the user wants current firing, silenced, or inhibited Alertmanager alert instances and their state, severity, timing, and rule IDs. Do not use it for configured rules or history: use signoz_list_alert_rules for rule summaries, signoz_get_alert for one definition, or signoz_get_alert_history for one rule's timeline. Filter by alert labels, state, or receiver before paginating.",
           "inputSchema": {
             "properties": {
               "active": {
@@ -5509,7 +5509,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants metric values, trends, breakdowns, or formulas. It returns scalar or time-series results, applies metric-aware aggregation defaults, and reports the decisions used. If the exact metricName is known, call this directly: when metricType is omitted, type, temporality, and monotonicity are auto-fetched together. Use signoz_list_metrics only to discover names or inspect catalog metadata; use signoz_execute_builder_query for complex multi-query requests this tool cannot express. Standalone and formula results use top 100; formula inputs use 10000, and grouped time-series top-N is ranked over the whole window. Read signoz://metrics-aggregation-guide for rules and examples.",
+          "description": "Use this when the user wants metric values, trends, breakdowns, or formulas. It returns scalar or time-series results, applies metric-aware aggregation defaults, and reports the decisions used. If the exact metricName is known, call this directly: when metricType is omitted, type, temporality, and monotonicity are auto-fetched together. Use signoz_list_metrics only to discover names or inspect catalog metadata; use signoz_execute_builder_query for complex multi-query requests this tool cannot express. Standalone and formula results are capped at the top 100; formula inputs at 10000. Grouped time-series top-N is ranked over the whole window. Read signoz://metrics-aggregation-guide for rules and examples.",
           "inputSchema": {
             "properties": {
               "end": {

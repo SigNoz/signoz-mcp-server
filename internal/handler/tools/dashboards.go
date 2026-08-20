@@ -100,7 +100,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 	getDashboardTool := mcp.NewTool("signoz_get_dashboard",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse summaries or curated templates; use signoz_list_dashboards or signoz_list_dashboard_templates respectively."),
+		mcp.WithDescription("Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse: signoz_list_dashboards lists tenant summaries and signoz_list_dashboard_templates lists curated templates."),
 		// Not mcp.Required(): the legacy alias "uuid" must remain a valid call for
 		// schema-aware clients. The handler validates id/uuid presence.
 		mcp.WithString("id", mcp.Description("Known dashboard UUID. Required; use signoz_list_dashboards to discover it.")),
@@ -151,7 +151,7 @@ func (h *Handler) RegisterDashboardHandlers(s *mcp.Server) {
 	deleteDashboardTool := mcp.NewTool("signoz_delete_dashboard",
 		withDeleteToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views, which use signoz_delete_view."),
+		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views; delete those with signoz_delete_view."),
 		mcp.WithString("id", mcp.Description("UUID of the dashboard to delete. Required; use signoz_list_dashboards to discover it.")),
 	)
 

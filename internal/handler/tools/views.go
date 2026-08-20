@@ -96,7 +96,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 	deleteTool := mcp.NewTool("signoz_delete_view",
 		withDeleteToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards, which use signoz_delete_dashboard."),
+		mcp.WithDescription("Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard."),
 		mcp.WithString("id", mcp.Description("UUID of the saved view to delete. Required; use signoz_list_views to discover it.")),
 	)
 	h.addTool(s, deleteTool, h.handleDeleteView)
