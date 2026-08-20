@@ -16,9 +16,9 @@ Metrics Query Builder shape (used by all examples below):
   - temporality: cumulative | delta | unspecified.
   - timeAggregation: per-series temporal rollup (rate, sum, avg, min, max, count, increase, latest).
   - spaceAggregation: cross-series combine (sum, avg, min, max, count, p50..p99).
-  - reduceTo: value/number panels only — collapse the series to one scalar (sum, avg, last, min, max, count, median).
+  - reduceTo: value/number panels only; collapse the series to one scalar (sum, avg, last, min, max, count, median).
 - groupBy[] entries: {name, fieldContext:"attribute", fieldDataType:"string", signal:"metrics"}; set legend "{{name}}".
-- order key must be the composed aggregation expression spaceAggregation(timeAggregation(metricName)), e.g. sum(rate(system.cpu.time)) — NOT the bare metric name (rejected); __result or a groupBy key also work.
+- order key must be the composed aggregation expression spaceAggregation(timeAggregation(metricName)), e.g. sum(rate(system.cpu.time)), NOT the bare metric name (rejected); __result or a groupBy key also work.
 - Timeseries panels use query kind "time_series"; value/number and pie use kind "scalar".
 
 === EXAMPLES ===

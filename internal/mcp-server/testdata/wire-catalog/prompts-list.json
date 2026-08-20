@@ -48,7 +48,7 @@
               "name": "timeRange"
             }
           ],
-          "description": "Investigate errors for a service — searches error logs, aggregates error traces, and lists top operations.",
+          "description": "Search error logs, aggregate error traces, and list top operations for a service.",
           "name": "debug_service_errors"
         },
         {
@@ -59,7 +59,7 @@
               "required": true
             }
           ],
-          "description": "Triage an active alert — fetches alert details, history, related logs, and traces.",
+          "description": "Triage an active alert by fetching its details, history, related logs, and traces.",
           "name": "incident_triage"
         },
         {
@@ -74,7 +74,7 @@
               "name": "timeRange"
             }
           ],
-          "description": "Analyze p99 latency for a service — queries latency metrics, aggregates trace durations, and identifies slow operations.",
+          "description": "Query latency metrics, aggregate trace durations, and identify slow operations for a service.",
           "name": "latency_analysis"
         }
       ]

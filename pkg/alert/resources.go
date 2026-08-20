@@ -8,8 +8,8 @@ An alert rule monitors a signal (metrics, logs, traces, or exceptions) and fires
 The alert is created via POST /api/v2/rules.
 
 Schemas supported:
-- **v2alpha1** for threshold_rule and promql_rule — structured thresholds + evaluation + notificationSettings. Applied automatically.
-- **v1** for anomaly_rule — top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
+- **v2alpha1** for threshold_rule and promql_rule: structured thresholds + evaluation + notificationSettings. Applied automatically.
+- **v1** for anomaly_rule: top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
 ## Before Creating or Updating an Alert
 1. Read signoz://alert/examples for complete payloads unless already read for the same prepared operation.
@@ -20,10 +20,10 @@ Schemas supported:
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
 1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT.
-2. **Pick ruleType.** Default to threshold_rule. Use promql_rule only if the user provided a PromQL expression. Use anomaly_rule only for metric deviation detection — it uses a different (v1) schema; see the Anomaly Alerts section.
+2. **Pick ruleType.** Default to threshold_rule. Use promql_rule only if the user provided a PromQL expression. Use anomaly_rule only for metric deviation detection; it uses a different (v1) schema. See the Anomaly Alerts section.
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
-5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*) — the backend indexes them.
+5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*); the backend indexes them.
 6. **Configure thresholds.** Every threshold/PromQL rule requires tiers with name, op, matchType, and target. Direct routing uses exact names from the notification-routing preflight above on every tier; confirmed policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
 7. **Evaluation.** Leave defaults (evalWindow=5m, frequency=1m) unless the user asked for a different window.
 8. **Notification.** Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
@@ -62,7 +62,7 @@ The envelope type must match compositeQuery.queryType:
 ### Builder query spec (builder_query)
 - name: query identifier (A, B, C, …)
 - signal: "metrics" | "logs" | "traces" (must match alertType)
-- source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Works with either evaluation kind — cumulative for daily/monthly spend budgets, rolling for rate/over-time meter alerts.
+- source (metrics only): "meter" to alert on Cost Meter usage/billing metrics (e.g. signoz.meter.log.size); omit otherwise. Works with either evaluation kind: cumulative for daily/monthly spend budgets, rolling for rate/over-time meter alerts.
 - stepInterval: interval in seconds (60 for most alerts)
 - aggregations: see "Aggregation shapes" below
 - filter: {expression: "service.name = 'frontend' AND http.status_code >= 500"}
@@ -81,11 +81,11 @@ The envelope type must match compositeQuery.queryType:
 ### PromQL for OTel dotted metric names
 Alerts with ruleType=promql_rule on OpenTelemetry metrics must use the Prometheus 3.x UTF-8 quoted-selector form for any name containing a dot. The forms that look natural but return no data in SigNoz:
 
-- Underscored conversion: rate(payment_latency_ms_bucket[5m]) — SigNoz does NOT rename dots to underscores.
-- __name__ selector: rate({__name__="payment_latency_ms.bucket"}[5m]) — dots are rejected inside that value.
-- Bare dotted name: rate(payment_latency_ms.bucket[5m]) — dot is not a legal identifier char.
+- Underscored conversion: rate(payment_latency_ms_bucket[5m]). SigNoz does NOT rename dots to underscores.
+- __name__ selector: rate({__name__="payment_latency_ms.bucket"}[5m]). Dots are rejected inside that value.
+- Bare dotted name: rate(payment_latency_ms.bucket[5m]). A dot is not a legal identifier char.
 
-Correct form — quote the name inside braces:
+Correct form (quote the name inside braces):
 
   histogram_quantile(0.9, sum(rate({"payment_latency_ms.bucket"}[5m])) by (le))
 
@@ -133,7 +133,7 @@ Common expressions: count(), count_distinct(user_id), avg(duration), sum(bytes),
 
 ## Filter & Having Expressions
 
-builder_query spec.filter.expression (pre-aggregation) and spec.having.expression (post-aggregation) use the same syntax. Prefer resource attributes in filters — they are the fastest path through the storage backend.
+builder_query spec.filter.expression (pre-aggregation) and spec.having.expression (post-aggregation) use the same syntax. Prefer resource attributes in filters; they are the fastest path through the storage backend.
 
 ### Operator reference
 | Intent | Operator | Example |
@@ -196,7 +196,7 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 ` + "```" + `
 
 ### Threshold fields
-- **name**: tier name — critical, error, warning, or info. Acts as the routing label: alerts carry threshold_name equal to this value. Set labels.severity to match your highest tier.
+- **name**: tier name (critical, error, warning, or info). Acts as the routing label: alerts carry threshold_name equal to this value. Set labels.severity to match your highest tier.
 - **target**: numeric threshold value (required).
 - **targetUnit**: unit of the target (e.g. ms, percent, s, bytes). Auto-converted to compositeQuery.unit during evaluation.
 - **recoveryTarget**: hysteresis value to avoid flapping (e.g. target=80%, recoveryTarget=75%). null uses the target itself as the recovery point.
@@ -205,13 +205,13 @@ condition.thresholds defines one or more routing tiers. Each tier can route to d
 - **channels**: existing notification channel names for this tier. Direct v2 routing requires at least one exact name from signoz_list_notification_channels on every tier; top-level preferredChannels is not a fallback. Reuse only a same-operation, still-current list result; otherwise call the fully paginated tool, refreshing if state may have changed. With notificationSettings.usePolicy=true, tier channels may be omitted, but supplied names are still validated.
 
 ### Choosing targetUnit
-- Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds" — set target=5, targetUnit="s". SigNoz converts during evaluation.
-- If compositeQuery.unit is empty and targetUnit is set, the validator propagates targetUnit onto compositeQuery.unit — you can therefore omit compositeQuery.unit on single-threshold rules.
-- Formulas that compute ratios (e.g. (A/B) * 100) already emit percent — set compositeQuery.unit="percent" and give the threshold a bare numeric target (no targetUnit).
+- Set targetUnit when the threshold value is in a different unit from the query series. Example: the series emits nanoseconds (compositeQuery.unit="ns") but you want to threshold at "5 seconds". Set target=5, targetUnit="s". SigNoz converts during evaluation.
+- If compositeQuery.unit is empty and targetUnit is set, the validator propagates targetUnit onto compositeQuery.unit, so you can omit compositeQuery.unit on single-threshold rules.
+- Formulas that compute ratios (e.g. (A/B) * 100) already emit percent. Set compositeQuery.unit="percent" and give the threshold a bare numeric target (no targetUnit).
 
 ### Choosing recoveryTarget
 - **null / unset**: the alert recovers as soon as the series crosses back through target. Simplest but can flap when the value oscillates at the threshold boundary.
-- **non-null**: creates a dead-band between target and recoveryTarget. Example: fire at target=80, recover at recoveryTarget=70 — the series must drop below 70 before the alert clears. Recommended for signals that oscillate near the threshold.
+- **non-null**: creates a dead-band between target and recoveryTarget. Example: fire at target=80, recover at recoveryTarget=70. The series must drop below 70 before the alert clears. Recommended for signals that oscillate near the threshold.
 
 ## Evaluation (v2alpha1)
 
@@ -232,7 +232,7 @@ evaluation controls how the rule is evaluated:
 
 ### Cumulative window (daily/monthly totals)
 
-A general evaluation kind, independent of signal/source — use it for any period-total alert (daily error budgets, monthly request counts, Cost Meter spend budgets, …). It accumulates from a fixed reset point instead of using a sliding window:
+A general evaluation kind, independent of signal/source. Use it for any period-total alert (daily error budgets, monthly request counts, Cost Meter spend budgets, …). It accumulates from a fixed reset point instead of using a sliding window:
 
 ` + "```" + `json
 "evaluation": {
@@ -268,7 +268,7 @@ A general evaluation kind, independent of signal/source — use it for any perio
 
 ## Labels & Routing
 
-- labels.severity: MUST be one of critical, error, warning, info. When thresholds is used, threshold.name is the routing tier — set labels.severity to the highest tier the rule carries.
+- labels.severity: MUST be one of critical, error, warning, info. When thresholds is used, threshold.name is the routing tier. Set labels.severity to the highest tier the rule carries.
 - Additional labels like team, service, environment enable routing policies.
 - preferredChannels: v1 anomaly direct-routing channels only; omit for v2 rules.
 - Set usePolicy: true only on v2 threshold/PromQL rules to delegate routing to org-level policies.
@@ -277,9 +277,9 @@ A general evaluation kind, independent of signal/source — use it for any perio
 Routing policies evaluate expressions against three merged label sources:
 1. **User static labels** from the labels object on the rule (severity, team, service, environment, …).
 2. **Platform labels** auto-injected at fire time:
-   - alertname — the rule's alert field
-   - threshold.name — the tier that fired (critical | error | warning | info)
-   - ruleSource, ruleId — rule metadata
+   - alertname: the rule's alert field
+   - threshold.name: the tier that fired (critical | error | warning | info)
+   - ruleSource, ruleId: rule metadata
 3. **Dynamic labels** from groupBy fields in the query (service.name, k8s.pod.name, http.route, deployment.environment, topic, partition, …).
 
 ### Routing-policy matcher operators
@@ -325,7 +325,7 @@ Required fields:
 
   | Value | Sensitivity | Use case |
   |-------|-------------|----------|
-  | 4.0 | Conservative | Only the strongest anomalies — minimal false positives |
+  | 4.0 | Conservative | Only the strongest anomalies; minimal false positives |
   | 3.0 | Balanced (recommended) | Default choice for most series |
   | 2.5 | Sensitive | Catch moderate deviations |
   | 2.0 | Very sensitive | Noisy; reserve for low-volume or tightly-behaved series |
@@ -349,19 +349,19 @@ Set condition.alertOnAbsent=true to fire when no series is returned. condition.a
 - labels.severity → "warning" (if not set)
 - annotations → default description and summary templates
 
-anomaly_rule: none of the above defaults are applied automatically — you must supply evalWindow, frequency, and the condition fields yourself.
+anomaly_rule: none of the above defaults are applied automatically. You must supply evalWindow, frequency, and the condition fields yourself.
 
 ## Further Reading
 User-facing docs. Cite these back to the user when they want to understand a concept in depth:
-- Metrics alerts — https://signoz.io/docs/alerts-management/metrics-based-alerts
-- Log alerts — https://signoz.io/docs/alerts-management/log-based-alerts
-- Trace alerts — https://signoz.io/docs/alerts-management/trace-based-alerts
-- Exception alerts — https://signoz.io/docs/alerts-management/exceptions-based-alerts
-- Anomaly alerts — https://signoz.io/docs/alerts-management/anomaly-based-alerts
-- Routing policies — https://signoz.io/docs/alerts-management/routing-policy
-- Planned maintenance — https://signoz.io/docs/alerts-management/planned-maintenance
-- Notification channel setup — https://signoz.io/docs/setup-alerts-notification
-- Alerts history — https://signoz.io/docs/alerts-management/alerts-history
+- Metrics alerts: https://signoz.io/docs/alerts-management/metrics-based-alerts
+- Log alerts: https://signoz.io/docs/alerts-management/log-based-alerts
+- Trace alerts: https://signoz.io/docs/alerts-management/trace-based-alerts
+- Exception alerts: https://signoz.io/docs/alerts-management/exceptions-based-alerts
+- Anomaly alerts: https://signoz.io/docs/alerts-management/anomaly-based-alerts
+- Routing policies: https://signoz.io/docs/alerts-management/routing-policy
+- Planned maintenance: https://signoz.io/docs/alerts-management/planned-maintenance
+- Notification channel setup: https://signoz.io/docs/setup-alerts-notification
+- Alerts history: https://signoz.io/docs/alerts-management/alerts-history
 `
 
 // Examples is the MCP resource content for signoz://alert/examples.
@@ -513,7 +513,7 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
 ` + "```" + `
 
 ## 3. metric_promql — PromQL rule
-PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"); non-dotted ones (topic, partition, group) stay bare. Useful for queries that combine series with group_right or other Prometheus operators. The envelope type is "promql" — not "builder_query". Read signoz://promql/instructions for the full dotted-name / vector-matching guide.
+PromQL expression instead of the builder. Dotted OTEL resource attributes are quoted ("deployment.environment"); non-dotted ones (topic, partition, group) stay bare. Useful for queries that combine series with group_right or other Prometheus operators. The envelope type is "promql", not "builder_query". Read signoz://promql/instructions for the full dotted-name / vector-matching guide.
 
 ` + "```" + `json
 {
@@ -732,7 +732,7 @@ Two disabled log count queries (A = errors, B = total) combined via a builder_fo
 ` + "```" + `
 
 ## 7. traces_threshold_latency — traces p99 with unit conversion (ns → s)
-Builder query against the traces signal with p99(duration_nano). The series unit is ns, but the threshold target is in seconds (targetUnit: "s") — SigNoz converts during evaluation.
+Builder query against the traces signal with p99(duration_nano). The series unit is ns, but the threshold target is in seconds (targetUnit: "s"); SigNoz converts during evaluation.
 
 ` + "```" + `json
 {
@@ -1055,6 +1055,6 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
 2. selectedQueryName should reference the query or formula that determines the alert.
 3. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects.
 4. Direct routing uses exact names from a same-operation, still-current signoz_list_notification_channels result, or calls the fully paginated tool when absent/stale. V2 needs a name on every tier; confirmed policy routing may omit them. V1 anomaly routing uses direct top-level preferredChannels.
-5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency and condition op/matchType/target/algorithm/seasonality — no thresholds, evaluation, notificationSettings, or policy routing.
+5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency and condition op/matchType/target/algorithm/seasonality. That schema has no thresholds, evaluation, notificationSettings, or policy routing.
 6. absentFor is in minutes (= consecutive evaluation cycles when frequency is 1m).
 `

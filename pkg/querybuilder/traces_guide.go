@@ -5,7 +5,7 @@ const TracesQueryBuilderGuide = `
 
 == FILTER EXPRESSION FORMAT ==
 
-Filters are a STRING expression in filter.expression — NOT a structured {op, items} object.
+Filters are a STRING expression in filter.expression, NOT a structured {op, items} object.
 
 CORRECT:   "filter": {"expression": "has_error = true AND k8s.namespace.name = 'my-ns'"}
 INCORRECT: "filter": {"op": "AND", "items": [...]}
@@ -216,7 +216,7 @@ matters more than response size.
 
 The top-level "start" and "end" request fields are Unix milliseconds (13-digit), e.g. 1756386047000.
 Prefer start/end to bound the time window. The built-in "timestamp" COLUMN is nanosecond-scale
-(DateTime64(9)), so do NOT put a millisecond value in an inline "timestamp" filter — use start/end instead.
+(DateTime64(9)), so do NOT put a millisecond value in an inline "timestamp" filter; use start/end instead.
 
 == QUICK REFERENCE ==
 

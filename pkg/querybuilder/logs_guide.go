@@ -31,7 +31,7 @@ Unknown keys hard-error. Do not guess field names. If unsure, call:
 
 Log keys are workspace-specific: logs have no spec-mandated resource attributes, so even
 service.name exists only when the log pipeline sets it. A filter on a key this workspace's
-logs never carried fails with "key ... not found" — discover valid keys as above and use
+logs never carried fails with "key ... not found"; discover valid keys as above and use
 an existing one (e.g. k8s.deployment.name) instead of retrying the same filter.
 
 If a key matches BOTH the resource and attribute contexts, SigNoz defaults to the resource context (and warns). For other multi-context matches, every matching context is ORed together.
@@ -108,7 +108,7 @@ Use body for full rendered-message text search:
   body ILIKE '%connection refused%'
 
 Use body.<json path> only when the log body is JSON and you need a nested field. If a record's body is not
-valid JSON, body.<path> (and has(...)) match nothing for that row — prefer body CONTAINS / ILIKE when you
+valid JSON, body.<path> (and has(...)) match nothing for that row; prefer body CONTAINS / ILIKE when you
 are unsure the body is JSON:
   body.user.id = '12345'
   body.error.code = 'E_CONN_RESET'
@@ -266,7 +266,7 @@ matters more than response size.
 The top-level "start" and "end" request fields are Unix milliseconds (13-digit), e.g. 1756386047000;
 the backend auto-scales them to nanoseconds. Prefer start/end to bound the time window.
 The built-in "timestamp" COLUMN stores Unix NANOSECONDS, so an inline filter like "timestamp >= ..." must
-use a nanosecond value (e.g. 1756386047000000000), not milliseconds — otherwise it silently matches everything.
+use a nanosecond value (e.g. 1756386047000000000), not milliseconds; otherwise it silently matches everything.
 
 == QUICK REFERENCE ==
 

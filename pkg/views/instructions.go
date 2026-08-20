@@ -20,7 +20,7 @@ logs-explorer, metrics-explorer, meter-explorer / Cost Meter).
 | category        | string            | No                  | Free-form grouping label |
 | sourcePage      | string            | Yes                 | One of: "traces", "logs", "metrics", "meter". "meter" is the Cost Meter Explorer (a distinct page) |
 | tags            | string[]          | No                  | Free-form tags |
-| compositeQuery  | object            | Yes                 | Query Builder v5 — see below |
+| compositeQuery  | object            | Yes                 | Query Builder v5 (see below) |
 | extraData       | string            | No                  | UI-controlled options (JSON string). Safe to leave "" |
 | createdAt / by, updatedAt / by | — | Server-populated | Do not send |
 
@@ -37,7 +37,7 @@ level has exactly three fields:
 
 PromQL and raw ClickHouse query types (queryType "promql" / "clickhouse_sql",
 entries with type "promql_query" / "clickhouse_query") are **not supported**
-for Explorer saved views — use them in dashboards instead.
+for Explorer saved views; use them in dashboards instead.
 
 **Do not send** legacy v3/v4 fields like ` + "`builder`" + `,
 ` + "`promql`" + `, ` + "`clickhouse_sql`" + ` (as sub-objects at the top level),
@@ -55,7 +55,7 @@ The server rejects them with HTTP 400 "failed to validate request body".
 |--------------|----------|-------|
 | name         | string   | Reference name, e.g. "A" |
 | signal       | string   | Required. MUST match sourcePage for "traces"/"logs"/"metrics". For a "meter" view, signal MUST be "metrics" |
-| source       | string   | Usually "". For a "meter" view it MUST be "meter". Do NOT set "meter" on a "metrics" (or other) sourcePage — Cost Meter views belong on sourcePage "meter" |
+| source       | string   | Usually "". For a "meter" view it MUST be "meter". Do NOT set "meter" on a "metrics" (or other) sourcePage; Cost Meter views belong on sourcePage "meter" |
 | stepInterval | integer  | Seconds per bucket. 0 for list panels, e.g. 60 for graphs |
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |
@@ -72,7 +72,7 @@ The server rejects them with HTTP 400 "failed to validate request body".
   ` + "`sourcePage:\"meter\"`" + ` (its own Explorer page) but is queried as metrics:
   every builder_query spec must set ` + "`\"signal\":\"metrics\"`" + ` AND
   ` + "`\"source\":\"meter\"`" + `. Do not file a Cost Meter view under
-  ` + "`sourcePage:\"metrics\"`" + ` — it will land in the wrong Explorer's list.
+  ` + "`sourcePage:\"metrics\"`" + `; it will land in the wrong Explorer's list.
 - **panelType by intent:** "list" for tabular spans/logs; "graph" for
   time-series; "table" for grouped tables; "value" for a single number.
 - **Discover unknown fields before writing filters.** Call

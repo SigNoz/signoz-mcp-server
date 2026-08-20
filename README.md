@@ -509,7 +509,7 @@ Discover metric names and catalog metadata such as type, temporality, unit, and 
   - `limit` (optional) - Maximum number of metrics to return (default: 50)
   - `timeRange` (optional) - Relative range: 30m, 1h, 6h, 24h, 7d (default: 1h; ignored when both `start` and `end` are provided)
   - `start`/`end` (optional) - Unix ms timestamps. When both are provided, they override `timeRange`.
-  - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
+  - `source` (optional) - Data-source filter. Use `"meter"` to list Cost Meter metrics, the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume); omit for the default metrics store
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) so a `limit`-truncated list is never mistaken for the full set; narrow with `searchText` for more specificity
 
 #### `signoz_query_metrics`
@@ -753,13 +753,13 @@ Permanently delete a confirmed saved Explorer view by UUID. Use `signoz_list_vie
 
 #### `signoz_aggregate_logs`
 
-Return aggregate statistics over logs—counts, rates, averages, percentiles, or grouped/top-N breakdowns—not individual records. Use `signoz_search_logs` for log rows and message inspection.
+Return aggregate statistics over logs (counts, rates, averages, percentiles, or grouped/top-N breakdowns) rather than individual records. Use `signoz_search_logs` for log rows and message inspection.
 
 - **Parameters**:
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
   - `aggregateOn` (optional) - Field to aggregate on (required for all except count and rate)
   - `groupBy` (optional) - Comma-separated fields to group by (e.g., 'service.name, severity_text')
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. Log keys are workspace-specific — even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; ambiguous keys default to resource context. Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Shortcut filter for service name (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `orderBy` (optional) - Order expression and direction (e.g., 'count() desc')
@@ -778,13 +778,13 @@ Return individual paginated log records matching text, service, severity, or fie
 Calls using only `searchText`, `service`, `severity`, time, or pagination parameters need no guide read. Read `signoz://logs/query-builder-guide` only before composing `filter` with unfamiliar workspace fields.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific — even `service.name` is only present when the log pipeline sets it. Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
-  - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
+  - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Offset for pagination (default: 0)
   - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
@@ -827,7 +827,7 @@ Return individual paginated span rows matching service, operation, error, durati
   - `minDuration` / `maxDuration` (optional) - Min/max span duration in nanoseconds (e.g., '500000000' for 500ms)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
-  - `limit` (optional) - Maximum span rows to return (default: 100, max: 10000; higher values are clamped — paginate with `offset`)
+  - `limit` (optional) - Maximum span rows to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Number of span rows to skip (default: 0)
   - **Ordering**: generated raw trace queries use `timestamp desc`.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
@@ -836,7 +836,7 @@ Return individual paginated span rows matching service, operation, error, durati
 
 #### `signoz_aggregate_traces`
 
-Return custom aggregate statistics over spans—counts, rates, latency percentiles, grouped/top-N breakdowns, or time series—not individual rows or a full trace hierarchy. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool.
+Return custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual rows or a full trace hierarchy. For one traced service's built-in operation table ranked by p99, use `signoz_get_service_top_operations`. Read `signoz://traces/query-builder-guide` before calling this tool.
 
 - **Parameters**:
   - `aggregation` (required) - Aggregation function: count, count_distinct, avg, sum, min, max, p50, p75, p90, p95, p99, rate
