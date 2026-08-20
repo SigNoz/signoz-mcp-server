@@ -90,3 +90,14 @@
   refreshing only if state may have changed"). They are hard reading but encode
   reviewed contract semantics with a now-anchored handle; rewording risks drift.
 - CMP-3: grepped agent-skills for every changed string; zero matches. No companion PR.
+
+### 2026-08-21 — README prose pass (user approved the offered follow-up)
+- Rewrote the ~21 remaining README em dashes: unspaced ones (`Irreversible—discover`,
+  `gaps—they do not`, `config—never`) and prose connectors; converted the
+  queryEnvelope definition-list bullets to colon form for consistency with the
+  alert-guide doc links.
+- Kept the two **Option A/B — ...** heading labels: label separators, not prose
+  crutches, same boundary as table columns and markdown headings.
+- Restructured the webUrl deep-links note so the condition (request carries an
+  instance URL) precedes the definition instead of bracketing it in double em dashes.
+- README-only; no client-visible string changed, so no fixture or skills impact.
