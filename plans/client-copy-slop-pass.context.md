@@ -101,3 +101,13 @@
 - Restructured the webUrl deep-links note so the condition (request carries an
   instance URL) precedes the definition instead of bracketing it in double em dashes.
 - README-only; no client-visible string changed, so no fixture or skills impact.
+
+### 2026-08-21 — codified the style as a CLAUDE.md convention
+- Added a **Client-Visible Writing Style** section to CLAUDE.md (mirroring
+  agent-skills PR #85's CONTRIBUTING.md section) so the rules from both passes
+  outlive this PR: banned patterns, the two allowed em-dash separator uses,
+  the concept-handle rule (reword everywhere or not at all; reordering around a
+  pinned handle is fine), the upstream-generated exclusions, and the fixture/budget
+  mechanics. Added a matching bullet to the Documentation & Metadata Sync Checklist.
+- Cleaned CLAUDE.md's own prose em dashes in the same commit so the file follows
+  the rule it states (title heading, quoted examples, and the grep literal remain).
