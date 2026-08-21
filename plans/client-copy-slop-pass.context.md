@@ -111,3 +111,20 @@
   mechanics. Added a matching bullet to the Documentation & Metadata Sync Checklist.
 - Cleaned CLAUDE.md's own prose em dashes in the same commit so the file follows
   the rule it states (title heading, quoted examples, and the grep literal remain).
+
+### 2026-08-21 — review comments + writing-style extraction
+- Extracted the Client-Visible Writing Style section from CLAUDE.md into
+  `docs/client-visible-writing-style.md`. CLAUDE.md now points at that file so
+  the always-loaded conventions stay short; the full rules load only when
+  editing client-facing descriptions, resources, prompts, or instructions.
+- Codex PR comment on rule 7: the writing-pass reorder put "resolve and fetch"
+  before "reuse / do not repeat", which contradicted rule 1. Restored reuse-first
+  wording while keeping the three pinned phrases (`same still-current prepared
+  operation`, `do not repeat them`, `Refresh if state may have changed`).
+- Codex PR comment on `signoz://dashboard/widgets-examples`: remaining prose
+  em dashes on the edited resource (including the top-N limit explanation and
+  example titles) rewritten as colons, semicolons, or parentheses. Zero em dashes
+  remain in that file.
+- Codex PR comment on the Done plan: rewritten to cover later passes (writing
+  craft, README, CLAUDE.md, docs extraction, review-comment fixes) and to list
+  `alerts.go`, `views.go`, `CLAUDE.md`, and `docs/client-visible-writing-style.md`.
