@@ -11,7 +11,7 @@ import (
 func RegisterPrompts(addPrompt func(mcp.Prompt, mcp.PromptHandlerFunc)) {
 	addPrompt(
 		mcp.NewPrompt("debug_service_errors",
-			mcp.WithPromptDescription("Investigate errors for a service — searches error logs, aggregates error traces, and lists top operations."),
+			mcp.WithPromptDescription("Search error logs, aggregate error traces, and list top operations for a service."),
 			mcp.WithArgument("service", mcp.ArgumentDescription("Service name to investigate"), mcp.RequiredArgument()),
 			mcp.WithArgument("timeRange", mcp.ArgumentDescription("Time range to search (e.g., '1h', '6h', '24h'). Defaults to '1h'.")),
 		),
@@ -20,7 +20,7 @@ func RegisterPrompts(addPrompt func(mcp.Prompt, mcp.PromptHandlerFunc)) {
 
 	addPrompt(
 		mcp.NewPrompt("latency_analysis",
-			mcp.WithPromptDescription("Analyze p99 latency for a service — queries latency metrics, aggregates trace durations, and identifies slow operations."),
+			mcp.WithPromptDescription("Query latency metrics, aggregate trace durations, and identify slow operations for a service."),
 			mcp.WithArgument("service", mcp.ArgumentDescription("Service name to analyze"), mcp.RequiredArgument()),
 			mcp.WithArgument("timeRange", mcp.ArgumentDescription("Time range to analyze (e.g., '1h', '6h', '24h'). Defaults to '1h'.")),
 		),
@@ -39,7 +39,7 @@ func RegisterPrompts(addPrompt func(mcp.Prompt, mcp.PromptHandlerFunc)) {
 
 	addPrompt(
 		mcp.NewPrompt("incident_triage",
-			mcp.WithPromptDescription("Triage an active alert — fetches alert details, history, related logs, and traces."),
+			mcp.WithPromptDescription("Triage an active alert by fetching its details, history, related logs, and traces."),
 			mcp.WithArgument("alertId", mcp.ArgumentDescription("Alert rule ID to triage"), mcp.RequiredArgument()),
 		),
 		handleIncidentTriage,
@@ -61,9 +61,9 @@ func handleDebugServiceErrors(_ context.Context, req mcp.GetPromptRequest) (*mcp
 				Content: &mcp.TextContent{
 					Text: fmt.Sprintf(`Investigate errors for the service "%s" over the last %s. Follow these steps:
 
-1. Use signoz_search_logs with service="%s" and severity="ERROR" and timeRange="%s" to find recent error logs. If this fails with `+"`key service.name not found`"+`, this workspace's logs don't carry that attribute — call signoz_get_field_keys(signal="logs", fieldContext="resource") to discover available keys, pick a suitable one (e.g. k8s.deployment.name), confirm the matching value with signoz_get_field_values, and retry — or search without a service filter.
+1. Use signoz_search_logs with service="%s" and severity="ERROR" and timeRange="%s" to find recent error logs. If this fails with `+"`key service.name not found`"+`, this workspace's logs don't carry that attribute. Call signoz_get_field_keys(signal="logs", fieldContext="resource") to discover available keys, pick a suitable one (e.g. k8s.deployment.name), confirm the matching value with signoz_get_field_values, and retry; or search without a service filter.
 2. Use signoz_aggregate_traces with error="true", service="%s", aggregation="count", groupBy="name", timeRange="%s" to see which operations are failing.
-3. Use signoz_get_service_top_operations with service="%s" to understand the service's operation landscape.
+3. Use signoz_get_service_top_operations with service="%s" to see its operations ranked by p99 latency.
 4. Summarize: what errors are occurring, which operations are affected, and what the likely root cause is.`, service, timeRange, service, timeRange, service, timeRange, service),
 				},
 			},

@@ -1,14 +1,14 @@
 package dashboard
 
 const WidgetExamples = `
-Worked v6 (Perses) dashboard examples. Every payload below is a real widget created against a live SigNoz instance and read back (GET), so each field is server-accepted, not guessed. Each block is one panel — the object you place in the spec.panels map under a panel id (shown unkeyed here). Copy the structure, not the literal attribute names.
+Worked v6 (Perses) dashboard examples. Every payload below is a real widget created against a live SigNoz instance and read back (GET), so each field is server-accepted, not guessed. Each block is one panel: the object you place in the spec.panels map under a panel id (shown unkeyed here). Copy the structure, not the literal attribute names.
 
-For the rules behind these — which panel and query type to choose, layout, legends, the one-query-per-panel constraint, and variables — read signoz://dashboard/instructions and signoz://dashboard/widgets-instructions. For the exact field set, use the create/update tool's JSON Schema.
+For the rules behind these (which panel and query type to choose, layout, legends, the one-query-per-panel constraint, and variables), read signoz://dashboard/instructions and signoz://dashboard/widgets-instructions. For the exact field set, use the create/update tool's JSON Schema.
 
 Quick reference (all illustrated below):
 - Aggregations: count(), p50/p95/p99(field), avg/sum/min/max(field). Name a column with the aggregation's "alias" field (NOT "as '...'" inside the expression). Multiple aggregations = multiple entries in the aggregations[] array.
 - Filters: a single filter.expression string. Operators include =, !=, IN, AND, EXISTS. Reference variables as $name (omit the $ and it matches the literal string instead).
-- Result bounds and ordering: give every builder query an explicit positive "limit" and a non-empty "order". An order entry is {"key": {"name": <field-or-aggregation>}, "direction": "asc"|"desc"}. Order raw/list queries by timestamp desc (logs: timestamp desc then id desc); order scalar/time_series (aggregated or grouped) queries by the primary aggregation expression desc, e.g. {"key": {"name": "count()"}, "direction": "desc"}. Use limit 100 for standalone graph/table/pie/value and grouped queries — for time_series it ranks the top N groups over the whole selected window, so a locally significant series can fall outside it. For a formula, each base query it references uses a larger limit (e.g. 10000, since base limits apply before the formula runs) and the formula output orders by "__result" desc; narrow filters/grouping when formula-input cardinality can exceed that.
+- Result bounds and ordering: give every builder query an explicit positive "limit" and a non-empty "order". An order entry is {"key": {"name": <field-or-aggregation>}, "direction": "asc"|"desc"}. Order raw/list queries by timestamp desc (logs: timestamp desc then id desc); order scalar/time_series (aggregated or grouped) queries by the primary aggregation expression desc, e.g. {"key": {"name": "count()"}, "direction": "desc"}. Use limit 100 for standalone graph/table/pie/value and grouped queries; for time_series it ranks the top N groups over the whole selected window, so a locally significant series can fall outside it. For a formula, each base query it references uses a larger limit (e.g. 10000, because base limits apply before the formula runs) and the formula output orders by "__result" desc; narrow filters/grouping when formula-input cardinality can exceed that.
 
 === EXAMPLES ===
 
@@ -16,7 +16,7 @@ Quick reference (all illustrated below):
 
 Example: Token Usage (Timeseries with a formula over disabled base queries)
 
-A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token-usage"); a layout item links to it via content.$ref. It is a signoz/TimeSeriesPanel whose signoz/CompositeQuery sums prompt + completion tokens: two builder_query entries (A, B) marked "disabled": true and a builder_formula F1 ("A + B") left enabled, so only the summed series renders (the pattern for any computed series). Filters reference $service_name / $language / $llm_model, which are DynamicVariables declared at the dashboard level — see signoz://dashboard/instructions for variable wiring.
+A single widget: one entry from spec.panels (keyed by a panel id, e.g. "token-usage"); a layout item links to it via content.$ref. It is a signoz/TimeSeriesPanel whose signoz/CompositeQuery sums prompt + completion tokens: two builder_query entries (A, B) marked "disabled": true and a builder_formula F1 ("A + B") left enabled, so only the summed series renders (the pattern for any computed series). Filters reference $service_name / $language / $llm_model, which are DynamicVariables declared at the dashboard level (see signoz://dashboard/instructions for variable wiring).
 
 {
   "kind": "Panel",
@@ -72,9 +72,9 @@ A single widget — one entry from spec.panels (keyed by a panel id, e.g. "token
   }
 }
 
-Example: Latency (P95) (single builder query — direct, no CompositeQuery)
+Example: Latency (P95) (single builder query: direct, no CompositeQuery)
 
-A timeseries widget with just one query and no formula, so the panel's single query sets its plugin directly to signoz/BuilderQuery — no signoz/CompositeQuery wrapper (contrast Example 1, which uses CompositeQuery to combine two builder queries + a formula). Shows a p95(duration_nano) aggregation with an alias, a static per-query legend ("P95"), and the y-axis unit via the panel plugin's formatting.unit ("ns"). Filters reference the same dashboard-level DynamicVariables as Example 1.
+A timeseries widget with just one query and no formula, so the panel's single query sets its plugin directly to signoz/BuilderQuery, not a signoz/CompositeQuery wrapper (contrast Example 1, which uses CompositeQuery to combine two builder queries + a formula). Shows a p95(duration_nano) aggregation with an alias, a static per-query legend ("P95"), and the y-axis unit via the panel plugin's formatting.unit ("ns"). Filters reference the same dashboard-level DynamicVariables as Example 1.
 
 {
   "kind": "Panel",
@@ -107,9 +107,9 @@ A timeseries widget with just one query and no formula, so the panel's single qu
   }
 }
 
-Example: Number of Requests (single builder query with groupBy — per-series legend)
+Example: Number of Requests (single builder query with groupBy: per-series legend)
 
-A timeseries widget that groups a count() of trace spans by the service.name resource attribute, so each service renders as its own line. Like Example 2 it has a single query and no formula, so the query's plugin is signoz/BuilderQuery directly (no signoz/CompositeQuery wrapper). The groupBy entry uses "name" (the v6 field — NOT the old "key") alongside fieldContext/fieldDataType/signal, and legend "{{service.name}}" templates each series label from that groupBy key (set legend whenever a series-producing panel has a groupBy, else SigNoz shows raw query ids). The filter combines dashboard-level DynamicVariables ($service_name / $language / $llm_model) with a static condition (llm.provider = 'anthropic'). Legend sits at the bottom via the panel plugin; y-axis unit and soft min/max are left to server defaults.
+A timeseries widget that groups a count() of trace spans by the service.name resource attribute, so each service renders as its own line. Like Example 2 it has a single query and no formula, so the query's plugin is signoz/BuilderQuery directly (no signoz/CompositeQuery wrapper). The groupBy entry uses "name" (the v6 field, not the old "key") alongside fieldContext/fieldDataType/signal, and legend "{{service.name}}" templates each series label from that groupBy key (set legend whenever a series-producing panel has a groupBy, else SigNoz shows raw query ids). The filter combines dashboard-level DynamicVariables ($service_name / $language / $llm_model) with a static condition (llm.provider = 'anthropic'). Legend sits at the bottom via the panel plugin; y-axis unit and soft min/max are left to server defaults.
 
 {
   "kind": "Panel",
@@ -145,7 +145,7 @@ A timeseries widget that groups a count() of trace spans by the service.name res
 
 --- list Widgets ---
 
-Example: Errors (list panel — raw trace rows, newest first)
+Example: Errors (list panel: raw trace rows, newest first)
 
 A list widget rendering raw error spans with no aggregation: the panel plugin is signoz/ListPanel and the query's request type is "raw" (not time_series). selectFields on the ListPanel spec defines the displayed columns; the raw builder query selects the same fields, filters has_error together with the $service_name DynamicVariable, orders by timestamp desc, and caps rows with limit (the old "pageSize"). The old columnWidths / selectedLogFields / soft min-max / yAxisUnit have no v6 equivalent here and are dropped.
 
@@ -193,7 +193,7 @@ A list widget rendering raw error spans with no aggregation: the panel plugin is
   }
 }
 
-Example: Errors (list panel — same shape, structured filter collapsed to an expression)
+Example: Errors (list panel: same shape, structured filter collapsed to an expression)
 
 Identical in structure to the previous list example. Worth noting: the v1 source carried BOTH a free-text filter and a structured filters.items block; v6 has only filter.expression, so the two conditions (has_error and the $service_name DynamicVariable) collapse into one expression. Display columns and the raw query mirror the previous example.
 
@@ -241,9 +241,9 @@ Identical in structure to the previous list example. Worth noting: the v1 source
   }
 }
 
-Example: Logs (list panel on the logs signal — multi-key ordering)
+Example: Logs (list panel on the logs signal: multi-key ordering)
 
-A list widget over logs rather than traces: signal is "logs" and selectFields use fieldContext "log" (timestamp, body). The raw query orders by two keys — timestamp desc then id desc — to keep ordering stable when timestamps tie. Filter references the $service_name DynamicVariable (declared with signal "logs" so its dropdown derives from log data).
+A list widget over logs rather than traces: signal is "logs" and selectFields use fieldContext "log" (timestamp, body). The raw query orders by two keys (timestamp desc then id desc) to keep ordering stable when timestamps tie. Filter references the $service_name DynamicVariable (declared with signal "logs" so its dropdown derives from log data).
 
 {
   "kind": "Panel",
@@ -288,9 +288,9 @@ A list widget over logs rather than traces: signal is "logs" and selectFields us
 
 --- pie Widgets ---
 
-Example: Model Distribution (pie panel — scalar count grouped by an attribute)
+Example: Model Distribution (pie panel: scalar count grouped by an attribute)
 
-A pie widget showing each model's share of requests. The panel plugin is signoz/PieChartPanel and the query's request type is "scalar" (one aggregated value per group — contrast time_series for graphs and raw for lists). count() is grouped by the llm.model_name attribute (fieldContext "attribute" — the v6 mapping of the old "tag" type), and legend "{{llm.model_name}}" labels each slice. The filter keeps the $service_name DynamicVariable plus static llm.provider and an EXISTS guard so requests without a model name are excluded (the v1 source had a duplicated/garbled EXISTS that collapses to one).
+A pie widget showing each model's share of requests. The panel plugin is signoz/PieChartPanel and the query's request type is "scalar" (one aggregated value per group; contrast time_series for graphs and raw for lists). count() is grouped by the llm.model_name attribute (fieldContext "attribute", the v6 mapping of the old "tag" type), and legend "{{llm.model_name}}" labels each slice. The filter keeps the $service_name DynamicVariable plus static llm.provider and an EXISTS guard so requests without a model name are excluded (the v1 source had a duplicated/garbled EXISTS that collapses to one).
 
 {
   "kind": "Panel",
@@ -324,7 +324,7 @@ A pie widget showing each model's share of requests. The panel plugin is signoz/
   }
 }
 
-Example: Model Distribution (pie panel — different grouping attribute)
+Example: Model Distribution (pie panel: different grouping attribute)
 
 Same pie shape as the previous example, but Autogen records the model under the gen_ai.request.model attribute, so both the groupBy key and the legend template change accordingly. Filter keeps $service_name and an EXISTS guard on the grouping attribute.
 
@@ -360,9 +360,9 @@ Same pie shape as the previous example, but Autogen records the model under the 
   }
 }
 
-Example: Model Distribution (pie panel — Azure OpenAI, same llm.model_name attribute)
+Example: Model Distribution (pie panel: Azure OpenAI, same llm.model_name attribute)
 
-Same pie shape again. Azure OpenAI also records the model under llm.model_name, so this matches the Anthropic example minus the provider-specific static filter — just $service_name plus an EXISTS guard on llm.model_name.
+Same pie shape again. Azure OpenAI also records the model under llm.model_name, so this matches the Anthropic example minus the provider-specific static filter: just $service_name plus an EXISTS guard on llm.model_name.
 
 {
   "kind": "Panel",
@@ -398,7 +398,7 @@ Same pie shape again. Azure OpenAI also records the model under llm.model_name, 
 
 --- table Widgets ---
 
-Example: Services and Languages (table panel — multi-key groupBy, aliased aggregation, no variables)
+Example: Services and Languages (table panel: multi-key groupBy, aliased aggregation, no variables)
 
 A table widget counting spans per (service.name, SDK language) pair. The panel plugin is signoz/TablePanel and the query's request type is "scalar". The single aggregation carries an alias via the {expression, alias} object (count() → "Count of Spans") instead of the v1 "count() as '…'" string. groupBy lists both columns; the old "isColumn" flag has no v6 equivalent and is dropped. This panel takes no dashboard variables.
 
@@ -436,7 +436,7 @@ A table widget counting spans per (service.name, SDK language) pair. The panel p
   }
 }
 
-Example: Agents (table panel — two aggregations in one query + column units)
+Example: Agents (table panel: two aggregations in one query + column units)
 
 A table widget with two aggregations per row: count() aliased "Requests" and avg(duration_nano) aliased "Latency". In v6 these are TWO entries in the aggregations array (the v1 source crammed both into one "… as … … as …" string). Column units live under the panel plugin's formatting.columnUnits, keyed by the aggregation ALIAS ("Latency": "ns"). groupBy is the gen_ai.agent.name attribute, and the filter combines $service_name with EXISTS and an operation guard.
 
@@ -474,7 +474,7 @@ A table widget with two aggregations per row: count() aliased "Requests" and avg
   }
 }
 
-Example: Tools (table panel — same two-aggregation shape, tool dimension)
+Example: Tools (table panel: same two-aggregation shape, tool dimension)
 
 Same table shape as Agents. Autogen records tool calls under the gen_ai.tool.name attribute and the operation gen_ai.operation.name = 'execute_tool', so only the groupBy key and the filter's EXISTS/operation conditions change; the two aliased aggregations and the "Latency": "ns" column unit are identical.
 
@@ -514,7 +514,7 @@ Same table shape as Agents. Autogen records tool calls under the gen_ai.tool.nam
 
 --- value Widgets ---
 
-Example: Input Tokens (value panel — single scalar aggregation)
+Example: Input Tokens (value panel: single scalar aggregation)
 
 A value/KPI widget reducing a series to one number. The panel plugin is signoz/NumberPanel and the query's request type is "scalar". A single sum(llm.token_count.prompt) aggregation, filtered by the three DynamicVariables ($service_name / $language / $llm_model). No legend or unit needed (count of tokens is unitless).
 
@@ -548,7 +548,7 @@ A value/KPI widget reducing a series to one number. The panel plugin is signoz/N
   }
 }
 
-Example: Output Tokens (value panel — same shape, completion tokens)
+Example: Output Tokens (value panel: same shape, completion tokens)
 
 Identical to the Input Tokens value panel, summing llm.token_count.completion instead of llm.token_count.prompt. Same NumberPanel, scalar request type, and the same three DynamicVariables in the filter.
 
@@ -582,7 +582,7 @@ Identical to the Input Tokens value panel, summing llm.token_count.completion in
   }
 }
 
-Example: Error Rate (value panel — composite query with a ratio formula)
+Example: Error Rate (value panel: composite query with a ratio formula)
 
 A value widget computing errored ÷ total as a single percentage. Because it combines two queries with a formula, the query uses signoz/CompositeQuery (like the Token Usage graph): builder_query A (errored, disabled) and B (non-errored, disabled), plus builder_formula F1 = "A / (A + B)" left enabled so only the ratio renders. The panel is a signoz/NumberPanel with formatting.unit "percentunit". has_error is a boolean, so the filters use unquoted true/false.
 

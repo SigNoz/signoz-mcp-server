@@ -18,12 +18,12 @@ plans/
 2. **After each brainstorm exchange**, append a dated entry to the discussion log in `.context.md`.
 3. **When the plan changes**, rewrite the relevant section in `.plan.md` and note the change with a dated entry in `.context.md`.
 4. **Mark open questions as resolved** (with the answer inline) when they are settled in discussion.
-5. **The discussion log in `.context.md` is append-only** — never rewrite or delete prior log entries; it is the audit trail of why decisions were made. Only the Open Questions checklist may be updated in place (rule 4).
-6. **`.plan.md` is rewritten freely** — it always reflects current thinking, not history.
+5. **The discussion log in `.context.md` is append-only**: never rewrite or delete prior log entries; it is the audit trail of why decisions were made. Only the Open Questions checklist may be updated in place (rule 4).
+6. **`.plan.md` is rewritten freely**: it always reflects current thinking, not history.
 7. Add a `## Status` line at the top of every `.plan.md`:
-   - `Planning` — actively being designed
-   - `In Progress` — implementation underway
-   - `Done` — shipped
+   - `Planning`: actively being designed
+   - `In Progress`: implementation underway
+   - `Done`: shipped
 
 File templates for both files live in `plans/TEMPLATES.md`.
 
@@ -39,6 +39,10 @@ File templates for both files live in `plans/TEMPLATES.md`.
 
 - Avoid long inline code comments unless needed; keep comments concise and non-redundant.
 
+## Client-Visible Writing Style
+
+When editing tool or parameter descriptions, `signoz://` resources, prompts, server instructions, or `manifest.json` descriptions, follow [`docs/client-visible-writing-style.md`](docs/client-visible-writing-style.md). Skip it for code, tests, and internal docs.
+
 ## Local Verification
 
 - Tests: `go test ./...` (`make test` runs them verbose).
@@ -50,7 +54,7 @@ File templates for both files live in `plans/TEMPLATES.md`.
 Changes to client-visible MCP surfaces must follow `docs/mcp-best-practices.md`
 and its section 11 review checklist. Deterministic budgets and CI mechanics stay
 in `guardrails/README.md`. The companion **SigNoz/agent-skills** repo depends on
-these contracts — audit it on every contract change (CMP-3; see the sync
+these contracts; audit it on every contract change (CMP-3; see the sync
 checklist below).
 
 ## Guardrail Changes
@@ -67,16 +71,17 @@ When adding, removing, renaming, or otherwise changing a client-visible MCP tool
 - Update `README.md` tool tables/parameter references to match current behavior.
 - Update `manifest.json` tool metadata (`tools`, descriptions, and related fields) to match registered handlers.
 - Review any user-facing docs under `docs/` for stale references.
-- The companion **SigNoz/agent-skills** repo depends on this server's tool contracts. Apply CMP-3 in `docs/mcp-best-practices.md`: state in the PR summary whether agent-skills needs a companion change, and link that PR when needed. Changes to the contract skills teach (a renamed/removed tool or parameter, payload shape, documented behavior — like the `query`→`filter` rename) require a skills update; additive or internal changes do not.
+- The companion **SigNoz/agent-skills** repo depends on this server's tool contracts. Apply CMP-3 in `docs/mcp-best-practices.md`: state in the PR summary whether agent-skills needs a companion change, and link that PR when needed. Changes to the contract skills teach (a renamed/removed tool or parameter, payload shape, documented behavior, like the `query`→`filter` rename) require a skills update; additive or internal changes do not.
+- New or edited client-visible text follows [`docs/client-visible-writing-style.md`](docs/client-visible-writing-style.md).
 - Mention these doc updates explicitly in the PR summary.
 
 ## End-to-End / Live Verification
 
-Verifying against a live SigNoz instance — creating/reading/updating/deleting real alerts, dashboards, or views, or any multi-step API probing with credentials — should be delegated to a subagent (Agent tool), not run inline. The subagent must: delete every resource it creates and confirm it's gone; never print or persist credentials; report which fields round-tripped server-side; and prefer copying an existing resource's shape over hand-crafting one.
+Verifying against a live SigNoz instance (creating/reading/updating/deleting real alerts, dashboards, or views, or any multi-step API probing with credentials) should be delegated to a subagent (Agent tool), not run inline. The subagent must: delete every resource it creates and confirm it's gone; never print or persist credentials; report which fields round-tripped server-side; and prefer copying an existing resource's shape over hand-crafting one.
 
 ## Testing across external contracts
 
-This server consumes the SigNoz backend / query-builder (QB) API upstream and produces tool outputs that MCP clients consume downstream. Fixture-based unit tests only prove our code matches our *assumption* of those contracts — they do not catch upstream drift (a renamed field, a changed QB envelope, a new output shape). For any code that parses an upstream response or shapes a tool output:
+This server consumes the SigNoz backend / query-builder (QB) API upstream and produces tool outputs that MCP clients consume downstream. Fixture-based unit tests only prove our code matches our *assumption* of those contracts; they do not catch upstream drift (a renamed field, a changed QB envelope, a new output shape). For any code that parses an upstream response or shapes a tool output:
 
 - **Test against reality where you can.** Beyond fixtures, add a periodic/integration test against a live SigNoz instance (or a recorded real response) so upstream drift fails a test, not a user.
 - **When tests can't catch it, observability must.** Add a metric or WARN log that fires when the contract appears violated. Silent degradation that no test and no signal can catch is the failure mode to design against.

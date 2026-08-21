@@ -1,7 +1,7 @@
 package dashboard
 
 const WidgetsInstructions = `
-Conceptual guidance only: WHICH query type and panel type to choose, and how to think about legends and layout. For the exact JSON shape — the panels map, plugin 'kind's, layouts, and variables — see signoz://dashboard/instructions and the create/update tool's JSON Schema.
+Conceptual guidance only: WHICH query type and panel type to choose, and how to think about legends and layout. For the exact JSON shape (the panels map, plugin 'kind's, layouts, and variables), see signoz://dashboard/instructions and the create/update tool's JSON Schema.
 
 Query Type Selection [CRITICAL]:
 Choose the appropriate query type based on your data source and requirements:
@@ -28,7 +28,7 @@ Choose the appropriate query type based on your data source and requirements:
    - Supports: Metrics only
    - When to use: Prometheus migration, metric-specific operations, OpenTelemetry metrics with dots in names
    - Required: Must follow new format syntax (wrap metric names in curly braces, quote names with dots)
-   - Reference: Read signoz://promql/instructions — covers the Prometheus 3.x UTF-8 quoted-selector form for dotted OTel names, anti-pattern table, dotted labels in by()/on()/ignoring(), and common patterns by metric type.
+   - Reference: Read signoz://promql/instructions, which covers the Prometheus 3.x UTF-8 quoted-selector form for dotted OTel names, anti-pattern table, dotted labels in by()/on()/ignoring(), and common patterns by metric type.
 
 Selection Guidelines:
 - Start with Query Builder for simplicity and maintainability
@@ -48,7 +48,7 @@ Field Discovery:
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
 One query per panel [CRITICAL]:
-A panel holds exactly ONE query. Putting more than one fails backend validation (not caught by the JSON Schema): "panel must have one query". To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery — each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery — simpler and equivalent; reserve CompositeQuery for combining multiple builder queries and/or formulas.
+A panel holds exactly ONE query. Putting more than one fails backend validation (not caught by the JSON Schema): "panel must have one query". To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery, with each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery; it is simpler and equivalent. Reserve CompositeQuery for combining multiple builder queries and/or formulas.
 
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
@@ -73,61 +73,60 @@ Panel/widgets types in dashboards [CRITICAL]:
 
 Layout (concepts):
 - Panels sit on a column-based grid: each panel has a position (where it starts) and a size (how wide and tall it is).
-- Give charts with legends enough height that the legend stays fully visible — treat legend space as a vertical requirement.
+- Give charts with legends enough height that the legend stays fully visible; treat legend space as a vertical requirement.
 - Keep consistent sizing within a row of similar panels, group related panels together, and don't let panels overlap.
 - Use full width for tables and wide timeseries; split a row for side-by-side comparisons.
 - For the exact layout fields and how a panel links to its grid position, see signoz://dashboard/instructions and this tool's JSON Schema.
 
 Bar chart panel [CRITICAL]:
-Note: This panel is best used when you need to compare discrete categories (e.g. service names, status codes) or track count/metric values over categories in an easy-to-read manner.
+Best for: comparing discrete categories (e.g. service names, status codes), or tracking count/metric values across categories.
 - Bar Chart displays frequency or aggregated values for one or more categories over time or across categories.
 - It supports data from logs, traces, or metrics.
 - You can configure the Y-axis unit, and optionally set "Soft Min/Max" to control vertical scale so small values aren't exaggerated.
-- You can add thresholds to highlight important limits: SigNoz colors the threshold label or tints the panel background when the condition holds — it does NOT support a Grafana-style line marker.
+- You can add thresholds to highlight important limits. SigNoz colors the threshold label or tints the panel background when the condition holds. It does NOT support a Grafana-style line marker.
 
 Histogram panel [CRITICAL]:
-Note: This panel is best used to understand distribution patterns, detect skew, and analyze how values cluster across ranges.
-- Histogram displays frequency distribution by grouping numeric values into buckets, revealing shape, spread, and skew of the data.
+Best for: distribution patterns, skew, and how values cluster across ranges.
+- Histogram groups numeric values into buckets and displays the frequency distribution, so you can see shape, spread, and skew.
 - It supports time-series inputs from logs, traces, or metrics.
 - Each bar represents a numeric range rather than a discrete category; bucket count controls bin granularity, and bin width is auto-calculated unless overridden.
 - Multiple series can be plotted separately or merged into a single aggregated histogram using the "merge all series into one" option.
 - Configuration allows controlling number of buckets, bucket width, and series-merging behavior.
 
 List chart panel [CRITICAL]:
-Note: This panel is best used when the goal is to surface unaggregated events—such as errors, warnings, or individual spans—in a compact, navigable format.
+Best for: unaggregated events such as errors, warnings, or individual spans.
 - List Chart displays raw values as a scrollable list, ideal for presenting log lines or spans directly in a dashboard panel.
 - It supports logs and traces, rendering each entry as an item in a continuous, searchable list.
 - The panel provides infinite scrolling and built-in search for rapid inspection.
 - No additional configuration options are available.
 
 Pie chart panel [CRITICAL]:
-Note: This panel is best used when you need to visualize categorical proportions—such as request distribution across services—in a compact, high-level breakdown.
+Best for: categorical proportions, such as request distribution across services.
 - Pie Chart displays proportional composition across categories, showing how a whole is divided among a small set of groups.
 - It supports time-series inputs from logs, traces, or metrics.
-- Each slice represents a category's share of the total, making relative comparison straightforward when category count is low.
+- Each slice represents a category's share of the total. Relative comparison is easiest when the category count is low.
 - The panel has no configuration options.
 
 Table panel [CRITICAL]:
-Note: This panel is best used when detailed numeric inspection, multi-field comparison, or exact value visibility is required.
+Best for: detailed numeric inspection, multi-field comparison, and exact values.
 - Table displays data in a structured, row-and-column format, suitable for inspecting exact values across multiple fields.
 - It supports time-series outputs from logs, traces, or metrics.
-- Each column represents a field or aggregation, allowing precise comparison not feasible in graphical panels.
+- Each column represents a field or aggregation, so you can compare exact values that graphical panels cannot show.
 - Configuration supports assigning column units to render numeric values in readable formats (e.g., bytes, durations).
 
 Timeseries panel [CRITICAL]:
-Note: This panel is best used for any metric whose meaning depends on temporal evolution—throughput, latency, error rate, resource consumption, saturation, or any continuous operational signal.
+Best for: any metric whose meaning depends on change over time, such as throughput, latency, error rate, resource consumption, or saturation.
 - Timeseries Chart plots values against time to reveal trends, seasonality, spikes, degradations, and long-term patterns.
-- It supports any time-series output derived from logs, traces, or metrics, making it the primary panel for operational and performance timelines.
-- It renders each series as a continuous line, enabling comparison across services, endpoints, or resource metrics.
+- It supports any time-series output derived from logs, traces, or metrics, and is the primary panel for operational and performance timelines.
+- It renders each series as a continuous line, so you can compare services, endpoints, or resource metrics.
 - Fill Gaps converts missing timestamps into zeros, useful when sparse data must be interpreted as absence of activity rather than missing samples.
 - Y-axis Unit formats numerical values for readability and domain correctness (bytes, durations, percentages, counts).
-- Soft Min/Max constrains the y-axis so small fluctuations aren't visually amplified or drowned out, stabilizing interpretation across charts.
-- Thresholds highlight limits, SLOs, warning levels, or expected baselines: SigNoz colors the threshold label or tints the panel background — it does NOT render a horizontal line at the threshold value.
+- Soft Min/Max constrains the y-axis so small fluctuations aren't visually amplified or drowned out.
+- Thresholds highlight limits, SLOs, warning levels, or expected baselines. SigNoz colors the threshold label or tints the panel background. It does NOT render a horizontal line at the threshold value.
 
 Value panel [CRITICAL]:
-- Value Panel reduces a time series to a single representative number, exposing a point-in-time or aggregated metric such as current throughput, average latency, error count, or any computed summary.
+Best for: top-level KPIs, summary statistics, or health indicators where only the final aggregated value matters, not the trend.
+- Value Panel reduces a time series to a single number, such as current throughput, average latency, or error count.
 - It supports logs, traces, and metrics, as long as the underlying data can be aggregated into one value.
-- It surfaces high-salience indicators that benefit from immediate readability, functioning as a KPI-style snapshot.
 - Configuration requires selecting the signal type, selecting the metric/log/trace source, and defining the reduction function that collapses the series into a single output.
-  This panel is best used for top-level KPIs, summary statistics, or health indicators where only the final aggregated value—not the trend—is required.
 `

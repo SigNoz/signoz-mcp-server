@@ -10,7 +10,7 @@ const ServerInstructions = `Use SigNoz tools to investigate metrics, logs, trace
 
 1. **Query once when possible.** Fetch more only if the first result is insufficient or the user asks. Never repeat overlapping queries.
 
-2. **Prefer resource attributes in filters.** Use service.name, k8s.namespace.name, or host.name when available. If none was supplied, call signoz_get_field_keys with fieldContext=resource, optionally signoz_get_field_values, then ask the user to choose. Keys vary by workspace/signal; logs may lack standard resource fields. On "key not found", discover valid keys, then retry with an existing key or remove that condition—never retry the invalid filter.
+2. **Prefer resource attributes in filters.** Use service.name, k8s.namespace.name, or host.name when available. If none was supplied, call signoz_get_field_keys with fieldContext=resource, optionally signoz_get_field_values, then ask the user to choose. Keys vary by workspace/signal; logs may lack standard resource fields. On "key not found", discover valid keys, then retry with an existing key or remove that condition. Never retry the invalid filter.
 
 3. **Match operators to intent and type.** Use EXISTS/NOT EXISTS for presence, = for exact matches, IN/NOT IN for sets, and LIKE/ILIKE/CONTAINS/REGEXP for string patterns. int64 also supports >, >=, <, and <=; bool supports =, !=, EXISTS, and NOT EXISTS.
 

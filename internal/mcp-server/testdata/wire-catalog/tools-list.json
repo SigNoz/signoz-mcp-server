@@ -22,7 +22,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants aggregate statistics over logs—counts, rates, averages, percentiles, or grouped/top-N breakdowns—not individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so read signoz://logs/query-builder-guide and discover unfamiliar keys with signoz_get_field_keys. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants aggregate statistics over logs (counts, rates, averages, percentiles, or grouped/top-N breakdowns) rather than individual log records. Use signoz_search_logs for log rows and message inspection; use signoz_execute_builder_query only for queries this tool cannot express. Log fields are workspace-specific, so read signoz://logs/query-builder-guide and discover unfamiliar keys with signoz_get_field_keys. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregateOn": {
@@ -41,7 +41,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific — logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\". Combined with service/severity params using AND.",
+                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\". Combined with service/severity params using AND.",
                 "type": "string"
               },
               "groupBy": {
@@ -74,7 +74,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Shortcut filter for service name. Equivalent to adding service.name = '\u003cvalue\u003e' to filter. Fails with `key service.name not found` when this workspace's logs lack that attribute — then discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
+                "description": "Shortcut filter for service name. Equivalent to adding service.name = '\u003cvalue\u003e' to filter. Fails with `key service.name not found` when this workspace's logs lack that attribute; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
                 "type": "string"
               },
               "severity": {
@@ -115,7 +115,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants custom aggregate statistics over spans—counts, rates, latency percentiles, grouped/top-N breakdowns, or time series—not individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans or trace-ID discovery, and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants custom aggregate statistics over spans (counts, rates, latency percentiles, grouped/top-N breakdowns, or time series) rather than individual span rows or a full trace hierarchy. For the built-in operation table for one traced service, ranked by p99, use signoz_get_service_top_operations. Use signoz_search_traces for raw spans or trace-ID discovery, and signoz_get_trace_details for one known trace ID. Before calling, read signoz://traces/query-builder-guide; discover unfamiliar workspace fields with signoz_get_field_keys. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "aggregateOn": {
@@ -3451,7 +3451,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views, which use signoz_delete_view.",
+          "description": "Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views; delete those with signoz_delete_view.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -3501,7 +3501,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards, which use signoz_delete_dashboard.",
+          "description": "Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -3752,7 +3752,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse summaries or curated templates; use signoz_list_dashboards or signoz_list_dashboard_templates respectively.",
+          "description": "Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse: signoz_list_dashboards lists tenant summaries and signoz_list_dashboard_templates lists curated templates.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -5010,7 +5010,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants current firing, silenced, or inhibited Alertmanager alert instances and their state, severity, timing, and rule IDs. Do not use it for configured rules or history: use signoz_list_alert_rules for rule summaries, signoz_get_alert for one definition, or signoz_get_alert_history for its timeline. Filter by alert labels, state, or receiver before paginating.",
+          "description": "Use this when the user wants current firing, silenced, or inhibited Alertmanager alert instances and their state, severity, timing, and rule IDs. Do not use it for configured rules or history: use signoz_list_alert_rules for rule summaries, signoz_get_alert for one definition, or signoz_get_alert_history for one rule's timeline. Filter by alert labels, state, or receiver before paginating.",
           "inputSchema": {
             "properties": {
               "active": {
@@ -5231,7 +5231,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user needs to discover metric names or inspect catalog metadata such as type, temporality, unit, and monotonicity. It lists metrics active in the requested window; searchText filters names by substring. Do not use it for metric values or trends—use signoz_query_metrics, which can query a known exact name directly and auto-fetch missing metadata. Use source=\"meter\" only for Cost Meter metrics. Results have a limit but no offset pagination, so narrow the search if the cap is reached.",
+          "description": "Use this when the user needs to discover metric names or inspect catalog metadata such as type, temporality, unit, and monotonicity. It lists metrics active in the requested window; searchText filters names by substring. Do not use it for metric values or trends; use signoz_query_metrics, which can query a known exact name directly and auto-fetch missing metadata. Use source=\"meter\" only for Cost Meter metrics. Results have a limit but no offset pagination, so narrow the search if the cap is reached.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -5258,7 +5258,7 @@
                 "type": "string"
               },
               "source": {
-                "description": "Optional data-source filter. Use \"meter\" to list Cost Meter metrics — the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume). Omit for the default SigNoz metrics store.",
+                "description": "Optional data-source filter. Use \"meter\" to list Cost Meter metrics, the usage/billing metrics SigNoz meters on (currently telemetry ingestion volume). Omit for the default SigNoz metrics store.",
                 "type": "string"
               },
               "start": {
@@ -5433,7 +5433,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /spec/variables/0, /tags/-. Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable) — it is far cheaper than rebuilding the full dashboard. Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
+          "description": "Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /spec/variables/0, /tags/-. Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable); it is far cheaper than rebuilding the full dashboard. Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
           "inputSchema": {
             "$defs": {
               "DashboardtypesJSONPatchOperation": {
@@ -5509,7 +5509,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants metric values, trends, breakdowns, or formulas. It returns scalar or time-series results, applies metric-aware aggregation defaults, and reports the decisions used. If the exact metricName is known, call this directly: when metricType is omitted, type, temporality, and monotonicity are auto-fetched together. Use signoz_list_metrics only to discover names or inspect catalog metadata; use signoz_execute_builder_query for complex multi-query requests this tool cannot express. Standalone and formula results use top 100; formula inputs use 10000, and grouped time-series top-N is ranked over the whole window. Read signoz://metrics-aggregation-guide for rules and examples.",
+          "description": "Use this when the user wants metric values, trends, breakdowns, or formulas. It returns scalar or time-series results, applies metric-aware aggregation defaults, and reports the decisions used. If the exact metricName is known, call this directly: when metricType is omitted, type, temporality, and monotonicity are auto-fetched together. Use signoz_list_metrics only to discover names or inspect catalog metadata; use signoz_execute_builder_query for complex multi-query requests this tool cannot express. Standalone and formula results are capped at the top 100; formula inputs at 10000. Grouped time-series top-N is ranked over the whole window. Read signoz://metrics-aggregation-guide for rules and examples.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -5732,12 +5732,12 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific — logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\".",
+                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\".",
                 "type": "string"
               },
               "limit": {
                 "default": "100",
-                "description": "Maximum number of logs to return (default: 100, max: 10000; higher values are clamped — paginate with offset)",
+                "description": "Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with offset)",
                 "type": [
                   "integer",
                   "string"
@@ -5760,7 +5760,7 @@
                 "type": "string"
               },
               "service": {
-                "description": "Optional service name to filter by (adds service.name = '\u003cvalue\u003e'). Fails with `key service.name not found` when this workspace's logs lack that attribute — then discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
+                "description": "Optional service name to filter by (adds service.name = '\u003cvalue\u003e'). Fails with `key service.name not found` when this workspace's logs lack that attribute; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.",
                 "type": "string"
               },
               "severity": {
@@ -5815,7 +5815,7 @@
               },
               "limit": {
                 "default": "100",
-                "description": "Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped — paginate with offset).",
+                "description": "Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).",
                 "type": [
                   "integer",
                   "string"
