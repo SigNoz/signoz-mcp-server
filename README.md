@@ -438,6 +438,8 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_delete_view` | Permanently delete a confirmed saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
 | `signoz_search_logs` | Return individual log records matching filters |
+| `signoz_list_log_pipelines` | List log-ingestion pipeline summaries, run order, and deploy status |
+| `signoz_get_log_pipeline` | Get one log pipeline's full filter and operator chain by `id` or `name` |
 | `signoz_aggregate_traces` | Aggregate span statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return individual span rows or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
@@ -789,6 +791,27 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
   - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's logs metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
+
+#### `signoz_list_log_pipelines`
+
+List the log-ingestion pipelines configured on this workspace, one summary row per pipeline, so you can see which pipelines exist, whether each is enabled, and in what order they run. The response also carries the agent config `version` and `deployStatus` it was read from, so a summary always identifies which configuration version you are looking at. Operator chains and filters are deliberately omitted to keep listing cheap — use `signoz_get_log_pipeline` for one pipeline's complete processor definition.
+
+- **Parameters**:
+  - `enabledOnly` (optional) - When true, return only pipelines whose `enabled` flag is true. Default: false. Filtering is applied before pagination.
+  - `limit` (optional) - Maximum pipeline summaries per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Number of pipeline summaries to skip (default: 0; use `pagination.nextOffset` for the next page)
+  - **Summary fields**: `id`, `name`, `alias`, `enabled`, `orderId`, `description`, and `operatorCount` (how many operators the chain has)
+  - **Version context**: top-level `version` and `deployStatus`, plus `pipelinesFieldPresent` — `false` signals the upstream response no longer had a recognizable `pipelines` array, which distinguishes an upstream shape change from a workspace with genuinely zero pipelines
+
+#### `signoz_get_log_pipeline`
+
+Get one log-ingestion pipeline's complete definition: its full `filter` (which logs it applies to) and its ordered `config` operator chain — regex/JSON/Grok parsers, severity and timestamp parsing, add/remove/move, routers, and their `if` conditions and `on_error` settings. SigNoz has no fetch-one-pipeline endpoint, so this reads the same deployed agent config version as `signoz_list_log_pipelines` and selects the pipeline locally.
+
+- **Parameters**:
+  - `id` (optional) - Pipeline id from `signoz_list_log_pipelines`. Takes precedence when `name` is also supplied.
+  - `name` (optional) - Exact pipeline name from `signoz_list_log_pipelines`, matched case-insensitively; the pipeline `alias` is also accepted. Ignored when `id` is supplied.
+  - **Exactly one of `id` or `name` is required**; omitting both fails with `VALIDATION_FAILED`
+  - **No match**: fails with `NOT_FOUND` and an error message listing the available pipeline names and ids, so the agent can self-correct rather than receive an empty success
 
 #### `signoz_get_field_keys`
 
