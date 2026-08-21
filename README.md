@@ -419,6 +419,10 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_create_alert` | Create a v2 direct/policy-routed alert or a direct-routed v1 anomaly alert |
 | `signoz_update_alert` | Fully replace an existing alert rule by `id` |
 | `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
+| `signoz_list_downtime_schedules` | List planned-maintenance (downtime) schedules — the windows that mute alert notifications |
+| `signoz_get_downtime_schedule` | Get one downtime schedule's full definition by UUIDv7 `id` |
+| `signoz_create_downtime_schedule` | Create a downtime schedule to mute alert notifications during a maintenance window |
+| `signoz_delete_downtime_schedule` | Permanently delete a confirmed downtime schedule by UUIDv7 `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
 | `signoz_get_dashboard` | Get one dashboard's full layout, variables, panels, and queries |
 | `signoz_create_dashboard` | Create a custom multi-panel dashboard |
@@ -893,6 +897,43 @@ Delete an alert rule via `DELETE /api/v2/rules/{id}`. Irreversible: discover the
 
 - **Parameters**:
   - `id` (required) - UUIDv7 of the rule to delete. The server rejects non-UUIDv7 values with `invalid_input`.
+
+#### `signoz_list_downtime_schedules`
+
+List planned-maintenance (downtime) schedules via `GET /api/v1/downtime_schedules`. These schedules are how SigNoz mutes alert notifications — there is no Alertmanager silences API — and they are what makes `signoz_list_alerts` report an alert as `silenced`. Each entry passes through the upstream object (id, name, description, schedule window, recurrence, `alertIds`, `scope`) plus the server-derived `status` and `kind`. Results are paginated locally.
+
+- **Parameters**:
+  - `limit` (optional) - Maximum number of schedules to return per page (default: 50, max: 1000; higher values are clamped)
+  - `offset` (optional) - Number of results to skip for pagination (default: 0)
+  - `active` (optional) - Filter to currently active windows when `true`, or exclude them when `false`. Boolean (or the strings `"true"`/`"false"`). Omitted entirely when not provided, so the backend applies its own default; an invalid value is rejected rather than silently dropped
+  - `recurring` (optional) - Filter to recurring windows when `true`, or fixed one-off windows when `false`. Same tri-state semantics as `active`
+
+#### `signoz_get_downtime_schedule`
+
+Get one downtime schedule's full definition via `GET /api/v1/downtime_schedules/{id}`. Discover IDs with `signoz_list_downtime_schedules`. The upstream object is passed through verbatim; note that timestamps are re-rendered by the backend in the schedule's own `timezone`, so they are not necessarily UTC.
+
+- **Parameters**:
+  - `id` (required) - UUIDv7 of the schedule. Non-UUIDv7 values are rejected locally before any upstream call
+
+#### `signoz_create_downtime_schedule`
+
+Create a planned-maintenance (downtime) schedule via `POST /api/v1/downtime_schedules` to mute alert notifications during a window.
+
+- **Parameters**:
+  - `name` (required) - Human-readable name of the maintenance window
+  - `schedule` (required) - Object with `timezone`, `startTime`, `endTime` (RFC 3339 with offset; `startTime` must precede `endTime`), and an optional `recurrence`
+  - `schedule.recurrence` (optional) - When provided, both `repeatType` (`daily`, `weekly`, or `monthly`) and `duration` (e.g. `4h`) are required; `repeatOn` takes lowercase weekday names
+  - `description` (optional) - Free-text description of the window
+  - `alertIds` (optional) - Alert-rule UUIDs to mute. **Omitting or emptying this applies the schedule to ALL alert rules**, so confirm intent and resolve IDs with `signoz_list_alert_rules` first
+  - `scope` (optional) - An **expr-lang boolean expression**, *not* Alertmanager matcher syntax — e.g. `service_name == 'checkout'`. The SigNoz backend compiles it and returns HTTP 400 for an invalid expression; that message is surfaced as-is rather than being re-validated locally
+  - **Server-derived fields**: `status` (`active`/`upcoming`/`expired`) and `kind` (`fixed`/`recurring`) are computed by SigNoz and are not settable; they are stripped from any submitted payload, along with `id` and the created/updated audit fields
+
+#### `signoz_delete_downtime_schedule`
+
+Delete a downtime schedule via `DELETE /api/v1/downtime_schedules/{id}`. Irreversible, and it immediately ends the muting the schedule provides — discover the ID with `signoz_list_downtime_schedules` and confirm the exact schedule first.
+
+- **Parameters**:
+  - `id` (required) - UUIDv7 of the schedule to delete. Non-UUIDv7 values are rejected locally before any upstream call
 
 #### `signoz_delete_dashboard`
 

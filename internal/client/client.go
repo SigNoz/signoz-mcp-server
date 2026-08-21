@@ -886,3 +886,43 @@ func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byt
 	_, err := s.doRequest(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }
+
+// ListDowntimeSchedules fetches planned-maintenance (downtime) schedules. active
+// and recurring are tri-state: a nil pointer omits the query param entirely so
+// the backend applies its own default instead of us forcing a filter.
+func (s *SigNoz) ListDowntimeSchedules(ctx context.Context, active, recurring *bool) (json.RawMessage, error) {
+	params := url.Values{}
+	if active != nil {
+		params.Set("active", strconv.FormatBool(*active))
+	}
+	if recurring != nil {
+		params.Set("recurring", strconv.FormatBool(*recurring))
+	}
+	reqURL := fmt.Sprintf("%s/api/v1/downtime_schedules", s.baseURL)
+	if len(params) > 0 {
+		reqURL += "?" + params.Encode()
+	}
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching downtime schedules from SigNoz", slog.String("url", reqURL))
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+func (s *SigNoz) GetDowntimeSchedule(ctx context.Context, id string) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/downtime_schedules/%s", s.baseURL, url.PathEscape(id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching downtime schedule", slog.String("id", id))
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
+// CreateDowntimeSchedule uses the plain mutating path, not doReplaySafePost: a
+// retried POST would create a duplicate schedule.
+func (s *SigNoz) CreateDowntimeSchedule(ctx context.Context, scheduleJSON []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/downtime_schedules", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating downtime schedule")
+	return s.doRequest(ctx, http.MethodPost, reqURL, scheduleJSON, DashboardWriteTimeout)
+}
+
+func (s *SigNoz) DeleteDowntimeSchedule(ctx context.Context, id string) error {
+	reqURL := fmt.Sprintf("%s/api/v1/downtime_schedules/%s", s.baseURL, url.PathEscape(id))
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting downtime schedule", slog.String("id", id))
+	_, err := s.doRequest(ctx, http.MethodDelete, reqURL, nil, DashboardWriteTimeout)
+	return err
+}
