@@ -279,3 +279,6 @@
   it through the real client and registered MCP handler, and supplement it
   with a read-only live probe when staging can deterministically produce
   guidance. Do not mislabel the source-derived fixture as a recorded response.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

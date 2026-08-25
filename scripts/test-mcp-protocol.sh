@@ -379,8 +379,7 @@ assert_json "resources/list contract" "$resources_json" '
 templates_json="$PROTOCOL_TMP_DIR/resource-templates.json"
 run_inspector "Inspector resources/templates/list" "$templates_json" --method resources/templates/list
 assert_json "resources/templates/list contract" "$templates_json" '
-  (.resourceTemplates | type == "array" and length > 0) and
-  all(.resourceTemplates[]; (.name | type == "string" and length > 0) and (.uriTemplate | type == "string" and length > 0))
+  (.resourceTemplates | type == "array" and length == 0)
 '
 
 prompts_json="$PROTOCOL_TMP_DIR/prompts.json"

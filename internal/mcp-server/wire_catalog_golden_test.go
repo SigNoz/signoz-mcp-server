@@ -9,12 +9,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -24,7 +22,6 @@ import (
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	official "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -32,9 +29,6 @@ const (
 	wireCatalogGoldenDir          = "testdata/wire-catalog"
 	wireCatalogProtocolVersion    = "2025-11-25"
 	wireSentinelVersion           = "<version>"
-	wireSentinelAsOf              = "<asOf>"
-	wireSentinelHistoryStart      = "<historyStart>"
-	wireSentinelHistoryEnd        = "<historyEnd>"
 	officialInputValidationNotice = `Input validation notice: parameter "limit" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.`
 )
 
@@ -89,13 +83,10 @@ var acceptedMigrationDifferences = []struct {
 }
 
 type wireOracle struct {
-	t                    *testing.T
-	handler              http.Handler
-	upstream             *httptest.Server
-	docs                 *docsindex.IndexRegistry
-	mu                   sync.Mutex
-	historyRequest       types.AlertHistoryRequest
-	dashboardRequestBody []byte
+	t        *testing.T
+	handler  http.Handler
+	upstream *httptest.Server
+	docs     *docsindex.IndexRegistry
 }
 
 func TestGuardrail_WireCatalogGoldens(t *testing.T) {
@@ -134,19 +125,6 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 		assertWireGolden(t, "resources-content-inventory.json", inventory)
 		sitemap := o.capture("resources/read", `{"uri":"signoz://docs/sitemap"}`)
 		assertWireGolden(t, "resource-sitemap-literal.json", sitemap)
-	})
-
-	t.Run("resource template literals", func(t *testing.T) {
-		dashboardCapture := o.capture("resources/read", `{"uri":"signoz://dashboard/dashboard-wire/summary"}`)
-		assertWireGolden(t, "resource-template-dashboard-literal.json", dashboardCapture)
-		if got, want := string(o.dashboardRequestBody), `{"data":{"title":"Checkout RED","widgets":[{"title":"Request rate"}],"variables":{"service":{"type":"DYNAMIC"}}}}`; got != want {
-			t.Fatalf("dashboard bytes changed across the production client: got %q, want %q", got, want)
-		}
-
-		alertCapture := o.capture("resources/read", `{"uri":"signoz://alert/rule-wire/summary"}`)
-		assertAlertWindow(t, alertCapture.Response, o.historyRequest)
-		normalizeAlertTemplateTimestamps(t, alertCapture.Response)
-		assertWireGolden(t, "resource-template-alert-literal.json", alertCapture)
 	})
 
 	t.Run("prompt inventories and literals", func(t *testing.T) {
@@ -342,41 +320,13 @@ func (o *wireOracle) close() {
 func (o *wireOracle) serveUpstream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.URL.Path {
-	case "/api/v2/dashboards/dashboard-wire":
-		body := `{"data":{"title":"Checkout RED","widgets":[{"title":"Request rate"}],"variables":{"service":{"type":"DYNAMIC"}}}}`
-		o.mu.Lock()
-		o.dashboardRequestBody = []byte(body)
-		o.mu.Unlock()
-		_, _ = w.Write([]byte(body))
 	case "/api/v2/dashboards":
 		_, _ = w.Write([]byte(`{"dashboards":[],"tags":[],"total":0}`))
 	case "/api/v1/channels":
 		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"channel-wire","name":"on-call","type":"email","data":"{}"}]}`))
-	case "/api/v2/rules/rule-wire":
-		_, _ = w.Write([]byte(`{"data":{"id":"rule-wire","alert":"Checkout errors"}}`))
-	case "/api/v2/rules/rule-wire/history/timeline":
-		start, _ := parseInt64(r.URL.Query(), "start")
-		end, _ := parseInt64(r.URL.Query(), "end")
-		limit, _ := parseInt(r.URL.Query(), "limit")
-		o.mu.Lock()
-		o.historyRequest = types.AlertHistoryRequest{Start: start, End: end, Order: r.URL.Query().Get("order"), Limit: limit}
-		o.mu.Unlock()
-		_, _ = w.Write([]byte(`{"data":{"items":[{"status":"firing"}]}}`))
 	default:
 		http.Error(w, `{"error":"unexpected wire-oracle upstream request"}`, http.StatusNotFound)
 	}
-}
-
-func parseInt64(values url.Values, key string) (int64, error) {
-	var value int64
-	_, err := fmt.Sscan(values.Get(key), &value)
-	return value, err
-}
-
-func parseInt(values url.Values, key string) (int, error) {
-	var value int
-	_, err := fmt.Sscan(values.Get(key), &value)
-	return value, err
 }
 
 func wireDocsSnapshot() docsindex.CorpusSnapshot {
@@ -585,37 +535,6 @@ func digestContents(t *testing.T, identity string, contents []any) wireInventory
 		entry.Contents = append(entry.Contents, wireContentDigest{Index: i, Kind: kind, URI: stringValue(object["uri"]), MIMEType: stringValue(object["mimeType"]), Meta: object["_meta"], Length: len(encoded), SHA256: hex.EncodeToString(sum[:])})
 	}
 	return entry
-}
-
-func assertAlertWindow(t *testing.T, response any, request types.AlertHistoryRequest) {
-	t.Helper()
-	if request.Limit != 10 || request.Order != "desc" {
-		t.Fatalf("alert history request = %+v", request)
-	}
-	if request.End-request.Start != int64(6*time.Hour/time.Millisecond) {
-		t.Fatalf("alert history span = %d ms", request.End-request.Start)
-	}
-	contents := resultArray(t, response, "contents")
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(contents[0].(map[string]any)["text"].(string)), &payload); err != nil {
-		t.Fatal(err)
-	}
-	window := payload["historyWindow"].(map[string]any)
-	if int64(payload["asOf"].(float64)) != request.End || int64(window["start"].(float64)) != request.Start || int64(window["end"].(float64)) != request.End {
-		t.Fatalf("emitted timestamps do not match request: payload=%#v request=%+v", payload, request)
-	}
-}
-
-func normalizeAlertTemplateTimestamps(t *testing.T, response any) {
-	t.Helper()
-	contents := resultArray(t, response, "contents")
-	content := contents[0].(map[string]any)
-	payload := decodeJSON(t, []byte(content["text"].(string))).(map[string]any)
-	payload["asOf"] = wireSentinelAsOf
-	window := payload["historyWindow"].(map[string]any)
-	window["start"] = wireSentinelHistoryStart
-	window["end"] = wireSentinelHistoryEnd
-	content["text"] = mustJSON(payload)
 }
 
 func assertWireGolden(t *testing.T, name string, value any) {

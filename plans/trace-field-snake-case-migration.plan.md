@@ -1,7 +1,7 @@
 # Plan: Trace Field Snake Case Migration
 
 ## Status
-In Progress
+Done
 
 ## Context
 Trace query-builder docs and server-generated payloads used deprecated camelCase aliases for intrinsic and calculated trace fields. The SigNoz backend currently maps those aliases to canonical snake_case fields, but that alias layer is explicitly deprecated. This migration updates the MCP server's own emitted trace queries and user-facing guidance together so future backend alias removal does not break trace tools.

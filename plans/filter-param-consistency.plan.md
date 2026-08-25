@@ -1,7 +1,7 @@
 # Plan: Filter/Query Param Consistency
 
 ## Status
-In Progress
+Done
 
 ## Context
 The QB filter-expression parameter is named inconsistently across sibling MCP tools — `query` on

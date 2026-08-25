@@ -14,20 +14,7 @@
     "id": 0,
     "jsonrpc": "2.0",
     "result": {
-      "resourceTemplates": [
-        {
-          "description": "Use this resource with a rule ID from signoz_list_alert_rules to read one live alert definition and up to 10 history records from the preceding six hours. Use signoz_get_alert or signoz_get_alert_history when a tool call is preferred.",
-          "mimeType": "application/json",
-          "name": "Alert Definition and Recent History",
-          "uriTemplate": "signoz://alert/{id}/summary"
-        },
-        {
-          "description": "Use this resource with an ID from signoz_list_dashboards to read the full live dashboard definition, including widgets and variables. Use signoz_get_dashboard when a tool call is preferred.",
-          "mimeType": "application/json",
-          "name": "Dashboard Definition",
-          "uriTemplate": "signoz://dashboard/{id}/summary"
-        }
-      ]
+      "resourceTemplates": []
     }
   }
 }

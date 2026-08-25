@@ -1,7 +1,7 @@
 # Plan: mcp-go v0.56.0 Upgrade & Feature Adoption
 
 ## Status
-In Progress
+Done
 
 ## Context
 We pin mcp-go v0.49.0; latest is v0.56.0. The bump is compile-safe (verified: build clean, 17/17 test packages pass) and pulls in `santhosh-tekuri/jsonschema/v6` + `dlclark/regexp2` for schema validation. Per owner decision, all recommended feature adoptions land in a **single PR** together with the bump. SEP-414 `_meta` trace propagation is deferred to a follow-up (see Deferred).

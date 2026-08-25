@@ -484,8 +484,15 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://view/instructions` | Saved Explorer view fields and read-before-replace workflow |
 | `signoz://view/examples` | Saved-view payloads for traces, logs, metrics, and Cost Meter |
 | `signoz://docs/sitemap` | Indexed official-doc catalog and page URLs |
-| `signoz://alert/{id}/summary` | One live alert definition plus up to 10 history records from the preceding six hours |
-| `signoz://dashboard/{id}/summary` | One full live dashboard definition; the URI remains backward-compatible |
+
+### Resource Template Migration
+
+The live `signoz://dashboard/{id}/summary` and `signoz://alert/{id}/summary`
+resource templates are retired. `resources/templates/list` now returns an empty
+catalog. Use `signoz_get_dashboard` for a dashboard definition. For the former
+alert summary, call `signoz_get_alert`, then `signoz_get_alert_history`; omit the
+time range for the same six-hour window and set `limit: 10` and `order: "desc"`
+for the closest history result.
 
 <details>
 <summary><strong>Parameter Reference</strong></summary>

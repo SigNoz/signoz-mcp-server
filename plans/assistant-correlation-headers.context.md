@@ -61,3 +61,6 @@
 - [x] Add `thread_id` / `execution_id` to metrics? Answer: no, cardinality risk; logs + spans + analytics only.
 - [x] Keep `searchContext` on analytics events? Answer: no — drop from analytics, retain on logs and spans.
 - [x] Future: when `X-SigNoz-Client-Source` taxonomy expands beyond `ai-assistant`, do we want a server-side allowlist or stay permissive? Answered 2026-08-05: use a server-side bounded taxonomy in `pkg/util/context.go`; retain `user-client`/`ai-assistant` and collapse unknown values to `other` at ingress.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

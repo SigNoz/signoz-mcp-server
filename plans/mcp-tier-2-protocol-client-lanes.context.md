@@ -193,3 +193,10 @@
 ### 2026-07-21 — Streamable HTTP Accept header review
 - PR review correctly identified that the raw initialize POST advertised only `application/json`, while MCP 2025-11-25 requires clients to advertise both `application/json` and `text/event-stream`.
 - The harness now sends both media types and retains the server-specific JSON response assertion.
+
+### 2026-08-25 — Empty resource-template catalog remains protocol-covered
+- Production usage evidence justified retiring both live summary templates. The Inspector lane still calls `resources/templates/list`, but now requires a valid empty array rather than inventing a template solely to keep the catalog non-empty.
+- Tool, static-resource, and prompt catalogs retain their non-empty identity checks; this is a contract expectation update, not a reduction in protocol coverage.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

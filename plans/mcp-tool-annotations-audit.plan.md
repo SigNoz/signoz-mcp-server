@@ -1,7 +1,7 @@
 # Plan: MCP Tool Annotations Audit
 
 ## Status
-In Progress
+Done
 
 ## Context
 MCP clients use tool annotations to decide auto-approval policy: accurate `readOnlyHint` lets reads run without confirmation prompts, and `destructiveHint`/`idempotentHint` gate genuine mutations. Today reads declare `readOnlyHint(true)` + `destructiveHint(false)` but no `idempotentHint`; mutations declare only `destructiveHint(true)` — including pure creates, which is inaccurate per the MCP spec (destructive = may destroy/overwrite existing data; a POST create is additive). No tool sets `idempotentHint`. nerve-pod#142 asks for the full triple, explicitly, on every tool, plus a pinning test.

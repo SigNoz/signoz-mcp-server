@@ -1,7 +1,7 @@
 # Plan: Nil-Arguments Panic Fix
 
 ## Status
-In Progress
+Done
 
 ## Context
 Over the last 30 days, every production panic on the SigNoz MCP server was one class: an unchecked `req.Params.Arguments.(map[string]any)` type assertion in tool handlers. When a client invokes a tool with no `arguments` object, `req.Params.Arguments` is an untyped-nil interface and the bare assertion panics with `interface conversion: interface {} is nil, not map[string]interface {}`. The recover middleware caught it (the server stayed up), but the client got a generic error and a crash was logged.

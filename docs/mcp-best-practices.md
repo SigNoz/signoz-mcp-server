@@ -73,7 +73,7 @@ evolution.
 | Read-only / destructive / idempotent behavior | Tool annotations |
 | Routing rules and policies shared across several tools | Server instructions |
 | Long grammars, full schemas, complete worked examples, workflows, catalogs | Resources (`signoz://…`) |
-| Live per-entity content addressed by ID | Resource templates (`signoz://alert/{id}/summary`) |
+| Live tenant content addressed by ID | Read-only tools (`signoz_get_alert`, `signoz_get_dashboard`); resource template only under RES-1 |
 | Reusable user-invoked multi-step workflows | Prompts |
 | Immediate correction and recognized backend guidance for a failed call | Error result (text + structured fields) |
 
@@ -145,8 +145,9 @@ evolution.
 - **[RES-1]** Use resources for content too long or too structured for a
   description: query grammars (`signoz://logs/query-builder-guide`), payload
   schemas and worked examples (`signoz://dashboard/widgets-examples`),
-  multi-step workflows. Use resource templates only for genuinely parameterized
-  live content (`signoz://alert/{id}/summary`).
+  multi-step workflows. Use read-only tools for live tenant entities. Add a
+  resource template only when an application-controlled attachment workflow is
+  demonstrated and the template provides value beyond an existing read tool.
 - **[RES-2]** Resource names and descriptions MUST state what the content is,
   when an agent should read it, and which tools/workflows it supports — they
   are selection surfaces, like tool descriptions.

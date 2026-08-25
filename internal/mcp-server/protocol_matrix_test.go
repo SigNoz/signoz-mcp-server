@@ -79,7 +79,7 @@ func TestProductionHTTPProtocolLifecycleMatrix(t *testing.T) {
 		}{
 			{method: "tools/list", resultKey: "tools", wantCount: 43},
 			{method: "resources/list", resultKey: "resources", wantCount: 22},
-			{method: "resources/templates/list", resultKey: "resourceTemplates", wantCount: 2},
+			{method: "resources/templates/list", resultKey: "resourceTemplates", wantCount: 0},
 			{method: "prompts/list", resultKey: "prompts", wantCount: 4},
 			{method: "tools/call", name: "signoz_search_docs", fields: map[string]any{"name": "signoz_search_docs", "arguments": map[string]any{"searchText": "docker"}}, resultKey: "content", wantCount: 1},
 			{method: "resources/read", name: "signoz://docs/sitemap", fields: map[string]any{"uri": "signoz://docs/sitemap"}, resultKey: "contents", wantCount: 1},
@@ -274,7 +274,7 @@ func TestProductionIOTransportProtocolLifecycleMatrix(t *testing.T) {
 		}{
 			{method: "tools/list", resultKey: "tools", wantCount: 43},
 			{method: "resources/list", resultKey: "resources", wantCount: 22},
-			{method: "resources/templates/list", resultKey: "resourceTemplates", wantCount: 2},
+			{method: "resources/templates/list", resultKey: "resourceTemplates", wantCount: 0},
 			{method: "prompts/list", resultKey: "prompts", wantCount: 4},
 			{method: "tools/call", fields: map[string]any{"name": "signoz_search_docs", "arguments": map[string]any{"searchText": "docker"}}, resultKey: "content", wantCount: 1},
 			{method: "resources/read", fields: map[string]any{"uri": "signoz://docs/sitemap"}, resultKey: "contents", wantCount: 1},

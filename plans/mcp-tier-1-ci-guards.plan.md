@@ -1,7 +1,7 @@
 # Plan: MCP Tier 1 CI Guards
 
 ## Status
-In Progress
+Done
 
 ## Context
 SigNoz MCP metadata and results cross several client-specific delivery limits and can silently drift when registrations, schemas, resources, retry behavior, or serialization change. Tier 1 of SigNoz/nerve-pod#34 makes these measurable invariants blocking in ordinary PR CI.

@@ -81,3 +81,10 @@
 - [x] Should realistic examples be required once per non-trivial tool/workflow and only on syntax-heavy parameters, or on every parameter? Resolved: require them for non-trivial tools/workflows and syntax-heavy or ambiguous parameters only.
 - [x] Should the guide govern security/privacy aspects of client-visible MCP behavior, including tenant isolation, remote-content provenance, and telemetry handling, while leaving organization-specific retention values elsewhere? Resolved initially: yes. Superseded by the owner's later edit: retain authentication, tenant isolation, destructive-action, and retry guidance; omit dedicated remote-fetch and telemetry rules from this tranche.
 - [x] Should the guide require faithful, bounded passthrough of recognized SigNoz backend error guidance (`message`, documentation URL, suggestions, detail messages, and retry hints) while retaining stable MCP codes and safety filtering? Resolved: yes; MCP classification and tool-specific recovery may supplement but not replace recognized backend guidance.
+
+### 2026-08-25 — Resource-template rule tightened from production evidence
+- The two live summary templates received only 9 clustered reads in 90 days while their equivalent tools received 16,279 calls. Merely being parameterized is therefore not enough to justify a template.
+- The plan and guide now require a demonstrated application-controlled attachment workflow and differentiated value beyond an existing read tool before adding a live resource template.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.
