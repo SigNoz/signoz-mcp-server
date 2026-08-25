@@ -1,7 +1,7 @@
 # Plan: MCP Tier 2 Inspector V1 Protocol Lane
 
 ## Status
-In Progress
+Done
 
 ## Planning Baseline
 - Priority: P1

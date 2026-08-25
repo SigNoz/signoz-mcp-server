@@ -175,3 +175,9 @@ _(none — plan approved by Codex after 3 rounds; post-ship review findings addr
 ### 2026-07-15 — `service.version` signal coverage
 - OpenTelemetry associates a `MeterProvider` resource with all metrics produced by its meters. The existing meter provider already receives the resource created with `semconv.ServiceVersion`, so metrics need regression coverage rather than an additional datapoint attribute.
 - Application logs are structured JSON on stderr, not records from an OpenTelemetry `LoggerProvider`. Decision: attach `version.Version` as the global `service.version` log field so every record carries the same build identity.
+
+### 2026-08-25 — Resource-template scope removed
+- `internal/handler/tools/resource_templates.go` was part of this plan's shipped slog migration and was later deleted by the evidence-backed `resource-template-deprecation` change. The observability design and shipped signals are otherwise unchanged.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

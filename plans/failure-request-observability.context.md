@@ -67,3 +67,6 @@
 - [x] Should raw auth headers be logged? — No. `mcp.CallToolRequest.Header` is excluded from JSON serialization by `mcp-go`, and the failure payload helper accepts only the handler-visible request.
 - [x] Should repeated schema mismatches remain deduplicated? — Rate-limit WARN request capture per bounded mismatch tuple. The first representative request is enough to reproduce the contract mismatch; counters remain exact and the WARN points operators to the counter for total volume.
 - [x] Does `mcp.client_source` apply to background or browser-only telemetry? — No. It is required on request-scoped MCP telemetry only; background schema/docs work and OAuth browser flows have no MCP client source.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

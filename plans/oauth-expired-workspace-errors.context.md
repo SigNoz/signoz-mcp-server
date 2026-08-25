@@ -66,3 +66,6 @@
 - [x] Are the failing URLs really expired deployments? — Yes; confirmed via
   ingress 404 "workspace does not exist" HTML bodies in the hosted server's
   own logs (see 2026-07-17 investigation entry).
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

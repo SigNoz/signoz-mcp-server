@@ -705,7 +705,7 @@ func TestIntegration_InitializeListAndReadResources(t *testing.T) {
 	}
 }
 
-func TestIntegration_ListResourceTemplates(t *testing.T) {
+func TestIntegration_ResourceTemplateCatalogIsEmpty(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
@@ -727,7 +727,7 @@ func TestIntegration_ListResourceTemplates(t *testing.T) {
 		t.Fatalf("ListResourceTemplates failed: %v", err)
 	}
 
-	if got, want := len(templatesResult.ResourceTemplates), 2; got != want {
+	if got, want := len(templatesResult.ResourceTemplates), 0; got != want {
 		t.Fatalf("resource template count = %d, want %d", got, want)
 	}
 	for _, template := range templatesResult.ResourceTemplates {
@@ -737,6 +737,15 @@ func TestIntegration_ListResourceTemplates(t *testing.T) {
 		}
 		if len(template.Description) > 1024 {
 			t.Errorf("resource template description = %d bytes, limit 1024", len(template.Description))
+		}
+	}
+
+	for _, uri := range []string{
+		"signoz://alert/retired-id/summary",
+		"signoz://dashboard/retired-id/summary",
+	} {
+		if _, err := c.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri}); err == nil {
+			t.Errorf("ReadResource(%s) succeeded after template retirement", uri)
 		}
 	}
 }

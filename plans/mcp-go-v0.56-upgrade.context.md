@@ -119,3 +119,6 @@
 ## Open Questions
 - [x] Which adoption candidates to implement first — RESOLVED: single PR = bump + characterization tests + shadow-first input validation + read-only-allowlist output schemas + transport logger + F tests-only; SEP-414/tracer/enforce-flip/mutation-output-schemas deferred.
 - [x] **MERGE BLOCKER**: loopback listener with public Host topology — RESOLVED clean (see 2026-07-10 topology entry): no sidecars/mesh, ingress-nginx → pod IP, probes → pod IP, assistant → public URL. Protection stays on, no opt-out.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

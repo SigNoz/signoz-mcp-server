@@ -1,7 +1,7 @@
 # Plan: Failure Request Observability
 
 ## Status
-In Progress
+Done
 
 ## Context
 Schema-mismatch telemetry counts advisory contract drift, but operators cannot currently split it by `mcp.client_source` or recover the request that triggered it. Tool failure logs similarly carry the error and tool context but omit the request arguments needed for a local replay. Several secondary request-scoped metrics also omit caller attribution even though the request context already contains the bounded source value.

@@ -395,7 +395,6 @@ func (m *MCPServer) Run(ctx context.Context) error {
 // by Run and by the SDK-independent wire compatibility oracle.
 func (m *MCPServer) registerHandlers(s *mcp.Server) {
 	m.handler.RegisterAllToolHandlers(s)
-	m.handler.RegisterResourceTemplates(s)
 	prompts.RegisterPrompts(func(prompt mcpcontract.Prompt, handler mcpcontract.PromptHandlerFunc) {
 		m.handler.RegisterPrompt(s, prompt, handler)
 	})

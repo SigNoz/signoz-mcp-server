@@ -1,7 +1,7 @@
 # Plan: Assistant Correlation Headers
 
 ## Status
-In Progress
+Done
 
 ## Context
 The SigNoz AI Assistant backend now sends three correlation headers on every outbound MCP call (see PR https://github.com/SigNoz/signoz-ai-assistant/pull/136):

@@ -1,7 +1,7 @@
 # Plan: Upstream Error Guidance Fidelity
 
 ## Status
-In Progress
+Done
 
 ## Context
 The shared MCP upstream-error path preserves stable classification and a

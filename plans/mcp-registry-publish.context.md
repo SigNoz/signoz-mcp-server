@@ -105,3 +105,6 @@ how we do this."
 - [x] Re-run of an already-published version? — registry pre-check skips it (idempotent, fail-open). (resolved 2026-06-23)
 - [ ] Bring `0.5.1` live now via a one-off manual publish, or let the automation catch it on the next stable release tag?
 - [ ] Confirm excluding pre-release/RC tags from the public registry is the desired policy.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

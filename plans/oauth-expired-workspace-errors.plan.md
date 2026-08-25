@@ -1,7 +1,7 @@
 # Plan: OAuth expired-workspace errors
 
 ## Status
-In Progress
+Done
 
 ## Context
 `/oauth/authorize` currently maps every non-401 credential-validation failure

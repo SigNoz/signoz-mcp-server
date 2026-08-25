@@ -59,3 +59,6 @@
 - [x] Should the operator's own `SIGNOZ_URL` be subject to the allowlist? — No; it is operator-configured and trusted, exempt from the check.
 - [x] Should the OAuth token endpoint enforce the allowlist (not just the form and `/mcp`)? — Yes; enforced in `issueTokenPair` so existing refresh tokens for disallowed tenants are refused. (Codex PR #190 review.)
 - [ ] Follow-up (separate PR): add a private/loopback/link-local/metadata SSRF guard in `NormalizeSigNozURL` regardless of allowlist.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

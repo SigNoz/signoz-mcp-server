@@ -1,7 +1,7 @@
 # Plan: MCP Tier 3 Best-Practices Guide
 
 ## Status
-In Progress
+Done
 
 ## Context
 Tier 1 puts deterministic contract invariants behind a central CI review surface. Tier 2 adds real-server Inspector compatibility. Tier 3 documents the qualitative design decisions that deterministic checks cannot judge: whether an agent can choose the right surface, make a valid first call, recover from errors, interpret results, and survive compatible contract evolution.
