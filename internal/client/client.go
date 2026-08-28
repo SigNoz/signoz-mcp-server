@@ -886,3 +886,9 @@ func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byt
 	_, err := s.doRequest(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }
+
+func (s *SigNoz) ListHosts(ctx context.Context, body []byte) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/hosts/list", s.baseURL)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching infrastructure hosts from SigNoz", slog.String("url", reqURL))
+	return s.doRequest(ctx, http.MethodPost, reqURL, body, DefaultQueryTimeout)
+}
