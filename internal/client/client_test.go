@@ -1918,13 +1918,13 @@ func TestListViews(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	_, err := c.ListViews(context.Background(), "traces", "ak", "ops")
+	_, err := c.ListViews(context.Background(), "traces", "ak")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views", gotPath)
-	assert.Contains(t, gotRawQuery, "sourcePage=traces")
+	assert.Equal(t, "/api/v2/saved_views", gotPath)
+	assert.Contains(t, gotRawQuery, "source=traces")
 	assert.Contains(t, gotRawQuery, "name=ak")
-	assert.Contains(t, gotRawQuery, "category=ops")
+	assert.NotContains(t, gotRawQuery, "category=")
 }
 
 func TestListDashboards_ForwardsFilterSortOrder(t *testing.T) {
@@ -1981,7 +1981,7 @@ func TestGetView(t *testing.T) {
 	_, err := c.GetView(context.Background(), "view-uuid-1")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views/view-uuid-1", gotPath)
+	assert.Equal(t, "/api/v2/saved_views/view-uuid-1", gotPath)
 }
 
 func TestCreateView(t *testing.T) {
@@ -1995,11 +1995,11 @@ func TestCreateView(t *testing.T) {
 	}))
 	defer server.Close()
 	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	body := []byte(`{"name":"x","sourcePage":"traces","compositeQuery":{}}`)
+	body := []byte(`{"name":"x","source":"traces","spec":{}}`)
 	_, err := c.CreateView(context.Background(), body)
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPost, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views", gotPath)
+	assert.Equal(t, "/api/v2/saved_views", gotPath)
 	assert.JSONEq(t, string(body), string(gotBody))
 }
 
@@ -2015,7 +2015,7 @@ func TestUpdateView(t *testing.T) {
 	_, err := c.UpdateView(context.Background(), "view-1", []byte(`{}`))
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPut, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
+	assert.Equal(t, "/api/v2/saved_views/view-1", gotPath)
 }
 
 func TestDeleteView(t *testing.T) {
@@ -2030,7 +2030,7 @@ func TestDeleteView(t *testing.T) {
 	_, err := c.DeleteView(context.Background(), "view-1")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodDelete, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
+	assert.Equal(t, "/api/v2/saved_views/view-1", gotPath)
 }
 
 func TestSharedTransportPoolTuning(t *testing.T) {

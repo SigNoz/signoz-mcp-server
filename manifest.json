@@ -127,7 +127,7 @@
     },
     {
       "name": "signoz_list_views",
-      "description": "List paginated saved Explorer views for traces, logs, metrics, or Cost Meter, with optional name/category filters"
+      "description": "List paginated saved Explorer views for traces, logs, metrics, Cost Meter, or AI Observability, with an optional name filter"
     },
     {
       "name": "signoz_get_view",
@@ -143,11 +143,11 @@
     },
     {
       "name": "signoz_create_view",
-      "description": "Save one reusable Explorer query after reading both view authoring resources; use signoz_create_dashboard for a multi-widget dashboard"
+      "description": "Save one reusable Explorer query spec after reading both view authoring resources; use signoz_create_dashboard for a multi-widget dashboard"
     },
     {
       "name": "signoz_update_view",
-      "description": "Fully replace a fetched saved view while preserving other fields; read its guides when changing sourcePage or compositeQuery, not for name/category/tags-only changes"
+      "description": "Fully replace a fetched saved view while preserving other fields; read its guides when changing source or the typed spec"
     },
     {
       "name": "signoz_delete_view",
@@ -322,13 +322,13 @@
     {
       "uri": "signoz://view/examples",
       "name": "Saved View Examples",
-      "description": "Read this after signoz://view/instructions when composing a saved Explorer view. It provides complete Query Builder v5 payloads for traces, logs, metrics, and Cost Meter source pages.",
+      "description": "Read this after signoz://view/instructions when composing a saved view. It provides complete typed spec payloads for traces, logs, metrics, and Cost Meter sources.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://view/instructions",
       "name": "Saved View Instructions",
-      "description": "Read this before creating or updating a saved Explorer view. It explains view fields, sourcePage, Query Builder v5, Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
+      "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
       "mimeType": "text/markdown"
     }
   ],

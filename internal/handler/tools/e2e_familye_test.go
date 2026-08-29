@@ -406,14 +406,14 @@ func firstField(body, fieldName string) string {
 // unique mcp-e2e-e-<rand> name, reads it back via BOTH the canonical "id" and
 // legacy "viewId" params, then deletes it via the legacy key and confirms it is
 // gone. A t.Cleanup guarantees deletion even on failure. If no existing view is
-// found on any sourcePage, the CRUD subtest is skipped (never hand-crafted).
+// found on any source, the CRUD subtest is skipped (never hand-crafted).
 func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 	h, ctx := e2eHandlerE(t)
 
-	// 1. Find a real existing view to clone its shape from. Try each sourcePage.
-	srcViewID, srcSourcePage := findExistingView(t, h, ctx)
+	// 1. Find a real existing view to clone its shape from. Try each source.
+	srcViewID, srcSource := findExistingView(t, h, ctx)
 	if srcViewID == "" {
-		t.Skip("no existing saved view found on any sourcePage to clone; skipping view CRUD round-trip (refusing to hand-craft a payload)")
+		t.Skip("no existing saved view found on any source to clone; skipping view CRUD round-trip (refusing to hand-craft a payload)")
 	}
 
 	// 2. Read the source view's full config.
@@ -438,8 +438,7 @@ func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 		createArgs[k] = v
 	}
 	createArgs["name"] = name
-	delete(createArgs, "category") // keep the clone minimal/unambiguous
-	t.Logf("cloning existing %q view (sourcePage=%s) into %q", srcViewID, srcSourcePage, name)
+	t.Logf("cloning existing %q view (source=%s) into %q", srcViewID, srcSource, name)
 
 	createRes, err := h.handleCreateView(ctx, makeToolRequest("signoz_create_view", createArgs))
 	if err != nil {
@@ -448,9 +447,9 @@ func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 	if createRes.IsError {
 		t.Fatalf("create_view (cloned shape) error: %s", e2eText(t, createRes))
 	}
-	// create_view returns {"status":"success","data":"<id>"} — data is the new
-	// view id as a STRING (not an object like get_view). Use the create-specific
-	// extractor so the id is recovered and the cleanup below can fire.
+	// v2 create_view returns {"status":"success","data":{"id":"..."}}: data is
+	// an object carrying the new view id. Use the create-specific extractor so
+	// the id is recovered and the cleanup below can fire.
 	viewID := extractCreatedViewID(e2eText(t, createRes))
 
 	// Register the cleanup backstop IMMEDIATELY after a successful create, before
@@ -506,11 +505,15 @@ func TestE2EFamilyE_K5_ViewCRUDRoundTrip(t *testing.T) {
 	}
 }
 
-// extractCreatedViewID parses the create_view success response, where the new
-// view id is returned as a STRING under "data": {"status":"success","data":"<id>"}.
-// It falls back to the object/top-level shapes for robustness against drift.
+// extractCreatedViewID parses the create_view success response. In v2 the new
+// view id is returned as an OBJECT under "data": {"id":"..."}. It falls back to
+// the string/top-level shapes for robustness against drift.
 func extractCreatedViewID(body string) string {
-	// Primary shape: data is a string id.
+	// Primary shape: data is an object carrying an id.
+	if id := extractViewID(body); id != "" {
+		return id
+	}
+	// Fallback: data is a bare string id (pre-v2 shape).
 	var asString struct {
 		Data string `json:"data"`
 		ID   string `json:"id"`
@@ -523,8 +526,7 @@ func extractCreatedViewID(body string) string {
 			return asString.ID
 		}
 	}
-	// Fallback: data is an object carrying an id (get_view-style envelope).
-	return extractViewID(body)
+	return ""
 }
 
 func extractViewID(body string) string {
@@ -559,15 +561,15 @@ func extractViewName(body string) string {
 	return env.Name
 }
 
-// findExistingView returns the id and sourcePage of the first existing saved
-// view found across the standard sourcePages, or ("", "") if none exist. Used
+// findExistingView returns the id and source of the first existing saved
+// view found across the standard sources, or ("", "") if none exist. Used
 // to clone a real view's shape rather than hand-craft a create payload.
-func findExistingView(t *testing.T, h *Handler, ctx context.Context) (id, sourcePage string) {
+func findExistingView(t *testing.T, h *Handler, ctx context.Context) (id, source string) {
 	t.Helper()
 	for _, sp := range []string{"traces", "logs", "metrics", "meter"} {
 		res, err := h.handleListViews(ctx, makeToolRequest("signoz_list_views", map[string]any{
-			"sourcePage": sp,
-			"limit":      "1",
+			"source": sp,
+			"limit":  "1",
 		}))
 		if err != nil || res.IsError {
 			continue

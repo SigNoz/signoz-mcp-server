@@ -429,11 +429,11 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_list_dashboard_templates` | List curated templates and discover an import path |
 | `signoz_list_services` | List APM services with trace activity in a time range |
 | `signoz_get_service_top_operations` | Get ranked operations for one traced service |
-| `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter and discover UUIDs |
+| `signoz_list_views` | List saved Explorer views for traces/logs/metrics/Cost Meter/AI Observability and discover UUIDs |
 | `signoz_get_view` | Get one saved Explorer view's complete definition by `id` |
 | `signoz_search_docs` | Find ranked official-doc matches when no exact page is selected |
 | `signoz_fetch_doc` | Fetch one known official-doc page or heading as Markdown |
-| `signoz_create_view` | Save one reusable Explorer query |
+| `signoz_create_view` | Save one reusable Explorer query spec |
 | `signoz_update_view` | Fully replace a fetched saved view while preserving unrequested fields |
 | `signoz_delete_view` | Permanently delete a confirmed saved view by `id` |
 | `signoz_aggregate_logs` | Aggregate log statistics and grouped or top-N breakdowns |
@@ -481,8 +481,8 @@ Docs tools use the same authentication path as other MCP tools.
 | `signoz://logs/query-builder-guide` | Logs Query Builder v5 JSON or unfamiliar log fields |
 | `signoz://traces/query-builder-guide` | Traces Query Builder v5 JSON or unfamiliar trace fields |
 | `signoz://metrics-aggregation-guide` | Metric aggregations, formulas, grouping, limits, and Cost Meter queries |
-| `signoz://view/instructions` | Saved Explorer view fields and read-before-replace workflow |
-| `signoz://view/examples` | Saved-view payloads for traces, logs, metrics, and Cost Meter |
+| `signoz://view/instructions` | Saved view fields, the v2 typed spec, and read-before-replace workflow |
+| `signoz://view/examples` | Saved-view typed-spec payloads for traces, logs, metrics, and Cost Meter |
 | `signoz://docs/sitemap` | Indexed official-doc catalog and page URLs |
 
 ### Resource Template Migration
@@ -700,14 +700,15 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
 
 #### `signoz_list_views`
 
-List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, or Cost Meter page. A view stores one reusable Explorer query; it is not a multi-panel dashboard. Apply name/category filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
+List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, Cost Meter, or AI Observability page. A view stores one reusable Explorer query spec; it is not a multi-panel dashboard. Apply name filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
 
 - **Parameters**:
-  - `sourcePage` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
+  - `source` (required) - One of: `traces`, `logs`, `metrics`, `meter`, `ai_observability`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
   - `name` (optional) - Partial-match filter on view name (server-side)
-  - `category` (optional) - Partial-match filter on view category (server-side)
   - `limit` (optional) - Page size (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip (default: 0)
+
+> **Requires SigNoz ≥ v0.137.0**, the first release to serve the v2 saved-view routes (`/api/v2/saved_views/*`; [SigNoz #12342](https://github.com/SigNoz/signoz/pull/12342)). Earlier deployments only expose the legacy `GET /api/v1/explorer/views`.
 
 #### `signoz_get_view`
 
@@ -736,19 +737,24 @@ Fetch one known official SigNoz docs page's full Markdown or a requested heading
 
 #### `signoz_create_view`
 
-Save one reusable Explorer query. Use `signoz_create_dashboard` for a multi-panel dashboard. Cost Meter views use `sourcePage="meter"` with `signal="metrics"` and `source="meter"` in builder specs.
+Save one reusable Explorer query spec. Use `signoz_create_dashboard` for a multi-panel dashboard. Cost Meter views use `source="meter"` with `signal="metrics"` and builder-spec `source="meter"`.
 
-- **Parameters**: JSON payload matching the `SavedView` schema.
+- **Parameters** (v2 typed shape):
+  - `name` (optional) - View name (DNS-1123 label). Required unless `generateName` is true
+  - `generateName` (optional) - When true, the server generates `name` from `spec.displayName` and `name` must be empty
+  - `source` (required) - Which Explorer this view belongs to
+  - `spec` (required) - Typed view content: `displayName`, `panelType`, `requestType`, `queries`, `selectedFields`, `display`
+  - `schemaVersion` (optional) - Always `v2`; defaults when omitted
 - **Required**: Read both MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing any payload.
 
 #### `signoz_update_view`
 
-Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, modify its returned `data` object, preserve every unrequested field, and pass that full object as `view`.
+Fully replace an existing saved Explorer view. Fetch it with `signoz_get_view`, modify its returned `data` object, preserve every unrequested field, and pass that full object as `view`. Upstream keeps `name` immutable on update; the display label lives in `spec.displayName`.
 
 - **Parameters**:
   - `id` (required) - UUID of the view to replace
-  - `view` (required) - Full `SavedView` object (`name`, `sourcePage`, `compositeQuery`, plus any of `category`, `tags`, `extraData`)
-- **Resource rule**: Read `signoz://view/instructions` and `signoz://view/examples` when composing the body or changing `sourcePage`/`compositeQuery`. Skip them for name-, category-, or tags-only changes when a complete fetched body is already prepared. Call `signoz_get_view` first; partial bodies wipe unspecified fields.
+  - `view` (required) - Full `source`/`spec` pair (required); drop `name` and server-populated fields
+- **Resource rule**: Read `signoz://view/instructions` and `signoz://view/examples` when changing `source` or `spec`. Skip them for a pass-through of the fetched body. Call `signoz_get_view` first; partial bodies wipe unspecified fields.
 
 #### `signoz_delete_view`
 

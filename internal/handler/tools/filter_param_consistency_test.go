@@ -392,7 +392,7 @@ func TestFilterAlias_FalseFriendHandlersUnaffected(t *testing.T) {
 		}
 	})
 
-	t.Run("create_view_filter_args_do_not_mutate_nested_composite_query", func(t *testing.T) {
+	t.Run("create_view_filter_args_do_not_mutate_nested_spec_query", func(t *testing.T) {
 		var gotBody []byte
 		mock := &client.MockClient{
 			CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
@@ -403,13 +403,13 @@ func TestFilterAlias_FalseFriendHandlersUnaffected(t *testing.T) {
 		h := newTestHandler(mock)
 		nestedFilter := "severity_text = 'ERROR'"
 		result, err := h.handleCreateView(testCtx(), makeToolRequest("signoz_create_view", map[string]any{
-			"name":       "logs errors",
-			"sourcePage": "logs",
-			"filter":     "service.name = 'frontend'",
-			"query":      "service.name = 'legacy'",
-			"compositeQuery": map[string]any{
-				"queryType": "builder",
-				"panelType": "list",
+			"name":   "logs errors",
+			"source": "logs",
+			"filter": "service.name = 'frontend'",
+			"query":  "service.name = 'legacy'",
+			"spec": map[string]any{
+				"panelType":   "list",
+				"requestType": "raw",
 				"queries": []any{map[string]any{
 					"type": "builder_query",
 					"spec": map[string]any{
@@ -427,7 +427,7 @@ func TestFilterAlias_FalseFriendHandlersUnaffected(t *testing.T) {
 			t.Fatalf("handler returned error result: %v", result.Content)
 		}
 		if got := savedViewNestedFilterExpression(t, gotBody); got != nestedFilter {
-			t.Fatalf("nested compositeQuery filter = %q, want %q", got, nestedFilter)
+			t.Fatalf("nested spec.query filter = %q, want %q", got, nestedFilter)
 		}
 	})
 }
@@ -568,7 +568,7 @@ func savedViewNestedFilterExpression(t *testing.T, body []byte) string {
 		t.Fatal("view body was not captured")
 	}
 	var decoded struct {
-		CompositeQuery struct {
+		Spec struct {
 			Queries []struct {
 				Spec struct {
 					Filter struct {
@@ -576,15 +576,15 @@ func savedViewNestedFilterExpression(t *testing.T, body []byte) string {
 					} `json:"filter"`
 				} `json:"spec"`
 			} `json:"queries"`
-		} `json:"compositeQuery"`
+		} `json:"spec"`
 	}
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		t.Fatalf("unmarshal view body: %v", err)
 	}
-	if len(decoded.CompositeQuery.Queries) != 1 {
-		t.Fatalf("view query count = %d, want 1", len(decoded.CompositeQuery.Queries))
+	if len(decoded.Spec.Queries) != 1 {
+		t.Fatalf("view query count = %d, want 1", len(decoded.Spec.Queries))
 	}
-	return decoded.CompositeQuery.Queries[0].Spec.Filter.Expression
+	return decoded.Spec.Queries[0].Spec.Filter.Expression
 }
 
 func noteText(t *testing.T, result *mcp.CallToolResult, index int) string {

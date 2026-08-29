@@ -1,7 +1,9 @@
 # Plan: Saved-views v2 (typed-spec) API migration
 
 ## Status
-In Progress
+Done
+
+Client repointed to `/api/v2/saved_views`; handlers accept the v2 typed shape (`source`, `spec{...}`, `generateName`, `schemaVersion`); update drops immutable `name` and handles 204; resources/manifest/README rewritten; wire-catalog goldens updated through the guardrail path. `go build`, `gofmt`, `go test ./...`, and the focused `TestGuardrail_*` suite all green. Live e2e verification on SigNoz ≥ v0.137.0 and the agent-skills companion PR remain as follow-ups (flagged in the PR body).
 
 ## Context
 Move the `signoz_*_view` tools from v1 `/api/v1/explorer/views/*` (legacy free-form shape) to v2 `/api/v2/saved_views/*` (typed `spec` shape, `schemaVersion:"v2"`). This fixes nerve-pod #100 because the upstream v2 store returns `not-found` (404) on update/get/delete of a nonexistent id, instead of v1's upsert-like success + zero-value metadata. Mirrors the dashboards-v2 migration convention.
