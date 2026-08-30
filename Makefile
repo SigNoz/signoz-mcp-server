@@ -27,6 +27,26 @@ test:
 	@echo "🧪 Running all tests..."
 	@go test -v ./...
 
+##@ E2E
+
+E2E_FLAGS ?=
+
+test-e2e: ## Runs the e2e suite against a freshly cast SigNoz, tearing it down afterwards.
+	@echo "🧪 Running e2e suite..."
+	@cd tests && uv sync && uv run pytest --basetemp=./tmp/ e2e/tests $(E2E_FLAGS)
+
+test-e2e-reuse: ## Runs the e2e suite reusing the cached SigNoz environment.
+	@echo "🧪 Running e2e suite (--reuse)..."
+	@cd tests && uv sync && uv run pytest --basetemp=./tmp/ --reuse e2e/tests $(E2E_FLAGS)
+
+setup-e2e-env: ## Brings the e2e environment up and keeps it for --reuse runs.
+	@echo "🚀 Setting up the e2e environment..."
+	@cd tests && uv sync && uv run pytest --basetemp=./tmp/ --reuse e2e/bootstrap/setup.py::test_setup $(E2E_FLAGS)
+
+cleanup-test-e2e: ## Tears down the cached e2e environment.
+	@echo "🧹 Tearing down the e2e environment..."
+	@cd tests && uv sync && uv run pytest --basetemp=./tmp/ --teardown e2e/bootstrap/setup.py::test_teardown $(E2E_FLAGS)
+
 docs-index:
 	@echo "📚 Rebuilding embedded SigNoz docs corpus (fail-loud if signoz.io/docs/sitemap.md is unreachable)..."
 	@go run ./cmd/build-docs-index

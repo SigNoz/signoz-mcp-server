@@ -47,6 +47,16 @@
 - **No `test_stdio.py` in the first iteration.** HTTP transport only for PR-1; stdio smoke can be reconsidered later.
 - Noticed while reading the Go files: `TestE2EDocsAgentFlow` and `TestE2EAuthFailureTelemetry` run against an in-process `httptest` server with the embedded docs corpus — they never needed a live backend. The port covers their transport-visible behavior; the in-process-only OTel span assertion for auth-failure telemetry either becomes an untagged Go unit test or is dropped with justification in the PR-2 description.
 
+### 2026-08-30 — PR-1 implemented and verified locally
+- Harness built per plan; verified end-to-end on a cold cast: **4/4 smoke tests pass in ~73s**, teardown confirmed (zero leftover containers). The `--reuse` loop (setup → rerun → cleanup) also verified.
+- **Upstream drift found and handled**: service-account role assignment moved from `POST /api/v1/service_accounts/{id}/roles` (the terraform suite's API shape) to `POST /api/v1/service_account_roles {serviceAccountId, roleId}` → 201 on current SigNoz. Our fixture uses the new route; the terraform suite will hit this when its cast floats forward.
+- **New readiness phase the reference suites don't need**: the otel collector waits for ClickHouse migrations before serving, so its published ports reset connections for the first minutes of a cold cast. The `telemetry` fixture polls an empty OTLP export until accepted (360s) before any suite seeds.
+- **Poll-closure discipline**: `wait_for` treats any truthy value as success, so closures must return strict bools and log error text — returning error strings made the first connection reset look like readiness. Fixed in the telemetry fixture and test_logs.
+- **Setup-failure cleanup**: `create()` tears the stack down on failure because `reuse.wrap` registers its finalizer only after `create()` returns (deviation-hardening vs the reference wrapper).
+- Docs: `CLAUDE.md` Local Verification updated instead of AGENTS.md (AGENTS.md is a one-line pointer the user is editing locally); README gained an End-to-End Tests section.
+- Deviation from plan: no `if: always()` teardown step in the workflow — the pytest session finalizer owns teardown (verified leak-free on failing runs) and runners are ephemeral.
+- Local sandbox notes (environment only, not repo requirements): the sandbox needed pypi.org, files.pythonhosted.org, storage.googleapis.com, registry-1.docker.io, auth.docker.io, production.cloudfront.docker.com, and release-assets.githubusercontent.com opened; foundryctl v0.2.17 was built from source because release tarballs were unreachable at the time. CI uses the standard `foundry.sh` installer like the operator workflow.
+
 ## Open Questions
 - [x] Harness: pytest + foundryctl (org standard) vs Go-native testcontainers suite? → **pytest + foundryctl** (user, 2026-08-30)
 - [x] Wire the existing Go `//go:build e2e` families into the new workflow against the cast instance? → superseded: **port them to Python on the harness in PR-2 and delete the Go files** (user, 2026-08-30)

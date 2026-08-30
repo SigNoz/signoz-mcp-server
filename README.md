@@ -18,6 +18,7 @@ A Model Context Protocol (MCP) server that provides seamless access to SigNoz ob
 - [Available Tools](#available-tools)
 - [Environment Variables](#environment-variables)
 - [Claude Desktop Extension](#claude-desktop-extension)
+- [End-to-End Tests](#end-to-end-tests)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
 
@@ -1026,6 +1027,17 @@ make bundle
 2. Select `./bundle/bundle.mcpb`
 3. Enter your `SIGNOZ_URL`, `SIGNOZ_API_KEY`, and optionally `LOG_LEVEL`
 4. Restart Claude Desktop
+
+## End-to-End Tests
+
+The e2e suite under [`tests/`](tests/README.md) runs the server (built from the working tree) against a real SigNoz instance provisioned by foundry and drives it over the MCP HTTP transport:
+
+```bash
+make test-e2e          # cast SigNoz, run the suites, tear down
+make test-e2e-reuse    # rerun against the cached environment
+```
+
+Requires Docker, `foundryctl`, Go, and uv. See [tests/README.md](tests/README.md) for the full workflow.
 
 ## Architecture
 

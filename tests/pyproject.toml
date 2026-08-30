@@ -1,0 +1,30 @@
+[project]
+name = "signoz-mcp-server-tests"
+version = "0.1.0"
+description = "End-to-end tests for the SigNoz MCP server"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.0",
+    "requests>=2.32",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+# A bare `pytest` run collects only the suites under e2e/tests. The bootstrap
+# entrypoints (e2e/bootstrap/setup.py) are excluded here and run on demand by
+# explicit path, e.g. `pytest e2e/bootstrap/setup.py`.
+testpaths = ["e2e/tests"]
+# test_*.py for the suites, plus setup.py for the bootstrap entrypoints.
+python_files = ["test_*.py", "setup.py"]
+addopts = "-ra -p no:warnings --import-mode=importlib"
+log_cli = true
+log_format = "%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)s) %(message)s"
+log_date_format = "%Y-%m-%d %H:%M:%S"
