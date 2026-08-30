@@ -20,7 +20,11 @@ def test_setup(signoz: SigNoz, mcp_server: MCPServer) -> None:
     logger.info("mcp server readyz response: %s", readyz.status_code)
     assert readyz.status_code == HTTPStatus.OK
 
-    result = MCPClient(mcp_url=mcp_server.mcp_url).initialize()
+    client = MCPClient(mcp_url=mcp_server.mcp_url)
+    try:
+        result = client.initialize()
+    finally:
+        client.close()
     assert result["serverInfo"]["name"] == "SigNozMCP"
     assert result["protocolVersion"] == "2025-11-25"
     logger.info("mcp initialize handshake succeeded against %s", mcp_server.mcp_url)

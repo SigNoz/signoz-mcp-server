@@ -36,7 +36,7 @@ tests/
 │   ├── foundry.py            # cast/teardown + two-phase readiness (port, then login)
 │   ├── signoz.py             # session: login as root → optional license → service account + API key
 │   ├── mcpserver.py          # docker build Dockerfile.e2e; run container; docker-assigned free port; poll /readyz; stop
-│   ├── mcpclient.py          # thin JSON-RPC-over-HTTP client (initialize/tools/list/tools/call)
+│   ├── mcpclient.py          # official Python MCP SDK client, sync facade (background event loop)
 │   ├── telemetry.py          # OTLP HTTP seeding (traces/logs/metrics) + poll-until-visible helpers
 │   └── reuse.py              # --reuse/--teardown pytest-cache wrapper
 └── e2e/

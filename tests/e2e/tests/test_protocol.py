@@ -4,7 +4,11 @@ from fixtures.mcpserver import MCPServer
 
 def test_initialize_handshake(mcp_server: MCPServer) -> None:
     """The initialize handshake negotiates the legacy era against the live backend."""
-    result = MCPClient(mcp_url=mcp_server.mcp_url).initialize()
+    client = MCPClient(mcp_url=mcp_server.mcp_url)
+    try:
+        result = client.initialize()
+    finally:
+        client.close()
 
     assert result["protocolVersion"] == "2025-11-25"
     assert result["serverInfo"]["name"] == "SigNozMCP"

@@ -1,101 +1,95 @@
-import json
-from dataclasses import dataclass, field
+import asyncio
+import threading
+from collections.abc import Coroutine
+from contextlib import AsyncExitStack
 from typing import Any
 
 import pytest
-import requests
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 
 from fixtures.logger import setup_logger
 from fixtures.mcpserver import MCPServer
 
 logger = setup_logger(__name__)
 
-# The legacy protocol era the server's HTTP transport negotiates (see
-# scripts/test-mcp-protocol.sh).
-PROTOCOL_VERSION = "2025-11-25"
-CLIENT_INFO = {"name": "signoz-mcp-e2e", "version": "1.0.0"}
+CALL_TIMEOUT = 90.0
 
 
-class MCPProtocolError(AssertionError):
-    """A JSON-RPC error object came back for a request."""
-
-
-@dataclass
 class MCPClient:
-    """Thin JSON-RPC-over-HTTP client for the stateless MCP HTTP transport.
+    """Sync facade over the official Python MCP SDK's streamable-HTTP client.
 
-    Each request is an independent POST; the server issues no session id.
-    Deliberately hand-rolled: protocol conformance is owned by the inspector /
-    conformance lanes, this client only carries tool calls to a live backend.
+    The SDK is async; the suite is sync, so a dedicated event loop runs in a
+    daemon thread and every call is dispatched to it. The transport and session
+    live inside one long-lived task — anyio cancel scopes must be entered and
+    exited in the same task. Public methods return plain dicts (JSON wire
+    shape) so assertions read like the protocol.
     """
 
-    mcp_url: str
-    session: requests.Session = field(default_factory=requests.Session)
-    _next_id: int = 0
-    _initialized: bool = False
+    def __init__(self, mcp_url: str):
+        self.mcp_url = mcp_url
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True, name="mcp-client-loop")
+        self._thread.start()
+        self._session: ClientSession | None = None
+        self._close_requested = asyncio.Event()
+        self._ready = threading.Event()
+        self._client_task = None
 
-    def _parse(self, resp: requests.Response) -> dict:
-        content_type = resp.headers.get("content-type", "")
-        if content_type.startswith("text/event-stream"):
-            payload = None
-            for line in resp.text.splitlines():
-                if line.startswith("data:"):
-                    payload = json.loads(line.removeprefix("data:").strip())
-            if payload is None:
-                raise MCPProtocolError(f"SSE response carried no data frame: {resp.text[:400]}")
-            return payload
-        return resp.json()
+    def _run(self, coro: Coroutine, timeout: float = CALL_TIMEOUT) -> Any:
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout)
 
-    def rpc(self, method: str, params: dict | None = None, *, expect_result: bool = True) -> Any:
-        self._next_id += 1
-        request_id = self._next_id
-        body = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
-        logger.info("mcp -> %s (id=%d)", method, request_id)
-        resp = self.session.post(
-            self.mcp_url,
-            json=body,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            },
-            timeout=60,
-        )
-        assert resp.status_code == 200, f"{method} returned HTTP {resp.status_code}: {resp.text[:400]}"
-        payload = self._parse(resp)
-        assert payload.get("id") == request_id, f"{method} response id mismatch: {payload}"
-        if "error" in payload:
-            raise MCPProtocolError(f"{method} returned JSON-RPC error: {payload['error']}")
-        return payload.get("result") if expect_result else payload
+    @staticmethod
+    def _dump(model: Any) -> dict:
+        return model.model_dump(mode="json", by_alias=True, exclude_none=True)
 
     def initialize(self) -> dict:
-        result = self.rpc(
-            "initialize",
-            {
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": CLIENT_INFO,
-            },
-        )
-        self.session.post(
-            self.mcp_url,
-            json={"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            },
-            timeout=30,
-        )
-        self._initialized = True
-        return result
+        async def _hold_session():
+            # terminate_on_close=False: the server is stateless and has no
+            # session to DELETE.
+            async with AsyncExitStack() as stack:
+                read, write = await stack.enter_async_context(
+                    streamable_http_client(self.mcp_url, terminate_on_close=False)
+                )
+                self._session = await stack.enter_async_context(ClientSession(read, write))
+                init = await self._session.initialize()
+                logger.info("mcp initialize: protocol=%s server=%s", init.protocol_version, init.server_info.name)
+                self._init_result = init
+                self._ready.set()
+                await self._close_requested.wait()
+
+        self._client_task = asyncio.run_coroutine_threadsafe(_hold_session(), self._loop)
+        if not self._ready.wait(timeout=CALL_TIMEOUT):
+            self._client_task.cancel()
+            raise TimeoutError(f"initialize against {self.mcp_url} timed out")
+        if self._client_task.done():
+            # Startup failed before the ready signal; surface the cause.
+            self._client_task.result()
+        return self._dump(self._init_result)
 
     def list_tools(self) -> list[dict]:
-        return self.rpc("tools/list")["tools"]
+        assert self._session is not None, "initialize() first"
+        result = self._run(self._session.list_tools())
+        return [self._dump(tool) for tool in result.tools]
 
     def call_tool(self, name: str, arguments: dict | None = None) -> dict:
-        """Call a tool and return the raw result object (isError may be true)."""
-        if not self._initialized:
+        """Call a tool and return the raw result dict (isError may be true)."""
+        if self._session is None:
             self.initialize()
-        return self.rpc("tools/call", {"name": name, "arguments": arguments or {}})
+        logger.info("mcp -> tools/call %s", name)
+        result = self._run(self._session.call_tool(name, arguments or {}))
+        return self._dump(result)
+
+    def close(self) -> None:
+        try:
+            if self._client_task is not None and not self._client_task.done():
+                self._loop.call_soon_threadsafe(self._close_requested.set)
+                self._client_task.result(timeout=10)
+        except Exception as err:  # noqa: BLE001 — closing must not mask a test failure
+            logger.warning("error while closing MCP client: %s", err)
+        finally:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._thread.join(timeout=5)
 
 
 def text_blocks(result: dict) -> str:
@@ -105,6 +99,8 @@ def text_blocks(result: dict) -> str:
 
 def first_json(result: dict) -> Any:
     """Parse the first text block of a CallToolResult as JSON."""
+    import json
+
     text = text_blocks(result)
     assert text, f"result carried no text content: {result}"
     return json.loads(text)
@@ -116,7 +112,8 @@ def assert_tool_ok(result: dict) -> dict:
 
 
 @pytest.fixture(scope="session")
-def mcp_client(mcp_server: MCPServer) -> MCPClient:
+def mcp_client(mcp_server: MCPServer):
     client = MCPClient(mcp_url=mcp_server.mcp_url)
     client.initialize()
-    return client
+    yield client
+    client.close()

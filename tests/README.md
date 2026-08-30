@@ -53,9 +53,10 @@ uv run pytest --basetemp=./tmp/ e2e/tests/test_logs.py::test_seeded_logs_are_sea
   published to a docker-assigned free host port (docker-py's
   `client.api.port`, the same mechanism testcontainers' `get_exposed_port`
   wraps in the signoz repo tests), then waits for `/readyz`.
-- Tests talk to the server through a thin JSON-RPC client
-  (`fixtures/mcpclient.py`) and to SigNoz directly (`SigNoz.api`) for setup and
-  verification. Telemetry is seeded over OTLP/HTTP (`fixtures/telemetry.py`).
+- Tests talk to the server through the official Python MCP SDK
+  (`fixtures/mcpclient.py` wraps it in a sync facade over a background event
+  loop) and to SigNoz directly (`SigNoz.api`) for setup and verification.
+  Telemetry is seeded over OTLP/HTTP (`fixtures/telemetry.py`).
 - Every resource a test creates uses a unique `mcp-e2e-<slug>` name and is
   deleted before the test returns.
 

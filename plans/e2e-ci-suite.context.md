@@ -69,9 +69,13 @@
 - Local sandbox note: run with `DOCKER_BUILDKIT=0` (legacy builder honors `.dockerignore` and skips the AGENTS.md symlink); CI defaults to BuildKit, also fine.
 - Verified: the 3-step flow and a fully cold run, 4/4 pass with clean teardown; the container was reachable on docker-assigned port 32769.
 
+### 2026-08-30 — official Python MCP SDK client
+- User decision: `fixtures/mcpclient.py` uses the **official Python `mcp` SDK** (2.1.1) instead of the hand-rolled JSON-RPC client, superseding the earlier raw-`requests` answer below. The fixture wraps the async `streamable_http_client` in a sync facade: a dedicated event loop in a daemon thread, the transport + session held inside one long-lived task (anyio cancel scopes must enter/exit in the same task), and results returned as JSON-wire dicts so test assertions read like the protocol.
+- Verified against the live server: the SDK negotiates protocol `2025-11-25`, lists 43 tools, and round-trips tool calls; `terminate_on_close=False` because the server is stateless (no session to DELETE). Full 3-step flow and a cold run: 4/4 pass with clean teardown and no cancel-scope warnings.
+
 ## Open Questions
 - [x] Harness: pytest + foundryctl (org standard) vs Go-native testcontainers suite? → **pytest + foundryctl** (user, 2026-08-30)
 - [x] Wire the existing Go `//go:build e2e` families into the new workflow against the cast instance? → superseded: **port them to Python on the harness in PR-2 and delete the Go files** (user, 2026-08-30)
 - [x] Gating: label-gated vs every non-fork PR? → **every non-fork PR**, no extra cost label; `workflow_dispatch` kept; no cron for v1 (user, 2026-08-30)
-- [x] MCP client inside the pytest suite? → **raw JSON-RPC over `requests`** (user, 2026-08-30)
+- [x] MCP client inside the pytest suite? → superseded: **official Python `mcp` SDK** (user, 2026-08-30)
 - [x] `PRIMUS_LICENSE_KEY` passthrough? → **yes, optional** (empty = skip) (user, 2026-08-30)
