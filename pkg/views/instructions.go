@@ -19,7 +19,7 @@ meter / Cost Meter, and AI Observability explorers). The tools call the
 | id              | string (UUID)     | No (server-assigned) | Path param on get/update/delete. Do not send on create/update |
 | name            | string            | Yes, unless generateName is true | DNS-1123 label (lowercase letters, digits, hyphens). Immutable after create; the display label lives in spec.displayName |
 | generateName    | bool              | No                  | When true, the server generates name from spec.displayName and name must be empty. Default: false |
-| source          | string            | Yes                 | One of: "traces", "logs", "metrics", "meter", "ai_observability". "meter" is the Cost Meter Explorer (a distinct page) |
+| source          | string            | Yes                 | One of: "traces", "logs", "metrics", "meter". "meter" is the Cost Meter Explorer (a distinct page) |
 | schemaVersion   | string            | No                  | Always "v2"; the MCP server fills it in when omitted |
 | spec            | object            | Yes                 | Typed view content (see below) |
 | createdAt / createdBy, updatedAt / updatedBy | — | Server-populated | Do not send |
@@ -51,7 +51,7 @@ allowed but skipped by the signal check.
 | Field        | Type     | Notes |
 |--------------|----------|-------|
 | name         | string   | Reference name, e.g. "A" |
-| signal       | string   | Required. MUST match source for "traces"/"logs"/"metrics"/"ai_observability". For a "meter" view, signal MUST be "metrics" |
+| signal       | string   | Required. MUST match source for "traces"/"logs"/"metrics". For a "meter" view, signal MUST be "metrics" |
 | source       | string   | Usually "". For a "meter" view it MUST be "meter". Do NOT set "meter" on a "metrics" (or other) source view; Cost Meter views belong on source "meter" |
 | stepInterval | integer  | Seconds per bucket. 0 for list panels, e.g. 60 for graphs |
 | filter       | object   | { "expression": "SigNoz filter expression" } |
@@ -62,7 +62,7 @@ allowed but skipped by the signal check.
 
 ## Rules
 
-- **signal must equal source** for "traces"/"logs"/"metrics"/"ai_observability".
+- **signal must equal source** for "traces"/"logs"/"metrics".
   A "source":"traces" view must use "signal":"traces" in every
   builder_query spec.
 - **Cost Meter views are special.** A Cost Meter view is "source":"meter"

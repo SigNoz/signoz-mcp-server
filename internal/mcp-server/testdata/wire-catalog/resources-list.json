@@ -145,14 +145,14 @@
           "description": "Read this after signoz://view/instructions when composing a saved view. It provides complete typed spec payloads for traces, logs, metrics, and Cost Meter sources.",
           "mimeType": "text/markdown",
           "name": "Saved View Examples",
-          "size": 5550,
+          "size": 5533,
           "uri": "signoz://view/examples"
         },
         {
           "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
           "mimeType": "text/markdown",
           "name": "Saved View Instructions",
-          "size": 6817,
+          "size": 6759,
           "uri": "signoz://view/instructions"
         },
         {

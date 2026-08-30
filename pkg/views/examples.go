@@ -151,7 +151,7 @@ is queried as metrics: every builder spec sets "signal":"metrics" AND
   let the server generate one from spec.displayName, send
   "generateName": true with an empty name.
 - The signal inside each builder_query spec MUST match the view's source for
-  traces/logs/metrics/ai_observability. A Cost Meter view is source "meter"
+  traces/logs/metrics. A Cost Meter view is source "meter"
   with signal "metrics" + builder spec source "meter" (see Example 4).
 - spec.displayName is the visible label; it can differ from name.
 - spec.selectedFields is the Explorer column choice. Use [] when the view

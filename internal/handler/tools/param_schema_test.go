@@ -163,7 +163,7 @@ func TestStableSetEnumsArePresent(t *testing.T) {
 		{"signoz_get_field_values", "signal", []string{"logs", "metrics", "traces"}},
 		// "source" carries the v2 saved-views source enum; pin it so a
 		// regression that drops it fails here too.
-		{"signoz_create_view", "source", []string{"ai_observability", "logs", "meter", "metrics", "traces"}},
+		{"signoz_create_view", "source", []string{"logs", "meter", "metrics", "traces"}},
 	}
 
 	for _, tc := range cases {

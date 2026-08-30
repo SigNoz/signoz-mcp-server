@@ -127,7 +127,7 @@
     },
     {
       "name": "signoz_list_views",
-      "description": "List paginated saved Explorer views for traces, logs, metrics, Cost Meter, or AI Observability, with an optional name filter"
+      "description": "List paginated saved Explorer views for traces, logs, metrics, or Cost Meter, with an optional name filter"
     },
     {
       "name": "signoz_get_view",

@@ -23,8 +23,15 @@
 - **Response envelope**: render.Envelope `{status, data}` on success; `{status, error:{...}}` on error with coded errors (e.g. `saved_view_not_found`).
 - MCP handlers become mostly **pass-through** (like the dashboards-v2 migration), reading/writing the v2 typed shape directly.
 
+### 2026-08-30 — PR #296 review decisions
+- @makeavish: drop `ai_observability` from the `source` enum until the UI ships it (enum is `traces|logs|metrics|meter`). Applied.
+- @makeavish: `schemaVersion` is not a supported input; hard-code `v2` in the create/update handlers so a caller value never reaches upstream. Applied (param removed, value forced).
+- @makeavish: the companion `SigNoz/agent-skills` update is a pre-*release* gate, NOT a pre-*merge* blocker — this PR may merge first; the skill is updated before the next MCP version release. Recorded; PR body keeps the CMP-3 flag.
+- Codex bot (accepted): `name` param description now states it is a DNS-1123 label (lowercase/digits/hyphens) and `spec.displayName` is the display label.
+- Codex bot: proposed preserving a legacy `sourcePage` alias — **rejected** after discussion (option b): legacy `sourcePage` is intentionally rejected to avoid a partial compat shim on a hard rename. Wire-catalog goldens updated through the guardrail path for the changed entries only.
+
 ## Open Questions
-- [ ] The old MCP tools carried `category`, `tags`, `extraData` free-text params. v2 has no category/tags. Confirm whether SigNoz deprecated these or whether they map to `selectedFields`/`display`. (Resolved in discussion below.)
+- [x] The old MCP tools carried `category`, `tags`, `extraData` free-text params. v2 has no category/tags. Resolved by upstream reviewer + @makeavish: category/tags were removed in the v2 contract; rendering prefs map to `spec.selectedFields`/`spec.display`. **Decision (PR review, @makeavish, 2026-08-29): the agent-skills update is a pre-*release* gate, not a merge blocker; `ai_observability` is dropped from the source enum until the UI ships it; `schemaVersion` is hard-coded to `v2`; `name` is documented as a DNS-1123 label; legacy `sourcePage` is intentionally rejected (no alias).**
 
 ## Agent-skills impact (CMP-3)
 The `signoz_*_view` tool parameter contracts change (list loses `category`; create/update take the v2 typed shape instead of `compositeQuery`). This is a breaking contract change — agent-skills needs a companion update; flag in the PR.

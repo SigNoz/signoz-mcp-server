@@ -703,7 +703,7 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
 List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, Cost Meter, or AI Observability page. A view stores one reusable Explorer query spec; it is not a multi-panel dashboard. Apply name filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
 
 - **Parameters**:
-  - `source` (required) - One of: `traces`, `logs`, `metrics`, `meter`, `ai_observability`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
+  - `source` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
   - `name` (optional) - Partial-match filter on view name (server-side)
   - `limit` (optional) - Page size (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip (default: 0)

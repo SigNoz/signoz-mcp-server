@@ -18,19 +18,18 @@ import (
 // product (its own Meter Explorer route), even though its queries run
 // against the metrics signal with spec.source="meter".
 var validSources = map[string]struct{}{
-	"traces":           {},
-	"logs":             {},
-	"metrics":          {},
-	"meter":            {},
-	"ai_observability": {},
+	"traces":  {},
+	"logs":    {},
+	"metrics": {},
+	"meter":   {},
 }
 
 func validateSource(s string) error {
 	if s == "" {
-		return fmt.Errorf(`%s "source" is required. Must be one of: "traces", "logs", "metrics", "meter", "ai_observability"`, validationErrorPrefix)
+		return fmt.Errorf(`%s "source" is required. Must be one of: "traces", "logs", "metrics", "meter"`, validationErrorPrefix)
 	}
 	if _, ok := validSources[s]; !ok {
-		return fmt.Errorf(`%s "source" must be one of: "traces", "logs", "metrics", "meter", "ai_observability" (got %q)`, validationErrorPrefix, s)
+		return fmt.Errorf(`%s "source" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, validationErrorPrefix, s)
 	}
 	return nil
 }
@@ -43,8 +42,8 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 	listTool := mcp.NewTool("signoz_list_views",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user wants to discover saved views or find a view UUID for the Logs, Traces, Metrics, Cost Meter, or AI Observability explorer pages. A view stores one query spec; it is not a multi-widget dashboard. Apply name filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition."),
-		mcp.WithString("source", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter", "ai_observability"), mcp.Description(`Explorer whose views to list: "traces", "logs", "metrics", "meter", or "ai_observability". Use "meter" for Cost Meter, not "metrics".`)),
+		mcp.WithDescription("Use this when the user wants to discover saved views or find a view UUID for the Logs, Traces, Metrics, or Cost Meter explorer pages. A view stores one query spec; it is not a multi-widget dashboard. Apply name filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition."),
+		mcp.WithString("source", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Explorer whose views to list: "traces", "logs", "metrics", or "meter". Use "meter" for Cost Meter, not "metrics".`)),
 		mcp.WithString("name", mcp.Description("Partial, server-side match on the saved-view name. Omit to include every name.")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
@@ -65,12 +64,11 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		withCreateToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, Cost Meter, or AI Observability; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Cost Meter views use source=\"meter\" while each builder spec uses signal=\"metrics\" and source=\"meter\". Do not send server-populated IDs or timestamps.",
+			"Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Cost Meter views use source=\"meter\" while each builder spec uses signal=\"metrics\" and source=\"meter\". Do not send server-populated IDs or timestamps.",
 		),
-		mcp.WithString("name", mcp.Description("Display name of the view. Required unless generateName is true.")),
+		mcp.WithString("name", mcp.Description("The view's machine name, a DNS-1123 label (lowercase letters, digits, hyphens). The human-facing display name lives in spec.displayName. Required unless generateName is true.")),
 		mcp.WithBoolean("generateName", mcp.Description("When true, the server generates the view name from spec.displayName; name must be empty. Default: false.")),
-		mcp.WithString("source", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter", "ai_observability"), mcp.Description(`Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter", "ai_observability". Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
-		mcp.WithString("schemaVersion", mcp.Description(`Schema version of the view spec. Default: "v2".`)),
+		mcp.WithString("source", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
 		mcp.WithObject("spec", mcp.Required(), mcp.AdditionalProperties(true), mcp.Description("The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.")),
 	)
 	h.addTool(s, createTool, h.handleCreateView)
@@ -142,12 +140,8 @@ func savedViewSchemaProperties() map[string]any {
 	return map[string]any{
 		"source": map[string]any{
 			"type":        "string",
-			"enum":        []string{"traces", "logs", "metrics", "meter", "ai_observability"},
-			"description": `Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter", "ai_observability". Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
-		},
-		"schemaVersion": map[string]any{
-			"type":        "string",
-			"description": `Schema version of the view spec. Default: "v2".`,
+			"enum":        []string{"traces", "logs", "metrics", "meter"},
+			"description": `Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
 		},
 		"spec": map[string]any{
 			"type":                 "object",
@@ -181,7 +175,7 @@ var serverPopulatedViewFields = []string{
 //     spec.source="meter". So a "meter" view must use signal "metrics" AND
 //     source "meter" — omitting source="meter" would silently query the
 //     default metrics store instead of the meter store.
-//   - For the ordinary pages (traces/logs/metrics/ai_observability),
+//   - For the ordinary pages (traces/logs/metrics),
 //     `signal` must equal source, and source must not be "meter" — a Cost
 //     Meter query belongs on the dedicated "meter" page, not mis-filed
 //     under "metrics".
@@ -418,9 +412,9 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	if err := validateBuilderSignal(spec, source); err != nil {
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
-	if _, present := args["schemaVersion"]; !present {
-		args["schemaVersion"] = "v2"
-	}
+	// schemaVersion is not a supported input; force "v2" so a caller-supplied
+	// value can never reach upstream.
+	args["schemaVersion"] = "v2"
 	body, err := marshalViewBody(args)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal view body", logpkg.ErrAttr(err))
@@ -486,9 +480,9 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	if err := validateBuilderSignal(spec, source); err != nil {
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
-	if _, present := view["schemaVersion"]; !present {
-		view["schemaVersion"] = "v2"
-	}
+	// schemaVersion is not a supported input; force "v2" so a caller-supplied
+	// value can never reach upstream.
+	view["schemaVersion"] = "v2"
 
 	// Upstream v2 update (UpdatableSavedView) has no "name": name is
 	// immutable and the decoder rejects unknown fields, so echoing back a
