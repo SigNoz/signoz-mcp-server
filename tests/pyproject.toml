@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "End-to-end tests for the SigNoz MCP server"
 requires-python = ">=3.11"
 dependencies = [
+    "docker>=7.0",
     "pytest>=8.0",
     "requests>=2.32",
 ]

@@ -6,9 +6,8 @@ real, ephemeral SigNoz instance provisioned by [foundry](https://github.com/SigN
 
 ## Requirements
 
-- Docker
+- Docker (builds `Dockerfile.e2e` and runs the server container)
 - `foundryctl` on `PATH` (or pass `--foundry-binary-path`)
-- Go (to build the server under test)
 - Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/)
 
 ## Running
@@ -48,9 +47,12 @@ uv run pytest --basetemp=./tmp/ e2e/tests/test_logs.py::test_seeded_logs_are_sea
 - The session-scoped `signoz` fixture casts the stack, logs in as root,
   optionally applies a license (`--license-key`), and mints a service-account
   API key. Session teardown runs `docker compose down -v`.
-- The session-scoped `mcp_server` fixture builds `./cmd/server` and starts it
-  with `TRANSPORT_MODE=http`, `SIGNOZ_URL`, and `SIGNOZ_API_KEY` pointing at the
-  cast instance, then waits for `/readyz`.
+- The session-scoped `mcp_server` fixture builds `Dockerfile.e2e` from the
+  working tree and runs the server as a container with `TRANSPORT_MODE=http`,
+  reaching the cast SigNoz through `host.docker.internal`. Its MCP port is
+  published to a docker-assigned free host port (docker-py's
+  `client.api.port`, the same mechanism testcontainers' `get_exposed_port`
+  wraps in the signoz repo tests), then waits for `/readyz`.
 - Tests talk to the server through a thin JSON-RPC client
   (`fixtures/mcpclient.py`) and to SigNoz directly (`SigNoz.api`) for setup and
   verification. Telemetry is seeded over OTLP/HTTP (`fixtures/telemetry.py`).
@@ -59,8 +61,7 @@ uv run pytest --basetemp=./tmp/ e2e/tests/test_logs.py::test_seeded_logs_are_sea
 
 All fixtures live in `fixtures/` and are registered via the root `conftest.py`
 `pytest_plugins`. Configuration flows through pytest CLI flags, not environment
-variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--go-binary-path`,
-`--license-key`.
+variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 
 ## CI
 

@@ -35,7 +35,7 @@ tests/
 │   ├── commander.py          # frozen-dataclass subprocess wrapper (from operator)
 │   ├── foundry.py            # cast/teardown + two-phase readiness (port, then login)
 │   ├── signoz.py             # session: login as root → optional license → service account + API key
-│   ├── mcpserver.py          # go build ./cmd/server; start TRANSPORT_MODE=http; poll /readyz; stop
+│   ├── mcpserver.py          # docker build Dockerfile.e2e; run container; docker-assigned free port; poll /readyz; stop
 │   ├── mcpclient.py          # thin JSON-RPC-over-HTTP client (initialize/tools/list/tools/call)
 │   ├── telemetry.py          # OTLP HTTP seeding (traces/logs/metrics) + poll-until-visible helpers
 │   └── reuse.py              # --reuse/--teardown pytest-cache wrapper
@@ -101,9 +101,10 @@ The Go files were named after tracker batches (#363–#367), not concerns. The p
 
 **PR-1:**
 - `tests/**` — new harness + smoke suite (all new files)
+- `Dockerfile.e2e`, `.dockerignore` — the image the suite builds and runs the server from
 - `.github/workflows/e2e.yaml` — new workflow
 - `Makefile` — add e2e targets
-- `README.md`, `AGENTS.md` — documentation pointers
+- `README.md`, `CLAUDE.md` — documentation pointers (CLAUDE.md carries the content AGENTS.md symlinks to)
 - `plans/e2e-ci-suite.{context,plan}.md` — this file pair
 
 **PR-2:**

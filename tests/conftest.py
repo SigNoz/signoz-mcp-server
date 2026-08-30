@@ -29,12 +29,6 @@ def pytest_addoption(parser: pytest.Parser):
         help="Path to the foundryctl binary used to cast the SigNoz environment.",
     )
     parser.addoption(
-        "--go-binary-path",
-        action="store",
-        default="go",
-        help="Path to the go binary used to build the MCP server under test.",
-    )
-    parser.addoption(
         "--license-key",
         action="store",
         default="",

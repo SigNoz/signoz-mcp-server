@@ -1,12 +1,11 @@
-import os
-import socket
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import docker
 import pytest
 import requests
+from docker.errors import APIError, NotFound
 
 from fixtures.commander import Commander
 from fixtures.logger import setup_logger
@@ -14,11 +13,10 @@ from fixtures.signoz import SigNoz
 
 logger = setup_logger(__name__)
 
-TESTS_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = TESTS_DIR.parent
-BIN = TESTS_DIR / "tmp" / "bin" / "signoz-mcp-server"
-SERVER_LOG = TESTS_DIR / "tmp" / "signoz-mcp-server.log"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
+IMAGE = "signoz-mcp-server:e2e"
+CONTAINER_PORT = 8000
 READY_TIMEOUT = 60.0
 
 
@@ -34,21 +32,23 @@ class MCPServer:
         return f"mcpserver(base_url={self.base_url})"
 
 
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def _container_logs(container, lines: int = 120) -> str:
+    try:
+        return container.logs(tail=lines).decode(errors="replace")
+    except APIError as err:
+        return f"<could not read container logs: {err}>"
 
 
-def _wait_ready(base_url: str, process: subprocess.Popen, timeout: float = READY_TIMEOUT) -> None:
+def _wait_ready(base_url: str, container, timeout: float = READY_TIMEOUT) -> None:
     """Wait until /readyz returns 200 (it 503s while the docs index warms)."""
     deadline = time.time() + timeout
     last = None
 
     while time.time() < deadline:
-        if process.poll() is not None:
+        container.reload()
+        if container.status != "running":
             raise RuntimeError(
-                f"MCP server exited with {process.returncode} before becoming ready; log:\n{_log_tail()}"
+                f"MCP server container is {container.status} before becoming ready; logs:\n{_container_logs(container)}"
             )
         try:
             resp = requests.get(f"{base_url}/readyz", timeout=5)
@@ -60,59 +60,72 @@ def _wait_ready(base_url: str, process: subprocess.Popen, timeout: float = READY
             last = err
         time.sleep(1)
 
-    raise TimeoutError(f"MCP server did not become ready within {timeout}s (last={last}); log:\n{_log_tail()}")
-
-
-def _log_tail(lines: int = 120) -> str:
-    if not SERVER_LOG.exists():
-        return "<no server log>"
-    return "".join(SERVER_LOG.read_text().splitlines(keepends=True)[-lines:])
+    raise TimeoutError(
+        f"MCP server did not become ready within {timeout}s (last={last}); logs:\n{_container_logs(container)}"
+    )
 
 
 @pytest.fixture(scope="session")
 def mcp_server(request: pytest.FixtureRequest, signoz: SigNoz) -> MCPServer:
-    """The MCP server binary, built from the working tree and pointed at SigNoz.
+    """The MCP server image, built from the working tree and run as a container.
 
-    Always built and started fresh per run (cheap); only the SigNoz stack is
-    reused across --reuse runs.
+    The image is rebuilt per run (cheap via BuildKit cache mounts); only the
+    SigNoz stack is reused across --reuse runs. The container reaches SigNoz
+    through the host gateway, and its MCP port is published to a
+    docker-assigned free host port.
     """
-    go = Commander.from_path(request.config.getoption("--go-binary-path"), cwd=REPO_ROOT)
+    # Build via the docker CLI, like the signoz repo tests: plain build with
+    # the repo root as context. Dockerfile.e2e deliberately uses no
+    # BuildKit-only features so both builders work everywhere.
+    docker_cli = Commander.from_path("docker", cwd=REPO_ROOT)
+    docker_cli.run("build", "--file", "Dockerfile.e2e", "--tag", IMAGE, ".", timeout=900)
 
-    BIN.parent.mkdir(parents=True, exist_ok=True)
-    go.run("build", "-o", str(BIN), "./cmd/server", timeout=600)
-
-    port = _free_port()
-    base_url = f"http://127.0.0.1:{port}"
-    env = os.environ | {
-        "TRANSPORT_MODE": "http",
-        "MCP_SERVER_HOST": "127.0.0.1",
-        "MCP_SERVER_PORT": str(port),
-        "SIGNOZ_URL": signoz.endpoint,
-        "SIGNOZ_API_KEY": signoz.access_token,
-        "LOG_LEVEL": "error",
-        "ANALYTICS_ENABLED": "false",
-        "OTEL_TRACES_EXPORTER": "none",
-        "OTEL_METRICS_EXPORTER": "none",
-    }
-
-    SERVER_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with SERVER_LOG.open("w") as log_file:
-        process = subprocess.Popen([str(BIN)], env=env, stdout=log_file, stderr=subprocess.STDOUT)
+    client = docker.from_env()
+    container = client.containers.run(
+        IMAGE,
+        detach=True,
+        environment={
+            "TRANSPORT_MODE": "http",
+            # The server must bind all interfaces for the published port to
+            # be reachable through the docker proxy.
+            "MCP_SERVER_HOST": "0.0.0.0",
+            "MCP_SERVER_PORT": str(CONTAINER_PORT),
+            # The cast SigNoz publishes 8080 on the host; containers reach the
+            # host through the gateway alias.
+            "SIGNOZ_URL": signoz.endpoint.replace("localhost", "host.docker.internal").replace(
+                "127.0.0.1", "host.docker.internal"
+            ),
+            "SIGNOZ_API_KEY": signoz.access_token,
+            "LOG_LEVEL": "error",
+            "ANALYTICS_ENABLED": "false",
+            "OTEL_TRACES_EXPORTER": "none",
+            "OTEL_METRICS_EXPORTER": "none",
+        },
+        # An empty HostPort makes the docker daemon assign a free host port;
+        # read it back with client.api.port below (docker-py's free-port
+        # mechanism, the same one testcontainers' get_exposed_port wraps).
+        ports={f"{CONTAINER_PORT}/tcp": ("127.0.0.1", None)},
+        extra_hosts={"host.docker.internal": "host-gateway"},
+    )
 
     def stop() -> None:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-        logger.info("MCP server stopped; log at %s", SERVER_LOG)
+        try:
+            container.stop(timeout=10)
+        except (APIError, NotFound):
+            pass
+        try:
+            container.remove(force=True)
+        except (APIError, NotFound):
+            pass
+        logger.info("MCP server container stopped")
 
     request.addfinalizer(stop)
 
     try:
-        _wait_ready(base_url, process)
+        binding = client.api.port(container.id, CONTAINER_PORT)
+        host_port = int(binding[0]["HostPort"])
+        base_url = f"http://127.0.0.1:{host_port}"
+        _wait_ready(base_url, container)
     except Exception:
         stop()
         raise

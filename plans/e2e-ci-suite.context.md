@@ -61,6 +61,14 @@
 - The first CI run on PR #297 failed at collection: the workflow passed `--license-key ${PRIMUS_LICENSE_KEY}` unconditionally, and with the secret empty the flag had no value (`pytest: error: argument --license-key: expected one argument`). Fixed: the setup step passes the flag only when the secret is set.
 - User request: the e2e job is split into explicit **setup / run / teardown** steps (superseding my earlier finalizer-only deviation). setup → `make setup-e2e-env` (cast + cache), run → `make test-e2e-reuse`, teardown (`if: always()`) → `make cleanup-test-e2e` plus a pours/compose fallback for a cast orphaned by a failed setup. Verified locally: setup 1/1, run 4/4, teardown clean (0 containers, pours removed).
 
+### 2026-08-30 — containerized MCP server under test (Dockerfile.e2e)
+- User-provided `Dockerfile.e2e` skeleton completed: `golang:1.26-alpine` build stage → `gcr.io/distroless/base` final (same base as production multi-arch), ENTRYPOINT to the binary. No apk installs (the alpine image ships ca-certificates; modules fetch via the Go proxy, so no git). No BuildKit-only features: cache mounts were dropped so the legacy builder also works — BuildKit's dockerfile-session walker stats the `AGENTS.md → CLAUDE.md` symlink for xattrs and fails on filesystems that return ELOOP (this sandbox's mount; CI Linux handles it either way).
+- `.dockerignore` completed (VCS/GitHub metadata, build outputs, e2e artifacts, node_modules, AGENTS.md/CLAUDE.md).
+- The `mcp_server` fixture now builds with a plain `docker build --file Dockerfile.e2e --tag signoz-mcp-server:e2e .` (copied from the signoz repo tests' fixture) and runs the server as a container via docker-py, reaching the cast SigNoz through `host.docker.internal`. Its MCP port is published to a **docker-assigned free host port** and read back with `client.api.port` — docker-py's free-port mechanism, the same one testcontainers' `get_exposed_port` wraps in the signoz tests (per user direction; SigNoz and the otel collector stay foundry-driven on fixed ports).
+- Host Go is no longer required: the `--go-binary-path` option and the workflow's `go-install` step were removed. The suite is Docker-only.
+- Local sandbox note: run with `DOCKER_BUILDKIT=0` (legacy builder honors `.dockerignore` and skips the AGENTS.md symlink); CI defaults to BuildKit, also fine.
+- Verified: the 3-step flow and a fully cold run, 4/4 pass with clean teardown; the container was reachable on docker-assigned port 32769.
+
 ## Open Questions
 - [x] Harness: pytest + foundryctl (org standard) vs Go-native testcontainers suite? → **pytest + foundryctl** (user, 2026-08-30)
 - [x] Wire the existing Go `//go:build e2e` families into the new workflow against the cast instance? → superseded: **port them to Python on the harness in PR-2 and delete the Go files** (user, 2026-08-30)
