@@ -3368,32 +3368,22 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to save one reusable Explorer query for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Cost Meter views use sourcePage=\"meter\" while each builder spec uses signal=\"metrics\" and source=\"meter\". Do not send server-populated IDs or timestamps.",
+          "description": "Use this when the user wants to save one reusable query spec for Logs, Traces, Metrics, or Cost Meter; use signoz_create_dashboard for a multi-widget dashboard. Before composing any payload, you must read both signoz://view/instructions and signoz://view/examples. Cost Meter views use source=\"meter\" while each builder spec uses signal=\"metrics\" and source=\"meter\". Do not send server-populated IDs or timestamps.",
           "inputSchema": {
             "properties": {
-              "category": {
-                "description": "Optional free-form grouping label.",
-                "type": "string"
-              },
-              "compositeQuery": {
-                "additionalProperties": {},
-                "description": "The Query Builder payload as an object (not a string). Must contain queryType plus matching sub-query. See signoz://view/instructions and signoz://view/examples.",
-                "properties": {},
-                "type": "object"
-              },
-              "extraData": {
-                "description": "Optional UI-controlled options as a JSON-encoded string (safe to leave empty).",
-                "type": "string"
+              "generateName": {
+                "description": "When true, the server generates the view name from spec.displayName; name must be empty. Default: false.",
+                "type": "boolean"
               },
               "name": {
-                "description": "Display name of the view.",
+                "description": "The view's machine name, a DNS-1123 label (lowercase letters, digits, hyphens). The human-facing display name lives in spec.displayName. Required unless generateName is true.",
                 "type": "string"
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
-              "sourcePage": {
+              "source": {
                 "description": "Which Explorer this view belongs to. One of: \"traces\", \"logs\", \"metrics\", \"meter\". Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
                 "enum": [
                   "traces",
@@ -3403,18 +3393,16 @@
                 ],
                 "type": "string"
               },
-              "tags": {
-                "description": "Optional free-form tags.",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
+              "spec": {
+                "additionalProperties": {},
+                "description": "The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.",
+                "properties": {},
+                "type": "object"
               }
             },
             "required": [
-              "name",
-              "sourcePage",
-              "compositeQuery"
+              "source",
+              "spec"
             ],
             "type": "object"
           },
@@ -3501,7 +3489,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one saved Explorer view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard.",
+          "description": "Use this when the user has confirmed they want to permanently delete one saved view. The deletion is irreversible. Use signoz_list_views to discover the UUID when needed; do not use this for dashboards; delete those with signoz_delete_dashboard.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -4827,7 +4815,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants the complete definition of one known saved Explorer view. Use signoz_list_views first when its UUID is unknown. The returned data object is the required base for signoz_update_view because updates fully replace a view. Do not use this for multi-widget dashboards; use signoz_get_dashboard.",
+          "description": "Use this when the user wants the complete definition of one known saved view. Use signoz_list_views first when its UUID is unknown. The returned data object is the required base for signoz_update_view because updates fully replace a view. Do not use this for multi-widget dashboards; use signoz_get_dashboard.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -5377,13 +5365,9 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants to discover saved Explorer views or find a view UUID for one Logs, Traces, Metrics, or Cost Meter page. A view stores an Explorer query; it is not a multi-widget dashboard. Apply name/category filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition.",
+          "description": "Use this when the user wants to discover saved views or find a view UUID for the Logs, Traces, Metrics, or Cost Meter explorer pages. A view stores one query spec; it is not a multi-widget dashboard. Apply name filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition.",
           "inputSchema": {
             "properties": {
-              "category": {
-                "description": "Partial, server-side match on the saved-view category. Omit to include every category.",
-                "type": "string"
-              },
               "limit": {
                 "default": "50",
                 "description": "Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).",
@@ -5408,7 +5392,7 @@
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
-              "sourcePage": {
+              "source": {
                 "description": "Explorer whose views to list: \"traces\", \"logs\", \"metrics\", or \"meter\". Use \"meter\" for Cost Meter, not \"metrics\".",
                 "enum": [
                   "traces",
@@ -5420,7 +5404,7 @@
               }
             },
             "required": [
-              "sourcePage"
+              "source"
             ],
             "type": "object"
           },
@@ -8928,7 +8912,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing saved Explorer view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Read signoz://view/instructions and signoz://view/examples when changing sourcePage or compositeQuery; skip them for name-, category-, or tags-only changes when you already have the complete fetched view. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
+          "description": "Use this when the user wants to change an existing saved view. This is a full replacement: call signoz_get_view first, modify its data object, preserve every unrequested field, and pass that full object as view. Upstream keeps name immutable on update; the display name lives in spec.displayName. Read signoz://view/instructions and signoz://view/examples when changing source or spec. Keep the UUID only in id; omit server-populated IDs and timestamps from view.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -8943,24 +8927,7 @@
                 "additionalProperties": {},
                 "description": "Complete saved view after the requested changes. Start with the data returned by signoz_get_view and pass the full object here.",
                 "properties": {
-                  "category": {
-                    "description": "Optional free-form grouping label.",
-                    "type": "string"
-                  },
-                  "compositeQuery": {
-                    "additionalProperties": {},
-                    "description": "The Query Builder payload as an object (not a string). Must contain queryType plus matching sub-query. See signoz://view/instructions and signoz://view/examples.",
-                    "type": "object"
-                  },
-                  "extraData": {
-                    "description": "Optional UI-controlled options as a JSON-encoded string (safe to leave empty).",
-                    "type": "string"
-                  },
-                  "name": {
-                    "description": "Display name of the view.",
-                    "type": "string"
-                  },
-                  "sourcePage": {
+                  "source": {
                     "description": "Which Explorer this view belongs to. One of: \"traces\", \"logs\", \"metrics\", \"meter\". Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
                     "enum": [
                       "traces",
@@ -8970,18 +8937,15 @@
                     ],
                     "type": "string"
                   },
-                  "tags": {
-                    "description": "Optional free-form tags.",
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
+                  "spec": {
+                    "additionalProperties": {},
+                    "description": "The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.",
+                    "type": "object"
                   }
                 },
                 "required": [
-                  "name",
-                  "sourcePage",
-                  "compositeQuery"
+                  "source",
+                  "spec"
                 ],
                 "type": "object"
               }

@@ -142,17 +142,17 @@
           "uri": "signoz://dashboard/query-builder-example"
         },
         {
-          "description": "Read this after signoz://view/instructions when composing a saved Explorer view. It provides complete Query Builder v5 payloads for traces, logs, metrics, and Cost Meter source pages.",
+          "description": "Read this after signoz://view/instructions when composing a saved view. It provides complete typed spec payloads for traces, logs, metrics, and Cost Meter sources.",
           "mimeType": "text/markdown",
           "name": "Saved View Examples",
-          "size": 5737,
+          "size": 5533,
           "uri": "signoz://view/examples"
         },
         {
-          "description": "Read this before creating or updating a saved Explorer view. It explains view fields, sourcePage, Query Builder v5, Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
+          "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
           "mimeType": "text/markdown",
           "name": "Saved View Instructions",
-          "size": 5794,
+          "size": 6759,
           "uri": "signoz://view/instructions"
         },
         {

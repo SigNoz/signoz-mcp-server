@@ -239,7 +239,7 @@ func TestE2EFamilyB_HappyPathStillSucceeds(t *testing.T) {
 		},
 		{
 			name: "list_views_traces",
-			args: map[string]any{"sourcePage": "traces"},
+			args: map[string]any{"source": "traces"},
 			run: func(a map[string]any) (bool, string) {
 				r, err := h.handleListViews(ctx, makeToolRequest("signoz_list_views", a))
 				if err != nil {

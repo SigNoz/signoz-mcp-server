@@ -131,7 +131,7 @@ func TestE2EFamilyC_StructuredContentOnListTools(t *testing.T) {
 	assertStructuredMatchesText(t, "list_alerts", callOK(t, h.handleListAlerts, ctx, "signoz_list_alerts", map[string]any{}))
 	assertStructuredMatchesText(t, "list_alert_rules", callOK(t, h.handleListAlertRules, ctx, "signoz_list_alert_rules", map[string]any{}))
 	assertStructuredMatchesText(t, "list_dashboards", callOK(t, h.handleListDashboards, ctx, "signoz_list_dashboards", map[string]any{}))
-	assertStructuredMatchesText(t, "list_views", callOK(t, h.handleListViews, ctx, "signoz_list_views", map[string]any{"sourcePage": "traces"}))
+	assertStructuredMatchesText(t, "list_views", callOK(t, h.handleListViews, ctx, "signoz_list_views", map[string]any{"source": "traces"}))
 	assertStructuredMatchesText(t, "list_notification_channels", callOK(t, h.handleListNotificationChannels, ctx, "signoz_list_notification_channels", map[string]any{}))
 }
 
@@ -154,10 +154,10 @@ func TestE2EFamilyC_StructuredContentOnGetTools(t *testing.T) {
 		t.Log("SKIP get_alert: no alert rules on instance")
 	}
 
-	// get_view — viewId from list_views (try each sourcePage).
+	// get_view — viewId from list_views (try each source).
 	var viewID string
 	for _, sp := range []string{"traces", "logs", "metrics"} {
-		vl := callOK(t, h.handleListViews, ctx, "signoz_list_views", map[string]any{"sourcePage": sp})
+		vl := callOK(t, h.handleListViews, ctx, "signoz_list_views", map[string]any{"source": sp})
 		if viewID = firstDataID(firstText(vl), "id", "uuid"); viewID != "" {
 			break
 		}

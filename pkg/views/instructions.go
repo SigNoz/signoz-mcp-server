@@ -5,57 +5,54 @@
 package views
 
 // Instructions is the body of signoz://view/instructions.
-const Instructions = `# SigNoz Saved View Schema
+const Instructions = `# SigNoz Saved View Schema (v2 typed spec)
 
 A saved view is a reusable snapshot of an Explorer query. It maps 1:1
-to the "Saved Views" feature in the SigNoz UI (traces-explorer,
-logs-explorer, metrics-explorer, meter-explorer / Cost Meter).
+to the "Saved Views" feature in the SigNoz UI (traces, logs, metrics,
+meter / Cost Meter, and AI Observability explorers). The tools call the
+/api/v2/saved_views endpoints; schemaVersion is "v2".
 
 ## SavedView fields
 
 | Field           | Type              | Required on create? | Notes |
 |-----------------|-------------------|---------------------|-------|
-| id              | string (UUID)     | No (server-assigned) | Path param on get/update/delete. Do not send on create/update. |
-| name            | string            | Yes                 | Display name |
-| category        | string            | No                  | Free-form grouping label |
-| sourcePage      | string            | Yes                 | One of: "traces", "logs", "metrics", "meter". "meter" is the Cost Meter Explorer (a distinct page) |
-| tags            | string[]          | No                  | Free-form tags |
-| compositeQuery  | object            | Yes                 | Query Builder v5 (see below) |
-| extraData       | string            | No                  | UI-controlled options (JSON string). Safe to leave "" |
-| createdAt / by, updatedAt / by | — | Server-populated | Do not send |
+| id              | string (UUID)     | No (server-assigned) | Path param on get/update/delete. Do not send on create/update |
+| name            | string            | Yes, unless generateName is true | DNS-1123 label (lowercase letters, digits, hyphens). Immutable after create; the display label lives in spec.displayName |
+| generateName    | bool              | No                  | When true, the server generates name from spec.displayName and name must be empty. Default: false |
+| source          | string            | Yes                 | One of: "traces", "logs", "metrics", "meter". "meter" is the Cost Meter Explorer (a distinct page) |
+| schemaVersion   | string            | No                  | Always "v2"; the MCP server fills it in when omitted |
+| spec            | object            | Yes                 | Typed view content (see below) |
+| createdAt / createdBy, updatedAt / updatedBy | — | Server-populated | Do not send |
 
-## compositeQuery (Query Builder v5 shape)
+## spec fields
 
-Explorer saved views are **builder-query only**. CompositeQuery at the top
-level has exactly three fields:
+| Field          | Type   | Required | Notes |
+|----------------|--------|----------|-------|
+| displayName    | string | Yes      | Human label shown in the Explorer view list |
+| panelType      | string | Yes      | One of: "value", "graph", "table", "list", "trace" |
+| requestType    | string | Yes      | One of: "raw", "trace", "time_series", "scalar" (Query Builder v5) |
+| queries        | array  | Yes      | At least one query envelope (see below) |
+| selectedFields | array  | No       | Explorer column selection; each entry needs a name, plus signal/fieldContext/fieldDataType |
+| display        | object | No       | Rendering preferences: { maxLines, fontSize, format, color } |
 
-    {
-      "queryType": "builder",
-      "panelType": "list" | "graph" | "table" | "value",
-      "queries":   [ { "type": "builder_query", "spec": { ... } }, ... ]
-    }
+## spec.queries[] entries
 
-PromQL and raw ClickHouse query types (queryType "promql" / "clickhouse_sql",
-entries with type "promql_query" / "clickhouse_query") are **not supported**
-for Explorer saved views; use them in dashboards instead.
-
-**Do not send** legacy v3/v4 fields like ` + "`builder`" + `,
-` + "`promql`" + `, ` + "`clickhouse_sql`" + ` (as sub-objects at the top level),
-` + "`unit`" + `, ` + "`id`" + `, ` + "`queryFormulas`" + `, or ` + "`queryTraceOperator`" + `.
-The server rejects them with HTTP 400 "failed to validate request body".
-
-### Each entry in queries[]
+Each entry is a Query Builder v5 envelope with type plus spec:
 
     { "type": "builder_query",
       "spec": { ...builder_query fields... } }
+
+Only builder_query envelopes carry signal/source, and only they fall
+under the rules below. promql_query and clickhouse_query envelopes are
+allowed but skipped by the signal check.
 
 ### builder_query spec fields
 
 | Field        | Type     | Notes |
 |--------------|----------|-------|
 | name         | string   | Reference name, e.g. "A" |
-| signal       | string   | Required. MUST match sourcePage for "traces"/"logs"/"metrics". For a "meter" view, signal MUST be "metrics" |
-| source       | string   | Usually "". For a "meter" view it MUST be "meter". Do NOT set "meter" on a "metrics" (or other) sourcePage; Cost Meter views belong on sourcePage "meter" |
+| signal       | string   | Required. MUST match source for "traces"/"logs"/"metrics". For a "meter" view, signal MUST be "metrics" |
+| source       | string   | Usually "". For a "meter" view it MUST be "meter". Do NOT set "meter" on a "metrics" (or other) source view; Cost Meter views belong on source "meter" |
 | stepInterval | integer  | Seconds per bucket. 0 for list panels, e.g. 60 for graphs |
 | filter       | object   | { "expression": "SigNoz filter expression" } |
 | having       | object   | { "expression": "" } unless aggregating |
@@ -65,22 +62,25 @@ The server rejects them with HTTP 400 "failed to validate request body".
 
 ## Rules
 
-- **signal must equal sourcePage** for "traces"/"logs"/"metrics". A
-  ` + "`sourcePage:\"traces\"`" + ` view must use ` + "`\"signal\":\"traces\"`" + ` in every
+- **signal must equal source** for "traces"/"logs"/"metrics".
+  A "source":"traces" view must use "signal":"traces" in every
   builder_query spec.
-- **Cost Meter views are special.** A Cost Meter view is
-  ` + "`sourcePage:\"meter\"`" + ` (its own Explorer page) but is queried as metrics:
-  every builder_query spec must set ` + "`\"signal\":\"metrics\"`" + ` AND
-  ` + "`\"source\":\"meter\"`" + `. Do not file a Cost Meter view under
-  ` + "`sourcePage:\"metrics\"`" + `; it will land in the wrong Explorer's list.
+- **Cost Meter views are special.** A Cost Meter view is "source":"meter"
+  (its own Explorer page) but is queried as metrics: every builder_query
+  spec sets "signal":"metrics" AND "source":"meter". Do not file a Cost
+  Meter view under "source":"metrics"; it will land in the wrong Explorer's
+  list.
+- **name is immutable.** Upstream rejects name on update; spec.displayName
+  carries the visible label.
 - **panelType by intent:** "list" for tabular spans/logs; "graph" for
-  time-series; "table" for grouped tables; "value" for a single number.
+  time-series; "table" for grouped tables; "value" for a single number;
+  "trace" for a trace waterfall.
 - **Discover unknown fields before writing filters.** Call
   signoz_get_field_keys with the view's signal and fieldContext; use
   signoz_get_field_values when observed values help verify a predicate. Do not
   copy tenant-specific attributes from an example without checking them.
 - **Always bound and order builder results:** every builder_query must include a
-  positive ` + "`limit`" + ` and non-empty v5 ` + "`order`" + `. For time-series views,
+  positive limit and non-empty v5 order. For time-series views,
   the limit selects groups over the whole requested range, so a short-lived
   locally significant series can fall outside the returned top N.
 - **Full Query Builder v5 spec:** https://signoz.io/docs/userguide/query-builder-v5/
@@ -88,26 +88,28 @@ The server rejects them with HTTP 400 "failed to validate request body".
 ## Update flow
 
 signoz_update_view **replaces** the view (upstream is HTTP PUT). To
-rename or tweak one field:
+rename the label or tweak one field:
 
 1. Call signoz_get_view with the view's id. It returns
    {"status":"success","data":{...SavedView...}}.
 2. Take the **data** object from that response.
-3. Strip server-populated fields (id, createdAt, createdBy, updatedAt, updatedBy).
-4. Modify the field(s) you want to change.
+3. Strip server-populated fields (id, createdAt, createdBy, updatedAt, updatedBy) and drop name.
+4. Modify the field(s) you want to change (e.g. spec.displayName).
 5. Call signoz_update_view with { "id": "<id>", "view": <modified data> }.
 
-(The MCP server strips server-populated fields for you if you forget, but
-omitting them up front is clearer.)
+(The MCP server strips server-populated fields and name for you if you
+forget, but omitting them up front is clearer.)
 
 ## Minimal create body
 
     {
-      "name": "my view",
-      "sourcePage": "traces",
-      "compositeQuery": {
-        "queryType": "builder",
+      "name": "slow-checkout-traces",
+      "source": "traces",
+      "schemaVersion": "v2",
+      "spec": {
+        "displayName": "Slow checkout traces",
         "panelType": "list",
+        "requestType": "raw",
         "queries": [{
           "type": "builder_query",
           "spec": {
@@ -120,9 +122,14 @@ omitting them up front is clearer.)
             "filter":  { "expression": "service.name = 'checkoutservice'" },
             "having":  { "expression": "" }
           }
-        }]
+        }],
+        "selectedFields": [
+          {"name": "service.name", "signal": "traces", "fieldContext": "attribute", "fieldDataType": "string"},
+          {"name": "duration_nano", "signal": "traces", "fieldContext": "span", "fieldDataType": "int64"}
+        ],
+        "display": {"maxLines": 2, "fontSize": "small", "format": "table", "color": "default"}
       }
     }
 
-See signoz://view/examples for complete payloads per sourcePage.
+See signoz://view/examples for complete payloads per source.
 `

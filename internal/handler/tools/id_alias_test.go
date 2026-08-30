@@ -369,7 +369,7 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 			var capturedBody []byte
 			mock := &client.MockClient{
 				GetViewFn: func(ctx context.Context, viewID string) (json.RawMessage, error) {
-					return json.RawMessage(`{"data":{"sourcePage":"logs"}}`), nil
+					return json.RawMessage(`{"data":{"source":"logs"}}`), nil
 				},
 				UpdateViewFn: func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
 					capturedID = viewID
@@ -384,11 +384,10 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 					// Server-populated "id" is included to prove it gets stripped
 					// from the outgoing body (matches the signoz_get_view shape a
 					// caller is told to paste back under "view").
-					"id":         "v1",
-					"name":       "My View",
-					"sourcePage": "logs",
-					"compositeQuery": map[string]any{
-						"queryType": "builder",
+					"id":     "v1",
+					"name":   "My View",
+					"source": "logs",
+					"spec": map[string]any{
 						"queries": []any{
 							map[string]any{
 								"type": "builder_query",
@@ -469,7 +468,7 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 		}},
 		{"update_view", func() (*mcp.CallToolResult, error) {
 			return h.handleUpdateView(testCtx(), makeToolRequest("signoz_update_view", map[string]any{
-				"view": map[string]any{"name": "n", "sourcePage": "logs", "compositeQuery": map[string]any{}},
+				"view": map[string]any{"name": "n", "source": "logs", "spec": map[string]any{}},
 			}))
 		}},
 	}

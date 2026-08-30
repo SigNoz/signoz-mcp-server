@@ -28,7 +28,7 @@ type MockClient struct {
 	ListServicesFn              func(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperationsFn   func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
 	QueryBuilderV5Fn            func(ctx context.Context, body []byte) (json.RawMessage, error)
-	ListViewsFn                 func(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error)
+	ListViewsFn                 func(ctx context.Context, source, name string) (json.RawMessage, error)
 	GetViewFn                   func(ctx context.Context, viewID string) (json.RawMessage, error)
 	CreateViewFn                func(ctx context.Context, body []byte) (json.RawMessage, error)
 	UpdateViewFn                func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
@@ -171,9 +171,9 @@ func (m *MockClient) QueryBuilderV5(ctx context.Context, body []byte) (json.RawM
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) ListViews(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error) {
+func (m *MockClient) ListViews(ctx context.Context, source, name string) (json.RawMessage, error) {
 	if m.ListViewsFn != nil {
-		return m.ListViewsFn(ctx, sourcePage, name, category)
+		return m.ListViewsFn(ctx, source, name)
 	}
 	return json.RawMessage(`{}`), nil
 }
