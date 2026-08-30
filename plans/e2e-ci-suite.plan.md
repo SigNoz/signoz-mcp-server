@@ -41,22 +41,22 @@ tests/
 │   └── reuse.py              # --reuse/--teardown pytest-cache wrapper
 └── e2e/
     ├── bootstrap/setup.py    # test_setup / test_teardown entrypoints
-    └── tests/                # PR-1 smoke set only; PR-2 adds the ported families
-        ├── conftest.py       # function-scoped fixtures: test_id slugs, per-test cleanup
+    └── tests/                # PR-1 smoke set only; PR-2 adds the ported suites
         ├── test_protocol.py  # initialize + tools/list against the live-backed server
         ├── test_logs.py      # seed logs via OTLP → signoz_search_logs finds them
-        ├── test_dashboards.py# dashboard create/get/delete round-trip through MCP tools
-        └── test_stdio.py     # stdio transport smoke against the real backend
+        └── test_dashboards.py# dashboard create/get/delete round-trip through MCP tools
 ```
 
 Principles (from the reference suites):
 
 - **One command contract**: CI and developers both run `make test-e2e`; all orchestration lives in the suite.
 - **Config via CLI flags** (`--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`), not env vars.
+- **All fixtures live in `tests/fixtures/`** — including per-test slug/cleanup helpers — registered through the root `tests/conftest.py` `pytest_plugins`. No suite-local `conftest.py` with function-scoped fixtures.
 - **Session-scoped stack** (cast SigNoz + built MCP server), function-scoped seeds with cleanup; unique `mcp-e2e-<slug>-<rand>` naming; every created resource deleted and confirmed gone (mirrors the AGENTS.md live-verification rules).
 - **Throwaway credentials** hardcoded in `casting.yaml`; the API key is minted per session as a service-account key.
 - **No secrets required**: license key optional (empty = skip).
 - **No Go changes to production code.** No guardrail policy changes.
+- **No stdio-transport suite** in the first iteration (user, 2026-08-30); HTTP transport only.
 
 ### PR-1: CI workflow `.github/workflows/e2e.yaml` (new)
 
@@ -75,21 +75,25 @@ Principles (from the reference suites):
 
 ### PR-2: port the Go e2e families to Python
 
-Source inventory (~3.4k lines) and target modules under `tests/e2e/tests/`:
+The Go files were named after tracker batches (#363–#367), not concerns. The port re-groups by behavior into semantically named suites (user, 2026-08-30). Mapping — source Go tests → target modules under `tests/e2e/tests/`:
 
-| Go file (deleted) | Covers | Python module |
+| Target Python suite | Behavior covered | Source Go tests (deleted) |
 |---|---|---|
-| `e2e_familya_test.go` | silent-failure fixes (#363); N4 row-count paths; completeness notes | `test_family_a.py` |
-| `e2e_familyb_test.go` | error/validation flows, canonical strings, upstream error envelope (#364) | `test_family_b.py` |
-| `e2e_familyc_test.go` | output envelopes: structuredContent, JSON-first query_metrics, error codes | `test_family_c.py` |
-| `e2e_familyd_test.go` | param schema, types & descriptions (#367) | `test_family_d.py` |
-| `e2e_familye_test.go` | parameter changes: timestamps, limit, requestType, id rename (#366) | `test_family_e.py` |
-| `e2e_trace_fields_test.go` | trace field snake_case migration | `test_trace_fields.py` |
-| `e2e_org_overview_test.go` | org overview tool | `test_org_overview.py` |
-| `e2e_docs_test.go` | docs search against live instance | `test_docs.py` |
-| `nil_arguments_e2e_test.go` | nil-arguments panic fix | fold into `test_protocol.py` |
+| `test_query_response_paths.py` | Upstream QB/response JSON-path drift: search_logs/search_traces row paths, list_metrics/top_metrics paths, alert_history path; execute_builder_query success + warning-note path; list tools succeed | Family A N1–N5 (`e2e_familya_test.go`) |
+| `test_param_coercion.py` | Tolerant input handling: stepInterval number/string, booleans as bool/legacy string (+ garbage rejected), timestamp auto-detect (ns/ms), docs limit number/string + list clamp | Family A N2–N3; Family E K1, K3 |
+| `test_param_validation.py` | Canonical validation error strings; requestType validation; trace-timestamp parameter error; nil-arguments validation error | Family B (validation half); Family E K4; `nil_arguments_e2e_test.go` |
+| `test_output_envelopes.py` | structuredContent on list/get tools, absent on raw QB passthrough; JSON-first query_metrics; error-code taxonomy; mutation envelopes | Family C (`e2e_familyc_test.go`) |
+| `test_enums_and_grammar.py` | requestType/signal/alert-history enum values; aggregation set matches backend; timeRange/stepInterval grammar; search_docs param + alias; service top-operations tags | Family D (`e2e_familyd_test.go`) |
+| `test_notification_channels.py` | Bad-webhook create → success + warning note → delete; normal create/verify/delete lifecycle | Family A N6 |
+| `test_saved_views.py` | View CRUD round-trip (clone existing, unique name, read via id + legacy viewId, delete via legacy key, confirm gone) | Family E K5 CRUD |
+| `test_get_by_id_aliases.py` | get_alert by id/ruleId, get_dashboard by id/uuid | Family E K5 reads |
+| `test_trace_fields.py` | Trace field snake_case migration | `e2e_trace_fields_test.go` |
+| `test_org_overview.py` | Org overview tool against live instance | `e2e_org_overview_test.go` |
+| `test_docs.py` | Docs agent flow: search_docs, fetch_doc happy path, out-of-scope URL coded error, sitemap resource (embedded corpus — no backend data needed) | `e2e_docs_test.go::TestE2EDocsAgentFlow` |
+| `test_upstream_errors.py` | Upstream error classification/prefix; invalid API key → coded auth error (401 propagation per AGENTS.md) | Family B (upstream half); transport-visible part of `TestE2EAuthFailureTelemetry` |
 
-- Port through the MCP transport (initialize → tools/call), not in-process handler calls; assertions that only make sense in-process are dropped with a note in the PR-2 description.
+- Port through the MCP transport (initialize → tools/call), not in-process handler calls.
+- In-process-only assertions do not port: `TestE2EAuthFailureTelemetry`'s OTel span-emission check becomes an untagged Go unit test or is dropped — the choice and justification go in the PR-2 description.
 - Staging-assumption triage happens during the port: anything that depended on staging data seeds its own fixtures via `telemetry.py` or the SigNoz API.
 - After the port, the Go e2e files and the now-unused `e2e` build-tag helpers are removed in the same PR-2.
 
@@ -103,8 +107,8 @@ Source inventory (~3.4k lines) and target modules under `tests/e2e/tests/`:
 - `plans/e2e-ci-suite.{context,plan}.md` — this file pair
 
 **PR-2:**
-- `tests/e2e/tests/test_family_{a,b,c,d,e}.py`, `test_trace_fields.py`, `test_org_overview.py`, `test_docs.py`, additions to `test_protocol.py` — new ports
-- `internal/handler/tools/e2e_*.go`, `internal/mcp-server/{e2e_docs_test.go, nil_arguments_e2e_test.go}` — deleted after port
+- `tests/e2e/tests/` — new ports: `test_query_response_paths.py`, `test_param_coercion.py`, `test_param_validation.py`, `test_output_envelopes.py`, `test_enums_and_grammar.py`, `test_notification_channels.py`, `test_saved_views.py`, `test_get_by_id_aliases.py`, `test_trace_fields.py`, `test_org_overview.py`, `test_docs.py`, `test_upstream_errors.py`
+- `internal/handler/tools/e2e_*.go`, `internal/mcp-server/{e2e_docs_test.go, nil_arguments_e2e_test.go}` — deleted after port (any surviving in-process assertion re-lands as an untagged Go unit test)
 
 ## Verification
 

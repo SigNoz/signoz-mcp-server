@@ -41,6 +41,12 @@
 - Process: open PR-1 containing only the plan files first; user reviews; PR-1 implementation is then pushed to the same PR, and PR-2 is opened against it.
 - Rationale for removing the Go files post-port: keeping both would duplicate coverage and drift apart; the pytest harness drives the server through the real MCP transport, which is strictly broader than the in-process handler calls the Go tests make. Any handler-level assertions that lose value through the transport (e.g. direct struct-field checks) will be noted in PR-2's description.
 
+### 2026-08-30 — plan review feedback (user)
+- **No letter-named port modules.** The Go families were named after tracker batches (#363–#367), not concerns. The port groups tests by behavior into semantically named suites (see plan §PR-2 mapping): response-path drift checks, parameter coercion, parameter validation, output envelopes, enums/grammar, notification channels, saved views, get-by-id aliases, trace fields, org overview, docs, upstream/auth errors.
+- **No function-scoped fixtures in suite conftests.** All fixtures — including per-test slug/cleanup helpers — live in `tests/fixtures/` and are registered through the root `tests/conftest.py` `pytest_plugins`.
+- **No `test_stdio.py` in the first iteration.** HTTP transport only for PR-1; stdio smoke can be reconsidered later.
+- Noticed while reading the Go files: `TestE2EDocsAgentFlow` and `TestE2EAuthFailureTelemetry` run against an in-process `httptest` server with the embedded docs corpus — they never needed a live backend. The port covers their transport-visible behavior; the in-process-only OTel span assertion for auth-failure telemetry either becomes an untagged Go unit test or is dropped with justification in the PR-2 description.
+
 ## Open Questions
 - [x] Harness: pytest + foundryctl (org standard) vs Go-native testcontainers suite? → **pytest + foundryctl** (user, 2026-08-30)
 - [x] Wire the existing Go `//go:build e2e` families into the new workflow against the cast instance? → superseded: **port them to Python on the harness in PR-2 and delete the Go files** (user, 2026-08-30)
