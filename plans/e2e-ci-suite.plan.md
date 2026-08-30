@@ -1,7 +1,7 @@
 # Plan: E2E CI Suite
 
 ## Status
-In Progress (PR-1 implemented, in review; PR-2 not started)
+In Progress (PR-1 implemented, in review; PR-2 implemented on the stacked branch, in review)
 
 ## Context
 

@@ -1,5 +1,6 @@
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.mcpserver import MCPServer
+from fixtures.results import first_text_block
 
 
 def test_initialize_handshake(mcp_server: MCPServer) -> None:
@@ -30,3 +31,15 @@ def test_tools_list_and_call(mcp_client: MCPClient) -> None:
 
     result = assert_tool_ok(mcp_client.call_tool("signoz_list_dashboards", {"searchContext": "e2e protocol smoke"}))
     assert text_blocks(result), "signoz_list_dashboards returned an empty body"
+
+
+def test_get_alert_without_arguments_returns_validation_error(mcp_client: MCPClient) -> None:
+    """A tools/call with no arguments object yields a validation error, not a panic (nil_arguments port)."""
+    result = mcp_client.call_tool_without_arguments("signoz_get_alert")
+
+    text = first_text_block(result)
+    assert result.get("isError", False), f"expected a validation error tool result, got: {text[:300]}"
+    assert '"id"' in text, f"expected an id validation message, got: {text[:300]}"
+    assert "panic" not in text.lower(), (
+        f"response still surfaces a panic instead of a clean validation error: {text[:300]}"
+    )
