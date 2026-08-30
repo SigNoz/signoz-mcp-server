@@ -80,8 +80,28 @@ jobs:
           curl -fsSL https://signoz.io/foundry.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/foundryctl" version
-      - name: test-e2e
+      - name: setup
         env:
           PRIMUS_LICENSE_KEY: ${{ secrets.PRIMUS_LICENSE_KEY }}
         run: |
-          make test-e2e E2E_FLAGS="--license-key ${PRIMUS_LICENSE_KEY}"
+          # The license key is optional; pass the flag only when the secret is
+          # set, so community runs don't trip over a value-less --license-key.
+          flags=()
+          if [ -n "${PRIMUS_LICENSE_KEY}" ]; then
+            flags+=(--license-key "${PRIMUS_LICENSE_KEY}")
+          fi
+          make setup-e2e-env E2E_FLAGS="${flags[*]}"
+      - name: run
+        run: |
+          make test-e2e-reuse
+      - name: teardown
+        if: always()
+        run: |
+          # The cached-environment path no-ops cleanly when setup never cached;
+          # the compose fallback covers a cast left behind by a failed setup.
+          make cleanup-test-e2e || true
+          compose_file="$(find tests/pours -name compose.yaml -print -quit 2>/dev/null || true)"
+          if [ -n "${compose_file}" ]; then
+            docker compose -f "${compose_file}" down -v || true
+            rm -rf tests/pours
+          fi

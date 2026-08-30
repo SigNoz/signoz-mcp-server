@@ -63,7 +63,7 @@ Principles (from the reference suites):
 - Triggers: `pull_request` (opened/synchronize/reopened/labeled) + `pull_request_target: labeled` + `workflow_dispatch`. No `safe-to-e2e` cost label and no cron in v1: the job runs on **every non-fork PR** (user decision, 2026-08-30); per-PR cadence provides the upstream-drift signal.
 - Job `lint`: ruff format/check on `tests/` (uv).
 - Job `e2e`: gated by exactly the ci.yaml dual-event fork-gate expression (non-fork, non-dependabot `pull_request`, or `pull_request_target` with `safe-to-test`) — so fork PRs only run after maintainer labeling, and secrets never reach unlabeled forks. `permissions: contents: read`, `timeout-minutes: 45`.
-- Steps: checkout PR head → setup-go (go.mod) → setup-python 3.13 → setup-uv → install foundryctl (pinned via `FOUNDRY_VERSION` env at workflow top; overridable on dispatch) → `make test-e2e` (passes `--license-key "${{ secrets.PRIMUS_LICENSE_KEY }}"`, empty when unset). No separate teardown step: the pytest session finalizer owns teardown (verified leak-free on failing runs) and runners are ephemeral.
+- Steps: checkout PR head → setup-go (go.mod) → setup-python 3.13 → setup-uv → install foundryctl (pinned via `FOUNDRY_VERSION` env at workflow top; overridable on dispatch) → **setup** (`make setup-e2e-env`; passes `--license-key` only when `secrets.PRIMUS_LICENSE_KEY` is set — an empty flag broke the first CI run) → **run** (`make test-e2e-reuse`) → **teardown** (`if: always()`; `make cleanup-test-e2e` plus a pours/compose fallback for a cast orphaned by a failed setup).
 - `actionlint` the new workflow before handoff (guardrails README workflow-lint requirement).
 
 ### PR-1: Make + docs

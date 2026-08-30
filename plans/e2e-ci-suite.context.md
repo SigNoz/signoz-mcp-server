@@ -57,6 +57,10 @@
 - Deviation from plan: no `if: always()` teardown step in the workflow — the pytest session finalizer owns teardown (verified leak-free on failing runs) and runners are ephemeral.
 - Local sandbox notes (environment only, not repo requirements): the sandbox needed pypi.org, files.pythonhosted.org, storage.googleapis.com, registry-1.docker.io, auth.docker.io, production.cloudfront.docker.com, and release-assets.githubusercontent.com opened; foundryctl v0.2.17 was built from source because release tarballs were unreachable at the time. CI uses the standard `foundry.sh` installer like the operator workflow.
 
+### 2026-08-30 — first CI run failure + workflow 3-step split
+- The first CI run on PR #297 failed at collection: the workflow passed `--license-key ${PRIMUS_LICENSE_KEY}` unconditionally, and with the secret empty the flag had no value (`pytest: error: argument --license-key: expected one argument`). Fixed: the setup step passes the flag only when the secret is set.
+- User request: the e2e job is split into explicit **setup / run / teardown** steps (superseding my earlier finalizer-only deviation). setup → `make setup-e2e-env` (cast + cache), run → `make test-e2e-reuse`, teardown (`if: always()`) → `make cleanup-test-e2e` plus a pours/compose fallback for a cast orphaned by a failed setup. Verified locally: setup 1/1, run 4/4, teardown clean (0 containers, pours removed).
+
 ## Open Questions
 - [x] Harness: pytest + foundryctl (org standard) vs Go-native testcontainers suite? → **pytest + foundryctl** (user, 2026-08-30)
 - [x] Wire the existing Go `//go:build e2e` families into the new workflow against the cast instance? → superseded: **port them to Python on the harness in PR-2 and delete the Go files** (user, 2026-08-30)
