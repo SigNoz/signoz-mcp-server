@@ -82,6 +82,10 @@
 - **nil-arguments**: via `session.call_tool(name)` with the arguments object omitted; the observable contract (validation error mentioning id, no panic, no transport error) is identical for nil vs `{}` post-fix.
 - Deletion fallout: two stale cross-reference comments in `requesttype_test.go` / `upstream_error_test.go` now point at the Python suites; `go build`, `go vet`, and `go test ./...` all green. Guardrails `tests.txt` untouched (no `TestGuardrail_*` changes).
 
+### 2026-08-31 — both PRs opened; plan synced to reality
+- PR-1 = **#297** (branch `nerve-pod/issues/219` → main), CI green. PR-2 = **#298** (branch `nerve-pod/issues/219-port` → PR-1's branch), the stacked port with the Go files deleted.
+- Plan file synced: status names both PRs; the layout tree includes `logger.py`, `naming.py`, `results.py`, `seeded.py` and drops the deleted tests-local `.gitignore` (root `.gitignore` covers it); the workflow steps no longer mention setup-go (removed when the server build moved into Docker); PR-1 docs line points at CLAUDE.md; the PR-2 mapping table puts the nil-arguments case in `test_protocol.py` (as implemented); the auth-telemetry and staging-seed bullets record the settled decisions; Files to Modify lists the fixture additions/extensions and the two Go comment repoints; Verification records PR-1's green CI and the stacked-PR CI caveat (non-main base → no workflow triggers; dispatch needs `actions:write`).
+
 ## Open Questions
 - [x] Harness: pytest + foundryctl (org standard) vs Go-native testcontainers suite? → **pytest + foundryctl** (user, 2026-08-30)
 - [x] Wire the existing Go `//go:build e2e` families into the new workflow against the cast instance? → superseded: **port them to Python on the harness in PR-2 and delete the Go files** (user, 2026-08-30)
