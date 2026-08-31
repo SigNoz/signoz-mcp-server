@@ -1,0 +1,102 @@
+name: e2e
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - labeled
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  py-fmt:
+    if: |
+      (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+    uses: signoz/primus.workflows/.github/workflows/py-fmt.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      PYTHON_VERSION: "3.13"
+      PY_SRC: tests
+  py-lint:
+    if: |
+      (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+    uses: signoz/primus.workflows/.github/workflows/py-lint.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      PYTHON_VERSION: "3.13"
+      PY_SRC: tests
+  e2e:
+    # The suite casts an ephemeral SigNoz and needs no secrets to run, so it
+    # runs on every non-fork pull request. Fork PRs run only through the
+    # privileged pull_request_target path once a maintainer applies
+    # safe-to-test. The license key is optional: empty means community-only.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && ! github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && ! contains(github.event.pull_request.labels.*.name, 'safe-to-test')) ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: 'read'
+    env:
+      # A Foundry release carries the SigNoz version its castings render, so
+      # this pins what the suite installs.
+      FOUNDRY_VERSION: v0.2.17
+    steps:
+      - name: self-checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      - name: python-install
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: uv-install
+        uses: astral-sh/setup-uv@v6
+      - name: foundryctl-install
+        run: |
+          curl -fsSL https://signoz.io/foundry.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/foundryctl" version
+      - name: setup
+        env:
+          PRIMUS_LICENSE_KEY: ${{ secrets.PRIMUS_LICENSE_KEY }}
+        run: |
+          # The license key is optional; pass the flag only when the secret is
+          # set, so community runs don't trip over a value-less --license-key.
+          flags=()
+          if [ -n "${PRIMUS_LICENSE_KEY}" ]; then
+            flags+=(--license-key "${PRIMUS_LICENSE_KEY}")
+          fi
+          make setup-e2e-env E2E_FLAGS="${flags[*]}"
+      - name: run
+        run: |
+          make test-e2e-reuse
+      - name: teardown
+        if: always()
+        run: |
+          # The cached-environment path no-ops cleanly when setup never cached;
+          # the compose fallback covers a cast left behind by a failed setup.
+          make cleanup-test-e2e || true
+          compose_file="$(find tests/pours -name compose.yaml -print -quit 2>/dev/null || true)"
+          if [ -n "${compose_file}" ]; then
+            docker compose -f "${compose_file}" down -v || true
+            rm -rf tests/pours
+          fi

@@ -1,0 +1,27 @@
+apiVersion: v1alpha1
+kind: Installation
+metadata:
+  name: signoz
+spec:
+  deployment:
+    mode: docker
+    flavor: compose
+  metastore:
+    kind: sqlite
+  signoz:
+    spec:
+      # Provision a root admin user on first boot so the e2e tests can log in
+      # without the interactive /api/v1/register flow. These must match
+      # ROOT_EMAIL / ROOT_PASSWORD in fixtures/signoz.py.
+      env:
+        SIGNOZ_USER_ROOT_ENABLED: "true"
+        SIGNOZ_USER_ROOT_EMAIL: "admin@e2e.test"
+        SIGNOZ_USER_ROOT_PASSWORD: "password123Z$"
+        # sqlstore.sqlite.transaction_mode — take the sqlite write lock at
+        # BEGIN instead of on first write, avoiding "database is locked"
+        # errors under concurrent test writes.
+        SIGNOZ_SQLSTORE_SQLITE_TRANSACTION__MODE: "immediate"
+        # Disable the stats/telemetry reporter so e2e runs aren't counted
+        # (statsreporter.enabled defaults to true → the "analytics" provider;
+        # false selects the noop provider).
+        SIGNOZ_STATSREPORTER_ENABLED: "false"

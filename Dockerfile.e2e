@@ -1,0 +1,32 @@
+# Build stage. Deliberately no BuildKit-only features (cache mounts): both
+# the legacy builder and BuildKit must build this, because some environments
+# cannot run BuildKit's context walker over the repo's AGENTS.md symlink.
+FROM golang:1.26-alpine AS builder
+
+ARG VERSION=e2e
+
+# No apk installs: the golang alpine image already carries ca-certificates,
+# and module downloads go through the Go module proxy, not git.
+WORKDIR /app
+
+COPY go.mod go.sum ./
+
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-w -s -X github.com/SigNoz/signoz-mcp-server/pkg/version.Version=${VERSION}" \
+    -o /usr/local/bin/signoz-mcp-server \
+    ./cmd/server/
+
+# Final stage — same base as the production multi-arch image.
+FROM gcr.io/distroless/base
+
+WORKDIR /usr/local/signoz-mcp-server
+
+COPY --from=builder /usr/local/bin/signoz-mcp-server /usr/local/bin/signoz-mcp-server
+
+EXPOSE 8000
+
+ENTRYPOINT ["/usr/local/bin/signoz-mcp-server"]

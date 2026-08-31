@@ -81,3 +81,12 @@ Temporary Items
 *.icloud
 
 # End of https://www.toptal.com/developers/gitignore/api/macos
+
+### E2E Tests ###
+tests/**/pours/
+tests/**/casting.yaml.lock
+tests/**/.venv/
+tests/**/.pytest_cache/
+tests/**/.ruff_cache/
+tests/**/__pycache__/
+tests/**/tmp/

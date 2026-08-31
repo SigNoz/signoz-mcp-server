@@ -48,6 +48,8 @@ When editing tool or parameter descriptions, `signoz://` resources, prompts, ser
 - Tests: `go test ./...` (`make test` runs them verbose).
 - Build: `go build ./cmd/server` (`make build` also rewrites formatting/imports).
 - Formatting/imports: `make fmt goimports`.
+- E2E (live SigNoz via foundry): `make test-e2e` (`make test-e2e-reuse` reruns against the cached environment; see `tests/README.md`).
+- E2E Python style: `cd tests && uv run ruff format --check . && uv run ruff check .`
 
 ## MCP Contract Changes
 

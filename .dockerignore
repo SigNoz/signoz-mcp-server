@@ -1,0 +1,24 @@
+# VCS and GitHub metadata
+.git
+.github
+
+# Dev docs not needed in the image; AGENTS.md is a symlink some build
+# environments fail to stat for xattrs.
+AGENTS.md
+CLAUDE.md
+
+# Local build and bundle outputs
+bin/
+bundle/
+*.tar.gz
+
+# E2E test artifacts
+tests/pours/
+tests/tmp/
+tests/.venv/
+tests/.pytest_cache/
+tests/.ruff_cache/
+**/__pycache__/
+
+# Protocol CI node tooling
+tools/mcp-ci/node_modules/
