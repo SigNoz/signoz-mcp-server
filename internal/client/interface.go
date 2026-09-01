@@ -26,6 +26,7 @@ type Client interface {
 	DeleteDashboard(ctx context.Context, id string) error
 	ListServices(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
+	GetLogPipelines(ctx context.Context, version string) (json.RawMessage, error)
 	QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error)
 	ListViews(ctx context.Context, source, name string) (json.RawMessage, error)
 	GetView(ctx context.Context, viewID string) (json.RawMessage, error)
