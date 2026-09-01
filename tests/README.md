@@ -64,6 +64,32 @@ All fixtures live in `fixtures/` and are registered via the root `conftest.py`
 `pytest_plugins`. Configuration flows through pytest CLI flags, not environment
 variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 
+## Suites
+
+- `test_protocol.py` — initialize handshake, live-backed tools/list, and the
+  nil-arguments validation path.
+- `test_query_response_paths.py` — upstream QB/response JSON-path drift checks
+  (row paths, completeness notes, execute_builder_query).
+- `test_param_coercion.py` — tolerant inputs: numbers/booleans as strings,
+  timestamp magnitude auto-detect, limit clamp.
+- `test_param_validation.py` — canonical validation strings, trace-timestamp
+  parameter error, requestType rejection codes.
+- `test_output_envelopes.py` — structuredContent presence/absence, JSON-first
+  query_metrics, error-code taxonomy, mutation envelope.
+- `test_enums_and_grammar.py` — enum values, advertised aggregation set vs the
+  backend, timeRange/stepInterval grammar, docs param + alias, top-operations tags.
+- `test_notification_channels.py` — fail-open bad-webhook create with warning
+  note; normal lifecycle with confirmed deletion.
+- `test_saved_views.py` — view CRUD round-trip cloned from a seeded source view.
+- `test_get_by_id_aliases.py` — canonical id and legacy alias (ruleId/uuid) reads.
+- `test_trace_fields.py` — snake_case trace fields, filters, aggregations.
+- `test_org_overview.py` — org overview conservation vs `GET /api/v1/stats`.
+- `test_docs.py` — docs search/fetch, out-of-scope coded error, sitemap resource.
+- `test_upstream_errors.py` — uniform upstream error prefix; rejected-credential
+  coded error.
+- `test_logs.py`, `test_dashboards.py` — seeded-logs search and dashboard
+  round-trip smoke suites.
+
 ## CI
 
 `.github/workflows/e2e.yaml` runs this suite on every non-fork pull request

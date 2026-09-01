@@ -1,7 +1,7 @@
 # Plan: E2E CI Suite
 
 ## Status
-In Progress (PR-1 implemented, in review; PR-2 not started)
+In Progress (PR-1 = [#297](https://github.com/SigNoz/signoz-mcp-server/pull/297), in review, CI green; PR-2 = [#298](https://github.com/SigNoz/signoz-mcp-server/pull/298), stacked on PR-1, in review)
 
 ## Context
 
@@ -26,26 +26,28 @@ Layout (operator/terraform conventions):
 
 ```
 tests/
-├── pyproject.toml            # pytest + requests; ruff as dev dep; --import-mode=importlib, log_cli
+├── pyproject.toml            # pytest + requests + docker + mcp; ruff as dev dep; --import-mode=importlib, log_cli
 ├── conftest.py               # pytest_plugins registration + CLI flags
 ├── casting.yaml              # foundry Installation: docker/compose, sqlite, root user admin@e2e.test, stats off
-├── .gitignore                # .venv/, .pytest_cache/, pours/, tmp/, casting.yaml.lock
-├── README.md                 # how to run locally
+├── README.md                 # how to run locally + suite inventory
 ├── fixtures/
 │   ├── commander.py          # frozen-dataclass subprocess wrapper (from operator)
+│   ├── logger.py             # setup_logger
+│   ├── reuse.py              # --reuse/--teardown pytest-cache wrapper
 │   ├── foundry.py            # cast/teardown + two-phase readiness (port, then login)
 │   ├── signoz.py             # session: login as root → optional license → service account + API key
 │   ├── mcpserver.py          # docker build Dockerfile.e2e; run container; docker-assigned free port; poll /readyz; stop
 │   ├── mcpclient.py          # official Python MCP SDK client, sync facade (background event loop)
 │   ├── telemetry.py          # OTLP HTTP seeding (traces/logs/metrics) + poll-until-visible helpers
-│   └── reuse.py              # --reuse/--teardown pytest-cache wrapper
+│   ├── naming.py             # per-test unique slugs (test_id)
+│   ├── results.py            # CallToolResult parsing helpers (ports of the Go e2e helpers)
+│   └── seeded.py             # create/delete channels, alert rules, views through the MCP tools
 └── e2e/
     ├── bootstrap/setup.py    # test_setup / test_teardown entrypoints
-    └── tests/                # PR-1 smoke set only; PR-2 adds the ported suites
-        ├── test_protocol.py  # initialize + tools/list against the live-backed server
-        ├── test_logs.py      # seed logs via OTLP → signoz_search_logs finds them
-        └── test_dashboards.py# dashboard create/get/delete round-trip through MCP tools
+    └── tests/                # PR-1 smoke set (protocol, logs, dashboards) + PR-2 ported suites (mapping below)
 ```
+
+Ignores live in the root `.gitignore` (`tests/**/pours/`, `tmp/`, `.venv/`, caches), not a tests-local `.gitignore`.
 
 Principles (from the reference suites):
 
@@ -63,15 +65,15 @@ Principles (from the reference suites):
 - Triggers: `pull_request` (opened/synchronize/reopened/labeled) + `pull_request_target: labeled` + `workflow_dispatch`. No `safe-to-e2e` cost label and no cron in v1: the job runs on **every non-fork PR** (user decision, 2026-08-30); per-PR cadence provides the upstream-drift signal.
 - Job `lint`: ruff format/check on `tests/` (uv).
 - Job `e2e`: gated by exactly the ci.yaml dual-event fork-gate expression (non-fork, non-dependabot `pull_request`, or `pull_request_target` with `safe-to-test`) — so fork PRs only run after maintainer labeling, and secrets never reach unlabeled forks. `permissions: contents: read`, `timeout-minutes: 45`.
-- Steps: checkout PR head → setup-go (go.mod) → setup-python 3.13 → setup-uv → install foundryctl (pinned via `FOUNDRY_VERSION` env at workflow top; overridable on dispatch) → **setup** (`make setup-e2e-env`; passes `--license-key` only when `secrets.PRIMUS_LICENSE_KEY` is set — an empty flag broke the first CI run) → **run** (`make test-e2e-reuse`) → **teardown** (`if: always()`; `make cleanup-test-e2e` plus a pours/compose fallback for a cast orphaned by a failed setup).
+- Steps: checkout PR head → setup-python 3.13 → setup-uv → install foundryctl (pinned via `FOUNDRY_VERSION` env at workflow top; overridable on dispatch) → **setup** (`make setup-e2e-env`; passes `--license-key` only when `secrets.PRIMUS_LICENSE_KEY` is set — an empty flag broke the first CI run) → **run** (`make test-e2e-reuse`) → **teardown** (`if: always()`; `make cleanup-test-e2e` plus a pours/compose fallback for a cast orphaned by a failed setup). No host Go: the server image builds inside Docker (`Dockerfile.e2e`).
 - `actionlint` the new workflow before handoff (guardrails README workflow-lint requirement).
 
 ### PR-1: Make + docs
 
 - Makefile: `test-e2e`, `test-e2e-reuse`, `setup-e2e-env`, `cleanup-test-e2e` (plain `uv run pytest` invocations; this repo does not use primus make includes).
-- `tests/README.md`: local run instructions (Docker, foundryctl, Go, uv; reuse loop).
-- `README.md`: short "Running the e2e suite" pointer.
-- `AGENTS.md`: extend Local Verification with the e2e commands.
+- `tests/README.md`: local run instructions (Docker, foundryctl, uv; reuse loop) and the suite inventory.
+- `README.md`: short "End-to-End Tests" section pointing at tests/.
+- `CLAUDE.md`: extend Local Verification with the e2e commands (CLAUDE.md carries the content AGENTS.md symlinks to).
 
 ### PR-2: port the Go e2e families to Python
 
@@ -81,7 +83,8 @@ The Go files were named after tracker batches (#363–#367), not concerns. The p
 |---|---|---|
 | `test_query_response_paths.py` | Upstream QB/response JSON-path drift: search_logs/search_traces row paths, list_metrics/top_metrics paths, alert_history path; execute_builder_query success + warning-note path; list tools succeed | Family A N1–N5 (`e2e_familya_test.go`) |
 | `test_param_coercion.py` | Tolerant input handling: stepInterval number/string, booleans as bool/legacy string (+ garbage rejected), timestamp auto-detect (ns/ms), docs limit number/string + list clamp | Family A N2–N3; Family E K1, K3 |
-| `test_param_validation.py` | Canonical validation error strings; requestType validation; trace-timestamp parameter error; nil-arguments validation error | Family B (validation half); Family E K4; `nil_arguments_e2e_test.go` |
+| `test_param_validation.py` | Canonical validation error strings; requestType validation; trace-timestamp parameter error | Family B (validation half); Family E K4 |
+| `test_protocol.py` (case added) | nil-arguments validation error through the transport (no panic) | `nil_arguments_e2e_test.go` |
 | `test_output_envelopes.py` | structuredContent on list/get tools, absent on raw QB passthrough; JSON-first query_metrics; error-code taxonomy; mutation envelopes | Family C (`e2e_familyc_test.go`) |
 | `test_enums_and_grammar.py` | requestType/signal/alert-history enum values; aggregation set matches backend; timeRange/stepInterval grammar; search_docs param + alias; service top-operations tags | Family D (`e2e_familyd_test.go`) |
 | `test_notification_channels.py` | Bad-webhook create → success + warning note → delete; normal create/verify/delete lifecycle | Family A N6 |
@@ -92,10 +95,10 @@ The Go files were named after tracker batches (#363–#367), not concerns. The p
 | `test_docs.py` | Docs agent flow: search_docs, fetch_doc happy path, out-of-scope URL coded error, sitemap resource (embedded corpus — no backend data needed) | `e2e_docs_test.go::TestE2EDocsAgentFlow` |
 | `test_upstream_errors.py` | Upstream error classification/prefix; invalid API key → coded auth error (401 propagation per AGENTS.md) | Family B (upstream half); transport-visible part of `TestE2EAuthFailureTelemetry` |
 
-- Port through the MCP transport (initialize → tools/call), not in-process handler calls.
-- In-process-only assertions do not port: `TestE2EAuthFailureTelemetry`'s OTel span-emission check becomes an untagged Go unit test or is dropped — the choice and justification go in the PR-2 description.
-- Staging-assumption triage happens during the port: anything that depended on staging data seeds its own fixtures via `telemetry.py` or the SigNoz API.
-- After the port, the Go e2e files and the now-unused `e2e` build-tag helpers are removed in the same PR-2.
+- Port through the MCP transport (initialize → tools/call via the official SDK), not in-process handler calls.
+- In-process-only assertions do not port — settled (2026-08-31): `TestE2EAuthFailureTelemetry` is **dropped** because `internal/mcp-server/server_test.go` already covers the same span/log assertions (`TestAuthMiddlewareLogsAndSpansAuthFailureTelemetry` + branch/metric variants). Its transport-visible half (bad key → coded upstream error) is ported in `test_upstream_errors.py`.
+- Staging-assumption triage, settled: anything that depended on staging data seeds its own prerequisites — OTLP traces/metrics via `telemetry.py`, and channels/alert rules/views/dashboards created through the MCP tools themselves (`fixtures/seeded.py`). Every path executes; nothing skips on a fresh instance.
+- After the port, the Go e2e files are removed in the same PR-2 (all shared helpers live in non-e2e test files, so nothing else breaks; two stale cross-reference comments were repointed at the Python suites).
 
 ## Files to Modify
 
@@ -108,15 +111,18 @@ The Go files were named after tracker batches (#363–#367), not concerns. The p
 - `plans/e2e-ci-suite.{context,plan}.md` — this file pair
 
 **PR-2:**
-- `tests/e2e/tests/` — new ports: `test_query_response_paths.py`, `test_param_coercion.py`, `test_param_validation.py`, `test_output_envelopes.py`, `test_enums_and_grammar.py`, `test_notification_channels.py`, `test_saved_views.py`, `test_get_by_id_aliases.py`, `test_trace_fields.py`, `test_org_overview.py`, `test_docs.py`, `test_upstream_errors.py`
-- `internal/handler/tools/e2e_*.go`, `internal/mcp-server/{e2e_docs_test.go, nil_arguments_e2e_test.go}` — deleted after port (any surviving in-process assertion re-lands as an untagged Go unit test)
+- `tests/e2e/tests/` — new ports: `test_query_response_paths.py`, `test_param_coercion.py`, `test_param_validation.py`, `test_output_envelopes.py`, `test_enums_and_grammar.py`, `test_notification_channels.py`, `test_saved_views.py`, `test_get_by_id_aliases.py`, `test_trace_fields.py`, `test_org_overview.py`, `test_docs.py`, `test_upstream_errors.py`; nil-arguments case added to `test_protocol.py`
+- `tests/fixtures/results.py`, `tests/fixtures/seeded.py` — new; `tests/fixtures/mcpclient.py`, `tests/fixtures/telemetry.py` — extended (SDK read_resource/headers/no-arguments call; trace + metric seeding)
+- `internal/handler/tools/e2e_*.go`, `internal/mcp-server/{e2e_docs_test.go, nil_arguments_e2e_test.go}` — deleted after port (no in-process assertions survived; see the auth-telemetry decision above)
+- `internal/handler/tools/{requesttype_test.go, upstream_error_test.go}` — stale cross-reference comments repointed at the Python suites
+- `tests/README.md` — suite inventory
 
 ## Verification
 
 1. Local: `cd tests && uv sync && uv run pytest e2e/bootstrap/setup.py --reuse` brings up the stack; `uv run pytest e2e/tests --reuse` runs suites; `--teardown` cleans up. Full cold run target ≤ ~15 min on a runner.
 2. `go test ./...`, `go build ./cmd/server`, `make fmt goimports` stay green (no production changes expected).
 3. `actionlint .github/workflows/e2e.yaml`; confirm guardrail suite untouched (`go test -count=1 -run '^TestGuardrail_' ./...`).
-4. CI on PR-1: e2e job runs automatically on the PR — provisions SigNoz, seeds telemetry, passes the smoke suite, tears down on success and failure.
-5. CI on PR-2 (stacked): ported families pass; coverage parity with the deleted Go files is reviewed in the PR-2 description.
+4. CI on PR-1 (#297): e2e job runs automatically on the PR — provisions SigNoz, seeds telemetry, passes the suite, tears down on success and failure. **Done — green** (e2e ~2m, py-fmt/py-lint green).
+5. CI on PR-2 (#298, stacked): **caveat** — stacked PRs do not trigger the workflows (all filter on `branches: [main]`), and manual `workflow_dispatch` needs an `actions:write` token. PR-2's CI proof lands when it merges into PR-1's branch (fires `synchronize` on #297) or is retargeted at `main` after PR-1 merges. Until then the verification record is the local cold run: **46/46 pass in ~3 min** from a fresh cast with clean teardown; coverage mapping is in the PR-2 description.
 6. Confirm a fork PR runs only after a maintainer applies `safe-to-test` (privileged `pull_request_target` path).
 7. PR summaries note: no MCP contract change (no agent-skills companion needed), doc updates included.

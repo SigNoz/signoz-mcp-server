@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
 
 from fixtures.logger import setup_logger
 from fixtures.mcpserver import MCPServer
@@ -26,8 +26,9 @@ class MCPClient:
     shape) so assertions read like the protocol.
     """
 
-    def __init__(self, mcp_url: str):
+    def __init__(self, mcp_url: str, headers: dict | None = None):
         self.mcp_url = mcp_url
+        self._headers = headers
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._loop.run_forever, daemon=True, name="mcp-client-loop")
         self._thread.start()
@@ -47,9 +48,10 @@ class MCPClient:
         async def _hold_session():
             # terminate_on_close=False: the server is stateless and has no
             # session to DELETE.
+            http_client = create_mcp_http_client(headers=self._headers) if self._headers else None
             async with AsyncExitStack() as stack:
                 read, write = await stack.enter_async_context(
-                    streamable_http_client(self.mcp_url, terminate_on_close=False)
+                    streamable_http_client(self.mcp_url, http_client=http_client, terminate_on_close=False)
                 )
                 self._session = await stack.enter_async_context(ClientSession(read, write))
                 init = await self._session.initialize()
@@ -78,6 +80,22 @@ class MCPClient:
             self.initialize()
         logger.info("mcp -> tools/call %s", name)
         result = self._run(self._session.call_tool(name, arguments or {}))
+        return self._dump(result)
+
+    def call_tool_without_arguments(self, name: str) -> dict:
+        """Call with the arguments object omitted entirely (the nil-arguments path)."""
+        if self._session is None:
+            self.initialize()
+        logger.info("mcp -> tools/call %s (no arguments)", name)
+        result = self._run(self._session.call_tool(name))
+        return self._dump(result)
+
+    def read_resource(self, uri: str) -> dict:
+        """Read a signoz:// resource and return the result dict."""
+        if self._session is None:
+            self.initialize()
+        logger.info("mcp -> resources/read %s", uri)
+        result = self._run(self._session.read_resource(uri))
         return self._dump(result)
 
     def close(self) -> None:

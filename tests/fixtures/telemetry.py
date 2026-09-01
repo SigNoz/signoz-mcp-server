@@ -1,4 +1,5 @@
 import time
+import uuid
 from typing import Any
 
 import pytest
@@ -45,6 +46,80 @@ def seed_logs(service_name: str, body: str, *, severity: str = "INFO", count: in
     resp = requests.post(f"{OTLP_ENDPOINT}/v1/logs", json=payload, timeout=30)
     resp.raise_for_status()
     logger.info("seeded %d log record(s) for service %s", count, service_name)
+
+
+def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: int = 1) -> list[str]:
+    """Push spans to the cast SigNoz via OTLP/HTTP; return the trace ids (hex).
+
+    The last span is marked ERROR so error=true/false searches both have data.
+    """
+    now = time.time_ns()
+    trace_ids: list[str] = []
+    spans = []
+    for i in range(count):
+        trace_id = uuid.uuid4().hex
+        is_error = i == count - 1
+        start = now - (count - i) * 1_000_000_000
+        spans.append(
+            {
+                "traceId": trace_id,
+                "spanId": uuid.uuid4().hex[:16],
+                "name": span_name,
+                "kind": 2,  # SPAN_KIND_SERVER
+                "startTimeUnixNano": str(start),
+                "endTimeUnixNano": str(start + 250_000_000),
+                "attributes": [{"key": "e2e.marker", "value": {"stringValue": service_name}}],
+                "status": {"code": 2 if is_error else 1},  # STATUS_CODE_ERROR / OK
+            }
+        )
+        trace_ids.append(trace_id)
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": service_name}},
+                        {"key": "telemetry.sdk.language", "value": {"stringValue": "e2e"}},
+                    ]
+                },
+                "scopeSpans": [{"scope": {"name": "signoz-mcp-e2e"}, "spans": spans}],
+            }
+        ]
+    }
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/traces", json=payload, timeout=30)
+    resp.raise_for_status()
+    logger.info("seeded %d span(s) for service %s", count, service_name)
+    return trace_ids
+
+
+def seed_metrics(service_name: str, metric_name: str, *, value: float = 42.0, count: int = 1) -> None:
+    """Push gauge data points for `metric_name` via OTLP/HTTP."""
+    now = time.time_ns()
+    points = [
+        {
+            "asDouble": value + i,
+            "startTimeUnixNano": str(now - 60_000_000_000),
+            "timeUnixNano": str(now - i * 10_000_000_000),
+            "attributes": [{"key": "service.name", "value": {"stringValue": service_name}}],
+        }
+        for i in range(count)
+    ]
+    payload = {
+        "resourceMetrics": [
+            {
+                "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": service_name}}]},
+                "scopeMetrics": [
+                    {
+                        "scope": {"name": "signoz-mcp-e2e"},
+                        "metrics": [{"name": metric_name, "unit": "1", "gauge": {"dataPoints": points}}],
+                    }
+                ],
+            }
+        ]
+    }
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/metrics", json=payload, timeout=30)
+    resp.raise_for_status()
+    logger.info("seeded %d metric point(s) for %s", count, metric_name)
 
 
 def wait_for(check, description: str, timeout: float = POLL_TIMEOUT, interval: float = POLL_INTERVAL) -> Any:
