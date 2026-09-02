@@ -21,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.14.0] - 2026-09-02
+
+### Added
+- migrate saved view tools to v2 saved_views API (nerve-pod#100) ([#296](https://github.com/SigNoz/signoz-mcp-server/pull/296))
+
+### Changed
+- retire live resource templates ([#295](https://github.com/SigNoz/signoz-mcp-server/pull/295))
+
+### Documentation
+- remove AI-slop patterns and fix misreadings in client-visible copy ([#294](https://github.com/SigNoz/signoz-mcp-server/pull/294))
+
+### Other
+- port the Go e2e families to the Python harness ([#298](https://github.com/SigNoz/signoz-mcp-server/pull/298))
+- foundry-provisioned e2e harness and CI workflow ([#297](https://github.com/SigNoz/signoz-mcp-server/pull/297))
+
 ## [0.13.0] - 2026-08-19
 
 ### Added
@@ -376,3 +392,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.11.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.10.0...v0.11.0
 [0.12.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.11.0...v0.12.0
 [0.13.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.12.0...v0.13.0
+[0.14.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.13.0...v0.14.0
