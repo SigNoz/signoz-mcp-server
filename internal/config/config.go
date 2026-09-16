@@ -182,16 +182,6 @@ func getEnvBool(key string, defaultValue bool) bool {
 	return defaultValue
 }
 
-func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
-			return parsed
-		}
-		log.Printf("WARN: invalid duration for %s=%q; using %s", key, value, defaultValue)
-	}
-	return defaultValue
-}
-
 // getEnvRefreshInterval parses a scheduled-refresh interval. "0" (or a
 // duration equal to zero, or off/disabled/false) disables the schedule and
 // returns (default, true) so callers still have a sane interval for any
