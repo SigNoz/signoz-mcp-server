@@ -380,6 +380,10 @@ Review of the shipped five-entry glossary against 385 production search strings 
 - `maxGlossaryClauses` rose from 8 to 12.
 - Ten `abbreviation`-style golden queries were added for the new groups, none as holdouts. Their `baseline_rank` is the rank under the #309 ranking before this change, while the 133 earlier entries keep the pre-#309 baseline. The aggregate gate therefore measures the branch, not this diff, and the old glossary already cleared it; the old-versus-new rank diff in Verification is the evidence for this change.
 
+### 2026-09-16 — searchText bounded at 2048 characters after security review
+
+Codex security review noted that a caller could send a multi-megabyte `searchText` and every analyzer pass (base clauses, glossary, minimum-should-match) would run over the whole value before the 64-term check returned. `boostedDocsQuery` now rejects values over 2048 characters with the existing validation-coded error, and `minimumMatchClauses` stops collecting once it has seen 64 distinct terms instead of tokenizing into full-size slices first. The longest production search string observed is 395 characters and the longest golden query 139, so the cap does not touch real traffic. The parameter description does not mention the limit; the error message carries it.
+
 ## Reference Links
 
 - [RAG Is Simpler Than You Think](https://www.lighthousenewsletter.com/p/rag-is-simpler-than-you-think)

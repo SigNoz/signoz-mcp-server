@@ -418,10 +418,17 @@ func sectionBreadcrumbForFilter(fields map[string]any, sectionSlug string) (stri
 	return breadcrumb, ok
 }
 
+// maxSearchTextRunes bounds analyzer and clause work per request; the longest
+// observed production search string is under 400 characters.
+const maxSearchTextRunes = 2048
+
 func boostedDocsQuery(ctx context.Context, raw string) (bleveQuery.Query, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, &invalidSearchQueryError{cause: errors.New("searchText must contain non-whitespace text")}
+	}
+	if utf8.RuneCountInString(raw) > maxSearchTextRunes {
+		return nil, &invalidSearchQueryError{cause: fmt.Errorf("searchText must be at most %d characters", maxSearchTextRunes)}
 	}
 	title := bleve.NewMatchQuery(raw)
 	title.SetField("title")
@@ -462,18 +469,23 @@ func boostedDocsQuery(ctx context.Context, raw string) (bleveQuery.Query, error)
 
 // Long query bags get a preference for matching most distinct non-stopword terms.
 func minimumMatchClauses(raw string, titleBoost, bodyBoost float64) []bleveQuery.Query {
+	const maxDistinctTerms = 64
 	tokens := docsQueryAnalyzer.Analyze([]byte(raw))
-	terms := make([]string, 0, len(tokens))
-	seen := make(map[string]bool, len(tokens))
+	terms := make([]string, 0, min(len(tokens), maxDistinctTerms))
+	seen := make(map[string]bool, min(len(tokens), maxDistinctTerms))
 	for _, token := range tokens {
 		term := string(token.Term)
-		if !seen[term] {
-			seen[term] = true
-			terms = append(terms, term)
+		if seen[term] {
+			continue
 		}
+		// Skip oversized expansions; the original search clauses still apply.
+		if len(terms) == maxDistinctTerms {
+			return nil
+		}
+		seen[term] = true
+		terms = append(terms, term)
 	}
-	// Skip oversized expansions; the original search clauses still apply.
-	if len(terms) < 4 || len(terms) > 64 {
+	if len(terms) < 4 {
 		return nil
 	}
 	clauses := make([]bleveQuery.Query, 0, 2)

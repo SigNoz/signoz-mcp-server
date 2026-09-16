@@ -386,3 +386,19 @@ func TestMinimumMatchClauseRequiresMostTerms(t *testing.T) {
 	require.Len(t, res.Hits, 1)
 	require.Equal(t, "most", res.Hits[0].ID)
 }
+
+func TestSearchTextLengthBound(t *testing.T) {
+	longest := strings.Repeat("é", maxSearchTextRunes)
+	_, err := boostedDocsQuery(context.Background(), longest)
+	require.NoError(t, err)
+	_, err = boostedDocsQuery(context.Background(), longest+"x")
+	require.ErrorIs(t, err, ErrInvalidSearchQuery)
+	require.Contains(t, err.Error(), "at most 2048 characters")
+	// Over-long term bags still return nil early rather than building clauses.
+	words := make([]string, 65)
+	for i := range words {
+		words[i] = fmt.Sprintf("term%d", i)
+	}
+	require.Empty(t, minimumMatchClauses(strings.Join(words, " "), 2, 2))
+	require.Len(t, minimumMatchClauses(strings.Join(words[:64], " "), 2, 2), 2)
+}
