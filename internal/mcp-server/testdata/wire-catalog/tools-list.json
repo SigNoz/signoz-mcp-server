@@ -5613,7 +5613,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user asks a SigNoz product, setup, instrumentation, configuration, API, deployment, or troubleshooting question and no exact documentation page is selected. Returns ranked official-doc matches with URLs and snippets. Do not use for live tenant data; use signoz_fetch_doc when a result or exact docs URL needs full content.",
+          "description": "Find ranked official SigNoz documentation with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords and keep product and technology terms exactly as the user wrote them. Split multi-intent questions into separate calls. Use section_slug when the docs area is known. If the top result is off-topic, retry with different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL.",
           "inputSchema": {
             "properties": {
               "limit": {
@@ -5629,7 +5629,7 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Natural-language or keyword query to search in official SigNoz docs.",
+                "description": "Use 2 to 6 keywords for one topic, keeping product and technology terms exactly as the user wrote them. Example: \"Kubernetes pod logs\". Split multi-intent questions into separate calls, set section_slug when known, and retry with different terms if the top result is off-topic.",
                 "type": "string"
               },
               "section_slug": {

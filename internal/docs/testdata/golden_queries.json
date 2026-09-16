@@ -1,182 +1,1132 @@
 [
   {
     "query": "send logs to signoz",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs-to-signoz/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/send-logs-to-signoz/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "collect docker container logs",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/collect_docker_logs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/collect_docker_logs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 3
   },
   {
     "query": "collect kubernetes pod logs",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/collect_kubernetes_pod_logs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/collect_kubernetes_pod_logs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send python logs opentelemetry",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/python-logs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/send-logs/python-logs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send java logs opentelemetry",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/java-logs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/send-logs/java-logs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send nodejs winston logs",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/nodejs-winston-logs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/send-logs/nodejs-winston-logs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send aws lambda nodejs logs",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/send-logs/aws-lambda-nodejs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/send-logs/aws-lambda-nodejs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send metrics from go application",
-    "expected_top_pages": ["https://signoz.io/docs/metrics-management/send-metrics/applications/golang/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/metrics-management/send-metrics/applications/golang/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send metrics from nodejs application",
-    "expected_top_pages": ["https://signoz.io/docs/metrics-management/send-metrics/applications/opentelemetry-nodejs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/metrics-management/send-metrics/applications/opentelemetry-nodejs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "send metrics from python application",
-    "expected_top_pages": ["https://signoz.io/docs/metrics-management/send-metrics/applications/opentelemetry-python/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/metrics-management/send-metrics/applications/opentelemetry-python/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "prometheus metrics to signoz",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/prometheus-metrics/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/prometheus-metrics/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "opentelemetry collector configuration",
-    "expected_top_pages": ["https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/configuration/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/configuration/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "switch direct export to opentelemetry collector",
-    "expected_top_pages": ["https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/switch-to-collector/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/switch-to-collector/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "python opentelemetry instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/opentelemetry-python/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/opentelemetry-python/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "manual python instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/python/manual-instrumentation/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/python/manual-instrumentation/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "java spring boot opentelemetry instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/java/opentelemetry-java/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/java/opentelemetry-java/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "nodejs opentelemetry instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "manual nodejs instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/javascript/nodejs-manual-instrumentation/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/javascript/nodejs-manual-instrumentation/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "go opentelemetry instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/opentelemetry-golang/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/opentelemetry-golang/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "cloudflare workers opentelemetry instrumentation",
-    "expected_top_pages": ["https://signoz.io/docs/instrumentation/opentelemetry-cloudflare/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/opentelemetry-cloudflare/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "install signoz with docker compose",
-    "expected_top_pages": ["https://signoz.io/docs/install/docker/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/docker/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "troubleshooting docker installation",
-    "expected_top_pages": ["https://signoz.io/docs/setup/docker/troubleshooting/faq/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/setup/docker/troubleshooting/faq/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "install signoz kubernetes helm",
-    "expected_top_pages": ["https://signoz.io/docs/install/kubernetes/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/kubernetes/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 2
   },
   {
     "query": "deploy signoz on aws",
-    "expected_top_pages": ["https://signoz.io/docs/install/kubernetes/aws/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/kubernetes/aws/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "deploy signoz on gcp",
-    "expected_top_pages": ["https://signoz.io/docs/install/kubernetes/gcp/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/kubernetes/gcp/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "deploy signoz digitalocean",
-    "expected_top_pages": ["https://signoz.io/docs/install/digital-ocean/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/digital-ocean/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "sigNoz cloud quickstart otel demo telemetry",
-    "expected_top_pages": ["https://signoz.io/docs/cloud/quickstart/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/cloud/quickstart/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "cloud vs self hosted ingestion",
-    "expected_top_pages": ["https://signoz.io/docs/ingestion/cloud-vs-self-hosted/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/ingestion/cloud-vs-self-hosted/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "ingestion keys signoz cloud",
-    "expected_top_pages": ["https://signoz.io/docs/ingestion/signoz-cloud/keys/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/ingestion/signoz-cloud/keys/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "manage dashboards in signoz",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/manage-dashboards/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/manage-dashboards/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "dashboard panel types",
-    "expected_top_pages": ["https://signoz.io/docs/dashboards/panel-types/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/panel-types/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "dashboard query builder",
-    "expected_top_pages": ["https://signoz.io/docs/product-features/query-builder/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/product-features/query-builder/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "import dashboard in signoz",
-    "expected_top_pages": ["https://signoz.io/docs/dashboards/import-dashboard/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/import-dashboard/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "create alerts in signoz",
-    "expected_top_pages": ["https://signoz.io/docs/alerts/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 0
   },
   {
     "query": "setup alerts notification channel",
-    "expected_top_pages": ["https://signoz.io/docs/setup-alerts-notification/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/setup-alerts-notification/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 2
   },
   {
     "query": "configure slack notification channel",
-    "expected_top_pages": ["https://signoz.io/docs/alerts-management/notification-channel/slack/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "metrics based alerts thresholds",
-    "expected_top_pages": ["https://signoz.io/docs/alerts-management/metrics-based-alerts/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/metrics-based-alerts/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "logs query troubleshooting",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/troubleshooting/troubleshooting/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/troubleshooting/troubleshooting/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 2
   },
   {
     "query": "metrics troubleshooting missing data",
-    "expected_top_pages": ["https://signoz.io/docs/metrics-management/troubleshooting/troubleshooting/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/metrics-management/troubleshooting/troubleshooting/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 2
   },
   {
     "query": "traces troubleshooting missing spans",
-    "expected_top_pages": ["https://signoz.io/docs/traces-management/troubleshooting/troubleshooting/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/traces-management/troubleshooting/troubleshooting/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "otel demo sample application",
-    "expected_top_pages": ["https://signoz.io/docs/cloud/quickstart/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/cloud/quickstart/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "logs api auth header search logs",
-    "expected_top_pages": ["https://signoz.io/docs/logs-management/logs-api/search-logs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/logs-api/search-logs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "trace api search traces",
-    "expected_top_pages": ["https://signoz.io/docs/traces-management/trace-api/search-traces/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/traces-management/trace-api/search-traces/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
   },
   {
     "query": "clickhouse query performance dashboard panels",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/clickhouse-faqs/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/clickhouse-faqs/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 3
   },
   {
     "query": "writing metrics clickhouse query",
-    "expected_top_pages": ["https://signoz.io/docs/userguide/write-a-metrics-clickhouse-query/"]
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/write-a-metrics-clickhouse-query/"
+    ],
+    "style": "keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "How do I send logs from a Kubernetes cluster to SigNoz Cloud?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/send-logs-to-signoz/",
+      "https://signoz.io/docs/userguide/collect_kubernetes_pod_logs/"
+    ],
+    "style": "sentence",
+    "baseline_rank": 2
+  },
+  {
+    "query": "alerting on error rate",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/metrics-based-alerts/"
+    ],
+    "style": "sentence",
+    "baseline_rank": 2
+  },
+  {
+    "query": "instrumenting a python fastapi app",
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/opentelemetry-python/",
+      "https://signoz.io/docs/instrumentation/python/manual-instrumentation/"
+    ],
+    "style": "sentence",
+    "baseline_rank": 1
+  },
+  {
+    "query": "nodejs express instrument",
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/",
+      "https://signoz.io/docs/instrumentation/javascript/nodejs-manual-instrumentation/"
+    ],
+    "style": "sentence",
+    "baseline_rank": 0
+  },
+  {
+    "query": "How can I configure a Slack notification channel?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/"
+    ],
+    "style": "sentence",
+    "baseline_rank": 1
+  },
+  {
+    "query": "How do I import a dashboard into SigNoz?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/import-dashboard/"
+    ],
+    "style": "sentence",
+    "holdout": true,
+    "baseline_rank": 1
+  },
+  {
+    "query": "Where can I troubleshoot missing spans?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/traces-management/troubleshooting/troubleshooting/"
+    ],
+    "style": "sentence",
+    "holdout": true,
+    "baseline_rank": 0
+  },
+  {
+    "query": "k8s otel collector helm",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/overview/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 2
+  },
+  {
+    "query": "otel collector configuration",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/configuration/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 1
+  },
+  {
+    "query": "k8s pod logs",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/collect_kubernetes_pod_logs/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 1
+  },
+  {
+    "query": "gcp signoz install",
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/kubernetes/gcp/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 1
+  },
+  {
+    "query": "kubernetes node memory",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/user-guides/k8s-cluster/",
+      "https://signoz.io/docs/dashboards/dashboard-templates/hostmetrics-k8s/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 0
+  },
+  {
+    "query": "otel python instrumentation",
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/opentelemetry-python/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 2
+  },
+  {
+    "query": "k8s infra multi cluster",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/user-guides/k8s-infra-multi-cluster/"
+    ],
+    "style": "abbreviation",
+    "holdout": true,
+    "baseline_rank": 1
+  },
+  {
+    "query": "Does signoz support hysterisis on its alert rules?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "alert rules hysteresis",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 0
+  },
+  {
+    "query": "where do i get SIGNOZ_INGESTION_KEY, SIGNOZ_REGION, SIGNOZ_ORG, and SIGNOZ_API_KEY",
+    "expected_top_pages": [
+      "https://signoz.io/docs/ingestion/signoz-cloud/keys/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "ingestion key region",
+    "expected_top_pages": [
+      "https://signoz.io/docs/ingestion/signoz-cloud/keys/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "alright how do i change the session timeout for signoz",
+    "expected_top_pages": [
+      "https://signoz.io/docs/manage/administrator-guide/sso/overview/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "session timeout sso",
+    "expected_top_pages": [
+      "https://signoz.io/docs/manage/administrator-guide/sso/overview/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "how can I query all unique k8s.deployment.name where namespace = 'default' inside a dashboard variable Query",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/manage-variables/",
+      "https://signoz.io/docs/dashboards/using-variables-in-queries/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "dashboard variable query unique values",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/manage-variables/",
+      "https://signoz.io/docs/dashboards/using-variables-in-queries/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "what does increase do over rate?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/metrics-management/types-and-aggregation/",
+      "https://signoz.io/docs/alerts-management/user-guides/time-aggregation-best-practices/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "increase rate aggregation metrics",
+    "expected_top_pages": [
+      "https://signoz.io/docs/metrics-management/types-and-aggregation/",
+      "https://signoz.io/docs/alerts-management/user-guides/time-aggregation-best-practices/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "quiero conectar azure que tengo que hacer",
+    "expected_top_pages": [
+      "https://signoz.io/docs/azure-monitoring/bootstrapping/",
+      "https://signoz.io/docs/azure-monitoring/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 1
+  },
+  {
+    "query": "azure monitoring setup",
+    "expected_top_pages": [
+      "https://signoz.io/docs/azure-monitoring/bootstrapping/",
+      "https://signoz.io/docs/azure-monitoring/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "要怎麼monitor AWS infrastucture",
+    "expected_top_pages": [
+      "https://signoz.io/docs/aws-monitoring/overview/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "monitor aws infrastructure",
+    "expected_top_pages": [
+      "https://signoz.io/docs/aws-monitoring/overview/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 0
+  },
+  {
+    "query": "I want to migrate my alerts from newrelic to signoz whats the recommended way to do so? is there any converter ?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/migration/migrate-from-newrelic-to-signoz/",
+      "https://signoz.io/docs/migration/migrate-from-newrelic/alerts/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 2
+  },
+  {
+    "query": "migrate newrelic alerts",
+    "expected_top_pages": [
+      "https://signoz.io/docs/migration/migrate-from-newrelic-to-signoz/",
+      "https://signoz.io/docs/migration/migrate-from-newrelic/alerts/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "I am interested in having an alert that notifies whenever a pod is Crash looping. Is that possible from the Signoz integration",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/user-guides/kubernetes-pod-startup-alerts/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 3
+  },
+  {
+    "query": "kubernetes pod crashloop alert",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/user-guides/kubernetes-pod-startup-alerts/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 0
+  },
+  {
+    "query": "We're storing too many metrics with a 1-year retention period and the price is getting higher. We want to reduce granularity as metrics age",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/retention-period/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 1
+  },
+  {
+    "query": "metrics retention period",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/retention-period/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "Usuário usa Fluent Bit para enviar dados ao SigNoz Cloud",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/fluentbit_to_signoz/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "fluent bit signoz cloud",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/fluentbit_to_signoz/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 0
+  },
+  {
+    "query": "for automatedtestcluster i need memory consumption plot for mongodb",
+    "expected_top_pages": [
+      "https://signoz.io/docs/tutorial/mongodb-metrics/",
+      "https://signoz.io/docs/integrations/mongodb/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 1
+  },
+  {
+    "query": "mongodb metrics",
+    "expected_top_pages": [
+      "https://signoz.io/docs/tutorial/mongodb-metrics/",
+      "https://signoz.io/docs/integrations/mongodb/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "i have signoz can i integrate it with datasource like s3 or athena (for ALB access logs)",
+    "expected_top_pages": [
+      "https://signoz.io/docs/aws-monitoring/alb/",
+      "https://signoz.io/docs/integrations/aws/alb/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 2
+  },
+  {
+    "query": "aws alb access logs s3",
+    "expected_top_pages": [
+      "https://signoz.io/docs/aws-monitoring/alb/",
+      "https://signoz.io/docs/integrations/aws/alb/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "I would like to publish this dashboard",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/public-sharing/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "public dashboard sharing",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/public-sharing/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "we want to migrate signoz to our self-hosted one. what do i need to do? keys/ service accounts / mcp for you",
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/self-host/",
+      "https://signoz.io/docs/migration/migrate-from-signoz-self-host-to-signoz-cloud/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 0
+  },
+  {
+    "query": "migrate cloud to self-hosted",
+    "expected_top_pages": [
+      "https://signoz.io/docs/install/self-host/",
+      "https://signoz.io/docs/migration/migrate-from-signoz-self-host-to-signoz-cloud/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "Can we get node pool name somewhere in node metrics in signoz? And can we add it as filter in hosts page?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/overview/",
+      "https://signoz.io/docs/dashboards/dashboard-templates/kubernetes-node-metrics-overall/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 1
+  },
+  {
+    "query": "k8s node metrics k8s-infra",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/overview/",
+      "https://signoz.io/docs/dashboards/dashboard-templates/kubernetes-node-metrics-overall/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 2
+  },
+  {
+    "query": "so we have a slack webhook for signoz alert, but it doesn't show any data related to the alert",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 1
+  },
+  {
+    "query": "slack notification channel alert",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "Is it possible to send a message every week containing the error, warning and info log counts of these 3 dashboards on slack?",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/"
+    ],
+    "style": "production-raw",
+    "baseline_rank": 1
+  },
+  {
+    "query": "scheduled dashboard report slack",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/"
+    ],
+    "style": "production-keyword",
+    "baseline_rank": 1
+  },
+  {
+    "query": "query builder URL filters cloud logs explorer",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/logs-api/logs-url-for-explorer-page/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "dashboard variables dynamic query dependent variables reference another variable",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/manage-variables/",
+      "https://signoz.io/docs/dashboards/using-variables-in-queries/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "AWS integration CloudWatch metric streams configure which metrics namespaces filter",
+    "expected_top_pages": [
+      "https://signoz.io/docs/integrations/aws/one-click-aws-integrations/",
+      "https://signoz.io/docs/aws-monitoring/one-click-vs-manual/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "AWS integration setup CloudFormation stack agent prerequisites one click",
+    "expected_top_pages": [
+      "https://signoz.io/docs/integrations/aws/one-click-aws-integrations/",
+      "https://signoz.io/docs/aws-monitoring/overview/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "traces explorer list view download export spans",
+    "expected_top_pages": [
+      "https://signoz.io/docs/traces-management/trace-api/search-traces/",
+      "https://signoz.io/docs/traces-management/trace-api/overview/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 0
+  },
+  {
+    "query": "service map dependency graph dashboard host metrics infrastructure",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/dashboard-templates/hostmetrics-dashboards/",
+      "https://signoz.io/docs/dashboards/dashboard-templates/hostmetrics-k8s/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "cumulative evaluation window alert chart visualization threshold in_total",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/user-guides/understanding-alert-evaluation-patterns/",
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "JSON body field extraction logs query",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-pipelines/guides/json/",
+      "https://signoz.io/docs/logs-pipelines/guides/nested-json/",
+      "https://signoz.io/docs/logs-pipelines/parsing/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "default prebuilt out of the box alert rules created on install templates",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/reference/",
+      "https://signoz.io/docs/alerts-management/alert-types/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 3
+  },
+  {
+    "query": "query builder v5 raw request select specific span attributes columns selectFields traces",
+    "expected_top_pages": [
+      "https://signoz.io/docs/traces-management/trace-api/payload-model/",
+      "https://signoz.io/docs/traces-management/trace-api/search-traces/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 0
+  },
+  {
+    "query": "Azure monitoring integration send Azure metrics logs to SigNoz",
+    "expected_top_pages": [
+      "https://signoz.io/docs/azure-monitoring/",
+      "https://signoz.io/docs/azure-monitoring/bootstrapping/",
+      "https://signoz.io/docs/integrations/azure/one-click-azure-integrations/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "panel links drilldown click row navigate to logs explorer",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/interactivity/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "alerts API create update rule endpoint api/v2/rules SIGNOZ-API-KEY",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/reference/",
+      "https://signoz.io/docs/alerts-management/terraform-provider-signoz/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "clickhouse sql table name logs JSONExtract body",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/logs_clickhouse_queries/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "legend format ClickHouse query panel label series name",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/clickhouse-faqs/",
+      "https://signoz.io/docs/dashboards/panel-types/timeseries/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 2
+  },
+  {
+    "query": "download export logs CSV from logs explorer",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/features/logs-explorer-guides/",
+      "https://signoz.io/docs/logs-management/overview/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "LLM observability GenAI semantic conventions gen_ai spans tracing agents",
+    "expected_top_pages": [
+      "https://signoz.io/docs/llm-observability/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 2
+  },
+  {
+    "query": "logs ingestion pricing per GB retention",
+    "expected_top_pages": [
+      "https://signoz.io/docs/cost-meter/overview/",
+      "https://signoz.io/docs/logs-management/long-term-storage/",
+      "https://signoz.io/docs/userguide/retention-period/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "customize Slack notification template alert labels annotations summary description",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/slack/",
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "stacked time series chart stack series area chart panel option",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/panel-types/timeseries/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 0
+  },
+  {
+    "query": "ClickHouse query alert template variables start_timestamp_ms",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/clickhouse-faqs/",
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 3
+  },
+  {
+    "query": "SigNoz Cloud pricing per GB logs traces metrics samples retention",
+    "expected_top_pages": [
+      "https://signoz.io/docs/cost-meter/overview/",
+      "https://signoz.io/docs/metrics-management/reducing-costs/",
+      "https://signoz.io/docs/userguide/retention-period/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "logs explorer list view add columns to log table",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/features/logs-explorer-guides/",
+      "https://signoz.io/docs/logs-management/overview/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 3
+  },
+  {
+    "query": "ingestion limits keys reduce telemetry volume drop metrics",
+    "expected_top_pages": [
+      "https://signoz.io/docs/ingestion/signoz-cloud/keys/",
+      "https://signoz.io/docs/metrics-management/reducing-costs/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "logs pipelines API create pipeline json parser processor",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-pipelines/introduction/",
+      "https://signoz.io/docs/logs-pipelines/guides/json/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 1
+  },
+  {
+    "query": "query_range v5 API request variables field format",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/query-builder-v5/",
+      "https://signoz.io/docs/metrics-management/query-range-api/",
+      "https://signoz.io/docs/dashboards/using-variables-in-queries/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 2
+  },
+  {
+    "query": "leaked compromised key security best practices rotate secret",
+    "expected_top_pages": [
+      "https://signoz.io/docs/ingestion/signoz-cloud/keys/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "environment filter deployment.environment.name resource attribute",
+    "expected_top_pages": [
+      "https://signoz.io/docs/logs-management/guides/set-resource-attributes-for-logs/",
+      "https://signoz.io/docs/userguide/query-builder/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 2
+  },
+  {
+    "query": "webhook notification channel alert payload",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/webhook/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "webhook notification channel alert payload format",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/webhook/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 1
+  },
+  {
+    "query": "dashboard panel clickhouse query JSON schema v5 spec",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/manage-dashboards/",
+      "https://signoz.io/docs/userguide/clickhouse-faqs/",
+      "https://signoz.io/docs/dashboards/panel-types/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "trace operator query builder direct descendant NOT exclude spans",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/operators-reference/",
+      "https://signoz.io/docs/userguide/query-builder-v5/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "ClickHouse query alert variables start_timestamp end_timestamp logs",
+    "expected_top_pages": [
+      "https://signoz.io/docs/userguide/clickhouse-faqs/",
+      "https://signoz.io/docs/userguide/logs_clickhouse_queries/",
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
+  },
+  {
+    "query": "alertOnAbsent absentFor alert rule API JSON condition",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/user-guides/how-to-configure-alerts-for-missing-data/",
+      "https://signoz.io/docs/alerts-management/reference/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "alerts API create alert rule endpoint",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/reference/",
+      "https://signoz.io/docs/alerts-management/terraform-provider-signoz/"
+    ],
+    "style": "production-real",
+    "holdout": true,
+    "baseline_rank": 0
+  },
+  {
+    "query": "dashboard traces query builder stacked bar chart stacking toggle step interval legend group by filter expression EXISTS OR HTTP status",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/panel-types/bar/",
+      "https://signoz.io/docs/userguide/query-builder-v5/",
+      "https://signoz.io/docs/dashboards/panel-types/timeseries/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 2
+  },
+  {
+    "query": "where are dashboards stored metadata database sqlite postgres vs clickhouse telemetry store",
+    "expected_top_pages": [
+      "https://signoz.io/docs/architecture/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 0
+  },
+  {
+    "query": "alert history timeline UI rule overview",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/alerts-history/"
+    ],
+    "style": "production-real",
+    "baseline_rank": 1
   }
 ]

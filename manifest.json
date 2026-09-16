@@ -135,7 +135,7 @@
     },
     {
       "name": "signoz_search_docs",
-      "description": "Return ranked official-doc matches with URLs and snippets when no exact SigNoz documentation page is selected"
+      "description": "Find ranked official SigNoz documentation with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords and keep product and technology terms exactly as the user wrote them. Split multi-intent questions into separate calls. Use section_slug when the docs area is known. If the top result is off-topic, retry with different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL."
     },
     {
       "name": "signoz_fetch_doc",

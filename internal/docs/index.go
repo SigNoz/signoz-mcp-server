@@ -21,26 +21,25 @@ import (
 	"time"
 	"unicode/utf8"
 
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/index/scorch"
 	"github.com/blevesearch/bleve/v2/mapping"
 	bleveQuery "github.com/blevesearch/bleve/v2/search/query"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const fetchContentByteLimit = 256 * 1024
 const snippetRuneLimit = 200
 
 // indexBatchSize bounds how many analysed documents a build holds in one
-// bleve batch. Committing every 100 pages cuts the embedded-corpus build peak
-// from ~325 MiB to ~124 MiB; smaller chunks inflate resident memory because an
-// in-memory scorch index never merges its segments.
-const indexBatchSize = 100
+// bleve batch. Keep 64-page batches for build-heap headroom; smaller chunks
+// increase resident memory because in-memory scorch never merges.
+const indexBatchSize = 64
 
 var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", ".", " ")
 
-// ErrInvalidSearchQuery marks searchText that Bleve's query-string parser
-// rejects. Callers can classify it as a correctable input error without
-// depending on Bleve's error text.
+// ErrInvalidSearchQuery marks empty or whitespace-only search text.
 var ErrInvalidSearchQuery = errors.New("invalid docs search query")
 
 type invalidSearchQueryError struct {
@@ -361,7 +360,7 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	if limit > 25 {
 		limit = 25
 	}
-	finalQuery, err := boostedDocsQuery(query)
+	finalQuery, err := boostedDocsQuery(ctx, query)
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -419,8 +418,11 @@ func sectionBreadcrumbForFilter(fields map[string]any, sectionSlug string) (stri
 	return breadcrumb, ok
 }
 
-func boostedDocsQuery(raw string) (bleveQuery.Query, error) {
+func boostedDocsQuery(ctx context.Context, raw string) (bleveQuery.Query, error) {
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, &invalidSearchQueryError{cause: errors.New("searchText must contain non-whitespace text")}
+	}
 	title := bleve.NewMatchQuery(raw)
 	title.SetField("title")
 	title.SetBoost(5)
@@ -438,10 +440,59 @@ func boostedDocsQuery(raw string) (bleveQuery.Query, error) {
 	urlTokens.SetBoost(2.5)
 	queryString := bleve.NewQueryStringQuery(raw)
 	queryString.SetBoost(0.5)
+	clauses := []bleveQuery.Query{title, headings, body, sectionBreadcrumb, urlTokens}
 	if err := queryString.Validate(); err != nil {
-		return nil, &invalidSearchQueryError{cause: err}
+		trace.SpanFromContext(ctx).SetAttributes(otelpkg.MCPDocsQueryStringDroppedKey.Bool(true))
+	} else {
+		clauses = append(clauses, queryString)
 	}
-	return bleve.NewDisjunctionQuery(title, headings, body, sectionBreadcrumb, urlTokens, queryString), nil
+	titleAll := bleve.NewMatchQuery(raw)
+	titleAll.SetField("title")
+	titleAll.SetOperator(bleveQuery.MatchQueryOperatorAnd)
+	titleAll.SetBoost(6)
+	bodyAll := bleve.NewMatchQuery(raw)
+	bodyAll.SetField("body")
+	bodyAll.SetOperator(bleveQuery.MatchQueryOperatorAnd)
+	bodyAll.SetBoost(5)
+	clauses = append(clauses, titleAll, bodyAll)
+	clauses = append(clauses, glossaryClauses(raw)...)
+	clauses = append(clauses, minimumMatchClauses(raw, 2, 2)...)
+	return bleve.NewDisjunctionQuery(clauses...), nil
+}
+
+// Long query bags get a preference for matching most distinct non-stopword terms.
+func minimumMatchClauses(raw string, titleBoost, bodyBoost float64) []bleveQuery.Query {
+	tokens := docsQueryAnalyzer.Analyze([]byte(raw))
+	terms := make([]string, 0, len(tokens))
+	seen := make(map[string]bool, len(tokens))
+	for _, token := range tokens {
+		term := string(token.Term)
+		if !seen[term] {
+			seen[term] = true
+			terms = append(terms, term)
+		}
+	}
+	// Skip oversized expansions; the original search clauses still apply.
+	if len(terms) < 4 || len(terms) > 64 {
+		return nil
+	}
+	clauses := make([]bleveQuery.Query, 0, 2)
+	for _, field := range []struct {
+		name  string
+		boost float64
+	}{{"title", titleBoost}, {"body", bodyBoost}} {
+		perTerm := make([]bleveQuery.Query, 0, len(terms))
+		for _, term := range terms {
+			q := bleve.NewMatchQuery(term)
+			q.SetField(field.name)
+			perTerm = append(perTerm, q)
+		}
+		q := bleve.NewDisjunctionQuery(perTerm...)
+		q.SetMin(float64((3*len(terms) + 4) / 5))
+		q.SetBoost(field.boost)
+		clauses = append(clauses, q)
+	}
+	return clauses
 }
 
 func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (FetchResult, string, error) {
@@ -801,11 +852,11 @@ func newIndexMapping() *mapping.IndexMappingImpl {
 	// Note: bleve v2 removed per-mapping Boost. Boost is applied at query time
 	// via DisjunctionQuery of per-field queries where necessary (see Search).
 	title := bleve.NewTextFieldMapping()
-	title.Analyzer = "standard"
+	title.Analyzer = "en"
 	docMapping.AddFieldMappingsAt("title", title)
 
 	headings := bleve.NewTextFieldMapping()
-	headings.Analyzer = "standard"
+	headings.Analyzer = "en"
 	docMapping.AddFieldMappingsAt("headings", headings)
 
 	body := bleve.NewTextFieldMapping()
@@ -960,21 +1011,36 @@ func truncateContent(s string, maxBytes int) (string, string) {
 // title/headings only (no body fragment). The returned string is trimmed to
 // maxRunes on a rune boundary.
 func chooseSnippet(fragments []string, body, query string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	// Bleve also emits unmarked fallback fragments for fields without matches.
+	for _, frag := range fragments {
+		if strings.Contains(frag, "<mark>") {
+			return trimToRunes(frag, maxRunes)
+		}
+	}
 	for _, frag := range fragments {
 		if strings.TrimSpace(frag) == "" {
 			continue
 		}
 		return trimToRunes(frag, maxRunes)
 	}
-	return makeSnippet(body, query, maxRunes)
+	return trimToRunes(makeSnippet(body, query, maxRunes), maxRunes)
 }
 
 func trimToRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
 	runes := []rune(s)
 	if len(runes) <= maxRunes {
 		return s
 	}
-	return string(runes[:maxRunes]) + "..."
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
 }
 
 func makeSnippet(body, query string, maxRunes int) string {

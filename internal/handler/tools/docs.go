@@ -12,6 +12,7 @@ import (
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 )
@@ -23,10 +24,10 @@ func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 		mcp.WithOutputSchema[docsindex.SearchResponse](),
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user asks a SigNoz product, setup, instrumentation, configuration, API, deployment, or troubleshooting question and no exact documentation page is selected. Returns ranked official-doc matches with URLs and snippets. Do not use for live tenant data; use signoz_fetch_doc when a result or exact docs URL needs full content."),
+		mcp.WithDescription("Find ranked official SigNoz documentation with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords and keep product and technology terms exactly as the user wrote them. Split multi-intent questions into separate calls. Use section_slug when the docs area is known. If the top result is off-topic, retry with different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL."),
 		// Not Required() so the legacy "query" alias (#367) stays valid for
 		// schema-validating clients; the handler still enforces "is required".
-		mcp.WithString("searchText", mcp.Description("Natural-language or keyword query to search in official SigNoz docs.")),
+		mcp.WithString("searchText", mcp.Description(`Use 2 to 6 keywords for one topic, keeping product and technology terms exactly as the user wrote them. Example: "Kubernetes pod logs". Split multi-intent questions into separate calls, set section_slug when known, and retry with different terms if the top result is off-topic.`)),
 		// limit advertises the ["integer","string"] union via intOrStringType() since
 		// parseLimit also accepts a JSON number — a schema-validating client sending
 		// {"limit": 3} must not be rejected. The 25 ceiling bounds the in-process bleve
@@ -79,8 +80,18 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 		slog.String("section_slug", sectionSlug),
 		slog.Int("limit", limit))
 
+	span := trace.SpanFromContext(ctx)
+	searchText := []rune(query)
+	if len(searchText) > 256 {
+		searchText = searchText[:256]
+	}
+	span.SetAttributes(otelpkg.MCPDocsSearchTextKey.String(string(searchText)), otelpkg.MCPDocsSectionSlugKey.String(sectionSlug))
 	start := time.Now()
 	result, err := h.docsIndex.Search(ctx, query, sectionSlug, limit)
+	span.SetAttributes(otelpkg.MCPDocsResultCountKey.Int(len(result.Results)))
+	if err == nil && len(result.Results) > 0 {
+		span.SetAttributes(otelpkg.MCPDocsTopScoreKey.Float64(result.Results[0].Score))
+	}
 	if h.meters != nil {
 		bucket := "0"
 		switch {
@@ -91,11 +102,21 @@ func (h *Handler) handleSearchDocs(ctx context.Context, req mcp.CallToolRequest)
 		case len(result.Results) >= 1:
 			bucket = "1-4"
 		}
-		attrs := []attribute.KeyValue{attribute.String("result_count_bucket", bucket)}
+		outcome := "ok"
+		if err != nil {
+			outcome = "error"
+		}
+		attrs := []attribute.KeyValue{attribute.String("outcome", outcome)}
+		if err == nil {
+			attrs = append(attrs, attribute.String("result_count_bucket", bucket))
+		}
 		attrs = otelpkg.AppendClientSource(ctx, attrs)
 		h.meters.DocsSearches.Add(ctx, 1, metric.WithAttributes(attrs...))
 		durationAttrs := otelpkg.AppendClientSource(ctx, nil)
 		h.meters.DocsSearchDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(durationAttrs...))
+		if err == nil && len(result.Results) > 0 {
+			h.meters.DocsSearchTopScore.Record(ctx, result.Results[0].Score, metric.WithAttributes(durationAttrs...))
+		}
 	}
 	if err != nil {
 		if err.Error() == docsindex.CodeIndexNotReady {

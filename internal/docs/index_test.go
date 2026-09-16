@@ -3,10 +3,14 @@ package docs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/blevesearch/bleve/v2"
+	bq "github.com/blevesearch/bleve/v2/search/query"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
@@ -28,9 +32,13 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
 
-	_, err = reg.Search(ctx, `"unclosed`, "", 3)
-	require.ErrorIs(t, err, ErrInvalidSearchQuery)
-	require.NotContains(t, err.Error(), ErrInvalidSearchQuery.Error())
+	fallback, err := reg.Search(ctx, `"docker`, "", 3)
+	require.NoError(t, err)
+	require.NotEmpty(t, fallback.Results)
+	for _, empty := range []string{"", "  ", "\t\n"} {
+		_, err = reg.Search(ctx, empty, "", 3)
+		require.ErrorIs(t, err, ErrInvalidSearchQuery)
+	}
 
 	filtered, err := reg.Search(ctx, "docker", "install", 3)
 	require.NoError(t, err)
@@ -252,4 +260,129 @@ func testSnapshot() CorpusSnapshot {
 			},
 		},
 	}
+}
+
+func TestSnippetRuneBudget(t *testing.T) {
+	body := strings.Repeat("界", 300) + " target " + strings.Repeat("文", 300)
+	for _, limit := range []int{0, 1, 3, 40, snippetRuneLimit} {
+		for _, fragments := range [][]string{nil, {body}} {
+			snippet := chooseSnippet(fragments, body, "target", limit)
+			require.LessOrEqual(t, len([]rune(snippet)), limit)
+			require.True(t, utf8.ValidString(snippet))
+		}
+	}
+}
+
+func TestEmbeddedSearchProbeRegressions(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	snapshot, err := LoadEmbeddedCorpus()
+	require.NoError(t, err)
+	reg, err := NewIndexRegistry(ctx, snapshot)
+	require.NoError(t, err)
+	defer reg.Close(context.Background())
+	for _, tc := range []struct{ query, url string }{
+		{"How do I send logs from a Kubernetes cluster to SigNoz Cloud?", "https://signoz.io/docs/logs-management/send-logs-to-signoz/"},
+		{"alerting on error rate", "https://signoz.io/docs/alerts-management/metrics-based-alerts/"},
+		{"instrumenting a python fastapi app", "https://signoz.io/docs/instrumentation/opentelemetry-python/"},
+		{"k8s otel collector helm", "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/overview/"},
+		{"nodejs express instrument", "https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/"},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			res, err := reg.Search(ctx, tc.query, "", 3)
+			require.NoError(t, err)
+			var urls []string
+			for _, hit := range res.Results {
+				urls = append(urls, hit.URL)
+			}
+			require.Contains(t, urls, tc.url)
+		})
+	}
+	res, err := reg.Search(ctx, "kubernetes node memory", "", 3)
+	require.NoError(t, err)
+	for _, hit := range res.Results {
+		require.NotContains(t, hit.URL, "/instrumentation/javascript/")
+	}
+}
+
+func TestSearchStemsTitleAndHeadingsOnly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	body := strings.Repeat("Unrelated introduction. ", 60) + " Instrumentation connects Python services to tracing."
+	snapshot := EmptyCorpus()
+	snapshot.Pages = []PageRecord{
+		{URL: "https://signoz.io/docs/title-match/", Title: "Instrumentation guide", BodyMarkdown: body},
+		{URL: "https://signoz.io/docs/heading-match/", Title: "Telemetry guide", HeadingsJSON: mustJSON([]Heading{{Text: "Instrumentation"}}), BodyMarkdown: body},
+		{URL: "https://signoz.io/docs/body-only/", Title: "Telemetry guide", BodyMarkdown: body},
+	}
+	reg, err := NewIndexRegistry(ctx, snapshot)
+	require.NoError(t, err)
+	defer reg.Close(context.Background())
+	entry, release, ok := reg.acquire()
+	require.True(t, ok)
+	defer release()
+	exact := bleve.NewMatchQuery("instrumenting")
+	exact.SetField("body")
+	raw, err := entry.idx.Search(bleve.NewSearchRequest(exact))
+	require.NoError(t, err)
+	require.Empty(t, raw.Hits)
+	res, err := reg.Search(ctx, "instrumenting", "", 3)
+	require.NoError(t, err)
+	require.Len(t, res.Results, 2)
+	var urls []string
+	for _, hit := range res.Results {
+		urls = append(urls, hit.URL)
+		require.NotEmpty(t, hit.Snippet)
+		require.LessOrEqual(t, len([]rune(hit.Snippet)), snippetRuneLimit)
+	}
+	require.ElementsMatch(t, []string{"https://signoz.io/docs/title-match/", "https://signoz.io/docs/heading-match/"}, urls)
+}
+
+func TestChooseSnippetPrefersMatchedBodyFragment(t *testing.T) {
+	snippet := chooseSnippet([]string{"Unmatched body introduction", "Matched <mark>instrumentation</mark> fragment"}, "", "instrumentation", snippetRuneLimit)
+	require.Contains(t, snippet, "<mark>instrumentation</mark>")
+	snippet = chooseSnippet([]string{"First <mark>body</mark> fragment", "Second <mark>body</mark> fragment"}, "", "body", snippetRuneLimit)
+	require.Equal(t, "First <mark>body</mark> fragment", snippet)
+}
+
+func TestMinimumMatchClauses(t *testing.T) {
+	for _, raw := range []string{"", "the and on", "logs metrics traces", "logs logs LOGS metrics traces"} {
+		require.Empty(t, minimumMatchClauses(raw, 2, 2), raw)
+	}
+	clauses := minimumMatchClauses("The LOGS metrics traces dashboard logs", 2, 3)
+	require.Len(t, clauses, 2)
+	for i, field := range []string{"title", "body"} {
+		q := clauses[i].(*bq.DisjunctionQuery)
+		require.Equal(t, float64(3), q.Min)
+		require.Len(t, q.Disjuncts, 4)
+		require.Equal(t, []float64{2, 3}[i], q.Boost())
+		var terms []string
+		for _, term := range q.Disjuncts {
+			match := term.(*bq.MatchQuery)
+			require.Equal(t, field, match.Field())
+			terms = append(terms, match.Match)
+		}
+		require.Equal(t, []string{"logs", "metrics", "traces", "dashboard"}, terms)
+	}
+	q := minimumMatchClauses("alpha bravo charlie delta echo foxtrot", 2, 2)[0].(*bq.DisjunctionQuery)
+	require.Equal(t, float64(4), q.Min)
+	var long []string
+	for i := 0; i < 65; i++ {
+		long = append(long, fmt.Sprintf("word%d", i))
+	}
+	require.Len(t, minimumMatchClauses(strings.Join(long[:64], " "), 2, 2), 2)
+	require.Empty(t, minimumMatchClauses(strings.Join(long, " "), 2, 2))
+}
+
+func TestMinimumMatchClauseRequiresMostTerms(t *testing.T) {
+	idx, err := bleve.NewMemOnly(newIndexMapping())
+	require.NoError(t, err)
+	defer idx.Close()
+	require.NoError(t, idx.Index("most", map[string]any{"body": "alpha bravo charlie"}))
+	require.NoError(t, idx.Index("partial", map[string]any{"body": "alpha bravo"}))
+	clause := minimumMatchClauses("alpha bravo charlie delta", 2, 2)[1]
+	res, err := idx.Search(bleve.NewSearchRequest(clause))
+	require.NoError(t, err)
+	require.Len(t, res.Hits, 1)
+	require.Equal(t, "most", res.Hits[0].ID)
 }
