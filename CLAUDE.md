@@ -49,7 +49,7 @@ checklist below).
 ## Guardrail Changes
 
 - Follow `guardrails/README.md`; keep policy in `guardrails/policy.go`, the sorted `TestGuardrail_*` inventory in `guardrails/tests.txt`, and package-sensitive tests beside their packages.
-- Never weaken a guardrail merely to pass CI. Document intentional relaxations in the plan's Key Decisions section (or the existing context log for legacy plans) and PR summary.
+- Never weaken a guardrail merely to pass CI. Document intentional relaxations in the planning record and PR summary.
 - Run the workflow lint, focused guardrail suite, and full test suite documented in `guardrails/README.md` before handoff.
 
 ## Documentation & Metadata Sync Checklist
