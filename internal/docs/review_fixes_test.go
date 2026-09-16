@@ -78,3 +78,56 @@ func TestNewRefresherKeepsFullIntervalWhenIncrementalDisabled(t *testing.T) {
 	require.Equal(t, defaultFullRefreshInterval, refresher.cfg.FullRefreshInterval,
 		"with both schedules enabled the ordering fallback still applies")
 }
+
+func TestFetchDocTimestampNeverRegressesDuringDelta(t *testing.T) {
+	verifyNoDocsLeaks(t)
+	entries := manyEntries(4)
+	bodies := bodiesForEntries(entries)
+	snapshot := snapshotForEntries(entries, bodies)
+	old := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	for i := range snapshot.Pages {
+		snapshot.Pages[i].FetchedAt = old
+	}
+	reg := newTestRegistry(t, snapshot)
+
+	bodies[entries[0].URL] = "# Page 00\n\nRewritten.\n"
+	next := snapshotForEntries(entries, bodies)
+	delta := diffSnapshots(snapshot, next)
+	require.Len(t, delta.changed, 1)
+	fresh := delta.changed[0].FetchedAt.UTC().Format(time.RFC3339)
+
+	// Observe the window after the batch commits and before the new
+	// generation is published: the reader still holds the old entry.
+	var inWindow FetchResult
+	applyDeltaBeforePublish = func() {
+		doc, code, err := reg.FetchDoc(context.Background(), entries[0].URL, "")
+		require.NoError(t, err)
+		require.Empty(t, code)
+		inWindow = doc
+	}
+	t.Cleanup(func() { applyDeltaBeforePublish = nil })
+	require.NoError(t, reg.ApplyDelta(context.Background(), next, delta))
+
+	require.Contains(t, inWindow.Content, "Rewritten")
+	require.Equal(t, fresh, inWindow.LastFetchedAt, "new content must not carry the previous generation's timestamp")
+
+	after, code, err := reg.FetchDoc(context.Background(), entries[0].URL, "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Equal(t, fresh, after.LastFetchedAt)
+
+	// An untouched page keeps the snapshot timestamp (content gating case).
+	untouched, _, err := reg.FetchDoc(context.Background(), entries[1].URL, "")
+	require.NoError(t, err)
+	require.Equal(t, next.Pages[1].FetchedAt.UTC().Format(time.RFC3339), untouched.LastFetchedAt)
+}
+
+func TestNewestFetchedAt(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	require.Equal(t, newer.Format(time.RFC3339), newestFetchedAt(older.Format(time.RFC3339), newer))
+	require.Equal(t, newer.Format(time.RFC3339), newestFetchedAt(newer.Format(time.RFC3339), older))
+	require.Equal(t, newer.Format(time.RFC3339), newestFetchedAt("garbage", newer))
+	require.Equal(t, "garbage", newestFetchedAt("garbage", time.Time{}))
+	require.Equal(t, "", newestFetchedAt("", time.Time{}))
+}

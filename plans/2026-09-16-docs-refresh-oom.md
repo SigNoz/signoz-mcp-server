@@ -163,6 +163,11 @@ invariants.
   rename a content change and re-indexes the page. `TestRevalidatedPageAdoptsRenamedSitemapTitle`.
 - P1: run and record `actionlint .github/workflows/guardrails.yaml` for the guardrail change → done.
 - P1: mark the plan `Done` before merge per `plans/README.md` → done.
+- Second round (P2, on `0f48161`): between a delta's batch commit and the generation swap, a reader
+  holding the old entry could see the re-indexed body with the old entry's timestamp. `FetchDoc`
+  now takes the newer of the stored `last_fetched_at` and the snapshot's `FetchedAt`
+  (`newestFetchedAt`), so metadata never moves a timestamp backwards. Window test via the
+  `applyDeltaBeforePublish` seam: `TestFetchDocTimestampNeverRegressesDuringDelta`.
 
 ## Reference Links
 

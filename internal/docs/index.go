@@ -484,10 +484,7 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		selectedHeading = id
 	}
 	content, truncation := truncateContent(body, fetchContentByteLimit)
-	lastFetchedAt := stringField(fields, "last_fetched_at")
-	if ts, ok := entry.fetchedAt[stringField(fields, "url")]; ok {
-		lastFetchedAt = ts.UTC().Format(time.RFC3339)
-	}
+	lastFetchedAt := newestFetchedAt(stringField(fields, "last_fetched_at"), entry.fetchedAt[stringField(fields, "url")])
 	return FetchResult{
 		URL:               stringField(fields, "url"),
 		Title:             stringField(fields, "title"),
@@ -499,6 +496,22 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		TruncationReason:  truncation,
 		LastFetchedAt:     lastFetchedAt,
 	}, "", nil
+}
+
+// newestFetchedAt reconciles the timestamp stored in the document with the
+// one carried by the served snapshot. Content gating leaves an unchanged
+// document's stored value behind the snapshot; a delta applied to the live
+// index can briefly put a re-indexed document ahead of the entry a reader
+// already holds. Whichever is newer is the truth, and the stored value is
+// the fallback when the snapshot has none.
+func newestFetchedAt(stored string, snapshot time.Time) string {
+	if snapshot.IsZero() {
+		return stored
+	}
+	if parsed, err := time.Parse(time.RFC3339, stored); err == nil && !snapshot.After(parsed) {
+		return stored
+	}
+	return snapshot.UTC().Format(time.RFC3339)
 }
 
 func (r *IndexRegistry) acquire() (*IndexEntry, func(), bool) {
