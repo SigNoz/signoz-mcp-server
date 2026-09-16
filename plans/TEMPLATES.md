@@ -1,42 +1,5 @@
 # Plan File Templates
 
-Templates for the `plans/<feature>.context.md` + `plans/<feature>.plan.md` pair
-described in `CLAUDE.md` → Feature Planning Convention.
-
-**`<feature>.context.md`**
-```markdown
-# Feature: <Name> — Context & Discussion
-
-## Original Prompt
-> <paste full user prompt here>
-
-## Reference Links
-- [Title](url)
-
-## Key Decisions & Discussion Log
-### YYYY-MM-DD — <topic>
-- <decision or note>
-
-## Open Questions
-- [ ] <question>
-```
-
-**`<feature>.plan.md`**
-```markdown
-# Plan: <Name>
-
-## Status
-Planning
-
-## Context
-<why this change is needed>
-
-## Approach
-<implementation details>
-
-## Files to Modify
-- `path/to/file.go` — what changes
-
-## Verification
-<how to test end-to-end>
-```
+The current [plan template and lifecycle](README.md#template) live in `plans/README.md`.
+Use one `plans/YYYY-MM-DD-<slug>.md` file for new work. Existing `.context.md` / `.plan.md`
+pairs are retained as legacy history; see [legacy plans](README.md#legacy-plans).

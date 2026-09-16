@@ -127,7 +127,7 @@ documented assertions; do not float a dist-tag or version range.
 Do not loosen a limit, add an exception, remove a test, or weaken an assertion merely to make CI pass.
 When a contract change is intentional:
 
-1. Explain the reason in the feature context log or PR description.
+1. Explain the reason in the planning record or PR description.
 2. Update `policy.go` when a limit, alias, or grandfathered exception changes.
 3. Update the package-local `TestGuardrail_*` implementation.
 4. Update `tests.txt` only when a guarded test is intentionally added, removed, or renamed.
