@@ -738,12 +738,12 @@ Get one saved Explorer view's complete definition by UUID. Call this before `sig
 
 #### `signoz_search_docs`
 
-Find ranked official SigNoz documentation with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords and keep product and technology terms exactly as the user wrote them. Split multi-intent questions into separate calls. Use section_slug when the docs area is known. If the top result is off-topic, retry with different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL.
+Search official SigNoz documentation and return ranked pages with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords for one topic and keep product and technology names as the user wrote them; split multi-intent questions into separate calls. If the top result is off-topic, retry with fewer or different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL.
 
 - **Parameters**:
-  - `searchText` (required) - Use 2 to 6 keywords for one topic, keeping product and technology terms exactly as the user wrote them. Example: "Kubernetes pod logs". Split multi-intent questions into separate calls, set section_slug when known, and retry with different terms if the top result is off-topic.
+  - `searchText` (required) - 2 to 6 keywords for one topic, for example "Kubernetes pod logs". Keep product and technology names as the user wrote them.
   - `limit` (optional) - Maximum results to return as a string (default: 10, max: 25; a numeric value is also accepted). The 25 ceiling is deliberate: each result hydrates document text out of the in-process docs index, so a larger limit inflates this server's resident memory.
-  - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
+  - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`. Reuse the `section_slug` from an earlier result when narrowing; an unknown slug returns zero results
   - `searchContext` - User's original question
 
 Docs search telemetry counts executed searches in `signoz_docs_searches_total` with

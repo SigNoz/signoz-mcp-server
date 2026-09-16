@@ -24,16 +24,16 @@ func (h *Handler) RegisterDocsHandlers(s *mcp.Server) {
 		mcp.WithOutputSchema[docsindex.SearchResponse](),
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Find ranked official SigNoz documentation with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords and keep product and technology terms exactly as the user wrote them. Split multi-intent questions into separate calls. Use section_slug when the docs area is known. If the top result is off-topic, retry with different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL."),
+		mcp.WithDescription("Search official SigNoz documentation and return ranked pages with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords for one topic and keep product and technology names as the user wrote them; split multi-intent questions into separate calls. If the top result is off-topic, retry with fewer or different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL."),
 		// Not Required() so the legacy "query" alias (#367) stays valid for
 		// schema-validating clients; the handler still enforces "is required".
-		mcp.WithString("searchText", mcp.Description(`Use 2 to 6 keywords for one topic, keeping product and technology terms exactly as the user wrote them. Example: "Kubernetes pod logs". Split multi-intent questions into separate calls, set section_slug when known, and retry with different terms if the top result is off-topic.`)),
+		mcp.WithString("searchText", mcp.Description(`Required. 2 to 6 keywords for one topic, for example "Kubernetes pod logs". Keep product and technology names as the user wrote them.`)),
 		// limit advertises the ["integer","string"] union via intOrStringType() since
 		// parseLimit also accepts a JSON number — a schema-validating client sending
 		// {"limit": 3} must not be rejected. The 25 ceiling bounds the in-process bleve
 		// index's per-result memory hydration on the shared multi-tenant pod.
 		mcp.WithString("limit", mcp.DefaultString("10"), intOrStringType(), mcp.Description("Maximum results to return. Default: 10, max: 25 (capped to bound the docs index's memory footprint).")),
-		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents".`)),
+		mcp.WithString("section_slug", mcp.Description(`Optional exact top-level docs section filter, for example "setup", "logs-management", "apm-distributed-tracing", "metrics", "alerts", "dashboards", "signoz-apis", "querying", or "collection-agents". Reuse the section_slug from an earlier result when narrowing; an unknown slug returns zero results.`)),
 	)
 	h.addTool(s, searchTool, h.handleSearchDocs)
 

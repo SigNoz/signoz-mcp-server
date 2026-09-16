@@ -377,7 +377,7 @@ func TestMinimumMatchClauses(t *testing.T) {
 func TestMinimumMatchClauseRequiresMostTerms(t *testing.T) {
 	idx, err := bleve.NewMemOnly(newIndexMapping())
 	require.NoError(t, err)
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 	require.NoError(t, idx.Index("most", map[string]any{"body": "alpha bravo charlie"}))
 	require.NoError(t, idx.Index("partial", map[string]any{"body": "alpha bravo"}))
 	clause := minimumMatchClauses("alpha bravo charlie delta", 2, 2)[1]

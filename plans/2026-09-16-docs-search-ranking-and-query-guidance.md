@@ -358,6 +358,16 @@ documented-behavior change, so the companion PR is required, not optional.
   ranks change. Production-raw precision loses1 hit (9→8) but remains above original6/18.
   All six style and overall gates pass. No index mapping or memory-budget change.
 
+### 2026-09-16 — Description tightened after PR review pass
+
+The tool, `searchText`, and `section_slug` descriptions were reviewed against `docs/mcp-best-practices.md` DSC-1 to DSC-3 after PR #309 opened.
+
+- The tool description and `searchText` repeated the same four rules almost verbatim. The rules that change a first call (2 to 6 keywords, names as the user wrote them, split multi-intent questions, retry) stay on the tool description as the most universally delivered surface; `searchText` now carries only the field-local format, the example, and an explicit `Required.` marker, matching `signoz_get_view.id`, because the schema cannot mark it required while the legacy `query` alias stays valid.
+- "Retry with different terms" became "retry with fewer or different terms": the production evaluation showed shorter keyword rewrites outranking long strings, and fewer terms is the retry that most often helps.
+- `section_slug` now states that an unknown slug returns zero results and that a slug should be reused from an earlier result. A probe confirmed `section_slug: "kubernetes"` silently returns zero hits, and the sitemap resource lists page URLs, not slugs, so it cannot serve as the discovery pointer.
+- `manifest.json` uses a one-sentence summary like every other tool entry; the parity test compares names only, and the earlier full-length copy was inconsistent with the rest of the file.
+- Two `errcheck` lint failures on unchecked `idx.Close()` in tests were fixed with the package's existing `defer func() { _ = idx.Close() }()` form.
+
 ## Reference Links
 
 - [RAG Is Simpler Than You Think](https://www.lighthousenewsletter.com/p/rag-is-simpler-than-you-think)

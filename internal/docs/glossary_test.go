@@ -51,7 +51,7 @@ func TestGlossaryPreservesQuerySyntax(t *testing.T) {
 func TestGlossaryOnlySnippet(t *testing.T) {
 	idx, err := bleve.NewMemOnly(newIndexMapping())
 	require.NoError(t, err)
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 	body := strings.Repeat("unrelated introduction ", 40) + " Kubernetes sends pod telemetry to the collector."
 	require.NoError(t, idx.Index("doc", map[string]any{"body": body}))
 	q, err := boostedDocsQuery(context.Background(), "k8s")
