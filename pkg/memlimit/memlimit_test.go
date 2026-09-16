@@ -138,3 +138,14 @@ func TestConfigureFailsOpenWithoutCgroup(t *testing.T) {
 		t.Fatalf("Configure set a limit with no cgroup present: %d", got)
 	}
 }
+
+func TestConfigureRespectsGOMEMLIMITOff(t *testing.T) {
+	prev := debug.SetMemoryLimit(-1)
+	t.Cleanup(func() { debug.SetMemoryLimit(prev) })
+	debug.SetMemoryLimit(math.MaxInt64)
+	t.Setenv("GOMEMLIMIT", "off")
+	Configure(context.Background(), slog.New(slog.DiscardHandler))
+	if got := debug.SetMemoryLimit(-1); got != math.MaxInt64 {
+		t.Fatalf("GOMEMLIMIT=off must be respected even inside a cgroup; got %d", got)
+	}
+}

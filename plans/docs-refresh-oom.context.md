@@ -98,6 +98,25 @@ public report SigNoz/signoz-mcp-server#305.
   8 readers against 10 concurrent applies under `-race`, and a 250-page chunked build.
   `go test ./internal/docs/ -race -count=1` is green.
 
+### 2026-09-16 — Astra review of the branch and fixes applied
+- Blocker: `Close` could run while `ApplyDelta`/`Swap` held `writeMu`, so a writer could publish
+  after shutdown (leaking a fresh index or draining a shared handle twice). Fix: `Close` takes
+  `writeMu`; writers and shutdown are now mutually exclusive. Test seam `applyDeltaBeforePublish`
+  plus `TestCloseWaitsForInFlightApplyDelta`.
+- `GOMEMLIMIT=off` looked identical to "unset" at the runtime level and was overridden. Fix: any
+  non-empty `GOMEMLIMIT` env short-circuits `Configure`. Test added.
+- `NewRefresher` reset a 1h full-refresh interval to 24h when the incremental schedule was
+  disabled (it compared against the 6h placeholder). Fix: ordering fallback applies only when both
+  schedules run. Test added.
+- Content gating left the `last_fetched_at` stored field stale for pages that were re-downloaded
+  unchanged. Fix: `FetchDoc` serves `last_fetched_at` from the published snapshot (per-entry
+  `fetchedAt` map), falling back to the stored field. Assertion added to the forced-refresh test.
+- README: `SIGNOZ_DOCS_REFRESH_INTERVAL=0` alone leaves the daily forced refresh running; docs now
+  say to set both to `0`. Sitemap no-op, the 25-apply compaction cap, and the full list of
+  completion log lines are described; the OOM diagnosis wording is softened to "most likely".
+- Kept: sampled peak budget (224 MiB vs 113 to 148 measured) plus the deterministic
+  `indexBatchSize <= 128` assertion, per the reviewer's recommendation not to tighten the sample.
+
 ## Open Questions
 - [x] Revive #195 in code or Helm/README only? → In code, fail-open, with `GOMEMLIMIT` env
   still taking precedence (self-hosted users get a sane default; our infra keeps the downward-API env).

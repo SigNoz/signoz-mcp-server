@@ -48,8 +48,13 @@ func Configure(ctx context.Context, logger *slog.Logger) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	// The Go runtime applies the GOMEMLIMIT env var before main runs, so a
-	// non-default current value means the operator set it. Respect it.
+	// An explicit GOMEMLIMIT always wins, including GOMEMLIMIT=off, which the
+	// runtime represents as the same MaxInt64 an unset variable produces.
+	if v := strings.TrimSpace(os.Getenv("GOMEMLIMIT")); v != "" {
+		logger.InfoContext(ctx, "GOMEMLIMIT set explicitly; leaving as-is", slog.String("gomemlimit", v))
+		return
+	}
+	// A non-default runtime value means something set it programmatically.
 	if cur := debug.SetMemoryLimit(-1); cur != math.MaxInt64 {
 		logger.InfoContext(ctx, "GOMEMLIMIT already set; leaving as-is",
 			slog.Int64("gomemlimit_bytes", cur))

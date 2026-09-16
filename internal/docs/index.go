@@ -78,11 +78,25 @@ type IndexRegistry struct {
 }
 
 type IndexEntry struct {
-	idx        bleve.Index
-	handle     *indexHandle
-	snapshot   CorpusSnapshot
+	idx      bleve.Index
+	handle   *indexHandle
+	snapshot CorpusSnapshot
+	// fetchedAt serves last_fetched_at from the published snapshot. Content
+	// gating leaves unchanged pages un-reindexed, so the stored field can lag
+	// behind a successful revalidation; the snapshot never does.
+	fetchedAt  map[string]time.Time
 	refs       int64
 	generation uint64
+}
+
+func fetchedAtIndex(snapshot CorpusSnapshot) map[string]time.Time {
+	out := make(map[string]time.Time, len(snapshot.Pages))
+	for _, page := range snapshot.Pages {
+		if !page.FetchedAt.IsZero() {
+			out[page.URL] = page.FetchedAt
+		}
+	}
+	return out
 }
 
 // indexHandle owns one bleve index. Several IndexEntry generations may share
@@ -100,14 +114,14 @@ type indexHandle struct {
 
 func newIndexEntry(idx bleve.Index, snapshot CorpusSnapshot, generation uint64) *IndexEntry {
 	handle := &indexHandle{idx: idx, entries: 1}
-	return &IndexEntry{idx: idx, handle: handle, snapshot: snapshot, generation: generation}
+	return &IndexEntry{idx: idx, handle: handle, snapshot: snapshot, fetchedAt: fetchedAtIndex(snapshot), generation: generation}
 }
 
 // shareIndex returns a new entry that serves snapshot from the same live index
 // as entry. The caller must hold r.mu so the handle cannot drain concurrently.
 func (e *IndexEntry) shareIndex(snapshot CorpusSnapshot) *IndexEntry {
 	atomic.AddInt64(&e.handle.entries, 1)
-	return &IndexEntry{idx: e.idx, handle: e.handle, snapshot: snapshot, generation: e.generation + 1}
+	return &IndexEntry{idx: e.idx, handle: e.handle, snapshot: snapshot, fetchedAt: fetchedAtIndex(snapshot), generation: e.generation + 1}
 }
 
 func NewIndexRegistry(ctx context.Context, snapshot CorpusSnapshot) (*IndexRegistry, error) {
@@ -220,6 +234,10 @@ const (
 	maxIncrementalApplies = 24
 )
 
+// applyDeltaBeforePublish is a test seam that runs after the batch commits
+// and before the new generation is published. Nil in production.
+var applyDeltaBeforePublish func()
+
 // CanApplyDelta reports whether delta is small enough, and the live index
 // young enough, to update in place instead of rebuilding.
 func (r *IndexRegistry) CanApplyDelta(delta snapshotDelta, nextPages int) bool {
@@ -296,6 +314,9 @@ func (r *IndexRegistry) ApplyDelta(ctx context.Context, next CorpusSnapshot, del
 		release()
 		return err
 	}
+	if applyDeltaBeforePublish != nil {
+		applyDeltaBeforePublish()
+	}
 
 	r.mu.Lock()
 	r.current = old.shareIndex(next)
@@ -308,7 +329,15 @@ func (r *IndexRegistry) ApplyDelta(ctx context.Context, next CorpusSnapshot, del
 }
 
 func (r *IndexRegistry) Close(ctx context.Context) {
-	if r == nil || !r.closed.CompareAndSwap(false, true) {
+	if r == nil {
+		return
+	}
+	// Serialize with writers so an in-flight Swap or ApplyDelta cannot publish
+	// a new generation after the current one has been detached and drained,
+	// which would leak a fresh index or drain a shared handle twice.
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	if !r.closed.CompareAndSwap(false, true) {
 		return
 	}
 	r.mu.Lock()
@@ -455,6 +484,10 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		selectedHeading = id
 	}
 	content, truncation := truncateContent(body, fetchContentByteLimit)
+	lastFetchedAt := stringField(fields, "last_fetched_at")
+	if ts, ok := entry.fetchedAt[stringField(fields, "url")]; ok {
+		lastFetchedAt = ts.UTC().Format(time.RFC3339)
+	}
 	return FetchResult{
 		URL:               stringField(fields, "url"),
 		Title:             stringField(fields, "title"),
@@ -464,7 +497,7 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		Heading:           selectedHeading,
 		AvailableHeadings: headings,
 		TruncationReason:  truncation,
-		LastFetchedAt:     stringField(fields, "last_fetched_at"),
+		LastFetchedAt:     lastFetchedAt,
 	}, "", nil
 }
 

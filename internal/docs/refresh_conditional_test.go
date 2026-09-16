@@ -89,6 +89,7 @@ func conditionalFixture(t *testing.T) ([]SitemapEntry, CorpusSnapshot, *etagServ
 	})
 	for i := range initial.Pages {
 		initial.Pages[i].SourceETag = `W/"` + "/docs" + initial.Pages[i].URL[len("https://signoz.io/docs"):] + `-v1"`
+		initial.Pages[i].FetchedAt = time.Now().UTC().Add(-48 * time.Hour)
 	}
 	// The embedded corpus never matches the live sitemap; model that so the
 	// refresh takes the full path rather than the hash no-op.
@@ -176,6 +177,14 @@ func TestForcedRefreshRefetchesWithoutRevalidation(t *testing.T) {
 	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "forced-unchanged"))
 	require.Zero(t, docsRefreshMetricValue(t, reader, "forced-full-rebuilt"))
 	require.Same(t, before, reg.currentHandle(t), "identical bodies must not rebuild even when forced")
+
+	doc, code, err := reg.FetchDoc(context.Background(), "https://signoz.io/docs/install/docker/", "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	fetchedAt, err := time.Parse(time.RFC3339, doc.LastFetchedAt)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), fetchedAt, time.Minute,
+		"last_fetched_at must reflect the successful re-download even though the index was not rebuilt")
 }
 
 func TestRefreshRebuildsWhenContentChanges(t *testing.T) {

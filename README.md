@@ -286,13 +286,13 @@ The server keeps the SigNoz docs search index in memory. The index holds about 3
 | Scheduled refresh that changes a few pages | ~45 to 65 MB; the changed pages are applied to the live index without a rebuild |
 | Scheduled refresh that finds no changed pages | no index work; pages are revalidated with `If-None-Match` and unchanged ones cost a 304 |
 
-A scheduled refresh (default every `6h`) revalidates every page against the live site and touches the index only when at least one page's content changed. A small change set is applied to the live index in place; a large one, and the forced refresh (default every `24h`), rebuilds the index from scratch, which also compacts the segments that in-place updates leave behind. The index is built in chunks so the peak no longer scales with the whole corpus.
+A scheduled refresh (default every `6h`) first compares the live sitemap with the served one and stops there when it is unchanged. Otherwise it revalidates every page with `If-None-Match` and touches the index only when at least one page's content changed. A change set covering up to a quarter of the pages is applied to the live index in place; a larger one, the 25th in-place update on the same index, and any forced refresh (default every `24h`) that finds changed content rebuild the index from scratch, which also compacts the segments that in-place updates leave behind. The index is built in chunks so the peak no longer scales with the whole corpus.
 
 Recommendations for containerized HTTP deployments:
 
 - Set the memory limit to at least `512Mi`. The measured startup peak is ~150 MB and a scheduled refresh with a small delta costs only tens of MB over the ~30 MB steady state, so `512Mi` leaves room for request handling and allocator slack. In a memory-limited container the server sets Go's soft memory limit to 90% of the cgroup limit automatically (`SIGNOZ_GOMEMLIMIT_RATIO` adjusts the fraction; an explicit `GOMEMLIMIT` always wins). A soft limit makes the collector reclaim garbage earlier; it cannot shrink the live data inside an index batch, so it is a backstop rather than a substitute for headroom.
-- Set `SIGNOZ_DOCS_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay the rebuild. New docs pages then arrive with the next server upgrade.
-- Watch the `docs refresh starting` log line and its completion partner (`docs refresh rebuilt index` or `docs refresh applied delta`). A container that logs the first and never the second was killed mid-refresh.
+- Set both `SIGNOZ_DOCS_REFRESH_INTERVAL=0` and `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay any refresh. New docs pages then arrive with the next server upgrade. Setting only the first keeps the daily forced refresh.
+- Every refresh logs `docs refresh starting` and then exactly one completion line: `docs refresh no-op; sitemap unchanged`, `docs refresh found no page changes; index kept`, `docs refresh applied delta`, `docs refresh rebuilt index`, `docs forced full refresh rebuilt index`, or a `docs refresh failed` warning. A container whose last docs line is `docs refresh starting` or `docs refresh rebuilding index` most likely died mid-refresh.
 
 #### With OAuth (Multi-Tenant / Cloud)
 
@@ -1011,7 +1011,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
 | `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
 | `SIGNOZ_GOMEMLIMIT_RATIO` | Fraction of the detected cgroup memory limit used as Go's soft memory limit when `GOMEMLIMIT` is not set (default: `0.9`). Ignored outside a memory-limited container or when `GOMEMLIMIT` is set explicitly. See [Memory footprint](#memory-footprint). | No |
-| `SIGNOZ_DOCS_REFRESH_INTERVAL` | Scheduled docs refresh interval (Go duration, default: `6h`). Set to `0` (or `off`) to disable the scheduled refresh; the embedded docs index is then served unchanged for the life of the process. See [Memory footprint](#memory-footprint). | No |
+| `SIGNOZ_DOCS_REFRESH_INTERVAL` | Scheduled incremental docs refresh interval (Go duration, default: `6h`). Set to `0` (or `off`) to disable it. To stop every scheduled refresh and serve the embedded docs index unchanged, set `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL=0` as well. See [Memory footprint](#memory-footprint). | No |
 | `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Scheduled forced full docs refresh interval (Go duration, default: `24h`). Set to `0` (or `off`) to disable only the forced full refresh. | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
 | `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |
