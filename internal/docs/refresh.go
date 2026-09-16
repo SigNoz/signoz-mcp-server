@@ -433,11 +433,17 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 	failures := 0 // non-OK + non-404 (errors, out-of-scope, etc.)
 	notFound := 0 // 404s this cycle (any — new or already-tombstoned)
 	newNotFound := 0
+	fetched, revalidated := 0, 0
 	r.mu.Lock()
 	for _, result := range results {
 		switch result.fetch.Status {
 		case FetchStatusOK, FetchStatusNotModified:
 			r.notFoundCounts[result.entry.URL] = 0
+			if result.fetch.Status == FetchStatusOK {
+				fetched++
+			} else {
+				revalidated++
+			}
 		case FetchStatusNotFound:
 			notFound++
 			// "New" = this URL has not been 404ing in previous cycles. The
@@ -505,12 +511,21 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 			}
 		}
 	}
+	normalized := NormalizePages(pages)
+	// Entries collapse into fewer pages when the sitemap lists one URL under
+	// several sections, when a 404 outlives its grace period, or when a
+	// fetch fails with no prior record to keep. Log the accounting so the
+	// gap between sitemap entries and indexed pages is never silent.
+	r.logger.InfoContext(ctx, "docs refresh fetched pages",
+		"entries", total, "fetched", fetched, "revalidated", revalidated,
+		"not_found", notFound, "failed", failures, "pages", len(normalized),
+		"merged_duplicates", len(pages)-len(normalized))
 	return CorpusSnapshot{
 		SchemaVersion: CorpusSchemaVersion,
 		BuiltAt:       time.Now().UTC(),
 		SitemapRaw:    sitemapRaw,
 		SitemapHash:   sitemapHash,
-		Pages:         NormalizePages(pages),
+		Pages:         normalized,
 	}, false, nil
 }
 

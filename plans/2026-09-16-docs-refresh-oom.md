@@ -193,6 +193,19 @@ invariants.
   | `ApplyDelta` 20% (149 pages) | 114 / 112 MiB | +0 MiB |
 
 - Live check (read-only subagent, 11 requests): signoz.io honours `If-None-Match` with 304.
+- Local E2E (`make test-e2e`, foundry-cast SigNoz, server built from the working tree): 46 passed,
+  0 failed, environment torn down. CI `e2e` on #308: one run hit 13 setup errors from the cast
+  SigNoz's OTLP receiver never accepting exports (infra, not server); the rerun passed 46/46.
+- Live refresh observation (server binary, `SIGNOZ_DOCS_REFRESH_INTERVAL=1m`,
+  `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL=3m`, live signoz.io): startup index ready in ~313 ms; first
+  tick rebuilt (1001 entries → 930 pages, added 205 / changed 725 / removed 21, rebuild 404 ms);
+  next tick `no-op; sitemap unchanged`; forced tick `found no page changes; index kept`. Docs
+  tools answered before and after; `last_fetched_at` advanced to each refresh time. Process RSS
+  8 to 35 MB steady, 257 MB peak during the 930-page rebuild, fully returned after each tick.
+  Both intervals `0`: `docs scheduled refresh disabled`, no refresh lines.
+- Follow-up from that run: the entries-to-pages gap (duplicate sitemap URLs merged by
+  `NormalizePages`, expired 404s, failed fetches without a prior record) was silent; a
+  `docs refresh fetched pages` INFO line now reports the accounting per refresh.
 - Review: astra agent, two passes; all findings fixed and re-verified. Codex PR review on #308:
   four inline comments, all addressed (see Key Decisions). CI on #308: all eleven checks green.
 - Gaps: no E2E against a memory-limited container; the guardrail and the harness above stand in.
