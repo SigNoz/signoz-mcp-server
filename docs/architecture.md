@@ -173,26 +173,6 @@ shutdown. An invalid JSON frame terminates that one-client process under the
 official SDK; the server does not carry a custom framing layer solely to retain
 the previous parse-error-and-continue behavior.
 
-## Memory Limit (GOMEMLIMIT)
-
-At startup the server derives a soft memory limit from the container's cgroup memory limit and
-applies it via `debug.SetMemoryLimit` (see `pkg/memlimit`). The garbage collector then reclaims
-more aggressively as the heap approaches the limit, which protects steady-state and
-gradual-growth pressure from ending in a cgroup OOM kill.
-
-- Reads the cgroup limit (v2 `memory.max`, falling back to v1 `memory.limit_in_bytes`) and sets
-  `GOMEMLIMIT` to `ratio × limit`. Ratio defaults to **0.9** and is overridable via
-  `SIGNOZ_GOMEMLIMIT_RATIO`; the headroom covers non-heap memory.
-- **Fails open:** if `GOMEMLIMIT` is already set explicitly, no cgroup limit is detected (local or
-  stdio runs, non-containerized hosts), or the limit is under 64 MiB, the runtime default is left
-  untouched. The decision is logged at startup.
-- `GOMAXPROCS` is intentionally not touched; the Go runtime already derives it from the cgroup CPU quota.
-
-A soft limit is a backstop, not the fix for the docs-index build peak. Measured on the embedded
-corpus, a full build peaks around 330 MiB with no limit and still around 300 MiB with a 96 MiB
-soft limit, because the peak is live data inside a single bleve batch rather than garbage. The
-build peak itself is bounded by chunked indexing in `internal/docs`.
-
 ## OAuth 2.1 — Stateless Token Design
 
 The OAuth implementation is fully stateless — no database or in-memory store is needed. All state is encrypted into the tokens themselves using AES-GCM with a shared `OAUTH_TOKEN_SECRET`.

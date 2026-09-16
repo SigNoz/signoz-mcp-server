@@ -117,9 +117,20 @@ public report SigNoz/signoz-mcp-server#305.
 - Kept: sampled peak budget (224 MiB vs 113 to 148 measured) plus the deterministic
   `indexBatchSize <= 128` assertion, per the reviewer's recommendation not to tighten the sample.
 
+### 2026-09-16 — Step 2 (GOMEMLIMIT) dropped at owner's request
+- Owner: "drop gomemlimit for now as it's not useful for this case." Grounds: the soft limit cuts
+  the build peak by only ~20% (live batch data, not garbage), chunked indexing is the real fix,
+  and `cl.gcp.deployments` sets a 1024Mi request with no memory limit, so cgroup detection would
+  fail open there anyway.
+- Removed `pkg/memlimit`, the `main.go` hook, the architecture.md section, the
+  `SIGNOZ_GOMEMLIMIT_RATIO` README row, and the auto-set sentence in the README recommendation.
+  The review-fix test for `GOMEMLIMIT=off` went with the package.
+- Not reopening #195. If self-hosted operators need a soft limit they can set `GOMEMLIMIT` directly.
+
 ## Open Questions
-- [x] Revive #195 in code or Helm/README only? → In code, fail-open, with `GOMEMLIMIT` env
-  still taking precedence (self-hosted users get a sane default; our infra keeps the downward-API env).
+- [x] Revive #195 in code or Helm/README only? → Neither, for now. Revived in code during step 2,
+  then dropped (see 2026-09-16 entry below): not useful for the batch peak, and a no-op on the
+  cloud deployments, which set no memory limit. README mentions `GOMEMLIMIT` as optional only.
 - [x] Does signoz.io return usable `ETag` / honour `If-None-Match` for docs markdown? → Yes.
   Weak ETags (`W/"<sha1>"`), stable across requests and edge nodes, 304 with empty body on
   `If-None-Match`. No `Last-Modified`, so `If-Modified-Since` is not an option. `Vary: Accept` is

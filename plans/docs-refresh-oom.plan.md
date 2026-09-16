@@ -1,7 +1,7 @@
 # Plan: Docs refresh OOM hardening (HTTP mode, 512Mi)
 
 ## Status
-In Progress — all five steps implemented on `fix/docs-refresh-oom`; pending review and PR.
+In Progress — steps 1, 3, 4, 5 implemented on `fix/docs-refresh-oom` (step 2 dropped); pending PR.
 
 ## Context
 Public report #305: a 512Mi HTTP-mode container is OOM-killed every ~6h by the scheduled docs
@@ -22,14 +22,13 @@ restart and the 24h forced refresh are both unconditional full rebuilds today.
 - `refresh()` logs `docs refresh starting` (forced, current pages) before fetching and
   `docs refresh rebuilding index` (entries) before the build, so an OOM mid-rebuild leaves a trace.
 - README: env table rows; new "Memory footprint" note under HTTP Mode with the measured peaks,
-  a recommended floor, and the `GOMEMLIMIT` / interval knobs.
+  a recommended floor, and the interval knobs.
 
-### Step 2 — GOMEMLIMIT backstop (revive #195)
-- `pkg/memlimit.Configure(ctx, logger)`: respects an explicit `GOMEMLIMIT`, reads cgroup v2 then
-  v1, ignores limits under 64 MiB, sets `ratio × limit` (default 0.9, `SIGNOZ_GOMEMLIMIT_RATIO`),
-  logs the decision, never errors. Called from `cmd/server/main.go` after the logger exists.
-- Docs: `docs/architecture.md` section and README env row. State plainly that it bounds
-  steady-state growth, not the batch peak.
+### Step 2 — GOMEMLIMIT backstop (dropped)
+- Implemented as `pkg/memlimit` (revived #195), then removed at the owner's request on
+  2026-09-16: measurements showed the soft limit trims the build peak by only ~20% because the
+  peak is live batch data, and the cloud deployments set no memory limit so it would have been a
+  no-op there. README notes `GOMEMLIMIT` as an optional operator knob only.
 
 ### Step 3 — Conditional fetches and content gating
 - `Fetcher.FetchConditional(ctx, url, etag)` sends `If-None-Match`; 304 → new
@@ -81,7 +80,6 @@ restart and the 24h forced refresh are both unconditional full rebuilds today.
 - `internal/docs/types.go` — new fetch status
 - `internal/docs/verification_test.go`, new `refresh_delta_test.go`, `guardrail_test.go` — tests
 - `internal/mcp-server/server.go` — honour disable flags
-- `pkg/memlimit/memlimit.go`, `pkg/memlimit/memlimit_test.go`, `cmd/server/main.go` — step 2
 - `guardrails/policy.go`, `guardrails/tests.txt`, `guardrails/README.md` — step 5
 - `README.md`, `docs/architecture.md` — docs
 
