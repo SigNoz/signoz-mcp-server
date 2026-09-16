@@ -42,6 +42,11 @@ type Config struct {
 
 	DocsRefreshInterval     time.Duration
 	DocsFullRefreshInterval time.Duration
+	// DocsRefreshDisabled / DocsFullRefreshDisabled are set when the matching
+	// interval env var is "0" (or off/disabled/false), which turns that
+	// scheduled docs refresh off instead of falling back to the default cadence.
+	DocsRefreshDisabled     bool
+	DocsFullRefreshDisabled bool
 
 	// MaxRequestBytes caps the size of an inbound MCP HTTP request body.
 	MaxRequestBytes int
@@ -96,9 +101,9 @@ func LoadConfig() (*Config, error) {
 	accessTTLMinutes := getEnvInt(OAuthAccessTTLMinutes, defaultAccessTTLMinutes)
 	refreshTTLMinutes := getEnvInt(OAuthRefreshTTLMinutes, defaultRefreshTTLMinutes)
 	authCodeTTLSeconds := getEnvInt(OAuthAuthCodeTTLSeconds, defaultAuthCodeTTLSeconds)
-	docsRefreshInterval := getEnvDuration(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
-	docsFullRefreshInterval := getEnvDuration(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
-	if docsFullRefreshInterval < docsRefreshInterval {
+	docsRefreshInterval, docsRefreshDisabled := getEnvRefreshInterval(DocsRefreshIntervalEnv, defaultDocsRefreshInterval)
+	docsFullRefreshInterval, docsFullRefreshDisabled := getEnvRefreshInterval(DocsFullRefreshIntervalEnv, defaultDocsFullRefreshPeriod)
+	if !docsRefreshDisabled && !docsFullRefreshDisabled && docsFullRefreshInterval < docsRefreshInterval {
 		log.Printf("WARN: %s (%s) is shorter than %s (%s); falling back to defaults",
 			DocsFullRefreshIntervalEnv, docsFullRefreshInterval, DocsRefreshIntervalEnv, docsRefreshInterval)
 		docsRefreshInterval = defaultDocsRefreshInterval
@@ -146,6 +151,8 @@ func LoadConfig() (*Config, error) {
 		SegmentKey:              getEnv(SegmentKeyEnv, ""),
 		DocsRefreshInterval:     docsRefreshInterval,
 		DocsFullRefreshInterval: docsFullRefreshInterval,
+		DocsRefreshDisabled:     docsRefreshDisabled,
+		DocsFullRefreshDisabled: docsFullRefreshDisabled,
 		MaxRequestBytes:         getEnvInt(MaxRequestBytesEnv, defaultMaxRequestBytes),
 	}, nil
 }
@@ -183,6 +190,30 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		log.Printf("WARN: invalid duration for %s=%q; using %s", key, value, defaultValue)
 	}
 	return defaultValue
+}
+
+// getEnvRefreshInterval parses a scheduled-refresh interval. "0" (or a
+// duration equal to zero, or off/disabled/false) disables the schedule and
+// returns (default, true) so callers still have a sane interval for any
+// non-scheduled use. Invalid values warn and fall back to the default.
+func getEnvRefreshInterval(key string, defaultValue time.Duration) (time.Duration, bool) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return defaultValue, false
+	}
+	switch strings.ToLower(value) {
+	case "0", "off", "disabled", "false":
+		return defaultValue, true
+	}
+	parsed, err := time.ParseDuration(value)
+	if err == nil && parsed == 0 {
+		return defaultValue, true
+	}
+	if err == nil && parsed > 0 {
+		return parsed, false
+	}
+	log.Printf("WARN: invalid duration for %s=%q; using %s", key, value, defaultValue)
+	return defaultValue, false
 }
 
 func (c *Config) ValidateConfig() error {

@@ -37,6 +37,11 @@ type RefreshConfig struct {
 	//   - negative          → no jitter (tests that want determinism)
 	//   - positive duration → use that value, capped per interval
 	JitterWindow time.Duration
+	// DisableScheduled turns off the periodic incremental refresh tick.
+	// DisableFullRefresh turns off the periodic forced full refresh tick.
+	// Trigger keeps working in both cases so callers can still refresh on demand.
+	DisableScheduled   bool
+	DisableFullRefresh bool
 }
 
 type Refresher struct {
@@ -160,21 +165,39 @@ func (r *Refresher) Trigger(ctx context.Context, forced bool) error {
 }
 
 func (r *Refresher) run(ctx context.Context) {
+	if r.cfg.DisableScheduled && r.cfg.DisableFullRefresh {
+		r.logger.InfoContext(ctx, "docs scheduled refresh disabled; index stays at its current build until a manual trigger")
+		return
+	}
 	jitter := r.cfg.JitterWindow
-	refreshTimer := time.NewTimer(jittered(r.cfg.RefreshInterval, jitter))
-	defer refreshTimer.Stop()
-	fullTimer := time.NewTimer(jittered(r.cfg.FullRefreshInterval, jitter))
-	defer fullTimer.Stop()
+	// A nil channel never fires, which is how a disabled schedule opts out of
+	// the select below without a second code path.
+	var refreshTimer, fullTimer *time.Timer
+	var refreshC, fullC <-chan time.Time
+	if !r.cfg.DisableScheduled {
+		refreshTimer = time.NewTimer(jittered(r.cfg.RefreshInterval, jitter))
+		defer refreshTimer.Stop()
+		refreshC = refreshTimer.C
+	} else {
+		r.logger.InfoContext(ctx, "docs incremental refresh schedule disabled")
+	}
+	if !r.cfg.DisableFullRefresh {
+		fullTimer = time.NewTimer(jittered(r.cfg.FullRefreshInterval, jitter))
+		defer fullTimer.Stop()
+		fullC = fullTimer.C
+	} else {
+		r.logger.InfoContext(ctx, "docs full refresh schedule disabled")
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-refreshTimer.C:
+		case <-refreshC:
 			if err := r.Trigger(ctx, false); err != nil {
 				r.logger.WarnContext(ctx, "docs refresh failed", "error", err)
 			}
 			refreshTimer.Reset(jittered(r.cfg.RefreshInterval, jitter))
-		case <-fullTimer.C:
+		case <-fullC:
 			if err := r.Trigger(ctx, true); err != nil {
 				r.logger.WarnContext(ctx, "docs full refresh failed", "error", err)
 			}
@@ -221,6 +244,10 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		}
 	}()
 	current, _ := r.registry.Snapshot()
+	// Logged before any network or index work so a process killed mid-refresh
+	// (for example by the cgroup OOM killer) still leaves a trace of what it
+	// was doing; the completion log and meters below run only on return.
+	r.logger.InfoContext(ctx, "docs refresh starting", "forced", forced, "current_pages", len(current.Pages))
 	sitemap := r.fetcher.Fetch(ctx, r.cfg.SitemapURL)
 	if sitemap.Status != FetchStatusOK {
 		return fmt.Errorf("fetch sitemap: %v", sitemap.Err)
@@ -239,6 +266,7 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		}
 		return fmt.Errorf("parse sitemap: %w", err)
 	}
+	r.logger.InfoContext(ctx, "docs refresh fetching pages", "forced", forced, "entries", len(entries))
 	next, blocked, err := r.buildSnapshot(ctx, sitemap.Body, hash, entries, current)
 	if err != nil {
 		return err
@@ -248,6 +276,7 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		r.logger.WarnContext(ctx, "docs refresh blocked by failure threshold; keeping last-good index")
 		return fmt.Errorf("docs refresh blocked by failure threshold")
 	}
+	r.logger.InfoContext(ctx, "docs refresh rebuilding index", "forced", forced, "pages", len(next.Pages))
 	if err := r.registry.Swap(ctx, next); err != nil {
 		return err
 	}

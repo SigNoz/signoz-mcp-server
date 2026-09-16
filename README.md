@@ -275,6 +275,23 @@ Add this to your MCP client config (`claude_desktop_config.json`, `.cursor/mcp.j
 
 HTTP mode listens on all interfaces by default. Set `MCP_SERVER_HOST=127.0.0.1` when the server should accept loopback connections only.
 
+#### Memory footprint
+
+The server keeps the SigNoz docs search index in memory. Steady state is well under 100 MB, but building the index is a short, sharp allocation peak:
+
+| Moment | Approximate peak (working set) |
+| --- | --- |
+| Startup build from the embedded corpus | ~370 MB for a few seconds |
+| Scheduled refresh that rebuilds the index (default every `6h`, and every `24h` forced) | ~400 MB while the old index is still serving |
+
+The first scheduled refresh after every start is always a full rebuild because the embedded corpus never matches the live sitemap exactly. A container limit below the rebuild peak is therefore killed on a roughly six-hour loop rather than at startup.
+
+Recommendations for containerized HTTP deployments:
+
+- Set the memory limit to at least `768Mi`, or `512Mi` with `GOMEMLIMIT` set (the Go runtime reads `GOMEMLIMIT` natively; `GOMEMLIMIT=400MiB` for a `512Mi` limit is a reasonable starting point). A soft limit makes the collector reclaim garbage earlier; it cannot shrink the live data inside a single index batch, so leave headroom above it.
+- Set `SIGNOZ_DOCS_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay the rebuild. New docs pages then arrive with the next server upgrade.
+- Watch the `docs refresh starting` and `docs refresh rebuilt index` log lines. A container that logs the first and never the second was killed mid-rebuild.
+
 #### With OAuth (Multi-Tenant / Cloud)
 
 Start the server:
@@ -991,8 +1008,8 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
 | `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
-| `SIGNOZ_DOCS_REFRESH_INTERVAL` | Runtime docs sitemap refresh interval (Go duration, default: `6h`) | No |
-| `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Runtime full docs refresh interval (Go duration, default: `24h`) | No |
+| `SIGNOZ_DOCS_REFRESH_INTERVAL` | Scheduled docs refresh interval (Go duration, default: `6h`). Set to `0` (or `off`) to disable the scheduled refresh; the embedded docs index is then served unchanged for the life of the process. See [Memory footprint](#memory-footprint). | No |
+| `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Scheduled forced full docs refresh interval (Go duration, default: `24h`). Set to `0` (or `off`) to disable only the forced full refresh. | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
 | `OAUTH_TOKEN_SECRET` | Encryption key for OAuth tokens (min 32 bytes, e.g. `openssl rand -base64 32`) | Yes when `OAUTH_ENABLED=true`    |
 | `OAUTH_ISSUER_URL` | Public URL of this MCP server (used in OAuth metadata discovery)              | Yes when `OAUTH_ENABLED=true`       |

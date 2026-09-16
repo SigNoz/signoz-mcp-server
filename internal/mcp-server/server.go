@@ -339,6 +339,8 @@ func (m *MCPServer) Run(ctx context.Context) error {
 		refresher := docsindex.NewRefresher(m.logger, placeholderRegistry, docsindex.NewFetcher(docsindex.FetcherConfig{}), docsindex.RefreshConfig{
 			RefreshInterval:     m.config.DocsRefreshInterval,
 			FullRefreshInterval: m.config.DocsFullRefreshInterval,
+			DisableScheduled:    m.config.DocsRefreshDisabled,
+			DisableFullRefresh:  m.config.DocsFullRefreshDisabled,
 		})
 		refresher.SetMeters(m.meters)
 		refresher.Start(ctx)
