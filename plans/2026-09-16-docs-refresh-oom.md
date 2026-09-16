@@ -2,7 +2,7 @@
 
 Status: In Progress (steps 1, 3, 4, 5 implemented on `fix/docs-refresh-oom`; step 2 dropped; PR pending)
 Issue: https://github.com/SigNoz/signoz-mcp-server/issues/305 (public), https://github.com/SigNoz/nerve-pod/issues/231 (internal tracker)
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/308
 
 ## Context
 
@@ -188,7 +188,7 @@ invariants.
 
 ## Outcome
 
-Pending PR. Shipped on the branch: steps 1, 3, 4, 5. Step 2 implemented then dropped (commits
+PR #308 open. Shipped on the branch: steps 1, 3, 4, 5. Step 2 implemented then dropped (commits
 `feat(memlimit)` and `revert(memlimit)` remain in history). No MCP contract changed, so the
 agent-skills repo needs no companion change. Public issue not yet answered; nerve-pod#231 not yet
 updated.
