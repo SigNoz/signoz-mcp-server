@@ -1,31 +1,18 @@
 # CLAUDE.md — Development Conventions
 
-Consult `docs/` (architecture, MCP best practices) and `plans/` (per-feature context and plans) when you need background on a subsystem or an in-flight feature.
+Consult `docs/` (architecture, MCP best practices) and `plans/` (implementation records) when you need background on a subsystem or an in-flight feature.
 
 ## Feature Planning Convention
 
-For every non-trivial feature, maintain a file pair in `plans/` and commit it alongside the feature PR:
-
-```
-plans/
-├── <feature>.context.md   ← prompt, links, open questions, discussion log
-└── <feature>.plan.md      ← implementation plan
-```
-
-### Rules
-
-1. **Before implementing**, check `plans/` for an existing context file for the feature.
-2. **After each brainstorm exchange**, append a dated entry to the discussion log in `.context.md`.
-3. **When the plan changes**, rewrite the relevant section in `.plan.md` and note the change with a dated entry in `.context.md`.
-4. **Mark open questions as resolved** (with the answer inline) when they are settled in discussion.
-5. **The discussion log in `.context.md` is append-only**: never rewrite or delete prior log entries; it is the audit trail of why decisions were made. Only the Open Questions checklist may be updated in place (rule 4).
-6. **`.plan.md` is rewritten freely**: it always reflects current thinking, not history.
-7. Add a `## Status` line at the top of every `.plan.md`:
-   - `Planning`: actively being designed
-   - `In Progress`: implementation underway
-   - `Done`: shipped
-
-File templates for both files live in `plans/TEMPLATES.md`.
+- For non-trivial or multi-session work, check `plans/` for related work and follow
+  [plans/README.md](plans/README.md). Commit the plan alongside the implementation.
+- Use one `plans/YYYY-MM-DD-<slug>.md` file per new change; keep context, dated decisions,
+  verification, and outcome together. Do not create a separate context log.
+- Keep the approach, affected files, and decisions accurate while implementing. Current code,
+  tests, schemas, and canonical `docs/` take precedence over plans.
+- Before merging, mark the plan `Done` and record the actual outcome and verification results.
+- Existing `.context.md` / `.plan.md` pairs remain as history. Continue related in-flight work
+  in its existing pair and preserve the append-only discussion log; do not bulk-convert old files.
 
 ## Git & PR
 
@@ -62,7 +49,7 @@ checklist below).
 ## Guardrail Changes
 
 - Follow `guardrails/README.md`; keep policy in `guardrails/policy.go`, the sorted `TestGuardrail_*` inventory in `guardrails/tests.txt`, and package-sensitive tests beside their packages.
-- Never weaken a guardrail merely to pass CI. Document intentional relaxations in the feature context log and PR summary.
+- Never weaken a guardrail merely to pass CI. Document intentional relaxations in the plan's Key Decisions section (or the existing context log for legacy plans) and PR summary.
 - Run the workflow lint, focused guardrail suite, and full test suite documented in `guardrails/README.md` before handoff.
 
 ## Documentation & Metadata Sync Checklist
