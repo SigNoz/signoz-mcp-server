@@ -1,6 +1,6 @@
 # Plan: Docs refresh OOM hardening (HTTP mode, 512Mi)
 
-Status: In Progress (steps 1, 3, 4, 5 implemented on `fix/docs-refresh-oom`; step 2 dropped; PR pending)
+Status: Done (steps 1, 3, 4, 5 implemented in PR #308; step 2 dropped)
 Issue: https://github.com/SigNoz/signoz-mcp-server/issues/305 (public), https://github.com/SigNoz/nerve-pod/issues/231 (internal tracker)
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/308
 
@@ -60,8 +60,9 @@ Implemented as `pkg/memlimit` (revived #195), then removed. See Key Decisions.
 - `Fetcher.FetchConditional(ctx, url, etag)` sends `If-None-Match`; 304 yields
   `FetchStatusNotModified`. The refresher type-asserts an optional `conditionalFetcher` so test
   fakes only implement `Fetch`. Forced refreshes never revalidate.
-- `buildSnapshot` reuses the prior record on `NotModified` (same projection as the 404 fallback);
-  it counts as success for the failure-threshold gate.
+- `buildSnapshot` reuses the prior record on `NotModified` (same projection as the 404 fallback),
+  refreshes its `FetchedAt` from the 304, and recomputes the heading-less fallback title from the
+  sitemap link text; it counts as success for the failure-threshold gate.
 - `diffSnapshots(current, next)` lists added / changed / removed pages by canonical URL, comparing
   title, section fields, headings, and body. `FetchedAt` and `SourceETag` are bookkeeping.
 - Empty delta → `IndexRegistry.PublishSnapshot(next)`: new snapshot over the same live index, no
@@ -154,6 +155,15 @@ invariants.
   KEDA scales these pods on 60% memory utilization of the request, so replica counts may sit
   closer to the minimum of 2. Roll to `staging/cl-us-central1-b` first and watch the refresh lines.
 
+### 2026-09-16 — Codex PR review (#308): four inline comments, all accepted
+- P2: a 304 discarded the revalidation timestamp, so `last_fetched_at` stayed stale on the exact
+  path meant to refresh metadata → the reused record now takes `FetchedAt` from the 304.
+- P2: a sitemap rename of a heading-less page was lost on 304 because the reused record kept the
+  old fallback `Title` → recomputed via `FirstHeadingTitle(body, entry.Title)`, which makes the
+  rename a content change and re-indexes the page. `TestRevalidatedPageAdoptsRenamedSitemapTitle`.
+- P1: run and record `actionlint .github/workflows/guardrails.yaml` for the guardrail change → done.
+- P1: mark the plan `Done` before merge per `plans/README.md` → done.
+
 ## Reference Links
 
 - [Public report #305](https://github.com/SigNoz/signoz-mcp-server/issues/305)
@@ -166,6 +176,7 @@ invariants.
 
 - `go build ./...`, `go vet`, `make fmt goimports`: clean.
 - `go test ./internal/docs/ -race -count=1`: green after every step and after the review fixes.
+- `actionlint .github/workflows/guardrails.yaml`: clean (workflow untouched; run per `guardrails/README.md`).
 - `go test -count=1 -run '^TestGuardrail_' ./...`: green; `guardrails/tests.txt` sorted and
   matching `go test -list`. `TestGuardrail_DocsIndexBuildPeakHeap` passed five consecutive runs
   (113 to 139 MiB peak, 25 to 30 MiB resident) and fails when `indexBatchSize` is forced large.
@@ -182,13 +193,14 @@ invariants.
   | `ApplyDelta` 20% (149 pages) | 114 / 112 MiB | +0 MiB |
 
 - Live check (read-only subagent, 11 requests): signoz.io honours `If-None-Match` with 304.
-- Review: astra agent, two passes; all findings fixed and re-verified.
+- Review: astra agent, two passes; all findings fixed and re-verified. Codex PR review on #308:
+  four inline comments, all addressed (see Key Decisions). CI on #308: all eleven checks green.
 - Gaps: no E2E against a memory-limited container; the guardrail and the harness above stand in.
   A staging rollout is the remaining live check.
 
 ## Outcome
 
-PR #308 open. Shipped on the branch: steps 1, 3, 4, 5. Step 2 implemented then dropped (commits
+Shipped in PR #308: steps 1, 3, 4, 5. Step 2 implemented then dropped (commits
 `feat(memlimit)` and `revert(memlimit)` remain in history). No MCP contract changed, so the
-agent-skills repo needs no companion change. Public issue not yet answered; nerve-pod#231 not yet
-updated.
+agent-skills repo needs no companion change. Deferred: reply on #305 and update nerve-pod#231 after
+merge; roll to staging first and watch the `docs refresh ...` log lines before production.

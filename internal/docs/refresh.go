@@ -485,7 +485,12 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 				SourceETag:        result.fetch.ETag,
 			})
 		case FetchStatusNotModified:
+			// The body is unchanged, but the revalidation itself is a
+			// successful fetch and the sitemap may have renamed the page, so
+			// refresh the bookkeeping and the heading-less fallback title.
 			if page, ok := priorPageForEntry(entry, priorByURL); ok {
+				page.FetchedAt = result.fetch.FetchedAt
+				page.Title = FirstHeadingTitle(page.BodyMarkdown, entry.Title)
 				pages = append(pages, page)
 			}
 		case FetchStatusNotFound:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -160,6 +161,43 @@ func TestRefreshRevalidatesWithETagAndKeepsIndex(t *testing.T) {
 	search, err := reg.Search(context.Background(), "docker compose", "", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
+
+	doc, code, err := reg.FetchDoc(context.Background(), "https://signoz.io/docs/install/docker/", "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	fetchedAt, err := time.Parse(time.RFC3339, doc.LastFetchedAt)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), fetchedAt, time.Minute,
+		"a 304 revalidation is a successful fetch and must refresh last_fetched_at")
+}
+
+func TestRevalidatedPageAdoptsRenamedSitemapTitle(t *testing.T) {
+	verifyNoDocsLeaks(t)
+	// A body without a level-1 heading takes its title from the sitemap link
+	// text, so a sitemap rename must surface even when the body is a 304.
+	sitemap := "# SigNoz Docs\n- [Old Name](https://signoz.io/docs/logs/overview/)\n"
+	parsed, err := ParseSitemapMarkdown(sitemap)
+	require.NoError(t, err)
+	body := "Collect logs with the OpenTelemetry Collector.\n"
+	initial := snapshotForEntries(parsed, map[string]string{parsed[0].URL: body})
+	initial.Pages[0].Title = FirstHeadingTitle(body, "Old Name")
+	initial.Pages[0].SourceETag = `W/"/docs/logs/overview/-v1"`
+	initial.SitemapHash = "stale"
+	require.Equal(t, "Old Name", initial.Pages[0].Title)
+
+	srv := newETagServer(strings.Replace(sitemap, "Old Name", "New Name", 1), map[string]string{"/docs/logs/overview/": body})
+	reg := newTestRegistry(t, initial)
+	reader, meters := newDocsTestMeters(t)
+	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(newHTTPTestServer(t, srv)), RefreshConfig{SitemapURL: DefaultSitemapURL})
+	refresher.SetMeters(meters)
+
+	require.NoError(t, refresher.Trigger(context.Background(), false))
+	require.Equal(t, int64(1), srv.served304.Load(), "the body is unchanged and revalidates")
+	require.Zero(t, docsRefreshMetricValue(t, reader, "unchanged"), "a renamed title is a content change")
+	doc, code, err := reg.FetchDoc(context.Background(), parsed[0].URL, "")
+	require.NoError(t, err)
+	require.Empty(t, code)
+	require.Equal(t, "New Name", doc.Title)
 }
 
 func TestForcedRefreshRefetchesWithoutRevalidation(t *testing.T) {
