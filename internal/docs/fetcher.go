@@ -85,6 +85,13 @@ func NewFetcher(cfg FetcherConfig) *Fetcher {
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, rawURL string) PageFetch {
+	return f.FetchConditional(ctx, rawURL, "")
+}
+
+// FetchConditional behaves like Fetch but sends If-None-Match when etag is
+// non-empty. A 304 response yields FetchStatusNotModified with no body; the
+// caller is expected to reuse the record the etag came from.
+func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) PageFetch {
 	canonical, ok := CanonicalDocURL(rawURL)
 	if !ok {
 		return PageFetch{Status: FetchStatusOutOfScope, URL: rawURL, Err: fmt.Errorf("out of scope URL")}
@@ -111,6 +118,9 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) PageFetch {
 		}
 		req.Header.Set("Accept", "text/markdown")
 		req.Header.Set("User-Agent", f.userAgent)
+		if etag != "" {
+			req.Header.Set("If-None-Match", etag)
+		}
 		resp, err := f.client.Do(req)
 		if err != nil {
 			lastErr = err
@@ -147,6 +157,9 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) PageFetch {
 		}
 		if !IsDocURL(finalURL) {
 			return PageFetch{Status: FetchStatusOutOfScope, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, Err: fmt.Errorf("redirected out of scope")}
+		}
+		if resp.StatusCode == http.StatusNotModified && etag != "" {
+			return PageFetch{Status: FetchStatusNotModified, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, ETag: etag, FetchedAt: time.Now(), RetryCount: retryCount, RetryStatus: retryStatus}
 		}
 		if resp.StatusCode == http.StatusNotFound {
 			return PageFetch{Status: FetchStatusNotFound, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, FetchedAt: time.Now(), RetryCount: retryCount, RetryStatus: retryStatus}

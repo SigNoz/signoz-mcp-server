@@ -69,9 +69,31 @@ type IndexRegistry struct {
 
 type IndexEntry struct {
 	idx        bleve.Index
+	handle     *indexHandle
 	snapshot   CorpusSnapshot
 	refs       int64
 	generation uint64
+}
+
+// indexHandle owns one bleve index. Several IndexEntry generations may share
+// a handle when only the snapshot metadata changed (PublishSnapshot) or when a
+// delta was applied to the live index; the index is closed when the last
+// entry referencing it drains.
+type indexHandle struct {
+	idx     bleve.Index
+	entries int64
+}
+
+func newIndexEntry(idx bleve.Index, snapshot CorpusSnapshot, generation uint64) *IndexEntry {
+	handle := &indexHandle{idx: idx, entries: 1}
+	return &IndexEntry{idx: idx, handle: handle, snapshot: snapshot, generation: generation}
+}
+
+// shareIndex returns a new entry that serves snapshot from the same live index
+// as entry. The caller must hold r.mu so the handle cannot drain concurrently.
+func (e *IndexEntry) shareIndex(snapshot CorpusSnapshot) *IndexEntry {
+	atomic.AddInt64(&e.handle.entries, 1)
+	return &IndexEntry{idx: e.idx, handle: e.handle, snapshot: snapshot, generation: e.generation + 1}
 }
 
 func NewIndexRegistry(ctx context.Context, snapshot CorpusSnapshot) (*IndexRegistry, error) {
@@ -80,7 +102,7 @@ func NewIndexRegistry(ctx context.Context, snapshot CorpusSnapshot) (*IndexRegis
 		return nil, err
 	}
 	reg := &IndexRegistry{}
-	reg.current = &IndexEntry{idx: idx, snapshot: snapshot, generation: 1}
+	reg.current = newIndexEntry(idx, snapshot, 1)
 	reg.ready.Store(true)
 	go func() {
 		<-ctx.Done()
@@ -99,7 +121,7 @@ func NewPlaceholderRegistry(ctx context.Context) (*IndexRegistry, error) {
 		return nil, err
 	}
 	reg := &IndexRegistry{}
-	reg.current = &IndexEntry{idx: idx, snapshot: EmptyCorpus(), generation: 0}
+	reg.current = newIndexEntry(idx, EmptyCorpus(), 0)
 	// ready intentionally left false.
 	go func() {
 		<-ctx.Done()
@@ -129,15 +151,13 @@ func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error
 	if err != nil {
 		return err
 	}
-	newEntry := &IndexEntry{idx: idx, snapshot: snapshot}
 	r.mu.Lock()
 	old := r.current
+	var generation uint64 = 1
 	if old != nil {
-		newEntry.generation = old.generation + 1
-	} else {
-		newEntry.generation = 1
+		generation = old.generation + 1
 	}
-	r.current = newEntry
+	r.current = newIndexEntry(idx, snapshot, generation)
 	r.mu.Unlock()
 	// Only flip ready after the current pointer swap is visible, so any
 	// Ready()==true observer is guaranteed to see the new entry via acquire().
@@ -145,6 +165,27 @@ func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error
 	if old != nil {
 		go closeWhenDrained(ctx, old)
 	}
+	return nil
+}
+
+// PublishSnapshot replaces the served snapshot metadata (sitemap, hashes,
+// page records) without touching the live bleve index. It is the cheap path
+// for a refresh whose page contents all matched what is already indexed.
+// It falls back to Swap when there is no current index to share.
+func (r *IndexRegistry) PublishSnapshot(ctx context.Context, snapshot CorpusSnapshot) error {
+	if r.closed.Load() {
+		return fmt.Errorf("docs index registry is closed")
+	}
+	r.mu.Lock()
+	old := r.current
+	if old == nil {
+		r.mu.Unlock()
+		return r.Swap(ctx, snapshot)
+	}
+	r.current = old.shareIndex(snapshot)
+	r.mu.Unlock()
+	r.ready.Store(true)
+	go closeWhenDrained(ctx, old)
 	return nil
 }
 
@@ -337,7 +378,9 @@ func closeWhenDrained(ctx context.Context, entry *IndexEntry) {
 	ctxDone := false
 	for {
 		if atomic.LoadInt64(&entry.refs) == 0 {
-			_ = entry.idx.Close()
+			if atomic.AddInt64(&entry.handle.entries, -1) == 0 {
+				_ = entry.idx.Close()
+			}
 			return
 		}
 		if !ctxDone {

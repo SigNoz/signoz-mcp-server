@@ -87,10 +87,11 @@ type ManifestEntry struct {
 type FetchStatus string
 
 const (
-	FetchStatusOK         FetchStatus = "ok"
-	FetchStatusNotFound   FetchStatus = "not_found"
-	FetchStatusOutOfScope FetchStatus = "out_of_scope"
-	FetchStatusError      FetchStatus = "error"
+	FetchStatusOK          FetchStatus = "ok"
+	FetchStatusNotFound    FetchStatus = "not_found"
+	FetchStatusNotModified FetchStatus = "not_modified"
+	FetchStatusOutOfScope  FetchStatus = "out_of_scope"
+	FetchStatusError       FetchStatus = "error"
 )
 
 type PageFetch struct {

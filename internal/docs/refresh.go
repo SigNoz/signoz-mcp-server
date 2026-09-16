@@ -65,6 +65,13 @@ type pageFetcher interface {
 	Fetch(context.Context, string) PageFetch
 }
 
+// conditionalFetcher is implemented by fetchers that can revalidate a page
+// with If-None-Match. The refresher uses it opportunistically so test fakes
+// only need Fetch.
+type conditionalFetcher interface {
+	FetchConditional(ctx context.Context, rawURL, etag string) PageFetch
+}
+
 func NewRefresher(logger *slog.Logger, registry *IndexRegistry, fetcher *Fetcher, cfg RefreshConfig) *Refresher {
 	if logger == nil {
 		logger = slog.Default()
@@ -267,7 +274,7 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		return fmt.Errorf("parse sitemap: %w", err)
 	}
 	r.logger.InfoContext(ctx, "docs refresh fetching pages", "forced", forced, "entries", len(entries))
-	next, blocked, err := r.buildSnapshot(ctx, sitemap.Body, hash, entries, current)
+	next, blocked, err := r.buildSnapshot(ctx, sitemap.Body, hash, entries, current, forced)
 	if err != nil {
 		return err
 	}
@@ -276,7 +283,24 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		r.logger.WarnContext(ctx, "docs refresh blocked by failure threshold; keeping last-good index")
 		return fmt.Errorf("docs refresh blocked by failure threshold")
 	}
-	r.logger.InfoContext(ctx, "docs refresh rebuilding index", "forced", forced, "pages", len(next.Pages))
+	delta := diffSnapshots(current, next)
+	if delta.empty() {
+		// Nothing indexed would change; publish the new sitemap and page
+		// metadata so the next tick hits the hash no-op, but keep the live
+		// index and skip the rebuild peak entirely.
+		if err := r.registry.PublishSnapshot(ctx, next); err != nil {
+			return err
+		}
+		if forced {
+			outcome = "forced-unchanged"
+		} else {
+			outcome = "unchanged"
+		}
+		r.logger.InfoContext(ctx, "docs refresh found no page changes; index kept", "forced", forced, "pages", len(next.Pages))
+		return nil
+	}
+	r.logger.InfoContext(ctx, "docs refresh rebuilding index", "forced", forced, "pages", len(next.Pages),
+		"added", len(delta.added), "changed", len(delta.changed), "removed", len(delta.removed))
 	if err := r.registry.Swap(ctx, next); err != nil {
 		return err
 	}
@@ -290,7 +314,69 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 	return nil
 }
 
-func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash string, entries []SitemapEntry, previous CorpusSnapshot) (CorpusSnapshot, bool, error) {
+// snapshotDelta lists, by canonical URL, what a candidate snapshot would
+// change in the served index relative to the current one.
+type snapshotDelta struct {
+	added   []PageRecord
+	changed []PageRecord
+	removed []string
+}
+
+func (d snapshotDelta) empty() bool {
+	return len(d.added) == 0 && len(d.changed) == 0 && len(d.removed) == 0
+}
+
+// diffSnapshots compares indexed content only. FetchedAt and SourceETag are
+// bookkeeping and never justify re-indexing a page on their own.
+func diffSnapshots(current, next CorpusSnapshot) snapshotDelta {
+	currentByURL := make(map[string]PageRecord, len(current.Pages))
+	for _, page := range current.Pages {
+		currentByURL[page.URL] = page
+	}
+	var delta snapshotDelta
+	seen := make(map[string]struct{}, len(next.Pages))
+	for _, page := range next.Pages {
+		seen[page.URL] = struct{}{}
+		prior, ok := currentByURL[page.URL]
+		switch {
+		case !ok:
+			delta.added = append(delta.added, page)
+		case !pageContentEqual(prior, page):
+			delta.changed = append(delta.changed, page)
+		}
+	}
+	for _, page := range current.Pages {
+		if _, ok := seen[page.URL]; !ok {
+			delta.removed = append(delta.removed, page.URL)
+		}
+	}
+	return delta
+}
+
+func pageContentEqual(a, b PageRecord) bool {
+	if a.Title != b.Title || a.SectionSlug != b.SectionSlug || a.SectionBreadcrumb != b.SectionBreadcrumb {
+		return false
+	}
+	if a.HeadingsJSON != b.HeadingsJSON || a.BodyMarkdown != b.BodyMarkdown {
+		return false
+	}
+	if len(a.SectionSlugs) != len(b.SectionSlugs) || len(a.SectionMap) != len(b.SectionMap) {
+		return false
+	}
+	for i := range a.SectionSlugs {
+		if a.SectionSlugs[i] != b.SectionSlugs[i] {
+			return false
+		}
+	}
+	for slug, breadcrumb := range a.SectionMap {
+		if b.SectionMap[slug] != breadcrumb {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash string, entries []SitemapEntry, previous CorpusSnapshot, forced bool) (CorpusSnapshot, bool, error) {
 	priorByURL := make(map[string]PageRecord, len(previous.Pages))
 	for _, page := range previous.Pages {
 		canonical, ok := CanonicalDocURL(page.URL)
@@ -307,11 +393,21 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		fetch PageFetch
 	}
 	results := make([]item, len(entries))
+	// A scheduled refresh revalidates with the stored ETag so unchanged pages
+	// cost a 304 instead of a body. A forced refresh re-fetches everything.
+	conditional, canRevalidate := r.fetcher.(conditionalFetcher)
+	canRevalidate = canRevalidate && !forced
 	g, ctx := errgroup.WithContext(ctx)
 	for i, entry := range entries {
 		i, entry := i, entry
 		g.Go(func() error {
-			results[i] = item{entry: entry, fetch: r.fetcher.Fetch(ctx, entry.URL)}
+			var fetch PageFetch
+			if etag := priorETag(entry, priorByURL); canRevalidate && etag != "" {
+				fetch = conditional.FetchConditional(ctx, entry.URL, etag)
+			} else {
+				fetch = r.fetcher.Fetch(ctx, entry.URL)
+			}
+			results[i] = item{entry: entry, fetch: fetch}
 			return nil
 		})
 	}
@@ -325,7 +421,7 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 	r.mu.Lock()
 	for _, result := range results {
 		switch result.fetch.Status {
-		case FetchStatusOK:
+		case FetchStatusOK, FetchStatusNotModified:
 			r.notFoundCounts[result.entry.URL] = 0
 		case FetchStatusNotFound:
 			notFound++
@@ -373,6 +469,10 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 				FetchedAt:         result.fetch.FetchedAt,
 				SourceETag:        result.fetch.ETag,
 			})
+		case FetchStatusNotModified:
+			if page, ok := priorPageForEntry(entry, priorByURL); ok {
+				pages = append(pages, page)
+			}
 		case FetchStatusNotFound:
 			if r.notFoundCounts[entry.URL] <= 3 {
 				if page, ok := priorPageForEntry(entry, priorByURL); ok {
@@ -392,6 +492,14 @@ func (r *Refresher) buildSnapshot(ctx context.Context, sitemapRaw, sitemapHash s
 		SitemapHash:   sitemapHash,
 		Pages:         NormalizePages(pages),
 	}, false, nil
+}
+
+func priorETag(entry SitemapEntry, priorByURL map[string]PageRecord) string {
+	canonical, ok := CanonicalDocURL(entry.URL)
+	if !ok {
+		return ""
+	}
+	return priorByURL[canonical].SourceETag
 }
 
 func priorPageForEntry(entry SitemapEntry, priorByURL map[string]PageRecord) (PageRecord, bool) {

@@ -51,11 +51,27 @@ public report SigNoz/signoz-mcp-server#305.
 5. `TestGuardrail_DocsIndexBuildPeakHeap` asserting the embedded-corpus rebuild peak stays
    under a budget in `guardrails/policy.go`.
 
+### 2026-09-16 — Step 3 landed: conditional fetches and content gating
+- Live probe (read-only subagent, 11 requests): signoz.io serves stable weak ETags for docs
+  markdown and returns 304 on `If-None-Match`; no `Last-Modified`. Conditional path is real.
+- `Fetcher.FetchConditional` + `FetchStatusNotModified`; the refresher type-asserts an optional
+  `conditionalFetcher` so `mapFetcher` test fakes keep compiling. Forced refreshes never revalidate.
+- `diffSnapshots` compares indexed content only (title, section fields, headings, body); FetchedAt
+  and SourceETag are bookkeeping. Empty delta → `PublishSnapshot` (new snapshot, same live index),
+  outcomes `unchanged` / `forced-unchanged`. `TestSingleflightSerialization` updated: its forced
+  pass re-fetches an identical body and is now `forced-unchanged`.
+- `IndexRegistry` gained a refcounted `indexHandle` shared across entry generations;
+  `closeWhenDrained` closes the bleve index only when the last entry referencing it drains.
+- Test fixture lesson: the baseline snapshot must be built from entries parsed out of the served
+  sitemap, otherwise section breadcrumbs differ from a live fetch and the diff reports changes.
+
 ## Open Questions
 - [x] Revive #195 in code or Helm/README only? → In code, fail-open, with `GOMEMLIMIT` env
   still taking precedence (self-hosted users get a sane default; our infra keeps the downward-API env).
-- [ ] Does signoz.io return usable `ETag` / honour `If-None-Match` for docs markdown? (Live check
-  during step 3; code must work either way.)
+- [x] Does signoz.io return usable `ETag` / honour `If-None-Match` for docs markdown? → Yes.
+  Weak ETags (`W/"<sha1>"`), stable across requests and edge nodes, 304 with empty body on
+  `If-None-Match`. No `Last-Modified`, so `If-Modified-Since` is not an option. `Vary: Accept` is
+  set on the markdown variant; always send `Accept: text/markdown` (the fetcher already does).
 - [ ] Keep the 24h forced refresh once content hashing lands? → Keep; it becomes the compaction
   point for the incrementally-updated index.
 - [ ] Reply on the public issue once the branch is reviewed.

@@ -282,9 +282,10 @@ The server keeps the SigNoz docs search index in memory. Steady state is well un
 | Moment | Approximate peak (working set) |
 | --- | --- |
 | Startup build from the embedded corpus | ~370 MB for a few seconds |
-| Scheduled refresh that rebuilds the index (default every `6h`, and every `24h` forced) | ~400 MB while the old index is still serving |
+| Scheduled refresh that finds changed pages and rebuilds the index | ~400 MB while the old index is still serving |
+| Scheduled refresh that finds no changed pages | no rebuild; pages are revalidated with `If-None-Match` and unchanged ones cost a 304 |
 
-The first scheduled refresh after every start is always a full rebuild because the embedded corpus never matches the live sitemap exactly. A container limit below the rebuild peak is therefore killed on a roughly six-hour loop rather than at startup.
+A scheduled refresh (default every `6h`) revalidates every page against the live site and rebuilds the index only when at least one page's content changed. The forced refresh (default every `24h`) re-downloads every page but also skips the rebuild when nothing changed. The first refresh after a start therefore rebuilds only if the live docs differ from the corpus that shipped with the release.
 
 Recommendations for containerized HTTP deployments:
 
