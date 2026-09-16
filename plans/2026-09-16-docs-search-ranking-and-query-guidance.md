@@ -368,6 +368,18 @@ The tool, `searchText`, and `section_slug` descriptions were reviewed against `d
 - `manifest.json` uses a one-sentence summary like every other tool entry; the parity test compares names only, and the earlier full-length copy was inconsistent with the rest of the file.
 - Two `errcheck` lint failures on unchecked `idx.Close()` in tests were fixed with the package's existing `defer func() { _ = idx.Close() }()` form.
 
+### 2026-09-16 — Glossary widened into bidirectional synonym groups
+
+Review of the shipped five-entry glossary against 385 production search strings showed the table was too narrow and one-directional. Most out-of-vocabulary query terms are non-English words, IDs, ClickHouse function names, and typos that no alias fixes, but a handful of real gaps had docs-side spellings: `prebuilt` (4 queries, 0 docs pages) against `pre-built`; `mute` (3 queries) against `silence` and the `Planned Maintenance` page; `postgres` against `postgresql`; `msteams`, `dotnet`, `nodejs`, and `mongo` against `microsoft teams`, `.net`, `node.js`, and `mongodb`.
+
+- Entries became synonym groups compiled once at init; when a triggering member is present in the analyzed query, the absent members are added as clauses. Multiword members match only as a contiguous token sequence, so `planned alert maintenance` does not trigger the maintenance group.
+- `k8s` and `infra` are query-only: they trigger expansion but are never added, because docs use both mostly for the `k8s-infra` chart. Adding them from the long forms regressed `install signoz kubernetes helm` (1 to 2) and `monitor aws infrastructure` (1 to 2).
+- `.net` is expansion-only: it is added for `dotnet` but never triggers, because the standard analyzer reduces it to the token `net`, which also appears in `net/http`.
+- Boost is per group and defaults to 0.5. Only the `mute` / `silence` / `planned maintenance` group carries 2.0, because 0.5 could not lift `Planned Maintenance/Downtime` above pages whose titles contain `alert`; 1.5, 2.0, and 3.0 gave identical ranks. An earlier draft applied 2.0 to every multiword expansion; independent review showed that made `dashboard templates` a wrong first result for `default prebuilt out of the box alert rules created on install templates`, so `dashboard templates` was dropped from the `prebuilt` group and the global phrase boost was replaced by the per-group value.
+- `pat` was dropped: no docs page describes personal access tokens, so it is a content gap. `go`, `node`, and `es` stay out as ambiguous.
+- `maxGlossaryClauses` rose from 8 to 12.
+- Ten `abbreviation`-style golden queries were added for the new groups, none as holdouts. Their `baseline_rank` is the rank under the #309 ranking before this change, while the 133 earlier entries keep the pre-#309 baseline. The aggregate gate therefore measures the branch, not this diff, and the old glossary already cleared it; the old-versus-new rank diff in Verification is the evidence for this change.
+
 ## Reference Links
 
 - [RAG Is Simpler Than You Think](https://www.lighthousenewsletter.com/p/rag-is-simpler-than-you-think)
@@ -707,6 +719,20 @@ The tool, `searchText`, and `section_slug` descriptions were reviewed against `d
   - `git diff --check`
 - No commits/pushes, corpus changes, guardrail relaxation or local-CI restart. Build artifact
   removed. The temporary baseline stash was restored; source production log file untouched.
+
+### Glossary synonym-group verification (2026-09-16)
+
+Old glossary versus new on the same 143-query set. Only these five queries changed rank; the 133 earlier queries and all 10 holdouts kept identical ranks.
+
+| Query | Before | After |
+|---|---|---|
+| prebuilt dashboards | 0 | 2 |
+| mute alert | 0 | 1 |
+| silence alerts | 0 | 1 |
+| mongo monitoring | 0 | 1 |
+| dotnet auto instrumentation | 2 | 1 |
+
+Overall recall@3 118/143 (0.825), precision@1 98/143 (0.685); old glossary on the same set 0.797/0.657. `postgres monitoring` stays at 2 and `infra monitoring` at 0: the `k8s-infra` titles match `infra` directly and a 0.5 clause on `infrastructure` does not outweigh that. `prebuilt dashboards` ranks the Dashboards overview first and Dashboard Templates second, which is acceptable.
 
 ## Outcome
 

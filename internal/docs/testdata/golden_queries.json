@@ -1128,5 +1128,91 @@
     ],
     "style": "production-real",
     "baseline_rank": 1
+  },
+  {
+    "query": "prebuilt dashboards",
+    "expected_top_pages": [
+      "https://signoz.io/docs/dashboards/dashboard-templates/overview/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 0
+  },
+  {
+    "query": "mute alert",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/planned-maintenance/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 0
+  },
+  {
+    "query": "silence alerts",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/planned-maintenance/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 0
+  },
+  {
+    "query": "postgres monitoring",
+    "expected_top_pages": [
+      "https://signoz.io/docs/integrations/postgresql/",
+      "https://signoz.io/docs/dashboards/dashboard-templates/postgresql/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 2
+  },
+  {
+    "query": "msteams alert channel",
+    "expected_top_pages": [
+      "https://signoz.io/docs/alerts-management/notification-channel/ms-teams/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 1
+  },
+  {
+    "query": "dotnet auto instrumentation",
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/opentelemetry-dotnet/",
+      "https://signoz.io/docs/instrumentation/dotnet/nuget-instrumentation/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 2
+  },
+  {
+    "query": "nodejs instrumentation",
+    "expected_top_pages": [
+      "https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/",
+      "https://signoz.io/docs/instrumentation/javascript/nodejs-manual-instrumentation/",
+      "https://signoz.io/docs/instrumentation/javascript/nodejs-selective-instrumentation/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 1
+  },
+  {
+    "query": "mongo monitoring",
+    "expected_top_pages": [
+      "https://signoz.io/docs/integrations/mongodb/",
+      "https://signoz.io/docs/integrations/mongodb-atlas/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 0
+  },
+  {
+    "query": "infra monitoring",
+    "expected_top_pages": [
+      "https://signoz.io/docs/infrastructure-monitoring/overview/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 0
+  },
+  {
+    "query": "kubernetes infra",
+    "expected_top_pages": [
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/install-k8s-infra/",
+      "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/overview/"
+    ],
+    "style": "abbreviation",
+    "baseline_rank": 1
   }
 ]
