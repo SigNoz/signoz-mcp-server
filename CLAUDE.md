@@ -10,7 +10,8 @@ Consult `docs/` (architecture, MCP best practices) and `plans/` (implementation 
   verification, and outcome together. Do not create a separate context log.
 - Keep the approach, affected files, and decisions accurate while implementing. Current code,
   tests, schemas, and canonical `docs/` take precedence over plans.
-- Before merging, mark the plan `Done` and record the actual outcome and verification results.
+- Before merging a completed implementation, mark its plan `Done` and record the outcome and
+  verification results. Plans merged before completion keep their current status with an explanation.
 - Existing `.context.md` / `.plan.md` pairs remain as history. Continue related in-flight work
   in its existing pair and preserve the append-only discussion log; do not bulk-convert old files.
 

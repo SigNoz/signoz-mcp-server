@@ -10,7 +10,7 @@ measurement) lives in [`guardrails/README.md`](../guardrails/README.md) and CI;
 this guide never duplicates those numbers or commands.
 
 **Normative language.** `MUST`/`MUST NOT` are binding: violating one requires a
-justified exception recorded in the feature context log or PR description.
+justified exception recorded in the planning record or PR description.
 `SHOULD`/`SHOULD NOT` are strong defaults: deviate only with a stated reason in
 the PR. `MAY` marks an explicitly permitted option. Rules carry stable rubric
 IDs (e.g. `SUR-1`); the PR checklist in section 11 is derived from them and is

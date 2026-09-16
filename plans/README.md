@@ -12,8 +12,9 @@ Current code, tests, schemas, and `docs/` take precedence.
    with the change. No nested directories; issue/PR links belong in metadata.
 3. Use `Planning`, `In Progress`, `Done`, or `Abandoned`. Keep approach and files current;
    date material decisions and their rationale. Resolve questions in Context.
-4. Before merge, mark `Done`, record verification and outcome, and link deferred work to issues.
-   For `Abandoned`, explain why work stopped.
+4. Before merging a completed implementation, mark `Done`, record verification and outcome, and
+   link deferred work to issues. Plans merged before completion keep their current status with an
+   explanation; for `Abandoned`, record why work stopped in Outcome.
 5. Promote architectural truth to `docs/` or an ADR. Exclude secrets and raw transcripts;
    distinguish unverified claims from facts.
 
