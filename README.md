@@ -288,7 +288,7 @@ The first scheduled refresh after every start is always a full rebuild because t
 
 Recommendations for containerized HTTP deployments:
 
-- Set the memory limit to at least `768Mi`, or `512Mi` with `GOMEMLIMIT` set (the Go runtime reads `GOMEMLIMIT` natively; `GOMEMLIMIT=400MiB` for a `512Mi` limit is a reasonable starting point). A soft limit makes the collector reclaim garbage earlier; it cannot shrink the live data inside a single index batch, so leave headroom above it.
+- Set the memory limit to at least `768Mi`. In a memory-limited container the server sets Go's soft memory limit to 90% of the cgroup limit automatically (`SIGNOZ_GOMEMLIMIT_RATIO` adjusts the fraction; an explicit `GOMEMLIMIT` always wins). A soft limit makes the collector reclaim garbage earlier; it cannot shrink the live data inside a single index batch, so it is a backstop rather than a substitute for headroom.
 - Set `SIGNOZ_DOCS_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay the rebuild. New docs pages then arrive with the next server upgrade.
 - Watch the `docs refresh starting` and `docs refresh rebuilt index` log lines. A container that logs the first and never the second was killed mid-rebuild.
 
@@ -1008,6 +1008,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | `MCP_MAX_REQUEST_BYTES` | Max inbound MCP HTTP request body size in bytes (default: `4194304` / 4 MiB). Bounds memory from a single oversized request. | No |
 | `CLIENT_CACHE_SIZE` | Maximum cached tenant clients in multi-tenant HTTP mode (default: `256`) | No |
 | `CLIENT_CACHE_TTL_MINUTES` | Tenant-client cache lifetime in minutes (default: `30`) | No |
+| `SIGNOZ_GOMEMLIMIT_RATIO` | Fraction of the detected cgroup memory limit used as Go's soft memory limit when `GOMEMLIMIT` is not set (default: `0.9`). Ignored outside a memory-limited container or when `GOMEMLIMIT` is set explicitly. See [Memory footprint](#memory-footprint). | No |
 | `SIGNOZ_DOCS_REFRESH_INTERVAL` | Scheduled docs refresh interval (Go duration, default: `6h`). Set to `0` (or `off`) to disable the scheduled refresh; the embedded docs index is then served unchanged for the life of the process. See [Memory footprint](#memory-footprint). | No |
 | `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL` | Scheduled forced full docs refresh interval (Go duration, default: `24h`). Set to `0` (or `off`) to disable only the forced full refresh. | No |
 | `OAUTH_ENABLED`   | Enable OAuth 2.1 authentication flow (`true`/`false`)                          | No (default: `false`)               |
