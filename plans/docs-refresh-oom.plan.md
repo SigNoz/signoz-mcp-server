@@ -1,7 +1,7 @@
 # Plan: Docs refresh OOM hardening (HTTP mode, 512Mi)
 
 ## Status
-In Progress
+In Progress — all five steps implemented on `fix/docs-refresh-oom`; pending review and PR.
 
 ## Context
 Public report #305: a 512Mi HTTP-mode container is OOM-killed every ~6h by the scheduled docs
@@ -66,11 +66,11 @@ restart and the 24h forced refresh are both unconditional full rebuilds today.
 - Outcomes: `applied-delta` added to the `DocsRefreshes` counter; generation still increments.
 - `results` buffering in `buildSnapshot` stays (6 MiB × 3 is not worth the complexity).
 
-### Step 5 — Guardrail
+### Step 5 — Guardrail (done)
 - `TestGuardrail_DocsIndexBuildPeakHeap` in `internal/docs`: samples `HeapInuse` while building
   the embedded corpus and asserts the peak over baseline stays under
-  `guardrails.DocsIndexBuildPeakHeapBudgetBytes` (192 MiB; measured 124) and resident under
-  `DocsIndexResidentBudgetBytes` (64 MiB; measured 20). Add to `guardrails/tests.txt` and the
+  `guardrails.DocsIndexBuildPeakHeapBudgetBytes` (224 MiB; measured 133 to 148) and resident under
+  `DocsIndexResidentBudgetBytes` (64 MiB; measured ~30), and `indexBatchSize <= MaxDocsIndexBatchSize` (128). Add to `guardrails/tests.txt` and the
   README invariants list.
 
 ## Files to Modify
