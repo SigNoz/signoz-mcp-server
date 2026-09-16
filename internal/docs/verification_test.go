@@ -186,9 +186,12 @@ func TestSingleflightSerialization(t *testing.T) {
 	// incremental trigger rebuilds once; the forced trigger joined mid-flight,
 	// so the Do-owner must re-run the refresh with forced=true after its
 	// first pass — producing a second sitemap fetch and a forced outcome.
+	// The forced pass re-fetches the same body, so content gating reports it
+	// as forced-unchanged rather than rebuilding a second time.
 	require.Equal(t, int64(2), sitemapFetches.Load())
 	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "rebuilt"))
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "forced-full-rebuilt"))
+	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "forced-unchanged"))
+	require.Zero(t, docsRefreshMetricValue(t, reader, "forced-full-rebuilt"))
 }
 
 func TestRefreshFailure(t *testing.T) {
@@ -394,14 +397,14 @@ func TestRefreshThreshold(t *testing.T) {
 		blockedFetches[entries[i].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[i].URL}
 	}
 	refresher.fetcher = mapFetcher(blockedFetches)
-	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "new", entries, previous)
+	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "new", entries, previous, false)
 	require.NoError(t, err)
 	require.True(t, blocked)
 
 	allowedFetches := fetchMapForEntries(entries)
 	allowedFetches[entries[0].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[0].URL}
 	refresher.fetcher = mapFetcher(allowedFetches)
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "newer", entries, previous)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "newer", entries, previous, false)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))
@@ -418,11 +421,11 @@ func TestRefreshThresholdPersistsNotFoundHistoryWhenBlocked(t *testing.T) {
 	}
 	refresher.fetcher = mapFetcher(fetches)
 
-	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "first-blocked", entries, previous)
+	_, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "first-blocked", entries, previous, false)
 	require.NoError(t, err)
 	require.True(t, blocked)
 
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "second-allowed", entries, previous)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "second-allowed", entries, previous, false)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))
@@ -438,13 +441,13 @@ func TestTransient404Grace(t *testing.T) {
 
 	current := previous
 	for i := 1; i <= 3; i++ {
-		next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), fmt.Sprintf("hash-%d", i), entries, current)
+		next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), fmt.Sprintf("hash-%d", i), entries, current, false)
 		require.NoError(t, err)
 		require.False(t, blocked)
 		require.Len(t, next.Pages, len(entries), "404 #%d should preserve previous page", i)
 		current = next
 	}
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-4", entries, current)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-4", entries, current, false)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries)-1)
@@ -453,7 +456,7 @@ func TestTransient404Grace(t *testing.T) {
 	fetches = fetchMapForEntries(entries)
 	fetches[entries[0].URL] = PageFetch{Status: FetchStatusNotFound, URL: entries[0].URL}
 	refresher.fetcher = mapFetcher(fetches)
-	next, blocked, err = refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-once", entries, previous)
+	next, blocked, err = refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "hash-once", entries, previous, false)
 	require.NoError(t, err)
 	require.False(t, blocked)
 	require.Len(t, next.Pages, len(entries))
@@ -480,7 +483,7 @@ func TestRefreshFallbackPreservesDuplicateURLSections(t *testing.T) {
 	fetches[duplicateLogs.URL] = PageFetch{Status: FetchStatusError, URL: duplicateLogs.URL, Err: fmt.Errorf("temporary fetch failure")}
 	refresher.fetcher = mapFetcher(fetches)
 
-	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "fallback-sections", entries, previous)
+	next, blocked, err := refresher.buildSnapshot(context.Background(), sitemapForEntries(entries), "fallback-sections", entries, previous, false)
 	require.NoError(t, err)
 	require.False(t, blocked)
 

@@ -23,6 +23,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 - Tool results remain JSON-safe through the production transport.
 - Tool-result telemetry measures the complete serialized result, including structured content.
 - The production HTTP handler preserves discovery descriptors, deterministic resource and prompt contents, and representative tool/error results across the MCP SDK migration.
+- Building the docs index from the embedded corpus stays under a reviewed peak-heap budget and resident budget, and the build commits in bounded batches, so a refresh cannot regress into the single-batch peak that OOM-killed 512Mi containers.
 
 `TestGuardrail_WireCatalogGoldens` sends hand-written JSON-RPC requests through
 the production HTTP handler and imports no MCP SDK type. It compares complete
