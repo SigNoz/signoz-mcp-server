@@ -299,6 +299,19 @@ func (r *Refresher) refresh(ctx context.Context, forced bool) error {
 		r.logger.InfoContext(ctx, "docs refresh found no page changes; index kept", "forced", forced, "pages", len(next.Pages))
 		return nil
 	}
+	// A forced refresh is the compaction point: the in-memory index never
+	// merges segments, so a full rebuild is the only way to shed the ones
+	// earlier deltas added.
+	if !forced && r.registry.CanApplyDelta(delta, len(next.Pages)) {
+		r.logger.InfoContext(ctx, "docs refresh applying delta to live index", "pages", len(next.Pages),
+			"added", len(delta.added), "changed", len(delta.changed), "removed", len(delta.removed))
+		if err := r.registry.ApplyDelta(ctx, next, delta); err != nil {
+			return err
+		}
+		outcome = "applied-delta"
+		r.logger.InfoContext(ctx, "docs refresh applied delta", "pages", len(next.Pages))
+		return nil
+	}
 	r.logger.InfoContext(ctx, "docs refresh rebuilding index", "forced", forced, "pages", len(next.Pages),
 		"added", len(delta.added), "changed", len(delta.changed), "removed", len(delta.removed))
 	if err := r.registry.Swap(ctx, next); err != nil {

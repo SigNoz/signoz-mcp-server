@@ -65,6 +65,39 @@ public report SigNoz/signoz-mcp-server#305.
 - Test fixture lesson: the baseline snapshot must be built from entries parsed out of the served
   sitemap, otherwise section breadcrumbs differ from a live fetch and the diff reports changes.
 
+### 2026-09-16 — Step 4 landed: chunked build and incremental live-index deltas
+- `BuildIndex` now commits every 100 pages; per-page document construction moved into
+  `indexDocument` so `ApplyDelta` and a rebuild produce the same documents.
+- `IndexRegistry` gained `writeMu` (serializes `Swap` / `PublishSnapshot` / `ApplyDelta`),
+  `ApplyDelta`, `CanApplyDelta`, and an `incrementalApplies` counter on `indexHandle`.
+  `ApplyDelta` takes an extra handle reference under `r.mu` before building the batch so a
+  draining previous generation cannot close the index mid-apply.
+- `refresh()` picks: forced → `Swap` (`forced-full-rebuilt`); small delta on a young handle →
+  `ApplyDelta` (`applied-delta`); otherwise `Swap` (`rebuilt`). Thresholds
+  `deltaApplyMaxFraction = 0.25`, `maxIncrementalApplies = 24`.
+- Measured on the embedded corpus (746 pages), heap over a ~9 MiB post-load baseline, two runs:
+
+  | Moment | Peak heap | Resident after |
+  | --- | --- | --- |
+  | Chunked `BuildIndex` | 133 / 148 MiB | ~30 MiB |
+  | `Swap` with the first index live | 186 / 167 MiB | ~30 MiB |
+  | `ApplyDelta` 1% (7 pages) | 45 / 47 MiB | +0 MiB |
+  | `ApplyDelta` 5% (37 pages) | 60 / 63 MiB | +1 MiB |
+  | `ApplyDelta` 20% (149 pages) | 114 / 112 MiB | +0 MiB |
+
+  Against the pre-step-4 baseline (333 MiB build, 356 MiB swap) that is a ~2.3x cut in the
+  startup peak and a ~2x cut in the rebuild peak, and a small scheduled delta now costs single
+  digit MiB over the live index instead of a full rebuild.
+- Deviations from the plan: none functionally. The plan's predicted numbers (125 MiB build,
+  150 MiB forced compaction) came in slightly higher (133 to 148, and 167 to 186 for a swap
+  with a live index); the README table quotes the rounded measured values rather than the
+  predictions. The README recommendation drops from `768Mi` to `512Mi`.
+- Tests: new `internal/docs/refresh_delta_test.go` covers add/change/remove through
+  `ApplyDelta`, snapshot publication and generation, handle sharing, the four refresh
+  decisions (applied-delta, over-fraction rebuild, forced rebuild, apply-cap compaction),
+  8 readers against 10 concurrent applies under `-race`, and a 250-page chunked build.
+  `go test ./internal/docs/ -race -count=1` is green.
+
 ## Open Questions
 - [x] Revive #195 in code or Helm/README only? → In code, fail-open, with `GOMEMLIMIT` env
   still taking precedence (self-hosted users get a sane default; our infra keeps the downward-API env).

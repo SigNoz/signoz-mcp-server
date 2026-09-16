@@ -44,13 +44,25 @@ restart and the 24h forced refresh are both unconditional full rebuilds today.
 - `IndexRegistry`: introduce a refcounted `indexHandle` shared between entries so
   `closeWhenDrained` closes the bleve index only when the last entry referencing it drains.
 
-### Step 4 — Chunked build and incremental live-index deltas
-- `BuildIndex` commits `idx.Batch` every `indexBatchSize = 100` pages.
+### Step 4 — Chunked build and incremental live-index deltas (done)
+- `BuildIndex` commits `idx.Batch` every `indexBatchSize = 100` pages and a final partial batch.
+  Per-page document construction moved to `indexDocument(page) (canonical, doc, ok)` so a
+  delta-applied index is byte-identical to a rebuilt one. The duplicate-canonical-URL error stays.
 - `registry.ApplyDelta(ctx, next, delta)`: one batch with `Index` for added/changed and
-  `Delete` for removed canonical URLs on the live index, then `PublishSnapshot`. Used when
-  `len(delta) <= 25%` of `len(next.Pages)` and the handle's `incrementalApplies < 24`.
-  Otherwise, and always on a forced refresh with a non-empty delta, fall back to chunked
-  `Swap` (this is the compaction step because in-memory scorch never merges segments).
+  `Delete` for removed canonical URLs on the live index, then a new `IndexEntry` sharing the
+  handle (`shareIndex`) with `snapshot = next` and generation + 1, and `incrementalApplies++`
+  on the handle. It takes an extra handle reference under `r.mu` before building the batch and
+  releases it on every path, so the index cannot close mid-apply. It falls back to `Swap` when
+  there is no current entry and errors when the registry is closed.
+- `registry.CanApplyDelta(delta, nextPages)` gates the path: non-empty delta,
+  `len(added)+len(changed)+len(removed) <= deltaApplyMaxFraction (0.25) * nextPages`, and the
+  handle's `incrementalApplies < maxIncrementalApplies (24)`.
+- `IndexRegistry.writeMu` serializes `Swap` / `PublishSnapshot` / `ApplyDelta` against each
+  other; readers keep using the `mu` RWMutex.
+- `refresh()` decision on a non-empty delta: `forced` → `Swap` (`forced-full-rebuilt`, the
+  compaction point); else `CanApplyDelta` → `ApplyDelta` (`applied-delta`); else `Swap`
+  (`rebuilt`). A forced refresh with an empty delta stays `forced-unchanged`; the apply cap,
+  not the daily forced tick, is what bounds segment growth.
 - Outcomes: `applied-delta` added to the `DocsRefreshes` counter; generation still increments.
 - `results` buffering in `buildSnapshot` stays (6 MiB × 3 is not worth the complexity).
 
@@ -76,7 +88,9 @@ restart and the 24h forced refresh are both unconditional full rebuilds today.
 ## Verification
 - `go test ./...`, `go build ./cmd/server`, `make fmt goimports`.
 - Guardrail suite: `go test -count=1 -run '^TestGuardrail_' ./...` and the `tests.txt` inventory check.
-- Re-run the measurement harness after step 4: expect startup peak ≈ 125 MiB, scheduled refresh
-  with a small delta ≈ 40 to 60 MiB, forced compaction ≈ 150 MiB.
+- Measurement harness re-run after step 4 (embedded corpus, 746 pages, heap over a post-load
+  baseline of ~9 MiB): chunked `BuildIndex` peak 133 to 148 MiB, resident ~30 MiB; `Swap` with
+  the first index live peak 167 to 186 MiB; `ApplyDelta` peak 45 / 60 / 113 MiB for 1% / 5% /
+  20% of pages with ~1 MiB resident growth per apply.
 - Live check that signoz.io honours `If-None-Match` (subagent, read-only).
 - Final review by the astra agent.

@@ -30,6 +30,12 @@ import (
 const fetchContentByteLimit = 256 * 1024
 const snippetRuneLimit = 200
 
+// indexBatchSize bounds how many analysed documents a build holds in one
+// bleve batch. Committing every 100 pages cuts the embedded-corpus build peak
+// from ~325 MiB to ~124 MiB; smaller chunks inflate resident memory because an
+// in-memory scorch index never merges its segments.
+const indexBatchSize = 100
+
 var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", ".", " ")
 
 // ErrInvalidSearchQuery marks searchText that Bleve's query-string parser
@@ -57,7 +63,11 @@ func (e *invalidSearchQueryError) Is(target error) bool {
 var embeddedAssets embed.FS
 
 type IndexRegistry struct {
-	mu      sync.RWMutex
+	mu sync.RWMutex
+	// writeMu serializes Swap, PublishSnapshot and ApplyDelta against each
+	// other so no two writers mutate the live index or the current pointer
+	// concurrently. Readers only take mu.
+	writeMu sync.Mutex
 	current *IndexEntry
 	closed  atomic.Bool
 	// ready flips to true only after a Swap with a real corpus succeeds.
@@ -82,6 +92,10 @@ type IndexEntry struct {
 type indexHandle struct {
 	idx     bleve.Index
 	entries int64
+	// incrementalApplies counts the deltas applied to this live index.
+	// In-memory scorch never merges segments, so the count bounds how long a
+	// handle may accumulate segments before a rebuild compacts it.
+	incrementalApplies int64
 }
 
 func newIndexEntry(idx bleve.Index, snapshot CorpusSnapshot, generation uint64) *IndexEntry {
@@ -144,6 +158,12 @@ func (r *IndexRegistry) Snapshot() (CorpusSnapshot, bool) {
 }
 
 func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	return r.swapLocked(ctx, snapshot)
+}
+
+func (r *IndexRegistry) swapLocked(ctx context.Context, snapshot CorpusSnapshot) error {
 	if r.closed.Load() {
 		return fmt.Errorf("docs index registry is closed")
 	}
@@ -173,6 +193,8 @@ func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error
 // for a refresh whose page contents all matched what is already indexed.
 // It falls back to Swap when there is no current index to share.
 func (r *IndexRegistry) PublishSnapshot(ctx context.Context, snapshot CorpusSnapshot) error {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
 	if r.closed.Load() {
 		return fmt.Errorf("docs index registry is closed")
 	}
@@ -180,11 +202,107 @@ func (r *IndexRegistry) PublishSnapshot(ctx context.Context, snapshot CorpusSnap
 	old := r.current
 	if old == nil {
 		r.mu.Unlock()
-		return r.Swap(ctx, snapshot)
+		return r.swapLocked(ctx, snapshot)
 	}
 	r.current = old.shareIndex(snapshot)
 	r.mu.Unlock()
 	r.ready.Store(true)
+	go closeWhenDrained(ctx, old)
+	return nil
+}
+
+// deltaApplyMaxFraction caps how much of the corpus may change before a delta
+// stops being cheaper than a rebuild. maxIncrementalApplies caps how many
+// deltas one live index may accumulate; the next refresh rebuilds instead,
+// which is the only compaction an in-memory scorch index gets.
+const (
+	deltaApplyMaxFraction = 0.25
+	maxIncrementalApplies = 24
+)
+
+// CanApplyDelta reports whether delta is small enough, and the live index
+// young enough, to update in place instead of rebuilding.
+func (r *IndexRegistry) CanApplyDelta(delta snapshotDelta, nextPages int) bool {
+	if r == nil || r.closed.Load() || nextPages <= 0 || delta.empty() {
+		return false
+	}
+	touched := len(delta.added) + len(delta.changed) + len(delta.removed)
+	if float64(touched) > deltaApplyMaxFraction*float64(nextPages) {
+		return false
+	}
+	r.mu.RLock()
+	entry := r.current
+	r.mu.RUnlock()
+	if entry == nil {
+		return false
+	}
+	return atomic.LoadInt64(&entry.handle.incrementalApplies) < maxIncrementalApplies
+}
+
+// ApplyDelta indexes the added and changed pages and deletes the removed ones
+// on the live index, then publishes next over the same handle. It avoids the
+// rebuild peak entirely at the cost of one extra scorch segment.
+func (r *IndexRegistry) ApplyDelta(ctx context.Context, next CorpusSnapshot, delta snapshotDelta) error {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	if r.closed.Load() {
+		return fmt.Errorf("docs index registry is closed")
+	}
+	r.mu.Lock()
+	old := r.current
+	if old == nil {
+		r.mu.Unlock()
+		return r.swapLocked(ctx, next)
+	}
+	// Hold a reference across the batch so the handle cannot be closed under
+	// us if the previous generation drains mid-apply.
+	atomic.AddInt64(&old.handle.entries, 1)
+	r.mu.Unlock()
+	release := func() {
+		if atomic.AddInt64(&old.handle.entries, -1) == 0 {
+			_ = old.handle.idx.Close()
+		}
+	}
+
+	batch := old.idx.NewBatch()
+	for _, page := range delta.added {
+		canonical, doc, ok := indexDocument(page)
+		if !ok {
+			continue
+		}
+		if err := batch.Index(canonical, doc); err != nil {
+			release()
+			return err
+		}
+	}
+	for _, page := range delta.changed {
+		canonical, doc, ok := indexDocument(page)
+		if !ok {
+			continue
+		}
+		if err := batch.Index(canonical, doc); err != nil {
+			release()
+			return err
+		}
+	}
+	for _, rawURL := range delta.removed {
+		canonical, ok := CanonicalDocURL(rawURL)
+		if !ok {
+			continue
+		}
+		batch.Delete(canonical)
+	}
+	if err := old.idx.Batch(batch); err != nil {
+		release()
+		return err
+	}
+
+	r.mu.Lock()
+	r.current = old.shareIndex(next)
+	r.mu.Unlock()
+	atomic.AddInt64(&old.handle.incrementalApplies, 1)
+	r.ready.Store(true)
+	release()
 	go closeWhenDrained(ctx, old)
 	return nil
 }
@@ -412,9 +530,10 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 		return nil, err
 	}
 	batch := idx.NewBatch()
+	pending := 0
 	seenURLs := make(map[string]struct{}, len(snapshot.Pages))
 	for _, page := range snapshot.Pages {
-		canonical, ok := CanonicalDocURL(page.URL)
+		canonical, doc, ok := indexDocument(page)
 		if !ok {
 			continue
 		}
@@ -423,45 +542,68 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 			return nil, fmt.Errorf("duplicate canonical docs URL %q in corpus schema %d", canonical, snapshot.SchemaVersion)
 		}
 		seenURLs[canonical] = struct{}{}
-		sectionSlugs, sectionMap := pageSectionMetadata(page)
-		sectionSlug := page.SectionSlug
-		if sectionSlug == "" && len(sectionSlugs) > 0 {
-			sectionSlug = sectionSlugs[0]
-		}
-		sectionBreadcrumb := page.SectionBreadcrumb
-		if sectionBreadcrumb == "" {
-			sectionBreadcrumb = sectionMap[sectionSlug]
-		}
-		body := page.BodyMarkdown
-		headingsJSON := page.HeadingsJSON
-		if headingsJSON == "" {
-			headingsJSON = mustJSON(ExtractHeadings(body))
-		}
-		doc := map[string]any{
-			"title":                   page.Title,
-			"headings":                headingsJSON,
-			"body":                    body,
-			"section_breadcrumb_text": breadcrumbSearchText(sectionSlugs, sectionMap),
-			"url_text":                urlSearchText(canonical),
-			"section_slug":            sectionSlug,
-			"section_breadcrumb":      sectionBreadcrumb,
-			"section_slugs":           sectionSlugs,
-			"section_map":             mustJSON(sectionMap),
-			"url":                     canonical,
-			"body_markdown":           body,
-			"available_headings":      headingsJSON,
-			"last_fetched_at":         page.FetchedAt.UTC().Format(time.RFC3339),
-		}
 		if err := batch.Index(canonical, doc); err != nil {
 			_ = idx.Close()
 			return nil, err
 		}
+		pending++
+		// Commit in chunks: the analysed form of every pending document stays
+		// live in the batch until it does, which is what drives the peak.
+		if pending >= indexBatchSize {
+			if err := idx.Batch(batch); err != nil {
+				_ = idx.Close()
+				return nil, err
+			}
+			batch = idx.NewBatch()
+			pending = 0
+		}
 	}
-	if err := idx.Batch(batch); err != nil {
-		_ = idx.Close()
-		return nil, err
+	if pending > 0 {
+		if err := idx.Batch(batch); err != nil {
+			_ = idx.Close()
+			return nil, err
+		}
 	}
 	return idx, nil
+}
+
+// indexDocument maps a page record to its bleve document. BuildIndex and
+// ApplyDelta share it so an incrementally updated index is byte-identical to
+// a rebuilt one. ok is false when the URL is out of scope.
+func indexDocument(page PageRecord) (string, map[string]any, bool) {
+	canonical, ok := CanonicalDocURL(page.URL)
+	if !ok {
+		return "", nil, false
+	}
+	sectionSlugs, sectionMap := pageSectionMetadata(page)
+	sectionSlug := page.SectionSlug
+	if sectionSlug == "" && len(sectionSlugs) > 0 {
+		sectionSlug = sectionSlugs[0]
+	}
+	sectionBreadcrumb := page.SectionBreadcrumb
+	if sectionBreadcrumb == "" {
+		sectionBreadcrumb = sectionMap[sectionSlug]
+	}
+	body := page.BodyMarkdown
+	headingsJSON := page.HeadingsJSON
+	if headingsJSON == "" {
+		headingsJSON = mustJSON(ExtractHeadings(body))
+	}
+	return canonical, map[string]any{
+		"title":                   page.Title,
+		"headings":                headingsJSON,
+		"body":                    body,
+		"section_breadcrumb_text": breadcrumbSearchText(sectionSlugs, sectionMap),
+		"url_text":                urlSearchText(canonical),
+		"section_slug":            sectionSlug,
+		"section_breadcrumb":      sectionBreadcrumb,
+		"section_slugs":           sectionSlugs,
+		"section_map":             mustJSON(sectionMap),
+		"url":                     canonical,
+		"body_markdown":           body,
+		"available_headings":      headingsJSON,
+		"last_fetched_at":         page.FetchedAt.UTC().Format(time.RFC3339),
+	}, true
 }
 
 // NormalizePages returns one PageRecord per canonical URL while retaining all

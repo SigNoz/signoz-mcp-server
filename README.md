@@ -277,21 +277,22 @@ HTTP mode listens on all interfaces by default. Set `MCP_SERVER_HOST=127.0.0.1` 
 
 #### Memory footprint
 
-The server keeps the SigNoz docs search index in memory. Steady state is well under 100 MB, but building the index is a short, sharp allocation peak:
+The server keeps the SigNoz docs search index in memory. The index holds about 30 MB at steady state and the whole process stays well under 100 MB; index work is a short allocation peak on top of that:
 
-| Moment | Approximate peak (working set) |
+| Moment | Approximate peak heap |
 | --- | --- |
-| Startup build from the embedded corpus | ~370 MB for a few seconds |
-| Scheduled refresh that finds changed pages and rebuilds the index | ~400 MB while the old index is still serving |
-| Scheduled refresh that finds no changed pages | no rebuild; pages are revalidated with `If-None-Match` and unchanged ones cost a 304 |
+| Startup build from the embedded corpus (746 pages) | ~150 MB for a few seconds |
+| Scheduled refresh that changes more than a quarter of the pages, or the daily forced refresh | ~190 MB while the old index is still serving |
+| Scheduled refresh that changes a few pages | ~45 to 65 MB; the changed pages are applied to the live index without a rebuild |
+| Scheduled refresh that finds no changed pages | no index work; pages are revalidated with `If-None-Match` and unchanged ones cost a 304 |
 
-A scheduled refresh (default every `6h`) revalidates every page against the live site and rebuilds the index only when at least one page's content changed. The forced refresh (default every `24h`) re-downloads every page but also skips the rebuild when nothing changed. The first refresh after a start therefore rebuilds only if the live docs differ from the corpus that shipped with the release.
+A scheduled refresh (default every `6h`) revalidates every page against the live site and touches the index only when at least one page's content changed. A small change set is applied to the live index in place; a large one, and the forced refresh (default every `24h`), rebuilds the index from scratch, which also compacts the segments that in-place updates leave behind. The index is built in chunks so the peak no longer scales with the whole corpus.
 
 Recommendations for containerized HTTP deployments:
 
-- Set the memory limit to at least `768Mi`. In a memory-limited container the server sets Go's soft memory limit to 90% of the cgroup limit automatically (`SIGNOZ_GOMEMLIMIT_RATIO` adjusts the fraction; an explicit `GOMEMLIMIT` always wins). A soft limit makes the collector reclaim garbage earlier; it cannot shrink the live data inside a single index batch, so it is a backstop rather than a substitute for headroom.
+- Set the memory limit to at least `512Mi`. The measured startup peak is ~150 MB and a scheduled refresh with a small delta costs only tens of MB over the ~30 MB steady state, so `512Mi` leaves room for request handling and allocator slack. In a memory-limited container the server sets Go's soft memory limit to 90% of the cgroup limit automatically (`SIGNOZ_GOMEMLIMIT_RATIO` adjusts the fraction; an explicit `GOMEMLIMIT` always wins). A soft limit makes the collector reclaim garbage earlier; it cannot shrink the live data inside an index batch, so it is a backstop rather than a substitute for headroom.
 - Set `SIGNOZ_DOCS_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay the rebuild. New docs pages then arrive with the next server upgrade.
-- Watch the `docs refresh starting` and `docs refresh rebuilt index` log lines. A container that logs the first and never the second was killed mid-rebuild.
+- Watch the `docs refresh starting` log line and its completion partner (`docs refresh rebuilt index` or `docs refresh applied delta`). A container that logs the first and never the second was killed mid-refresh.
 
 #### With OAuth (Multi-Tenant / Cloud)
 
