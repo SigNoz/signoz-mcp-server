@@ -62,6 +62,10 @@
       "description": "List firing/silenced/inhibited Alertmanager alert *instances* (not rule definitions) with optional alert-label and receiver filtering"
     },
     {
+      "name": "signoz_list_hosts",
+      "description": "List infrastructure hosts with CPU, memory, wait, and load metrics from SigNoz."
+    },
+    {
       "name": "signoz_list_alert_rules",
       "description": "List configured alert-rule summaries, including inactive/OK and disabled rules; use signoz_get_alert for one full definition"
     },

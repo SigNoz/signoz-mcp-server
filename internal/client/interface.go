@@ -16,6 +16,7 @@ type Client interface {
 	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRules(ctx context.Context) (json.RawMessage, error)
+	ListHosts(ctx context.Context, body []byte) (json.RawMessage, error)
 	GetAlertByRuleID(ctx context.Context, ruleID string) (json.RawMessage, error)
 	GetAlertHistory(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
 	ListDashboards(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)

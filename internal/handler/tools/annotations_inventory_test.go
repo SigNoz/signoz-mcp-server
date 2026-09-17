@@ -44,6 +44,7 @@ var expectedToolAnnotations = map[string]annotationTriple{
 	"signoz_get_top_metrics":             readTriple,
 	"signoz_get_trace_details":           readTriple,
 	"signoz_get_view":                    readTriple,
+	"signoz_list_hosts":                  readTriple,
 	"signoz_list_alert_rules":            readTriple,
 	"signoz_list_alerts":                 readTriple,
 	"signoz_list_dashboard_templates":    readTriple,
