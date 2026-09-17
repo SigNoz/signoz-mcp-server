@@ -135,7 +135,7 @@
     },
     {
       "name": "signoz_search_docs",
-      "description": "Return ranked official-doc matches with URLs and snippets when no exact SigNoz documentation page is selected"
+      "description": "Search official SigNoz documentation with 2 to 6 keywords and return ranked pages with URLs and snippets; use signoz_fetch_doc for a selected page's full content"
     },
     {
       "name": "signoz_fetch_doc",

@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -89,4 +90,39 @@ func TestDocsDurationHistogramsUseSecondScaleBuckets(t *testing.T) {
 	if len(wants) != 0 {
 		t.Fatalf("duration histograms not collected: %v", wants)
 	}
+}
+
+func TestDocsSearchTopScoreHistogram(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	meters, err := NewMeters(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meters.DocsSearchTopScore.Record(context.Background(), 12.345)
+	var collected metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &collected); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range collected.ScopeMetrics {
+		for _, metric := range scope.Metrics {
+			if metric.Name != "signoz_docs_search_top_score" {
+				continue
+			}
+			if !strings.Contains(metric.Description, "Uncalibrated raw Bleve score") {
+				t.Fatal(metric.Description)
+			}
+			histogram, ok := metric.Data.(metricdata.Histogram[float64])
+			if !ok || len(histogram.DataPoints) != 1 {
+				t.Fatalf("unexpected histogram: %#v", metric.Data)
+			}
+			point := histogram.DataPoints[0]
+			if point.Count != 1 || point.Sum != 12.345 {
+				t.Fatalf("raw score changed: %#v", point)
+			}
+			return
+		}
+	}
+	t.Fatal("top-score histogram not collected")
 }

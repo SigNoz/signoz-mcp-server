@@ -13,6 +13,9 @@ import (
 type goldenQuery struct {
 	Query            string   `json:"query"`
 	ExpectedTopPages []string `json:"expected_top_pages"`
+	Style            string   `json:"style"`
+	Holdout          bool     `json:"holdout,omitempty"`
+	BaselineRank     *int     `json:"baseline_rank,omitempty"`
 }
 
 func TestGoldenSet(t *testing.T) {
@@ -24,7 +27,7 @@ func TestGoldenSet(t *testing.T) {
 	var queries []goldenQuery
 	require.NoError(t, json.Unmarshal(raw, &queries))
 	require.GreaterOrEqual(t, len(queries), 30)
-	require.LessOrEqual(t, len(queries), 50)
+	require.LessOrEqual(t, len(queries), 160)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -34,43 +37,76 @@ func TestGoldenSet(t *testing.T) {
 	require.NoError(t, err)
 	defer reg.Close(context.Background())
 
-	var recallHits, precisionHits int
+	type counts struct{ total, recall, precision int }
+	byStyle := map[string]*counts{"keyword": {}, "sentence": {}, "abbreviation": {}, "production-raw": {}, "production-keyword": {}, "production-real": {}}
+	baselineByStyle := map[string]*counts{"keyword": {}, "sentence": {}, "abbreviation": {}, "production-raw": {}, "production-keyword": {}, "production-real": {}}
 	for _, q := range queries {
+		c, ok := byStyle[q.Style]
+		require.True(t, ok, "unknown style %q", q.Style)
 		res, err := reg.Search(ctx, q.Query, "", 3)
 		require.NoError(t, err, q.Query)
 		require.NotEmpty(t, res.Results, q.Query)
-		expected := map[string]struct{}{}
+		require.NotEmpty(t, q.ExpectedTopPages, q.Query)
+		expected := map[string]bool{}
 		for _, url := range q.ExpectedTopPages {
 			canonical, ok := CanonicalDocURL(url)
 			require.True(t, ok, "bad expected URL for %q: %s", q.Query, url)
-			expected[canonical] = struct{}{}
+			expected[canonical] = true
 		}
-		if _, ok := expected[res.Results[0].URL]; ok {
-			precisionHits++
-		}
-		recalled := false
-		for _, hit := range res.Results {
-			if _, ok := expected[hit.URL]; ok {
-				recallHits++
-				recalled = true
+		rank := 0
+		for i, hit := range res.Results {
+			if expected[hit.URL] {
+				rank = i + 1
 				break
 			}
 		}
-		if !recalled {
-			got := make([]string, 0, len(res.Results))
-			for _, hit := range res.Results {
-				got = append(got, hit.URL)
-			}
-			t.Logf("recall miss for %q: got %v, want one of %v", q.Query, got, q.ExpectedTopPages)
+		require.NotNil(t, q.BaselineRank, "missing pre-change baseline: %s", q.Query)
+		baseline := baselineByStyle[q.Style]
+		baseline.total++
+		if *q.BaselineRank > 0 {
+			baseline.recall++
+		}
+		if *q.BaselineRank == 1 {
+			baseline.precision++
+		}
+		c.total++
+		if rank > 0 {
+			c.recall++
+		}
+		if rank == 1 {
+			c.precision++
+		}
+		t.Logf("rank=%d style=%s holdout=%t query=%q", rank, q.Style, q.Holdout, q.Query)
+		if q.BaselineRank != nil && *q.BaselineRank != rank {
+			t.Logf("rank change %q: %d -> %d (0 means outside top 3)", q.Query, *q.BaselineRank, rank)
 		}
 	}
-	recallAt3 := float64(recallHits) / float64(len(queries))
-	precisionAt1 := float64(precisionHits) / float64(len(queries))
-	t.Logf("recall@3=%.3f precision@1=%.3f queries=%d", recallAt3, precisionAt1, len(queries))
-	// 0.9 tolerates four misses out of 45 to absorb routine corpus drift while
-	// protecting the ranking quality recovered by the navigation-text fields.
-	require.GreaterOrEqual(t, recallAt3, 0.9)
-	require.GreaterOrEqual(t, precisionAt1, 0.7)
+	var overall, baselineOverall counts
+	for _, style := range []string{"keyword", "sentence", "abbreviation", "production-raw", "production-keyword", "production-real"} {
+		c, baseline := byStyle[style], baselineByStyle[style]
+		require.Positive(t, c.total, style)
+		recall, precision := float64(c.recall)/float64(c.total), float64(c.precision)/float64(c.total)
+		baselineRecall, baselinePrecision := float64(baseline.recall)/float64(baseline.total), float64(baseline.precision)/float64(baseline.total)
+		t.Logf("style=%s recall@3=%.6f precision@1=%.6f queries=%d baseline=%.6f/%.6f", style, recall, precision, c.total, baselineRecall, baselinePrecision)
+		require.GreaterOrEqual(t, recall, baselineRecall-0.05, style+" recall@3 baseline tolerance")
+		require.GreaterOrEqual(t, precision, baselinePrecision-0.05, style+" precision@1 baseline tolerance")
+		if style == "keyword" {
+			require.GreaterOrEqual(t, recall, 0.9)
+			require.GreaterOrEqual(t, precision, 0.7)
+		}
+		overall.total += c.total
+		overall.recall += c.recall
+		overall.precision += c.precision
+		baselineOverall.total += baseline.total
+		baselineOverall.recall += baseline.recall
+		baselineOverall.precision += baseline.precision
+	}
+	recall, precision := float64(overall.recall)/float64(overall.total), float64(overall.precision)/float64(overall.total)
+	baselineRecall, baselinePrecision := float64(baselineOverall.recall)/float64(baselineOverall.total), float64(baselineOverall.precision)/float64(baselineOverall.total)
+	t.Logf("overall recall@3=%.6f precision@1=%.6f queries=%d baseline=%.6f/%.6f", recall, precision, overall.total, baselineRecall, baselinePrecision)
+	require.GreaterOrEqual(t, recall, baselineRecall, "overall recall@3 must not decrease")
+	require.GreaterOrEqual(t, precision, baselinePrecision, "overall precision@1 must not decrease")
+	require.True(t, recall > baselineRecall || precision > baselinePrecision, "at least one overall metric must improve")
 }
 
 func TestEmbeddedCorpusSectionFilters(t *testing.T) {

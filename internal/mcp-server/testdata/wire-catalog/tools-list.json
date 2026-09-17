@@ -5613,7 +5613,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user asks a SigNoz product, setup, instrumentation, configuration, API, deployment, or troubleshooting question and no exact documentation page is selected. Returns ranked official-doc matches with URLs and snippets. Do not use for live tenant data; use signoz_fetch_doc when a result or exact docs URL needs full content.",
+          "description": "Search official SigNoz documentation and return ranked pages with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords for one topic and keep product and technology names as the user wrote them; split multi-intent questions into separate calls. If the top result is off-topic, retry with fewer or different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL.",
           "inputSchema": {
             "properties": {
               "limit": {
@@ -5629,11 +5629,11 @@
                 "type": "string"
               },
               "searchText": {
-                "description": "Natural-language or keyword query to search in official SigNoz docs.",
+                "description": "Required. 2 to 6 keywords for one topic, for example \"Kubernetes pod logs\". Keep product and technology names as the user wrote them.",
                 "type": "string"
               },
               "section_slug": {
-                "description": "Optional exact top-level docs section filter, for example \"setup\", \"logs-management\", \"apm-distributed-tracing\", \"metrics\", \"alerts\", \"dashboards\", \"signoz-apis\", \"querying\", or \"collection-agents\".",
+                "description": "Optional exact top-level docs section filter, for example \"setup\", \"logs-management\", \"apm-distributed-tracing\", \"metrics\", \"alerts\", \"dashboards\", \"signoz-apis\", \"querying\", or \"collection-agents\". Reuse the section_slug from an earlier result when narrowing; an unknown slug returns zero results.",
                 "type": "string"
               }
             },

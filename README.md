@@ -277,20 +277,20 @@ HTTP mode listens on all interfaces by default. Set `MCP_SERVER_HOST=127.0.0.1` 
 
 #### Memory footprint
 
-The server keeps the SigNoz docs search index in memory. The index holds about 30 MB at steady state and the whole process stays well under 100 MB; index work is a short allocation peak on top of that:
+The server keeps the SigNoz docs search index in memory. With stemming on titles and headings and a single standard-analyzed body field, the embedded 746-page index used 28 to 36 MiB of resident heap across eight local Go 1.26 whole-package test runs. Build peaks ranged from 97 to 134 MiB above the pre-build heap baseline, using 64-page batches. These are index measurements, not whole-process RSS or container memory guarantees; request handling and refresh work add memory.
 
-| Moment | Approximate peak heap |
+| Moment | Index memory behavior |
 | --- | --- |
-| Startup build from the embedded corpus (746 pages) | ~150 MB for a few seconds |
-| Scheduled refresh that changes more than a quarter of the pages, or the daily forced refresh | ~190 MB while the old index is still serving |
-| Scheduled refresh that changes a few pages | ~45 to 65 MB; the changed pages are applied to the live index without a rebuild |
+| Startup build from the embedded corpus (746 pages) | Up to 134 MiB above the pre-build heap baseline in the measured runs |
+| Scheduled full rebuild | Builds a new index while the old index is still serving; combined peak has not been re-measured with this configuration |
+| Scheduled refresh that changes a few pages | Applies changed pages in one atomic batch to the live index; peak depends on the changed content and has not been re-measured with this configuration |
 | Scheduled refresh that finds no changed pages | no index work; pages are revalidated with `If-None-Match` and unchanged ones cost a 304 |
 
-A scheduled refresh (default every `6h`) first compares the live sitemap with the served one and stops there when it is unchanged. Otherwise it revalidates every page with `If-None-Match` and touches the index only when at least one page's content changed. A change set covering up to a quarter of the pages is applied to the live index in place; a larger one, the 25th in-place update on the same index, and any forced refresh (default every `24h`) that finds changed content rebuild the index from scratch, which also compacts the segments that in-place updates leave behind. The index is built in chunks so the peak no longer scales with the whole corpus.
+A scheduled refresh (default every `6h`) first compares the live sitemap with the served one and stops there when it is unchanged. Otherwise it revalidates every page with `If-None-Match` and touches the index only when at least one page's content changed. A change set covering up to a quarter of the pages is applied to the live index in place; a larger one, the 25th in-place update on the same index, and any forced refresh (default every `24h`) that finds changed content rebuild the index from scratch, which also compacts the segments that in-place updates leave behind. Full rebuilds use 64-page batches. In-place updates use one atomic batch bounded by the quarter-of-pages threshold, not the full-build batch size.
 
 Recommendations for containerized HTTP deployments:
 
-- Set the memory limit to at least `512Mi`. The measured startup peak is ~150 MB and a scheduled refresh with a small delta costs only tens of MB over the ~30 MB steady state, so `512Mi` leaves room for request handling and allocator slack. Setting Go's `GOMEMLIMIT` is optional: it makes the collector reclaim garbage earlier but cannot shrink the live data inside an index batch, so it does not lower the peaks above.
+- Set the memory limit to at least `512Mi`, and monitor memory during refreshes and concurrent requests. The highest measured index-only build peak is 134 MiB above baseline and the resident index is 28 to 36 MiB; rebuilds also retain the serving index. Setting Go's `GOMEMLIMIT` is optional: it can reclaim garbage earlier but cannot shrink live data inside an index batch.
 - Set both `SIGNOZ_DOCS_REFRESH_INTERVAL=0` and `SIGNOZ_DOCS_FULL_REFRESH_INTERVAL=0` when you would rather serve the docs snapshot that shipped with the release than pay any refresh. New docs pages then arrive with the next server upgrade. Setting only the first keeps the daily forced refresh.
 - Every refresh logs `docs refresh starting` and ends with a completion or failure line, for example `docs refresh no-op; sitemap unchanged`, `docs refresh found no page changes; index kept`, `docs refresh applied delta`, `docs refresh rebuilt index`, or a `docs refresh failed` / `docs full refresh failed` warning. A refresh normally finishes within a few minutes. A container whose last docs line is `docs refresh starting`, `docs refresh fetching pages`, or `docs refresh rebuilding index` and that then restarted most likely died mid-refresh.
 
@@ -738,13 +738,26 @@ Get one saved Explorer view's complete definition by UUID. Call this before `sig
 
 #### `signoz_search_docs`
 
-Return ranked official-doc matches with URLs and snippets when no exact documentation page is selected. Do not use this for live tenant data; use `signoz_fetch_doc` after choosing a result.
+Search official SigNoz documentation and return ranked pages with URLs and snippets for product, setup, instrumentation, configuration, API, deployment, or troubleshooting questions. Send 2 to 6 keywords for one topic and keep product and technology names as the user wrote them; split multi-intent questions into separate calls. If the top result is off-topic, retry with fewer or different terms. Do not use for live tenant data; use signoz_fetch_doc for the full content of a selected result or exact docs URL.
 
 - **Parameters**:
-  - `searchText` (required) - Natural-language or keyword query to search official SigNoz docs
+  - `searchText` (required) - 2 to 6 keywords for one topic, for example "Kubernetes pod logs". Keep product and technology names as the user wrote them.
   - `limit` (optional) - Maximum results to return as a string (default: 10, max: 25; a numeric value is also accepted). The 25 ceiling is deliberate: each result hydrates document text out of the in-process docs index, so a larger limit inflates this server's resident memory.
-  - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`
+  - `section_slug` (optional) - Exact top-level docs section filter, such as `setup`, `logs-management`, `apm-distributed-tracing`, `metrics`, `alerts`, `dashboards`, `signoz-apis`, `querying`, or `collection-agents`. Reuse the `section_slug` from an earlier result when narrowing; an unknown slug returns zero results
   - `searchContext` - User's original question
+
+Docs search telemetry counts executed searches in `signoz_docs_searches_total` with
+`outcome=ok|error`. Only successful searches have `result_count_bucket` (`0`, `1-4`,
+`5-9`, or `10+`). `signoz_docs_search_top_score` records the top hit's raw Bleve score
+only for successful non-empty searches. Scores are uncalibrated and depend on query
+terms, boosts, and analyzer settings; they are not relevance probabilities or thresholds.
+Search spans record `mcp.docs.search_text` (the executed query, truncated to 256 Unicode
+runes), `mcp.docs.section_slug`, and `mcp.docs.result_count`. Successful non-empty searches
+also record `mcp.docs.top_score`. These span attributes distinguish the client's keyword
+query from the user's original request in `mcp.search_context`; query text is not a metric
+attribute. If the query is invalid Bleve query-string syntax, search drops that clause,
+continues with text matching, and records `mcp.docs.query_string_dropped=true`. Empty or
+whitespace-only queries remain validation errors.
 
 #### `signoz_fetch_doc`
 
