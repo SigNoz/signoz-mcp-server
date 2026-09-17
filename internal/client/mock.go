@@ -47,6 +47,10 @@ type MockClient struct {
 	DeleteNotificationChannelFn func(ctx context.Context, id string) error
 	TestNotificationChannelFn   func(ctx context.Context, receiverJSON []byte) error
 	GetMetricCardinalityFn      func(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
+	ListDowntimeSchedulesFn     func(ctx context.Context, active, recurring *bool) (json.RawMessage, error)
+	GetDowntimeScheduleFn       func(ctx context.Context, id string) (json.RawMessage, error)
+	CreateDowntimeScheduleFn    func(ctx context.Context, scheduleJSON []byte) (json.RawMessage, error)
+	DeleteDowntimeScheduleFn    func(ctx context.Context, id string) error
 }
 
 // Compile-time check that MockClient satisfies Client.
@@ -302,4 +306,32 @@ func (m *MockClient) GetMetricCardinality(ctx context.Context, name string, star
 		return m.GetMetricCardinalityFn(ctx, name, start, end)
 	}
 	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) ListDowntimeSchedules(ctx context.Context, active, recurring *bool) (json.RawMessage, error) {
+	if m.ListDowntimeSchedulesFn != nil {
+		return m.ListDowntimeSchedulesFn(ctx, active, recurring)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) GetDowntimeSchedule(ctx context.Context, id string) (json.RawMessage, error) {
+	if m.GetDowntimeScheduleFn != nil {
+		return m.GetDowntimeScheduleFn(ctx, id)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) CreateDowntimeSchedule(ctx context.Context, scheduleJSON []byte) (json.RawMessage, error) {
+	if m.CreateDowntimeScheduleFn != nil {
+		return m.CreateDowntimeScheduleFn(ctx, scheduleJSON)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) DeleteDowntimeSchedule(ctx context.Context, id string) error {
+	if m.DeleteDowntimeScheduleFn != nil {
+		return m.DeleteDowntimeScheduleFn(ctx, id)
+	}
+	return nil
 }

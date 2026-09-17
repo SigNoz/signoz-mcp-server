@@ -45,5 +45,9 @@ type Client interface {
 	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error
 	DeleteNotificationChannel(ctx context.Context, id string) error
 	TestNotificationChannel(ctx context.Context, receiverJSON []byte) error
+	ListDowntimeSchedules(ctx context.Context, active, recurring *bool) (json.RawMessage, error)
+	GetDowntimeSchedule(ctx context.Context, id string) (json.RawMessage, error)
+	CreateDowntimeSchedule(ctx context.Context, scheduleJSON []byte) (json.RawMessage, error)
+	DeleteDowntimeSchedule(ctx context.Context, id string) error
 	GetMetricCardinality(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
 }
