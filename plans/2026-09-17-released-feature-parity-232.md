@@ -2,7 +2,8 @@
 
 Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/232
-PR: Not opened
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/313
+Companion PR: https://github.com/SigNoz/agent-skills/pull/98
 
 The independently reviewed hard-cut plan was approved by the user on 2026-09-18.
 Implementation and verification are complete on the feature branch.
@@ -883,8 +884,10 @@ CMP-3 requires the coordinated companion change. It is implemented in
 `SigNoz/agent-skills` on `feat/released-feature-parity-232`, commit `1b84890`.
 Server README, manifest, migration documentation, resources, and targeted wire
 fixtures are synchronized. Offline skill evaluation does not claim hosted
-client integration. Both changes remain local; PRs have not been opened and
-nothing has been published or merged.
+client integration. The server PR is [#313](https://github.com/SigNoz/signoz-mcp-server/pull/313)
+and the required companion PR is [#98](https://github.com/SigNoz/agent-skills/pull/98).
+Both branches are pushed and PRs are open; neither change has been merged or
+released. Coordinate the server and skills releases.
 
 Deferred scope remains under Broader product coverage with the existing
 issue/PR links, including release synchronization in #233. No additional
