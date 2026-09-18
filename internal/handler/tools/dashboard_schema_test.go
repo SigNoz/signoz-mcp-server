@@ -34,6 +34,23 @@ func TestEmbeddedDashboardSchemasAreValid(t *testing.T) {
 	}
 }
 
+func TestDashboardSchemasAdvertiseTextPanelAndCanonicalID(t *testing.T) {
+	for name, raw := range map[string][]byte{"create": createDashboardSchema, "update": updateDashboardSchema} {
+		t.Run(name, func(t *testing.T) {
+			text := string(raw)
+			if !strings.Contains(text, `"const": "signoz/TextPanel"`) {
+				t.Fatal("schema does not advertise signoz/TextPanel")
+			}
+			if strings.Contains(text, `"uuid"`) {
+				t.Fatal("schema still advertises removed uuid alias")
+			}
+		})
+	}
+	if strings.Contains(string(patchDashboardSchema), `"uuid"`) {
+		t.Fatal("patch schema still advertises removed uuid alias")
+	}
+}
+
 // TestWidgetExamplesValidateAgainstCreateSchema is the cross-contract guard tying
 // the widgets-examples resource to the embedded create schema. Every worked panel
 // served at signoz://dashboard/widgets-examples must satisfy the schema clients
@@ -72,6 +89,17 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 		}
 		if err := resolved.Validate(v); err != nil {
 			t.Errorf("example %d does not validate against DashboardtypesPanel: %v", i, err)
+		}
+		panel := v.(map[string]any)
+		spec := panel["spec"].(map[string]any)
+		plugin := spec["plugin"].(map[string]any)
+		queries := spec["queries"].([]any)
+		if plugin["kind"] == textPanelKind {
+			if len(queries) != 0 {
+				t.Errorf("TextPanel example %d has %d queries, want 0", i, len(queries))
+			}
+		} else if len(queries) != 1 {
+			t.Errorf("query panel example %d has %d queries, want 1", i, len(queries))
 		}
 	}
 }

@@ -14,8 +14,10 @@ via WithRawInputSchema, and the v2 API is the authoritative validator. Regenerat
 whenever the upstream OpenAPI dashboard schemas change.
 
 USAGE (the recipe used to produce the committed files):
-    # 1. fetch the upstream spec to the hardcoded input path
-    curl -sL https://raw.githubusercontent.com/SigNoz/signoz/main/docs/api/openapi.yml \
+    # 1. fetch the pinned released spec (v0.142.0, commit
+    #    57268e50b4907194cf4a6628143df3d6aaa1424e) to the hardcoded input path.
+    #    Do not fetch from main; TextPanel and related contracts must match this tag.
+    curl -sL https://raw.githubusercontent.com/SigNoz/signoz/v0.142.0/docs/api/openapi.yml \
         -o /tmp/openapi.yml
     # 2. run this script -> writes /tmp/dash_schemas/{create,update,patch}.json
     pip3 install pyyaml   # if needed
@@ -27,10 +29,9 @@ USAGE (the recipe used to produce the committed files):
 
 NOTE: input (/tmp/openapi.yml) and output (/tmp/dash_schemas/) paths are hardcoded
 below; adjust if you want a different location. The core extraction is the
-verified one-off run that produced the current committed schemas; the K5 id/uuid
-handling on update/patch (canonical `id` + `uuid` alias, neither required) was
-originally applied as manual edits to the JSON afterward and is now folded into
-this script so a regen reproduces the committed files end-to-end.
+verified one-off run that produced the current committed schemas. Update and patch
+advertise canonical `id` only (not schema-required); the legacy `uuid` input alias
+is not generated.
 """
 import yaml, json, os, re
 
@@ -163,10 +164,9 @@ reports['create'] = (root.get('required', []), list(create['properties'].keys())
 uroot = rewrite_refs(schemas['DashboardtypesUpdatableDashboardV2'])
 udefs = build_defs('DashboardtypesUpdatableDashboardV2')
 update = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": {}, "required": []}
-# K5 contract: canonical `id` + permanent `uuid` alias, with NEITHER schema-required
-# (a resource id must never be required — TestUpdateStructs_IDNotSchemaRequired).
+# Canonical `id` is advertised and not schema-required (the handler validates
+# presence). Do not emit a `uuid` input alias.
 update['properties']['id'] = {"type": "string", "description": "Dashboard id (UUID) to update."}
-update['properties']['uuid'] = {"type": "string", "description": "Legacy alias for id; accepted for backward compatibility."}
 for k, v in uroot.get('properties', {}).items():
     update['properties'][k] = v
 for r in uroot.get('required', []):
@@ -181,11 +181,11 @@ reports['update'] = (update['required'], list(update['properties'].keys()), len(
 # ---- patch: id + patch(PatchableDashboardV2) + searchContext ----
 proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
 pdefs = build_defs('DashboardtypesPatchableDashboardV2')
-# K5 contract: `id` + `uuid` alias, neither required (only `patch` is required).
+# Canonical `id` is advertised and not schema-required; only `patch` is required.
+# Do not emit a `uuid` input alias.
 patch = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
          "properties": {
              "id": {"type": "string", "description": "Dashboard id (UUID) to patch."},
-             "uuid": {"type": "string", "description": "Legacy alias for id; accepted for backward compatibility."},
              "patch": proot,
              "searchContext": SEARCH_CTX,
          },

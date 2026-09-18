@@ -869,6 +869,96 @@ func TestTelemetryMetricsExcludeHighCardinalityCorrelation(t *testing.T) {
 	}
 }
 
+func TestSecretBearingToolTelemetryScrubsSearchContextAndErrorText(t *testing.T) {
+	const secret = "https://hooks.example.test/credential-url-canary"
+	for _, toolName := range []string{"signoz_create_notification_channel", "signoz_update_notification_channel"} {
+		t.Run(toolName, func(t *testing.T) {
+			identity := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"status":"success","data":{"id":"sa-1","orgId":"org-1"}}`))
+			}))
+			defer identity.Close()
+
+			var logs bytes.Buffer
+			logger := newBufferedLogger(&logs, slog.LevelDebug)
+			server, reader, exporter := testServerWithTelemetry(t, logger)
+			spy := &spyAnalytics{enabled: true}
+			server.analytics = spy
+
+			ctx := util.SetAPIKey(context.Background(), "test-key")
+			ctx = util.SetAuthHeader(ctx, "SIGNOZ-API-KEY")
+			ctx = util.SetSigNozURL(ctx, identity.URL)
+			result := &mcp.CallToolResult{
+				IsError:           true,
+				Content:           []mcp.Content{&mcp.TextContent{Text: "upstream rejected " + secret}},
+				StructuredContent: map[string]any{"code": tools.CodeValidationFailed, "status": http.StatusBadRequest},
+			}
+			request := toolRequest(toolName, `{"searchContext":"`+secret+`","config":{"kind":"webhook","spec":{"url":"`+secret+`"}}}`)
+			got, err := server.receivingMiddleware(func(name string) bool { return name == toolName })(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+				return result, nil
+			})(ctx, "tools/call", request)
+			if err != nil || got != result {
+				t.Fatalf("tool observation changed result: got=%v err=%v", got, err)
+			}
+			if err := server.WaitForAnalytics(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			if strings.Contains(logs.String(), secret) {
+				t.Fatalf("logs leaked secret-bearing tool text: %s", logs.String())
+			}
+			terminal, _ := logRecordByMessage(t, &logs, "tool call returned error result")
+			if terminal["error_message"] != secretBearingToolTelemetryError.Error() {
+				t.Fatalf("terminal error_message = %v", terminal["error_message"])
+			}
+			if _, present := terminal["mcp.search_context"]; present {
+				t.Fatalf("terminal log retained mcp.search_context: %#v", terminal)
+			}
+
+			spans := exporter.GetSpans()
+			if len(spans) != 1 {
+				t.Fatalf("span count = %d, want 1", len(spans))
+			}
+			if _, present := spanAttrValue(spans[0].Attributes, otelpkg.MCPSearchContextKey); present {
+				t.Fatal("secret-bearing tool span retained mcp.search_context")
+			}
+			spanCode, present := spanAttrValue(spans[0].Attributes, otelpkg.MCPToolErrorCodeKey)
+			if !present || spanCode.AsString() != tools.CodeValidationFailed {
+				t.Fatalf("span error code = %v, present=%t", spanCode, present)
+			}
+			if spans[0].Status.Code != codes.Error || spans[0].Status.Description != secretBearingToolTelemetryError.Error() {
+				t.Fatalf("span status = %#v", spans[0].Status)
+			}
+			if strings.Contains(fmt.Sprintf("%#v", spans[0]), secret) {
+				t.Fatal("span events or status leaked secret-bearing error text")
+			}
+
+			var metrics metricdata.ResourceMetrics
+			if err := reader.Collect(context.Background(), &metrics); err != nil {
+				t.Fatal(err)
+			}
+			toolCalls, found := oteltest.FindInt64SumMetric(metrics, "mcp.tool.calls")
+			if !found || len(toolCalls.DataPoints) != 1 {
+				t.Fatalf("mcp.tool.calls = %#v, found=%t", toolCalls.DataPoints, found)
+			}
+			code, present := toolCalls.DataPoints[0].Attributes.Value(otelpkg.MCPToolErrorCodeKey)
+			if !present || code.AsString() != tools.CodeValidationFailed {
+				t.Fatalf("metric error code = %v, present=%t", code, present)
+			}
+
+			_, tracked := spy.snapshot()
+			if len(tracked) != 1 || tracked[0].event != analytics.EventToolCalled {
+				t.Fatalf("analytics calls = %#v", tracked)
+			}
+			if encoded, marshalErr := json.Marshal(tracked[0].attrs); marshalErr != nil || bytes.Contains(encoded, []byte(secret)) {
+				t.Fatalf("analytics leaked secret-bearing text: %s (err=%v)", encoded, marshalErr)
+			}
+			if tracked[0].attrs[analytics.AttrErrorType] != strings.ToLower(tools.CodeValidationFailed) {
+				t.Fatalf("analytics error classification = %v", tracked[0].attrs[analytics.AttrErrorType])
+			}
+		})
+	}
+}
+
 func TestUnknownMethodIsNormalizedInMetrics(t *testing.T) {
 	server, reader, _ := testServerWithTelemetry(t, logpkg.New("error"))
 	err := &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: fmt.Sprintf("unknown method %q", strings.Repeat("x", 256))}

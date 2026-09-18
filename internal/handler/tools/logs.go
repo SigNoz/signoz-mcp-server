@@ -12,7 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\"."
+const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Cross-field full-text search: search('term') or search('term', body, attribute, resource, log); scopes are ORed, surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"search('timeout', body, resource) AND severity_text = 'ERROR'\"."
 
 func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering logs handlers")
@@ -48,7 +48,7 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 		mcp.WithString("filter", mcp.Description(logsFilterParamDescription)),
 		mcp.WithString("service", mcp.Description("Optional service name to filter by (adds service.name = '<value>'). Fails with `key service.name not found` when this workspace's logs lack that attribute; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.")),
 		mcp.WithString("severity", mcp.Description("Filter on severity_text. Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Discover values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").")),
-		mcp.WithString("searchText", mcp.Description("Text to search for in log body (uses CONTAINS matching).")),
+		mcp.WithString("searchText", mcp.Description("Body-only text convenience: builds body CONTAINS with this literal, escaped automatically. Use filter search('term') for case-insensitive search across body, attributes, resource, and log fields; both combine with AND.")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),

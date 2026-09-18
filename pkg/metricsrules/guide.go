@@ -107,6 +107,27 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
 
 ---
 
+## Heatmap Queries
+
+Use requestType "heatmap" (SigNoz v0.142.0 or newer) in a raw signoz_execute_builder_query
+request when the user needs a distribution of metric values, not a scalar or time series. The request
+must have exactly one enabled output: one metrics builder_query, one builder_formula with its
+metric inputs disabled, one PromQL query, or one ClickHouse SQL query. Keep every input and output
+limit and order explicit. SigNoz ranks heatmap series by the sum of their bucket counts.
+
+Set bucketOptions on the enabled metrics query or formula. Use {"kind":"log","spec":{}} for
+the default finest log axis, or {"kind":"log","spec":{"scale":2}} for integer scales from -4
+through 4. Use {"kind":"linear","spec":{"maxValue":1,"numBuckets":20}} for a linear axis;
+maxValue must be finite and greater than zero, numBuckets may be omitted (or 0) for the
+default 60 and can be at most 512. Metric-type restrictions, including histogram bucket derivation,
+are resolved by SigNoz from current metadata.
+
+The response remains raw Query Builder JSON: bucket upper bounds are in
+aggregations[].meta.buckets, and each timestamp has one count per bound plus a final count above
+the last bound. Do not convert that shape to a scalar value.
+
+---
+
 ## Payload Examples
 
 ### Example 1: Gauge — CPU Utilization Over Time
@@ -246,6 +267,81 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
       }
     ]
   }
+}
+` + "```" + `
+
+### Example 5: Heatmap: CPU distribution with log buckets
+` + "```json" + `
+{
+  "schemaVersion": "v1",
+  "start": 1711123200000,
+  "end": 1711209600000,
+  "requestType": "heatmap",
+  "compositeQuery": {
+    "queries": [{
+      "type": "builder_query",
+      "spec": {
+        "signal": "metrics",
+        "name": "A",
+        "stepInterval": 60,
+        "limit": 100,
+        "order": [{"key": {"name": "__result"}, "direction": "desc"}],
+        "aggregations": [{
+          "metricName": "container.cpu.utilization",
+          "temporality": "unspecified",
+          "timeAggregation": "avg",
+          "spaceAggregation": "sum"
+        }],
+        "bucketOptions": {"kind": "log", "spec": {"scale": 2}}
+      }
+    }]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+` + "```" + `
+
+### Example 6: Heatmap formula: linear latency buckets
+` + "```json" + `
+{
+  "schemaVersion": "v1",
+  "start": 1711123200000,
+  "end": 1711209600000,
+  "requestType": "heatmap",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "signal": "metrics",
+          "name": "A",
+          "disabled": true,
+          "stepInterval": 60,
+          "limit": 10000,
+          "order": [{"key": {"name": "__result"}, "direction": "desc"}],
+          "aggregations": [{
+            "metricName": "http_request_duration_seconds",
+            "temporality": "delta",
+            "timeAggregation": "rate",
+            "spaceAggregation": "sum"
+          }]
+        }
+      },
+      {
+        "type": "builder_formula",
+        "spec": {
+          "name": "B",
+          "expression": "A",
+          "disabled": false,
+          "limit": 100,
+          "order": [{"key": {"name": "__result"}, "direction": "desc"}],
+          "bucketOptions": {"kind": "linear", "spec": {"maxValue": 1, "numBuckets": 20}}
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
 }
 ` + "```" + `
 

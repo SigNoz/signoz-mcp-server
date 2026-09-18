@@ -1,18 +1,28 @@
-"""Get-by-id aliases — port of Family E K5 reads.
+"""Get-by-id canonical inputs and retained alert/view aliases.
 
-The canonical id param and the legacy alias (ruleId / uuid) both reach the
-backend. The Go test read whatever staging had; here the resources are seeded
-so both alias paths always run.
+Alert ruleId remains supported. Dashboard uuid was removed by the v6 hard cut
+and must fail clearly instead of reaching the backend.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
-from fixtures.results import dig_id, first_block_json
-from fixtures.seeded import create_alert_rule, create_channel, delete_alert_rule, delete_channel
+from fixtures.results import dig_id, first_block_json, first_text_block, result_code
+from fixtures.seeded import (
+    alert_rule_gone,
+    channel_gone,
+    create_alert_rule,
+    create_channel,
+    delete_alert_rule,
+    delete_channel,
+)
 
 
 def test_get_alert_by_id_and_legacy(mcp_client: MCPClient, test_id: str) -> None:
     channel_name = f"mcp-e2e-ch-{test_id}"
-    channel_id = create_channel(mcp_client, channel_name)
+    channel_id = create_channel(
+        mcp_client,
+        channel_name,
+        {"kind": "webhook", "spec": {"url": "http://example.invalid/no-send"}},
+    )
     rule_id = None
     try:
         rule_id = create_alert_rule(mcp_client, f"mcp-e2e-rule-{test_id}", channel_name=channel_name)
@@ -23,10 +33,12 @@ def test_get_alert_by_id_and_legacy(mcp_client: MCPClient, test_id: str) -> None
     finally:
         if rule_id is not None:
             delete_alert_rule(mcp_client, rule_id)
+            assert alert_rule_gone(mcp_client, rule_id), f"alert rule {rule_id} remained after cleanup"
         delete_channel(mcp_client, channel_id)
+        assert channel_gone(mcp_client, channel_id), f"channel {channel_id} remained after cleanup"
 
 
-def test_get_dashboard_by_id_and_legacy(mcp_client: MCPClient, test_id: str) -> None:
+def test_get_dashboard_by_id_and_removed_uuid(mcp_client: MCPClient, test_id: str) -> None:
     created = assert_tool_ok(
         mcp_client.call_tool(
             "signoz_create_dashboard",
@@ -41,13 +53,26 @@ def test_get_dashboard_by_id_and_legacy(mcp_client: MCPClient, test_id: str) -> 
     dashboard_id = dig_id(first_block_json(created))
     assert dashboard_id, "could not extract dashboard id from create response"
     try:
-        for key in ("id", "uuid"):
-            assert_tool_ok(
-                mcp_client.call_tool(
-                    "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", key: dashboard_id}
-                )
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", "id": dashboard_id}
             )
-    finally:
-        mcp_client.call_tool(
-            "signoz_delete_dashboard", {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id}
         )
+        removed = mcp_client.call_tool(
+            "signoz_get_dashboard", {"searchContext": "reject the removed dashboard uuid alias", "uuid": dashboard_id}
+        )
+        assert removed.get("isError", False)
+        assert '"uuid" is no longer accepted' in first_text_block(removed)
+        assert result_code(removed) == "VALIDATION_FAILED"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} gone", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"

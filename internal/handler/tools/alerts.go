@@ -101,7 +101,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		mcp.WithDescription(
 			"Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. "+
 				"Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. "+
-				"For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. If none fits, ask the user or offer signoz_create_notification_channel with user-provided config; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+				"For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with user-provided config.kind/spec; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
 		),
 		mcp.WithInputSchema[types.CreateAlertInput](),
 	)
@@ -111,7 +111,7 @@ func (h *Handler) RegisterAlertsHandlers(s *mcp.Server) {
 		"signoz_update_alert",
 		withUpdateToolAnnotations(),
 		mcp.WithDescription(
-			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. If no direct channel fits, ask the user or offer signoz_create_notification_channel with user-provided config; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+			"Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with user-provided config.kind/spec; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
 		),
 		mcp.WithInputSchema[types.UpdateAlertInput](),
 	)
@@ -580,7 +580,7 @@ func (h *Handler) validateAlertPayload(ctx context.Context, rawConfig map[string
 		return nil, clientError(err)
 	}
 
-	availableChannels, err := fetchChannelNames(ctx, client)
+	availableChannels, err := fetchChannelDisplayNames(ctx, client)
 	if err != nil {
 		h.logger.WarnContext(ctx, "Failed to fetch notification channels for validation", logpkg.ErrAttr(err))
 		return nil, upstreamError(fmt.Errorf("could not fetch notification channels for alert validation: %w", err))
@@ -617,29 +617,54 @@ func supportsPolicyRouting(ruleType any) bool {
 	return ruleType == "threshold_rule" || ruleType == "promql_rule"
 }
 
-// fetchChannelNames retrieves all notification channel names from the SigNoz API.
-func fetchChannelNames(ctx context.Context, c signozclient.Client) ([]string, error) {
-	resp, err := c.ListNotificationChannels(ctx)
-	if err != nil {
-		return nil, err
-	}
+// fetchChannelDisplayNames retrieves every routing name from the filtered v2 list.
+func fetchChannelDisplayNames(ctx context.Context, c signozclient.Client) ([]string, error) {
+	const pageLimit = types.NotificationChannelMaxListLimit
 
-	var parsed struct {
-		Data []struct {
-			Name string `json:"name"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(resp, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse notification channels response: %w", err)
-	}
+	var (
+		displayNames  []string
+		seenIDs       = make(map[string]struct{})
+		expectedTotal = -1
+		offset        int
+	)
+	for {
+		page, err := c.ListNotificationChannelsV2(ctx, types.NotificationChannelListParams{
+			Limit:  pageLimit,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if expectedTotal == -1 {
+			expectedTotal = page.Total
+		} else if page.Total != expectedTotal {
+			return nil, fmt.Errorf("notification channel pagination total changed from %d to %d at offset %d", expectedTotal, page.Total, offset)
+		}
+		if page.Total < 0 || offset > page.Total || len(page.Channels) > page.Total-offset {
+			return nil, fmt.Errorf("notification channel pagination returned inconsistent total %d at offset %d with %d channels", page.Total, offset, len(page.Channels))
+		}
+		if len(page.Channels) == 0 {
+			if offset == expectedTotal {
+				return displayNames, nil
+			}
+			return nil, fmt.Errorf("notification channel pagination returned an empty page at offset %d before total %d", offset, expectedTotal)
+		}
 
-	names := make([]string, 0, len(parsed.Data))
-	for _, ch := range parsed.Data {
-		if ch.Name != "" {
-			names = append(names, ch.Name)
+		for index, channel := range page.Channels {
+			if strings.TrimSpace(channel.DisplayName) == "" {
+				return nil, fmt.Errorf("notification channel at offset %d is missing displayName", offset+index)
+			}
+			if _, duplicate := seenIDs[channel.ID]; duplicate {
+				return nil, fmt.Errorf("notification channel pagination returned duplicate id %q at offset %d", channel.ID, offset+index)
+			}
+			seenIDs[channel.ID] = struct{}{}
+			displayNames = append(displayNames, channel.DisplayName)
+		}
+		offset += len(page.Channels)
+		if offset == expectedTotal {
+			return displayNames, nil
 		}
 	}
-	return names, nil
 }
 
 func extractPreferredChannelReferences(rawConfig map[string]any) ([]string, bool) {
@@ -712,7 +737,7 @@ func uniqueStrings(values []string) []string {
 	return unique
 }
 
-// findInvalidChannels returns channel names that are not in the available list.
+// findInvalidChannels returns routing display names that are not in the available list.
 func findInvalidChannels(referenced, available []string) []string {
 	avail := map[string]bool{}
 	for _, name := range available {
@@ -732,7 +757,7 @@ func formatNoAnomalyChannelsError(available []string) string {
 	sb.WriteString("No notification channels specified for direct routing. At least one existing channel is required.\n\n")
 
 	if len(available) > 0 {
-		sb.WriteString("Available notification channels:\n")
+		sb.WriteString("Available notification channel displayName values:\n")
 		for _, name := range available {
 			fmt.Fprintf(&sb, "  - %s\n", name)
 		}
@@ -740,7 +765,7 @@ func formatNoAnomalyChannelsError(available []string) string {
 	} else {
 		sb.WriteString("No notification channels exist yet. Ask the user whether to create one.\n")
 	}
-	sb.WriteString("If no existing channel fits, offer signoz_create_notification_channel and call it only after the user confirms the name, type, and required provider settings.")
+	sb.WriteString("If no existing channel fits, offer signoz_create_notification_channel and call it only after the user confirms displayName and config.kind/spec. Test delivery defaults to false.")
 	return sb.String()
 }
 
@@ -748,13 +773,13 @@ func formatMissingThresholdChannelsError(missingTiers, available []string) strin
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Direct routing requires at least one notification channel on every threshold tier. Missing channels on: %s.\n\n", strings.Join(missingTiers, ", "))
 	if len(available) > 0 {
-		sb.WriteString("Available notification channels:\n")
+		sb.WriteString("Available notification channel displayName values:\n")
 		for _, name := range available {
 			fmt.Fprintf(&sb, "  - %s\n", name)
 		}
-		sb.WriteString("\nAsk the user to choose valid names for each missing condition.thresholds.spec[].channels array. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed provider settings.")
+		sb.WriteString("\nAsk the user to choose exact returned displayName values for each missing condition.thresholds.spec[].channels array. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed config.kind/spec.")
 	} else {
-		sb.WriteString("No notification channels exist yet. Ask the user whether to create one with signoz_create_notification_channel; call it only with user-confirmed provider settings.")
+		sb.WriteString("No notification channels exist yet. Ask the user whether to create one with signoz_create_notification_channel; call it only with user-confirmed config.kind/spec.")
 	}
 	sb.WriteString(" Only after the user confirms an existing matching org policy, set notificationSettings.usePolicy=true and omit threshold channels; otherwise keep direct routing and ask for channel choices.")
 	return sb.String()
@@ -762,10 +787,10 @@ func formatMissingThresholdChannelsError(missingTiers, available []string) strin
 
 func formatInvalidChannelsError(invalid, available []string, policyRouting bool) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "The following notification channels do not exist: %s\n\n", strings.Join(invalid, ", "))
+	fmt.Fprintf(&sb, "The following notification channel displayName values do not exist: %s\n\n", strings.Join(invalid, ", "))
 	if policyRouting {
 		if len(available) > 0 {
-			sb.WriteString("Current notification channels:\n")
+			sb.WriteString("Current notification channel displayName values:\n")
 			for _, name := range available {
 				fmt.Fprintf(&sb, "  - %s\n", name)
 			}
@@ -776,22 +801,22 @@ func formatInvalidChannelsError(invalid, available []string, policyRouting bool)
 	}
 
 	if len(available) > 0 {
-		sb.WriteString("Available notification channels:\n")
+		sb.WriteString("Available notification channel displayName values:\n")
 		for _, name := range available {
 			fmt.Fprintf(&sb, "  - %s\n", name)
 		}
-		sb.WriteString("\nAsk the user to choose one of the available channels. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed provider settings.")
+		sb.WriteString("\nAsk the user to choose an exact returned displayName. If none fits, offer signoz_create_notification_channel and call it only with user-confirmed config.kind/spec.")
 	} else {
-		sb.WriteString("No notification channels exist yet. Ask the user whether to create one with signoz_create_notification_channel; call it only with user-confirmed provider settings.")
+		sb.WriteString("No notification channels exist yet. Ask the user whether to create one with signoz_create_notification_channel; call it only with user-confirmed config.kind/spec.")
 	}
 	return sb.String()
 }
 
 func formatBlankChannelsError(policyRouting bool) string {
 	if policyRouting {
-		return "Notification channel names cannot be blank. Because notificationSettings.usePolicy=true, remove blank direct channel references."
+		return "Notification channel displayName values cannot be blank. Because notificationSettings.usePolicy=true, remove blank direct channel references."
 	}
-	return "Notification channel names cannot be blank. Reuse a current signoz_list_notification_channels result from the same prepared operation or call it to choose replacements. If none exists, ask the user or offer signoz_create_notification_channel with user-provided config; never create automatically."
+	return "Notification channel displayName values cannot be blank. Reuse a current signoz_list_notification_channels result from the same prepared operation or call it to choose exact returned replacements. If none exists, ask the user or offer signoz_create_notification_channel with user-provided config.kind/spec; never create automatically."
 }
 
 // registerAlertResources registers MCP resources needed for alert creation.

@@ -78,8 +78,10 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   query_metrics, error-code taxonomy, mutation envelope.
 - `test_enums_and_grammar.py` — enum values, advertised aggregation set vs the
   backend, timeRange/stepInterval grammar, docs param + alias, top-operations tags.
-- `test_notification_channels.py` — fail-open bad-webhook create with warning
-  note; normal lifecycle with confirmed deletion.
+- `test_notification_channels.py` — canonical notification v2 lifecycle for every
+  provider with `test: false`, config round-trip, config-free listing, an opt-in
+  loopback webhook test sink, and confirmed deletion. The sink is reachable only
+  through `host.docker.internal`; no external destination is contacted.
 - `test_saved_views.py` — view CRUD round-trip cloned from a seeded source view.
 - `test_get_by_id_aliases.py` — canonical id and legacy alias (ruleId/uuid) reads.
 - `test_trace_fields.py` — snake_case trace fields, filters, aggregations.
@@ -87,8 +89,13 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 - `test_docs.py` — docs search/fetch, out-of-scope coded error, sitemap resource.
 - `test_upstream_errors.py` — uniform upstream error prefix; rejected-credential
   coded error.
-- `test_logs.py`, `test_dashboards.py` — seeded-logs search and dashboard
-  round-trip smoke suites.
+- `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
+  quoted terms, body-only legacy search text, and upstream warning preservation.
+- `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
+  lifecycle, cleanup verification, and read-only system dashboard behavior.
+- `test_heatmaps.py` — seeded metric heatmap responses, log/linear bucket
+  options, overflow values, disabled-input formula execution, and saved-view
+  preservation.
 
 ## CI
 

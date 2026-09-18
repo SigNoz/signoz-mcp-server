@@ -15,9 +15,9 @@ VALIDATION_CASES = [
     # A wrong-typed legacy alias is treated as absent, so the canonical id error.
     ("signoz_get_alert", {"ruleId": 12345}, '"id" is required'),
     ("signoz_get_dashboard", {}, '"id" is required'),
-    ("signoz_get_dashboard", {"uuid": True}, '"id" is required'),
+    ("signoz_get_dashboard", {"uuid": True}, '"uuid" is no longer accepted'),
     ("signoz_get_view", {}, '"id" is required'),
-    ("signoz_get_notification_channel", {}, '"id" cannot be empty'),
+    ("signoz_get_notification_channel", {}, 'id "" is not a valid UUID'),
     ("signoz_execute_builder_query", {}, '"query" must be a JSON object'),
 ]
 

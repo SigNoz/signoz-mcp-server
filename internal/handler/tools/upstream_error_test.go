@@ -73,7 +73,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
-				r, _ := h.handleGetNotificationChannel(testCtx(), makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "abc"}))
+				r, _ := h.handleGetNotificationChannel(testCtx(), makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "019947a7-f200-7000-8000-000000000001"}))
 				return r.IsError, textContent(t, r)
 			},
 		},

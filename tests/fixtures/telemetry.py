@@ -48,6 +48,49 @@ def seed_logs(service_name: str, body: str, *, severity: str = "INFO", count: in
     logger.info("seeded %d log record(s) for service %s", count, service_name)
 
 
+def seed_field_tokens(
+    service_name: str,
+    *,
+    body_token: str,
+    attribute_token: str,
+    resource_token: str,
+) -> None:
+    """Seed one log whose body, attribute, and resource carry distinct tokens."""
+    now = time.time_ns()
+    payload = {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": service_name}},
+                        {"key": "telemetry.sdk.language", "value": {"stringValue": "e2e"}},
+                        {"key": "e2e.resource.token", "value": {"stringValue": resource_token}},
+                    ]
+                },
+                "scopeLogs": [
+                    {
+                        "scope": {"name": "signoz-mcp-e2e"},
+                        "logRecords": [
+                            {
+                                "timeUnixNano": str(now),
+                                "severityText": "INFO",
+                                "body": {"stringValue": body_token},
+                                "attributes": [
+                                    {"key": "e2e.marker", "value": {"stringValue": body_token}},
+                                    {"key": "e2e.attribute.token", "value": {"stringValue": attribute_token}},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    response = requests.post(f"{OTLP_ENDPOINT}/v1/logs", json=payload, timeout=30)
+    response.raise_for_status()
+    logger.info("seeded distinct body/attribute/resource tokens for %s", service_name)
+
+
 def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: int = 1) -> list[str]:
     """Push spans to the cast SigNoz via OTLP/HTTP; return the trace ids (hex).
 
@@ -92,9 +135,19 @@ def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: i
     return trace_ids
 
 
-def seed_metrics(service_name: str, metric_name: str, *, value: float = 42.0, count: int = 1) -> None:
-    """Push gauge data points for `metric_name` via OTLP/HTTP."""
-    now = time.time_ns()
+def seed_metrics(
+    service_name: str,
+    metric_name: str,
+    *,
+    value: float = 42.0,
+    count: int = 1,
+    age_seconds: float = 0,
+) -> None:
+    """Push gauge data points for `metric_name` via OTLP/HTTP.
+
+    `age_seconds` lets tests place samples behind a completed query bucket.
+    """
+    now = time.time_ns() - int(age_seconds * 1_000_000_000)
     points = [
         {
             "asDouble": value + i,

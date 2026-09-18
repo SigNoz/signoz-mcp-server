@@ -42,5 +42,8 @@ def test_view_crud_round_trip(mcp_client: MCPClient, test_id: str) -> None:
         assert view_gone(mcp_client, clone_id), f"view {clone_id} should be gone after delete"
     finally:
         if clone_id and not deleted:
-            mcp_client.call_tool("signoz_delete_view", {"searchContext": f"cleanup view {clone_id}", "id": clone_id})
+            delete_view(mcp_client, clone_id)
+        if clone_id:
+            assert view_gone(mcp_client, clone_id), f"clone view {clone_id} remained after cleanup"
         delete_view(mcp_client, source_id)
+        assert view_gone(mcp_client, source_id), f"source view {source_id} remained after cleanup"

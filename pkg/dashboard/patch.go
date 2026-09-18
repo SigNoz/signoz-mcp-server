@@ -16,7 +16,7 @@ Critical [read first]:
 - Adding a panel takes TWO ops in ONE patch: add the panel at /spec/panels/<id> AND append a grid item at /spec/layouts/0/spec/items/- whose content.$ref is "#/spec/panels/<id>". A panel with no grid item is accepted but never renders.
 - Removing a panel also takes TWO ops in ONE patch: remove its grid item AND remove the panel entry. The whole dashboard is validated after the ops apply, so a grid item whose $ref points to a removed panel is rejected ("references unknown panel").
 - The top-level "name" is immutable — never patch /name. Rename via replace /spec/display/name (this does NOT change the immutable name).
-- A panel holds exactly ONE query (backend-enforced). To combine series, replace the single query with a signoz/CompositeQuery — do NOT append a second entry to /spec/panels/<id>/spec/queries.
+- Query-backed panels hold exactly ONE query (backend-enforced). To combine series, replace the single query with a signoz/CompositeQuery — do NOT append a second entry to /spec/panels/<id>/spec/queries. signoz/TextPanel is queryless and must use queries: []; query replacement paths do not apply to it.
 - Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the final dashboard is still validated; locked dashboards are rejected.
 
 --- Recipes (each block is the "patch" array) ---
@@ -36,6 +36,15 @@ Edit one field of an existing panel (e.g. its title or y-axis unit):
 
 Replace a panel's query (one query per panel — replace, don't append; use signoz/CompositeQuery for multi-series):
 [{"op":"replace","path":"/spec/panels/panel-b/spec/queries/0","value":{ ...a query — see signoz://dashboard/widgets-examples... }}]
+
+Add a Markdown TextPanel (two ops in one patch: panel plus grid item):
+[
+  {"op":"add","path":"/spec/panels/runbook","value":{"kind":"Panel","spec":{"display":{"name":"Runbook","description":"Operator notes"},"plugin":{"kind":"signoz/TextPanel","spec":{"mode":"markdown","text":"## Response\n\nFollow the [runbook](https://example.com).","presentation":{"textAlign":"left","verticalAlign":"top"},"headerOptions":{"hide":false}}},"queries":[]}}},
+  {"op":"add","path":"/spec/layouts/0/spec/items/-","value":{"x":0,"y":0,"width":6,"height":3,"content":{"$ref":"#/spec/panels/runbook"}}}
+]
+
+Edit TextPanel Markdown:
+[{"op":"replace","path":"/spec/panels/runbook/spec/plugin/spec/text","value":"## Updated response\n\nCheck service health first."}]
 
 Move / resize a panel (edit its grid item):
 [{"op":"replace","path":"/spec/layouts/0/spec/items/0","value":{"x":6,"y":0,"width":6,"height":6,"content":{"$ref":"#/spec/panels/panel-a"}}}]
