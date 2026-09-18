@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -40,6 +42,30 @@ func TestContextHandler_InjectsTenantAndSearchContext(t *testing.T) {
 	}
 	if got := rec["mcp.search_context"]; got != "root-cause" {
 		t.Fatalf("mcp.search_context = %v, want root-cause", got)
+	}
+}
+
+func TestContextHandler_SuppressesSearchContextForSecretBearingTools(t *testing.T) {
+	for _, toolName := range []string{"signoz_create_notification_channel", "signoz_update_notification_channel"} {
+		t.Run(toolName, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := newTestLogger(&buf)
+			ctx := util.SetSearchContext(context.Background(), "credential-url-canary")
+			ctx = util.SetToolName(ctx, toolName)
+
+			logger.InfoContext(ctx, "ping")
+
+			var rec map[string]any
+			if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+				t.Fatalf("parse log record: %v", err)
+			}
+			if _, present := rec["mcp.search_context"]; present || strings.Contains(buf.String(), "credential-url-canary") {
+				t.Fatalf("secret-bearing tool log retained search context: %s", buf.String())
+			}
+			if rec["gen_ai.tool.name"] != toolName {
+				t.Fatalf("gen_ai.tool.name = %v, want %s", rec["gen_ai.tool.name"], toolName)
+			}
+		})
 	}
 }
 
@@ -213,7 +239,7 @@ func TestRedactedTruncAny(t *testing.T) {
 	teamsURL := "https://teams.example.com/webhook/secret-teams"
 	routingKey := "pagerduty-routing-secret"
 	payload := map[string]any{
-		"name": "signoz_create_notification_channel",
+		"name": "shadow_probe",
 		"arguments": map[string]any{
 			"webhook_password":      "secret-canary",
 			"slack_api_url":         slackURL,
@@ -234,7 +260,7 @@ func TestRedactedTruncAny(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`"name":"signoz_create_notification_channel"`,
+		`"name":"shadow_probe"`,
 		`"webhook_password":"[REDACTED]"`,
 		`"slack_api_url":"[REDACTED]"`,
 		`"webhook_url":"[REDACTED]"`,
@@ -252,6 +278,142 @@ func TestRedactedTruncAny(t *testing.T) {
 	big := RedactedTruncAny(map[string]any{"query": strings.Repeat("x", requestCaptureLimit*2)})
 	if len(big) > requestCaptureLimit || !strings.HasSuffix(big, truncBodySuffix) {
 		t.Fatalf("RedactedTruncAny oversized payload len/suffix = %d/%q", len(big), big[len(big)-len(truncBodySuffix):])
+	}
+}
+
+func TestRedactedTruncAnyRedactsNotificationChannelArguments(t *testing.T) {
+	arguments := map[string]any{
+		"config": map[string]any{
+			"kind": "incidentio",
+			"spec": map[string]any{
+				"apiUrl":       "https://api.example.com/api-url-canary",
+				"url":          "https://hooks.example.com/url-canary",
+				"token":        "token-canary",
+				"apiToken":     "api-token-canary",
+				"password":     "password-canary",
+				"headers":      map[string]any{"X-Canary": "header-canary"},
+				"customFields": map[string]any{"credential": "custom-field-canary"},
+			},
+		},
+		"searchContext":   "use https://hooks.example.com/search-context-canary with token search-token-canary",
+		"rejectedUnknown": "unknown-argument-canary",
+	}
+	encodedArguments, err := json.Marshal(arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name              string
+		toolName          string
+		payload           any
+		wantRedactedCount int
+	}{
+		{
+			name:     "nested adapted create request",
+			toolName: "signoz_create_notification_channel",
+			payload: map[string]any{
+				"request": mcpcontract.CallToolRequest{Params: mcpcontract.CallToolParams{
+					Name:         "signoz_create_notification_channel",
+					Arguments:    arguments,
+					RawArguments: encodedArguments,
+				}},
+				"requestID": "request-canary",
+			},
+			wantRedactedCount: 2,
+		},
+		{
+			name:     "nested adapted update request",
+			toolName: "signoz_update_notification_channel",
+			payload: map[string]any{
+				"request": mcpcontract.CallToolRequest{Params: mcpcontract.CallToolParams{
+					Name:         "signoz_update_notification_channel",
+					Arguments:    arguments,
+					RawArguments: encodedArguments,
+				}},
+				"requestID": "request-canary",
+			},
+			wantRedactedCount: 2,
+		},
+		{
+			name:     "nested SDK request",
+			toolName: "signoz_create_notification_channel",
+			payload: map[string]any{
+				"request": &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{
+					Name:      "signoz_create_notification_channel",
+					Arguments: encodedArguments,
+				}},
+				"requestID": "request-canary",
+			},
+			wantRedactedCount: 1,
+		},
+		{
+			name:     "flat create params",
+			toolName: "signoz_create_notification_channel",
+			payload: &mcp.CallToolParams{
+				Name:      "signoz_create_notification_channel",
+				Arguments: arguments,
+			},
+			wantRedactedCount: 1,
+		},
+		{
+			name:     "flat update params",
+			toolName: "signoz_update_notification_channel",
+			payload: &mcp.CallToolParams{
+				Name:      "signoz_update_notification_channel",
+				Arguments: arguments,
+			},
+			wantRedactedCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RedactedTruncAny(tt.payload)
+			for _, secret := range []string{
+				"api-url-canary",
+				"url-canary",
+				"token-canary",
+				"api-token-canary",
+				"password-canary",
+				"header-canary",
+				"custom-field-canary",
+				"search-context-canary",
+				"search-token-canary",
+				"unknown-argument-canary",
+			} {
+				if strings.Contains(got, secret) {
+					t.Fatalf("RedactedTruncAny leaked %q: %s", secret, got)
+				}
+			}
+			if count := strings.Count(got, redactedValue); count != tt.wantRedactedCount {
+				t.Fatalf("RedactedTruncAny redaction count = %d, want %d: %s", count, tt.wantRedactedCount, got)
+			}
+			if !strings.Contains(strings.ToLower(got), `"name":"`+tt.toolName+`"`) {
+				t.Fatalf("RedactedTruncAny = %s, want tool name preserved", got)
+			}
+			if strings.Contains(got, `"requestID":"request-canary"`) != strings.HasPrefix(tt.name, "nested") {
+				t.Fatalf("RedactedTruncAny = %s, nested envelope preservation mismatch", got)
+			}
+		})
+	}
+}
+
+func TestRedactedTruncAnyPreservesOrdinaryToolURLs(t *testing.T) {
+	payload := &mcp.CallToolParams{
+		Name: "signoz_create_dashboard",
+		Arguments: map[string]any{
+			"url":    "https://dashboard.example.com/url-canary",
+			"apiUrl": "https://dashboard.example.com/api-url-canary",
+			"webUrl": "https://dashboard.example.com/web-url-canary",
+		},
+	}
+
+	got := RedactedTruncAny(payload)
+	for _, want := range []string{"url-canary", "api-url-canary", "web-url-canary"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("RedactedTruncAny = %s, want ordinary dashboard URL %q preserved", got, want)
+		}
 	}
 }
 

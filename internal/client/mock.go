@@ -11,42 +11,43 @@ import (
 // Each method delegates to the corresponding function field when non-nil,
 // otherwise returns a default empty JSON object and nil error.
 type MockClient struct {
-	GetAnalyticsIdentityFn      func(ctx context.Context) (*AnalyticsIdentity, error)
-	GetOrgOverviewFn            func(ctx context.Context) (json.RawMessage, error)
-	ListMetricsFn               func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-	GetTopMetricsFn             func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
-	ListAlertsFn                func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
-	ListAlertRulesFn            func(ctx context.Context) (json.RawMessage, error)
-	GetAlertByRuleIDFn          func(ctx context.Context, ruleID string) (json.RawMessage, error)
-	GetAlertHistoryFn           func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
-	ListDashboardsFn            func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
-	GetDashboardFn              func(ctx context.Context, id string) (json.RawMessage, error)
-	CreateDashboardRawFn        func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
-	UpdateDashboardRawFn        func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error)
-	PatchDashboardRawFn         func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error)
-	DeleteDashboardFn           func(ctx context.Context, id string) error
-	ListServicesFn              func(ctx context.Context, start, end string) (json.RawMessage, error)
-	GetServiceTopOperationsFn   func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
-	QueryBuilderV5Fn            func(ctx context.Context, body []byte) (json.RawMessage, error)
-	ListViewsFn                 func(ctx context.Context, source, name string) (json.RawMessage, error)
-	GetViewFn                   func(ctx context.Context, viewID string) (json.RawMessage, error)
-	CreateViewFn                func(ctx context.Context, body []byte) (json.RawMessage, error)
-	UpdateViewFn                func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
-	DeleteViewFn                func(ctx context.Context, viewID string) (json.RawMessage, error)
-	GetFieldKeysFn              func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
-	GetFieldValuesFn            func(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
-	GetTraceDetailsFn           func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
-	CreateAlertRuleFn           func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
-	UpdateAlertRuleFn           func(ctx context.Context, ruleID string, alertJSON []byte) error
-	DeleteAlertRuleFn           func(ctx context.Context, ruleID string) error
-	CheckMetricUsageFn          func(ctx context.Context, names []string) (map[string]MetricUsage, error)
-	ListNotificationChannelsFn  func(ctx context.Context) (json.RawMessage, error)
-	GetNotificationChannelFn    func(ctx context.Context, id string) (json.RawMessage, error)
-	CreateNotificationChannelFn func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
-	UpdateNotificationChannelFn func(ctx context.Context, id string, receiverJSON []byte) error
-	DeleteNotificationChannelFn func(ctx context.Context, id string) error
-	TestNotificationChannelFn   func(ctx context.Context, receiverJSON []byte) error
-	GetMetricCardinalityFn      func(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
+	GetAnalyticsIdentityFn       func(ctx context.Context) (*AnalyticsIdentity, error)
+	GetOrgOverviewFn             func(ctx context.Context) (json.RawMessage, error)
+	ListMetricsFn                func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetTopMetricsFn              func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
+	ListAlertsFn                 func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
+	ListAlertRulesFn             func(ctx context.Context) (json.RawMessage, error)
+	GetAlertByRuleIDFn           func(ctx context.Context, ruleID string) (json.RawMessage, error)
+	GetAlertHistoryFn            func(ctx context.Context, ruleID string, req types.AlertHistoryRequest) (json.RawMessage, error)
+	ListDashboardsFn             func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error)
+	GetDashboardFn               func(ctx context.Context, id string) (json.RawMessage, error)
+	CreateDashboardRawFn         func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error)
+	UpdateDashboardRawFn         func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error)
+	PatchDashboardRawFn          func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error)
+	DeleteDashboardFn            func(ctx context.Context, id string) error
+	ListServicesFn               func(ctx context.Context, start, end string) (json.RawMessage, error)
+	GetServiceTopOperationsFn    func(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
+	QueryBuilderV5Fn             func(ctx context.Context, body []byte) (json.RawMessage, error)
+	ListViewsFn                  func(ctx context.Context, source, name string) (json.RawMessage, error)
+	GetViewFn                    func(ctx context.Context, viewID string) (json.RawMessage, error)
+	CreateViewFn                 func(ctx context.Context, body []byte) (json.RawMessage, error)
+	UpdateViewFn                 func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
+	DeleteViewFn                 func(ctx context.Context, viewID string) (json.RawMessage, error)
+	GetFieldKeysFn               func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
+	GetFieldValuesFn             func(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
+	GetTraceDetailsFn            func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	CreateAlertRuleFn            func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
+	UpdateAlertRuleFn            func(ctx context.Context, ruleID string, alertJSON []byte) error
+	DeleteAlertRuleFn            func(ctx context.Context, ruleID string) error
+	CheckMetricUsageFn           func(ctx context.Context, names []string) (map[string]MetricUsage, error)
+	ListNotificationChannelsFn   func(ctx context.Context) (json.RawMessage, error)
+	ListNotificationChannelsV2Fn func(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error)
+	GetNotificationChannelFn     func(ctx context.Context, id string) (json.RawMessage, error)
+	CreateNotificationChannelFn  func(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
+	UpdateNotificationChannelFn  func(ctx context.Context, id string, receiverJSON []byte) error
+	DeleteNotificationChannelFn  func(ctx context.Context, id string) error
+	TestNotificationChannelFn    func(ctx context.Context, receiverJSON []byte) error
+	GetMetricCardinalityFn       func(ctx context.Context, name string, start, end int64) (json.RawMessage, error)
 }
 
 // Compile-time check that MockClient satisfies Client.
@@ -260,6 +261,13 @@ func (m *MockClient) ListNotificationChannels(ctx context.Context) (json.RawMess
 		return m.ListNotificationChannelsFn(ctx)
 	}
 	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) ListNotificationChannelsV2(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+	if m.ListNotificationChannelsV2Fn != nil {
+		return m.ListNotificationChannelsV2Fn(ctx, params)
+	}
+	return types.NotificationChannelList{}, nil
 }
 
 func (m *MockClient) GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error) {

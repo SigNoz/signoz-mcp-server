@@ -11,6 +11,7 @@ import (
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // Two-tier structuredContent rule:
@@ -221,7 +222,7 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 			return json.RawMessage(`{"dashboards":[{"id":"d1","name":"x"}],"tags":[],"total":1}`), nil
 		},
 		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"uuid":"d1","title":"X"}}`), nil
+			return json.RawMessage(`{"status":"success","data":{"id":"d1","title":"X"}}`), nil
 		},
 		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 			return json.RawMessage(`{"id":"d-new","name":"x-abc123","spec":{"display":{"name":"X"}}}`), nil
@@ -232,11 +233,11 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		GetViewFn: func(ctx context.Context, viewID string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":{"id":"v1","name":"V"}}`), nil
 		},
-		ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[{"id":"c1","type":"slack","name":"N"}]}`), nil
+		ListNotificationChannelsV2Fn: func(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+			return types.NotificationChannelList{Channels: []types.ListedNotificationChannel{{ID: "019947a7-f200-7000-8000-000000000001", Name: "n", DisplayName: "N", Kind: "webhook", CreatedAt: "2026-09-18T00:00:00Z", UpdatedAt: "2026-09-18T00:00:00Z"}}, Total: 1}, nil
 		},
 		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"id":"c1","type":"slack"}}`), nil
+			return json.RawMessage(`{"id":"019947a7-f200-7000-8000-000000000001","name":"n","displayName":"N","config":{"kind":"webhook","spec":{"url":"http://localhost:9999"}},"createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}`), nil
 		},
 		DeleteNotificationChannelFn: func(ctx context.Context, id string) error { return nil },
 		GetAlertByRuleIDFn: func(ctx context.Context, id string) (json.RawMessage, error) {
@@ -255,14 +256,14 @@ func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
 		{"get_org_overview", h.handleGetOrgOverview, makeToolRequest("signoz_get_org_overview", map[string]any{})},
 		{"check_metric_usage", h.handleCheckMetricUsage, makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"system.cpu.time"}})},
 		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
-		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "d1"})},
+		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"id": "d1"})},
 		{"create_dashboard", h.handleCreateDashboard, makeToolRequest("signoz_create_dashboard", map[string]any{"spec": map[string]any{"display": map[string]any{"name": "X"}}})},
 		{"list_dashboard_templates", h.handleListDashboardTemplates, makeToolRequest("signoz_list_dashboard_templates", map[string]any{})},
 		{"list_views", h.handleListViews, makeToolRequest("signoz_list_views", map[string]any{"source": "logs"})},
 		{"get_view", h.handleGetView, makeToolRequest("signoz_get_view", map[string]any{"viewId": "v1"})},
 		{"list_notification_channels", h.handleListNotificationChannels, makeToolRequest("signoz_list_notification_channels", map[string]any{})},
-		{"get_notification_channel", h.handleGetNotificationChannel, makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "c1"})},
-		{"delete_notification_channel", h.handleDeleteNotificationChannel, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "c1"})},
+		{"get_notification_channel", h.handleGetNotificationChannel, makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "019947a7-f200-7000-8000-000000000001"})},
+		{"delete_notification_channel", h.handleDeleteNotificationChannel, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "019947a7-f200-7000-8000-000000000001"})},
 		{"get_alert", h.handleGetAlert, makeToolRequest("signoz_get_alert", map[string]any{"ruleId": ruleID})},
 		{"delete_alert", h.handleDeleteAlert, makeToolRequest("signoz_delete_alert", map[string]any{"ruleId": ruleID})},
 	}

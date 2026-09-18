@@ -10,6 +10,11 @@ spec:
     kind: sqlite
   signoz:
     spec:
+      # Pinned to the v0.142.0 release artifacts (upstream source commit
+      # 57268e50b4907194cf4a6628143df3d6aaa1424e). Foundry defaults both
+      # images to latest, so the digests below are required to prevent drift.
+      image: signoz/signoz@sha256:041de69ac78a2bd302aade6a11f619c96014e86973754fee024e397ca0eafd55
+      version: v0.142.0
       # Provision a root admin user on first boot so the e2e tests can log in
       # without the interactive /api/v1/register flow. These must match
       # ROOT_EMAIL / ROOT_PASSWORD in fixtures/signoz.py.
@@ -25,3 +30,7 @@ spec:
         # (statsreporter.enabled defaults to true → the "analytics" provider;
         # false selects the noop provider).
         SIGNOZ_STATSREPORTER_ENABLED: "false"
+  ingester:
+    spec:
+      image: signoz/signoz-otel-collector@sha256:f234365bfa563fadc1c185abd38ed1be060f64e2fc3a4e01bc339433f0481984
+      version: v0.142.0

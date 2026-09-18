@@ -10,6 +10,11 @@ logger = setup_logger(__name__)
 T = TypeVar("T")
 
 
+def _release(resource: T) -> None:
+    if hasattr(resource, "__release__"):
+        resource.__release__()
+
+
 def reuse(request: pytest.FixtureRequest) -> bool:
     return request.config.getoption("--reuse")
 
@@ -40,8 +45,17 @@ def wrap(
         existing_resource = pytestconfig.cache.get(key, None)
         if existing_resource:
             assert isinstance(existing_resource, dict)
-            logger.info("Reusing existing %s(%s)", key, existing_resource)
-            return restore(existing_resource)
+            logger.info("Reusing existing %s", key)
+            resource = restore(existing_resource)
+            # Rewrite legacy cache entries through the resource's current
+            # serializer. This removes credentials previously cached by the
+            # SigNoz fixture as soon as an existing environment is restored.
+            pytestconfig.cache.set(
+                key,
+                resource.__cache__() if hasattr(resource, "__cache__") else resource,
+            )
+            request.addfinalizer(lambda: _release(resource))
+            return resource
 
     if not teardown(request):
         resource = create()
@@ -49,6 +63,7 @@ def wrap(
     def finalizer():
         nonlocal resource
         if reuse(request):
+            _release(resource)
             logger.info(
                 "Skipping removal of %s",
                 resource.__log__() if hasattr(resource, "__log__") else resource,

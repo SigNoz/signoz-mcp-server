@@ -414,7 +414,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools target the render-envelope `/api/v1/channels/*` routes introduced by SigNoz/signoz#10941, #10957, #10995, and #10997.
+> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools require SigNoz v0.142.0 or newer and use `/api/v2/notification_channels/*`. Text panels, full-text log search, and heatmap queries also require v0.142.0 or newer; see the [migration guide](docs/released-feature-parity-migration.md).
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -462,10 +462,10 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_search_traces` | Return individual span rows or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
-| `signoz_list_notification_channels` | List channel summaries for name verification and ID discovery |
+| `signoz_list_notification_channels` | List channel summaries for displayName routing and ID discovery |
 | `signoz_get_notification_channel` | Get all provider-specific settings for one channel by ID |
-| `signoz_create_notification_channel` | Create a uniquely named channel and send a test notification |
-| `signoz_update_notification_channel` | Fully replace a fetched channel and send a test notification |
+| `signoz_create_notification_channel` | Create a uniquely named channel with an opt-in test notification |
+| `signoz_update_notification_channel` | Fully replace a fetched channel config with an opt-in test notification |
 | `signoz_delete_notification_channel` | Permanently delete a confirmed channel by ID |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
@@ -626,6 +626,11 @@ Lists paginated tenant-dashboard summaries (name, UUID, description, tags, times
   - `sort` (optional) – `updated_at` (default), `created_at`, or `name`
   - `order` (optional) – `asc` or `desc` (default `desc`)
 
+The v2 list API excludes system dashboards. Get-by-ID may still return one;
+retain its `source`. System and integration dashboards cannot be modified,
+patched, or deleted by users. `source` is not a server-side list-filter column;
+filter returned user/integration rows locally across pages when needed.
+
 The `filter` DSL is a boolean expression of `key operator value` terms and bare free-text words joined with `AND`/`OR`/`NOT` and parentheses (e.g. `name CONTAINS 'overview' AND locked = true`). Read [`signoz://dashboard/list-filter-guide`](#mcp-resources) for the full grammar, the filterable keys with their operators, value formats, and worked examples; the list response also echoes the authoritative reserved-key set in `reservedKeywords`.
 
 #### `signoz_get_dashboard`
@@ -643,6 +648,13 @@ Creates a custom multi-panel dashboard. Use `signoz_import_dashboard` when a cur
   - `name` (DNS-1123 label) or `generateName: true` to derive it from `spec.display.name`
   - `tags` (required) – Array of key/value tags (may be empty)
   - `spec` (required) – Perses spec: `display`, `variables` (array), `panels` (map keyed by panel id), `layouts` (array)
+
+Static Markdown panels use `signoz/TextPanel` with `queries: []`, plus
+`plugin.spec.mode: "markdown"`, `text`, `presentation`, and `headerOptions`.
+Include the panel's layout reference. Query-bearing panels still require one
+query; Text panels do not need a query dry run. Widget examples and patch
+instructions include both kinds. Dashboard inputs use canonical `id`; the
+legacy `uuid` input is rejected on the changed dashboard tools.
 
 #### `signoz_import_dashboard`
 
@@ -824,7 +836,7 @@ Return individual paginated log records matching text, service, severity, or fie
 Calls using only `searchText`, `service`, `severity`, time, or pagination parameters need no guide read. Read `signoz://logs/query-builder-guide` only before composing `filter` with unfamiliar workspace fields.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. Legacy `query` is still accepted for backward compatibility, but `filter` is canonical. See `signoz://logs/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. Use `filter`; the former `query` alias is rejected. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
@@ -835,6 +847,14 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
   - **Ordering**: generated raw log queries use `timestamp desc`, then `id desc`, so offset pagination is deterministic when multiple rows share a timestamp.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Key-not-found errors**: a filter referencing a key absent from this workspace's logs metadata fails with recovery guidance in the error text plus a machine-readable `missingKeys` array in the structured error content
+
+Use `filter: "search('timeout')"` when the field containing a term is unknown.
+Use `search('checkout', body)` to scope it, or combine the function with field
+predicates using AND/OR/NOT. Scopes are `body`, `attribute`, `resource`, and
+`log`. Once the field is known, prefer a field predicate. `searchText` remains
+body-only and combines with `filter` using AND. Escape backslashes and apostrophes
+inside expression literals; explicit filters are passed through, not rewritten.
+The same expressions work in log aggregations and saved-query specs.
 
 #### `signoz_get_field_keys`
 
@@ -922,12 +942,12 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
-- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned name on every tier and rejects top-level `preferredChannels`; v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier and rejects top-level `preferredChannels`; v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
 - **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`
 
-Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed name on every tier; confirmed v2 policy routing may omit them. V1 anomalies use direct top-level `preferredChannels` and cannot use policy routing.
+Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed displayName on every tier; confirmed v2 policy routing may omit them. V1 anomalies use direct top-level `preferredChannels` and cannot use policy routing.
 
 - **Parameters**:
   - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
@@ -948,48 +968,75 @@ Permanently delete a confirmed tenant dashboard by ID. The deletion is irreversi
 
 #### `signoz_list_notification_channels`
 
-List paginated notification-channel summaries (`id`, `name`, `type`, timestamps). Use this to verify alert channel names, avoid duplicate channel names, or discover an ID. It does not return provider-specific settings; use `signoz_get_notification_channel` for those.
+List paginated v2 channel summaries (`id`, `name`, `displayName`, `kind`, timestamps).
+Alert routing uses `displayName`; `name` is the immutable machine identifier.
+Results omit provider settings and credentials. Use `signoz_get_notification_channel`
+for the complete configuration, and cover every page before declaring a channel absent.
 
-- **Parameters**:
-  - `limit` (optional) - Maximum number of channels to return per page (default: 50, max: 1000; higher values are clamped)
-  - `offset` (optional) - Offset for pagination (default: 0)
+- **Parameters**: `query` searches display names; `kind` filters provider kind;
+  `sort` is `updated_at`, `created_at`, or `name`; `order` is `asc` or `desc`.
+  `limit` defaults to 20 and is capped at 200; `offset` defaults to 0.
+- **Defaults**: newest update first. The response includes the filtered total
+  and explicit pagination metadata. Follow `pagination.nextOffset` while
+  `pagination.hasMore` is true; `pagination.limit` reports the effective cap.
 
 #### `signoz_create_notification_channel`
 
-Create a notification channel and send a test notification. First call `signoz_list_notification_channels` and confirm the requested name is unused.
+Create a v2 notification channel from `config: {kind, spec}`. Requires SigNoz
+v0.142.0 or newer. Check existing display names before creating a channel.
 
-- **Parameters**:
-  - `type` (required) - Channel type: slack, webhook, pagerduty, email, opsgenie, msteams
-  - `name` (required) - Unique channel name, verified against `signoz_list_notification_channels`
-  - `send_resolved` (optional) - Send notifications when alerts resolve. Boolean (or the strings `"true"`/`"false"`), default: true
-  - Type-specific fields (required by channel type), such as `slack_api_url`, `webhook_url`, `pagerduty_routing_key`, `email_to`, `opsgenie_api_key`, or `msteams_webhook_url`
-- **Test-send behavior**: the channel is created first, then a test notification is sent. If the test fails, the tool still returns success (the channel WAS created) but appends a prominent warning note so the failure is not buried; verify the configuration and re-test.
+- **Parameters**: `config` is required. Supply a DNS1123 `name`, or use
+  `generateName: true` with a `displayName`. `displayName` defaults to an explicit
+  `name` when omitted. Both names become immutable after creation.
+- **Provider kinds**: `slack`, `email`, `webhook`, `pagerduty`, `opsgenie`,
+  `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`. The registered
+  `config.spec` schema documents each provider's fields and required settings.
+- **Resolve notifications**: `config.spec.sendResolved` uses the provider's
+  default when omitted. Get returns its effective value; preserve it on update.
+- **Test sends**: `test` defaults to `false`. Set `test: true` only when a test
+  notification is intended. A failed test does not undo the created channel;
+  inspect its reported status before retrying. Post-write authorization errors
+  include `mutationCommitted: true` and the known ID so callers can authenticate
+  and inspect the existing channel without creating another one.
+
+Example without a test send:
+
+```json
+{
+  "name": "checkout-oncall",
+  "displayName": "Checkout on-call",
+  "config": {
+    "kind": "webhook",
+    "spec": {"url": "https://alerts.example.com/signoz", "sendResolved": true}
+  },
+  "test": false
+}
+```
 
 #### `signoz_update_notification_channel`
 
-Fully replace an existing notification channel and send a test notification. First find the ID with `signoz_list_notification_channels`, fetch the complete configuration with `signoz_get_notification_channel`, then preserve every field not requested for change.
-
-- **Parameters**:
-  - `id` (required) - Notification channel UUID
-  - `type` (required) - Channel type
-  - `name` (required) - Channel name
-  - `send_resolved` (optional) - Complete replacement setting. Copy the fetched value unless changing it; omission resets to true
-  - Full channel configuration fields for the selected channel type
-- **Test-send behavior**: same as create: a failed verification test-send surfaces a prominent warning note instead of flipping the result to an error.
+Fully replace one channel's `config` using `id` and the complete canonical
+`config: {kind, spec}` object. Fetch the channel, copy its `config`, change only
+requested fields, then submit the complete object. Names cannot be changed.
+Preserve every untouched setting and credential without echoing secrets. Empty
+optional template strings returned by SigNoz are normalized back to unset on
+update, so its fetched config remains writable.
+`test` defaults to `false`; an explicit `true` sends a test after the update.
+A test failure does not undo the update. Do not replay an ambiguous write or
+an opt-in test automatically.
 
 #### `signoz_get_notification_channel`
 
-Get all provider-specific settings for one notification channel by ID (`GET /api/v1/channels/{id}`). Use `signoz_list_notification_channels` to discover IDs.
-
-- **Parameters**:
-  - `id` (required) - Notification channel UUID
+Get one channel's canonical `id`, machine `name`, `displayName`, timestamps,
+and full `config`. The `config.spec` can contain plaintext credentials; use it
+for updates without displaying or logging secrets. **Parameter**: `id`.
 
 #### `signoz_delete_notification_channel`
 
-Delete a notification channel by ID (`DELETE /api/v1/channels/{id}`). Irreversible: resolve its ID and confirm the exact channel first. When both steps are already complete, call the delete tool directly without repeating list/get preflight. This tool does not check whether alert rules reference it; inspect configured rules first when dependency safety is required.
-
-- **Parameters**:
-  - `id` (required) - Notification channel UUID
+Permanently delete a confirmed channel by `id`. Resolve and confirm the exact
+channel first; call directly when those steps are already complete. The backend
+may reject deletion while a routing policy references the channel. Propagate
+that dependency error and resolve references before retrying.
 
 #### `signoz_execute_builder_query`
 
@@ -1001,6 +1048,17 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
   - `builder_formula`: formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql`: `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql`: `{name, query, disabled, legend?}`.
+- **Heatmaps**: set `requestType: "heatmap"` with exactly one enabled output.
+  Metric builder queries, metric formulas, PromQL, and ClickHouse SQL can use
+  this request type. Logs/traces, exponential histograms, query functions,
+  non-empty `having`, and fill gaps are unsupported in the released contract.
+  Builder/formula `bucketOptions` uses `{kind: "log", spec: {scale: 4}}` or
+  `{kind: "linear", spec: {maxValue: 1000, numBuckets: 60}}`. Log scales range
+  from -4 to 4; linear maxValue must be finite and positive, and numBuckets
+  ranges from 0 (default 60) to 512. Histograms derive bounds from their `le`
+  labels and reject bucketOptions. Results preserve `meta.buckets` and each
+  point's bucket-count `values`, including the final overflow count. No Heatmap
+  dashboard plugin or saved-view rendering capability is implied.
 - **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_query` and `builder_formula`. When omitted, null, or zero, standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Valid caller-supplied values are preserved. The response appends a decisions note when defaults are inserted.
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or adjust the limit when that matters.
@@ -1080,3 +1138,12 @@ For a detailed overview of request flow, component interactions, and design deci
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, required docs/manifest sync for MCP changes, and PR checklist.
 
 **Made with ❤️ for the observability community**
+
+### Released-feature contract migration
+
+This update requires SigNoz v0.142.0 or newer and makes a hard cut to notification
+v2 APIs. Replace flat channel parameters and receiver envelopes with
+`config.kind/spec`; use returned `displayName` for alert routing, and opt into
+test sends explicitly. Use `id` for dashboard IDs and `filter` for log filters.
+There is no v1-channel fallback or older-backend compatibility layer. See
+[the migration guide](docs/released-feature-parity-migration.md).

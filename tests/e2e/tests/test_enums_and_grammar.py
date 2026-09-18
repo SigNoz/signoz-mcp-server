@@ -7,7 +7,14 @@ search_docs param + legacy alias, and service top-operations tag passthrough.
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_block_json, first_text_block
-from fixtures.seeded import create_alert_rule, create_channel, delete_alert_rule, delete_channel
+from fixtures.seeded import (
+    alert_rule_gone,
+    channel_gone,
+    create_alert_rule,
+    create_channel,
+    delete_alert_rule,
+    delete_channel,
+)
 from fixtures.telemetry import seed_traces, wait_for
 
 ALERT_HISTORY_STATES = ["inactive", "pending", "recovering", "firing", "nodata", "disabled"]
@@ -48,7 +55,11 @@ def test_signal_enum_values(mcp_client: MCPClient) -> None:
 def test_alert_history_enums(mcp_client: MCPClient, test_id: str) -> None:
     """order (asc/desc) and every v2 state are accepted on get_alert_history."""
     channel_name = f"mcp-e2e-ch-{test_id}"
-    channel_id = create_channel(mcp_client, channel_name)
+    channel_id = create_channel(
+        mcp_client,
+        channel_name,
+        {"kind": "webhook", "spec": {"url": "http://example.invalid/no-send"}},
+    )
     rule_id = None
     try:
         rule_id = create_alert_rule(mcp_client, f"mcp-e2e-rule-{test_id}", channel_name=channel_name)
@@ -69,7 +80,9 @@ def test_alert_history_enums(mcp_client: MCPClient, test_id: str) -> None:
     finally:
         if rule_id is not None:
             delete_alert_rule(mcp_client, rule_id)
+            assert alert_rule_gone(mcp_client, rule_id), f"alert rule {rule_id} remained after cleanup"
         delete_channel(mcp_client, channel_id)
+        assert channel_gone(mcp_client, channel_id), f"channel {channel_id} remained after cleanup"
 
 
 def test_aggregation_set_matches_backend(mcp_client: MCPClient) -> None:

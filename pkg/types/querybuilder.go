@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -13,6 +14,10 @@ const (
 	DefaultAggregateQueryLimit    = 100
 	MaxQueryLimit                 = 10000
 	DefaultFormulaInputQueryLimit = MaxQueryLimit
+	DefaultHeatmapNumBuckets      = 60
+	MaxHeatmapNumBuckets          = 512
+	MinHeatmapLogScale            = -4
+	MaxHeatmapLogScale            = 4
 )
 
 // QueryPayload is struct used as payload the Query Builder v5 JSON schema
@@ -159,6 +164,7 @@ type QuerySpec struct {
 	GroupBy               []SelectField     `json:"groupBy,omitempty"`
 	Functions             []json.RawMessage `json:"functions,omitempty"`
 	Legend                string            `json:"legend,omitempty"`
+	BucketOptions         *BucketOptions    `json:"bucketOptions,omitempty"`
 }
 
 // UnmarshalJSON accepts integer-like strings for nested bounds because MCP
@@ -272,6 +278,130 @@ type SelectField struct {
 	FieldContext  string `json:"fieldContext,omitempty"`
 }
 
+// BucketOptions is the heatmap bucket-axis union on builder queries and
+// formulas. kind selects the spec shape; unknown fields are rejected to match
+// the backend's strict decoder.
+type BucketOptions struct {
+	Kind string `json:"kind"`
+	Spec any    `json:"spec"`
+}
+
+// LinearBucketsSpec divides (0, MaxValue] into NumBuckets equal bands. A nil or
+// zero NumBuckets asks for the backend default; the pointer keeps an explicitly
+// authored 0 in the re-marshalled request instead of dropping the field.
+type LinearBucketsSpec struct {
+	MaxValue   float64 `json:"maxValue"`
+	NumBuckets *int    `json:"numBuckets,omitempty"`
+}
+
+// LogBucketsSpec spaces upper bounds at 2^Scale bands per doubling. A nil
+// Scale asks for the backend default.
+type LogBucketsSpec struct {
+	Scale *int `json:"scale,omitempty"`
+}
+
+func (b *BucketOptions) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return fmt.Errorf("invalid bucketOptions: %w", err)
+	}
+	for key := range fields {
+		if key != "kind" && key != "spec" {
+			return fmt.Errorf("bucketOptions rejects unknown field %q; valid fields are kind and spec", key)
+		}
+	}
+	kind := ""
+	if raw, ok := fields["kind"]; ok {
+		if err := json.Unmarshal(raw, &kind); err != nil {
+			return fmt.Errorf("bucketOptions.kind must be the string \"linear\" or \"log\": %w", err)
+		}
+	}
+	specRaw, hasSpec := fields["spec"]
+	if !hasSpec {
+		return fmt.Errorf("bucketOptions spec is required, use an empty object for the kind's defaults")
+	}
+	// Parity with the backend's decoder: a missing spec key is rejected, but
+	// an explicit null decodes to the kind's zero-value spec. A log null spec
+	// therefore requests defaults, while a linear one fails enabled semantic
+	// validation on maxValue; disabled inputs only pass structural decoding.
+	specNull := strings.TrimSpace(string(specRaw)) == "null"
+
+	switch kind {
+	case "linear":
+		spec := LinearBucketsSpec{}
+		if !specNull {
+			if err := decodeStrictBucketSpec(specRaw, "linear buckets spec", "maxValue", "numBuckets"); err != nil {
+				return err
+			}
+			if err := json.Unmarshal(specRaw, &spec); err != nil {
+				return fmt.Errorf("invalid linear buckets spec: %w", err)
+			}
+		}
+		b.Kind, b.Spec = kind, spec
+	case "log":
+		spec := LogBucketsSpec{}
+		if !specNull {
+			if err := decodeStrictBucketSpec(specRaw, "log buckets spec", "scale"); err != nil {
+				return err
+			}
+			if err := json.Unmarshal(specRaw, &spec); err != nil {
+				return fmt.Errorf("invalid log buckets spec: %w", err)
+			}
+		}
+		b.Kind, b.Spec = kind, spec
+	default:
+		return fmt.Errorf("invalid bucketOptions kind %q; valid bucket kinds are: linear, log", kind)
+	}
+	return nil
+}
+
+func decodeStrictBucketSpec(raw json.RawMessage, label string, allowedFields ...string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return fmt.Errorf("invalid %s: %w", label, err)
+	}
+	for key := range fields {
+		allowed := false
+		for _, candidate := range allowedFields {
+			if key == candidate {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("%s rejects unknown field %q; valid fields are %s", label, key, strings.Join(allowedFields, ", "))
+		}
+	}
+	return nil
+}
+
+// validateBucketAxis enforces the semantic constraints the backend applies to
+// the enabled heatmap query or formula. A nil options value is valid: the
+// backend resolves it to the finest log axis.
+func (b *BucketOptions) validateBucketAxis() error {
+	if b == nil {
+		return nil
+	}
+	switch spec := b.Spec.(type) {
+	case LinearBucketsSpec:
+		if math.IsNaN(spec.MaxValue) || math.IsInf(spec.MaxValue, 0) || spec.MaxValue <= 0 {
+			return fmt.Errorf("linear buckets need a finite maxValue greater than 0, got %v", spec.MaxValue)
+		}
+		if spec.NumBuckets != nil {
+			if numBuckets := *spec.NumBuckets; numBuckets < 0 || numBuckets > MaxHeatmapNumBuckets {
+				return fmt.Errorf("numBuckets must be between 1 and %d, or 0/omitted for the default of %d; got %d", MaxHeatmapNumBuckets, DefaultHeatmapNumBuckets, numBuckets)
+			}
+		}
+	case LogBucketsSpec:
+		if spec.Scale != nil && (*spec.Scale < MinHeatmapLogScale || *spec.Scale > MaxHeatmapLogScale) {
+			return fmt.Errorf("scale must be between %d and %d, or omitted for the default of %d; got %d", MinHeatmapLogScale, MaxHeatmapLogScale, MaxHeatmapLogScale, *spec.Scale)
+		}
+	default:
+		return fmt.Errorf("invalid bucketOptions kind %q; valid bucket kinds are: linear, log", b.Kind)
+	}
+	return nil
+}
+
 type FormatOptions struct {
 	FormatTableResultForUI bool `json:"formatTableResultForUI"`
 	FillGaps               bool `json:"fillGaps"`
@@ -300,6 +430,13 @@ func (q *QueryPayload) Validate() error {
 	}
 	if q.RequestType == "" {
 		q.RequestType = inferDefaultRequestType(q.CompositeQuery.Queries)
+	}
+	if q.RequestType == "heatmap" {
+		if err := q.validateHeatmapRequest(); err != nil {
+			return err
+		}
+	} else if err := q.rejectNonHeatmapBucketOptions(); err != nil {
+		return err
 	}
 
 	for i, query := range q.CompositeQuery.Queries {
@@ -339,8 +476,8 @@ func (q *QueryPayload) Validate() error {
 			if strings.TrimSpace(spec.Expression) == "" {
 				return fmt.Errorf(`%s: compositeQuery.queries[%d].spec.expression is required for builder_formula; provide an expression such as "A / B * 100"`, queryName, i)
 			}
-			if q.RequestType != "scalar" && q.RequestType != "time_series" {
-				return fmt.Errorf(`%s: builder_formula requires requestType "scalar" or "time_series"; received %q`, queryName, q.RequestType)
+			if q.RequestType != "scalar" && q.RequestType != "time_series" && q.RequestType != "heatmap" {
+				return fmt.Errorf(`%s: builder_formula requires requestType "scalar", "time_series", or "heatmap"; received %q`, queryName, q.RequestType)
 			}
 			continue
 		case "builder_query":
@@ -364,10 +501,10 @@ func (q *QueryPayload) Validate() error {
 			// instead of silently coercing it (a coerced value can return a
 			// different result shape than the caller asked for).
 			switch q.RequestType {
-			case "time_series", "scalar":
+			case "time_series", "scalar", "heatmap":
 				// ok
 			default:
-				return fmt.Errorf("%s: unsupported requestType %q for metrics; use \"time_series\" or \"scalar\"", queryName, q.RequestType)
+				return fmt.Errorf("%s: unsupported requestType %q for metrics; use \"time_series\", \"scalar\", or \"heatmap\"", queryName, q.RequestType)
 			}
 
 		case "traces":
@@ -416,6 +553,97 @@ func (q *QueryPayload) Validate() error {
 	}
 
 	return q.ApplyBuilderBounds()
+}
+
+// validateHeatmapRequest mirrors the backend's heatmap matrix: exactly one
+// enabled output, no logs/traces builder queries, no fillGaps, functions, or
+// non-empty having (disabled formula inputs included), and semantic bucket
+// validation on the enabled query or formula only.
+func (q *QueryPayload) validateHeatmapRequest() error {
+	if q.FormatOptions.FillGaps {
+		return fmt.Errorf("fillGaps is not supported for heatmap requests: an absent column means collection stopped, which a zero-filled column would hide")
+	}
+	enabled := 0
+	for i, query := range q.CompositeQuery.Queries {
+		queryName := queryDisplayName("", i)
+		switch spec := query.Spec.(type) {
+		case QuerySpec:
+			name := queryDisplayName(spec.Name, i)
+			if spec.Signal == "logs" || spec.Signal == "traces" {
+				return fmt.Errorf("%s: heatmaps are not supported for the logs and traces signals yet", name)
+			}
+			if err := validateHeatmapQuerySettings(spec.Functions, spec.Having.Expression, name); err != nil {
+				return err
+			}
+			if !spec.Disabled {
+				if err := spec.BucketOptions.validateBucketAxis(); err != nil {
+					return fmt.Errorf("%s: %s", name, err)
+				}
+				enabled++
+			}
+		case FormulaSpec:
+			name := queryDisplayName(spec.Name, i)
+			having := ""
+			if spec.Having != nil {
+				having = spec.Having.Expression
+			}
+			if err := validateHeatmapQuerySettings(spec.Functions, having, name); err != nil {
+				return err
+			}
+			if !spec.Disabled {
+				if err := spec.BucketOptions.validateBucketAxis(); err != nil {
+					return fmt.Errorf("%s: %s", name, err)
+				}
+				enabled++
+			}
+		case PromQLSpec:
+			if !spec.Disabled {
+				enabled++
+			}
+		case ClickHouseSQLSpec:
+			if !spec.Disabled {
+				enabled++
+			}
+		default:
+			return fmt.Errorf("%s: heatmap requests support one metrics builder query, one formula over them, one clickhouse query, or one promql query; got %q", queryName, query.Type)
+		}
+	}
+	switch {
+	case enabled == 0:
+		return fmt.Errorf("a heatmap needs one enabled query, but every query is disabled; enable the query whose distribution you want to plot")
+	case enabled > 1:
+		return fmt.Errorf("a heatmap renders one distribution, but %d queries are enabled; disable the queries you do not want to plot, keeping only the one whose distribution you want to show. A formula can stay enabled with the queries it reads disabled", enabled)
+	}
+	return nil
+}
+
+func validateHeatmapQuerySettings(functions []json.RawMessage, having, queryName string) error {
+	if len(functions) > 0 {
+		return fmt.Errorf("%s: functions are not supported for heatmap requests: a heatmap point is a count per bucket, not a single value", queryName)
+	}
+	if having != "" {
+		return fmt.Errorf("%s: having is not supported for heatmap requests: it filters individual cells, which breaks the cumulative differencing", queryName)
+	}
+	return nil
+}
+
+// rejectNonHeatmapBucketOptions mirrors the backend: bucketOptions on an
+// enabled query or formula outside heatmap requests are rejected. Options on a
+// disabled query never reach axis application, so the backend ignores them.
+func (q *QueryPayload) rejectNonHeatmapBucketOptions() error {
+	for i, query := range q.CompositeQuery.Queries {
+		switch spec := query.Spec.(type) {
+		case QuerySpec:
+			if !spec.Disabled && spec.BucketOptions != nil {
+				return fmt.Errorf("%s: bucketOptions are only supported for heatmap requests; got requestType %q", queryDisplayName(spec.Name, i), q.RequestType)
+			}
+		case FormulaSpec:
+			if !spec.Disabled && spec.BucketOptions != nil {
+				return fmt.Errorf("%s: bucketOptions are only supported for heatmap requests; got requestType %q", queryDisplayName(spec.Name, i), q.RequestType)
+			}
+		}
+	}
+	return nil
 }
 
 func inferDefaultRequestType(queries []Query) string {
@@ -610,7 +838,7 @@ func defaultOrderForQuery(spec QuerySpec, requestType string, index int) ([]Orde
 		case "traces":
 			return []Order{{Key: Key{Name: "timestamp"}, Direction: "desc"}}, nil
 		}
-	case "scalar", "time_series":
+	case "scalar", "time_series", "heatmap":
 		if spec.Signal == "metrics" {
 			return resultDescendingOrder(), nil
 		}
@@ -826,14 +1054,15 @@ type MetricsQuerySpec struct {
 // share the builder wire contract, while the expression replaces the
 // signal/aggregation/filter fields used by QuerySpec.
 type FormulaSpec struct {
-	Name       string            `json:"name"`
-	Expression string            `json:"expression"`
-	Legend     string            `json:"legend,omitempty"`
-	Disabled   bool              `json:"disabled"`
-	Limit      int               `json:"limit"`
-	Order      []Order           `json:"order"`
-	Having     *Having           `json:"having,omitempty"`
-	Functions  []json.RawMessage `json:"functions,omitempty"`
+	Name          string            `json:"name"`
+	Expression    string            `json:"expression"`
+	Legend        string            `json:"legend,omitempty"`
+	Disabled      bool              `json:"disabled"`
+	Limit         int               `json:"limit"`
+	Order         []Order           `json:"order"`
+	Having        *Having           `json:"having,omitempty"`
+	Functions     []json.RawMessage `json:"functions,omitempty"`
+	BucketOptions *BucketOptions    `json:"bucketOptions,omitempty"`
 }
 
 func (s *FormulaSpec) UnmarshalJSON(data []byte) error {
