@@ -111,12 +111,15 @@ func notificationRoot(properties map[string]any, required ...string) map[string]
 	properties["searchContext"] = map[string]any{
 		"type": "string", "description": notificationSearchContextDescription,
 	}
-	return map[string]any{
+	schema := map[string]any{
 		"type":                 "object",
 		"properties":           properties,
-		"required":             required,
 		"additionalProperties": false,
 	}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
 }
 
 func notificationListSchema() map[string]any {

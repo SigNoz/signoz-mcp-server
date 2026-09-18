@@ -907,7 +907,7 @@ func TestSecretBearingToolTelemetryScrubsSearchContextAndErrorText(t *testing.T)
 				t.Fatalf("logs leaked secret-bearing tool text: %s", logs.String())
 			}
 			terminal, _ := logRecordByMessage(t, &logs, "tool call returned error result")
-			if terminal["error_message"] != secretBearingToolTelemetryError.Error() {
+			if terminal["error_message"] != errSecretBearingToolTelemetry.Error() {
 				t.Fatalf("terminal error_message = %v", terminal["error_message"])
 			}
 			if _, present := terminal["mcp.search_context"]; present {
@@ -925,7 +925,7 @@ func TestSecretBearingToolTelemetryScrubsSearchContextAndErrorText(t *testing.T)
 			if !present || spanCode.AsString() != tools.CodeValidationFailed {
 				t.Fatalf("span error code = %v, present=%t", spanCode, present)
 			}
-			if spans[0].Status.Code != codes.Error || spans[0].Status.Description != secretBearingToolTelemetryError.Error() {
+			if spans[0].Status.Code != codes.Error || spans[0].Status.Description != errSecretBearingToolTelemetry.Error() {
 				t.Fatalf("span status = %#v", spans[0].Status)
 			}
 			if strings.Contains(fmt.Sprintf("%#v", spans[0]), secret) {

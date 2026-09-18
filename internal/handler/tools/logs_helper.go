@@ -7,7 +7,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-const logsLegacyQueryAliasError = `Parameter validation failed: "query" is not accepted by log tools; use "filter" with a Query Builder filter expression (see signoz://logs/query-builder-guide)`
+const logsLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by log tools; use "filter" with a Query Builder filter expression (see signoz://logs/query-builder-guide)`
 
 // readLogFilterExpr reads the canonical filter parameter for log tools. The
 // legacy query alias was removed from the changed log tools, so the presence

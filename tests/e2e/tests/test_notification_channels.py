@@ -1,15 +1,11 @@
 """Canonical notification-channel v2 lifecycle checks against a live SigNoz."""
 
-import threading
-from collections.abc import Iterator
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import ClassVar
-
 import pytest
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
 from fixtures.results import first_block_json
 from fixtures.seeded import channel_gone, channel_id_by_name, create_channel, delete_channel
+from fixtures.webhooksink import WebhookSink
 
 CHANNEL_SPECS: dict[str, dict] = {
     "slack": {"apiUrl": "https://example.invalid/e2e-slack"},
@@ -165,38 +161,9 @@ def test_every_provider_config_round_trips_and_update_preserves_it(
                 assert channel_gone(mcp_client, recovered), f"recovered {kind} channel remained after cleanup"
 
 
-class _CaptureHandler(BaseHTTPRequestHandler):
-    requests: ClassVar[list[dict]] = []
-
-    def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", "0"))
-        self.requests.append({"path": self.path, "body": self.rfile.read(length).decode("utf-8", "replace")})
-        self.send_response(204)
-        self.end_headers()
-
-    def log_message(self, format: str, *args: object) -> None:
-        return
-
-
-@pytest.fixture
-def local_webhook_sink() -> Iterator[tuple[str, list[dict]]]:
-    """Run a loopback capture sink; no test notification may contact an external host."""
-    _CaptureHandler.requests = []
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _CaptureHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://host.docker.internal:{server.server_port}/e2e", _CaptureHandler.requests
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
-
-
 def test_local_webhook_test_is_opt_in_and_reaches_only_local_sink(
-    mcp_client: MCPClient, test_id: str, local_webhook_sink: tuple[str, list[dict]]
+    mcp_client: MCPClient, test_id: str, local_webhook_sink: WebhookSink
 ) -> None:
-    sink_url, captured = local_webhook_sink
     name = f"mcp-e2e-local-webhook-{test_id}".lower()
     channel_id = ""
     try:
@@ -205,10 +172,10 @@ def test_local_webhook_test_is_opt_in_and_reaches_only_local_sink(
             name,
             {"kind": "webhook", "spec": {"url": "http://example.invalid/no-send", "sendResolved": False}},
         )
-        assert captured == []
+        assert local_webhook_sink.captured_requests() == []
 
-        config = {"kind": "webhook", "spec": {"url": sink_url, "sendResolved": False}}
-        assert_tool_ok(
+        config = {"kind": "webhook", "spec": {"url": local_webhook_sink.url, "sendResolved": False}}
+        updated = assert_tool_ok(
             mcp_client.call_tool(
                 "signoz_update_notification_channel",
                 {
@@ -219,6 +186,11 @@ def test_local_webhook_test_is_opt_in_and_reaches_only_local_sink(
                 },
             )
         )
+        test_notification = _channel_data(updated).get("testNotification")
+        assert test_notification == {"requested": True, "success": True, "status": "succeeded"}, (
+            f"unexpected test notification outcome: {test_notification!r}"
+        )
+        captured = local_webhook_sink.captured_requests()
         assert len(captured) == 1, f"expected exactly one local sink request, got {captured!r}"
         assert captured[0]["path"] == "/e2e"
     finally:

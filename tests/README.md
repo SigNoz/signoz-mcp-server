@@ -80,8 +80,9 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   backend, timeRange/stepInterval grammar, docs param + alias, top-operations tags.
 - `test_notification_channels.py` — canonical notification v2 lifecycle for every
   provider with `test: false`, config round-trip, config-free listing, an opt-in
-  loopback webhook test sink, and confirmed deletion. The sink is reachable only
-  through `host.docker.internal`; no external destination is contacted.
+  webhook test sink, and confirmed deletion. The sink runs on the foundry-generated
+  Docker network and exposes captured requests only on host loopback; no external
+  destination is contacted.
 - `test_saved_views.py` — view CRUD round-trip cloned from a seeded source view.
 - `test_get_by_id_aliases.py` — canonical id and legacy alias (ruleId/uuid) reads.
 - `test_trace_fields.py` — snake_case trace fields, filters, aggregations.

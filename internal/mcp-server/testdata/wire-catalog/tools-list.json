@@ -6012,7 +6012,6 @@
                 "type": "string"
               }
             },
-            "required": null,
             "type": "object"
           },
           "name": "signoz_list_notification_channels"

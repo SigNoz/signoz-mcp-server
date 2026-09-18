@@ -1,12 +1,12 @@
 # Plan: July–September 2026 released-feature parity (#232)
 
-Status: Done
+Status: In Progress
 Issue: https://github.com/SigNoz/nerve-pod/issues/232
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/313
 Companion PR: https://github.com/SigNoz/agent-skills/pull/98
 
 The independently reviewed hard-cut plan was approved by the user on 2026-09-18.
-Implementation and verification are complete on the feature branch.
+Implementation is complete; PR CI corrections and companion-main synchronization are in progress.
 
 ## Context
 
@@ -732,6 +732,30 @@ dashboard assumptions.
 - Shared guardrails passed and the sorted inventory matches all 16 tests.
   Workflow lint passed for guardrails and E2E.
 
+### 2026-09-18 — PR CI and main synchronization follow-up
+
+- User reported failing CI on server PR #313 and conflicts on companion PR
+  #98. Fetched both base branches: server main remains `d227e4d`; companion
+  main advanced from `70746a2` to `4cdc848` and requires a semantic merge.
+- CI found two staticcheck violations, `required: null` in the notification
+  list input schema (rejected by Inspector and conformance), and the local
+  webhook sink unreachable in the Linux E2E job. Previous local verification
+  did not establish that these GitHub checks passed.
+- Correct the schema and lint issues without loosening guardrails, make local
+  capture portable across host platforms, merge the companion's current main,
+  and verify the updated PR heads in GitHub CI before marking Done again.
+- Notification roots now omit an empty `required` array instead of serializing
+  it as null. A serialization regression test covers all five channel tools;
+  only that invalid field was removed from the wire fixture. Fixed the two
+  staticcheck naming/style violations without changing behavior.
+- Replaced the host webhook listener with a small capture container on the
+  foundry SigNoz network. Docker DNS works for both Linux and Docker Desktop;
+  capture reads are exposed on host loopback. The live test asserts the
+  successful opt-in outcome, exactly one delivery, and confirmed deletion.
+- Exact CI golangci-lint v2.12.2 passed locally. Ruff format/lint and the focused
+  live webhook test passed; the channel, session key, MCP container, and capture
+  container were cleaned up, with resource absence confirmed.
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)
@@ -878,7 +902,8 @@ blocker from those findings. That approval preceded the later hard-cut revision.
 Implemented the approved hard cut against SigNoz v0.142.0: Markdown TextPanels,
 system-dashboard guidance, explicit log search and literal convenience filters,
 raw heatmaps, and canonical v2 notification channels with displayName routing.
-All required local checks and all 59 live E2E tests pass. The plan is Done.
+The recorded local checks and 59 live E2E tests passed. PR CI subsequently
+found additional failures; completion is reopened until those checks pass.
 
 CMP-3 requires the coordinated companion change. It is implemented in
 `SigNoz/agent-skills` on `feat/released-feature-parity-232`, commit `1b84890`.

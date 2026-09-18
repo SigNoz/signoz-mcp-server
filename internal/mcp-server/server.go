@@ -858,18 +858,18 @@ func toolOTelErrorType(err error, result *mcp.CallToolResult) string {
 	return ""
 }
 
-var secretBearingToolTelemetryError = errors.New("notification channel tool failed")
+var errSecretBearingToolTelemetry = errors.New("notification channel tool failed")
 
 func observableToolError(toolName string, err error) error {
 	if err != nil && logpkg.IsSecretBearingTool(toolName) {
-		return secretBearingToolTelemetryError
+		return errSecretBearingToolTelemetry
 	}
 	return err
 }
 
 func observableToolResultErrorMessage(toolName string, result *mcp.CallToolResult) string {
 	if logpkg.IsSecretBearingTool(toolName) {
-		return secretBearingToolTelemetryError.Error()
+		return errSecretBearingToolTelemetry.Error()
 	}
 	return extractToolErrorMessage(result)
 }

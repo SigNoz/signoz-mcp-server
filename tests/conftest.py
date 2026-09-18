@@ -6,6 +6,7 @@ pytest_plugins = [
     "fixtures.mcpclient",
     "fixtures.telemetry",
     "fixtures.naming",
+    "fixtures.webhooksink",
 ]
 
 

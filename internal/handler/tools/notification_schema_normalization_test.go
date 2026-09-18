@@ -89,6 +89,57 @@ func TestCanonicalNotificationSchemasExposeClosedTenProviderUnion(t *testing.T) 
 	}
 }
 
+func TestCanonicalNotificationRootRequiredSerialization(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
+	server := newMCPTestServer()
+	h.RegisterNotificationChannelHandlers(server)
+	registered := listTestTools(t, server)
+	wantRequired := map[string][]string{
+		"signoz_create_notification_channel": {"config"},
+		"signoz_update_notification_channel": {"id", "config"},
+		"signoz_get_notification_channel":    {"id"},
+		"signoz_delete_notification_channel": {"id"},
+	}
+
+	for _, name := range []string{
+		"signoz_list_notification_channels",
+		"signoz_create_notification_channel",
+		"signoz_update_notification_channel",
+		"signoz_get_notification_channel",
+		"signoz_delete_notification_channel",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var root map[string]any
+			if err := json.Unmarshal(inputSchemaJSON(registered[name].Tool), &root); err != nil {
+				t.Fatal(err)
+			}
+			properties := root["properties"].(map[string]any)
+			if _, ok := properties["searchContext"]; !ok {
+				t.Fatal("searchContext property is missing")
+			}
+
+			requiredValue, present := root["required"]
+			want, hasRequired := wantRequired[name]
+			if !hasRequired {
+				if present {
+					t.Fatalf("required = %#v, want omitted", requiredValue)
+				}
+				return
+			}
+			if _, ok := requiredValue.([]any); !ok {
+				t.Fatalf("required has type %T, want JSON array", requiredValue)
+			}
+			got := stringSlice(requiredValue)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("required = %v, want %v", got, want)
+			}
+			if notificationContainsString(got, "searchContext") {
+				t.Fatal("searchContext must not be required")
+			}
+		})
+	}
+}
+
 func stringSlice(value any) []string {
 	items, _ := value.([]any)
 	result := make([]string, 0, len(items))
