@@ -1,12 +1,12 @@
 # Plan: July–September 2026 released-feature parity (#232)
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/232
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/313
 Companion PR: https://github.com/SigNoz/agent-skills/pull/98
 
 The independently reviewed hard-cut plan was approved by the user on 2026-09-18.
-Implementation is complete; PR CI corrections and companion-main synchronization are in progress.
+Implementation, PR CI corrections, and companion-main synchronization are complete.
 
 ## Context
 
@@ -736,14 +736,14 @@ dashboard assumptions.
 
 - User reported failing CI on server PR #313 and conflicts on companion PR
   #98. Fetched both base branches: server main remains `d227e4d`; companion
-  main advanced from `70746a2` to `4cdc848` and requires a semantic merge.
+  main advanced from `70746a2` to `4cdc848`, requiring a semantic merge.
 - CI found two staticcheck violations, `required: null` in the notification
   list input schema (rejected by Inspector and conformance), and the local
   webhook sink unreachable in the Linux E2E job. Previous local verification
   did not establish that these GitHub checks passed.
-- Correct the schema and lint issues without loosening guardrails, make local
-  capture portable across host platforms, merge the companion's current main,
-  and verify the updated PR heads in GitHub CI before marking Done again.
+- Corrected the schema and lint issues without loosening guardrails, made local
+  capture portable across host platforms, merged the companion's current main,
+  and verified both updated PR heads in GitHub CI before marking Done again.
 - Notification roots now omit an empty `required` array instead of serializing
   it as null. A serialization regression test covers all five channel tools;
   only that invalid field was removed from the wire fixture. Fixed the two
@@ -755,6 +755,28 @@ dashboard assumptions.
 - Exact CI golangci-lint v2.12.2 passed locally. Ruff format/lint and the focused
   live webhook test passed; the channel, session key, MCP container, and capture
   container were cleaned up, with resource absence confirmed.
+- Independent review of the CI fixes found no blockers. The full uncached Go
+  suite and exact Inspector script passed in Linux with Go 1.26.0, along with
+  focused guardrails, build, formatting, and workflow lint.
+- Server fix commit `7da6a0e` passes all 11 GitHub checks, including Inspector,
+  selected official conformance, Go lint/tests/build, guardrails, Python style,
+  and Linux E2E (59 passed in 132.86s). E2E setup and teardown also passed.
+  Runs: [Go](https://github.com/SigNoz/signoz-mcp-server/actions/runs/35313931594),
+  [protocol](https://github.com/SigNoz/signoz-mcp-server/actions/runs/35313930698),
+  [guardrails](https://github.com/SigNoz/signoz-mcp-server/actions/runs/35313930699),
+  [E2E](https://github.com/SigNoz/signoz-mcp-server/actions/runs/35313931521).
+- Companion merge `d98669b` includes current main `4cdc848`. Resolved all 11
+  conflicts while retaining main's policy routing, v2 saved-view guidance,
+  writing cleanup, portable packaging, and client config isolation. Independent
+  review found three inconsistencies (policy routing guardrail, scoped search
+  argument order, and stale v6 fixture expectations); all were fixed and the
+  reviewer confirmed the corrections.
+- Companion validation passed: version/config consistency, portable package
+  generation and boundaries, plugin/MCP schemas, every packaged skill's
+  `skills-ref` validation, JSON/Python syntax, eval ID/name uniqueness, reference
+  parity, writing style, and diff checks. No plugin versions were bumped.
+  GitHub [Validate Agent Plugin](https://github.com/SigNoz/agent-skills/actions/runs/35314547445)
+  passed on `d98669b`; GitHub reports the PR mergeable with no conflicts.
 
 ## Reference Links
 
@@ -902,11 +924,12 @@ blocker from those findings. That approval preceded the later hard-cut revision.
 Implemented the approved hard cut against SigNoz v0.142.0: Markdown TextPanels,
 system-dashboard guidance, explicit log search and literal convenience filters,
 raw heatmaps, and canonical v2 notification channels with displayName routing.
-The recorded local checks and 59 live E2E tests passed. PR CI subsequently
-found additional failures; completion is reopened until those checks pass.
+The recorded local checks and all 59 Linux CI E2E tests passed. The subsequent
+CI corrections passed every server check; the synchronized companion also
+passes CI and has no merge conflicts.
 
 CMP-3 requires the coordinated companion change. It is implemented in
-`SigNoz/agent-skills` on `feat/released-feature-parity-232`, commit `1b84890`.
+`SigNoz/agent-skills` on `feat/released-feature-parity-232`, merge commit `d98669b`.
 Server README, manifest, migration documentation, resources, and targeted wire
 fixtures are synchronized. Offline skill evaluation does not claim hosted
 client integration. The server PR is [#313](https://github.com/SigNoz/signoz-mcp-server/pull/313)
