@@ -940,8 +940,13 @@ and ran 12 prompts three times each on main `a31a6df` and this branch
 - Fixed: the logs guide still called `searchText` body-only; it now describes
   `searchScope` and that `%`/`_` in hand-written CONTAINS/LIKE filters are
   wildcards (write `\\%`, `\\_`).
-- Open: wording to steer message-text searches back to `body CONTAINS` and to
-  mark `search()` as logs-only on the traces tools (proposal pending review).
+- User approved steering wording (`65811cd`): the logs `filter` description
+  now leads with `body CONTAINS` for message text, its second example uses
+  `body CONTAINS`, and the traces `filter` descriptions say `search()` is
+  logs-only. Rerun on a fresh nonce, 5 runs each: S1 and S10 5/5 with no
+  all-fields search (was 3/3 all-fields each); S12 5/5 correct, with one run
+  still trying `search()` on traces (was 3/3) and every run using
+  `searchScope=all` over 7 days (accepted with a warning). $1.28.
 
 ## Reference Links
 
