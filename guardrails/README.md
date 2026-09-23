@@ -9,7 +9,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 - `policy.go` contains shared limits, official aliases, and explicitly grandfathered exceptions.
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
 - `internal/mcp-server/testdata/wire-catalog/` holds the immutable pre-migration JSON-RPC oracle.
-- `.github/workflows/guardrails.yaml` verifies the inventory and runs the guarded tests.
+- `.github/workflows/guardrails.yaml` runs `make check-guardrails`, which verifies the inventory and runs the guarded tests.
 - `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector and
   selected official conformance checks.
 - Package-local functions named `TestGuardrail_*` contain the enforcement logic.
@@ -105,17 +105,13 @@ this check into a full catalog snapshot by pinning counts, ordering,
 descriptions, schemas, or ranked documentation content. `tests.txt` remains the
 inventory for Go `TestGuardrail_*` tests only.
 
-Run the protocol lane on Ubuntu with:
+Run the protocol lane with the same targets CI uses. On macOS, install GNU `timeout` first
+(`brew install coreutils`):
 
 ```bash
-npm ci --ignore-scripts --prefix tools/mcp-ci
-bash -n scripts/test-mcp-protocol.sh
-shellcheck scripts/test-mcp-protocol.sh
-bash -n scripts/test-mcp-conformance.sh
-shellcheck scripts/test-mcp-conformance.sh
+make check-protocol check-conformance
+shellcheck scripts/test-mcp-protocol.sh scripts/test-mcp-conformance.sh
 actionlint .github/workflows/mcp-protocol.yaml
-scripts/test-mcp-protocol.sh
-scripts/test-mcp-conformance.sh
 ```
 
 After each check succeeds once on the default branch, configure both
@@ -136,8 +132,9 @@ When a contract change is intentional:
 
    ```bash
    actionlint .github/workflows/guardrails.yaml
-   go test -count=1 -run '^TestGuardrail_' ./...
+   make check-guardrails
    go test -count=1 ./...
    ```
 
-The dedicated workflow rejects an unsorted, duplicate, missing, or unexpected test inventory.
+`make check-guardrails`, which the dedicated workflow runs, rejects an unsorted, duplicate,
+missing, or unexpected test inventory.

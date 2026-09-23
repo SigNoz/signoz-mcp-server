@@ -1,6 +1,6 @@
 # Plan: Docs refresh OOM hardening (HTTP mode, 512Mi)
 
-Status: Done (steps 1, 3, 4, 5 implemented in PR #308; step 2 dropped)
+Status: Done
 Issue: https://github.com/SigNoz/signoz-mcp-server/issues/305 (public), https://github.com/SigNoz/nerve-pod/issues/231 (internal tracker)
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/308
 
