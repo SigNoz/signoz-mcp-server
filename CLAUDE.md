@@ -56,7 +56,17 @@ live in `guardrails/README.md`. In the same PR:
 - Add an e2e test in `tests/e2e/tests/` when the behavior depends on SigNoz.
 - Client-visible text follows `docs/client-visible-writing-style.md`.
 - `docs/` has no stale references.
-- A breaking change (CMP-1) ships with a compatibility path and a migration note (CMP-2).
+- A breaking change (CMP-1) ships with a compatibility path and a migration note (CMP-2). The
+  compatibility path for a retired or renamed input is a coded validation error that names its
+  replacement, as for the log `query` alias and flat notification-channel parameters, not a bare
+  unknown-field error. The migration note goes in the PR body.
+- Top-level integer and boolean parameters also accept their string forms (`intOrStringType` and
+  `boolOrStringType`, or `intOrString` and `boolOrString` fields in typed argument structs),
+  because some clients send every scalar as a string.
+- Each server release targets the latest SigNoz release. Don't name SigNoz versions in tool or
+  parameter descriptions, `signoz://` resources, or README tool sections.
+- Only expose features the SigNoz UI can render. An agent can save a query into a dashboard or
+  saved view, so a request type or panel the UI lacks (for example heatmaps) breaks it there.
 - The PR summary lists the doc and metadata updates and says whether SigNoz/agent-skills needs a
   companion change (CMP-3), with a link when it does. Changes to what skills teach need one: a
   renamed or removed tool or parameter, a payload shape, or documented behavior, like the

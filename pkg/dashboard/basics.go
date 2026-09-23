@@ -16,7 +16,6 @@ Tags: key/value descriptors (max 10) that encode a dashboard's domain, environme
 Description: set spec.display.description as a precise summary of the dashboard's intent, scope, and expected use so a reader can infer what questions it answers and when to rely on it.
 
 Dashboard source and writes:
-- source is user, system, or integration. List omits system dashboards; get-by-id can return one and preserves its source.
 - Only source=user dashboards can be updated, patched, or deleted. Let the upstream coded error explain denied writes; do not preflight with a second get.
 - source is server-owned and must not be sent in update bodies. It is not supported by the list filter DSL.
 

@@ -2316,63 +2316,6 @@
                 ],
                 "type": "string"
               },
-              "Querybuildertypesv5BucketOptions": {
-                "discriminator": {
-                  "mapping": {
-                    "linear": "#/$defs/Querybuildertypesv5BucketOptionsLinear",
-                    "log": "#/$defs/Querybuildertypesv5BucketOptionsLog"
-                  },
-                  "propertyName": "kind"
-                },
-                "oneOf": [
-                  {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptionsLinear"
-                  },
-                  {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptionsLog"
-                  }
-                ],
-                "type": "object"
-              },
-              "Querybuildertypesv5BucketOptionsLinear": {
-                "properties": {
-                  "kind": {
-                    "const": "linear",
-                    "type": "string"
-                  },
-                  "spec": {
-                    "$ref": "#/$defs/Querybuildertypesv5LinearBucketsSpec"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "spec"
-                ],
-                "type": "object"
-              },
-              "Querybuildertypesv5BucketOptionsLog": {
-                "properties": {
-                  "kind": {
-                    "const": "log",
-                    "type": "string"
-                  },
-                  "spec": {
-                    "$ref": "#/$defs/Querybuildertypesv5LogBucketsSpec"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "spec"
-                ],
-                "type": "object"
-              },
-              "Querybuildertypesv5BucketsKind": {
-                "enum": [
-                  "linear",
-                  "log"
-                ],
-                "type": "string"
-              },
               "Querybuildertypesv5BuilderQuerySpec": {
                 "discriminator": {
                   "mapping": {
@@ -2544,21 +2487,6 @@
                 },
                 "type": "object"
               },
-              "Querybuildertypesv5LinearBucketsSpec": {
-                "properties": {
-                  "maxValue": {
-                    "format": "double",
-                    "type": "number"
-                  },
-                  "numBuckets": {
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "maxValue"
-                ],
-                "type": "object"
-              },
               "Querybuildertypesv5LogAggregation": {
                 "properties": {
                   "alias": {
@@ -2566,17 +2494,6 @@
                   },
                   "expression": {
                     "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              "Querybuildertypesv5LogBucketsSpec": {
-                "properties": {
-                  "scale": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
                   }
                 },
                 "type": "object"
@@ -2673,9 +2590,6 @@
               },
               "Querybuildertypesv5QueryBuilderFormula": {
                 "properties": {
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
-                  },
                   "disabled": {
                     "type": "boolean"
                   },
@@ -2725,9 +2639,6 @@
                       "array",
                       "null"
                     ]
-                  },
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
                   },
                   "cursor": {
                     "type": "string"
@@ -2828,9 +2739,6 @@
                       "null"
                     ]
                   },
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
-                  },
                   "cursor": {
                     "type": "string"
                   },
@@ -2929,9 +2837,6 @@
                       "array",
                       "null"
                     ]
-                  },
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
                   },
                   "cursor": {
                     "type": "string"
@@ -3257,8 +3162,7 @@
                   "time_series",
                   "raw",
                   "raw_stream",
-                  "trace",
-                  "heatmap"
+                  "trace"
                 ],
                 "type": "string"
               },
@@ -4023,7 +3927,10 @@
               "test": {
                 "default": false,
                 "description": "Send one live test notification after creation. The channel remains created if the test fails.",
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "string"
+                ]
               }
             },
             "required": [
@@ -4111,7 +4018,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one user dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the id when needed. System and integration dashboards are immutable, and upstream returns a coded denial. Use signoz_delete_view for saved Explorer views.",
+          "description": "Use this when the user has confirmed they want to permanently delete one user dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the id when needed. Only user dashboards can be deleted; upstream returns a coded denial for others. Use signoz_delete_view for saved Explorer views.",
           "inputSchema": {
             "properties": {
               "id": {
@@ -4189,7 +4096,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. requestType \"heatmap\" returns a bucketed distribution from exactly one enabled metrics builder query, formula, PromQL, or ClickHouse query; bucketOptions applies only to that builder query or formula, not PromQL or ClickHouse. Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
+          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -5842,7 +5749,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. The upstream list omits system dashboards; get-by-id can still return source=system. source is user, system, or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent.",
+          "description": "Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent.",
           "inputSchema": {
             "properties": {
               "filter": {
@@ -5978,12 +5885,18 @@
                 "default": 20,
                 "maximum": 200,
                 "minimum": 1,
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "string"
+                ]
               },
               "offset": {
                 "default": 0,
                 "minimum": 0,
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "string"
+                ]
               },
               "order": {
                 "default": "desc",
@@ -6448,8 +6361,18 @@
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
+              "searchScope": {
+                "description": "Where searchText matches: body (default) for message text, attribute or resource for those field values, or all for every field. all is slow on wide time ranges and SigNoz may reject it; narrow the time range or add service first.",
+                "enum": [
+                  "body",
+                  "attribute",
+                  "resource",
+                  "all"
+                ],
+                "type": "string"
+              },
               "searchText": {
-                "description": "Body-only text convenience: builds body CONTAINS with this literal, escaped automatically. Use filter search('term') for case-insensitive search across body, attributes, resource, and log fields; both combine with AND.",
+                "description": "Literal text to find, escaped automatically. searchScope chooses where it matches; the default is the log body. Combines with filter using AND.",
                 "type": "string"
               },
               "service": {
@@ -8558,63 +8481,6 @@
                 ],
                 "type": "string"
               },
-              "Querybuildertypesv5BucketOptions": {
-                "discriminator": {
-                  "mapping": {
-                    "linear": "#/$defs/Querybuildertypesv5BucketOptionsLinear",
-                    "log": "#/$defs/Querybuildertypesv5BucketOptionsLog"
-                  },
-                  "propertyName": "kind"
-                },
-                "oneOf": [
-                  {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptionsLinear"
-                  },
-                  {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptionsLog"
-                  }
-                ],
-                "type": "object"
-              },
-              "Querybuildertypesv5BucketOptionsLinear": {
-                "properties": {
-                  "kind": {
-                    "const": "linear",
-                    "type": "string"
-                  },
-                  "spec": {
-                    "$ref": "#/$defs/Querybuildertypesv5LinearBucketsSpec"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "spec"
-                ],
-                "type": "object"
-              },
-              "Querybuildertypesv5BucketOptionsLog": {
-                "properties": {
-                  "kind": {
-                    "const": "log",
-                    "type": "string"
-                  },
-                  "spec": {
-                    "$ref": "#/$defs/Querybuildertypesv5LogBucketsSpec"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "spec"
-                ],
-                "type": "object"
-              },
-              "Querybuildertypesv5BucketsKind": {
-                "enum": [
-                  "linear",
-                  "log"
-                ],
-                "type": "string"
-              },
               "Querybuildertypesv5BuilderQuerySpec": {
                 "discriminator": {
                   "mapping": {
@@ -8786,21 +8652,6 @@
                 },
                 "type": "object"
               },
-              "Querybuildertypesv5LinearBucketsSpec": {
-                "properties": {
-                  "maxValue": {
-                    "format": "double",
-                    "type": "number"
-                  },
-                  "numBuckets": {
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "maxValue"
-                ],
-                "type": "object"
-              },
               "Querybuildertypesv5LogAggregation": {
                 "properties": {
                   "alias": {
@@ -8808,17 +8659,6 @@
                   },
                   "expression": {
                     "type": "string"
-                  }
-                },
-                "type": "object"
-              },
-              "Querybuildertypesv5LogBucketsSpec": {
-                "properties": {
-                  "scale": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
                   }
                 },
                 "type": "object"
@@ -8915,9 +8755,6 @@
               },
               "Querybuildertypesv5QueryBuilderFormula": {
                 "properties": {
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
-                  },
                   "disabled": {
                     "type": "boolean"
                   },
@@ -8967,9 +8804,6 @@
                       "array",
                       "null"
                     ]
-                  },
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
                   },
                   "cursor": {
                     "type": "string"
@@ -9070,9 +8904,6 @@
                       "null"
                     ]
                   },
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
-                  },
                   "cursor": {
                     "type": "string"
                   },
@@ -9171,9 +9002,6 @@
                       "array",
                       "null"
                     ]
-                  },
-                  "bucketOptions": {
-                    "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
                   },
                   "cursor": {
                     "type": "string"
@@ -9499,8 +9327,7 @@
                   "time_series",
                   "raw",
                   "raw_stream",
-                  "trace",
-                  "heatmap"
+                  "trace"
                 ],
                 "type": "string"
               },
@@ -10203,7 +10030,10 @@
               "test": {
                 "default": false,
                 "description": "Send one live test notification after the update. The update remains committed if the test fails.",
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "string"
+                ]
               }
             },
             "required": [

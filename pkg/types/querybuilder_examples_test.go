@@ -25,7 +25,7 @@ func TestQueryBuilderGuideExamplesUseExecutableBoundsContract(t *testing.T) {
 	}{
 		{name: "logs", guide: querybuilder.LogsQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 5},
 		{name: "traces", guide: querybuilder.TracesQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 3},
-		{name: "metrics", guide: metricsrules.MetricsGuide, pattern: markdownJSONPattern, wantCount: 7},
+		{name: "metrics", guide: metricsrules.MetricsGuide, pattern: markdownJSONPattern, wantCount: 5},
 	}
 
 	for _, tc := range tests {

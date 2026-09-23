@@ -87,11 +87,11 @@
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List paginated user and integration dashboard summaries with metadata filters; the backend excludes system dashboards"
+      "description": "List paginated dashboard summaries with metadata filters"
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get a dashboard by id with layout, panels, queries, and source; system dashboards returned by ID are not user-mutable"
+      "description": "Get a dashboard by id with layout, panels, queries, and source"
     },
     {
       "name": "signoz_create_dashboard",
@@ -175,7 +175,7 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Run raw Query Builder v5 requests for formulas, heatmaps, PromQL, or ClickHouse SQL beyond the dedicated signal tools"
+      "description": "Run raw Query Builder v5 requests for formulas, PromQL, or ClickHouse SQL beyond the dedicated signal tools"
     },
     {
       "name": "signoz_list_notification_channels",

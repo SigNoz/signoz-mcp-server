@@ -49,7 +49,7 @@ func (h *Handler) handleListNotificationChannels(ctx context.Context, req mcp.Ca
 	}
 	params := types.NotificationChannelListParams{
 		Query: args.Query, Kind: args.Kind, Sort: args.Sort, Order: args.Order,
-		Limit: args.Limit, Offset: args.Offset,
+		Limit: int(args.Limit), Offset: int(args.Offset),
 	}
 	if err := params.Normalize(); err != nil {
 		return notificationValidationError(err), nil
@@ -150,7 +150,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 		h.logNotificationChannelFailure(ctx, "Failed to create notification channel", err, slog.String("kind", create.Config.Kind))
 		var committed *client.CommittedNotificationChannelError
 		if errors.As(err, &committed) {
-			return committedNotificationChannelResult(committed, args.Test), nil
+			return committedNotificationChannelResult(committed, bool(args.Test)), nil
 		}
 		return upstreamError(err), nil
 	}
@@ -160,7 +160,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 		"testNotification": skippedNotificationTestResult(),
 	}
 	notes := []string{}
-	if args.Test {
+	if bool(args.Test) {
 		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, create.Config, id)
 		if authResult != nil {
 			return authResult, nil
@@ -208,7 +208,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 			if committed.ID == "" {
 				committed.ID = args.ID
 			}
-			return committedNotificationChannelResult(committed, args.Test), nil
+			return committedNotificationChannelResult(committed, bool(args.Test)), nil
 		}
 		return upstreamError(err), nil
 	}
@@ -221,7 +221,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	channel, readErr := upstream.GetNotificationChannel(ctx, args.ID)
 	if readErr != nil {
 		if isNotificationAuthError(readErr) {
-			testResult := unattemptedNotificationTestResult(args.Test, "test was not attempted because post-write verification could not complete")
+			testResult := unattemptedNotificationTestResult(bool(args.Test), "test was not attempted because post-write verification could not complete")
 			return committedNotificationAuthResult(readErr, args.ID, testResult), nil
 		}
 		h.logger.WarnContext(ctx, "Notification channel update read-back failed", slog.String("id", args.ID))
@@ -229,7 +229,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 	} else {
 		result["channel"] = json.RawMessage(channel)
 	}
-	if args.Test {
+	if bool(args.Test) {
 		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, update.Config, args.ID)
 		if authResult != nil {
 			return authResult, nil

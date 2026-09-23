@@ -27,9 +27,10 @@ is now authorized.
 
 ## Delivered scope
 
-Implemented five bounded changes: queryless Markdown dashboard panels, explicit
-full-text log search guidance/quoting, raw heatmap query support, four new
-notification providers, and accurate system dashboard guidance. Include
+Implemented four bounded changes: queryless Markdown dashboard panels, explicit
+full-text log search guidance/quoting, four new notification providers, and
+accurate system dashboard guidance. Raw heatmap support was implemented and
+then removed on 2026-09-23 because the SigNoz UI cannot render heatmaps. Include
 companion skills and pinned backend contract tests.
 
 Target SigNoz v0.142.0 or newer with a hard cut to canonical contracts.
@@ -840,6 +841,34 @@ not exercised by CI.
   defines the shape. README drops the redundant `query`-alias note and the
   test-notification detail from the tool table rows.
 
+
+### 2026-09-23 — Remove heatmaps, add searchScope, loosen scalar inputs
+
+- User decision: don't expose features the SigNoz UI can't render. v0.143.0 has
+  no heatmap panel or saved-view renderer, and an agent could save a heatmap
+  query into a dashboard or view. Heatmap validation, guidance, examples, tests,
+  and the e2e module were removed. `requestType: "heatmap"` now fails validation
+  with a guiding error for every query type (main only rejected it for builder
+  queries). The dashboard schema generator strips `bucketOptions` and the
+  `heatmap` request type from the pinned OpenAPI; the regenerated files differ
+  from the previous committed output only by that removal.
+- `signoz_search_logs` gains `searchScope` (`body` default, `attribute`,
+  `resource`, `all`). `body` keeps `body CONTAINS`; the others build
+  `search()`. A scope without `searchText` or an unknown scope is a validation
+  error.
+- Notification `limit`, `offset`, and `test` accept string forms, matching the
+  other tools' `intOrStringType`/`boolOrStringType` inputs.
+- List and delete dashboard descriptions, the list-filter guide, dashboard
+  instructions, manifest, and README no longer describe system dashboards;
+  get keeps the mention because it can return one.
+- README keeps one compatibility sentence under Prerequisites; per-tool
+  SigNoz version notes were removed.
+- CLAUDE.md now records the guiding-error, string-scalar, no-version-wording,
+  and UI-renderable-feature rules.
+- Changelog audit: the release workflows ignore `!` breaking markers, and the
+  v0.10.0 "Breaking change" line was hand-edited in the pre-release PR. Fixing
+  the generator is a separate PR.
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)
@@ -984,8 +1013,9 @@ blocker from those findings. That approval preceded the later hard-cut revision.
 ## Outcome
 
 Implemented the approved hard cut against SigNoz v0.142.0: Markdown TextPanels,
-system-dashboard guidance, explicit log search and literal convenience filters,
-raw heatmaps, and canonical v2 notification channels with displayName routing.
+system-dashboard guidance, explicit log search and literal convenience filters
+(with a searchScope option), and canonical v2 notification channels with
+displayName routing. Heatmap support was removed before merge.
 The recorded local checks and all 59 Linux CI E2E tests passed. The subsequent
 CI corrections passed every server check; the synchronized companion also
 passes CI and has no merge conflicts.

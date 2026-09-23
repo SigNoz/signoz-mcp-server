@@ -14,7 +14,7 @@ Grammar
 Filterable keys
 There are two kinds of keys: a fixed set of reserved keys (dashboard columns) and tag keys (anything else). The list response echoes the authoritative reserved-key set in its reservedKeywords field, so read that if unsure.
 
-Dashboard source is returned as user or integration in list rows, but source is not a filterable key. The upstream list excludes system dashboards. A known system dashboard can still be fetched by id; its source is preserved, and all non-user dashboards are immutable through update, patch, and delete.
+Dashboard source is returned as user or integration in list rows, but source is not a filterable key.
 
 Reserved keys and the operators each accepts:
 - name, description, created_by  (string): =, !=, LIKE, NOT LIKE, ILIKE, NOT ILIKE, CONTAINS, NOT CONTAINS, IN, NOT IN

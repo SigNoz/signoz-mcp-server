@@ -94,9 +94,6 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
   lifecycle, cleanup verification, and read-only system dashboard behavior.
-- `test_heatmaps.py` — seeded metric heatmap responses, log/linear bucket
-  options, overflow values, disabled-input formula execution, and saved-view
-  preservation.
 
 ## CI
 

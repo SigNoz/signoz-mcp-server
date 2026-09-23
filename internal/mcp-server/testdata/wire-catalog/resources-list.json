@@ -75,7 +75,7 @@
           "description": "Read this before creating or fully replacing a dashboard. It explains dashboard fields, metadata, variables, variable chaining, and layout. Also read signoz://dashboard/widgets-instructions for widget and query choices.",
           "mimeType": "text/markdown",
           "name": "Dashboard Basic Instructions",
-          "size": 7718,
+          "size": 7595,
           "uri": "signoz://dashboard/instructions"
         },
         {
@@ -89,7 +89,7 @@
           "description": "Read this to build the optional filter argument of signoz_list_dashboards. It documents the server-side metadata filter DSL: grammar (terms, AND/OR/NOT, free-text search), the filterable keys (name, description, created_by, created_at, updated_at, locked, and tag keys) with their operators and value formats, and worked examples.",
           "mimeType": "text/markdown",
           "name": "Dashboard List Filter Guide",
-          "size": 3801,
+          "size": 3600,
           "uri": "signoz://dashboard/list-filter-guide"
         },
         {
@@ -124,7 +124,7 @@
           "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 14671,
+          "size": 11398,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {

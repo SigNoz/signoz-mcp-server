@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -20,24 +21,63 @@ type notificationCreateArgs struct {
 	GenerateName  bool                            `json:"generateName,omitempty"`
 	DisplayName   string                          `json:"displayName,omitempty"`
 	Config        types.NotificationChannelConfig `json:"config"`
-	Test          bool                            `json:"test,omitempty"`
+	Test          boolOrString                    `json:"test,omitempty"`
 }
 
 type notificationUpdateArgs struct {
 	SearchContext string                          `json:"searchContext,omitempty"`
 	ID            string                          `json:"id"`
 	Config        types.NotificationChannelConfig `json:"config"`
-	Test          bool                            `json:"test,omitempty"`
+	Test          boolOrString                    `json:"test,omitempty"`
 }
 
 type notificationListArgs struct {
-	SearchContext string `json:"searchContext,omitempty"`
-	Query         string `json:"query,omitempty"`
-	Kind          string `json:"kind,omitempty"`
-	Sort          string `json:"sort,omitempty"`
-	Order         string `json:"order,omitempty"`
-	Limit         int    `json:"limit,omitempty"`
-	Offset        int    `json:"offset,omitempty"`
+	SearchContext string      `json:"searchContext,omitempty"`
+	Query         string      `json:"query,omitempty"`
+	Kind          string      `json:"kind,omitempty"`
+	Sort          string      `json:"sort,omitempty"`
+	Order         string      `json:"order,omitempty"`
+	Limit         intOrString `json:"limit,omitempty"`
+	Offset        intOrString `json:"offset,omitempty"`
+}
+
+// intOrString and boolOrString accept the string forms some MCP clients send
+// for scalar arguments, matching intOrStringType and boolOrStringType.
+type intOrString int
+
+func (n *intOrString) UnmarshalJSON(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var raw any
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	value, _, ok := looseInt(raw)
+	if !ok {
+		return fmt.Errorf("%s is not an integer", data)
+	}
+	*n = intOrString(value)
+	return nil
+}
+
+type boolOrString bool
+
+func (b *boolOrString) UnmarshalJSON(data []byte) error {
+	var text string
+	if json.Unmarshal(data, &text) == nil {
+		value, err := strconv.ParseBool(strings.TrimSpace(text))
+		if err != nil {
+			return fmt.Errorf("%q is not true or false", text)
+		}
+		*b = boolOrString(value)
+		return nil
+	}
+	var value bool
+	if err := json.Unmarshal(data, &value); err != nil {
+		return fmt.Errorf("%s is not true or false", data)
+	}
+	*b = boolOrString(value)
+	return nil
 }
 
 type notificationIDArgs struct {
@@ -148,8 +188,8 @@ func notificationListSchema() map[string]any {
 		"kind":   map[string]any{"type": "string", "enum": types.NotificationChannelKinds(), "description": "Return only this provider kind."},
 		"sort":   map[string]any{"type": "string", "enum": []string{"updated_at", "created_at", "name"}, "default": "updated_at"},
 		"order":  map[string]any{"type": "string", "enum": []string{"asc", "desc"}, "default": "desc"},
-		"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": types.NotificationChannelMaxListLimit, "default": types.NotificationChannelDefaultListLimit},
-		"offset": map[string]any{"type": "integer", "minimum": 0, "default": 0},
+		"limit":  map[string]any{"type": []string{"integer", "string"}, "minimum": 1, "maximum": types.NotificationChannelMaxListLimit, "default": types.NotificationChannelDefaultListLimit},
+		"offset": map[string]any{"type": []string{"integer", "string"}, "minimum": 0, "default": 0},
 	})
 }
 
@@ -159,7 +199,7 @@ func notificationCreateSchema() map[string]any {
 		"generateName": map[string]any{"type": "boolean", "default": false, "description": "Generate the immutable name from displayName."},
 		"displayName":  map[string]any{"type": "string", "minLength": 1, "description": "Free-text channel label. Defaults to name when generateName is false."},
 		"config":       notificationConfigSchema(false),
-		"test":         map[string]any{"type": "boolean", "default": false, "description": "Send one live test notification after creation. The channel remains created if the test fails."},
+		"test":         map[string]any{"type": []string{"boolean", "string"}, "default": false, "description": "Send one live test notification after creation. The channel remains created if the test fails."},
 	}, "config")
 	schema["oneOf"] = []any{
 		map[string]any{"required": []string{"name"}, "properties": map[string]any{"generateName": map[string]any{"enum": []bool{false}}}},
@@ -172,7 +212,7 @@ func notificationUpdateSchema() map[string]any {
 	return notificationRoot(map[string]any{
 		"id":     map[string]any{"type": "string", "format": "uuid", "description": "Notification channel UUID."},
 		"config": notificationConfigSchema(true),
-		"test":   map[string]any{"type": "boolean", "default": false, "description": "Send one live test notification after the update. The update remains committed if the test fails."},
+		"test":   map[string]any{"type": []string{"boolean", "string"}, "default": false, "description": "Send one live test notification after the update. The update remains committed if the test fails."},
 	}, "id", "config")
 }
 

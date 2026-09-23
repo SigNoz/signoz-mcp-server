@@ -244,10 +244,7 @@ The binary is at `./bin/signoz-mcp-server`.
 
 ### Prerequisites
 
-- A running [SigNoz](https://signoz.io) instance
-- SigNoz v0.135.0 or newer for the dashboard tools (create/get/update/patch/list/delete/import), which use the v2/Perses dashboards API
-- SigNoz v0.135.0 or newer for `signoz_check_metric_usage` (it reads v2/Perses dashboards for dashboard usage; on older versions the dashboard half is silently empty, though alert usage alone works from v0.131.0)
-- SigNoz v0.120.0 or newer for alert-rule list/get/create/update/delete tools, and v0.118.0 or newer for alert history
+- A running [SigNoz](https://signoz.io) instance on the latest release. Each server release targets the latest SigNoz release and is not tested against older versions; see [CHANGELOG.md](CHANGELOG.md) for breaking changes.
 - A SigNoz API key (Settings → API Keys in the SigNoz UI)
 - The `signoz-mcp-server` binary (see [Self-Hosted Installation](#self-hosted-installation))
 
@@ -414,8 +411,6 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools.
-
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
 > **Input validation:** calls are never rejected for schema mismatches. Arguments are validated against each tool's advertised schema; a mismatched call still runs best-effort, and the successful result carries a deterministic appended `Input validation notice:` naming the affected top-level parameter when it can be derived safely from the advertised schema. Complex root-only mismatches use a generic fallback. Mismatches are also counted in the `mcp.tool.validation.mismatches` metric.
@@ -574,7 +569,7 @@ Return top 100 metrics ranked by ingested sample volume with pre-computed percen
 
 #### `signoz_check_metric_usage`
 
-Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v3/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric. Dashboard usage needs SigNoz v0.135.0 (the v3 route reads v2/Perses dashboards, live in v0.135.0; older versions return empty dashboards); alert usage works from v0.131.0.
+Given a list of metric names, return which dashboards and alerts reference each one. Wraps `/api/v3/metrics/dashboards?metricName=...` and `/api/v2/metrics/alerts?metricName=...` per metric.
 
 - **Parameters**:
   - `metricNames` (required) - Array of metric name strings to check (max 50 per call). Example: `["system.disk.io", "k8s.node.condition"]`. For larger lists, split into batches of 50 and merge results.
@@ -626,10 +621,9 @@ Lists paginated tenant-dashboard summaries (name, UUID, description, tags, times
   - `sort` (optional) – `updated_at` (default), `created_at`, or `name`
   - `order` (optional) – `asc` or `desc` (default `desc`)
 
-The v2 list API excludes system dashboards. Get-by-ID may still return one;
-retain its `source`. System and integration dashboards cannot be modified,
-patched, or deleted by users. `source` is not a server-side list-filter column;
-filter returned user/integration rows locally across pages when needed.
+Only `source: user` dashboards can be updated, patched, or deleted. `source` is
+not a server-side list-filter column; filter returned rows locally across pages
+when needed.
 
 The `filter` DSL is a boolean expression of `key operator value` terms and bare free-text words joined with `AND`/`OR`/`NOT` and parentheses (e.g. `name CONTAINS 'overview' AND locked = true`). Read [`signoz://dashboard/list-filter-guide`](#mcp-resources) for the full grammar, the filterable keys with their operators, value formats, and worked examples; the list response also echoes the authoritative reserved-key set in `reservedKeywords`.
 
@@ -728,8 +722,6 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
   - **Legacy `offset`**: no longer supported; use the returned cursor instead.
   - **Completeness note**: the response appends a note reporting `hasMore` from `data.nextCursor` and names the cursor for the next page.
 
-> **Requires SigNoz ≥ v0.118.0**, the first release to serve the v2 rule-history routes (`/api/v2/rules/{id}/history/*`, added in [SigNoz #10488](https://github.com/SigNoz/signoz/pull/10488)). If this tool returns `NOT_FOUND`, verify the rule `id` in the SigNoz UI or, on SigNoz v0.120.0+, with `signoz_list_alert_rules`; if the rule exists, upgrade SigNoz. Earlier deployments only expose the v1 `POST /api/v1/rules/{id}/history/timeline`.
-
 #### `signoz_list_views`
 
 List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, Cost Meter, or AI Observability page. A view stores one reusable Explorer query spec; it is not a multi-panel dashboard. Apply name filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
@@ -739,8 +731,6 @@ List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics,
   - `name` (optional) - Partial-match filter on view name (server-side)
   - `limit` (optional) - Page size (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip (default: 0)
-
-> **Requires SigNoz ≥ v0.137.0**, the first release to serve the v2 saved-view routes (`/api/v2/saved_views/*`; [SigNoz #12342](https://github.com/SigNoz/signoz/pull/12342)). Earlier deployments only expose the legacy `GET /api/v1/explorer/views`.
 
 #### `signoz_get_view`
 
@@ -839,7 +829,8 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
   - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
-  - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
+  - `searchText` (optional) - Literal text to find, escaped automatically; combines with `filter` using AND
+  - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute`, `resource`, or `all` (unscoped `search()`, slow on wide time ranges)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
@@ -851,8 +842,8 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
 Use `filter: "search('timeout')"` when the field containing a term is unknown.
 Use `search('checkout', body)` to scope it, or combine the function with field
 predicates using AND/OR/NOT. Scopes are `body`, `attribute`, `resource`, and
-`log`. Once the field is known, prefer a field predicate. `searchText` remains
-body-only and combines with `filter` using AND. Escape backslashes and apostrophes
+`log`. Once the field is known, prefer a field predicate. `searchText` with
+`searchScope` builds these predicates for you. Escape backslashes and apostrophes
 inside expression literals; explicit filters are passed through, not rewritten.
 The same expressions work in log aggregations and saved-query specs.
 
@@ -1049,18 +1040,6 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
   - `builder_formula`: formula expression referencing other query names (e.g. `A / B * 100`).
   - `promql`: `{name, query, disabled, step?, legend?}`. PromQL for OTel metrics requires the Prometheus 3.x UTF-8 quoted-selector form `{"metric.name.with.dots"}`; read the `signoz://promql/instructions` resource for details.
   - `clickhouse_sql`: `{name, query, disabled, legend?}`.
-- **Heatmaps**: set `requestType: "heatmap"` with exactly one enabled output.
-  Metric builder queries, metric formulas, PromQL, and ClickHouse SQL can use
-  this request type. Logs/traces, exponential histograms, query functions,
-  non-empty `having`, and fill gaps are unsupported in the released contract.
-  Builder/formula `bucketOptions` uses `{kind: "log", spec: {scale: 4}}` or
-  `{kind: "linear", spec: {maxValue: 1000, numBuckets: 60}}`. Log scales range
-  from -4 to 4; linear maxValue must be finite and positive, and numBuckets
-  ranges from 0 (default 60) to 512. Histograms derive bounds from their `le`
-  labels and reject bucketOptions. PromQL and ClickHouse SQL queries reject
-  bucketOptions. Results preserve `meta.buckets` and each
-  point's bucket-count `values`, including the final overflow count. No Heatmap
-  dashboard plugin or saved-view rendering capability is implied.
 - **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_query` and `builder_formula`. When omitted, null, or zero, standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Valid caller-supplied values are preserved. The response appends a decisions note when defaults are inserted.
 - **Guide routing**: read `signoz://logs/query-builder-guide` for logs, `signoz://traces/query-builder-guide` for traces, `signoz://metrics-aggregation-guide` for metrics/formulas, and `signoz://promql/instructions` for PromQL.
 - **Time-series ranking caveat**: top-N groups are ranked over the entire requested window. A short-lived spike can be omitted even when it dominates one bucket; narrow the window or adjust the limit when that matters.

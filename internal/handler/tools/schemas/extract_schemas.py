@@ -146,12 +146,28 @@ def assert_no_oas_refs(doc, label):
     if bad:
         raise SystemExit(f"{label}: unresolved OAS refs remain: {set(bad)}")
 
+HEATMAP_DEFS = {'Querybuildertypesv5BucketOptions', 'Querybuildertypesv5BucketOptionsLinear',
+                'Querybuildertypesv5BucketOptionsLog', 'Querybuildertypesv5BucketsKind',
+                'Querybuildertypesv5LinearBucketsSpec', 'Querybuildertypesv5LogBucketsSpec'}
+
+def strip_heatmap(defs):
+    """Heatmaps have no dashboard or saved-view renderer in the SigNoz UI, so the
+    advertised schemas omit the heatmap request type and bucketOptions."""
+    for name in HEATMAP_DEFS:
+        defs.pop(name, None)
+    for d in defs.values():
+        d.get('properties', {}).pop('bucketOptions', None)
+    request_type = defs.get('Querybuildertypesv5RequestType')
+    if request_type and 'enum' in request_type:
+        request_type['enum'] = [v for v in request_type['enum'] if v != 'heatmap']
+    return defs
+
 os.makedirs('/tmp/dash_schemas', exist_ok=True)
 reports = {}
 
 # ---- create: PostableDashboardV2 inlined + searchContext ----
 root = rewrite_refs(schemas['DashboardtypesPostableDashboardV2'])
-defs = build_defs('DashboardtypesPostableDashboardV2')
+defs = strip_heatmap(build_defs('DashboardtypesPostableDashboardV2'))
 create = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
 create.update({k: v for k, v in root.items() if k not in ('type',)})
 create.setdefault('properties', {})['searchContext'] = SEARCH_CTX
@@ -162,7 +178,7 @@ reports['create'] = (root.get('required', []), list(create['properties'].keys())
 
 # ---- update: id + UpdatableDashboardV2 props inlined + searchContext ----
 uroot = rewrite_refs(schemas['DashboardtypesUpdatableDashboardV2'])
-udefs = build_defs('DashboardtypesUpdatableDashboardV2')
+udefs = strip_heatmap(build_defs('DashboardtypesUpdatableDashboardV2'))
 update = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": {}, "required": []}
 # Canonical `id` is advertised and not schema-required (the handler validates
 # presence). Do not emit a `uuid` input alias.
@@ -180,7 +196,7 @@ reports['update'] = (update['required'], list(update['properties'].keys()), len(
 
 # ---- patch: id + patch(PatchableDashboardV2) + searchContext ----
 proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
-pdefs = build_defs('DashboardtypesPatchableDashboardV2')
+pdefs = strip_heatmap(build_defs('DashboardtypesPatchableDashboardV2'))
 # Canonical `id` is advertised and not schema-required; only `patch` is required.
 # Do not emit a `uuid` input alias.
 patch = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",

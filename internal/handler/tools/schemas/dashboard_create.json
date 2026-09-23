@@ -1433,63 +1433,6 @@
       ],
       "type": "string"
     },
-    "Querybuildertypesv5BucketOptions": {
-      "discriminator": {
-        "mapping": {
-          "linear": "#/$defs/Querybuildertypesv5BucketOptionsLinear",
-          "log": "#/$defs/Querybuildertypesv5BucketOptionsLog"
-        },
-        "propertyName": "kind"
-      },
-      "oneOf": [
-        {
-          "$ref": "#/$defs/Querybuildertypesv5BucketOptionsLinear"
-        },
-        {
-          "$ref": "#/$defs/Querybuildertypesv5BucketOptionsLog"
-        }
-      ],
-      "type": "object"
-    },
-    "Querybuildertypesv5BucketOptionsLinear": {
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "linear"
-        },
-        "spec": {
-          "$ref": "#/$defs/Querybuildertypesv5LinearBucketsSpec"
-        }
-      },
-      "required": [
-        "kind",
-        "spec"
-      ],
-      "type": "object"
-    },
-    "Querybuildertypesv5BucketOptionsLog": {
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "log"
-        },
-        "spec": {
-          "$ref": "#/$defs/Querybuildertypesv5LogBucketsSpec"
-        }
-      },
-      "required": [
-        "kind",
-        "spec"
-      ],
-      "type": "object"
-    },
-    "Querybuildertypesv5BucketsKind": {
-      "enum": [
-        "linear",
-        "log"
-      ],
-      "type": "string"
-    },
     "Querybuildertypesv5BuilderQuerySpec": {
       "discriminator": {
         "mapping": {
@@ -1661,21 +1604,6 @@
       },
       "type": "object"
     },
-    "Querybuildertypesv5LinearBucketsSpec": {
-      "properties": {
-        "maxValue": {
-          "format": "double",
-          "type": "number"
-        },
-        "numBuckets": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "maxValue"
-      ],
-      "type": "object"
-    },
     "Querybuildertypesv5LogAggregation": {
       "properties": {
         "alias": {
@@ -1683,17 +1611,6 @@
         },
         "expression": {
           "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "Querybuildertypesv5LogBucketsSpec": {
-      "properties": {
-        "scale": {
-          "type": [
-            "integer",
-            "null"
-          ]
         }
       },
       "type": "object"
@@ -1790,9 +1707,6 @@
     },
     "Querybuildertypesv5QueryBuilderFormula": {
       "properties": {
-        "bucketOptions": {
-          "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
-        },
         "disabled": {
           "type": "boolean"
         },
@@ -1842,9 +1756,6 @@
             "array",
             "null"
           ]
-        },
-        "bucketOptions": {
-          "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
         },
         "cursor": {
           "type": "string"
@@ -1945,9 +1856,6 @@
             "null"
           ]
         },
-        "bucketOptions": {
-          "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
-        },
         "cursor": {
           "type": "string"
         },
@@ -2046,9 +1954,6 @@
             "array",
             "null"
           ]
-        },
-        "bucketOptions": {
-          "$ref": "#/$defs/Querybuildertypesv5BucketOptions"
         },
         "cursor": {
           "type": "string"
@@ -2374,8 +2279,7 @@
         "time_series",
         "raw",
         "raw_stream",
-        "trace",
-        "heatmap"
+        "trace"
       ],
       "type": "string"
     },

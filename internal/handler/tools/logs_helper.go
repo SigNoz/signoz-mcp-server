@@ -2,6 +2,8 @@ package tools
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -31,7 +33,7 @@ func parseAggregateLogsArgs(args map[string]any) (*AggregateRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	filterExpr := buildLogFilterExpr(filter, service, severity, "")
+	filterExpr := buildLogFilterExpr(filter, service, severity, "", "")
 
 	return parseAggregateArgs(args, "logs", filterExpr)
 }
@@ -54,7 +56,11 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	service, _ := args["service"].(string)
 	severity, _ := args["severity"].(string)
 	searchText, _ := args["searchText"].(string)
-	filterExpr := buildLogFilterExpr(filter, service, severity, searchText)
+	searchScope, _ := args["searchScope"].(string)
+	if err := validateLogSearchScope(searchScope, searchText); err != nil {
+		return nil, err
+	}
+	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
 
 	limit, err := intArg(args, "limit", types.DefaultRawQueryLimit)
 	if err != nil {
@@ -102,7 +108,7 @@ func quoteLogContainsLiteral(value string) string {
 // buildLogFilterExpr combines the caller's filter expression with the log
 // convenience filters. The raw filter bytes are preserved; only server-composed
 // literals are quoted.
-func buildLogFilterExpr(filter, service, severity, searchText string) string {
+func buildLogFilterExpr(filter, service, severity, searchText, searchScope string) string {
 	var parts []string
 	if filter != "" {
 		if service == "" && severity == "" && searchText == "" {
@@ -117,7 +123,35 @@ func buildLogFilterExpr(filter, service, severity, searchText string) string {
 		parts = append(parts, "severity_text = "+quoteLogFilterLiteral(severity))
 	}
 	if searchText != "" {
-		parts = append(parts, "body CONTAINS "+quoteLogContainsLiteral(searchText))
+		parts = append(parts, logSearchTextPredicate(searchText, searchScope))
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// logSearchScopes maps searchScope values to search() scopes. body keeps the
+// cheaper CONTAINS predicate; all is an unscoped search() over every field.
+var logSearchScopes = []string{"body", "attribute", "resource", "all"}
+
+func validateLogSearchScope(scope, searchText string) error {
+	if scope == "" {
+		return nil
+	}
+	if !slices.Contains(logSearchScopes, scope) {
+		return fmt.Errorf(`invalid "searchScope" %q; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
+	}
+	if searchText == "" {
+		return errors.New(`"searchScope" needs "searchText"; supply the text to find, or remove searchScope`)
+	}
+	return nil
+}
+
+func logSearchTextPredicate(searchText, scope string) string {
+	switch scope {
+	case "", "body":
+		return "body CONTAINS " + quoteLogContainsLiteral(searchText)
+	case "all":
+		return "search(" + quoteLogFilterLiteral(searchText) + ")"
+	default:
+		return "search(" + quoteLogFilterLiteral(searchText) + ", " + scope + ")"
+	}
 }

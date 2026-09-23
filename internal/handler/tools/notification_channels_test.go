@@ -127,6 +127,26 @@ func TestHandleCreateNotificationChannel_TestIsExplicitOptIn(t *testing.T) {
 	}
 }
 
+func TestHandleListNotificationChannels_AcceptsStringNumbers(t *testing.T) {
+	var got types.NotificationChannelListParams
+	mock := &client.MockClient{ListNotificationChannelsV2Fn: func(_ context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+		got = params
+		return types.NotificationChannelList{Channels: []types.ListedNotificationChannel{}, Total: 0}, nil
+	}}
+	h := newTestHandler(mock)
+	result, err := h.handleListNotificationChannels(testCtx(), makeToolRequest("signoz_list_notification_channels", map[string]any{"limit": "50", "offset": " 10 "}))
+	if err != nil || result.IsError {
+		t.Fatalf("string limit/offset rejected: err=%v result=%v", err, result)
+	}
+	if got.Limit != 50 || got.Offset != 10 {
+		t.Fatalf("params = %#v, want limit 50 offset 10", got)
+	}
+	result, _ = h.handleListNotificationChannels(testCtx(), makeToolRequest("signoz_list_notification_channels", map[string]any{"limit": "fifty"}))
+	if !result.IsError || resultCode(t, result) != CodeValidationFailed || !strings.Contains(textContent(t, result), "is not an integer") {
+		t.Fatalf("non-numeric limit error = %v", result)
+	}
+}
+
 func TestHandleUpdateNotificationChannel_TestStatusIsExplicit(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -138,6 +158,8 @@ func TestHandleUpdateNotificationChannel_TestStatusIsExplicit(t *testing.T) {
 		{name: "default false", wantStatus: "skipped"},
 		{name: "explicit false", test: false, wantStatus: "skipped"},
 		{name: "explicit true", test: true, wantTests: 1, wantStatus: "succeeded", wantRequested: true},
+		{name: "string true", test: "true", wantTests: 1, wantStatus: "succeeded", wantRequested: true},
+		{name: "string false", test: "false", wantStatus: "skipped"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testCalls := 0
