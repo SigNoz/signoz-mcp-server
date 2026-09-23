@@ -16,7 +16,11 @@ func readLogFilterExpr(args map[string]any) (string, error) {
 	if _, exists := args["query"]; exists {
 		return "", errors.New(logsLegacyQueryAliasError)
 	}
-	return stringValue(args["filter"]), nil
+	filter := stringValue(args["filter"])
+	if strings.TrimSpace(filter) == "" {
+		return "", nil
+	}
+	return filter, nil
 }
 
 // parseAggregateLogsArgs validates and parses arguments for the aggregate_logs tool.

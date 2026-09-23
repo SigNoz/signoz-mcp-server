@@ -156,8 +156,11 @@ def mint_service_account_key(
     *,
     name: str = SERVICE_ACCOUNT_NAME,
     role: str = SERVICE_ACCOUNT_ROLE,
-) -> str:
-    """Create a service account, assign it a role, and return a fresh API key."""
+) -> tuple[str, str, str]:
+    """Create a service account, assign it a role, and mint a fresh API key.
+
+    Returns (access_token, service_account_id, key_id).
+    """
     sa = requests.post(
         f"{endpoint}/api/v1/service_accounts",
         json={"name": name},
@@ -183,8 +186,8 @@ def mint_service_account_key(
     )
     assert assign.status_code == 201, assign.text
 
-    access_token, _ = mint_key_for_service_account(endpoint, bearer_token, sa_id, name=name)
-    return access_token
+    access_token, key_id = mint_key_for_service_account(endpoint, bearer_token, sa_id, name=name)
+    return access_token, sa_id, key_id
 
 
 def mint_key_for_service_account(
@@ -253,8 +256,16 @@ def signoz(request: pytest.FixtureRequest, pytestconfig: pytest.Config) -> SigNo
 
             apply_license(endpoint, bearer_token, request.config.getoption("--license-key"))
 
-            access_token = mint_service_account_key(endpoint, bearer_token)
-            return SigNoz(endpoint=endpoint, access_token=access_token)
+            access_token, service_account_id, key_id = mint_service_account_key(endpoint, bearer_token)
+            # Keep revocation metadata in memory so a reused stack does not
+            # retain this non-expiring key; __cache__ still persists only the endpoint.
+            return SigNoz(
+                endpoint=endpoint,
+                access_token=access_token,
+                session_key_id=key_id,
+                service_account_id=service_account_id,
+                bearer_token=bearer_token,
+            )
         except Exception:
             # reuse.wrap registers its finalizer only after create() returns, so
             # a failed bring-up must tear the stack down itself.

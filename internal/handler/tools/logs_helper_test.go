@@ -71,6 +71,12 @@ func TestReadLogFilterExpr(t *testing.T) {
 		require.Equal(t, " body CONTAINS 'x' ", got)
 	})
 
+	t.Run("whitespace-only filter is absent when convenience filters are set", func(t *testing.T) {
+		req, err := parseSearchLogsArgs(map[string]any{"filter": "   ", "service": "api"})
+		require.NoError(t, err)
+		require.Equal(t, "service.name = 'api'", req.FilterExpression)
+	})
+
 	t.Run("query rejected even when filter is present", func(t *testing.T) {
 		_, err := readLogFilterExpr(map[string]any{"filter": "body CONTAINS 'x'", "query": "body CONTAINS 'legacy'"})
 		require.EqualError(t, err, logsLegacyQueryAliasError)

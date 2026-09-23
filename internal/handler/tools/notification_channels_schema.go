@@ -84,18 +84,7 @@ func normalizeNotificationUpdateArguments(arguments any) any {
 	if !ok {
 		return root
 	}
-	fields := map[string][]string{
-		"slack":      {"title", "text"},
-		"email":      {"html"},
-		"pagerduty":  {"source", "client", "clientUrl", "description"},
-		"opsgenie":   {"message", "description", "source"},
-		"msteams":    {"title", "text"},
-		"googlechat": {"title", "text"},
-		"jira":       {"summary", "description", "reopenDuration"},
-		"jsmops":     {"message", "description", "tags"},
-		"incidentio": {"title", "description"},
-	}
-	for _, field := range fields[kind] {
+	for _, field := range types.NotificationChannelUnsetTemplateFields(kind) {
 		if value, present := spec[field]; present && value == "" {
 			delete(spec, field)
 		}
@@ -135,7 +124,7 @@ func notificationListSchema() map[string]any {
 
 func notificationCreateSchema() map[string]any {
 	schema := notificationRoot(map[string]any{
-		"name":         map[string]any{"type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "description": "Immutable DNS-1123 identity used by routing references."},
+		"name":         map[string]any{"type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "description": "Immutable DNS-1123 machine identity. Alert routing references use displayName, not name."},
 		"generateName": map[string]any{"type": "boolean", "default": false, "description": "Generate the immutable name from displayName."},
 		"displayName":  map[string]any{"type": "string", "minLength": 1, "description": "Free-text channel label. Defaults to name when generateName is false."},
 		"config":       notificationConfigSchema(false),

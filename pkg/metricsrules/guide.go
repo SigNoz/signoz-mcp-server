@@ -115,7 +115,8 @@ must have exactly one enabled output: one metrics builder_query, one builder_for
 metric inputs disabled, one PromQL query, or one ClickHouse SQL query. Keep every input and output
 limit and order explicit. SigNoz ranks heatmap series by the sum of their bucket counts.
 
-Set bucketOptions on the enabled metrics query or formula. Use {"kind":"log","spec":{}} for
+Set bucketOptions on the enabled metrics builder_query or builder_formula; omit it for PromQL
+and ClickHouse SQL, which do not accept it. Use {"kind":"log","spec":{}} for
 the default finest log axis, or {"kind":"log","spec":{"scale":2}} for integer scales from -4
 through 4. Use {"kind":"linear","spec":{"maxValue":1,"numBuckets":20}} for a linear axis;
 maxValue must be finite and greater than zero, numBuckets may be omitted (or 0) for the

@@ -543,6 +543,29 @@ func unknownJSONField(err error) (string, bool) {
 	return field, true
 }
 
+// NotificationChannelUnsetTemplateFields lists the optional template fields
+// that the v0.142.0 response encoder writes as "" when they are unset.
+func NotificationChannelUnsetTemplateFields(kind string) []string {
+	switch kind {
+	case "slack", "msteams", "googlechat":
+		return []string{"title", "text"}
+	case "email":
+		return []string{"html"}
+	case "pagerduty":
+		return []string{"source", "client", "clientUrl", "description"}
+	case "opsgenie":
+		return []string{"message", "description", "source"}
+	case "jira":
+		return []string{"summary", "description", "reopenDuration"}
+	case "jsmops":
+		return []string{"message", "description", "tags"}
+	case "incidentio":
+		return []string{"title", "description"}
+	default:
+		return nil
+	}
+}
+
 func validateNonEmptyOptionalStrings(fields map[string]*string) error {
 	names := make([]string, 0, len(fields))
 	for name := range fields {

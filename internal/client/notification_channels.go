@@ -180,11 +180,42 @@ func (s *SigNoz) validateNotificationChannelData(data []byte) error {
 				return fmt.Errorf("notification channel response is missing required config.spec.%s", field)
 			}
 		}
+		if err := validateNotificationResponseSemantics(config.Kind, specObject); err != nil {
+			s.logger.Warn("Notification channel response violates its provider config rules; an unchanged update will be rejected",
+				slog.String("kind", config.Kind), slog.String("violation", err.Error()))
+		}
 	}
 	if drift {
 		s.logger.Warn("Notification channel response contains fields outside the pinned v0.142.0 typed contract; preserving the upstream object")
 	}
 	return nil
+}
+
+// validateNotificationResponseSemantics applies the request-side provider rules
+// to a readback, skipping the empty strings SigNoz writes for unset templates.
+func validateNotificationResponseSemantics(kind string, specObject map[string]json.RawMessage) error {
+	spec := make(map[string]json.RawMessage, len(specObject))
+	for field, raw := range specObject {
+		spec[field] = raw
+	}
+	for _, field := range types.NotificationChannelUnsetTemplateFields(kind) {
+		if bytes.Equal(bytes.TrimSpace(spec[field]), []byte(`""`)) {
+			delete(spec, field)
+		}
+	}
+	body, err := json.Marshal(spec)
+	if err != nil {
+		return err
+	}
+	target, _, _ := notificationResponseSpec(kind)
+	validator, ok := target.(types.NotificationChannelSpec)
+	if !ok {
+		return nil
+	}
+	if err := json.Unmarshal(body, validator); err != nil {
+		return err
+	}
+	return validator.Validate()
 }
 
 func notificationResponseSpec(kind string) (any, []string, []string) {

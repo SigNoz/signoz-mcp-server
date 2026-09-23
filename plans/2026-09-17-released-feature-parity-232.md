@@ -791,6 +791,33 @@ dashboard assumptions.
   module verification, build, race tests, guardrails, protocol, conformance,
   e2e Python style, and repo docs (including `READY=1`).
 
+### 2026-09-23 — Codex review findings
+
+Verified all eight open Codex findings against the source; each was valid and
+fixed:
+
+- Alert routing validation rejects a channel total above 10,000 before
+  paginating, bounding memory against a hostile or broken upstream.
+- The create-channel `name` description now says alert routing uses
+  `displayName`, matching the validator and README.
+- TextPanel normalization fills only missing or null `queries`; other shapes
+  pass through so drift stays visible.
+- Heatmap guidance limits `bucketOptions` to builder queries and formulas, and
+  PromQL/ClickHouse specs carrying it are rejected instead of silently dropped.
+- Channel readbacks run provider semantic rules (skipping SigNoz's empty unset
+  templates) and log a credential-free WARN on violation; the channel stays
+  readable. The unset-template list is shared with the update normalizer.
+- A whitespace-only log `filter` is treated as absent.
+- E2E cleanup reads the root-level channel list shape and narrows by name; the
+  first `--reuse` run keeps the minted key's revocation metadata in memory so
+  it is revoked at session end.
+
+The execute-builder description stays within its 1024-byte budget. Only the
+three affected wire-catalog entries changed. Companion skills already scope
+`bucketOptions` to metric queries and formulas, so no agent-skills change is
+needed. `GOTOOLCHAIN=go1.26.0 make ci` passed; the `--reuse` revocation path is
+not exercised by CI.
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)

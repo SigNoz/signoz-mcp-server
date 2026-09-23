@@ -106,6 +106,15 @@ func (q *Query) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	if shadow.Type == "promql" || shadow.Type == "clickhouse_sql" {
+		var keys map[string]json.RawMessage
+		if json.Unmarshal(shadow.Spec, &keys) == nil {
+			if _, ok := keys["bucketOptions"]; ok {
+				return fmt.Errorf("invalid %s spec: bucketOptions is only supported on builder_query and builder_formula; remove it from %s queries", shadow.Type, shadow.Type)
+			}
+		}
+	}
+
 	switch shadow.Type {
 	case "promql":
 		var spec PromQLSpec

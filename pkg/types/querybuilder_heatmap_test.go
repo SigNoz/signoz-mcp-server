@@ -111,6 +111,18 @@ func TestQueryPayloadHeatmap_InvalidBucketOptions(t *testing.T) {
 	}
 }
 
+func TestQueryPayloadHeatmap_RawQueriesRejectBucketOptions(t *testing.T) {
+	for _, query := range []string{
+		`{"type":"promql","spec":{"name":"A","query":"rate(x[5m])","bucketOptions":{"kind":"log","spec":{}}}}`,
+		`{"type":"clickhouse_sql","spec":{"name":"A","query":"SELECT 1","bucketOptions":{"kind":"log","spec":{}}}}`,
+	} {
+		var payload QueryPayload
+		err := json.Unmarshal([]byte(heatmapPayloadJSON(query, "")), &payload)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "bucketOptions is only supported on builder_query and builder_formula")
+	}
+}
+
 func TestQueryPayloadHeatmap_RequestMatrix(t *testing.T) {
 	metric := func(name string, mods string) string {
 		return `{"type":"builder_query","spec":{"name":"` + name + `","signal":"metrics","disabled":false,"aggregations":[{"metricName":"system.cpu.usage","spaceAggregation":"avg"}],` + mods + `"limit":10,"order":[{"key":{"name":"__result"},"direction":"desc"}],"having":{"expression":""}}}`

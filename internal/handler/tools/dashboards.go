@@ -97,10 +97,8 @@ func normalizeTextPanelSpecQueries(value any) {
 	if kind, _ := plugin["kind"].(string); kind != textPanelKind {
 		return
 	}
-	if queries, present := panelSpec["queries"]; present {
-		if _, isSlice := queries.([]any); isSlice {
-			return
-		}
+	if queries, present := panelSpec["queries"]; present && queries != nil {
+		return
 	}
 	panelSpec["queries"] = []any{}
 }

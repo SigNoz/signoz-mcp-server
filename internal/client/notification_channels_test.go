@@ -134,13 +134,32 @@ func TestValidateNotificationChannelData_AcceptsPinnedProviderResponseShapes(t *
 		"jsmops":     `{"sendResolved":true,"apiKey":"key","message":"","description":"","priority":"","tags":""}`,
 		"incidentio": `{"sendResolved":true,"url":"https://incident.test","token":"token","title":"","description":"","metadata":{}}`,
 	}
-	client := NewClient(logpkg.New("error"), "http://example.invalid", "key", "SIGNOZ-API-KEY", nil)
 	for kind, spec := range specs {
 		t.Run(kind, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+			client := NewClient(logger, "http://example.invalid", "key", "SIGNOZ-API-KEY", nil)
 			data := []byte(`{"name":"channel","displayName":"Channel","config":{"kind":"` + kind + `","spec":` + spec + `},"id":"` + clientNotificationID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}`)
 			require.NoError(t, client.validateNotificationChannelData(data))
+			require.Empty(t, logs.String(), "pinned response shapes must not report contract violations")
 		})
 	}
+}
+
+func TestGetNotificationChannel_WarnsWhenReadbackViolatesProviderRules(t *testing.T) {
+	const secret = "never-log-this-token"
+	var logs bytes.Buffer
+	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	response := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"sendResolved":true,"url":"https://example.test/hook","username":"user","password":"` + secret + `","bearerToken":"` + secret + `"}},"id":"` + clientNotificationID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, response) }))
+	defer server.Close()
+	client := NewClient(logger, server.URL, "key", "SIGNOZ-API-KEY", nil)
+	got, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
+	require.NoError(t, err, "a readable channel stays readable")
+	require.Contains(t, string(got), `"bearerToken"`)
+	require.Contains(t, logs.String(), "violates its provider config rules")
+	require.Contains(t, logs.String(), "bearerToken cannot be combined")
+	require.NotContains(t, logs.String(), secret)
 }
 
 func TestGetNotificationChannel_RejectsMissingIDAndBadSpecShape(t *testing.T) {

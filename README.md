@@ -987,7 +987,8 @@ v0.142.0 or newer. Check existing display names before creating a channel.
 
 - **Parameters**: `config` is required. Supply a DNS1123 `name`, or use
   `generateName: true` with a `displayName`. `displayName` defaults to an explicit
-  `name` when omitted. Both names become immutable after creation.
+  `name` when omitted. Both names become immutable after creation. Alert
+  routing references use `displayName`, not `name`.
 - **Provider kinds**: `slack`, `email`, `webhook`, `pagerduty`, `opsgenie`,
   `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`. The registered
   `config.spec` schema documents each provider's fields and required settings.
@@ -1056,7 +1057,8 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
   `{kind: "linear", spec: {maxValue: 1000, numBuckets: 60}}`. Log scales range
   from -4 to 4; linear maxValue must be finite and positive, and numBuckets
   ranges from 0 (default 60) to 512. Histograms derive bounds from their `le`
-  labels and reject bucketOptions. Results preserve `meta.buckets` and each
+  labels and reject bucketOptions. PromQL and ClickHouse SQL queries reject
+  bucketOptions. Results preserve `meta.buckets` and each
   point's bucket-count `values`, including the final overflow count. No Heatmap
   dashboard plugin or saved-view rendering capability is implied.
 - **Builder result bounds**: for predictable authored queries, explicitly supply a positive `spec.limit` and non-empty v5 `spec.order` (not dashboard/editor `orderBy`) on every `builder_query` and `builder_formula`. When omitted, null, or zero, standalone limits and formula-result limits default to `100`; a builder query referenced by a formula defaults to `10000` because base-query limits are applied before formula evaluation. Raw logs order by `timestamp desc, id desc`; raw traces by `timestamp desc`; metric scalar/time-series queries and formulas by `__result desc`; and log/trace scalar/time-series queries by the primary aggregation descending. Valid caller-supplied values are preserved. The response appends a decisions note when defaults are inserted.

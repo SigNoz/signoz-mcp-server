@@ -4010,7 +4010,7 @@
                 "type": "boolean"
               },
               "name": {
-                "description": "Immutable DNS-1123 identity used by routing references.",
+                "description": "Immutable DNS-1123 machine identity. Alert routing references use displayName, not name.",
                 "maxLength": 63,
                 "minLength": 1,
                 "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
@@ -4189,7 +4189,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. requestType \"heatmap\" (SigNoz v0.142.0+) returns a bucketed distribution from exactly one enabled metrics builder query, formula, PromQL, or ClickHouse query; set bucketOptions on that enabled query or formula. Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
+          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. requestType \"heatmap\" (SigNoz v0.142.0+) returns a bucketed distribution from exactly one enabled metrics builder query, formula, PromQL, or ClickHouse query; bucketOptions applies only to that builder query or formula, not PromQL or ClickHouse. Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
           "inputSchema": {
             "properties": {
               "query": {

@@ -59,14 +59,16 @@ def channel_id_by_name(client: MCPClient, name: str) -> str:
     """Best-effort id recovery by name (cleanup backstop; never raises)."""
     try:
         result = client.call_tool(
-            "signoz_list_notification_channels", {"searchContext": f"find channel {name}", "limit": 200}
+            "signoz_list_notification_channels",
+            {"searchContext": f"find channel {name}", "query": name, "limit": 200},
         )
         if result.get("isError", False):
             return ""
         payload = first_block_json(result)
-        channels = payload.get("data", {}).get("channels", [])
+        data = payload.get("data", payload) if isinstance(payload, dict) else {}
+        channels = data.get("channels", []) if isinstance(data, dict) else []
         if not isinstance(channels, list):
-            channels = payload.get("data", [])
+            channels = []
         for item in channels:
             if isinstance(item, dict) and item.get("name") == name:
                 value = item.get("id")

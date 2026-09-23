@@ -981,6 +981,12 @@ func TestHandleCreateAlert_MalformedChannelPageStopsMutation(t *testing.T) {
 			},
 		},
 		{
+			name: "total above validation bound",
+			list: func(types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+				return types.NotificationChannelList{Channels: validTwo.Channels, Total: maxRoutingValidationChannels + 1}, nil
+			},
+		},
+		{
 			name: "empty page before total",
 			list: func(types.NotificationChannelListParams) (types.NotificationChannelList, error) {
 				return types.NotificationChannelList{Channels: []types.ListedNotificationChannel{}, Total: 1}, nil

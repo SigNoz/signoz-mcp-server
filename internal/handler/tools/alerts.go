@@ -617,6 +617,10 @@ func supportsPolicyRouting(ruleType any) bool {
 	return ruleType == "threshold_rule" || ruleType == "promql_rule"
 }
 
+// maxRoutingValidationChannels bounds the channels read to validate alert
+// routing, so a hostile or broken upstream cannot grow memory without limit.
+const maxRoutingValidationChannels = 10000
+
 // fetchChannelDisplayNames retrieves every routing name from the filtered v2 list.
 func fetchChannelDisplayNames(ctx context.Context, c signozclient.Client) ([]string, error) {
 	const pageLimit = types.NotificationChannelMaxListLimit
@@ -636,6 +640,9 @@ func fetchChannelDisplayNames(ctx context.Context, c signozclient.Client) ([]str
 			return nil, err
 		}
 		if expectedTotal == -1 {
+			if page.Total > maxRoutingValidationChannels {
+				return nil, fmt.Errorf("notification channel total %d exceeds the %d channels read for alert routing validation", page.Total, maxRoutingValidationChannels)
+			}
 			expectedTotal = page.Total
 		} else if page.Total != expectedTotal {
 			return nil, fmt.Errorf("notification channel pagination total changed from %d to %d at offset %d", expectedTotal, page.Total, offset)

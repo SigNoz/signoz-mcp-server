@@ -834,6 +834,23 @@ func TestHandleGetDashboard_NormalizesTextPanelAndPreservesSource(t *testing.T) 
 	}
 }
 
+func TestHandleGetDashboard_PreservesMalformedTextPanelQueries(t *testing.T) {
+	response := testDashboardWithTextPanel("not-an-array")
+	response["id"] = "d1"
+	body, _ := json.Marshal(map[string]any{"data": response})
+	mock := &client.MockClient{GetDashboardFn: func(context.Context, string) (json.RawMessage, error) { return body, nil }}
+	result, err := newTestHandler(mock).handleGetDashboard(testCtx(), makeToolRequest("signoz_get_dashboard", map[string]any{"id": "d1"}))
+	if err != nil || result.IsError {
+		t.Fatalf("get failed: err=%v result=%v", err, result.Content)
+	}
+	var decoded map[string]any
+	_ = json.Unmarshal([]byte(textContent(t, result)), &decoded)
+	panels := decoded["data"].(map[string]any)["spec"].(map[string]any)["panels"].(map[string]any)
+	if got := panels["runbook"].(map[string]any)["spec"].(map[string]any)["queries"]; got != "not-an-array" {
+		t.Fatalf("malformed TextPanel queries = %#v, want the upstream value preserved", got)
+	}
+}
+
 func TestHandleListDashboards_PreservesReturnedUserAndIntegrationSources(t *testing.T) {
 	mock := &client.MockClient{ListDashboardsFn: func(context.Context, int, int, string, string, string) (json.RawMessage, error) {
 		return json.RawMessage(`{"data":{"dashboards":[{"id":"u1","source":"user"},{"id":"i1","source":"integration"}],"total":2}}`), nil
