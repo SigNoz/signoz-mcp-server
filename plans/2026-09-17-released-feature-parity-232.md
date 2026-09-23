@@ -947,6 +947,8 @@ and ran 12 prompts three times each on main `a31a6df` and this branch
   all-fields search (was 3/3 all-fields each); S12 5/5 correct, with one run
   still trying `search()` on traces (was 3/3) and every run using
   `searchScope=all` over 7 days (accepted with a warning). $1.28.
+- Moved the traces "search() is logs-only" sentence to the front of the traces
+  `filter` description (user decision; no rerun).
 
 ## Reference Links
 
