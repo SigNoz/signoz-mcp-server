@@ -7,7 +7,6 @@ silently skipped.
 """
 
 import json
-from typing import Any
 
 from fixtures.logger import setup_logger
 from fixtures.mcpclient import MCPClient, assert_tool_ok
@@ -16,23 +15,25 @@ from fixtures.results import dig_id, first_block_json, first_text_block
 logger = setup_logger(__name__)
 
 
-def create_channel(
-    client: MCPClient, name: str, *, webhook_url: str = "https://example.com/mcp-e2e", send_resolved: Any = "true"
-) -> str:
-    """Create a webhook notification channel; return its id."""
+def create_channel(client: MCPClient, name: str, config: dict) -> str:
+    """Create a canonical v2 notification channel; return its id."""
     result = assert_tool_ok(
         client.call_tool(
             "signoz_create_notification_channel",
             {
                 "searchContext": f"create a webhook channel named {name}",
-                "type": "webhook",
                 "name": name,
-                "webhook_url": webhook_url,
-                "send_resolved": send_resolved,
+                "displayName": name,
+                "config": config,
+                "test": False,
             },
         )
     )
-    channel_id = dig_id(first_block_json(result))
+    payload = first_block_json(result)
+    test_notification = payload.get("testNotification", {})
+    assert test_notification.get("requested") is False
+    assert test_notification.get("status") == "skipped"
+    channel_id = dig_id(payload)
     assert channel_id, f"could not extract channel id from create response: {first_text_block(result)[:400]}"
     logger.info("created channel id=%s name=%s", channel_id, name)
     return channel_id
@@ -58,11 +59,17 @@ def channel_id_by_name(client: MCPClient, name: str) -> str:
     """Best-effort id recovery by name (cleanup backstop; never raises)."""
     try:
         result = client.call_tool(
-            "signoz_list_notification_channels", {"searchContext": f"find channel {name}", "limit": "1000"}
+            "signoz_list_notification_channels",
+            {"searchContext": f"find channel {name}", "query": name, "limit": 200},
         )
         if result.get("isError", False):
             return ""
-        for item in first_block_json(result).get("data", []):
+        payload = first_block_json(result)
+        data = payload.get("data", payload) if isinstance(payload, dict) else {}
+        channels = data.get("channels", []) if isinstance(data, dict) else []
+        if not isinstance(channels, list):
+            channels = []
+        for item in channels:
             if isinstance(item, dict) and item.get("name") == name:
                 value = item.get("id")
                 if isinstance(value, str):
@@ -127,7 +134,14 @@ def delete_alert_rule(client: MCPClient, rule_id: str) -> None:
     )
 
 
-def create_view(client: MCPClient, name: str, *, source: str = "logs") -> str:
+def alert_rule_gone(client: MCPClient, rule_id: str) -> bool:
+    result = client.call_tool(
+        "signoz_get_alert", {"searchContext": f"confirm alert rule {rule_id} gone", "id": rule_id}
+    )
+    return bool(result.get("isError", False))
+
+
+def create_view(client: MCPClient, name: str, *, source: str = "logs", spec: dict | None = None) -> str:
     """Create a saved view; return its id."""
     result = assert_tool_ok(
         client.call_tool(
@@ -137,16 +151,12 @@ def create_view(client: MCPClient, name: str, *, source: str = "logs") -> str:
                 "name": name,
                 "source": source,
                 "schemaVersion": "v2",
-                "spec": {
+                "spec": spec
+                or {
                     "displayName": name,
                     "panelType": "list",
                     "requestType": "raw",
-                    "queries": [
-                        {
-                            "type": "builder_query",
-                            "spec": {"name": "A", "signal": source, "limit": 100},
-                        }
-                    ],
+                    "queries": [{"type": "builder_query", "spec": {"name": "A", "signal": source, "limit": 100}}],
                 },
             },
         )

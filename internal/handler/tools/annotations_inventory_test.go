@@ -15,7 +15,7 @@ var (
 	createTriple = annotationTriple{readOnly: false, destructive: false, idempotent: false}
 	updateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: true}
 	deleteTriple = annotationTriple{readOnly: false, destructive: true, idempotent: true}
-	// Updates whose handler fires a live test notification on every call,
+	// Updates whose handler can fire a live test notification when explicitly requested,
 	// so a repeat call re-notifies and is not idempotent.
 	nonIdempotentUpdateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: false}
 	// Patch applies an RFC 6902 JSON Patch to an existing resource: destructive,

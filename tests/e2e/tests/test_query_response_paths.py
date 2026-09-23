@@ -16,7 +16,14 @@ from fixtures.results import (
     first_text_block,
     note_blocks,
 )
-from fixtures.seeded import create_alert_rule, create_channel, delete_alert_rule, delete_channel
+from fixtures.seeded import (
+    alert_rule_gone,
+    channel_gone,
+    create_alert_rule,
+    create_channel,
+    delete_alert_rule,
+    delete_channel,
+)
 from fixtures.telemetry import seed_logs, seed_metrics, seed_traces, wait_for
 
 
@@ -116,7 +123,11 @@ def test_alert_history_path(mcp_client: MCPClient, test_id: str) -> None:
     """
     channel_name = f"mcp-e2e-ch-{test_id}"
     rule_name = f"mcp-e2e-rule-{test_id}"
-    channel_id = create_channel(mcp_client, channel_name)
+    channel_id = create_channel(
+        mcp_client,
+        channel_name,
+        {"kind": "webhook", "spec": {"url": "http://example.invalid/no-send"}},
+    )
     rule_id = None
     try:
         rule_id = create_alert_rule(mcp_client, rule_name, channel_name=channel_name)
@@ -132,7 +143,9 @@ def test_alert_history_path(mcp_client: MCPClient, test_id: str) -> None:
     finally:
         if rule_id is not None:
             delete_alert_rule(mcp_client, rule_id)
+            assert alert_rule_gone(mcp_client, rule_id), f"alert rule {rule_id} remained after cleanup"
         delete_channel(mcp_client, channel_id)
+        assert channel_gone(mcp_client, channel_id), f"channel {channel_id} remained after cleanup"
 
 
 def test_execute_builder_query(mcp_client: MCPClient) -> None:
@@ -161,5 +174,6 @@ def test_execute_builder_query(mcp_client: MCPClient) -> None:
 def test_list_tools_succeed(mcp_client: MCPClient) -> None:
     """Normal list tools succeed and return valid JSON (N5)."""
     for tool in ("signoz_list_dashboards", "signoz_list_notification_channels"):
-        result = assert_tool_ok(mcp_client.call_tool(tool, {"searchContext": f"call {tool}", "limit": "5"}))
+        limit = 5 if tool == "signoz_list_notification_channels" else "5"
+        result = assert_tool_ok(mcp_client.call_tool(tool, {"searchContext": f"call {tool}", "limit": limit}))
         json.loads(first_text_block(result))

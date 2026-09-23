@@ -75,11 +75,11 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a v2 threshold/PromQL or v1 anomaly alert; direct routing resolves exact names with signoz_list_notification_channels, while confirmed v2 policy routing may omit channels"
+      "description": "Create a v2 threshold/PromQL or v1 anomaly alert; direct routing resolves exact displayName values with signoz_list_notification_channels, while confirmed v2 policy routing may omit channels"
     },
     {
       "name": "signoz_update_alert",
-      "description": "Fully replace an alert using same-operation signoz_get_alert, authoring-resource, and signoz_list_notification_channels results; refresh only stale preflights"
+      "description": "Fully replace an alert using same-operation signoz_get_alert, authoring-resource, and signoz_list_notification_channels results; route by exact channel displayName and refresh only stale preflights"
     },
     {
       "name": "signoz_delete_alert",
@@ -87,15 +87,15 @@
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for panel and query definitions"
+      "description": "List paginated dashboard summaries with metadata filters"
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get one known tenant dashboard's complete layout, variables, panels, and queries by id"
+      "description": "Get a dashboard by id with layout, panels, queries, and source"
     },
     {
       "name": "signoz_create_dashboard",
-      "description": "Create a custom multi-panel dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
+      "description": "Create a custom dashboard with query panels or static Markdown Text panels; use import for curated templates"
     },
     {
       "name": "signoz_update_dashboard",
@@ -159,7 +159,7 @@
     },
     {
       "name": "signoz_search_logs",
-      "description": "Return individual paginated log records; shortcut parameters need no guide, while custom filters with unfamiliar fields use the logs guide"
+      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text"
     },
     {
       "name": "signoz_aggregate_traces",
@@ -175,27 +175,27 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Run Query Builder v5 requests that the dedicated log, trace, or metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL; formulas use input limit 10000, result limit 100, and non-empty spec.order"
+      "description": "Run raw Query Builder v5 requests for formulas, PromQL, or ClickHouse SQL beyond the dedicated signal tools"
     },
     {
       "name": "signoz_list_notification_channels",
-      "description": "List paginated notification-channel summaries for exact-name verification, duplicate checks, and ID discovery; use get for provider-specific settings"
+      "description": "List paginated v2 channel summaries; use displayName for alert routing and get for provider settings"
     },
     {
       "name": "signoz_create_notification_channel",
-      "description": "Create a uniquely named notification channel after listing existing names, then send a test notification"
+      "description": "Create a uniquely named channel from canonical config.kind/spec; send a test only when test is true"
     },
     {
       "name": "signoz_update_notification_channel",
-      "description": "Fully replace a notification channel after fetching its complete configuration, then send a test notification"
+      "description": "Replace a channel config after fetching and preserving all settings and credentials; test sends are opt-in"
     },
     {
       "name": "signoz_get_notification_channel",
-      "description": "Get all provider-specific settings for one notification channel by ID"
+      "description": "Get one canonical channel including displayName and full provider config; keep returned credentials private"
     },
     {
       "name": "signoz_delete_notification_channel",
-      "description": "Permanently delete a confirmed notification channel by ID; call directly once resolved, but note that it does not check alert-rule references"
+      "description": "Permanently delete a confirmed channel by ID; resolve backend routing-policy dependency errors before retrying"
     }
   ],
   "resources": [

@@ -41,7 +41,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\". Combined with service/severity params using AND.",
+                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"body CONTAINS 'timeout' AND severity_text = 'ERROR'\". Combined with service/severity params using AND.",
                 "type": "string"
               },
               "groupBy": {
@@ -141,7 +141,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with service/operation/error/duration params using AND.",
+                "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with service/operation/error/duration params using AND.",
                 "type": "string"
               },
               "groupBy": {
@@ -333,7 +333,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. If none fits, ask the user or offer signoz_create_notification_channel with user-provided config; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -1217,6 +1217,14 @@
                 ],
                 "type": "string"
               },
+              "DashboardtypesHeaderOptions": {
+                "properties": {
+                  "hide": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
               "DashboardtypesHistogramBuckets": {
                 "properties": {
                   "bucketCount": {
@@ -1471,6 +1479,7 @@
                     "signoz/NumberPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec",
                     "signoz/PieChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec",
                     "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
+                    "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
                     "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
                   },
                   "propertyName": "kind"
@@ -1496,6 +1505,9 @@
                   },
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
                   }
                 ],
                 "type": "object"
@@ -1588,6 +1600,22 @@
                   },
                   "spec": {
                     "$ref": "#/$defs/DashboardtypesTablePanelSpec"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/TextPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "$ref": "#/$defs/DashboardtypesTextPanelSpec"
                   }
                 },
                 "required": [
@@ -1917,6 +1945,54 @@
                 ],
                 "type": "object"
               },
+              "DashboardtypesTextAlign": {
+                "enum": [
+                  "left",
+                  "center",
+                  "right"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesTextMode": {
+                "enum": [
+                  "markdown"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesTextPanelSpec": {
+                "properties": {
+                  "headerOptions": {
+                    "$ref": "#/$defs/DashboardtypesHeaderOptions"
+                  },
+                  "mode": {
+                    "$ref": "#/$defs/DashboardtypesTextMode"
+                  },
+                  "presentation": {
+                    "$ref": "#/$defs/DashboardtypesTextPresentation"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesTextPresentation": {
+                "properties": {
+                  "background": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "textAlign": {
+                    "$ref": "#/$defs/DashboardtypesTextAlign"
+                  },
+                  "verticalAlign": {
+                    "$ref": "#/$defs/DashboardtypesVerticalAlign"
+                  }
+                },
+                "type": "object"
+              },
               "DashboardtypesTextVariableSpec": {
                 "properties": {
                   "constant": {
@@ -2176,6 +2252,14 @@
                   "spec"
                 ],
                 "type": "object"
+              },
+              "DashboardtypesVerticalAlign": {
+                "enum": [
+                  "top",
+                  "center",
+                  "bottom"
+                ],
+                "type": "string"
               },
               "MetrictypesComparisonSpaceAggregationParam": {
                 "properties": {
@@ -2928,6 +3012,7 @@
               "Querybuildertypesv5QueryEnvelope": {
                 "discriminator": {
                   "mapping": {
+                    "builder_ai_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI",
                     "builder_formula": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula",
                     "builder_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder",
                     "builder_trace_operator": "#/$defs/Querybuildertypesv5QueryEnvelopeTraceOperator",
@@ -2939,6 +3024,9 @@
                 "oneOf": [
                   {
                     "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder"
+                  },
+                  {
+                    "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI"
                   },
                   {
                     "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula"
@@ -2962,6 +3050,21 @@
                   },
                   "type": {
                     "const": "builder_query",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              },
+              "Querybuildertypesv5QueryEnvelopeBuilderAI": {
+                "properties": {
+                  "spec": {
+                    "$ref": "#/$defs/Querybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation"
+                  },
+                  "type": {
+                    "const": "builder_ai_query",
                     "type": "string"
                   }
                 },
@@ -3033,6 +3136,7 @@
               "Querybuildertypesv5QueryType": {
                 "enum": [
                   "builder_query",
+                  "builder_ai_query",
                   "builder_formula",
                   "builder_trace_operator",
                   "clickhouse_sql",
@@ -3146,7 +3250,9 @@
                   "metric",
                   "log",
                   "span",
+                  "trace",
                   "resource",
+                  "scope",
                   "attribute",
                   "body",
                   ""
@@ -3254,108 +3360,581 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz notification channel. First call signoz_list_notification_channels and confirm the requested name is not already used. Supply the provider-specific required field documented in the input schema. A test notification is sent after creation; if the test fails, the channel still exists and the response reports the failure.\nSUPPORTED TYPES: slack, webhook, pagerduty, email, opsgenie, msteams\n\nUse signoz_update_notification_channel to change an existing channel.",
+          "description": "Create a notification channel from one complete canonical config. Supply name, or set generateName=true with displayName. test defaults to false: ask whether the user wants one live test notification and set test=true only if they agree. Use signoz_update_notification_channel to replace an existing channel configuration.",
           "inputSchema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "properties": {
+                  "generateName": {
+                    "enum": [
+                      false
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              {
+                "not": {
+                  "required": [
+                    "name"
+                  ]
+                },
+                "properties": {
+                  "generateName": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "generateName",
+                  "displayName"
+                ]
+              }
+            ],
             "properties": {
-              "email_html": {
-                "description": "Custom HTML email template (Go template syntax supported)",
+              "config": {
+                "additionalProperties": false,
+                "description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider. Example: {\"kind\":\"email\",\"spec\":{\"to\":\"oncall@example.com\"}}",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "slack",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiUrl": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "channel": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "title": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiUrl"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "email",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "headers": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "html": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "to": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "to"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "webhook",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bearerToken": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "password": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "url": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "pagerduty",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "class": {
+                            "type": "string"
+                          },
+                          "client": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "clientUrl": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "component": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "details": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "routingKey": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "routingKey"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "opsgenie",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiKey": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "apiUrl": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "details": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "message": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "source": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiKey"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "msteams",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "title": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "webhookUrl": {
+                            "format": "password",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "webhookUrl"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "googlechat",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "title": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "webhookUrl": {
+                            "format": "password",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "webhookUrl"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "jira",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiToken": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "customFields": {
+                            "type": "object"
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "issueType": {
+                            "type": "string"
+                          },
+                          "labels": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "reopenDuration": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "reopenTransition": {
+                            "type": "string"
+                          },
+                          "resolveTransition": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "site": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "wontFixResolution": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "site",
+                          "project",
+                          "issueType",
+                          "email",
+                          "apiToken"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "jsmops",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiKey": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "description": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "message": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "tags": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiKey"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "incidentio",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "title": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "token": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "token"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  }
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "displayName": {
+                "description": "Free-text channel label that alert routing references. Defaults to name when generateName is false. Immutable after creation.",
+                "minLength": 1,
                 "type": "string"
               },
-              "email_to": {
-                "description": "Comma-separated list of email addresses. Required when type=email",
-                "type": "string"
-              },
-              "msteams_text": {
-                "description": "Message body template (Go template syntax supported)",
-                "type": "string"
-              },
-              "msteams_title": {
-                "description": "Message title template (Go template syntax supported)",
-                "type": "string"
-              },
-              "msteams_webhook_url": {
-                "description": "MS Teams incoming webhook URL. Required when type=msteams",
-                "type": "string"
+              "generateName": {
+                "default": false,
+                "description": "Generate the immutable name from displayName.",
+                "type": "boolean"
               },
               "name": {
-                "description": "Unique channel name. Before creating, verify it is unused with signoz_list_notification_channels.",
-                "type": "string"
-              },
-              "opsgenie_api_key": {
-                "description": "OpsGenie API key. Required when type=opsgenie",
-                "type": "string"
-              },
-              "opsgenie_description": {
-                "description": "Alert description (Go template syntax supported)",
-                "type": "string"
-              },
-              "opsgenie_message": {
-                "description": "Alert message (Go template syntax supported)",
-                "type": "string"
-              },
-              "opsgenie_priority": {
-                "description": "Alert priority: P1, P2, P3, P4, or P5",
-                "type": "string"
-              },
-              "pagerduty_description": {
-                "description": "Incident description (Go template syntax supported)",
-                "type": "string"
-              },
-              "pagerduty_routing_key": {
-                "description": "PagerDuty integration/routing key. Required when type=pagerduty",
-                "type": "string"
-              },
-              "pagerduty_severity": {
-                "description": "Incident severity: critical, error, warning, or info",
+                "description": "Immutable DNS-1123 machine identity. Alert routing references use displayName, not name.",
+                "maxLength": 63,
+                "minLength": 1,
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
                 "type": "string"
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
-              "send_resolved": {
-                "description": "Whether to send notifications when alerts resolve. Default: true.",
+              "test": {
+                "default": false,
+                "description": "Send one live test notification after creation. The channel remains created if the test fails.",
                 "type": [
                   "boolean",
                   "string"
                 ]
-              },
-              "slack_api_url": {
-                "description": "Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx",
-                "type": "string"
-              },
-              "slack_channel": {
-                "description": "Slack channel or username to post to. Example: '#alerts' or '@oncall'",
-                "type": "string"
-              },
-              "slack_text": {
-                "description": "Message body template (Go template syntax supported)",
-                "type": "string"
-              },
-              "slack_title": {
-                "description": "Message title template (Go template syntax supported)",
-                "type": "string"
-              },
-              "type": {
-                "description": "Channel type: slack, webhook, pagerduty, email, opsgenie, or msteams.",
-                "type": "string"
-              },
-              "webhook_password": {
-                "description": "Password for basic authentication (optional)",
-                "type": "string"
-              },
-              "webhook_url": {
-                "description": "Webhook endpoint URL. Required when type=webhook",
-                "type": "string"
-              },
-              "webhook_username": {
-                "description": "Username for basic authentication (optional)",
-                "type": "string"
               }
             },
             "required": [
-              "type",
-              "name"
+              "config"
             ],
             "type": "object"
           },
@@ -3439,11 +4018,11 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user has confirmed they want to permanently delete one tenant dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the UUID when needed; do not use this for saved Explorer views; delete those with signoz_delete_view.",
+          "description": "Use this when the user has confirmed they want to permanently delete one user dashboard. The deletion is irreversible. Use signoz_list_dashboards to discover the id when needed. Only user dashboards can be deleted; upstream returns a coded denial for others. Use signoz_delete_view for saved Explorer views.",
           "inputSchema": {
             "properties": {
               "id": {
-                "description": "UUID of the dashboard to delete. Required; use signoz_list_dashboards to discover it.",
+                "description": "Dashboard id to delete. Required; use signoz_list_dashboards to discover it. Do not send uuid.",
                 "type": "string"
               },
               "searchContext": {
@@ -3451,7 +4030,9 @@
                 "type": "string"
               }
             },
-            "required": [],
+            "required": [
+              "id"
+            ],
             "type": "object"
           },
           "name": "signoz_delete_dashboard"
@@ -3463,11 +4044,13 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user explicitly wants to permanently delete a notification channel. Resolve its ID with signoz_list_notification_channels and confirm the exact channel first. If both steps are already complete, call this tool directly without repeating list/get preflight. This tool does not check whether alert rules reference the channel; inspect configured rules first when dependency safety is required.",
+          "description": "Permanently delete one notification channel by ID after the user has confirmed the exact channel. This tool does not check alert-rule references.",
           "inputSchema": {
+            "additionalProperties": false,
             "properties": {
               "id": {
-                "description": "Notification channel UUID. Obtain it from signoz_list_notification_channels.",
+                "description": "Notification channel UUID.",
+                "format": "uuid",
                 "type": "string"
               },
               "searchContext": {
@@ -3513,7 +4096,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this only when the user needs a SigNoz Query Builder v5 request that the dedicated log, trace, and metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Before composing the query, read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas also require the metrics guide, and PromQL requires signoz://promql/instructions. For predictable formulas, explicitly set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server normalizes omissions.",
+          "description": "Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -3740,11 +4323,11 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the UUID is unknown. Do not use this to browse: signoz_list_dashboards lists tenant summaries and signoz_list_dashboard_templates lists curated templates.",
+          "description": "Use this when the user wants the complete definition of one known tenant dashboard, including its layout, variables, panels, and queries. Use signoz_list_dashboards first when the id is unknown. Do not use this to browse: signoz_list_dashboards lists tenant summaries and signoz_list_dashboard_templates lists curated templates. Get-by-id can return source user, system, or integration; keep source as returned. Only source=user dashboards can be updated, patched, or deleted; system and integration writes fail with a coded upstream error.",
           "inputSchema": {
             "properties": {
               "id": {
-                "description": "Known dashboard UUID. Required; use signoz_list_dashboards to discover it.",
+                "description": "Known dashboard id. Required; use signoz_list_dashboards to discover it. Do not send uuid.",
                 "type": "string"
               },
               "searchContext": {
@@ -3752,7 +4335,9 @@
                 "type": "string"
               }
             },
-            "required": [],
+            "required": [
+              "id"
+            ],
             "type": "object"
           },
           "name": "signoz_get_dashboard"
@@ -3867,11 +4452,13 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants all provider-specific settings for one notification channel, especially before replacing it with signoz_update_notification_channel. It requires a known channel ID; use signoz_list_notification_channels to discover IDs. Do not use it to list channel names.",
+          "description": "Get one notification channel by ID, including its complete provider config. Use signoz_list_notification_channels to discover IDs. The response preserves backend-owned fields so an update can retain the full current configuration.",
           "inputSchema": {
+            "additionalProperties": false,
             "properties": {
               "id": {
-                "description": "Notification channel UUID. Obtain it from signoz_list_notification_channels.",
+                "description": "Notification channel UUID.",
+                "format": "uuid",
                 "type": "string"
               },
               "searchContext": {
@@ -5162,7 +5749,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard UUID. It returns names, descriptions, tags, timestamps, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. Narrow the results with the optional filter expression (by name, description, tags, creator, timestamps, or locked state). When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent.",
+          "description": "Use this when the user wants to discover tenant dashboards, browse their summaries, or find a dashboard id. It returns names, descriptions, tags, timestamps, source, and a total count, not panel/query definitions; use signoz_get_dashboard for one full definition. source is user or integration; only user dashboards can be updated, patched, or deleted. source is not a list-filter column: filter by name, description, tags, creator, timestamps, or locked state, then distinguish user vs integration client-side across pages. When looking for a specific dashboard, page by raising offset by limit until you have covered total before concluding it is absent.",
           "inputSchema": {
             "properties": {
               "filter": {
@@ -5274,31 +5861,70 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants to discover configured notification channels, verify exact channel names before creating or updating an alert, avoid a duplicate name before channel creation, or find a channel ID. It returns paginated summaries only: id, name, type, and timestamps; it does not return provider-specific settings. Use signoz_get_notification_channel with an ID for all settings.",
+          "description": "List notification channels as configuration-free summaries. Use query and kind to filter before paging; total counts every matching channel. Use signoz_get_notification_channel with an ID to read the complete provider configuration.",
           "inputSchema": {
+            "additionalProperties": false,
             "properties": {
+              "kind": {
+                "description": "Return only this provider kind.",
+                "enum": [
+                  "slack",
+                  "email",
+                  "webhook",
+                  "pagerduty",
+                  "opsgenie",
+                  "msteams",
+                  "googlechat",
+                  "jira",
+                  "jsmops",
+                  "incidentio"
+                ],
+                "type": "string"
+              },
               "limit": {
-                "default": "50",
-                "description": "Maximum number of channels to return per page. Default: 50, max: 1000 (higher values are clamped).",
+                "default": 20,
+                "description": "Page size. 0 or omitted uses 20; values above 200 are clamped to 200, and pagination.limit reports the size used.",
+                "minimum": 0,
                 "type": [
                   "integer",
                   "string"
                 ]
               },
               "offset": {
-                "default": "0",
-                "description": "Number of results to skip before returning results. Use for pagination: offset=0 for first page, offset=50 for second page (if limit=50). Check 'pagination.nextOffset' in the response to get the next page offset. Default: 0.",
+                "default": 0,
+                "minimum": 0,
                 "type": [
                   "integer",
                   "string"
                 ]
               },
+              "order": {
+                "default": "desc",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string"
+              },
+              "query": {
+                "description": "Case-insensitive display-name search.",
+                "maxLength": 1024,
+                "type": "string"
+              },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
+              },
+              "sort": {
+                "default": "updated_at",
+                "enum": [
+                  "updated_at",
+                  "created_at",
+                  "name"
+                ],
+                "type": "string"
               }
             },
-            "required": [],
             "type": "object"
           },
           "name": "signoz_list_notification_channels"
@@ -5472,10 +6098,6 @@
               },
               "searchContext": {
                 "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.",
-                "type": "string"
-              },
-              "uuid": {
-                "description": "Legacy alias for id; accepted for backward compatibility.",
                 "type": "string"
               }
             },
@@ -5716,7 +6338,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"(severity_text = 'ERROR' OR body CONTAINS 'panic') AND k8s.namespace.name = 'prod'\", \"body.user.id = '123'\".",
+                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"body CONTAINS 'timeout' AND severity_text = 'ERROR'\".",
                 "type": "string"
               },
               "limit": {
@@ -5739,8 +6361,18 @@
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
+              "searchScope": {
+                "description": "Where searchText matches: body (default) for message text; attribute or resource for their keys and values; all for every field. Scopes other than body are slower, and SigNoz may reject them over wide time ranges. Use them only when you don't know which key holds the text; when you do, put a predicate such as attribute.\u003ckey\u003e CONTAINS 'text' in filter instead.",
+                "enum": [
+                  "body",
+                  "attribute",
+                  "resource",
+                  "all"
+                ],
+                "type": "string"
+              },
               "searchText": {
-                "description": "Text to search for in log body (uses CONTAINS matching).",
+                "description": "Literal text to find, escaped automatically. searchScope chooses where it matches; the default is the log body. Combines with filter using AND.",
                 "type": "string"
               },
               "service": {
@@ -5794,7 +6426,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with shortcut params using AND.",
+                "description": "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e, resource.\u003ckey\u003e, or span.\u003ckey\u003e. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano \u003e 1000000000)\". Combined with shortcut params using AND.",
                 "type": "string"
               },
               "limit": {
@@ -5858,7 +6490,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. If no direct channel fits, ask the user or offer signoz_create_notification_channel with user-provided config; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -6750,6 +7382,14 @@
                 ],
                 "type": "string"
               },
+              "DashboardtypesHeaderOptions": {
+                "properties": {
+                  "hide": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
               "DashboardtypesHistogramBuckets": {
                 "properties": {
                   "bucketCount": {
@@ -7004,6 +7644,7 @@
                     "signoz/NumberPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec",
                     "signoz/PieChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec",
                     "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
+                    "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
                     "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
                   },
                   "propertyName": "kind"
@@ -7029,6 +7670,9 @@
                   },
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec"
+                  },
+                  {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
                   }
                 ],
                 "type": "object"
@@ -7121,6 +7765,22 @@
                   },
                   "spec": {
                     "$ref": "#/$defs/DashboardtypesTablePanelSpec"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/TextPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "$ref": "#/$defs/DashboardtypesTextPanelSpec"
                   }
                 },
                 "required": [
@@ -7450,6 +8110,54 @@
                 ],
                 "type": "object"
               },
+              "DashboardtypesTextAlign": {
+                "enum": [
+                  "left",
+                  "center",
+                  "right"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesTextMode": {
+                "enum": [
+                  "markdown"
+                ],
+                "type": "string"
+              },
+              "DashboardtypesTextPanelSpec": {
+                "properties": {
+                  "headerOptions": {
+                    "$ref": "#/$defs/DashboardtypesHeaderOptions"
+                  },
+                  "mode": {
+                    "$ref": "#/$defs/DashboardtypesTextMode"
+                  },
+                  "presentation": {
+                    "$ref": "#/$defs/DashboardtypesTextPresentation"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesTextPresentation": {
+                "properties": {
+                  "background": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "textAlign": {
+                    "$ref": "#/$defs/DashboardtypesTextAlign"
+                  },
+                  "verticalAlign": {
+                    "$ref": "#/$defs/DashboardtypesVerticalAlign"
+                  }
+                },
+                "type": "object"
+              },
               "DashboardtypesTextVariableSpec": {
                 "properties": {
                   "constant": {
@@ -7709,6 +8417,14 @@
                   "spec"
                 ],
                 "type": "object"
+              },
+              "DashboardtypesVerticalAlign": {
+                "enum": [
+                  "top",
+                  "center",
+                  "bottom"
+                ],
+                "type": "string"
               },
               "MetrictypesComparisonSpaceAggregationParam": {
                 "properties": {
@@ -8461,6 +9177,7 @@
               "Querybuildertypesv5QueryEnvelope": {
                 "discriminator": {
                   "mapping": {
+                    "builder_ai_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI",
                     "builder_formula": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula",
                     "builder_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder",
                     "builder_trace_operator": "#/$defs/Querybuildertypesv5QueryEnvelopeTraceOperator",
@@ -8472,6 +9189,9 @@
                 "oneOf": [
                   {
                     "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder"
+                  },
+                  {
+                    "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI"
                   },
                   {
                     "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula"
@@ -8495,6 +9215,21 @@
                   },
                   "type": {
                     "const": "builder_query",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              },
+              "Querybuildertypesv5QueryEnvelopeBuilderAI": {
+                "properties": {
+                  "spec": {
+                    "$ref": "#/$defs/Querybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation"
+                  },
+                  "type": {
+                    "const": "builder_ai_query",
                     "type": "string"
                   }
                 },
@@ -8566,6 +9301,7 @@
               "Querybuildertypesv5QueryType": {
                 "enum": [
                   "builder_query",
+                  "builder_ai_query",
                   "builder_formula",
                   "builder_trace_operator",
                   "clickhouse_sql",
@@ -8679,7 +9415,9 @@
                   "metric",
                   "log",
                   "span",
+                  "trace",
                   "resource",
+                  "scope",
                   "attribute",
                   "body",
                   ""
@@ -8770,10 +9508,6 @@
                   "array",
                   "null"
                 ]
-              },
-              "uuid": {
-                "description": "Legacy alias for id; accepted for backward compatibility.",
-                "type": "string"
               }
             },
             "required": [
@@ -8793,113 +9527,518 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz notification channel. This is a full replacement: first find the ID with signoz_list_notification_channels, then call signoz_get_notification_channel and merge the requested change while preserving the complete provider configuration and send_resolved value. Omitting send_resolved resets it to true. A test notification is sent after update; an update can succeed even when that test fails, which is reported in the response.\nSUPPORTED TYPES: slack, webhook, pagerduty, email, opsgenie, msteams\n\nDo not use this for partial updates.",
+          "description": "Replace one notification channel's complete config. The immutable name and displayName are not accepted. First call signoz_get_notification_channel and preserve every setting the user did not ask to change. Empty optional template fields returned by SigNoz are normalized back to unset during this update. Set test=true only when the user wants one live test notification after the update; the default is false.",
           "inputSchema": {
+            "additionalProperties": false,
             "properties": {
-              "email_html": {
-                "description": "Custom HTML email template (Go template syntax supported)",
-                "type": "string"
-              },
-              "email_to": {
-                "description": "Comma-separated list of email addresses. Required when type=email",
-                "type": "string"
+              "config": {
+                "additionalProperties": false,
+                "description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider. Example: {\"kind\":\"email\",\"spec\":{\"to\":\"oncall@example.com\"}}",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "slack",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiUrl": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "channel": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiUrl"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "email",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "headers": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "html": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "to": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "to"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "webhook",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bearerToken": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "password": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "url": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "pagerduty",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "class": {
+                            "type": "string"
+                          },
+                          "client": {
+                            "type": "string"
+                          },
+                          "clientUrl": {
+                            "type": "string"
+                          },
+                          "component": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "details": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "routingKey": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "routingKey"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "opsgenie",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiKey": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "apiUrl": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "details": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "source": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiKey"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "msteams",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "webhookUrl": {
+                            "format": "password",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "webhookUrl"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "googlechat",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "webhookUrl": {
+                            "format": "password",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "webhookUrl"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "jira",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiToken": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "customFields": {
+                            "type": "object"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "issueType": {
+                            "type": "string"
+                          },
+                          "labels": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "reopenDuration": {
+                            "type": "string"
+                          },
+                          "reopenTransition": {
+                            "type": "string"
+                          },
+                          "resolveTransition": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "site": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "wontFixResolution": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "site",
+                          "project",
+                          "issueType",
+                          "email",
+                          "apiToken"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "jsmops",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiKey": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "tags": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiKey"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "incidentio",
+                        "type": "string"
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          "sendResolved": {
+                            "type": "boolean"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "token": {
+                            "format": "password",
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "token"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "spec"
+                    ],
+                    "type": "object"
+                  }
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
+                ],
+                "type": "object"
               },
               "id": {
-                "description": "Notification channel UUID. Obtain it from signoz_list_notification_channels.",
-                "type": "string"
-              },
-              "msteams_text": {
-                "description": "Message body template (Go template syntax supported)",
-                "type": "string"
-              },
-              "msteams_title": {
-                "description": "Message title template (Go template syntax supported)",
-                "type": "string"
-              },
-              "msteams_webhook_url": {
-                "description": "MS Teams incoming webhook URL. Required when type=msteams",
-                "type": "string"
-              },
-              "name": {
-                "description": "Complete replacement channel name. Preserve the current name unless the user requested a change.",
-                "type": "string"
-              },
-              "opsgenie_api_key": {
-                "description": "OpsGenie API key. Required when type=opsgenie",
-                "type": "string"
-              },
-              "opsgenie_description": {
-                "description": "Alert description (Go template syntax supported)",
-                "type": "string"
-              },
-              "opsgenie_message": {
-                "description": "Alert message (Go template syntax supported)",
-                "type": "string"
-              },
-              "opsgenie_priority": {
-                "description": "Alert priority: P1, P2, P3, P4, or P5",
-                "type": "string"
-              },
-              "pagerduty_description": {
-                "description": "Incident description (Go template syntax supported)",
-                "type": "string"
-              },
-              "pagerduty_routing_key": {
-                "description": "PagerDuty integration/routing key. Required when type=pagerduty",
-                "type": "string"
-              },
-              "pagerduty_severity": {
-                "description": "Incident severity: critical, error, warning, or info",
+                "description": "Notification channel UUID.",
+                "format": "uuid",
                 "type": "string"
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
-              "send_resolved": {
-                "description": "Complete replacement resolved-notification setting. Copy the current value from signoz_get_notification_channel unless changing it; omission resets to true.",
+              "test": {
+                "default": false,
+                "description": "Send one live test notification after the update. The update remains committed if the test fails.",
                 "type": [
                   "boolean",
                   "string"
                 ]
-              },
-              "slack_api_url": {
-                "description": "Slack incoming webhook URL. Required when type=slack. Example: https://hooks.slack.com/services/T.../B.../xxx",
-                "type": "string"
-              },
-              "slack_channel": {
-                "description": "Slack channel or username to post to. Example: '#alerts' or '@oncall'",
-                "type": "string"
-              },
-              "slack_text": {
-                "description": "Message body template (Go template syntax supported)",
-                "type": "string"
-              },
-              "slack_title": {
-                "description": "Message title template (Go template syntax supported)",
-                "type": "string"
-              },
-              "type": {
-                "description": "Complete replacement channel type: slack, webhook, pagerduty, email, opsgenie, or msteams. Preserve the current type unless the user requested a change.",
-                "type": "string"
-              },
-              "webhook_password": {
-                "description": "Password for basic authentication (optional)",
-                "type": "string"
-              },
-              "webhook_url": {
-                "description": "Webhook endpoint URL. Required when type=webhook",
-                "type": "string"
-              },
-              "webhook_username": {
-                "description": "Username for basic authentication (optional)",
-                "type": "string"
               }
             },
             "required": [
               "id",
-              "type",
-              "name"
+              "config"
             ],
             "type": "object"
           },

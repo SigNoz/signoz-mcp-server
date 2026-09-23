@@ -1,3 +1,4 @@
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,10 +78,17 @@ def mcp_server(request: pytest.FixtureRequest, signoz: SigNoz) -> MCPServer:
     # Build via the docker CLI, like the signoz repo tests: plain build with
     # the repo root as context. Dockerfile.e2e deliberately uses no
     # BuildKit-only features so both builders work everywhere.
-    docker_cli = Commander.from_path("docker", cwd=REPO_ROOT)
-    docker_cli.run("build", "--file", "Dockerfile.e2e", "--tag", IMAGE, ".", timeout=900)
-
     client = docker.from_env()
+    if os.environ.get("E2E_SKIP_IMAGE_BUILD") == "1":
+        try:
+            client.images.get(IMAGE)
+        except NotFound as err:
+            raise pytest.UsageError(f"E2E_SKIP_IMAGE_BUILD=1 requires an existing {IMAGE} image") from err
+        logger.info("using prebuilt image %s", IMAGE)
+    else:
+        docker_cli = Commander.from_path("docker", cwd=REPO_ROOT)
+        docker_cli.run("build", "--file", "Dockerfile.e2e", "--tag", IMAGE, ".", timeout=900)
+
     container = client.containers.run(
         IMAGE,
         detach=True,
