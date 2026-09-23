@@ -41,7 +41,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Full-text search: search('term') covers every field; search('term', attribute) limits it to attribute keys and values, and several scopes (body, attribute, resource, log) are ORed. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"search('timeout', body, resource) AND severity_text = 'ERROR'\". Combined with service/severity params using AND.",
+                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. Full-text search: search('term') searches every field and search('term', attribute) only attribute keys and values; several scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges; use it only when the key is unknown. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"search('timeout', attribute) AND severity_text = 'ERROR'\". Combined with service/severity params using AND.",
                 "type": "string"
               },
               "groupBy": {
@@ -6338,7 +6338,7 @@
                 ]
               },
               "filter": {
-                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Full-text search: search('term') covers every field; search('term', attribute) limits it to attribute keys and values, and several scopes (body, attribute, resource, log) are ORed. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"search('timeout', body, resource) AND severity_text = 'ERROR'\".",
+                "description": "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.\u003ckey\u003e or resource.\u003ckey\u003e. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. Full-text search: search('term') searches every field and search('term', attribute) only attribute keys and values; several scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges; use it only when the key is unknown. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"search('timeout', attribute) AND severity_text = 'ERROR'\".",
                 "type": "string"
               },
               "limit": {
@@ -6362,7 +6362,7 @@
                 "type": "string"
               },
               "searchScope": {
-                "description": "Where searchText matches: body (default) for message text, attribute or resource for attribute or resource keys and values, or all for every field. all is slow on wide time ranges and SigNoz may reject it; narrow the time range or add service first.",
+                "description": "Where searchText matches: body (default) for message text; attribute or resource for their keys and values; all for every field. Scopes other than body are slower, and SigNoz may reject them over wide time ranges. Use them only when you don't know which key holds the text; when you do, put a predicate such as attribute.\u003ckey\u003e CONTAINS 'text' in filter instead.",
                 "enum": [
                   "body",
                   "attribute",
