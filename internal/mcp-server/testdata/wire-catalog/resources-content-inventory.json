@@ -150,8 +150,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/patch-instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 5382,
-        "sha256": "a340e7cf399252cddb7dee966af9e66fb847c0ed0081c0dca08a056e4c2c8217"
+        "serializedLength": 5379,
+        "sha256": "1352848bd541f2477c799c7ea507ccbcf619c8087c6649901a1e71eec31f1bbb"
       }
     ]
   },

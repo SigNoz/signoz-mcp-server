@@ -21,63 +21,24 @@ type notificationCreateArgs struct {
 	GenerateName  bool                            `json:"generateName,omitempty"`
 	DisplayName   string                          `json:"displayName,omitempty"`
 	Config        types.NotificationChannelConfig `json:"config"`
-	Test          boolOrString                    `json:"test,omitempty"`
+	Test          bool                            `json:"test,omitempty"`
 }
 
 type notificationUpdateArgs struct {
 	SearchContext string                          `json:"searchContext,omitempty"`
 	ID            string                          `json:"id"`
 	Config        types.NotificationChannelConfig `json:"config"`
-	Test          boolOrString                    `json:"test,omitempty"`
+	Test          bool                            `json:"test,omitempty"`
 }
 
 type notificationListArgs struct {
-	SearchContext string      `json:"searchContext,omitempty"`
-	Query         string      `json:"query,omitempty"`
-	Kind          string      `json:"kind,omitempty"`
-	Sort          string      `json:"sort,omitempty"`
-	Order         string      `json:"order,omitempty"`
-	Limit         intOrString `json:"limit,omitempty"`
-	Offset        intOrString `json:"offset,omitempty"`
-}
-
-// intOrString and boolOrString accept the string forms some MCP clients send
-// for scalar arguments, matching intOrStringType and boolOrStringType.
-type intOrString int
-
-func (n *intOrString) UnmarshalJSON(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var raw any
-	if err := decoder.Decode(&raw); err != nil {
-		return err
-	}
-	value, _, ok := looseInt(raw)
-	if !ok {
-		return fmt.Errorf("%s is not an integer", data)
-	}
-	*n = intOrString(value)
-	return nil
-}
-
-type boolOrString bool
-
-func (b *boolOrString) UnmarshalJSON(data []byte) error {
-	var text string
-	if json.Unmarshal(data, &text) == nil {
-		value, err := strconv.ParseBool(strings.TrimSpace(text))
-		if err != nil {
-			return fmt.Errorf("%q is not true or false", text)
-		}
-		*b = boolOrString(value)
-		return nil
-	}
-	var value bool
-	if err := json.Unmarshal(data, &value); err != nil {
-		return fmt.Errorf("%s is not true or false", data)
-	}
-	*b = boolOrString(value)
-	return nil
+	SearchContext string `json:"searchContext,omitempty"`
+	Query         string `json:"query,omitempty"`
+	Kind          string `json:"kind,omitempty"`
+	Sort          string `json:"sort,omitempty"`
+	Order         string `json:"order,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
+	Offset        int    `json:"offset,omitempty"`
 }
 
 type notificationIDArgs struct {
@@ -85,7 +46,45 @@ type notificationIDArgs struct {
 	ID            string `json:"id"`
 }
 
+// notificationScalarArgs lists top-level arguments that also accept string
+// forms, matching intOrStringType and boolOrStringType on the other tools.
+var notificationScalarArgs = map[string]string{"limit": "int", "offset": "int", "test": "bool"}
+
+func normalizeNotificationScalars(arguments any) (any, error) {
+	args, ok := arguments.(map[string]any)
+	if !ok {
+		return arguments, nil
+	}
+	normalized := make(map[string]any, len(args))
+	for key, value := range args {
+		normalized[key] = value
+		switch notificationScalarArgs[key] {
+		case "int":
+			n, present, valid := looseInt(value)
+			if !valid {
+				return nil, fmt.Errorf("%q must be an integer; got %v", key, value)
+			}
+			if present {
+				normalized[key] = n
+			}
+		case "bool":
+			if text, isString := value.(string); isString {
+				b, err := strconv.ParseBool(strings.TrimSpace(text))
+				if err != nil {
+					return nil, fmt.Errorf("%q must be true or false; got %q", key, text)
+				}
+				normalized[key] = b
+			}
+		}
+	}
+	return normalized, nil
+}
+
 func decodeNotificationArgs(arguments any, target any) error {
+	arguments, err := normalizeNotificationScalars(arguments)
+	if err != nil {
+		return err
+	}
 	body, err := json.Marshal(arguments)
 	if err != nil {
 		return fmt.Errorf("arguments must be a JSON object: %w", err)
@@ -93,6 +92,9 @@ func decodeNotificationArgs(arguments any, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
+		if field, found := strings.CutPrefix(err.Error(), `json: unknown field "`); found {
+			return fmt.Errorf("%q is not a parameter of this tool; remove it", strings.TrimSuffix(field, `"`))
+		}
 		return err
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
@@ -188,7 +190,7 @@ func notificationListSchema() map[string]any {
 		"kind":   map[string]any{"type": "string", "enum": types.NotificationChannelKinds(), "description": "Return only this provider kind."},
 		"sort":   map[string]any{"type": "string", "enum": []string{"updated_at", "created_at", "name"}, "default": "updated_at"},
 		"order":  map[string]any{"type": "string", "enum": []string{"asc", "desc"}, "default": "desc"},
-		"limit":  map[string]any{"type": []string{"integer", "string"}, "minimum": 1, "maximum": types.NotificationChannelMaxListLimit, "default": types.NotificationChannelDefaultListLimit},
+		"limit":  map[string]any{"type": []string{"integer", "string"}, "minimum": 0, "default": types.NotificationChannelDefaultListLimit, "description": fmt.Sprintf("Page size. 0 or omitted uses %d; values above %d are clamped to %d, and pagination.limit reports the size used.", types.NotificationChannelDefaultListLimit, types.NotificationChannelMaxListLimit, types.NotificationChannelMaxListLimit)},
 		"offset": map[string]any{"type": []string{"integer", "string"}, "minimum": 0, "default": 0},
 	})
 }

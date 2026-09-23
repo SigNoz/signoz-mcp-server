@@ -120,7 +120,7 @@ func TestParseSearchLogsArgs_SearchScope(t *testing.T) {
 
 	t.Run("unknown scope is rejected", func(t *testing.T) {
 		_, err := parseSearchLogsArgs(map[string]any{"searchText": "x", "searchScope": "everywhere"})
-		require.ErrorContains(t, err, "use one of: body, attribute, resource, all")
+		require.ErrorContains(t, err, `parameter validation failed: "searchScope" "everywhere" is not supported; use one of: body, attribute, resource, all`)
 	})
 
 	t.Run("scope without text is rejected", func(t *testing.T) {

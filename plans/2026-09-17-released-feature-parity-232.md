@@ -869,6 +869,27 @@ not exercised by CI.
   v0.10.0 "Breaking change" line was hand-edited in the pre-release PR. Fixing
   the generator is a separate PR.
 
+
+### 2026-09-23 — Best-practices audit and test-send offer
+
+- User decision: test notifications stay off by default, and agents offer one.
+  The create description now tells agents to ask before creating and to set
+  `test=true` only if the user agrees. The companion alert skill says the same.
+- Audit against `docs/mcp-best-practices.md` section 11 found and fixed:
+  - ERR-2: `limit`/`offset`/`test` type errors named no field, and unknown
+    top-level arguments surfaced as a raw `json: unknown field` message. Both
+    now name the argument. `searchScope` errors now use the canonical
+    lowercase `parameter validation failed:` prefix that the log tools share.
+  - SCH-1: the list `limit` schema advertised a 1..200 range while the handler
+    accepts 0 (default) and clamps larger values. The schema now advertises
+    minimum 0 and describes the clamp.
+  - Writing style: an em dash in the dashboard patch guide was replaced.
+- Open items: DSC-4 (the channel create example is only in the README, not on
+  an agent-reachable surface; proposal pending user review), EVL-1 (no
+  before/after prompt evaluation of the changed guidance on this head), and
+  CMP-2 (alias removal rests on the recorded hard-cut decision, not usage
+  data).
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)

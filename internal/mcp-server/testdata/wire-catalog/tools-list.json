@@ -3360,7 +3360,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Create a notification channel from one complete canonical config. Supply name, or set generateName=true with displayName. Set test=true only when the user wants one live test notification after creation; the default is false. Use signoz_update_notification_channel to replace an existing channel configuration.",
+          "description": "Create a notification channel from one complete canonical config. Supply name, or set generateName=true with displayName. test defaults to false: ask whether the user wants one live test notification and set test=true only if they agree. Use signoz_update_notification_channel to replace an existing channel configuration.",
           "inputSchema": {
             "additionalProperties": false,
             "oneOf": [
@@ -5883,8 +5883,8 @@
               },
               "limit": {
                 "default": 20,
-                "maximum": 200,
-                "minimum": 1,
+                "description": "Page size. 0 or omitted uses 20; values above 200 are clamped to 200, and pagination.limit reports the size used.",
+                "minimum": 0,
                 "type": [
                   "integer",
                   "string"

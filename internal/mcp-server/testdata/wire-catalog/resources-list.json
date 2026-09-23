@@ -96,7 +96,7 @@
           "description": "Read this before calling signoz_patch_dashboard. It gives worked RFC 6902 JSON Patch recipes with exact JSON Pointer paths for targeted edits (rename, add/edit/move/remove a panel, edit a query, variables, tags), including the two-op sequences the backend requires (adding a panel needs a panel op plus a grid-item op). For the panel/query/variable JSON to use as a patch value, also read signoz://dashboard/widgets-examples and signoz://dashboard/instructions.",
           "mimeType": "text/markdown",
           "name": "Dashboard Patch Instructions",
-          "size": 4869,
+          "size": 4866,
           "uri": "signoz://dashboard/patch-instructions"
         },
         {

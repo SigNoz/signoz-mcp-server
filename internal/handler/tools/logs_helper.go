@@ -137,10 +137,10 @@ func validateLogSearchScope(scope, searchText string) error {
 		return nil
 	}
 	if !slices.Contains(logSearchScopes, scope) {
-		return fmt.Errorf(`invalid "searchScope" %q; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
+		return fmt.Errorf(`parameter validation failed: "searchScope" %q is not supported; use one of: %s`, scope, strings.Join(logSearchScopes, ", "))
 	}
 	if searchText == "" {
-		return errors.New(`"searchScope" needs "searchText"; supply the text to find, or remove searchScope`)
+		return errors.New(`parameter validation failed: "searchScope" needs "searchText"; supply the text to find, or remove searchScope`)
 	}
 	return nil
 }
