@@ -890,6 +890,36 @@ not exercised by CI.
   CMP-2 (alias removal rests on the recorded hard-cut decision, not usage
   data).
 
+
+### 2026-09-23 — Before/after model eval (EVL-1)
+
+Ran 28 headless Claude Code sessions (Sonnet 5, SigNoz tools only, no skills)
+against the foundry v0.142.0 environment. The before build was main `a31a6df`,
+the after build this branch at `b7a4de6`; two runs per case.
+
+- Passed on the branch: email channel creation (1 call, correct `config`, no
+  unrequested test; asked about a test), creation with a requested test
+  (`test` set, no extra questions), alert with no fitting channel (no channel
+  created; asked the user), and flat Slack parameters (went straight to
+  `config`). main sent an automatic test on every create.
+- Scoped search took 1 call on the branch against 3 or 4 on main, but both
+  runs searched every field instead of attributes only. One copied the filter
+  description's all-scopes example; the other read `searchScope` "attribute
+  ... field values" loosely. Fixed: the filter description now shows
+  `search('term', attribute)`, and the `searchScope` wording says keys and
+  values (`c509ddd`).
+- `limit: "\"50\""` produced `got "50"`, which looked like a valid string.
+  Fixed: string values are quoted in the error.
+- The channel `displayName` description now says alert routing references it
+  and that it is immutable, matching the alert tool wording (not reached by
+  any run).
+- Not caused by this change: for a view-only heatmap prompt, one branch run
+  and one main run created a dashboard. `requestType: "heatmap"` was never
+  attempted on either build.
+- Limits: the harness disabled MCP resource reads, the environment has no
+  SMTP (test sends fail), and two runs per cell give low power. All created
+  resources were deleted and confirmed gone, and the eval key was revoked.
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)

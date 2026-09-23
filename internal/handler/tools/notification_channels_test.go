@@ -145,6 +145,10 @@ func TestHandleListNotificationChannels_AcceptsStringNumbers(t *testing.T) {
 	if !result.IsError || resultCode(t, result) != CodeValidationFailed || !strings.Contains(textContent(t, result), `"limit" must be an integer`) {
 		t.Fatalf("non-numeric limit error = %v", result)
 	}
+	result, _ = h.handleListNotificationChannels(testCtx(), makeToolRequest("signoz_list_notification_channels", map[string]any{"limit": `"50"`}))
+	if !result.IsError || !strings.Contains(textContent(t, result), `got "\"50\""`) {
+		t.Fatalf("embedded quotes should stay visible in the error: %v", textContent(t, result))
+	}
 	result, _ = h.handleListNotificationChannels(testCtx(), makeToolRequest("signoz_list_notification_channels", map[string]any{"bogus": 1}))
 	if !result.IsError || !strings.Contains(textContent(t, result), `"bogus" is not a parameter of this tool`) {
 		t.Fatalf("unknown parameter error = %v", result)

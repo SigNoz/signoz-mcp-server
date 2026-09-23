@@ -50,6 +50,14 @@ type notificationIDArgs struct {
 // forms, matching intOrStringType and boolOrStringType on the other tools.
 var notificationScalarArgs = map[string]string{"limit": "int", "offset": "int", "test": "bool"}
 
+// describeArg quotes strings so embedded quote characters stay visible.
+func describeArg(value any) string {
+	if text, ok := value.(string); ok {
+		return strconv.Quote(text)
+	}
+	return fmt.Sprint(value)
+}
+
 func normalizeNotificationScalars(arguments any) (any, error) {
 	args, ok := arguments.(map[string]any)
 	if !ok {
@@ -62,7 +70,7 @@ func normalizeNotificationScalars(arguments any) (any, error) {
 		case "int":
 			n, present, valid := looseInt(value)
 			if !valid {
-				return nil, fmt.Errorf("%q must be an integer; got %v", key, value)
+				return nil, fmt.Errorf("%q must be an integer; got %s", key, describeArg(value))
 			}
 			if present {
 				normalized[key] = n
@@ -199,7 +207,7 @@ func notificationCreateSchema() map[string]any {
 	schema := notificationRoot(map[string]any{
 		"name":         map[string]any{"type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "description": "Immutable DNS-1123 machine identity. Alert routing references use displayName, not name."},
 		"generateName": map[string]any{"type": "boolean", "default": false, "description": "Generate the immutable name from displayName."},
-		"displayName":  map[string]any{"type": "string", "minLength": 1, "description": "Free-text channel label. Defaults to name when generateName is false."},
+		"displayName":  map[string]any{"type": "string", "minLength": 1, "description": "Free-text channel label that alert routing references. Defaults to name when generateName is false. Immutable after creation."},
 		"config":       notificationConfigSchema(false),
 		"test":         map[string]any{"type": []string{"boolean", "string"}, "default": false, "description": "Send one live test notification after creation. The channel remains created if the test fails."},
 	}, "config")
