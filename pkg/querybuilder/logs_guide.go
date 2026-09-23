@@ -118,6 +118,38 @@ are unsure the body is JSON:
 For arrays inside JSON bodies, mark the path as an array with the [*] suffix and use has():
   has(body.tags[*], 'production')
 
+--- 5. Full-text search: search() ---
+
+Use search() when the target field is unknown or the term may appear in several fields:
+
+  search('timeout')                                    case-insensitive; fans out to every searchable log column
+  search('timeout', body)                              body column only
+  search('timeout', body, resource)                    multiple scopes are ORed
+  search('timeout', 'attribute')                       scopes may be quoted or bare
+  NOT search('timeout') AND severity_text = 'ERROR'    surrounding filters keep normal AND/NOT semantics
+
+Valid scopes are exactly: body, attribute, resource, and log. Invalid scopes hard-error. The
+term is literal (no wildcards or regex). search() scans every column in its scopes, so it is slow
+on wide time ranges: SigNoz returns a warning and may reject a query whose estimated scan is too
+large. Narrow the time range, add a scope, or add resource filters. Once signoz_get_field_keys
+identifies the field, prefer a field predicate:
+  body CONTAINS 'timeout'                                   message text
+  attribute.error.type = 'TimeoutError'                     structured attribute
+  resource.service.name = 'checkout' AND search('timeout')  resource filter narrows the scan
+
+Quoting inside filter expressions: double each backslash, escape each apostrophe with a
+backslash, then wrap in single quotes. Double-quoted terms follow the same escape rules.
+
+  search('it\'s')            term: it's
+  search('C:\\logs')        term: C:\logs
+
+The signoz_search_logs searchText parameter escapes the literal for you. With the default
+searchScope (body) it builds body CONTAINS; attribute, resource, and all build search(). When
+searchText and filter are both supplied they combine with AND. In a hand-written filter, % and _
+inside CONTAINS or LIKE act as wildcards; write \\% and \\_ to match them literally.
+A bare full-text token is still an error when the backend has no configured full-text column;
+write search() explicitly.
+
 == RESULT BOUNDS AND ORDERING ==
 
 Every builder_query must include a positive limit and explicit order.
@@ -261,6 +293,37 @@ matters more than response size.
   "variables": {}
 }
 
+--- Example 5: Cross-field full-text search (requestType: "raw") ---
+
+{
+  "schemaVersion": "v1",
+  "start": 1756386047000,
+  "end": 1756387847000,
+  "requestType": "raw",
+  "compositeQuery": {
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "disabled": false,
+          "limit": 100,
+          "offset": 0,
+          "order": [
+            {"key": {"name": "timestamp"}, "direction": "desc"},
+            {"key": {"name": "id"}, "direction": "desc"}
+          ],
+          "having": {"expression": ""},
+          "filter": {"expression": "search('timeout', body, resource) AND severity_text = 'ERROR'"}
+        }
+      }
+    ]
+  },
+  "formatOptions": {"formatTableResultForUI": false, "fillGaps": false},
+  "variables": {}
+}
+
 == TIMESTAMP FORMAT ==
 
 The top-level "start" and "end" request fields are Unix milliseconds (13-digit), e.g. 1756386047000;
@@ -279,4 +342,5 @@ use a nanosecond value (e.g. 1756386047000000000), not milliseconds; otherwise i
 | Service name                 | service.name             | resource                  |
 | Kubernetes namespace         | k8s.namespace.name       | resource                  |
 | Application log attribute    | workflow_run_id          | attribute                 |
+| Cross-field full-text search | search('timeout')        | n/a (filter function)     |
 `

@@ -22,10 +22,10 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription(
-			"Use this only when the user needs a SigNoz Query Builder v5 request that the dedicated log, trace, and metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
+			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
-				"Before composing the query, read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas also require the metrics guide, and PromQL requires signoz://promql/instructions. "+
-				"For predictable formulas, explicitly set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on every builder_query and builder_formula; the server normalizes omissions.",
+				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. "+
+				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
 		),
 		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
 	)
@@ -53,7 +53,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 	logsQueryBuilderGuide := mcp.NewResource(
 		"signoz://logs/query-builder-guide",
 		"Logs Query Builder Guide",
-		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body and JSON-path search, row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series."),
+		mcp.WithResourceDescription("Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(querybuilder.LogsQueryBuilderGuide))),
 	)

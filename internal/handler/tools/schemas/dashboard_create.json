@@ -334,6 +334,14 @@
       ],
       "type": "string"
     },
+    "DashboardtypesHeaderOptions": {
+      "properties": {
+        "hide": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "DashboardtypesHistogramBuckets": {
       "properties": {
         "bucketCount": {
@@ -588,6 +596,7 @@
           "signoz/NumberPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec",
           "signoz/PieChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec",
           "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
+          "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
           "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
         },
         "propertyName": "kind"
@@ -613,6 +622,9 @@
         },
         {
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec"
+        },
+        {
+          "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
         }
       ],
       "type": "object"
@@ -705,6 +717,22 @@
         },
         "spec": {
           "$ref": "#/$defs/DashboardtypesTablePanelSpec"
+        }
+      },
+      "required": [
+        "kind",
+        "spec"
+      ],
+      "type": "object"
+    },
+    "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec": {
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signoz/TextPanel"
+        },
+        "spec": {
+          "$ref": "#/$defs/DashboardtypesTextPanelSpec"
         }
       },
       "required": [
@@ -1034,6 +1062,54 @@
       ],
       "type": "object"
     },
+    "DashboardtypesTextAlign": {
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ],
+      "type": "string"
+    },
+    "DashboardtypesTextMode": {
+      "enum": [
+        "markdown"
+      ],
+      "type": "string"
+    },
+    "DashboardtypesTextPanelSpec": {
+      "properties": {
+        "headerOptions": {
+          "$ref": "#/$defs/DashboardtypesHeaderOptions"
+        },
+        "mode": {
+          "$ref": "#/$defs/DashboardtypesTextMode"
+        },
+        "presentation": {
+          "$ref": "#/$defs/DashboardtypesTextPresentation"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesTextPresentation": {
+      "properties": {
+        "background": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "textAlign": {
+          "$ref": "#/$defs/DashboardtypesTextAlign"
+        },
+        "verticalAlign": {
+          "$ref": "#/$defs/DashboardtypesVerticalAlign"
+        }
+      },
+      "type": "object"
+    },
     "DashboardtypesTextVariableSpec": {
       "properties": {
         "constant": {
@@ -1293,6 +1369,14 @@
         "spec"
       ],
       "type": "object"
+    },
+    "DashboardtypesVerticalAlign": {
+      "enum": [
+        "top",
+        "center",
+        "bottom"
+      ],
+      "type": "string"
     },
     "MetrictypesComparisonSpaceAggregationParam": {
       "properties": {
@@ -2045,6 +2129,7 @@
     "Querybuildertypesv5QueryEnvelope": {
       "discriminator": {
         "mapping": {
+          "builder_ai_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI",
           "builder_formula": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula",
           "builder_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder",
           "builder_trace_operator": "#/$defs/Querybuildertypesv5QueryEnvelopeTraceOperator",
@@ -2056,6 +2141,9 @@
       "oneOf": [
         {
           "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder"
+        },
+        {
+          "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI"
         },
         {
           "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula"
@@ -2080,6 +2168,21 @@
         "type": {
           "type": "string",
           "const": "builder_query"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "Querybuildertypesv5QueryEnvelopeBuilderAI": {
+      "properties": {
+        "spec": {
+          "$ref": "#/$defs/Querybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation"
+        },
+        "type": {
+          "type": "string",
+          "const": "builder_ai_query"
         }
       },
       "required": [
@@ -2150,6 +2253,7 @@
     "Querybuildertypesv5QueryType": {
       "enum": [
         "builder_query",
+        "builder_ai_query",
         "builder_formula",
         "builder_trace_operator",
         "clickhouse_sql",
@@ -2263,7 +2367,9 @@
         "metric",
         "log",
         "span",
+        "trace",
         "resource",
+        "scope",
         "attribute",
         "body",
         ""

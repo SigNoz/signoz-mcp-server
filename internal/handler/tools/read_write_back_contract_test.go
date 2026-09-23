@@ -28,8 +28,8 @@ func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 
 			var gotBody []byte
 			h := newTestHandler(&client.MockClient{
-				ListNotificationChannelsFn: func(context.Context) (json.RawMessage, error) {
-					return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+				ListNotificationChannelsV2Fn: func(context.Context, types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+					return listedNotificationChannels("slack-alerts"), nil
 				},
 				UpdateAlertRuleFn: func(_ context.Context, id string, body []byte) error {
 					if id != validRuleUUIDv7 {

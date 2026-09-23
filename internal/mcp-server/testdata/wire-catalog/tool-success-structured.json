@@ -19,27 +19,29 @@
     "result": {
       "content": [
         {
-          "text": "{\"data\":[{\"createdAt\":null,\"id\":\"channel-wire\",\"name\":\"on-call\",\"type\":\"email\",\"updatedAt\":null}],\"pagination\":{\"total\":1,\"offset\":0,\"limit\":50,\"hasMore\":false,\"nextOffset\":-1}}",
+          "text": "{\"channels\":[{\"id\":\"019947a7-f200-7000-8000-000000000001\",\"name\":\"on-call\",\"displayName\":\"On call\",\"kind\":\"email\",\"createdAt\":\"2026-09-18T00:00:00Z\",\"updatedAt\":\"2026-09-18T00:00:00Z\"}],\"pagination\":{\"count\":1,\"hasMore\":false,\"limit\":20,\"nextOffset\":null,\"offset\":0},\"total\":1}",
           "type": "text"
         }
       ],
       "structuredContent": {
-        "data": [
+        "channels": [
           {
-            "createdAt": null,
-            "id": "channel-wire",
+            "createdAt": "2026-09-18T00:00:00Z",
+            "displayName": "On call",
+            "id": "019947a7-f200-7000-8000-000000000001",
+            "kind": "email",
             "name": "on-call",
-            "type": "email",
-            "updatedAt": null
+            "updatedAt": "2026-09-18T00:00:00Z"
           }
         ],
         "pagination": {
+          "count": 1,
           "hasMore": false,
-          "limit": 50,
-          "nextOffset": -1,
-          "offset": 0,
-          "total": 1
-        }
+          "limit": 20,
+          "nextOffset": null,
+          "offset": 0
+        },
+        "total": 1
       }
     }
   }

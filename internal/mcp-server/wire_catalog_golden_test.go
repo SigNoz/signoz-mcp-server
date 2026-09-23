@@ -322,8 +322,8 @@ func (o *wireOracle) serveUpstream(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/v2/dashboards":
 		_, _ = w.Write([]byte(`{"dashboards":[],"tags":[],"total":0}`))
-	case "/api/v1/channels":
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"channel-wire","name":"on-call","type":"email","data":"{}"}]}`))
+	case "/api/v2/notification_channels":
+		_, _ = w.Write([]byte(`{"status":"success","data":{"channels":[{"id":"019947a7-f200-7000-8000-000000000001","name":"on-call","displayName":"On call","kind":"email","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}],"total":1}}`))
 	default:
 		http.Error(w, `{"error":"unexpected wire-oracle upstream request"}`, http.StatusNotFound)
 	}

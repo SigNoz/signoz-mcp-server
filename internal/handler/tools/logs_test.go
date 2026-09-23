@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
+
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -20,7 +22,7 @@ func TestHandleSearchLogs_BasicQuery(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_search_logs", map[string]any{
-		"query":     "status_code >= 400",
+		"filter":    "status_code >= 400",
 		"timeRange": "1h",
 	})
 
@@ -105,6 +107,60 @@ func TestHandleSearchLogs_SearchText(t *testing.T) {
 	}
 }
 
+func TestHandleSearchLogs_SearchExpressionBytesPassThrough(t *testing.T) {
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return json.RawMessage("{\"status\":\"success\",\"result\":[]}"), nil
+		},
+	}
+	h := newTestHandler(mock)
+	expression := "search('timeout', body, resource) AND NOT search('panic') AND severity_text = 'ERROR'"
+
+	result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", map[string]any{
+		"filter":    expression,
+		"timeRange": "1h",
+	}))
+	requireNoLogHandlerError(t, result, err)
+	if got := payloadFilterExpression(t, captured); got != expression {
+		t.Fatalf("payload filter = %q, want %q", got, expression)
+	}
+}
+
+func TestHandleSearchLogs_EscapedConvenienceLiterals(t *testing.T) {
+	var captured []byte
+	mock := &client.MockClient{
+		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			captured = append([]byte(nil), body...)
+			return json.RawMessage("{\"status\":\"success\",\"result\":[]}"), nil
+		},
+	}
+	h := newTestHandler(mock)
+
+	result, err := h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", map[string]any{
+		"service":    "payment's",
+		"severity":   "WARN",
+		"searchText": "C:\\logs",
+		"timeRange":  "1h",
+	}))
+	requireNoLogHandlerError(t, result, err)
+	want := `service.name = 'payment\'s' AND severity_text = 'WARN' AND body CONTAINS 'C:\\\\logs'`
+	if got := payloadFilterExpression(t, captured); got != want {
+		t.Fatalf("payload filter = %q, want %q", got, want)
+	}
+}
+
+func requireNoLogHandlerError(t *testing.T, result *mcp.CallToolResult, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+}
+
 func TestHandleSearchLogs_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	var captured []byte
 	mock := &client.MockClient{
@@ -115,7 +171,7 @@ func TestHandleSearchLogs_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	req := makeToolRequest("signoz_search_logs", map[string]any{
-		"query":     "service.name = 'frontend'",
+		"filter":    "service.name = 'frontend'",
 		"timeRange": "1h",
 		"start":     "1711123200000",
 		"end":       "1711130400000",

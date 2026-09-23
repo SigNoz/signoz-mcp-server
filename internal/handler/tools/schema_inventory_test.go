@@ -51,7 +51,7 @@ func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
 		var schema any
 		if err := json.Unmarshal(inputRaw, &schema); err != nil {
 			t.Errorf("decode %s input schema: %v", name, err)
-		} else {
+		} else if !canonicalChannelSchema(name) {
 			assertNoClosedInputObjects(t, name, schema, "<root>")
 		}
 
@@ -120,11 +120,10 @@ func TestAdvertisedUpdateSchemasAcceptRealWriteBackPayloads(t *testing.T) {
 	}
 
 	// A real write-back re-PUTs a fetched v6 dashboard, including server-added
-	// fields the advertised schema doesn't model (id/uuid, audit fields). The
+	// fields the advertised schema doesn't model (id and audit fields). The
 	// schema must stay permissive enough to accept them.
 	validate("signoz_update_dashboard", map[string]any{
 		"id":            "dashboard-1",
-		"uuid":          "dashboard-1",
 		"schemaVersion": "v6",
 		"name":          "latency",
 		"tags":          []any{},

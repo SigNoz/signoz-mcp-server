@@ -1863,30 +1863,33 @@ func TestDeleteAlertRule_v2Returns204(t *testing.T) {
 
 func TestTestNotificationChannel_UsesNewPath(t *testing.T) {
 	var gotPath string
+	var gotBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.TestNotificationChannel(context.Background(), []byte(`{"name":"x"}`))
+	err := client.TestNotificationChannel(context.Background(), []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
 	require.NoError(t, err)
-	assert.Equal(t, "/api/v1/channels/test", gotPath)
+	assert.Equal(t, "/api/v2/notification_channels/test", gotPath)
+	assert.JSONEq(t, `{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook","username":"","password":"","bearerToken":""}}}`, string(gotBody))
 }
 
-func TestUpdateNotificationChannel_Returns204(t *testing.T) {
+func TestUpdateNotificationChannel_UsesV2FullReplacement(t *testing.T) {
 	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotMethod = r.URL.Path, r.Method
-		w.WriteHeader(http.StatusNoContent)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test/hook","username":"","password":"","bearerToken":""}},"id":"550e8400-e29b-41d4-a716-446655440000","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}}`))
 	}))
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.UpdateNotificationChannel(context.Background(), "42", []byte(`{"name":"x"}`))
+	err := client.UpdateNotificationChannel(context.Background(), "550e8400-e29b-41d4-a716-446655440000", []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
 	require.NoError(t, err)
-	assert.Equal(t, "/api/v1/channels/42", gotPath)
+	assert.Equal(t, "/api/v2/notification_channels/550e8400-e29b-41d4-a716-446655440000", gotPath)
 	assert.Equal(t, http.MethodPut, gotMethod)
 }
 
@@ -1899,9 +1902,9 @@ func TestDeleteNotificationChannel(t *testing.T) {
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.DeleteNotificationChannel(context.Background(), "42")
+	err := client.DeleteNotificationChannel(context.Background(), "550e8400-e29b-41d4-a716-446655440000")
 	require.NoError(t, err)
-	assert.Equal(t, "/api/v1/channels/42", gotPath)
+	assert.Equal(t, "/api/v2/notification_channels/550e8400-e29b-41d4-a716-446655440000", gotPath)
 	assert.Equal(t, http.MethodDelete, gotMethod)
 }
 

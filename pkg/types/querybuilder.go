@@ -301,6 +301,10 @@ func (q *QueryPayload) Validate() error {
 	if q.RequestType == "" {
 		q.RequestType = inferDefaultRequestType(q.CompositeQuery.Queries)
 	}
+	// Heatmaps have no dashboard or saved-view renderer in the SigNoz UI.
+	if q.RequestType == "heatmap" {
+		return fmt.Errorf(`requestType "heatmap" is not supported; use "time_series" or "scalar" for metrics, PromQL, and ClickHouse SQL queries`)
+	}
 
 	for i, query := range q.CompositeQuery.Queries {
 		switch query.Type {

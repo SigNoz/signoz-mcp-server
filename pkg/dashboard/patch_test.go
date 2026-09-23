@@ -13,6 +13,10 @@ func TestPatchInstructionsCoverKeyPathsAndCrossLinks(t *testing.T) {
 		"/spec/variables/-",
 		"/tags/-",
 		"signoz/CompositeQuery",
+		"signoz/TextPanel",
+		`"queries":[]`,
+		"/spec/panels/runbook/spec/plugin/spec/text",
+		`"$ref":"#/spec/panels/runbook"`,
 		"signoz://dashboard/widgets-examples",
 		"signoz://dashboard/instructions",
 	} {

@@ -476,8 +476,21 @@ func (h *Handler) shouldLogValidationRequest(toolName, direction, path, constrai
 }
 
 func normalizeToolSchemas(tool *mcp.Tool) {
-	tool.InputSchema = normalizeSchemaValue(tool.InputSchema, true)
+	tool.InputSchema = normalizeSchemaValue(tool.InputSchema, !canonicalChannelSchema(tool.Name))
 	tool.OutputSchema = normalizeSchemaValue(tool.OutputSchema, false)
+}
+
+// Channel v2 inputs retain upstream's closed config objects instead of the
+// legacy best-effort input normalization used by other tools.
+func canonicalChannelSchema(name string) bool {
+	switch name {
+	case "signoz_create_notification_channel", "signoz_update_notification_channel",
+		"signoz_list_notification_channels", "signoz_get_notification_channel",
+		"signoz_delete_notification_channel":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeSchemaValue(schema any, input bool) any {

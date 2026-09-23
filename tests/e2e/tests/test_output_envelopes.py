@@ -17,6 +17,8 @@ from fixtures.results import (
     result_code,
 )
 from fixtures.seeded import (
+    alert_rule_gone,
+    channel_gone,
     channel_id_by_name,
     create_alert_rule,
     create_channel,
@@ -24,6 +26,7 @@ from fixtures.seeded import (
     delete_alert_rule,
     delete_channel,
     delete_view,
+    view_gone,
 )
 from fixtures.telemetry import seed_metrics, seed_traces, wait_for
 
@@ -58,7 +61,11 @@ def test_structured_content_on_get_tools(mcp_client: MCPClient, test_id: str, te
         )
     )
     dashboard_id = dig_id(first_block_json(dashboard))
-    channel_id = create_channel(mcp_client, f"mcp-e2e-ch-{test_id}")
+    channel_id = create_channel(
+        mcp_client,
+        f"mcp-e2e-ch-{test_id}",
+        {"kind": "webhook", "spec": {"url": "http://example.invalid/no-send"}},
+    )
     rule_id = create_alert_rule(mcp_client, f"mcp-e2e-rule-{test_id}", channel_name=f"mcp-e2e-ch-{test_id}")
     view_id = create_view(mcp_client, f"mcp-e2e-view-{test_id}")
     seed_traces(f"mcp-e2e-{test_id}", count=1)
@@ -87,11 +94,22 @@ def test_structured_content_on_get_tools(mcp_client: MCPClient, test_id: str, te
             assert_structured_matches_text(result)
     finally:
         delete_view(mcp_client, view_id)
+        assert view_gone(mcp_client, view_id), f"view {view_id} remained after cleanup"
         delete_alert_rule(mcp_client, rule_id)
+        assert alert_rule_gone(mcp_client, rule_id), f"alert rule {rule_id} remained after cleanup"
         delete_channel(mcp_client, channel_id)
-        mcp_client.call_tool(
-            "signoz_delete_dashboard", {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id}
+        assert channel_gone(mcp_client, channel_id), f"channel {channel_id} remained after cleanup"
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
         )
+        dashboard_gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} gone", "id": dashboard_id},
+        )
+        assert dashboard_gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
 
 
 def test_no_structured_on_passthrough(mcp_client: MCPClient) -> None:
@@ -155,9 +173,13 @@ def test_mutation_structured_content(mcp_client: MCPClient, test_id: str) -> Non
                 "signoz_create_notification_channel",
                 {
                     "searchContext": f"create a channel named {name}",
-                    "type": "webhook",
                     "name": name,
-                    "webhook_url": "https://example.com/mcp-e2e-c-webhook",
+                    "displayName": name,
+                    "config": {
+                        "kind": "webhook",
+                        "spec": {"url": "http://example.invalid/no-send", "sendResolved": False},
+                    },
+                    "test": False,
                 },
             )
         )
@@ -184,7 +206,5 @@ def test_mutation_structured_content(mcp_client: MCPClient, test_id: str) -> Non
         if not deleted:
             recovered = channel_id or channel_id_by_name(mcp_client, name)
             if recovered:
-                mcp_client.call_tool(
-                    "signoz_delete_notification_channel",
-                    {"searchContext": f"cleanup channel {recovered}", "id": recovered},
-                )
+                delete_channel(mcp_client, recovered)
+                assert channel_gone(mcp_client, recovered), f"channel {recovered} remained after cleanup"

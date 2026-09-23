@@ -47,8 +47,10 @@ Field Discovery:
 - When a Query Builder field name is not already known, call signoz_get_field_keys with the widget's signal and fieldContext before composing the query; use signoz_get_field_values when observed values help verify the filter.
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
-One query per panel [CRITICAL]:
-A panel holds exactly ONE query. Putting more than one fails backend validation (not caught by the JSON Schema): "panel must have one query". To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery, with each builder query and each formula an entry inside it. When a panel needs only one query and no formula, prefer setting that query's plugin directly (e.g. signoz/BuilderQuery) over wrapping a lone query in signoz/CompositeQuery; it is simpler and equivalent. Reserve CompositeQuery for combining multiple builder queries and/or formulas.
+Query count per panel [CRITICAL]:
+- Query-backed panels hold exactly ONE query. Putting more than one fails backend validation. To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery.
+- signoz/TextPanel is queryless and must send a non-null empty array: "queries": []. Do not invent a query or dry-run one for a TextPanel.
+- Every panel must include queries. null is rejected, including for TextPanel.
 
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
@@ -70,6 +72,7 @@ Panel/widgets types in dashboards [CRITICAL]:
 5. Table: multi-column data inspection.
 6. Timeseries: time-indexed metrics.
 7. Value (the "Number" panel): single aggregated metric.
+8. Text: static Markdown notes, runbooks, links, and section context. Use plugin kind signoz/TextPanel with mode "markdown", text, presentation, headerOptions, and queries: [].
 
 Layout (concepts):
 - Panels sit on a column-based grid: each panel has a position (where it starts) and a size (how wide and tall it is).

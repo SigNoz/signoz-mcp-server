@@ -14,7 +14,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
-func TestParseFilterExpressionParam_AcceptsFilterAndLegacyQuery(t *testing.T) {
+func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 	type parserCase struct {
 		name  string
 		parse func(map[string]any) (string, error)
@@ -79,63 +79,110 @@ func TestParseFilterExpressionParam_AcceptsFilterAndLegacyQuery(t *testing.T) {
 		},
 	}
 
-	tests := []struct {
-		name    string
-		args    map[string]any
-		want    string
-		wantErr bool
-	}{
-		{
-			name: "filter only",
-			args: map[string]any{"filter": " service.name = 'checkout' "},
-			want: " service.name = 'checkout' ",
-		},
-		{
-			name: "legacy query only",
-			args: map[string]any{"query": "service.name = 'checkout'"},
-			want: "service.name = 'checkout'",
-		},
-		{
-			name: "both equal after trimming prefer raw filter",
-			args: map[string]any{
-				"filter": " service.name = 'checkout' ",
-				"query":  "service.name = 'checkout'",
-			},
-			want: " service.name = 'checkout' ",
-		},
-		{
-			name: "both differ",
-			args: map[string]any{
-				"filter": "service.name = 'checkout'",
-				"query":  "service.name = 'frontend'",
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, parser := range parsers {
-		for _, tt := range tests {
-			t.Run(parser.name+"/"+tt.name, func(t *testing.T) {
-				args := mergeArgs(parser.base, tt.args)
-				got, err := parser.parse(args)
-				if tt.wantErr {
-					if err == nil {
-						t.Fatal("expected error")
-					}
-					if err.Error() != conflictingFilterAliasError {
-						t.Fatalf("error = %q, want %q", err.Error(), conflictingFilterAliasError)
-					}
-					return
-				}
+	t.Run("filter is canonical for every parser", func(t *testing.T) {
+		for _, parser := range parsers {
+			t.Run(parser.name, func(t *testing.T) {
+				got, err := parser.parse(mergeArgs(parser.base, map[string]any{
+					"filter": " service.name = 'checkout' ",
+				}))
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				if got != tt.want {
-					t.Fatalf("filter expression = %q, want %q", got, tt.want)
+				if got != " service.name = 'checkout' " {
+					t.Fatalf("filter expression = %q, want raw filter bytes", got)
 				}
 			})
 		}
-	}
+	})
+
+	t.Run("logs reject every supplied query form", func(t *testing.T) {
+		logParsers := []parserCase{parsers[0], parsers[2]}
+		forms := map[string]any{
+			"string":     "service.name = 'checkout'",
+			"null":       nil,
+			"empty":      "",
+			"whitespace": "   ",
+			"object":     map[string]any{"expression": "service.name = 'checkout'"},
+			"array":      []any{"service.name = 'checkout'"},
+		}
+		for _, parser := range logParsers {
+			for name, value := range forms {
+				t.Run(parser.name+"/"+name, func(t *testing.T) {
+					args := mergeArgs(parser.base, map[string]any{"query": value})
+					_, err := parser.parse(args)
+					if err == nil || err.Error() != logsLegacyQueryAliasError {
+						t.Fatalf("error = %v, want %q", err, logsLegacyQueryAliasError)
+					}
+				})
+			}
+		}
+	})
+
+	t.Run("logs reject a matching string query even with filter", func(t *testing.T) {
+		for _, parser := range []parserCase{parsers[0], parsers[2]} {
+			t.Run(parser.name, func(t *testing.T) {
+				args := mergeArgs(parser.base, map[string]any{
+					"filter": "service.name = 'checkout'",
+					"query":  "service.name = 'checkout'",
+				})
+				_, err := parser.parse(args)
+				if err == nil || err.Error() != logsLegacyQueryAliasError {
+					t.Fatalf("error = %v, want %q", err, logsLegacyQueryAliasError)
+				}
+			})
+		}
+	})
+
+	t.Run("traces and metrics retain legacy query alias", func(t *testing.T) {
+		aliasParsers := []parserCase{parsers[1], parsers[3], parsers[4]}
+		tests := []struct {
+			name    string
+			args    map[string]any
+			want    string
+			wantErr string
+		}{
+			{
+				name: "query only",
+				args: map[string]any{"query": "service.name = 'checkout'"},
+				want: "service.name = 'checkout'",
+			},
+			{
+				name: "equal pair keeps raw filter",
+				args: map[string]any{
+					"filter": " service.name = 'checkout' ",
+					"query":  "service.name = 'checkout'",
+				},
+				want: " service.name = 'checkout' ",
+			},
+			{
+				name: "differing pair conflicts",
+				args: map[string]any{
+					"filter": "service.name = 'checkout'",
+					"query":  "service.name = 'frontend'",
+				},
+				wantErr: conflictingFilterAliasError,
+			},
+		}
+		for _, parser := range aliasParsers {
+			for _, tt := range tests {
+				t.Run(parser.name+"/"+tt.name, func(t *testing.T) {
+					got, err := parser.parse(mergeArgs(parser.base, tt.args))
+					if tt.wantErr != "" {
+						if err == nil || err.Error() != tt.wantErr {
+							t.Fatalf("error = %v, want %q", err, tt.wantErr)
+						}
+						return
+					}
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if got != tt.want {
+						t.Fatalf("filter expression = %q, want %q", got, tt.want)
+					}
+				})
+			}
+		}
+	})
 }
 
 func TestExtractBackendWarningMessages(t *testing.T) {
@@ -206,68 +253,70 @@ func TestHandleSearchLogs_FilterParamReachesPayload(t *testing.T) {
 	}
 }
 
-func TestHandleAggregateLogs_LegacyQueryParamReachesPayload(t *testing.T) {
-	var captured []byte
-	mock := &client.MockClient{
-		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			captured = body
-			return json.RawMessage(`{"status":"success","data":[]}`), nil
-		},
-	}
-	h := newTestHandler(mock)
+func TestHandleAggregateLogs_LegacyQueryParamRejected(t *testing.T) {
+	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleAggregateLogs(testCtx(), makeToolRequest("signoz_aggregate_logs", map[string]any{
 		"aggregation": "count",
-		"query":       "service.name='x'",
+		"query":       nil,
 		"timeRange":   "1h",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
+	if !result.IsError {
+		t.Fatal("expected error result")
 	}
-	if got := payloadFilterExpression(t, captured); got != "service.name='x'" {
-		t.Fatalf("payload filter = %q, want service.name='x'", got)
+	if body := noteText(t, result, 0); !strings.Contains(body, logsLegacyQueryAliasError) {
+		t.Fatalf("error body = %q, want log alias rejection", body)
+	}
+	if code := resultCode(t, result); code != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
 	}
 }
 
 func TestFilterAliasConflict_HandlerErrorsAllFilterTools(t *testing.T) {
 	tests := []struct {
 		name    string
+		wantErr string
 		args    map[string]any
 		handler func(*Handler, context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
 	}{
 		{
-			name: "search_logs",
-			args: map[string]any{"timeRange": "1h"},
+			name:    "search_logs",
+			wantErr: logsLegacyQueryAliasError,
+			args:    map[string]any{"timeRange": "1h"},
 			handler: func(h *Handler, ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return h.handleSearchLogs(ctx, req)
 			},
 		},
 		{
-			name: "search_traces",
-			args: map[string]any{"timeRange": "1h"},
+			name:    "search_traces",
+			wantErr: conflictingFilterAliasError,
+			args:    map[string]any{"timeRange": "1h"},
 			handler: func(h *Handler, ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return h.handleSearchTraces(ctx, req)
 			},
 		},
 		{
-			name: "aggregate_logs",
-			args: map[string]any{"aggregation": "count", "timeRange": "1h"},
+			name:    "aggregate_logs",
+			wantErr: logsLegacyQueryAliasError,
+			args:    map[string]any{"aggregation": "count", "timeRange": "1h"},
 			handler: func(h *Handler, ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return h.handleAggregateLogs(ctx, req)
 			},
 		},
 		{
-			name: "aggregate_traces",
-			args: map[string]any{"aggregation": "count", "timeRange": "1h"},
+			name:    "aggregate_traces",
+			wantErr: conflictingFilterAliasError,
+			args:    map[string]any{"aggregation": "count", "timeRange": "1h"},
 			handler: func(h *Handler, ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return h.handleAggregateTraces(ctx, req)
 			},
 		},
 		{
-			name: "query_metrics",
-			args: map[string]any{"metricName": "system.cpu.time", "metricType": "gauge", "timeRange": "1h"},
+			name:    "query_metrics",
+			wantErr: conflictingFilterAliasError,
+			args:    map[string]any{"metricName": "system.cpu.time", "metricType": "gauge", "timeRange": "1h"},
 			handler: func(h *Handler, ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return h.handleQueryMetrics(ctx, req)
 			},
@@ -289,8 +338,8 @@ func TestFilterAliasConflict_HandlerErrorsAllFilterTools(t *testing.T) {
 				t.Fatal("expected error result")
 			}
 			body := noteText(t, result, 0)
-			if !strings.Contains(body, conflictingFilterAliasError) {
-				t.Fatalf("error body = %q, want conflict message", body)
+			if !strings.Contains(body, tt.wantErr) {
+				t.Fatalf("error body = %q, want %q", body, tt.wantErr)
 			}
 			// The conflict is a validation error: each handler surfaces the
 			// parser error via errorWithCode(CodeValidationFailed, ...). Pin the

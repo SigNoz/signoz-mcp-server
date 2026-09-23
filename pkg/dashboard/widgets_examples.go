@@ -640,4 +640,25 @@ A value widget computing errored ÷ total as a single percentage. Because it com
   }
 }
 
+Example: Runbook notes (queryless Markdown TextPanel)
+
+A static TextPanel for operational context. Its plugin spec uses the released fields: mode is markdown, text contains the Markdown body, presentation controls alignment and an optional hex background, and headerOptions.hide controls the panel header. It renders without telemetry, so queries must be the non-null empty array [] and no query dry run applies.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Runbook", "description": "Response steps for this dashboard" },
+    "plugin": {
+      "kind": "signoz/TextPanel",
+      "spec": {
+        "mode": "markdown",
+        "text": "## Response\n\n1. Check the error-rate panel.\n2. Open the [service runbook](https://example.com/runbook).",
+        "presentation": { "textAlign": "left", "verticalAlign": "top", "background": "#F5F7FA" },
+        "headerOptions": { "hide": false }
+      }
+    },
+    "queries": []
+  }
+}
+
 `

@@ -40,6 +40,7 @@ type Client interface {
 	DeleteAlertRule(ctx context.Context, ruleID string) error
 	CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error)
 	ListNotificationChannels(ctx context.Context) (json.RawMessage, error)
+	ListNotificationChannelsV2(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
 	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error

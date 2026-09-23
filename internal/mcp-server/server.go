@@ -541,10 +541,15 @@ func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.
 			start := time.Now()
 			observedMethod := otelpkg.NormalizeMCPMethod(method)
 			ctx, span := otel.Tracer("signoz-mcp-server").Start(ctx, observedMethod, trace.WithSpanKind(trace.SpanKindServer))
+			toolName := ""
+			if method == "tools/call" {
+				toolName = observedToolName(request, isRegisteredTool)
+				ctx = util.SetToolName(ctx, toolName)
+			}
 			if req, ok := request.(*mcp.CallToolRequest); ok && req.Params != nil {
 				var arguments any
 				ctx, arguments = mcpcontract.CacheToolArguments(ctx, req.Params.Arguments)
-				ctx = toolRequestContext(ctx, arguments)
+				ctx = toolRequestContext(ctx, toolName, arguments)
 			}
 			recoveredPanic := false
 			defer func() {
@@ -553,14 +558,9 @@ func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.
 					err = &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "Internal error"}
 					result = nil
 				}
-				toolName := ""
-				if method == "tools/call" {
-					toolName = observedToolName(request, isRegisteredTool)
-					ctx = util.SetToolName(ctx, toolName)
-				}
 				if err != nil {
 					message := "mcp error"
-					attrs := []any{slog.String("mcp.method.name", observedMethod), logpkg.BoundedErrAttr(err)}
+					attrs := []any{slog.String("mcp.method.name", observedMethod), logpkg.BoundedErrAttr(observableToolError(toolName, err))}
 					if recoveredPanic {
 						message = "mcp handler panic recovered"
 						attrs = append(attrs, slog.String("stack", logpkg.TruncBody(debug.Stack())))
@@ -585,7 +585,7 @@ func (m *MCPServer) receivingMiddleware(isRegisteredTool func(string) bool) mcp.
 			spanAttrs = append(spanAttrs, requestTelemetryAttrs(request)...)
 			spanAttrs = otelpkg.AppendTenantURL(ctx, spanAttrs)
 			spanAttrs = otelpkg.AppendCallerCorrelation(ctx, spanAttrs)
-			if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" {
+			if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" && !logpkg.IsSecretBearingTool(toolName) {
 				spanAttrs = append(spanAttrs, otelpkg.MCPSearchContextKey.String(searchContext))
 			}
 			span.SetAttributes(spanAttrs...)
@@ -663,7 +663,10 @@ func observedToolName(request mcp.Request, isRegisteredTool func(string) bool) s
 	return req.Params.Name
 }
 
-func toolRequestContext(ctx context.Context, arguments any) context.Context {
+func toolRequestContext(ctx context.Context, toolName string, arguments any) context.Context {
+	if logpkg.IsSecretBearingTool(toolName) {
+		return ctx
+	}
 	if args, ok := arguments.(map[string]any); ok {
 		if searchContext, _ := args["searchContext"].(string); searchContext != "" {
 			return util.SetSearchContext(ctx, searchContext)
@@ -705,10 +708,11 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 	// empty-result tool calls as nulls.
 	span.SetAttributes(otelpkg.MCPToolResultBytesKey.Int64(resultBytes))
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		observableErr := observableToolError(toolName, err)
+		span.RecordError(observableErr)
+		span.SetStatus(codes.Error, observableErr.Error())
 	} else if result != nil && result.IsError {
-		errMsg := extractToolErrorMessage(result)
+		errMsg := observableToolResultErrorMessage(toolName, result)
 		span.RecordError(fmt.Errorf("%s", errMsg))
 		span.SetStatus(codes.Error, errMsg)
 	}
@@ -724,7 +728,7 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 			slog.Duration("duration", duration),
 			slog.Bool("mcp.tool.is_error", isErr),
 			sizeAttr,
-			logpkg.BoundedErrAttr(err),
+			logpkg.BoundedErrAttr(observableToolError(toolName, err)),
 		}
 		if m.logger.Enabled(ctx, level) {
 			attrs = append(attrs, slog.String("mcp.request", redactedRequestParams(request)))
@@ -735,7 +739,7 @@ func (m *MCPServer) completeToolObservation(ctx context.Context, request mcp.Req
 			slog.Duration("duration", duration),
 			slog.Bool("mcp.tool.is_error", isErr),
 			sizeAttr,
-			slog.String("error_message", logpkg.TruncBody([]byte(extractToolErrorMessage(result)))),
+			slog.String("error_message", logpkg.TruncBody([]byte(observableToolResultErrorMessage(toolName, result)))),
 		}
 		if m.logger.Enabled(ctx, slog.LevelWarn) {
 			attrs = append(attrs, slog.String("mcp.request", redactedRequestParams(request)))
@@ -852,6 +856,22 @@ func toolOTelErrorType(err error, result *mcp.CallToolResult) string {
 		return "tool_error"
 	}
 	return ""
+}
+
+var errSecretBearingToolTelemetry = errors.New("notification channel tool failed")
+
+func observableToolError(toolName string, err error) error {
+	if err != nil && logpkg.IsSecretBearingTool(toolName) {
+		return errSecretBearingToolTelemetry
+	}
+	return err
+}
+
+func observableToolResultErrorMessage(toolName string, result *mcp.CallToolResult) string {
+	if logpkg.IsSecretBearingTool(toolName) {
+		return errSecretBearingToolTelemetry.Error()
+	}
+	return extractToolErrorMessage(result)
 }
 
 // extractToolErrorMessage returns the text from the first Content entry of an

@@ -134,11 +134,11 @@ func truncAnyAt(v any, limit int) string {
 }
 
 // RedactedTruncAny serializes a structured log payload while replacing values
-// under credential-shaped keys at any depth. It is intended for diagnostic
-// request capture: callers retain the payload's reproducible shape and
-// non-secret values without copying credentials into logs. Request captures
-// use a dedicated 1 MiB cap; ordinary body and error logs remain capped at
-// 4 KiB.
+// under credential-shaped keys at any depth and whole argument payloads for
+// tools whose inputs are secret-bearing. It is intended for diagnostic request
+// capture: callers retain the payload's reproducible shape and non-secret
+// values without copying credentials into logs. Request captures use a
+// dedicated 1 MiB cap; ordinary body and error logs remain capped at 4 KiB.
 func RedactedTruncAny(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -158,6 +158,22 @@ func RedactedTruncAny(v any) string {
 func redactSensitiveValues(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
+		argumentKeys := make([]string, 0, 2)
+		toolName := ""
+		for key, child := range typed {
+			switch normalizeLogKey(key) {
+			case "arguments", "rawarguments":
+				argumentKeys = append(argumentKeys, key)
+			case "name":
+				toolName, _ = child.(string)
+			}
+		}
+		if IsSecretBearingTool(toolName) {
+			for _, key := range argumentKeys {
+				typed[key] = redactedValue
+			}
+		}
+
 		for key, child := range typed {
 			normalizedKey := normalizeLogKey(key)
 			if isSensitiveNormalizedKey(normalizedKey) {
@@ -172,6 +188,17 @@ func redactSensitiveValues(value any) any {
 		}
 	}
 	return value
+}
+
+// IsSecretBearingTool reports whether a tool's free-form input and error text
+// may contain provider credentials that must not enter telemetry.
+func IsSecretBearingTool(name string) bool {
+	switch name {
+	case "signoz_create_notification_channel", "signoz_update_notification_channel":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeLogKey(key string) string {
