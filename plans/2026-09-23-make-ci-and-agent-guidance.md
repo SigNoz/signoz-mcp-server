@@ -1,6 +1,6 @@
 # Plan: make ci target, shared CI checks, and agent guidance
 
-Status: In Progress
+Status: Done
 Issue:
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/315
 
@@ -93,5 +93,18 @@ rules, a single tool-change checklist, a done bar, and PR hygiene.
   plan passes `check-repo-docs` but fails `check-repo-docs READY=1`; without `timeout` or
   `gtimeout` the protocol scripts print the coreutils hint; with only `gtimeout` they pass.
 - `golangci-lint` v2.12.2: 0 issues. `go mod tidy -diff` and `go mod verify`: clean.
+- PR #315 CI: all 13 checks passed on the draft, including the new `checks / fmt` and
+  `checks / repo-docs` jobs and the rewired `contract`, `inspector`, and `conformance` jobs.
 
 ## Outcome
+
+Shipped in PR #315 as planned: `make ci` with per-step targets, CI workflows calling the same
+targets, the `checks / fmt` and `checks / repo-docs` jobs, the Go plan validator, the `gtimeout`
+fallback, and the CLAUDE.md rewrite. No MCP contract changed, so SigNoz/agent-skills needs no
+companion change.
+
+Deferred:
+
+- Mark `checks / fmt` and `checks / repo-docs` as required checks once they have run on `main`.
+- Add a diff step to the primus `go-fmt` recipe, which affects other repos.
+- Fix `TestSchemaConversionFailuresIncludeDirectionAndTool` for Go 1.27 before CI upgrades.
