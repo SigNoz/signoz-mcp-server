@@ -2,7 +2,7 @@
 
 Status: In Progress
 Issue:
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/315
 
 ## Context
 
