@@ -1,0 +1,61 @@
+name: checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  # The shared ci / fmt job rewrites files without diffing, so it cannot fail on drift.
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Install goimports
+        run: make install-goimports
+
+      - name: Check formatting
+        run: make check-fmt
+
+  repo-docs:
+    name: repo-docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Validate plans and doc paths
+        env:
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          if [ "$DRAFT" = "false" ]; then
+            make check-repo-docs READY=1 BASE="$BASE"
+          else
+            make check-repo-docs
+          fi

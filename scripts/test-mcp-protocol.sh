@@ -255,9 +255,15 @@ assert_json() {
   fi
 }
 
+# macOS ships GNU timeout only as gtimeout (brew install coreutils).
+if ! command -v timeout >/dev/null 2>&1 && command -v gtimeout >/dev/null 2>&1; then
+  timeout() { gtimeout "$@"; }
+fi
+
 for dependency in curl go jq node timeout; do
   if ! command -v "$dependency" >/dev/null 2>&1; then
     printf 'Required command is unavailable: %s\n' "$dependency" >&2
+    [[ "$dependency" == timeout ]] && printf 'On macOS, install it with: brew install coreutils\n' >&2
     exit 1
   fi
 done

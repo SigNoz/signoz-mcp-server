@@ -2,7 +2,7 @@
 
 Status: Done
 Issue:
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/309
 
 ## Context
 
@@ -135,7 +135,9 @@ agent to pass the natural-language query verbatim and trust the ranking. It must
 the same guidance as the new tool description in a linked PR in SigNoz/agent-skills. This is a
 documented-behavior change, so the companion PR is required, not optional.
 
-## Files to Modify (approved candidate scope; retained changes listed in Outcome)
+## Files to Modify
+
+Approved candidate scope; retained changes are listed in Outcome.
 
 - `internal/docs/index.go` — conjunction clauses, glossary expansion hook, analyzer and field
   mapping changes, headings text indexing, boost constants.
