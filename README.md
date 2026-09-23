@@ -830,7 +830,7 @@ Calls using only `searchText`, `service`, `severity`, time, or pagination parame
   - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Literal text to find, escaped automatically; combines with `filter` using AND
-  - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute`, `resource`, or `all` (unscoped `search()`, slow on wide time ranges)
+  - `searchScope` (optional) - Where `searchText` matches: `body` (default, `body CONTAINS`), `attribute` or `resource` (keys and values), or `all` (unscoped `search()`, slow on wide time ranges)
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '24h', '7d'; default: '1h'; ignored when both `start` and `end` are provided)
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)

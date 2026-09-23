@@ -6362,7 +6362,7 @@
                 "type": "string"
               },
               "searchScope": {
-                "description": "Where searchText matches: body (default) for message text, attribute or resource for those field values, or all for every field. all is slow on wide time ranges and SigNoz may reject it; narrow the time range or add service first.",
+                "description": "Where searchText matches: body (default) for message text, attribute or resource for attribute or resource keys and values, or all for every field. all is slow on wide time ranges and SigNoz may reject it; narrow the time range or add service first.",
                 "enum": [
                   "body",
                   "attribute",
