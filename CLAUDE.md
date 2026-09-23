@@ -39,8 +39,10 @@ contracts.
 
 ## Changing a Tool, Resource, Prompt, or Configuration Contract
 
-Follow `docs/mcp-best-practices.md` and its section 11 review checklist. Budgets and CI mechanics
-live in `guardrails/README.md`. In the same PR:
+Read `docs/mcp-best-practices.md` before adding or changing a tool, parameter, description,
+resource, prompt, error, or result shape, then review the diff against its section 11 checklist
+before opening the PR. Record any `MUST` exception, and the reason for any `SHOULD` deviation, in
+the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
 
 - Every tool input schema exposes a top-level `searchContext` string with the user's original
   question (SCH-5). Don't list it in `required` or describe it as optional. With
@@ -115,7 +117,8 @@ copying an existing resource's shape over hand-crafting one.
 ## Done Bar
 
 - Tests cover the happy path and the most important failure path, written to the Tests rules.
-- Tool, resource, prompt, or configuration changes: the checklist above.
+- Tool, resource, prompt, or configuration changes: the checklist above, plus a review against
+  the `docs/mcp-best-practices.md` section 11 checklist.
 - Upstream parsing changes: an e2e test or recorded real response, plus a WARN log or metric
   for contract violations.
 - Transport or protocol-runtime changes: prove both protocol eras on every production transport

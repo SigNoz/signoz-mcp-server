@@ -268,7 +268,7 @@ func notificationConfigSchema(allowUpstreamUnset bool) map[string]any {
 			"spec": map[string]any{"type": "object"},
 		},
 		"required": []string{"kind", "spec"}, "oneOf": variants, "additionalProperties": false,
-		"description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider.",
+		"description": `Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider. Example: {"kind":"email","spec":{"to":"oncall@example.com"}}`,
 	}
 }
 

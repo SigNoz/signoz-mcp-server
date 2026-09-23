@@ -3396,7 +3396,7 @@
             "properties": {
               "config": {
                 "additionalProperties": false,
-                "description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider.",
+                "description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider. Example: {\"kind\":\"email\",\"spec\":{\"to\":\"oncall@example.com\"}}",
                 "oneOf": [
                   {
                     "additionalProperties": false,
@@ -9533,7 +9533,7 @@
             "properties": {
               "config": {
                 "additionalProperties": false,
-                "description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider.",
+                "description": "Complete provider configuration. Select one branch with kind; spec rejects fields from every other provider. Example: {\"kind\":\"email\",\"spec\":{\"to\":\"oncall@example.com\"}}",
                 "oneOf": [
                   {
                     "additionalProperties": false,

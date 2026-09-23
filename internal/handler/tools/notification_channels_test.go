@@ -595,3 +595,30 @@ func TestHandleNotificationChannel_CommittedParseErrorReportsTestNotAttempted(t 
 		})
 	}
 }
+
+// Guards DSC-4: the config example advertised to agents must stay executable.
+func TestNotificationConfigSchemaExampleIsAccepted(t *testing.T) {
+	description := notificationCreateSchema()["properties"].(map[string]any)["config"].(map[string]any)["description"].(string)
+	_, example, found := strings.Cut(description, "Example: ")
+	if !found {
+		t.Fatalf("config description has no example: %q", description)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(example), &config); err != nil {
+		t.Fatalf("config example is not JSON: %v", err)
+	}
+	var sent []byte
+	mock := &client.MockClient{CreateNotificationChannelFn: func(_ context.Context, body []byte) (json.RawMessage, error) {
+		sent = body
+		return notificationChannelJSON("email"), nil
+	}}
+	result, err := newTestHandler(mock).handleCreateNotificationChannel(testCtx(), makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"name": "oncall-email", "config": config,
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("advertised example rejected: err=%v result=%v", err, result)
+	}
+	if !strings.Contains(string(sent), `"to":"oncall@example.com"`) {
+		t.Fatalf("upstream body = %s", sent)
+	}
+}
