@@ -155,6 +155,8 @@ copying an existing resource's shape over hand-crafting one.
 
 - Conventional commits and PR titles: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`,
   e.g. `chore(rate-limits): centralize override defaults`.
+- Mark a breaking change with `!` after the type or scope, e.g. `feat!:` or `fix(alerts)!:`. The
+  release workflows list these commits under "Breaking changes" in `CHANGELOG.md`.
 - One concern per PR. If the description says "also", split it.
 - PR body: the problem in a sentence or two, then how you fixed it, then how you verified it. End
   with the model and harness that did the work. Update the body whenever the diff changes.
