@@ -176,7 +176,13 @@ func TestHandleUpdateNotificationChannel_TestStatusIsExplicit(t *testing.T) {
 }
 
 func TestHandleUpdateNotificationChannel_IdentityFieldsRejected(t *testing.T) {
-	for _, field := range []string{"name", "displayName", "generateName", "type", "send_resolved"} {
+	for field, wantHint := range map[string]string{
+		"name":          "channel names are immutable",
+		"displayName":   "channel names are immutable",
+		"generateName":  "",
+		"type":          "config: {kind, spec}",
+		"send_resolved": "config: {kind, spec}",
+	} {
 		t.Run(field, func(t *testing.T) {
 			args := map[string]any{
 				"id":     testNotificationChannelID,
@@ -187,7 +193,22 @@ func TestHandleUpdateNotificationChannel_IdentityFieldsRejected(t *testing.T) {
 			if err != nil || !result.IsError || resultCode(t, result) != CodeValidationFailed {
 				t.Fatalf("field %s was not rejected: err=%v result=%v", field, err, result)
 			}
+			if !strings.Contains(textContent(t, result), wantHint) {
+				t.Fatalf("field %s error %q lacks hint %q", field, textContent(t, result), wantHint)
+			}
 		})
+	}
+}
+
+func TestHandleCreateNotificationChannel_LegacyFlatParametersGuideToConfig(t *testing.T) {
+	result, err := newTestHandler(&client.MockClient{}).handleCreateNotificationChannel(testCtx(), makeToolRequest("signoz_create_notification_channel", map[string]any{
+		"type": "slack", "name": "oncall", "slack_api_url": "https://hooks.slack.test/x",
+	}))
+	if err != nil || !result.IsError || resultCode(t, result) != CodeValidationFailed {
+		t.Fatalf("legacy create was not rejected: err=%v result=%v", err, result)
+	}
+	if text := textContent(t, result); !strings.Contains(text, "retired flat parameter") || !strings.Contains(text, `"kind":"slack"`) {
+		t.Fatalf("legacy create error lacks migration guidance: %q", text)
 	}
 }
 

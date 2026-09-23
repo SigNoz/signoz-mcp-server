@@ -109,8 +109,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
 
 ## Heatmap Queries
 
-Use requestType "heatmap" (SigNoz v0.142.0 or newer) in a raw signoz_execute_builder_query
-request when the user needs a distribution of metric values, not a scalar or time series. The request
+Use requestType "heatmap" in a raw signoz_execute_builder_query request when the user needs a distribution of metric values, not a scalar or time series. The request
 must have exactly one enabled output: one metrics builder_query, one builder_formula with its
 metric inputs disabled, one PromQL query, or one ClickHouse SQL query. Keep every input and output
 limit and order explicit. SigNoz ranks heatmap series by the sum of their bucket counts.

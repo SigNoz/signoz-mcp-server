@@ -120,6 +120,9 @@ func (h *Handler) handleDeleteNotificationChannel(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if result := rejectLegacyNotificationArgs(req.Params.Arguments, false); result != nil {
+		return result, nil
+	}
 	var args notificationCreateArgs
 	if err := decodeNotificationArgs(req.Params.Arguments, &args); err != nil {
 		return notificationValidationError(err), nil
@@ -175,6 +178,9 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 }
 
 func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if result := rejectLegacyNotificationArgs(req.Params.Arguments, true); result != nil {
+		return result, nil
+	}
 	var args notificationUpdateArgs
 	if err := decodeNotificationArgs(normalizeNotificationUpdateArguments(req.Params.Arguments), &args); err != nil {
 		return notificationValidationError(err), nil

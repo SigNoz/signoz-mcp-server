@@ -414,7 +414,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 ## Available Tools
 
-> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools. Notification-channel tools require SigNoz v0.142.0 or newer and use `/api/v2/notification_channels/*`. Text panels, full-text log search, and heatmap queries also require v0.142.0 or newer; see the [migration guide](docs/released-feature-parity-migration.md).
+> **SigNoz compatibility:** `signoz_check_metric_usage` needs SigNoz v0.135.0 for dashboard usage: its `/api/v3/metrics/dashboards?metricName=...` route reads v2/Perses dashboards, which go live in v0.135.0, so on older versions the dashboard half returns empty (the route itself exists from v0.131.0 but has no Perses dashboards to read). Its alert-usage route `/api/v2/metrics/alerts?metricName=...` works from v0.131.0. The dashboard tools (create/get/update/patch/list/delete/import) use the v2/Perses dashboards API and require SigNoz v0.135.0 or newer. Alert-rule list/get/create/update/delete require SigNoz v0.120.0 or newer. `signoz_get_alert_history` requires v0.118.0 or newer. Self-hosted deployments on older SigNoz versions will see HTTP 404 from the affected tools.
 
 > **Tool metadata:** every tool accepts `searchContext`. Copy the user's entire original request verbatim, including preflight or confirmation context; it is used for MCP observability and is not forwarded to SigNoz APIs.
 
@@ -462,10 +462,10 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_search_traces` | Return individual span rows or discover trace IDs |
 | `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
-| `signoz_list_notification_channels` | List channel summaries for displayName routing and ID discovery |
+| `signoz_list_notification_channels` | List channel IDs, names, and display names without provider settings |
 | `signoz_get_notification_channel` | Get all provider-specific settings for one channel by ID |
-| `signoz_create_notification_channel` | Create a uniquely named channel with an opt-in test notification |
-| `signoz_update_notification_channel` | Fully replace a fetched channel config with an opt-in test notification |
+| `signoz_create_notification_channel` | Create a notification channel |
+| `signoz_update_notification_channel` | Fully replace a fetched channel's config |
 | `signoz_delete_notification_channel` | Permanently delete a confirmed channel by ID |
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
@@ -836,7 +836,7 @@ Return individual paginated log records matching text, service, severity, or fie
 Calls using only `searchText`, `service`, `severity`, time, or pagination parameters need no guide read. Read `signoz://logs/query-builder-guide` only before composing `filter` with unfamiliar workspace fields.
 
 - **Parameters**:
-  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. Use `filter`; the former `query` alias is rejected. See `signoz://logs/query-builder-guide`
+  - `filter` (optional) - Filter expression using SigNoz search syntax. Combine conditions with AND, OR, and parentheses (e.g., "(severity_text = 'ERROR' OR body CONTAINS 'panic') AND service.name = 'payment-svc'"). Log keys are workspace-specific; even `service.name` is only present when the log pipeline sets it. See `signoz://logs/query-builder-guide`
   - `service` (optional) - Service name to filter by (adds `service.name = '<value>'`; fails with `key service.name not found` when the workspace's logs lack that attribute)
   - `severity` (optional) - Exact `severity_text`; DEBUG, INFO, WARN, ERROR, and FATAL are common examples, not an exhaustive enum. Discover values with `signoz_get_field_values(signal="logs", name="severity_text", fieldContext="log")`
   - `searchText` (optional) - Text to search for in log body (uses CONTAINS matching)
@@ -982,8 +982,8 @@ for the complete configuration, and cover every page before declaring a channel 
 
 #### `signoz_create_notification_channel`
 
-Create a v2 notification channel from `config: {kind, spec}`. Requires SigNoz
-v0.142.0 or newer. Check existing display names before creating a channel.
+Create a notification channel from `config: {kind, spec}`. Check existing
+display names before creating a channel.
 
 - **Parameters**: `config` is required. Supply a DNS1123 `name`, or use
   `generateName: true` with a `displayName`. `displayName` defaults to an explicit
@@ -1140,12 +1140,3 @@ For a detailed overview of request flow, component interactions, and design deci
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, required docs/manifest sync for MCP changes, and PR checklist.
 
 **Made with ❤️ for the observability community**
-
-### Released-feature contract migration
-
-This update requires SigNoz v0.142.0 or newer and makes a hard cut to notification
-v2 APIs. Replace flat channel parameters and receiver envelopes with
-`config.kind/spec`; use returned `displayName` for alert routing, and opt into
-test sends explicitly. Use `id` for dashboard IDs and `filter` for log filters.
-There is no v1-channel fallback or older-backend compatibility layer. See
-[the migration guide](docs/released-feature-parity-migration.md).

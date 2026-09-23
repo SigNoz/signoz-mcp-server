@@ -818,6 +818,28 @@ three affected wire-catalog entries changed. Companion skills already scope
 needed. `GOTOOLCHAIN=go1.26.0 make ci` passed; the `--reuse` revocation path is
 not exercised by CI.
 
+### 2026-09-23 — Compatibility wording and legacy-parameter guidance
+
+- User decision: each server release targets the latest SigNoz release and is
+  not backward compatible with older backends. Retired inputs fail with a
+  guiding error instead. Client-visible resources and tool/parameter
+  descriptions no longer name SigNoz versions, and the separate migration
+  guide (`docs/released-feature-parity-migration.md`) and README migration
+  section were removed. Per-release breaking changes belong in the changelog.
+- Retired flat notification parameters (`type`, `send_resolved`, `slack_*`, and
+  the other provider prefixes) now return a validation error showing the
+  `config: {kind, spec}` shape; update also explains that `name` and
+  `displayName` are immutable. Previously these produced a bare
+  `json: unknown field` error.
+- The logs guide no longer claims search() returns a "cost warning". Per the
+  SigNoz source, search() always adds a slow-query warning and a scan-row guard
+  may reject an over-budget query. The guide now gives field-predicate and
+  resource-scoped examples.
+- Alert descriptions, resources, and routing errors say "settings the user
+  provides" instead of `config.kind/spec`; the create tool's schema already
+  defines the shape. README drops the redundant `query`-alias note and the
+  test-notification detail from the tool table rows.
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)
@@ -970,8 +992,9 @@ passes CI and has no merge conflicts.
 
 CMP-3 requires the coordinated companion change. It is implemented in
 `SigNoz/agent-skills` on `feat/released-feature-parity-232`, merge commit `d98669b`.
-Server README, manifest, migration documentation, resources, and targeted wire
-fixtures are synchronized. Offline skill evaluation does not claim hosted
+Server README, manifest, resources, and targeted wire fixtures are
+synchronized. The standalone migration guide was later removed in favor of
+guiding errors and changelog entries. Offline skill evaluation does not claim hosted
 client integration. The server PR is [#313](https://github.com/SigNoz/signoz-mcp-server/pull/313)
 and the required companion PR is [#98](https://github.com/SigNoz/agent-skills/pull/98).
 Both branches are pushed and PRs are open; neither change has been merged or

@@ -120,8 +120,7 @@ For arrays inside JSON bodies, mark the path as an array with the [*] suffix and
 
 --- 5. Full-text search: search() ---
 
-Use search() when the target field is unknown or the term may appear in several fields
-(requires SigNoz v0.142.0 or newer):
+Use search() when the target field is unknown or the term may appear in several fields:
 
   search('timeout')                                    case-insensitive; fans out to every searchable log column
   search('timeout', body)                              body column only
@@ -130,9 +129,13 @@ Use search() when the target field is unknown or the term may appear in several 
   NOT search('timeout') AND severity_text = 'ERROR'    surrounding filters keep normal AND/NOT semantics
 
 Valid scopes are exactly: body, attribute, resource, and log. Invalid scopes hard-error. The
-term is literal (no wildcards or regex). An unscoped search scans every searchable column, so
-SigNoz may return a cost warning; once signoz_get_field_keys identifies the field, prefer a
-field predicate such as body CONTAINS 'timeout' or a structured attribute filter.
+term is literal (no wildcards or regex). search() scans every column in its scopes, so it is slow
+on wide time ranges: SigNoz returns a warning and may reject a query whose estimated scan is too
+large. Narrow the time range, add a scope, or add resource filters. Once signoz_get_field_keys
+identifies the field, prefer a field predicate:
+  body CONTAINS 'timeout'                                   message text
+  attribute.error.type = 'TimeoutError'                     structured attribute
+  resource.service.name = 'checkout' AND search('timeout')  resource filter narrows the scan
 
 Quoting inside filter expressions: double each backslash, escape each apostrophe with a
 backslash, then wrap in single quotes. Double-quoted terms follow the same escape rules.

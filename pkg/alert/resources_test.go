@@ -17,7 +17,7 @@ func TestAlertInstructionsDescribePolicyAwareChannelPreflight(t *testing.T) {
 		"list is config-free, defaults to 20 rows, and accepts at most 200 per page",
 		"immutable routing identity is displayName, not machine name",
 		"offer signoz_create_notification_channel",
-		"user-provided config.kind/spec, not a flat type payload",
+		"settings the user provides",
 		"default test to false",
 		"Never guess or create automatically",
 		"every threshold tier needs an exact returned displayName",

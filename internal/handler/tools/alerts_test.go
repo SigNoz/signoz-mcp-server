@@ -1315,7 +1315,7 @@ func TestHandleCreateAlert_DirectRoutingBlankChannelNamesGiveDiscoveryGuidance(t
 		t.Fatalf("blank channel caused list/create calls = %d/%d, want 0/0", listCalls, createCalls)
 	}
 	text := result.Content[0].(*mcp.TextContent).Text
-	for _, required := range []string{"signoz_list_notification_channels", "same prepared operation", "signoz_create_notification_channel", "user-provided config", "never create automatically"} {
+	for _, required := range []string{"signoz_list_notification_channels", "same prepared operation", "signoz_create_notification_channel", "settings the user provides", "never create automatically"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("blank direct-channel error missing recovery guidance %q: %q", required, text)
 		}
@@ -1683,7 +1683,7 @@ func TestHandleCreateAlert_NoChannelsExist(t *testing.T) {
 	if !strings.Contains(text, "signoz_create_notification_channel") {
 		t.Error("expected error to suggest creating a new channel")
 	}
-	if !strings.Contains(text, "Ask the user whether to create one") || !strings.Contains(text, "user-confirmed config.kind/spec") {
+	if !strings.Contains(text, "Ask the user whether to create one") || !strings.Contains(text, "settings the user confirms") {
 		t.Error("expected no-channel error to require user confirmation before channel creation")
 	}
 }

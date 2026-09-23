@@ -19,14 +19,14 @@
           "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 28570,
+          "size": 28566,
           "uri": "signoz://alert/examples"
         },
         {
           "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 23187,
+          "size": 23158,
           "uri": "signoz://alert/instructions"
         },
         {
@@ -117,14 +117,14 @@
           "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Logs Query Builder Guide",
-          "size": 12746,
+          "size": 13027,
           "uri": "signoz://logs/query-builder-guide"
         },
         {
           "description": "Read this before choosing aggregations for signoz_query_metrics or building metrics Query Builder JSON. It explains timeAggregation, spaceAggregation, and reduceTo by metric type; formulas and limits; how groupBy field context is inferred; top-N selection across the full window; step intervals; examples; and Cost Meter queries.",
           "mimeType": "text/markdown",
           "name": "Metrics Aggregation Guide",
-          "size": 14698,
+          "size": 14671,
           "uri": "signoz://metrics-aggregation-guide"
         },
         {

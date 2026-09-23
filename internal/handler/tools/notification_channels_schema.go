@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
@@ -58,6 +60,35 @@ func decodeNotificationArgs(arguments any, target any) error {
 			return fmt.Errorf("arguments must contain exactly one JSON value")
 		}
 		return err
+	}
+	return nil
+}
+
+var legacyNotificationFieldPrefixes = []string{"slack_", "webhook_", "pagerduty_", "email_", "opsgenie_", "msteams_"}
+
+// rejectLegacyNotificationArgs turns the retired flat channel parameters into a
+// migration hint instead of a bare unknown-field error.
+func rejectLegacyNotificationArgs(arguments any, update bool) *mcp.CallToolResult {
+	args, ok := arguments.(map[string]any)
+	if !ok {
+		return nil
+	}
+	fields := make([]string, 0, len(args))
+	for field := range args {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	for _, field := range fields {
+		legacy := field == "type" || field == "send_resolved"
+		for _, prefix := range legacyNotificationFieldPrefixes {
+			legacy = legacy || strings.HasPrefix(field, prefix)
+		}
+		if legacy {
+			return notificationValidationError(fmt.Errorf("%q is a retired flat parameter; put provider settings in config: {kind, spec}, for example {\"config\":{\"kind\":\"slack\",\"spec\":{\"apiUrl\":\"https://hooks.slack.com/services/...\",\"sendResolved\":true}}}. The config.spec schema lists each provider's fields", field))
+		}
+		if update && (field == "name" || field == "displayName") {
+			return notificationValidationError(fmt.Errorf("%q cannot be updated because channel names are immutable; send only id and config", field))
+		}
 	}
 	return nil
 }
