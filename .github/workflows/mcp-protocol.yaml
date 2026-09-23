@@ -31,15 +31,8 @@ jobs:
           cache: npm
           cache-dependency-path: tools/mcp-ci/package-lock.json
 
-      - name: Install MCP Inspector CLI
-        working-directory: tools/mcp-ci
-        run: npm ci --ignore-scripts
-
-      - name: Parse protocol harness
-        run: bash -n scripts/test-mcp-protocol.sh
-
       - name: Run MCP protocol checks
-        run: scripts/test-mcp-protocol.sh
+        run: make check-protocol
 
   conformance:
     name: conformance
@@ -62,12 +55,5 @@ jobs:
           cache: npm
           cache-dependency-path: tools/mcp-ci/package-lock.json
 
-      - name: Install MCP conformance runner
-        working-directory: tools/mcp-ci
-        run: npm ci --ignore-scripts
-
-      - name: Parse conformance harness
-        run: bash -n scripts/test-mcp-conformance.sh
-
       - name: Run MCP conformance checks
-        run: scripts/test-mcp-conformance.sh
+        run: make check-conformance

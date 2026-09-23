@@ -135,6 +135,8 @@ Common expressions: count(), count_distinct(user_id), avg(duration), sum(bytes),
 
 builder_query spec.filter.expression (pre-aggregation) and spec.having.expression (post-aggregation) use the same syntax. Prefer resource attributes in filters; they are the fastest path through the storage backend.
 
+For logs/traces, HAVING aggregation expressions must be included in aggregations. For a percentile count guard, put the percentile first and count() second, then use count() > N in having.expression. Alerts evaluate the first aggregation.
+
 ### Operator reference
 | Intent | Operator | Example |
 |--------|----------|---------|
@@ -328,10 +330,10 @@ Required fields:
   | 4.0 | Conservative | Only the strongest anomalies; minimal false positives |
   | 3.0 | Balanced (recommended) | Default choice for most series |
   | 2.5 | Sensitive | Catch moderate deviations |
-  | 2.0 | Very sensitive | Noisy; reserve for low-volume or tightly-behaved series |
+  | 2.0 | Very sensitive | Catch small deviations; higher risk of false positives |
 
 - **Scoring**: anomaly_score = |actual_value − predicted_value| / stddev(current_season). The alert fires when this score satisfies the condition.op / condition.target comparison (e.g. op="above", target=3 ≈ "score above 3 standard deviations").
-- **evalWindow** should span at least one seasonal cycle so the predictor has enough history (≥24h for daily seasonality, ≥7d for weekly).
+- **evalWindow** selects the period being evaluated (e.g. 5m); seasonality controls separate historical lookbacks. Check data coverage across those lookbacks before choosing an anomaly rule. Increasing evalWindow does not supply missing history.
 
 See signoz://alert/examples → "metric_anomaly" for a complete payload.
 
