@@ -778,6 +778,19 @@ dashboard assumptions.
   GitHub [Validate Agent Plugin](https://github.com/SigNoz/agent-skills/actions/runs/35314547445)
   passed on `d98669b`; GitHub reports the PR mergeable with no conflicts.
 
+### 2026-09-23 — Merge main `a31a6df` (make ci, alert guidance)
+
+- Server main advanced to `a31a6df` (#314 alert percentile/anomaly guidance,
+  #315 `make ci` and repo-docs checks). Merged it per the repository's
+  merge-main convention.
+- Only the `signoz://alert/instructions` wire-catalog entries conflicted. Both
+  sides' resource text merged cleanly, so only that entry's size, serialized
+  length, and hash were updated to the combined content; no other catalog
+  entry was re-recorded.
+- `GOTOOLCHAIN=go1.26.0 make ci` passed: formatting, golangci-lint v2.12.2,
+  module verification, build, race tests, guardrails, protocol, conformance,
+  e2e Python style, and repo docs (including `READY=1`).
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)
