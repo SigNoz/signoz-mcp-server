@@ -920,6 +920,29 @@ the after build this branch at `b7a4de6`; two runs per case.
   SMTP (test sends fail), and two runs per cell give low power. All created
   resources were deleted and confirmed gone, and the eval key was revoked.
 
+
+### 2026-09-23 — Log-search eval suite
+
+Seeded 32 logs with a nonce (targets in body, attribute value, attribute key,
+resource value, LIKE metacharacters, an apostrophe, uppercase, and a count set)
+and ran 12 prompts three times each on main `a31a6df` and this branch
+`f344881` (Sonnet 5, resource reading enabled, 72 runs, $4.01).
+
+- Outcome: branch 36/36, main 25/36. main missed attribute-only, all-fields,
+  and key-name targets (body-only `searchText`); its `searchText` also matched
+  a `%`/`_` decoy and failed on an apostrophe with a 400. Both are fixed on
+  this branch, confirmed with direct calls.
+- Efficiency: the branch used all-fields `search()` in 18/36 runs (main 0),
+  including message-text (S1) and count (S10) prompts where `body CONTAINS`
+  was enough. It never picked `searchScope=attribute`. For a 7-day
+  "did anything mention" prompt it also tried `search()` on traces, which
+  SigNoz rejects (logs only). Answers stayed correct.
+- Fixed: the logs guide still called `searchText` body-only; it now describes
+  `searchScope` and that `%`/`_` in hand-written CONTAINS/LIKE filters are
+  wildcards (write `\\%`, `\\_`).
+- Open: wording to steer message-text searches back to `body CONTAINS` and to
+  mark `search()` as logs-only on the traces tools (proposal pending review).
+
 ## Reference Links
 
 - [Issue #232](https://github.com/SigNoz/nerve-pod/issues/232)

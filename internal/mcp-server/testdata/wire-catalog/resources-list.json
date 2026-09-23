@@ -117,7 +117,7 @@
           "description": "Read this before writing Query Builder v5 JSON for logs or filtering on unfamiliar log fields. It explains filter syntax, field discovery, body, JSON-path, and cross-field search(), row and aggregate queries, stable pagination, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Logs Query Builder Guide",
-          "size": 13027,
+          "size": 13147,
           "uri": "signoz://logs/query-builder-guide"
         },
         {

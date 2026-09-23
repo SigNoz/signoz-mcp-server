@@ -143,10 +143,12 @@ backslash, then wrap in single quotes. Double-quoted terms follow the same escap
   search('it\'s')            term: it's
   search('C:\\logs')        term: C:\logs
 
-The signoz_search_logs searchText parameter is a body-only convenience: the server builds
-body CONTAINS with the literal escaped for you. Use filter search() when the value may live
-outside the body; when both are supplied they combine with AND. A bare full-text token is
-still an error when the backend has no configured full-text column; write search() explicitly.
+The signoz_search_logs searchText parameter escapes the literal for you. With the default
+searchScope (body) it builds body CONTAINS; attribute, resource, and all build search(). When
+searchText and filter are both supplied they combine with AND. In a hand-written filter, % and _
+inside CONTAINS or LIKE act as wildcards; write \\% and \\_ to match them literally.
+A bare full-text token is still an error when the backend has no configured full-text column;
+write search() explicitly.
 
 == RESULT BOUNDS AND ORDERING ==
 
