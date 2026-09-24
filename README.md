@@ -983,6 +983,8 @@ display names before creating a channel.
 - **Provider kinds**: `slack`, `email`, `webhook`, `pagerduty`, `opsgenie`,
   `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`. The registered
   `config.spec` schema documents each provider's fields and required settings.
+  Slack also accepts message settings: `color`, `titleLink`, `pretext`,
+  `fallback`, `footer`, `fields`, and `actions`.
 - **Resolve notifications**: `config.spec.sendResolved` uses the provider's
   default when omitted. Get returns its effective value; preserve it on update.
 - **Test sends**: `test` defaults to `false`. Set `test: true` only when a test

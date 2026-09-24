@@ -112,18 +112,69 @@ func (c *NotificationChannelConfig) UnmarshalJSON(data []byte) error {
 }
 
 type NotificationChannelSlackSpec struct {
-	SendResolved *bool   `json:"sendResolved,omitempty"`
-	APIURL       string  `json:"apiUrl"`
-	Channel      string  `json:"channel,omitempty"`
-	Title        *string `json:"title,omitempty"`
-	Text         *string `json:"text,omitempty"`
+	SendResolved *bool                     `json:"sendResolved,omitempty"`
+	APIURL       string                    `json:"apiUrl"`
+	Channel      string                    `json:"channel,omitempty"`
+	Title        *string                   `json:"title,omitempty"`
+	Text         *string                   `json:"text,omitempty"`
+	Color        *string                   `json:"color,omitempty"`
+	TitleLink    *string                   `json:"titleLink,omitempty"`
+	Pretext      *string                   `json:"pretext,omitempty"`
+	Fallback     *string                   `json:"fallback,omitempty"`
+	Footer       *string                   `json:"footer,omitempty"`
+	Fields       []NotificationSlackField  `json:"fields,omitempty"`
+	Actions      []NotificationSlackAction `json:"actions,omitempty"`
+}
+
+type NotificationSlackField struct {
+	Title string `json:"title"`
+	Value string `json:"value"`
+	Short *bool  `json:"short,omitempty"`
+}
+
+// NotificationSlackAction is a link button when URL is set, otherwise a message
+// button that needs Name.
+type NotificationSlackAction struct {
+	Type    string                         `json:"type"`
+	Text    string                         `json:"text"`
+	URL     string                         `json:"url,omitempty"`
+	Style   string                         `json:"style,omitempty"`
+	Name    string                         `json:"name,omitempty"`
+	Value   string                         `json:"value,omitempty"`
+	Confirm *NotificationSlackConfirmation `json:"confirm,omitempty"`
+}
+
+type NotificationSlackConfirmation struct {
+	Text        string `json:"text"`
+	Title       string `json:"title,omitempty"`
+	OkText      string `json:"okText,omitempty"`
+	DismissText string `json:"dismissText,omitempty"`
 }
 
 func (s *NotificationChannelSlackSpec) Validate() error {
 	if s.APIURL == "" {
 		return fmt.Errorf("config.spec.apiUrl is required for a slack channel")
 	}
-	return validateNonEmptyOptionalStrings(map[string]*string{"title": s.Title, "text": s.Text})
+	for i, field := range s.Fields {
+		if field.Title == "" || field.Value == "" {
+			return fmt.Errorf("config.spec.fields[%d] requires title and value", i)
+		}
+	}
+	for i, action := range s.Actions {
+		if action.Type == "" || action.Text == "" {
+			return fmt.Errorf("config.spec.actions[%d] requires type and text", i)
+		}
+		if action.URL == "" && action.Name == "" {
+			return fmt.Errorf("config.spec.actions[%d] requires url or name", i)
+		}
+		if action.Confirm != nil && action.Confirm.Text == "" {
+			return fmt.Errorf("config.spec.actions[%d].confirm requires text", i)
+		}
+	}
+	return validateNonEmptyOptionalStrings(map[string]*string{
+		"title": s.Title, "text": s.Text, "color": s.Color, "titleLink": s.TitleLink,
+		"pretext": s.Pretext, "fallback": s.Fallback, "footer": s.Footer,
+	})
 }
 
 type NotificationChannelEmailSpec struct {
@@ -544,10 +595,12 @@ func unknownJSONField(err error) (string, bool) {
 }
 
 // NotificationChannelUnsetTemplateFields lists the optional template fields
-// that the v0.142.0 response encoder writes as "" when they are unset.
+// that the upstream response encoder writes as "" when they are unset.
 func NotificationChannelUnsetTemplateFields(kind string) []string {
 	switch kind {
-	case "slack", "msteams", "googlechat":
+	case "slack":
+		return []string{"title", "text", "color", "titleLink", "pretext", "fallback", "footer"}
+	case "msteams", "googlechat":
 		return []string{"title", "text"}
 	case "email":
 		return []string{"html"}

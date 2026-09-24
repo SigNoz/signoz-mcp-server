@@ -3408,11 +3408,107 @@
                       "spec": {
                         "additionalProperties": false,
                         "properties": {
+                          "actions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "description": "A link button needs url; a message button needs name.",
+                              "properties": {
+                                "confirm": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "dismissText": {
+                                      "type": "string"
+                                    },
+                                    "okText": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "text"
+                                  ],
+                                  "type": "object"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "style": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "text"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
                           "apiUrl": {
                             "format": "password",
                             "type": "string"
                           },
                           "channel": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "fallback": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "fields": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "short": {
+                                  "type": "boolean"
+                                },
+                                "title": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "footer": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "pretext": {
+                            "minLength": 1,
                             "type": "string"
                           },
                           "sendResolved": {
@@ -3423,6 +3519,10 @@
                             "type": "string"
                           },
                           "title": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "titleLink": {
                             "minLength": 1,
                             "type": "string"
                           }
@@ -9545,11 +9645,103 @@
                       "spec": {
                         "additionalProperties": false,
                         "properties": {
+                          "actions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "description": "A link button needs url; a message button needs name.",
+                              "properties": {
+                                "confirm": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "dismissText": {
+                                      "type": "string"
+                                    },
+                                    "okText": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "text"
+                                  ],
+                                  "type": "object"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "style": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "text"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
                           "apiUrl": {
                             "format": "password",
                             "type": "string"
                           },
                           "channel": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "fallback": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "short": {
+                                  "type": "boolean"
+                                },
+                                "title": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "footer": {
+                            "type": "string"
+                          },
+                          "pretext": {
                             "type": "string"
                           },
                           "sendResolved": {
@@ -9559,6 +9751,9 @@
                             "type": "string"
                           },
                           "title": {
+                            "type": "string"
+                          },
+                          "titleLink": {
                             "type": "string"
                           }
                         },
