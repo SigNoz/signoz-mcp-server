@@ -1,4 +1,4 @@
-"""Dashboard v6 TextPanel lifecycle and released system-dashboard contracts."""
+"""Dashboard v6 TextPanel and AreaChartPanel lifecycles and released system-dashboard contracts."""
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, first_json, text_blocks
 from fixtures.signoz import SigNoz
@@ -203,3 +203,136 @@ def test_system_dashboard_is_hidden_but_gettable_and_source_is_not_a_list_filter
     assert system_data.get("source") == "system"
     assert system_data.get("schemaVersion") == "v6"
     assert "id" not in system_data
+
+
+def _area_panel(spec: dict) -> dict:
+    return {
+        "kind": "Panel",
+        "spec": {
+            "display": {"name": "Request Volume"},
+            "links": [],
+            "plugin": {"kind": "signoz/AreaChartPanel", "spec": spec},
+            "queries": [
+                {
+                    "kind": "time_series",
+                    "spec": {
+                        "name": "A",
+                        "plugin": {
+                            "kind": "signoz/BuilderQuery",
+                            "spec": {
+                                "signal": "traces",
+                                "name": "A",
+                                "aggregations": [{"expression": "count()"}],
+                                "groupBy": [
+                                    {
+                                        "name": "service.name",
+                                        "fieldContext": "resource",
+                                        "fieldDataType": "string",
+                                        "signal": "traces",
+                                    }
+                                ],
+                                "legend": "{{service.name}}",
+                                "order": [{"key": {"name": "count()"}, "direction": "desc"}],
+                                "limit": 100,
+                            },
+                        },
+                    },
+                }
+            ],
+        },
+    }
+
+
+def _area_dashboard(title: str, spec: dict) -> dict:
+    return {
+        "searchContext": f"create a dashboard named {title} with a stacked area chart",
+        "schemaVersion": "v6",
+        "tags": [],
+        "spec": {
+            "display": {"name": title},
+            "variables": [],
+            "panels": {"volume": _area_panel(spec)},
+            "layouts": [
+                {
+                    "kind": "Grid",
+                    "spec": {
+                        "items": [
+                            {"x": 0, "y": 0, "width": 12, "height": 6, "content": {"$ref": "#/spec/panels/volume"}}
+                        ]
+                    },
+                }
+            ],
+        },
+    }
+
+
+def test_area_chart_panel_round_trips_stack_and_fill_and_rejects_fill_none(mcp_client: MCPClient, test_id: str) -> None:
+    title = f"mcp-e2e-areachart-{test_id}"
+    rejected = mcp_client.call_tool(
+        "signoz_create_dashboard",
+        _area_dashboard(f"{title}-invalid", {"chartAppearance": {"fillMode": "none"}}),
+    )
+    if not rejected.get("isError", False):
+        leaked_id = _dashboard_id(first_json(rejected))
+        mcp_client.call_tool(
+            "signoz_delete_dashboard", {"searchContext": f"cleanup dashboard {leaked_id}", "id": leaked_id}
+        )
+        raise AssertionError("area chart accepted fillMode none, which only timeseries panels allow")
+
+    created = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_create_dashboard",
+            _area_dashboard(
+                title,
+                {
+                    "visualization": {"stack": "normal"},
+                    "chartAppearance": {"fillMode": "gradient", "fillOpacity": 0.4},
+                    "legend": {"position": "bottom"},
+                },
+            ),
+        )
+    )
+    dashboard_id = _dashboard_id(first_json(created))
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", "id": dashboard_id}
+            )
+        )
+        plugin = _data(first_json(fetched))["spec"]["panels"]["volume"]["spec"]["plugin"]
+        assert plugin["kind"] == "signoz/AreaChartPanel"
+        assert plugin["spec"]["visualization"]["stack"] == "normal"
+        assert plugin["spec"]["chartAppearance"]["fillMode"] == "gradient"
+        assert plugin["spec"]["chartAppearance"]["fillOpacity"] == 0.4
+
+        patched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_patch_dashboard",
+                {
+                    "searchContext": "switch the area chart to percent stacking",
+                    "id": dashboard_id,
+                    "patch": [
+                        {
+                            "op": "replace",
+                            "path": "/spec/panels/volume/spec/plugin/spec/visualization/stack",
+                            "value": "percent",
+                        }
+                    ],
+                },
+            )
+        )
+        patched_plugin = _data(first_json(patched))["spec"]["panels"]["volume"]["spec"]["plugin"]
+        assert patched_plugin["spec"]["visualization"]["stack"] == "percent"
+        assert patched_plugin["spec"]["chartAppearance"]["fillMode"] == "gradient"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} is gone after cleanup", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"

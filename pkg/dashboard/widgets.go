@@ -57,7 +57,7 @@ Legend Formatting [CRITICAL]:
 - ALWAYS set legend when groupBy is used on series-producing charts. Without legend, SigNoz shows raw query identifiers.
 - Single-key example: groupBy service.name -> legend {{service.name}}
 - Multi-key example: groupBy service.name and http.method -> legend {{service.name}} - {{http.method}}
-- Panel rules: timeseries/graph, bar, pie, histogram require legend when the query has groupBy.
+- Panel rules: timeseries/graph, area, bar, pie, histogram require legend when the query has groupBy.
 - Table panels with groupBy should usually set legend, but the columns are often self-labeling so it is recommended rather than required.
 - Value/number and list panels do not need legend formatting.
 - PromQL legend syntax uses labels: {{label_name}}
@@ -65,14 +65,15 @@ Legend Formatting [CRITICAL]:
 - In update flows, preserve existing legends unless you are intentionally improving them.
 
 Panel/widgets types in dashboards [CRITICAL]:
-1. Bar Chart: categorical comparisons.
-2. Histogram: value distribution.
-3. List Chart: ranked or enumerated items.
-4. Pie Chart: proportional breakdowns.
-5. Table: multi-column data inspection.
-6. Timeseries: time-indexed metrics.
-7. Value (the "Number" panel): single aggregated metric.
-8. Text: static Markdown notes, runbooks, links, and section context. Use plugin kind signoz/TextPanel with mode "markdown", text, presentation, headerOptions, and queries: [].
+1. Area Chart: time-indexed volume, or how parts add up to a total over time.
+2. Bar Chart: categorical comparisons.
+3. Histogram: value distribution.
+4. List Chart: ranked or enumerated items.
+5. Pie Chart: proportional breakdowns.
+6. Table: multi-column data inspection.
+7. Timeseries: time-indexed metrics.
+8. Value (the "Number" panel): single aggregated metric.
+9. Text: static Markdown notes, runbooks, links, and section context. Use plugin kind signoz/TextPanel with mode "markdown", text, presentation, headerOptions, and queries: [].
 
 Layout (concepts):
 - Panels sit on a column-based grid: each panel has a position (where it starts) and a size (how wide and tall it is).
@@ -80,6 +81,15 @@ Layout (concepts):
 - Keep consistent sizing within a row of similar panels, group related panels together, and don't let panels overlap.
 - Use full width for tables and wide timeseries; split a row for side-by-side comparisons.
 - For the exact layout fields and how a panel links to its grid position, see signoz://dashboard/instructions and this tool's JSON Schema.
+
+Area chart panel [CRITICAL]:
+Best for: volume over time (requests, bytes, log lines) and how grouped series add up to a total, such as traffic split by service.
+- Area Chart plots values against time like Timeseries and fills the area under each series. Use plugin kind signoz/AreaChartPanel with a time_series query.
+- It supports logs, traces, and metrics through Query Builder, ClickHouse SQL, or PromQL queries.
+- visualization.stack controls stacking: "none" (default) overlaps series, "normal" stacks them so the top edge is the total, and "percent" stacks each timestamp to 100% to show share.
+- chartAppearance.fillMode is "solid" (default) or "gradient"; chartAppearance.fillOpacity (0 to 1) sets fill transparency.
+- Prefer Timeseries for latency, percentiles, and ratios: summing them in a stack produces a meaningless total.
+- Formatting, Soft Min/Max, legend, and thresholds behave as they do for Timeseries.
 
 Bar chart panel [CRITICAL]:
 Best for: comparing discrete categories (e.g. service names, status codes), or tracking count/metric values across categories.
