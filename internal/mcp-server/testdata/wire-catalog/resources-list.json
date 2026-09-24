@@ -152,7 +152,7 @@
           "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
           "mimeType": "text/markdown",
           "name": "Saved View Instructions",
-          "size": 6759,
+          "size": 6751,
           "uri": "signoz://view/instructions"
         },
         {
