@@ -52,6 +52,20 @@ Query count per panel [CRITICAL]:
 - signoz/TextPanel is queryless and must send a non-null empty array: "queries": []. Do not invent a query or dry-run one for a TextPanel.
 - Every panel must include queries. null is rejected, including for TextPanel.
 
+Dry-run a panel query [CRITICAL]:
+- Before saving a query panel, validate its one query with signoz_execute_builder_query. A saved query spec is already a Query Builder v5 execution spec, so translate only the envelope and keep the spec unchanged.
+- Envelope per query plugin: signoz/BuilderQuery -> builder_query, signoz/Formula -> builder_formula, signoz/TraceOperator -> builder_trace_operator, signoz/PromQLQuery -> promql, signoz/ClickHouseSQL -> clickhouse_sql. Each becomes {"type": <envelope>, "spec": <saved spec>}.
+- signoz/CompositeQuery: its entries become sibling envelopes in compositeQuery.queries, in order, keeping disabled inputs and every formula.
+- PromQL and ClickHouse specs hold name and query. PromQL also accepts disabled, step, stats, and legend; ClickHouse accepts disabled and legend. Example: {"type": "promql", "spec": {"name": "A", "query": "sum(rate({\"http.server.request.duration.count\"}[5m]))"}}.
+- Tool arguments: {"query": {"schemaVersion": "v1", "start": <ms>, "end": <ms>, "requestType": <panel query kind>, "compositeQuery": {"queries": [...]}}}. start and end are absolute Unix milliseconds over a short recent window (usually the last 30 to 60 minutes), not the panel's display range. Omitting them fails with "missing start or end timestamp".
+- requestType is always the panel query's kind, set explicitly (ClickHouse has no default): time_series for timeseries, area, bar, and histogram panels; scalar for table, pie, and value panels; raw for list panels; trace only for an existing trace panel (author trace lists as signoz/ListPanel with raw). Never use aggregate, table, or timeseries.
+- A dry-run validates execution for its window only. A PromQL range selector looks back from each evaluation point, so a long selector such as [12h] stays costly even over a short window.
+- The executor does not expand dashboard variables. In the dry-run copy only, replace each $variable with one representative discovered value; keep $variable in the saved panel.
+- Keep limit and order identical in the saved panel and the dry-run.
+- An empty result does not prove telemetry is absent: widen the window to suit the signal's cadence and report each window tried.
+- On a timeout, do not resend the identical request. Shrink the window, coarsen stepInterval (Builder) or step (PromQL), or reduce query cost first.
+- Save the Perses panel, never the execution envelope. If the executor cannot represent a saved field, report the gap and leave the field in place; do not remove it to make the dry-run pass. Save such an unvalidated panel only after the user explicitly accepts it.
+
 Legend Formatting [CRITICAL]:
 - Query Builder syntax: use {{attribute_name}} placeholders that exactly match groupBy keys.
 - ALWAYS set legend when groupBy is used on series-producing charts. Without legend, SigNoz shows raw query identifiers.
