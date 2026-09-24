@@ -2,7 +2,7 @@
 
 Status: In Progress
 Issue: #303
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/317
 
 ## Context
 
@@ -43,8 +43,8 @@ per-tenant requests. When unset, retain current link behavior.
 
 ## Outcome
 
-Implementation is complete. The plan remains In Progress until a PR exists so
-its PR field can link to the review.
+Implementation is complete. The plan remains In Progress while the draft PR is
+under review.
 
 Added `SIGNOZ_WEB_URL` for deep links when the request uses the configured API
 URL. Per-tenant requests continue to use their own URL. Configuration accepts
