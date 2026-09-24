@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	URL           string
+	WebURL        string
 	APIKey        string
 	LogLevel      string
 	TransportMode string
@@ -54,6 +55,7 @@ type Config struct {
 
 const (
 	SignozURL     = "SIGNOZ_URL"
+	SignozWebURL  = "SIGNOZ_WEB_URL"
 	SignozApiKey  = "SIGNOZ_API_KEY"
 	LogLevel      = "LOG_LEVEL"
 	TransportMode = "TRANSPORT_MODE"
@@ -95,6 +97,14 @@ const (
 func LoadConfig() (*Config, error) {
 	// Trim trailing slash from URL to prevent double-slash issues in API paths
 	url := strings.TrimSuffix(getEnv(SignozURL, ""), "/")
+	webURL := getEnv(SignozWebURL, "")
+	if webURL != "" {
+		var err error
+		webURL, err = util.NormalizeSigNozURL(webURL)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", SignozWebURL, err)
+		}
+	}
 
 	cacheSize := getEnvInt(ClientCacheSize, defaultClientCacheSize)
 	cacheTTLMinutes := getEnvInt(ClientCacheTTL, defaultClientCacheTTLMinutes)
@@ -132,6 +142,7 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		URL:                     url,
+		WebURL:                  webURL,
 		APIKey:                  getEnv(SignozApiKey, ""),
 		LogLevel:                getEnv(LogLevel, "info"),
 		TransportMode:           getEnv(TransportMode, "stdio"),

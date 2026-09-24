@@ -73,7 +73,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return upstreamResponseError("failed to parse response: " + err.Error()), nil
 	}
 
-	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
+	if base := h.resourceWebURLBase(ctx); base != "" {
 		for _, item := range services {
 			m, ok := item.(map[string]any)
 			if !ok {

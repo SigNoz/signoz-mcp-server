@@ -80,6 +80,24 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_WebURL(t *testing.T) {
+	t.Setenv(SignozURL, "http://signoz.internal:8080")
+	t.Setenv(SignozWebURL, "https://signoz.example.com/")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "https://signoz.example.com", cfg.WebURL)
+}
+
+func TestLoadConfig_RejectsWebURLWithPath(t *testing.T) {
+	t.Setenv(SignozURL, "http://signoz.internal:8080")
+	t.Setenv(SignozWebURL, "https://signoz.example.com/signoz")
+
+	_, err := LoadConfig()
+	require.ErrorContains(t, err, "SIGNOZ_WEB_URL")
+	require.ErrorContains(t, err, "without a path")
+}
+
 func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
 	cfg := &Config{
 		TransportMode: "http",

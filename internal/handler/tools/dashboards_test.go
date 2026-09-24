@@ -12,6 +12,9 @@ import (
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
 func TestHandleDeleteDashboard_Success(t *testing.T) {
@@ -528,6 +531,57 @@ func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 	body := textContent(t, result)
 	if !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
 		t.Fatalf("expected webUrl in output, got: %s", body)
+	}
+}
+
+func TestHandleListDashboards_UsesPublicWebURLWithoutChangingAPIURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			apiURL, _ := util.GetSigNozURL(ctx)
+			if apiURL != "http://signoz.internal:8080" {
+				t.Errorf("API URL = %q, want internal URL", apiURL)
+			}
+			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
+		},
+	}
+	cfg := &config.Config{URL: "http://signoz.internal:8080", WebURL: "https://signoz.example.com/"}
+	h := NewHandler(logpkg.New("error"), cfg)
+	h.clientOverride = mock
+	result, err := h.handleListDashboards(util.SetSigNozURL(testCtx(), cfg.URL), makeToolRequest("signoz_list_dashboards", map[string]any{}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if body := textContent(t, result); !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
+		t.Fatalf("expected public webUrl, got: %s", body)
+	}
+}
+
+func TestHandleListDashboards_UsesTenantURLForPerTenantWebURL(t *testing.T) {
+	mock := &client.MockClient{
+		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+			apiURL, _ := util.GetSigNozURL(ctx)
+			if apiURL != "https://tenant.example.com" {
+				t.Errorf("API URL = %q, want tenant URL", apiURL)
+			}
+			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
+		},
+	}
+	cfg := &config.Config{URL: "http://signoz.internal:8080", WebURL: "https://signoz.example.com"}
+	h := NewHandler(logpkg.New("error"), cfg)
+	h.clientOverride = mock
+	ctx := util.SetSigNozURL(testCtx(), "https://tenant.example.com")
+	result, err := h.handleListDashboards(ctx, makeToolRequest("signoz_list_dashboards", map[string]any{}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if body := textContent(t, result); !strings.Contains(body, `"webUrl":"https://tenant.example.com/dashboard/abc-123"`) {
+		t.Fatalf("expected tenant webUrl, got: %s", body)
 	}
 }
 
