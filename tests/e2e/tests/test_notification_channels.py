@@ -99,9 +99,9 @@ def test_every_provider_config_round_trips_and_update_preserves_it(
         returned_spec = returned_config["spec"]
         credentials = {field: returned_spec[field] for field in CREDENTIAL_FIELDS.get(kind, ())}
 
-        # Use the complete real GET response as the update base. In v0.142.0
-        # this includes unset optional strings serialized as ""; update must
-        # accept those response values and preserve credentials.
+        # Use the complete real GET response as the update base. It includes
+        # unset optional strings serialized as ""; update must accept those
+        # response values and preserve credentials.
         replacement = {"kind": returned_config["kind"], "spec": dict(returned_spec)}
         update_field, updated_value = UPDATE_FIELDS[kind]
         replacement["spec"][update_field] = updated_value
@@ -202,3 +202,56 @@ def test_local_webhook_test_is_opt_in_and_reaches_only_local_sink(
             if recovered:
                 delete_channel(mcp_client, recovered)
                 assert channel_gone(mcp_client, recovered), "recovered local webhook channel remained after cleanup"
+
+
+def test_slack_message_settings_round_trip_through_get_and_full_update(mcp_client: MCPClient, test_id: str) -> None:
+    """Slack attachment settings survive create, get, and an unchanged full-config update."""
+    name = f"mcp-e2e-slack-message-{test_id}".lower().replace("_", "-")
+    spec = {
+        "apiUrl": "https://example.invalid/e2e-slack-message",
+        "sendResolved": False,
+        "color": "danger",
+        "footer": "SigNoz e2e",
+        "fields": [{"title": "Service", "value": "checkout", "short": True}],
+        "actions": [{"type": "button", "text": "Runbook", "url": "https://example.invalid/runbook"}],
+    }
+    channel_id = ""
+    try:
+        channel_id = create_channel(mcp_client, name, {"kind": "slack", "spec": spec})
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_notification_channel",
+                {"searchContext": f"get the slack channel {channel_id}", "id": channel_id},
+            )
+        )
+        returned_spec = _channel_data(fetched)["config"]["spec"]
+        assert returned_spec["color"] == "danger"
+        assert returned_spec["footer"] == "SigNoz e2e"
+        assert returned_spec["fields"] == spec["fields"]
+        action = returned_spec["actions"][0]
+        assert (action["type"], action["text"], action["url"]) == (
+            "button",
+            "Runbook",
+            "https://example.invalid/runbook",
+        )
+
+        updated = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_update_notification_channel",
+                {
+                    "searchContext": "update the slack channel footer and keep its message settings",
+                    "id": channel_id,
+                    "config": {"kind": "slack", "spec": {**returned_spec, "footer": "SigNoz e2e updated"}},
+                    "test": False,
+                },
+            )
+        )
+        updated_spec = _channel_data(updated)["channel"]["config"]["spec"]
+        assert updated_spec["footer"] == "SigNoz e2e updated"
+        assert updated_spec["color"] == "danger"
+        assert updated_spec["fields"] == spec["fields"]
+        assert updated_spec["actions"][0]["url"] == "https://example.invalid/runbook"
+    finally:
+        if channel_id:
+            delete_channel(mcp_client, channel_id)
+            assert channel_gone(mcp_client, channel_id), f"slack channel {channel_id} remained after cleanup"

@@ -12,7 +12,7 @@ func TestNotificationChannelConfig_AllProviderShapes(t *testing.T) {
 		min  string
 		full string
 	}{
-		{"slack", `{"apiUrl":"https://hooks.slack.test/x"}`, `{"sendResolved":false,"apiUrl":"https://hooks.slack.test/x","channel":"#ops","title":"title","text":"body"}`},
+		{"slack", `{"apiUrl":"https://hooks.slack.test/x"}`, `{"sendResolved":false,"apiUrl":"https://hooks.slack.test/x","channel":"#ops","title":"title","text":"body","color":"danger","titleLink":"https://ops.test","pretext":"pre","fallback":"fb","footer":"SigNoz","fields":[{"title":"Service","value":"api","short":true}],"actions":[{"type":"button","text":"Runbook","url":"https://ops.test/runbook","style":"primary","confirm":{"text":"Open?","title":"Runbook","okText":"Yes","dismissText":"No"}},{"type":"button","text":"Ack","name":"ack","value":"1"}]}`},
 		{"email", `{"to":"ops@example.test"}`, `{"sendResolved":false,"to":"ops@example.test","html":"<p>x</p>","headers":{"Subject":"Alert"}}`},
 		{"webhook", `{"url":"https://example.test/hook"}`, `{"sendResolved":false,"url":"https://example.test/hook","username":"user","password":"secret","bearerToken":""}`},
 		{"pagerduty", `{"routingKey":"key"}`, `{"sendResolved":false,"routingKey":"key","url":"https://events.test","source":"source","client":"client","clientUrl":"https://client.test","description":"desc","severity":"critical","component":"api","group":"prod","class":"service","details":{"team":"ops"}}`},
@@ -57,6 +57,28 @@ func TestNotificationChannelConfig_AllProviderShapes(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestNotificationChannelSlackSpec_RejectsIncompleteAttachments(t *testing.T) {
+	for want, spec := range map[string]string{
+		"fields[0] requires title and value": `"fields":[{"title":"Service"}]`,
+		"actions[0] requires type and text":  `"actions":[{"type":"button","url":"https://ops.test"}]`,
+		"actions[0] requires url or name":    `"actions":[{"type":"button","text":"Open"}]`,
+		"actions[0].confirm requires text":   `"actions":[{"type":"button","text":"Open","url":"https://ops.test","confirm":{"title":"Sure?"}}]`,
+		"color cannot be empty":              `"color":" "`,
+	} {
+		t.Run(want, func(t *testing.T) {
+			input := `{"name":"channel","config":{"kind":"slack","spec":{"apiUrl":"https://hooks.slack.test/x",` + spec + `}}}`
+			var create NotificationChannelCreate
+			err := json.Unmarshal([]byte(input), &create)
+			if err == nil {
+				err = create.Validate()
+			}
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %v, want it to contain %q", err, want)
+			}
+		})
 	}
 }
 
