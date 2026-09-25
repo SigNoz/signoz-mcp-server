@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from typing import Any
@@ -6,6 +7,8 @@ import pytest
 import requests
 
 from fixtures.logger import setup_logger
+from fixtures.mcpclient import MCPClient
+from fixtures.results import first_text_block
 
 logger = setup_logger(__name__)
 
@@ -133,6 +136,104 @@ def seed_traces(service_name: str, *, span_name: str = "e2e-operation", count: i
     resp.raise_for_status()
     logger.info("seeded %d span(s) for service %s", count, service_name)
     return trace_ids
+
+
+def seed_trace_tree(
+    service_name: str,
+    *,
+    chain_depth: int,
+    sibling_count: int = 0,
+    padding_chars: int = 0,
+    deep_span_events: int = 0,
+    deep_span_long_value_chars: int = 0,
+    age_seconds: int = 0,
+) -> dict[str, Any]:
+    """Push one trace: a root, a `chain_depth` parent chain ending in an ERROR
+    deep span, and `sibling_count` children of the root. Returns span ids by role.
+    """
+    trace_id = uuid.uuid4().hex
+    base = time.time_ns() - age_seconds * 1_000_000_000 - 60_000_000_000
+    padding = "p" * padding_chars
+    spans: list[dict[str, Any]] = []
+
+    def add(name: str, parent: str, offset_ms: int, *, error: bool = False, extra: list | None = None) -> str:
+        span_id = uuid.uuid4().hex[:16]
+        start = base + offset_ms * 1_000_000
+        attributes = [{"key": "e2e.marker", "value": {"stringValue": service_name}}]
+        if padding:
+            attributes.append({"key": "e2e.padding", "value": {"stringValue": padding}})
+        span = {
+            "traceId": trace_id,
+            "spanId": span_id,
+            "name": name,
+            "kind": 2,  # SPAN_KIND_SERVER
+            "startTimeUnixNano": str(start),
+            "endTimeUnixNano": str(start + 10_000_000),
+            "attributes": attributes + (extra or []),
+            "status": {"code": 2 if error else 1},  # STATUS_CODE_ERROR / OK
+        }
+        if parent:
+            span["parentSpanId"] = parent
+        spans.append(span)
+        return span_id
+
+    root = add("e2e-root", "", 0)
+    chain = [root]
+    for i in range(chain_depth):
+        is_deep = i == chain_depth - 1
+        extra = []
+        if is_deep and deep_span_long_value_chars:
+            extra.append({"key": "e2e.long", "value": {"stringValue": "L" * deep_span_long_value_chars}})
+        chain.append(add(f"e2e-chain-{i + 1}", chain[-1], i + 1, error=is_deep, extra=extra))
+    deep = chain[-1]
+    if deep_span_events:
+        deep_span = spans[-1]
+        events = []
+        for i in range(deep_span_events):
+            name = "exception" if i == deep_span_events - 1 else f"e2e-event-{i}"
+            events.append(
+                {
+                    "timeUnixNano": str(base + (chain_depth + i) * 1_000_000),
+                    "name": name,
+                    "attributes": [{"key": "e2e.event.index", "value": {"intValue": str(i)}}],
+                }
+            )
+        deep_span["events"] = events
+    siblings = [add(f"e2e-sibling-{i}", root, chain_depth + 1 + i) for i in range(sibling_count)]
+
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": service_name}},
+                        {"key": "telemetry.sdk.language", "value": {"stringValue": "e2e"}},
+                    ]
+                },
+                "scopeSpans": [{"scope": {"name": "signoz-mcp-e2e"}, "spans": spans}],
+            }
+        ]
+    }
+    resp = requests.post(f"{OTLP_ENDPOINT}/v1/traces", json=payload, timeout=30)
+    resp.raise_for_status()
+    logger.info("seeded trace %s with %d span(s) for service %s", trace_id, len(spans), service_name)
+    return {"trace_id": trace_id, "root": root, "chain": chain, "deep": deep, "siblings": siblings, "count": len(spans)}
+
+
+def wait_for_trace_details(mcp_client: MCPClient, trace_id: str, span_count: int) -> dict[str, Any]:
+    """Poll signoz_get_trace_details (summary only) until all seeded spans are ingested."""
+
+    def complete() -> dict[str, Any] | None:
+        result = mcp_client.call_tool(
+            "signoz_get_trace_details",
+            {"searchContext": f"trace {trace_id}", "traceId": trace_id, "includeSpans": False},
+        )
+        if result.get("isError", False):
+            return None
+        body = json.loads(first_text_block(result))
+        return body if int(body["summary"]["totalSpans"]) == span_count else None
+
+    return wait_for(complete, f"trace {trace_id} with {span_count} spans visible")
 
 
 def seed_metrics(

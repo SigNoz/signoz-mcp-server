@@ -765,21 +765,22 @@ func (s *SigNoz) GetFieldValues(ctx context.Context, signal, name, metricName, s
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
-	if startTime == 0 || endTime == 0 {
-		return nil, fmt.Errorf("start and end time parameters are required")
-	}
-
-	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
-	limit := 1000
-
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0, types.TraceDetailSelectFields)
-	queryJSON, err := json.Marshal(queryPayload)
+// GetTraceDetails fetches one trace from the SigNoz trace-detail waterfall,
+// which finds the trace by ID without a time window and returns spans in
+// pre-order. selectedSpanID only moves the window on traces above the
+// waterfall's select-all limit.
+func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID, selectedSpanID string) (json.RawMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/v4/traces/%s/waterfall", s.baseURL, url.PathEscape(traceID))
+	body, err := json.Marshal(map[string]any{
+		"selectedSpanId":   selectedSpanID,
+		"uncollapsedSpans": []string{},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query payload: %w", err)
+		return nil, fmt.Errorf("failed to marshal waterfall request: %w", err)
 	}
 
-	return s.QueryBuilderV5(ctx, queryJSON)
+	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching trace waterfall", slog.String("traceId", traceID))
+	return s.doReplaySafePost(ctx, reqURL, body, DefaultQueryTimeout)
 }
 
 // CreateDashboardRaw creates a v2 (Perses) dashboard from raw JSON bytes.

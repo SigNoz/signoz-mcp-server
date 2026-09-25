@@ -5559,18 +5559,22 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis.",
+          "description": "Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz finds the trace by ID, so no time window is needed. The result starts with a summary (span and error counts, services, root, first error spans, slowest spans), then one page of up to about 100 KB of spans in tree order; each span has its attributes, events, and a resourceId that points into resources. Spans keep at most 3 events, and values longer than 2000 characters are shortened with a marker. Follow pagination.nextCursor for more spans, or pass spanId to page through one span and its subtree. Set includeSpans=false for the summary only. Do not use this for filtering many spans or aggregate analysis.",
           "inputSchema": {
             "properties": {
+              "cursor": {
+                "description": "Next page of spans: pass pagination.nextCursor from the previous call with the same traceId and spanId.",
+                "type": "string"
+              },
               "end": {
-                "description": "End time in unix milliseconds (optional, defaults to now).",
+                "description": "Ignored: SigNoz finds the trace by ID without a time window. Still accepted so older callers keep working; a malformed start or end is rejected.",
                 "type": [
                   "integer",
                   "string"
                 ]
               },
               "includeSpans": {
-                "description": "Include detailed span information (default: true).",
+                "description": "Include a page of spans (default: true). Set false to return only the summary, plus focus when spanId is set.",
                 "type": [
                   "boolean",
                   "string"
@@ -5580,16 +5584,19 @@
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
+              "spanId": {
+                "description": "Span to focus on, usually from summary.errorSpans or summary.slowestSpans. focus.ancestors lists the root and the nearest 5 ancestors, and pages cover only this span and its subtree.",
+                "type": "string"
+              },
               "start": {
-                "description": "Start time in unix milliseconds (optional, defaults to 6 hours ago).",
+                "description": "Ignored: SigNoz finds the trace by ID without a time window. Still accepted so older callers keep working; a malformed start or end is rejected.",
                 "type": [
                   "integer",
                   "string"
                 ]
               },
               "timeRange": {
-                "default": "6h",
-                "description": "Relative time range. Format: \u003cnumber\u003e\u003cunit\u003e where unit is 'm' (minutes), 'h' (hours), or 'd' (days). Examples: '30m', '1h', '2h', '6h', '24h', '3d', '7d'. Ignored when both start and end are provided. Defaults to last 6 hours if not provided.",
+                "description": "Ignored: SigNoz finds the trace by ID without a time window. Still accepted so older callers keep working; a malformed start or end is rejected.",
                 "type": "string"
               },
               "traceId": {

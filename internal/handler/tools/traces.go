@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
@@ -16,6 +17,8 @@ import (
 )
 
 const tracesFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://traces/query-builder-guide). search() is logs-only; traces use field predicates. Combine conditions with AND, OR, and parentheses for precedence. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key>, resource.<key>, or span.<key>. Discover valid keys with signoz_get_field_keys, then confirm values with signoz_get_field_values, before filtering. Examples: \"service.name = 'payment-svc' AND has_error = true\", \"http_method = 'POST' AND (has_error = true OR duration_nano > 1000000000)\"."
+
+const traceDetailsIgnoredWindowDesc = "Ignored: SigNoz finds the trace by ID without a time window. Still accepted so older callers keep working; a malformed start or end is rejected."
 
 const traceSelectFieldsDescription = "Extra fields to return on each row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"]."
 
@@ -70,12 +73,14 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 	getTraceDetailsTool := mcp.NewTool("signoz_get_trace_details",
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
-		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. Supply a time window containing the trace; the default last 6 hours can miss an older trace. Do not use this for filtering many spans or aggregate analysis."),
+		mcp.WithDescription("Use this when the user already has a known trace ID and wants that trace's spans, metadata, and hierarchy. If the ID is unknown, discover it with signoz_search_traces first. SigNoz finds the trace by ID, so no time window is needed. The result starts with a summary (span and error counts, services, root, first error spans, slowest spans), then one page of up to about 100 KB of spans in tree order; each span has its attributes, events, and a resourceId that points into resources. Spans keep at most 3 events, and values longer than 2000 characters are shortened with a marker. Follow pagination.nextCursor for more spans, or pass spanId to page through one span and its subtree. Set includeSpans=false for the summary only. Do not use this for filtering many spans or aggregate analysis."),
 		mcp.WithString("traceId", mcp.Required(), mcp.Description("Known trace ID to retrieve. Discover it with signoz_search_traces when the user has not supplied one.")),
-		mcp.WithString("timeRange", mcp.DefaultString("6h"), mcp.Description(timeRangeDesc("Defaults to last 6 hours if not provided."))),
-		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional, defaults to 6 hours ago).")),
-		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional, defaults to now).")),
-		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description("Include detailed span information (default: true).")),
+		mcp.WithString("spanId", mcp.Description("Span to focus on, usually from summary.errorSpans or summary.slowestSpans. focus.ancestors lists the root and the nearest 5 ancestors, and pages cover only this span and its subtree.")),
+		mcp.WithString("cursor", mcp.Description("Next page of spans: pass pagination.nextCursor from the previous call with the same traceId and spanId.")),
+		mcp.WithBoolean("includeSpans", boolOrStringType(), mcp.Description("Include a page of spans (default: true). Set false to return only the summary, plus focus when spanId is set.")),
+		mcp.WithString("timeRange", mcp.Description(traceDetailsIgnoredWindowDesc)),
+		mcp.WithString("start", intOrStringType(), mcp.Description(traceDetailsIgnoredWindowDesc)),
+		mcp.WithString("end", intOrStringType(), mcp.Description(traceDetailsIgnoredWindowDesc)),
 	)
 
 	h.addTool(s, getTraceDetailsTool, h.handleGetTraceDetails)
@@ -172,14 +177,11 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		return errResult, nil
 	}
 
-	// Reject a present-but-malformed start/end loudly; otherwise
-	// GetTimestampsWithDefaults silently falls back to the default window.
+	// start/end are ignored, but a malformed value is still rejected.
 	if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
 		h.logger.WarnContext(ctx, "Invalid explicit timestamp", logpkg.ErrAttr(err))
 		return errorWithCode(CodeValidationFailed, "Parameter validation failed: "+err.Error()), nil
 	}
-
-	start, end := timeutil.GetTimestampsWithDefaults(args, "ms")
 
 	includeSpans := true
 	if v, present, err := parseBoolArg(args, "includeSpans"); err != nil {
@@ -188,34 +190,56 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 		includeSpans = v
 	}
 
-	var startTime, endTime int64
-	if err := json.Unmarshal([]byte(start), &startTime); err != nil {
-		return validationErrorf("start", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, start), nil
+	spanID, errResult := optionalTraceDetailString(args, "spanId")
+	if errResult != nil {
+		return errResult, nil
 	}
-	if err := json.Unmarshal([]byte(end), &endTime); err != nil {
-		return validationErrorf("end", `invalid timestamp format: %s. Use "timeRange" instead (e.g., "1h", "24h")`, end), nil
+	cursor, errResult := optionalTraceDetailString(args, "cursor")
+	if errResult != nil {
+		return errResult, nil
 	}
 
-	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
+	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("spanId", spanID))
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
-	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
+	body, err := client.GetTraceDetails(ctx, traceID, spanID)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to get trace details", err, slog.String("traceId", traceID))
 		return upstreamError(err), nil
 	}
-	result = enrichTraceWebURL(ctx, result, traceID)
-	return structuredResult(result), nil
+
+	trace, err := parseWaterfall(body)
+	if err != nil {
+		h.logger.WarnContext(ctx, "trace waterfall response unreadable", slog.String("traceId", traceID), logpkg.ErrAttr(err))
+		return upstreamResponseError("SigNoz returned a trace waterfall this server could not read: " + err.Error()), nil
+	}
+
+	base, _ := util.GetSigNozURL(ctx)
+	webURL, _ := util.ResourceWebURL(base, "trace", traceID)
+	result, notes, errResult := buildTraceDetails(trace, traceID, spanID, cursor, webURL, includeSpans)
+	if errResult != nil {
+		return errResult, nil
+	}
+	payload, err := json.Marshal(result)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal trace details", logpkg.ErrAttr(err))
+		return InternalErrorResult("failed to marshal trace details: " + err.Error()), nil
+	}
+	return structuredResultWithNotes(payload, notes...), nil
 }
 
-// enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough
-// body. Delegates to util.InjectWebURL, which preserves large int64 fields
-// (e.g. duration_nano) and fails open on unparseable input.
-func enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte {
-	base, _ := util.GetSigNozURL(ctx)
-	return util.InjectWebURL(data, base, "trace", traceID)
+func optionalTraceDetailString(args map[string]any, key string) (string, *mcp.CallToolResult) {
+	value, present := args[key]
+	if !present || value == nil {
+		return "", nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", validationErrorf(key, "must be a string span ID, got %T", value)
+	}
+	return strings.TrimSpace(text), nil
 }
 
 // enrichSearchTracesWebURL injects a per-row webUrl deep link into a search

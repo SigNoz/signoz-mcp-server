@@ -455,7 +455,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_search_logs` | Return individual log records matching filters |
 | `signoz_aggregate_traces` | Aggregate span statistics and grouped or top-N breakdowns |
 | `signoz_search_traces` | Return individual span rows or discover trace IDs |
-| `signoz_get_trace_details` | Get one known trace with all spans and hierarchy |
+| `signoz_get_trace_details` | Get one known trace: a summary plus paged spans with hierarchy |
 | `signoz_execute_builder_query` | Query Builder v5 requests the dedicated tools cannot express |
 | `signoz_list_notification_channels` | List channel IDs, names, and display names without provider settings |
 | `signoz_get_notification_channel` | Get all provider-specific settings for one channel by ID |
@@ -919,16 +919,17 @@ Return custom aggregate statistics over spans (counts, rates, latency percentile
 
 #### `signoz_get_trace_details`
 
-For a known trace ID, return its spans, metadata, and hierarchy. Use `signoz_search_traces` first when the ID is unknown, and choose a time window that contains the trace; the default last six hours can miss older traces.
+For a known trace ID, return a trace summary and a page of its spans with metadata and hierarchy. SigNoz finds the trace by ID, so no time window is needed. Use `signoz_search_traces` first when the ID is unknown.
 
 - **Parameters**:
   - `traceId` (required) - Known trace ID, usually discovered with `signoz_search_traces`
-  - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
-  - `start` (optional) - Start time in unix milliseconds (defaults to 6 hours ago).
-  - `end` (optional) - End time in unix milliseconds (defaults to now)
-  - `includeSpans` (optional) - Include detailed span information. Boolean (or the strings `"true"`/`"false"`), default: true
-
-
+  - `spanId` (optional) - Span to focus on, usually from `summary.errorSpans` or `summary.slowestSpans`. `focus.ancestors` lists the root and the nearest 5 ancestors, and pages cover only that span and its subtree
+  - `cursor` (optional) - Next page of spans: pass `pagination.nextCursor` from the previous call with the same `traceId` and `spanId`
+  - `includeSpans` (optional) - Include a page of spans. Boolean (or the strings `"true"`/`"false"`), default: true. `false` returns only the summary, plus `focus` when `spanId` is set
+  - `timeRange` / `start` / `end` (optional) - Ignored; still accepted so older callers keep working. A malformed `start` or `end` is rejected
+  - **Result**: `summary` (total and error span counts, start and end in Unix milliseconds, root service and operation, per-service span and error counts, the first 10 error spans, the 5 slowest spans, `hasMissingSpans`, and `complete`), then `resources` and `spans` in tree order. Each span carries its attributes, events, tree position (`level`, `has_children`, `sub_tree_node_count`), and a `resourceId` that points into `resources`; `time_unix` is Unix milliseconds and `duration_nano` is nanoseconds
+  - **Size limits**: each page holds up to about 100 KB of spans. A span keeps at most 3 events (exception events first) and reports the rest in `eventsOmitted`; values longer than 2000 characters are shortened with a `…[+N chars]` marker. Read a full value with `signoz_search_traces`, filtering on `span_id` and naming the field in `selectFields`
+  - **Pagination**: `pagination.hasMore` and `pagination.nextCursor` report further spans, and a note names the next call. Traces above SigNoz's select-all limit (10,000 spans) come back as a window around `spanId`, with `summary.complete=false`
 
 #### `signoz_create_alert`
 

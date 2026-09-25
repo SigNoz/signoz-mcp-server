@@ -17,6 +17,7 @@ VALIDATION_CASES = [
     ("signoz_get_dashboard", {}, '"id" is required'),
     ("signoz_get_dashboard", {"uuid": True}, '"uuid" is no longer accepted'),
     ("signoz_get_view", {}, '"id" is required'),
+    ("signoz_get_trace_details", {"traceId": ""}, '"traceId" cannot be empty'),
     ("signoz_get_notification_channel", {}, 'id "" is not a valid UUID'),
     ("signoz_execute_builder_query", {}, '"query" must be a JSON object'),
 ]

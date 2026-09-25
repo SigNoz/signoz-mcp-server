@@ -35,7 +35,7 @@ type MockClient struct {
 	DeleteViewFn                 func(ctx context.Context, viewID string) (json.RawMessage, error)
 	GetFieldKeysFn               func(ctx context.Context, signal, metricName, searchText, fieldContext, fieldDataType, source string) (json.RawMessage, error)
 	GetFieldValuesFn             func(ctx context.Context, signal, name, metricName, searchText, fieldContext, source string) (json.RawMessage, error)
-	GetTraceDetailsFn            func(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error)
+	GetTraceDetailsFn            func(ctx context.Context, traceID, selectedSpanID string) (json.RawMessage, error)
 	CreateAlertRuleFn            func(ctx context.Context, alertJSON []byte) (json.RawMessage, error)
 	UpdateAlertRuleFn            func(ctx context.Context, ruleID string, alertJSON []byte) error
 	DeleteAlertRuleFn            func(ctx context.Context, ruleID string) error
@@ -221,9 +221,9 @@ func (m *MockClient) GetFieldValues(ctx context.Context, signal, name, metricNam
 	return json.RawMessage(`{}`), nil
 }
 
-func (m *MockClient) GetTraceDetails(ctx context.Context, traceID string, includeSpans bool, startTime, endTime int64) (json.RawMessage, error) {
+func (m *MockClient) GetTraceDetails(ctx context.Context, traceID, selectedSpanID string) (json.RawMessage, error) {
 	if m.GetTraceDetailsFn != nil {
-		return m.GetTraceDetailsFn(ctx, traceID, includeSpans, startTime, endTime)
+		return m.GetTraceDetailsFn(ctx, traceID, selectedSpanID)
 	}
 	return json.RawMessage(`{}`), nil
 }

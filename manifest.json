@@ -171,7 +171,7 @@
     },
     {
       "name": "signoz_get_trace_details",
-      "description": "For a known trace ID, return its spans, metadata, and hierarchy within a containing time window; use signoz_search_traces when the ID is unknown"
+      "description": "For a known trace ID, return a summary and paged spans with metadata and hierarchy, found by ID without a time window; use signoz_search_traces when the ID is unknown"
     },
     {
       "name": "signoz_execute_builder_query",
