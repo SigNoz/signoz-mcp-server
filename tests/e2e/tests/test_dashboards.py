@@ -1,4 +1,6 @@
-"""Dashboard v6 TextPanel and AreaChartPanel lifecycles and released system-dashboard contracts."""
+"""Dashboard v6 panel lifecycles, panel query dry-runs, and released system-dashboard contracts."""
+
+import time
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, first_json, text_blocks
 from fixtures.signoz import SigNoz
@@ -324,6 +326,150 @@ def test_area_chart_panel_round_trips_stack_and_fill_and_rejects_fill_none(mcp_c
         patched_plugin = _data(first_json(patched))["spec"]["panels"]["volume"]["spec"]["plugin"]
         assert patched_plugin["spec"]["visualization"]["stack"] == "percent"
         assert patched_plugin["spec"]["chartAppearance"]["fillMode"] == "gradient"
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm dashboard {dashboard_id} is gone after cleanup", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
+
+
+ENVELOPE_BY_PLUGIN = {
+    "signoz/BuilderQuery": "builder_query",
+    "signoz/Formula": "builder_formula",
+    "signoz/TraceOperator": "builder_trace_operator",
+    "signoz/PromQLQuery": "promql",
+    "signoz/ClickHouseSQL": "clickhouse_sql",
+}
+
+
+def _execution_envelopes(plugin: dict) -> list[dict]:
+    """Translate one saved panel query plugin as signoz://dashboard/widgets-instructions describes."""
+    if plugin["kind"] == "signoz/CompositeQuery":
+        return plugin["spec"]["queries"]
+    return [{"type": ENVELOPE_BY_PLUGIN[plugin["kind"]], "spec": plugin["spec"]}]
+
+
+def _count_query(name: str, disabled: bool = False, filter_expression: str = "") -> dict:
+    spec = {
+        "signal": "traces",
+        "name": name,
+        "aggregations": [{"expression": "count()"}],
+        "order": [{"key": {"name": "count()"}, "direction": "desc"}],
+        "limit": 10000 if disabled else 100,
+        "disabled": disabled,
+    }
+    if filter_expression:
+        spec["filter"] = {"expression": filter_expression}
+    return spec
+
+
+def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
+    mcp_client: MCPClient, test_id: str
+) -> None:
+    """Saved Perses query specs, as GET returns them, execute unchanged inside their envelopes."""
+    title = f"mcp-e2e-dryrun-{test_id}"
+    direct = {"kind": "signoz/BuilderQuery", "spec": _count_query("A")}
+    composite = {
+        "kind": "signoz/CompositeQuery",
+        "spec": {
+            "queries": [
+                {
+                    "type": "builder_query",
+                    "spec": _count_query("A", disabled=True, filter_expression="has_error = true"),
+                },
+                {"type": "builder_query", "spec": _count_query("B", disabled=True)},
+                {
+                    "type": "builder_formula",
+                    "spec": {
+                        "name": "F1",
+                        "expression": "A * 100 / B",
+                        "order": [{"key": {"name": "__result"}, "direction": "desc"}],
+                        "limit": 100,
+                    },
+                },
+            ]
+        },
+    }
+
+    def panel(name: str, plugin: dict) -> dict:
+        return {
+            "kind": "Panel",
+            "spec": {
+                "display": {"name": name},
+                "links": [],
+                "plugin": {"kind": "signoz/NumberPanel", "spec": {}},
+                "queries": [{"kind": "scalar", "spec": {"name": "A", "plugin": plugin}}],
+            },
+        }
+
+    dashboard = {
+        "searchContext": f"create a dashboard named {title} with direct and composite query panels",
+        "schemaVersion": "v6",
+        "tags": [],
+        "spec": {
+            "display": {"name": title},
+            "variables": [],
+            "panels": {
+                "direct": panel("Requests", direct),
+                "composite": panel("Error rate", composite),
+                "promql": panel("PromQL", {"kind": "signoz/PromQLQuery", "spec": {"name": "A", "query": "vector(1)"}}),
+                "clickhouse": panel(
+                    "ClickHouse", {"kind": "signoz/ClickHouseSQL", "spec": {"name": "A", "query": "SELECT 1 AS value"}}
+                ),
+            },
+            "layouts": [
+                {
+                    "kind": "Grid",
+                    "spec": {
+                        "items": [
+                            {"x": 0, "y": 0, "width": 6, "height": 3, "content": {"$ref": "#/spec/panels/direct"}},
+                            {"x": 6, "y": 0, "width": 6, "height": 3, "content": {"$ref": "#/spec/panels/composite"}},
+                            {"x": 0, "y": 3, "width": 6, "height": 3, "content": {"$ref": "#/spec/panels/promql"}},
+                            {"x": 6, "y": 3, "width": 6, "height": 3, "content": {"$ref": "#/spec/panels/clickhouse"}},
+                        ]
+                    },
+                }
+            ],
+        },
+    }
+    created = assert_tool_ok(mcp_client.call_tool("signoz_create_dashboard", dashboard))
+    dashboard_id = _dashboard_id(first_json(created))
+    try:
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_dashboard", {"searchContext": f"get dashboard {dashboard_id}", "id": dashboard_id}
+            )
+        )
+        panels = _data(first_json(fetched))["spec"]["panels"]
+        now = int(time.time() * 1000)
+        for panel_id in ("direct", "composite", "promql", "clickhouse"):
+            saved_query = panels[panel_id]["spec"]["queries"][0]
+            query = {
+                "schemaVersion": "v1",
+                "start": now - 30 * 60 * 1000,
+                "end": now,
+                "requestType": saved_query["kind"],
+                "compositeQuery": {"queries": _execution_envelopes(saved_query["spec"]["plugin"])},
+            }
+            assert_tool_ok(
+                mcp_client.call_tool(
+                    "signoz_execute_builder_query",
+                    {"searchContext": f"dry-run the saved {panel_id} panel query", "query": query},
+                )
+            )
+        unbounded = {key: value for key, value in query.items() if key not in ("start", "end")}
+        missing_bounds = mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "dry-run without bounds", "query": unbounded}
+        )
+        assert missing_bounds.get("isError", False), "a dry-run without start and end succeeded"
+        assert "missing start or end timestamp" in text_blocks(missing_bounds)
     finally:
         assert_tool_ok(
             mcp_client.call_tool(
