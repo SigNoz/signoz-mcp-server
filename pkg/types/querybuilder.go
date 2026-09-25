@@ -927,9 +927,8 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 	return json.Marshal(payload)
 }
 
-// TraceSearchCoreFields is the default column set for signoz_search_traces.
-// Callers add fields with selectFields; SigNoz always adds timestamp, trace_id,
-// and span_id to an explicit list, so rows stay flat.
+// SigNoz returns explicitly selected fields as flat row keys; an empty list
+// switches rows to nested resource and attributes maps.
 var TraceSearchCoreFields = []SelectField{
 	{Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
 	{Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},

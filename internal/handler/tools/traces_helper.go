@@ -7,6 +7,16 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
+const maxTraceSelectFields = 50
+
+// Query Builder selectFields use "tag" for span attributes.
+var traceSelectFieldContexts = []struct{ prefix, context string }{
+	{"resource.", "resource"},
+	{"attribute.", "tag"},
+	{"tag.", "tag"},
+	{"span.", "span"},
+}
+
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
 	FilterExpression string
@@ -17,9 +27,6 @@ type SearchTracesRequest struct {
 	StartTime        int64
 	EndTime          int64
 }
-
-// maxTraceSelectFields bounds how many extra columns one search can request.
-const maxTraceSelectFields = 50
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	filter, err := readFilterExpr(args)
@@ -118,9 +125,9 @@ func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPr
 	return strings.Join(parts, " AND ")
 }
 
-// parseTraceSelectFields returns the core search columns plus any extra fields
-// the caller named. It accepts an array of names or a comma-separated string;
-// a resource., attribute., tag., or span. prefix sets the field context.
+// parseTraceSelectFields appends the requested fields to the core set. Rows key
+// fields by bare name, so naming an already selected field in a different
+// context is an error rather than a silent drop.
 func parseTraceSelectFields(raw any) ([]types.SelectField, error) {
 	var names []string
 	switch v := raw.(type) {
@@ -142,19 +149,32 @@ func parseTraceSelectFields(raw any) ([]types.SelectField, error) {
 	}
 
 	fields := append([]types.SelectField(nil), types.TraceSearchCoreFields...)
-	seen := make(map[string]bool, len(fields)+len(names))
-	for _, field := range fields {
-		seen[field.Name] = true
+	selected := make(map[string]int, len(fields)+len(names))
+	for i, field := range fields {
+		selected[field.Name] = i
 	}
 	extra := 0
 	for _, name := range names {
-		field, ok := traceSelectField(strings.TrimSpace(name))
-		if !ok || seen[field.Name] {
+		name = strings.TrimSpace(name)
+		field, ok := traceSelectField(name)
+		if !ok {
 			continue
 		}
-		seen[field.Name] = true
-		fields = append(fields, field)
-		extra++
+		index, found := selected[field.Name]
+		if !found {
+			selected[field.Name] = len(fields)
+			fields = append(fields, field)
+			extra++
+			continue
+		}
+		existing := fields[index]
+		switch {
+		case field.FieldContext == "" || field.FieldContext == existing.FieldContext:
+		case existing.FieldContext == "":
+			fields[index] = field
+		default:
+			return nil, fmt.Errorf(`"selectFields" item %q conflicts with the %s field %q already selected: rows key fields by name, so only one can be returned. Request it alone with signoz_execute_builder_query`, name, fieldContextLabel(existing.FieldContext), existing.Name)
+		}
 	}
 	if extra > maxTraceSelectFields {
 		return nil, fmt.Errorf(`"selectFields" names %d extra fields; request at most %d per search`, extra, maxTraceSelectFields)
@@ -162,13 +182,11 @@ func parseTraceSelectFields(raw any) ([]types.SelectField, error) {
 	return fields, nil
 }
 
-// traceSelectFieldContexts maps accepted name prefixes to the Query Builder
-// field context; selectFields uses "tag" for span attributes.
-var traceSelectFieldContexts = []struct{ prefix, context string }{
-	{"resource.", "resource"},
-	{"attribute.", "tag"},
-	{"tag.", "tag"},
-	{"span.", "span"},
+func fieldContextLabel(context string) string {
+	if context == "tag" {
+		return "attribute"
+	}
+	return context
 }
 
 func traceSelectField(name string) (types.SelectField, bool) {
