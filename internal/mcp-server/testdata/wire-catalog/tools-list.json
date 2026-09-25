@@ -6617,7 +6617,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user wants individual raw span rows matching service, operation, error, duration, or field filters, or needs to discover trace IDs. It returns paginated spans, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. Defaults to the last 1 hour.",
+          "description": "Use this when the user wants individual raw span rows matching service, operation, error, duration, or field filters, or needs to discover trace IDs. It returns paginated spans, not aggregate trends/groups or a full trace hierarchy; use signoz_aggregate_traces for statistics and signoz_get_trace_details for one known trace ID. Rows carry a default set of span fields; name other fields in selectFields. A field missing from a row was not selected, so do not read it as absent from the span. Read signoz://traces/query-builder-guide before using unfamiliar workspace fields. Defaults to the last 1 hour.",
           "inputSchema": {
             "properties": {
               "end": {
@@ -6669,6 +6669,16 @@
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
+              },
+              "selectFields": {
+                "description": "Extra fields to return on each row, added to the default set: timestamp, trace_id, span_id, parent_span_id, name, service.name, kind_string, duration_nano, has_error, status_code_string, status_message, response_status_code, http_method. Pass an array of names or a comma-separated string, at most 50. Names can be span columns (db_name), resource attributes (k8s.pod.name), or span attributes (http.route); a resource., attribute., or span. prefix picks the context. Each field comes back as its own row key. Discover names with signoz_get_field_keys (signal=\"traces\"). Example: [\"http.route\", \"db.statement\"].",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "string"
+                ]
               },
               "service": {
                 "description": "Optional service name to filter by.",

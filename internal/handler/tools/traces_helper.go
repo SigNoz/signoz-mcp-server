@@ -10,12 +10,16 @@ import (
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
 	FilterExpression string
+	SelectFields     []types.SelectField
 	Limit            int
 	LimitClamped     bool
 	Offset           int
 	StartTime        int64
 	EndTime          int64
 }
+
+// maxTraceSelectFields bounds how many extra columns one search can request.
+const maxTraceSelectFields = 50
 
 func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	filter, err := readFilterExpr(args)
@@ -48,8 +52,14 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 		return nil, err
 	}
 
+	selectFields, err := parseTraceSelectFields(args["selectFields"])
+	if err != nil {
+		return nil, err
+	}
+
 	return &SearchTracesRequest{
 		FilterExpression: filterExpr,
+		SelectFields:     selectFields,
 		Limit:            limit,
 		LimitClamped:     clamped,
 		Offset:           offset,
@@ -106,4 +116,72 @@ func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPr
 		parts = append(parts, fmt.Sprintf("duration_nano <= %s", maxDuration))
 	}
 	return strings.Join(parts, " AND ")
+}
+
+// parseTraceSelectFields returns the core search columns plus any extra fields
+// the caller named. It accepts an array of names or a comma-separated string;
+// a resource., attribute., tag., or span. prefix sets the field context.
+func parseTraceSelectFields(raw any) ([]types.SelectField, error) {
+	var names []string
+	switch v := raw.(type) {
+	case nil:
+	case string:
+		names = strings.Split(v, ",")
+	case []any:
+		for _, item := range v {
+			name, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf(`invalid "selectFields" item %v: each item must be a field name string, e.g. ["http.route", "db.statement"]`, item)
+			}
+			names = append(names, name)
+		}
+	case []string:
+		names = v
+	default:
+		return nil, fmt.Errorf(`invalid "selectFields" value %v: pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, raw)
+	}
+
+	fields := append([]types.SelectField(nil), types.TraceSearchCoreFields...)
+	seen := make(map[string]bool, len(fields)+len(names))
+	for _, field := range fields {
+		seen[field.Name] = true
+	}
+	extra := 0
+	for _, name := range names {
+		field, ok := traceSelectField(strings.TrimSpace(name))
+		if !ok || seen[field.Name] {
+			continue
+		}
+		seen[field.Name] = true
+		fields = append(fields, field)
+		extra++
+	}
+	if extra > maxTraceSelectFields {
+		return nil, fmt.Errorf(`"selectFields" names %d extra fields; request at most %d per search`, extra, maxTraceSelectFields)
+	}
+	return fields, nil
+}
+
+// traceSelectFieldContexts maps accepted name prefixes to the Query Builder
+// field context; selectFields uses "tag" for span attributes.
+var traceSelectFieldContexts = []struct{ prefix, context string }{
+	{"resource.", "resource"},
+	{"attribute.", "tag"},
+	{"tag.", "tag"},
+	{"span.", "span"},
+}
+
+func traceSelectField(name string) (types.SelectField, bool) {
+	if name == "" {
+		return types.SelectField{}, false
+	}
+	for _, c := range traceSelectFieldContexts {
+		if bare, found := strings.CutPrefix(name, c.prefix); found && bare != "" {
+			if known, ok := traceGroupByFieldMetadata[bare]; ok && known.FieldContext == c.context {
+				return known, true
+			}
+			return types.SelectField{Name: bare, Signal: "traces", FieldContext: c.context}, true
+		}
+	}
+	return aggregateGroupByField("traces", name), true
 }
