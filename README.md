@@ -889,6 +889,8 @@ Return individual paginated span rows matching service, operation, error, durati
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum span rows to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Number of span rows to skip (default: 0)
+  - `selectFields` (optional) - Extra fields to return on each row, added to the default set. An array of field names or a comma-separated string, at most 50. Names can be span columns (`db_name`), resource attributes (`k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
+  - **Default fields**: each row carries `timestamp`, `trace_id`, `span_id`, `parent_span_id`, `name`, `service.name`, `kind_string`, `duration_nano`, `has_error`, `status_code_string`, `status_message`, `response_status_code`, and `http_method`, plus any `selectFields`. Every field is a flat row key; a field missing from a row was not selected
   - **Ordering**: generated raw trace queries use `timestamp desc`.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
