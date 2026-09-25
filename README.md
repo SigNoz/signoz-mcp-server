@@ -647,7 +647,10 @@ Static Markdown panels use `signoz/TextPanel` with `queries: []`, plus
 `plugin.spec.mode: "markdown"`, `text`, `presentation`, and `headerOptions`.
 Include the panel's layout reference. Query-bearing panels still require one
 query; Text panels do not need a query dry run. Widget examples and patch
-instructions include both kinds. Dashboard inputs use canonical `id`; the
+instructions include both kinds. Area charts use `signoz/AreaChartPanel` with
+one `time_series` query; `visualization.stack` (`none`, `normal`, or
+`percent`) stacks grouped series, and `chartAppearance.fillMode` is `solid` or
+`gradient`. Dashboard inputs use canonical `id`; the
 legacy `uuid` input is rejected on the changed dashboard tools.
 
 #### `signoz_import_dashboard`

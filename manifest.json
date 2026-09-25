@@ -262,7 +262,7 @@
     {
       "uri": "signoz://dashboard/widgets-examples",
       "name": "Dashboard Widgets Examples",
-      "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
+      "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, area, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
       "mimeType": "text/markdown"
     },
     {
