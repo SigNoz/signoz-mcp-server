@@ -22,6 +22,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.15.0] - 2026-09-25
+
+### Breaking changes
+- align MCP with released SigNoz feature contracts ([#313](https://github.com/SigNoz/signoz-mcp-server/pull/313))
+
+### Added
+- teach panel query dry-runs in the widget guide ([#323](https://github.com/SigNoz/signoz-mcp-server/pull/323))
+- support SigNoz area chart panels ([#320](https://github.com/SigNoz/signoz-mcp-server/pull/320))
+- rank by all-term and most-term matches, stem titles, and guide client queries ([#309](https://github.com/SigNoz/signoz-mcp-server/pull/309))
+
+### Fixed
+- accept SigNoz Slack message settings ([#319](https://github.com/SigNoz/signoz-mcp-server/pull/319))
+- name the real PromQL and ClickHouse envelope types ([#318](https://github.com/SigNoz/signoz-mcp-server/pull/318))
+
+### Documentation
+- correct percentile guards and anomaly guidance ([#314](https://github.com/SigNoz/signoz-mcp-server/pull/314))
+- align planning convention with AI Assistant ([#307](https://github.com/SigNoz/signoz-mcp-server/pull/307))
+
+### CI
+- list breaking changes in the generated changelog ([#316](https://github.com/SigNoz/signoz-mcp-server/pull/316))
+
+### Other
+- remove unused ListMetricKeys ([#322](https://github.com/SigNoz/signoz-mcp-server/pull/322))
+- bump go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc from 1.42.0 to 1.45.0 ([#310](https://github.com/SigNoz/signoz-mcp-server/pull/310))
+- bump go.opentelemetry.io/otel/exporters/otlp/otlptrace from 1.42.0 to 1.45.0 ([#311](https://github.com/SigNoz/signoz-mcp-server/pull/311))
+- bump go.opentelemetry.io/otel/sdk from 1.44.0 to 1.45.0 ([#312](https://github.com/SigNoz/signoz-mcp-server/pull/312))
+- add make ci target and share CI checks with make ([#315](https://github.com/SigNoz/signoz-mcp-server/pull/315))
+- perf(docs): bound docs refresh memory with conditional fetches, content gating, chunked builds, and live-index deltas ([#308](https://github.com/SigNoz/signoz-mcp-server/pull/308))
+- bump google.golang.org/grpc from 1.83.1 to 1.83.2 ([#306](https://github.com/SigNoz/signoz-mcp-server/pull/306))
+- bump google.golang.org/grpc from 1.82.1 to 1.83.1 ([#300](https://github.com/SigNoz/signoz-mcp-server/pull/300))
+- bump hono from 4.13.2 to 4.13.7 in /tools/mcp-ci ([#304](https://github.com/SigNoz/signoz-mcp-server/pull/304))
+- bump fast-uri from 3.1.5 to 3.1.7 in /tools/mcp-ci ([#302](https://github.com/SigNoz/signoz-mcp-server/pull/302))
+- post-release v0.14.0 ([#301](https://github.com/SigNoz/signoz-mcp-server/pull/301))
+
 ## [0.14.0] - 2026-09-02
 
 ### Added
@@ -393,3 +428,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.12.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.11.0...v0.12.0
 [0.13.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.12.0...v0.13.0
 [0.14.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.13.0...v0.14.0
+[0.15.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.14.0...v0.15.0
