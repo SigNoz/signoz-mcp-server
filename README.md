@@ -647,7 +647,10 @@ Static Markdown panels use `signoz/TextPanel` with `queries: []`, plus
 `plugin.spec.mode: "markdown"`, `text`, `presentation`, and `headerOptions`.
 Include the panel's layout reference. Query-bearing panels still require one
 query; Text panels do not need a query dry run. Widget examples and patch
-instructions include both kinds. Dashboard inputs use canonical `id`; the
+instructions include both kinds. Area charts use `signoz/AreaChartPanel` with
+one `time_series` query; `visualization.stack` (`none`, `normal`, or
+`percent`) stacks grouped series, and `chartAppearance.fillMode` is `solid` or
+`gradient`. Dashboard inputs use canonical `id`; the
 legacy `uuid` input is rejected on the changed dashboard tools.
 
 #### `signoz_import_dashboard`
@@ -983,6 +986,8 @@ display names before creating a channel.
 - **Provider kinds**: `slack`, `email`, `webhook`, `pagerduty`, `opsgenie`,
   `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`. The registered
   `config.spec` schema documents each provider's fields and required settings.
+  Slack also accepts message settings: `color`, `titleLink`, `pretext`,
+  `fallback`, `footer`, `fields`, and `actions`.
 - **Resolve notifications**: `config.spec.sendResolved` uses the provider's
   default when omitted. Get returns its effective value; preserve it on update.
 - **Test sends**: `test` defaults to `false`. Set `test: true` only when a test

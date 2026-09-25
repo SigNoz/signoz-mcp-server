@@ -702,34 +702,38 @@ func TestHandleCreateView_AllowsMatchingSignal(t *testing.T) {
 }
 
 func TestHandleCreateView_IgnoresSignalOnNonBuilderQuery(t *testing.T) {
-	// promql/clickhouse queries don't carry a `signal` field; validator
+	// promql/clickhouse_sql queries don't carry a `signal` field; validator
 	// should leave them alone.
-	called := false
-	mock := &client.MockClient{
-		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "p",
-		"source": "metrics",
-		"spec": map[string]any{
-			"panelType":   "graph",
-			"requestType": "time_series",
-			"queries": []any{map[string]any{
-				"type": "promql_query",
-				"spec": map[string]any{"name": "A", "query": "rate(x[5m])"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if result.IsError {
-		t.Fatalf("expected success for promql query; got: %v", result.Content)
-	}
-	if !called {
-		t.Fatalf("CreateView should have been called")
+	for _, envelope := range []map[string]any{
+		{"type": "promql", "spec": map[string]any{"name": "A", "query": "rate(x[5m])"}},
+		{"type": "clickhouse_sql", "spec": map[string]any{"name": "A", "query": "SELECT 1"}},
+	} {
+		t.Run(envelope["type"].(string), func(t *testing.T) {
+			called := false
+			mock := &client.MockClient{
+				CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+					called = true
+					return json.RawMessage(`{"status":"success"}`), nil
+				},
+			}
+			h := newTestHandler(mock)
+			req := makeToolRequest("signoz_create_view", map[string]any{
+				"name":   "p",
+				"source": "metrics",
+				"spec": map[string]any{
+					"panelType":   "graph",
+					"requestType": "time_series",
+					"queries":     []any{envelope},
+				},
+			})
+			result, _ := h.handleCreateView(testCtx(), req)
+			if result.IsError {
+				t.Fatalf("expected success for %s query; got: %v", envelope["type"], result.Content)
+			}
+			if !called {
+				t.Fatalf("CreateView should have been called")
+			}
+		})
 	}
 }
 

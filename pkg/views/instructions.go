@@ -43,7 +43,7 @@ Each entry is a Query Builder v5 envelope with type plus spec:
       "spec": { ...builder_query fields... } }
 
 Only builder_query envelopes carry signal/source, and only they fall
-under the rules below. promql_query and clickhouse_query envelopes are
+under the rules below. promql and clickhouse_sql envelopes are
 allowed but skipped by the signal check.
 
 ### builder_query spec fields

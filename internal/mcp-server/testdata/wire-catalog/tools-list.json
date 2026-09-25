@@ -987,6 +987,79 @@
                 },
                 "type": "object"
               },
+              "DashboardtypesAreaChartAppearance": {
+                "properties": {
+                  "fillMode": {
+                    "$ref": "#/$defs/DashboardtypesAreaFillMode"
+                  },
+                  "fillOpacity": {
+                    "$ref": "#/$defs/DashboardtypesFillOpacity"
+                  },
+                  "lineInterpolation": {
+                    "$ref": "#/$defs/DashboardtypesLineInterpolation"
+                  },
+                  "lineStyle": {
+                    "$ref": "#/$defs/DashboardtypesLineStyle"
+                  },
+                  "showPoints": {
+                    "type": "boolean"
+                  },
+                  "spanGaps": {
+                    "$ref": "#/$defs/DashboardtypesSpanGaps"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesAreaChartPanelSpec": {
+                "properties": {
+                  "axes": {
+                    "$ref": "#/$defs/DashboardtypesAxes"
+                  },
+                  "chartAppearance": {
+                    "$ref": "#/$defs/DashboardtypesAreaChartAppearance"
+                  },
+                  "formatting": {
+                    "$ref": "#/$defs/DashboardtypesPanelFormatting"
+                  },
+                  "legend": {
+                    "$ref": "#/$defs/DashboardtypesLegend"
+                  },
+                  "thresholds": {
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesThresholdWithLabel"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "$ref": "#/$defs/DashboardtypesAreaChartVisualization"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesAreaChartVisualization": {
+                "properties": {
+                  "fillSpans": {
+                    "type": "boolean"
+                  },
+                  "stack": {
+                    "$ref": "#/$defs/DashboardtypesStackMode"
+                  },
+                  "timePreference": {
+                    "$ref": "#/$defs/DashboardtypesTimePreference"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesAreaFillMode": {
+                "enum": [
+                  "solid",
+                  "gradient"
+                ],
+                "type": "string"
+              },
               "DashboardtypesAxes": {
                 "properties": {
                   "isLogScale": {
@@ -1216,6 +1289,14 @@
                   "none"
                 ],
                 "type": "string"
+              },
+              "DashboardtypesFillOpacity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": [
+                  "number",
+                  "null"
+                ]
               },
               "DashboardtypesHeaderOptions": {
                 "properties": {
@@ -1473,6 +1554,7 @@
               "DashboardtypesPanelPlugin": {
                 "discriminator": {
                   "mapping": {
+                    "signoz/AreaChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec",
                     "signoz/BarChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec",
                     "signoz/HistogramPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec",
                     "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
@@ -1492,6 +1574,9 @@
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec"
                   },
                   {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec"
+                  },
+                  {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec"
                   },
                   {
@@ -1509,6 +1594,22 @@
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
                   }
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/AreaChartPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "$ref": "#/$defs/DashboardtypesAreaChartPanelSpec"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
                 ],
                 "type": "object"
               },
@@ -1878,6 +1979,14 @@
                   }
                 },
                 "type": "object"
+              },
+              "DashboardtypesStackMode": {
+                "enum": [
+                  "none",
+                  "normal",
+                  "percent"
+                ],
+                "type": "string"
               },
               "DashboardtypesTableFormatting": {
                 "properties": {
@@ -3408,11 +3517,107 @@
                       "spec": {
                         "additionalProperties": false,
                         "properties": {
+                          "actions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "description": "A link button needs url; a message button needs name.",
+                              "properties": {
+                                "confirm": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "dismissText": {
+                                      "type": "string"
+                                    },
+                                    "okText": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "text"
+                                  ],
+                                  "type": "object"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "style": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "text"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
                           "apiUrl": {
                             "format": "password",
                             "type": "string"
                           },
                           "channel": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "fallback": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "fields": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "short": {
+                                  "type": "boolean"
+                                },
+                                "title": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "footer": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "pretext": {
+                            "minLength": 1,
                             "type": "string"
                           },
                           "sendResolved": {
@@ -3423,6 +3628,10 @@
                             "type": "string"
                           },
                           "title": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "titleLink": {
                             "minLength": 1,
                             "type": "string"
                           }
@@ -7152,6 +7361,79 @@
                 },
                 "type": "object"
               },
+              "DashboardtypesAreaChartAppearance": {
+                "properties": {
+                  "fillMode": {
+                    "$ref": "#/$defs/DashboardtypesAreaFillMode"
+                  },
+                  "fillOpacity": {
+                    "$ref": "#/$defs/DashboardtypesFillOpacity"
+                  },
+                  "lineInterpolation": {
+                    "$ref": "#/$defs/DashboardtypesLineInterpolation"
+                  },
+                  "lineStyle": {
+                    "$ref": "#/$defs/DashboardtypesLineStyle"
+                  },
+                  "showPoints": {
+                    "type": "boolean"
+                  },
+                  "spanGaps": {
+                    "$ref": "#/$defs/DashboardtypesSpanGaps"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesAreaChartPanelSpec": {
+                "properties": {
+                  "axes": {
+                    "$ref": "#/$defs/DashboardtypesAxes"
+                  },
+                  "chartAppearance": {
+                    "$ref": "#/$defs/DashboardtypesAreaChartAppearance"
+                  },
+                  "formatting": {
+                    "$ref": "#/$defs/DashboardtypesPanelFormatting"
+                  },
+                  "legend": {
+                    "$ref": "#/$defs/DashboardtypesLegend"
+                  },
+                  "thresholds": {
+                    "items": {
+                      "$ref": "#/$defs/DashboardtypesThresholdWithLabel"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "visualization": {
+                    "$ref": "#/$defs/DashboardtypesAreaChartVisualization"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesAreaChartVisualization": {
+                "properties": {
+                  "fillSpans": {
+                    "type": "boolean"
+                  },
+                  "stack": {
+                    "$ref": "#/$defs/DashboardtypesStackMode"
+                  },
+                  "timePreference": {
+                    "$ref": "#/$defs/DashboardtypesTimePreference"
+                  }
+                },
+                "type": "object"
+              },
+              "DashboardtypesAreaFillMode": {
+                "enum": [
+                  "solid",
+                  "gradient"
+                ],
+                "type": "string"
+              },
               "DashboardtypesAxes": {
                 "properties": {
                   "isLogScale": {
@@ -7381,6 +7663,14 @@
                   "none"
                 ],
                 "type": "string"
+              },
+              "DashboardtypesFillOpacity": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": [
+                  "number",
+                  "null"
+                ]
               },
               "DashboardtypesHeaderOptions": {
                 "properties": {
@@ -7638,6 +7928,7 @@
               "DashboardtypesPanelPlugin": {
                 "discriminator": {
                   "mapping": {
+                    "signoz/AreaChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec",
                     "signoz/BarChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec",
                     "signoz/HistogramPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec",
                     "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
@@ -7657,6 +7948,9 @@
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec"
                   },
                   {
+                    "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec"
+                  },
+                  {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec"
                   },
                   {
@@ -7674,6 +7968,22 @@
                   {
                     "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
                   }
+                ],
+                "type": "object"
+              },
+              "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec": {
+                "properties": {
+                  "kind": {
+                    "const": "signoz/AreaChartPanel",
+                    "type": "string"
+                  },
+                  "spec": {
+                    "$ref": "#/$defs/DashboardtypesAreaChartPanelSpec"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "spec"
                 ],
                 "type": "object"
               },
@@ -8043,6 +8353,14 @@
                   }
                 },
                 "type": "object"
+              },
+              "DashboardtypesStackMode": {
+                "enum": [
+                  "none",
+                  "normal",
+                  "percent"
+                ],
+                "type": "string"
               },
               "DashboardtypesTableFormatting": {
                 "properties": {
@@ -9545,11 +9863,103 @@
                       "spec": {
                         "additionalProperties": false,
                         "properties": {
+                          "actions": {
+                            "items": {
+                              "additionalProperties": false,
+                              "description": "A link button needs url; a message button needs name.",
+                              "properties": {
+                                "confirm": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "dismissText": {
+                                      "type": "string"
+                                    },
+                                    "okText": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "text"
+                                  ],
+                                  "type": "object"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "style": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "text"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
                           "apiUrl": {
                             "format": "password",
                             "type": "string"
                           },
                           "channel": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "fallback": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "short": {
+                                  "type": "boolean"
+                                },
+                                "title": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "title",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "footer": {
+                            "type": "string"
+                          },
+                          "pretext": {
                             "type": "string"
                           },
                           "sendResolved": {
@@ -9559,6 +9969,9 @@
                             "type": "string"
                           },
                           "title": {
+                            "type": "string"
+                          },
+                          "titleLink": {
                             "type": "string"
                           }
                         },

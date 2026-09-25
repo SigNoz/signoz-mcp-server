@@ -102,7 +102,7 @@ func TestListNotificationChannelsV2_PreservesLegacyEmptyKindAndWarns(t *testing.
 	got, err := client.ListNotificationChannelsV2(context.Background(), types.NotificationChannelListParams{})
 	require.NoError(t, err)
 	require.Equal(t, "", got.Channels[0].Kind)
-	require.Contains(t, logs.String(), "outside the pinned v0.142.0 contract")
+	require.Contains(t, logs.String(), "outside the pinned v0.143.0 contract")
 }
 
 func TestGetNotificationChannel_PreservesOrdinaryEmptyAndUnknownFields(t *testing.T) {
@@ -123,7 +123,7 @@ func TestGetNotificationChannel_PreservesOrdinaryEmptyAndUnknownFields(t *testin
 
 func TestValidateNotificationChannelData_AcceptsPinnedProviderResponseShapes(t *testing.T) {
 	specs := map[string]string{
-		"slack":      `{"sendResolved":true,"apiUrl":"https://hooks.slack.test/x","channel":"","title":"","text":""}`,
+		"slack":      `{"sendResolved":true,"apiUrl":"https://hooks.slack.test/x","channel":"","title":"","text":"","color":"","titleLink":"","pretext":"","fallback":"","footer":""}`,
 		"email":      `{"sendResolved":true,"to":"ops@example.test","html":"","headers":{}}`,
 		"webhook":    `{"sendResolved":true,"url":"https://example.test/hook","username":"","password":"","bearerToken":""}`,
 		"pagerduty":  `{"sendResolved":true,"routingKey":"key","url":"","source":"","client":"","clientUrl":"","description":"","severity":"","component":"","group":"","class":"","details":{}}`,
