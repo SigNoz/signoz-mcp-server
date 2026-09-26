@@ -22,10 +22,11 @@ valid envelopes so rejection does not dominate coverage. Check preserved fields,
 exact numbers, valid JSON, normalization stability, and documented time units.
 Do not assert internal call order or use production code as the expected-value oracle.
 
-Provide short and long bounded commands and a weekly/manual workflow. Save native
-Go corpus inputs and replay commands on failure. Ordinary Go tests run the committed
-corpus; fresh-input campaigns remain separate from deterministic PR gates. Runs are
-credential-free and make no live SigNoz requests.
+Provide short and long bounded commands and a PR/manual workflow. Save native Go
+corpus inputs and replay commands on failure. Ordinary Go tests run the committed
+corpus; a separate PR job generates fresh inputs for 30 seconds per target, with a
+five-minute timeout for the entire job. Runs are credential-free and make no live
+SigNoz requests.
 
 ## Files to Modify
 
@@ -34,8 +35,9 @@ credential-free and make no live SigNoz requests.
 - `pkg/types/querybuilder_fuzz_test.go` — authored query field preservation.
 - `pkg/timeutil/time_fuzz_test.go` — explicit epoch conversion and saturation.
 - `Makefile`, `scripts/test-fuzz.sh`, `.gitignore` — bounded campaign commands.
-- `.github/workflows/fuzz.yaml` — periodic runs and failure artifacts.
-- `CONTRIBUTING.md` — failure scenarios, execution, replay, and corpus promotion.
+- `.github/workflows/fuzz.yaml` — PR runs and failure artifacts.
+- `CONTRIBUTING.md` — concise commands, CI budget, and replay instructions.
+- `CLAUDE.md` — keep the `make ci` check list current and guide future fuzz coverage.
 
 ## Key Decisions
 
@@ -49,6 +51,20 @@ credential-free and make no live SigNoz requests.
 - Demonstrate oracle sensitivity with temporary plausible production defects,
   restore them, and record results. Do not add a mutation-testing framework.
 
+### 2026-09-26 — Replace scheduled fuzzing with a bounded PR check
+
+- At the user's request, remove the weekly schedule and run fresh-input fuzzing on
+  every PR. Use one job, not a matrix, so the five-minute limit covers the whole
+  workflow's runner time, including setup, compilation, and artifact upload.
+- Spend 30 seconds per target (two minutes of fuzzing total), leaving headroom for
+  build and setup. Cap the fuzz step at four minutes and the job at five minutes.
+- Include the short campaign in `make ci`; retain longer local campaigns for manual
+  investigation. This user-directed change replaces the issue's periodic-run requirement.
+- Keep contributor instructions concise; target rationale and seed provenance live
+  in this plan and the tests.
+- Document how to grow coverage: prefer extending existing targets and require a
+  distinct realistic failure plus a stable invariant for each new target.
+
 ## Reference Links
 
 - [Issue](https://github.com/SigNoz/nerve-pod/issues/136)
@@ -59,6 +75,9 @@ credential-free and make no live SigNoz requests.
 - All four seed corpora and the 10-second-per-target campaign passed on Go 1.26.0.
 - `GOTOOLCHAIN=go1.26.0 go test -count=1 ./...` passed.
 - `GOTOOLCHAIN=go1.26.0 make ci` passed, including race, protocol, and conformance checks.
+- After switching to PR fuzzing, `GOTOOLCHAIN=go1.26.0 make ci FUZZ_TIME=30s`
+  passed, including all four 30-second fuzz campaigns; workflow lint and ready-plan
+  validation passed for the updated workflow and documentation.
 - `actionlint` v1.7.7 and `bash -n scripts/test-fuzz.sh` passed.
 - Temporary Go overlays proved all four targets detect plausible defects: leaving
   boolean schemas unnormalized, round-tripping enrichment through float64, losing
@@ -79,7 +98,7 @@ packages; the reused raw trace fixture models the upstream response shape.
 
 ## Outcome
 
-Added four focused native targets, short/long commands, weekly/manual CI with
+Added four focused native targets, short/long commands, PR/manual CI with
 failure artifacts, and contributor instructions. No production behavior or public
 contracts changed; no metadata or agent-skills updates are needed. No real defect
 was found in these campaigns, so there is no new minimized regression corpus to

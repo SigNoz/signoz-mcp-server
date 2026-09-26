@@ -54,7 +54,7 @@ test-fuzz-long:
 ##@ CI
 
 # Everything the PR gate runs except the live e2e suite. Needs Node, uv, and goimports.
-ci: check-fmt lint check-deps check-build test-race check-guardrails check-protocol check-conformance check-e2e-style check-repo-docs
+ci: check-fmt lint check-deps check-build test-race check-guardrails check-protocol check-conformance check-e2e-style check-repo-docs test-fuzz
 	@echo "✅ All PR-gate checks passed."
 
 # Read-only: lists files that fmt or goimports would rewrite.
