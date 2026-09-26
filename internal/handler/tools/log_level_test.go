@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"testing"
+
+	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
 // TestLogUpstreamFailureLevels pins the severity contract of the shared
@@ -65,4 +67,46 @@ func TestLogUpstreamFailureLevels(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandlePatchDashboardCancellationLogLevel(t *testing.T) {
+	var buf bytes.Buffer
+	mock := &client.MockClient{
+		PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+			return nil, fmt.Errorf("patch request aborted: %w", context.Canceled)
+		},
+	}
+	h := newTestHandler(mock)
+	h.logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	result, err := h.handlePatchDashboard(context.Background(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+		"id": "d-1",
+		"patch": []any{
+			map[string]any{"op": "replace", "path": "/spec/display/name", "value": "Renamed"},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected upstream error result")
+	}
+	if code := resultCode(t, result); code != CodeCanceled {
+		t.Fatalf("code = %q, want %q", code, CodeCanceled)
+	}
+
+	wantMsg := "Failed to patch dashboard in SigNoz (request cancelled by client)"
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("decode log record %q: %v", line, err)
+		}
+		if rec["msg"] == wantMsg {
+			if rec["level"] != "DEBUG" {
+				t.Fatalf("level = %v, want DEBUG", rec["level"])
+			}
+			return
+		}
+	}
+	t.Fatalf("missing cancellation log %q in %s", wantMsg, buf.String())
 }

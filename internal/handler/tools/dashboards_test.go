@@ -166,6 +166,7 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 				"id":            "d-1",
 				"searchContext": "rename it",
 				"schemaVersion": "v6",
+				"image":         "https://example.com/dashboard.png",
 				"name":          "d-1",
 				"tags":          []any{},
 				"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
@@ -214,9 +215,45 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 					t.Errorf("envelope/read-only field %q must not reach the PUT body: %s", k, gotBody)
 				}
 			}
-			for _, k := range []string{"schemaVersion", "name", "tags", "spec"} {
+			for _, k := range []string{"schemaVersion", "image", "name", "tags", "spec"} {
 				if _, present := parsed[k]; !present {
 					t.Errorf("updatable field %q missing from the PUT body: %s", k, gotBody)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleUpdateDashboard_RejectsUnknownFields(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    map[string]any
+		unknown string
+	}{
+		{"complete payload with typo", map[string]any{
+			"id": "d-1", "schemaVersion": "v6", "name": "d-1", "tags": []any{},
+			"spec": map[string]any{"display": map[string]any{"name": "Renamed"}}, "tagz": []any{},
+		}, "tagz"},
+		{"typo only", map[string]any{"id": "d-1", "tagz": []any{}}, "tagz"},
+		{"sorted fields", map[string]any{"id": "d-1", "zeta": true, "alpha": true}, "alpha, zeta"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &client.MockClient{
+				UpdateDashboardRawFn: func(context.Context, string, []byte) (json.RawMessage, error) {
+					t.Fatal("unknown update fields must not reach upstream")
+					return nil, nil
+				},
+			}
+			result, err := newTestHandler(mock).handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", tc.args))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError || resultCode(t, result) != CodeValidationFailed {
+				t.Fatalf("expected VALIDATION_FAILED, got %+v", result)
+			}
+			for _, want := range []string{tc.unknown, "Remove or correct", "image, name, schemaVersion, spec, tags"} {
+				if body := resultText(t, result); !strings.Contains(body, want) {
+					t.Errorf("expected recovery containing %q, got %s", want, body)
 				}
 			}
 		})
@@ -252,6 +289,79 @@ func TestHandleUpdateDashboard_RejectsReadEnvelope(t *testing.T) {
 	}
 	if got := resultText(t, result); !strings.Contains(got, `"data"`) {
 		t.Errorf("error should tell the caller to extract %q, got: %s", "data", got)
+	}
+}
+
+func TestHandlePatchDashboard_RejectsNonArrayPatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		patch any
+	}{
+		{name: "null", patch: nil},
+		{name: "object", patch: map[string]any{}},
+		{name: "string", patch: "[]"},
+		{name: "number", patch: float64(1)},
+		{name: "boolean", patch: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &client.MockClient{
+				PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+					t.Fatal("invalid patch must not call upstream")
+					return nil, nil
+				},
+			}
+
+			result, err := newTestHandler(mock).handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+				"id":    "d-1",
+				"patch": tc.patch,
+			}))
+			if err != nil {
+				t.Fatalf("unexpected Go error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected validation error result")
+			}
+			if code := resultCode(t, result); code != CodeValidationFailed {
+				t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
+			}
+			body := resultText(t, result)
+			for _, required := range []string{`"patch"`, "array", "RFC 6902", "Send []"} {
+				if !strings.Contains(body, required) {
+					t.Errorf("validation recovery should contain %q, got: %s", required, body)
+				}
+			}
+		})
+	}
+}
+
+func TestHandlePatchDashboard_AllowsEmptyArray(t *testing.T) {
+	var calls int
+	var gotBody []byte
+	mock := &client.MockClient{
+		PatchDashboardRawFn: func(ctx context.Context, id string, patchJSON []byte) (json.RawMessage, error) {
+			calls++
+			if id != "d-1" {
+				t.Errorf("id = %q, want d-1", id)
+			}
+			gotBody = append([]byte(nil), patchJSON...)
+			return json.RawMessage(`{"status":"success","data":{"id":"d-1"}}`), nil
+		},
+	}
+
+	result, err := newTestHandler(mock).handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", map[string]any{
+		"id":    "d-1",
+		"patch": []any{},
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("empty patch should succeed: err=%v result=%v", err, result.Content)
+	}
+	if calls != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls)
+	}
+	if string(gotBody) != "[]" {
+		t.Fatalf("forwarded patch = %s, want []", gotBody)
 	}
 }
 

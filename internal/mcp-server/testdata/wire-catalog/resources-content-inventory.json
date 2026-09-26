@@ -150,8 +150,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/patch-instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 5379,
-        "sha256": "1352848bd541f2477c799c7ea507ccbcf619c8087c6649901a1e71eec31f1bbb"
+        "serializedLength": 5425,
+        "sha256": "885d38760729c911729189dd8fcf70c8ee592c65a0d7cee3fd9cd0db71641993"
       }
     ]
   },
@@ -189,8 +189,8 @@
         "kind": "text",
         "uri": "signoz://dashboard/widgets-instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 14277,
-        "sha256": "72e0833a6b083ecafc255e4fb355abc2741b300d56daab104e4eb4407e88ea7e"
+        "serializedLength": 14329,
+        "sha256": "9a3da279f26f635cbf20e5191633df64198271dc7ea8ba91662bb0b1911232be"
       }
     ]
   },

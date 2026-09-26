@@ -1742,6 +1742,31 @@
                 "type": "object"
               },
               "DashboardtypesPanelSpec": {
+                "else": {
+                  "properties": {
+                    "queries": {
+                      "maxItems": 1,
+                      "minItems": 1
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "plugin": {
+                      "properties": {
+                        "kind": {
+                          "const": "signoz/TextPanel"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "plugin"
+                  ]
+                },
                 "properties": {
                   "display": {
                     "$ref": "#/$defs/DashboardtypesDisplay"
@@ -1759,6 +1784,7 @@
                     "$ref": "#/$defs/DashboardtypesPanelPlugin"
                   },
                   "queries": {
+                    "description": "Query panels require exactly one outer query wrapper. Use signoz/CompositeQuery inside it for multiple logical queries or formulas. signoz/TextPanel uses an empty array [].",
                     "items": {
                       "$ref": "#/$defs/DashboardtypesQuery"
                     },
@@ -1770,6 +1796,13 @@
                   "plugin",
                   "queries"
                 ],
+                "then": {
+                  "properties": {
+                    "queries": {
+                      "maxItems": 0
+                    }
+                  }
+                },
                 "type": "object"
               },
               "DashboardtypesPieChartPanelSpec": {
@@ -6252,7 +6285,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Apply a partial update to a v2 dashboard using an RFC 6902 JSON Patch, without re-sending the whole dashboard. Supply the dashboard 'id' and 'patch' (an array of {op, path, value} operations). Paths are JSON Pointers into the dashboard's postable shape, e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /spec/variables/0, /tags/-. Prefer this over signoz_update_dashboard for targeted changes (renaming, adding/editing one panel or query, tweaking a variable); it is far cheaper than rebuilding the full dashboard. Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. Read signoz://dashboard/patch-instructions for worked recipes and exact paths (e.g. adding a panel takes two ops).",
+          "description": "Apply an RFC 6902 JSON Patch to a v2 dashboard without resending it. Supply 'id' and 'patch' (an array of {op, path, value}); paths target the postable shape, e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /spec/variables/0, /tags/-. A query panel has one outer query wrapper: replace /spec/panels/\u003cpanelId\u003e/spec/queries/0; never append a sibling. Put multiple logical queries or formulas inside it as a signoz/CompositeQuery. TextPanels use queries: []. Prefer this over signoz_update_dashboard for targeted edits. Apply is lenient (remove on a missing path is a no-op; add creates missing parents) but the result is still validated; locked dashboards are rejected. Read signoz://dashboard/patch-instructions for recipes and exact paths (adding a panel takes two ops).",
           "inputSchema": {
             "$defs": {
               "DashboardtypesJSONPatchOperation": {
@@ -6265,11 +6298,11 @@
                     "$ref": "#/$defs/DashboardtypesPatchOp"
                   },
                   "path": {
-                    "description": "JSON Pointer (RFC 6901) into the dashboard's postable shape — e.g. /spec/display/name, /spec/panels/\u003cid\u003e, /spec/panels/\u003cid\u003e/spec/queries/0, /tags/-.",
+                    "description": "JSON Pointer (RFC 6901) into the dashboard's postable shape — e.g. /spec/display/name, /spec/panels/\u003cpanelId\u003e, /spec/panels/\u003cpanelId\u003e/spec/queries/0, /tags/-.",
                     "type": "string"
                   },
                   "value": {
-                    "description": "Value to add/replace/test against. The expected type depends on the path. Common shapes (see referenced schemas for the exact field set): /spec/panels/\u003cid\u003e takes a DashboardtypesPanel; /spec/panels/\u003cid\u003e/spec/queries/N (or /-) takes a DashboardtypesQuery; /spec/variables/N takes a DashboardtypesVariable; /spec/layouts/N takes a DashboardtypesLayout; /tags/N (or /-) takes a TagtypesPostableTag; /spec/display/name and other leaf string fields take a string. Required for add/replace/test; ignored for remove/move/copy."
+                    "description": "Value to add/replace/test against. The expected type depends on the path. Common shapes (see referenced schemas for the exact field set): /spec/panels/\u003cpanelId\u003e takes a DashboardtypesPanel; /spec/panels/\u003cpanelId\u003e/spec/queries/0 takes a DashboardtypesQuery; /spec/variables/N takes a DashboardtypesVariable; /spec/layouts/N takes a DashboardtypesLayout; /tags/N (or /-) takes a TagtypesPostableTag; /spec/display/name and other leaf string fields take a string. Required for add/replace/test; ignored for remove/move/copy."
                   }
                 },
                 "required": [
@@ -6297,13 +6330,11 @@
                 "type": "string"
               },
               "patch": {
+                "description": "RFC 6902 operations. A query panel must retain exactly one outer query wrapper: replace /spec/panels/\u003cpanelId\u003e/spec/queries/0; never add or append a sibling outer wrapper. Use signoz/CompositeQuery inside that wrapper for multiple logical queries or formulas. signoz/TextPanel uses queries: []. See signoz://dashboard/patch-instructions.",
                 "items": {
                   "$ref": "#/$defs/DashboardtypesJSONPatchOperation"
                 },
-                "type": [
-                  "array",
-                  "null"
-                ]
+                "type": "array"
               },
               "searchContext": {
                 "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results.",
@@ -8126,6 +8157,31 @@
                 "type": "object"
               },
               "DashboardtypesPanelSpec": {
+                "else": {
+                  "properties": {
+                    "queries": {
+                      "maxItems": 1,
+                      "minItems": 1
+                    }
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "plugin": {
+                      "properties": {
+                        "kind": {
+                          "const": "signoz/TextPanel"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "plugin"
+                  ]
+                },
                 "properties": {
                   "display": {
                     "$ref": "#/$defs/DashboardtypesDisplay"
@@ -8143,6 +8199,7 @@
                     "$ref": "#/$defs/DashboardtypesPanelPlugin"
                   },
                   "queries": {
+                    "description": "Query panels require exactly one outer query wrapper. Use signoz/CompositeQuery inside it for multiple logical queries or formulas. signoz/TextPanel uses an empty array [].",
                     "items": {
                       "$ref": "#/$defs/DashboardtypesQuery"
                     },
@@ -8154,6 +8211,13 @@
                   "plugin",
                   "queries"
                 ],
+                "then": {
+                  "properties": {
+                    "queries": {
+                      "maxItems": 0
+                    }
+                  }
+                },
                 "type": "object"
               },
               "DashboardtypesPieChartPanelSpec": {

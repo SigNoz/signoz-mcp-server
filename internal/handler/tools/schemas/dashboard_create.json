@@ -879,7 +879,8 @@
           "items": {
             "$ref": "#/$defs/DashboardtypesQuery"
           },
-          "type": "array"
+          "type": "array",
+          "description": "Query panels require exactly one outer query wrapper. Use signoz/CompositeQuery inside it for multiple logical queries or formulas. signoz/TextPanel uses an empty array []."
         }
       },
       "required": [
@@ -887,7 +888,39 @@
         "plugin",
         "queries"
       ],
-      "type": "object"
+      "type": "object",
+      "if": {
+        "properties": {
+          "plugin": {
+            "properties": {
+              "kind": {
+                "const": "signoz/TextPanel"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "plugin"
+        ]
+      },
+      "then": {
+        "properties": {
+          "queries": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "queries": {
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      }
     },
     "DashboardtypesPieChartPanelSpec": {
       "properties": {

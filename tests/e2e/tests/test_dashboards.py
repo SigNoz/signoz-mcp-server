@@ -1,8 +1,10 @@
 """Dashboard v6 panel lifecycles, panel query dry-runs, and released system-dashboard contracts."""
 
 import time
+from copy import deepcopy
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, first_json, text_blocks
+from fixtures.results import result_code
 from fixtures.signoz import SigNoz
 
 
@@ -110,16 +112,21 @@ def test_text_panel_create_get_update_patch_defaults_layout_and_cleanup(mcp_clie
         }
         assert data["spec"]["layouts"] == dashboard["spec"]["layouts"]
 
-        replacement = dict(dashboard)
-        replacement.pop("searchContext")
+        assert {"createdAt", "updatedAt", "createdBy", "updatedBy", "source"} <= data.keys()
+        assert data["source"] == "user"
+        replacement = deepcopy(data)
+        replacement["searchContext"] = "update the runbook using the fetched dashboard body"
         replacement["id"] = dashboard_id
-        replacement["name"] = data["name"]
-        replacement["spec"] = data["spec"]
         replacement["spec"]["panels"]["explicit"]["spec"]["plugin"]["spec"] = {
             **explicit_spec,
             "text": "# Updated runbook",
             "presentation": {"textAlign": "right", "verticalAlign": "center", "background": "#244B57"},
         }
+        rejected = mcp_client.call_tool("signoz_update_dashboard", {**replacement, "tagz": []})
+        assert rejected.get("isError", False), "dashboard update accepted the unknown field tagz"
+        assert result_code(rejected) == "VALIDATION_FAILED"
+        assert "tagz" in text_blocks(rejected)
+
         updated = assert_tool_ok(mcp_client.call_tool("signoz_update_dashboard", replacement))
         updated_data = _data(first_json(updated))
         assert (
@@ -159,6 +166,17 @@ def test_text_panel_create_get_update_patch_defaults_layout_and_cleanup(mcp_clie
         assert patched_spec["presentation"]["background"] == "#102A33"
         assert patched_spec["headerOptions"] == {"hide": False}
         assert patched_data["spec"]["layouts"] == dashboard["spec"]["layouts"]
+
+        unchanged = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_patch_dashboard",
+                {"searchContext": "leave the dashboard unchanged with an empty patch", "id": dashboard_id, "patch": []},
+            )
+        )
+        unchanged_data = _data(first_json(unchanged))
+        # Empty patches still update audit timestamps upstream.
+        for field in ("spec", "name", "tags"):
+            assert unchanged_data[field] == patched_data[field], f"empty patch changed {field}"
 
         deleted_result = assert_tool_ok(
             mcp_client.call_tool(
@@ -370,6 +388,21 @@ def _count_query(name: str, disabled: bool = False, filter_expression: str = "")
     return spec
 
 
+def _assert_supplied_fields(saved: object, expected: object) -> None:
+    """Allow server-added defaults while preserving supplied values and list order."""
+    if isinstance(expected, dict):
+        assert isinstance(saved, dict)
+        for key, value in expected.items():
+            assert key in saved, f"server dropped {key}"
+            _assert_supplied_fields(saved[key], value)
+    elif isinstance(expected, list):
+        assert isinstance(saved, list) and len(saved) == len(expected)
+        for actual, value in zip(saved, expected, strict=True):
+            _assert_supplied_fields(actual, value)
+    else:
+        assert saved == expected
+
+
 def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
     mcp_client: MCPClient, test_id: str
 ) -> None:
@@ -450,7 +483,11 @@ def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
         panels = _data(first_json(fetched))["spec"]["panels"]
         now = int(time.time() * 1000)
         for panel_id in ("direct", "composite", "promql", "clickhouse"):
-            saved_query = panels[panel_id]["spec"]["queries"][0]
+            saved_queries = panels[panel_id]["spec"]["queries"]
+            assert len(saved_queries) == 1, f"{panel_id} must have exactly one outer query"
+            saved_query = saved_queries[0]
+            if panel_id == "composite":
+                _assert_supplied_fields(saved_query["spec"]["plugin"], composite)
             query = {
                 "schemaVersion": "v1",
                 "start": now - 30 * 60 * 1000,

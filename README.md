@@ -670,19 +670,19 @@ Returns the full bundled catalog of curated SigNoz dashboard templates as `{"tem
 
 #### `signoz_update_dashboard`
 
-Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, take the `data` object out of that response, merge only the requested changes into it, and send that object's fields at the top level, preserving every other field. The `{status, data}` response envelope is not accepted as input. Use `signoz_update_view` for a saved Explorer query.
+Fully replaces an existing dashboard. Fetch it with `signoz_get_dashboard`, take the `data` object out of that response, merge only the requested changes into it, and send that object's fields at the top level, preserving every other field. The `{status, data}` response envelope is not accepted as input. Known read-only fields are stripped; unrecognized top-level fields return `VALIDATION_FAILED` with the writable field names. Use `signoz_update_view` for a saved Explorer query.
 
 - **Parameters:**
-  - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
+  - `id` (required) – Dashboard id (use `id`; the legacy `uuid` key is rejected)
   - `schemaVersion`, `name`, `tags`, `spec` – the complete post-update state (see the tool's JSON Schema)
 
 #### `signoz_patch_dashboard`
 
-Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths; notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
+Applies an RFC 6902 JSON Patch to a dashboard: a partial update without re-sending the entire dashboard. Prefer this over `signoz_update_dashboard` for targeted edits (rename, add/edit one panel or query, tweak a variable). Query panels require one outer query wrapper: replace `/spec/panels/<panelId>/spec/queries/0`, and put multiple logical queries or formulas inside it as a `signoz/CompositeQuery`. TextPanels use `queries: []`. Read `signoz://dashboard/patch-instructions` for worked recipes and exact paths; notably, adding a panel needs two ops (the panel plus its grid item) or it won't render.
 
 - **Parameters:**
-  - `id` (required) – Dashboard id (the legacy `uuid` key is also accepted)
-  - `patch` (required) – Array of `{op, path, value}` operations; paths are JSON Pointers into the dashboard's postable shape, e.g. `/spec/display/name`, `/spec/panels/<panelId>`, `/spec/layouts/0/spec/items/-`, `/tags/-`
+  - `id` (required) – Dashboard id (use `id`; the legacy `uuid` key is rejected)
+  - `patch` (required) – Array of `{op, path, value}` operations; `null` and non-array values are rejected. An empty `[]` applies no content edits. Paths are JSON Pointers into the dashboard's postable shape, e.g. `/spec/display/name`, `/spec/panels/<panelId>`, `/spec/layouts/0/spec/items/-`, `/tags/-`
 
 #### `signoz_list_services`
 

@@ -5,17 +5,46 @@ Done
 
 - Schema extraction; client → v2 + `PatchDashboardRaw`; pass-through handlers on the shared helpers (canonical `id` + `uuid` alias, structured output); embedded JSON Schemas; `name` auto-generation; old v1 types deleted; `handleImportDashboard` made pass-through and import/list-templates tools registered against the v6 templates; list `filter`/`sort`/`order`; all v6 resources rewritten in place + registered (`instructions` = basics/layout/variables, `widgets-instructions` = concepts, `widgets-examples` = worked round-tripped panels, `list-filter-guide`, `patch-instructions` = live-verified RFC 6902 recipes, `examples` = whole v6 dashboards) and linked from the relevant tools; metric dashboard-usage moved to the v3 (Perses) endpoint; the deprecated v1 `dashboardbuilder`/`panelbuilder`/`pipeline` build-validate code removed; tests + docs synced. `go build`, `gofmt -l`, `go test ./...` green. The companion `SigNoz/agent-skills` (v6 skills) and `SigNoz/dashboards` (v6 templates) PRs land alongside this one.
 
+## PR #263 refresh (2026-09-26)
+
+Issue: https://github.com/SigNoz/nerve-pod/issues/175
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/263
+
+The original migration below is historical. This follow-up retains only the accepted
+issue #175 schema, update validation, patch validation, cancellation logging, and
+query-path guidance changes. It merges current main while preserving the official
+MCP SDK, canonical dashboard `id`, TextPanel normalization, area charts, and query
+dry-run guidance.
+
+- Verified current upstream release v0.143.0 (`7ce73f3470371daa7b245716a1b1a3fd6a2daee4`):
+  `perses_dashboard_data.go` requires zero queries for TextPanel and exactly one
+  outer query for other panel kinds. Nested CompositeQuery entries stay unbounded.
+- Retained the pinned schema source and heatmap exclusion; regenerated only the
+  intended cardinality and patch changes. Updated only affected wire-catalog
+  entries, with resource digests computed through the existing oracle helper.
+- Removed obsolete alias handling, hand-written field formatting/grammar helpers,
+  wording-only test assertions, duplicate fixture assertions, and redundant
+  manifest/example prose. Kept current main's canonical-id contract tests.
+- Existing e2e lifecycles now cover GET write-back with audit/source fields, typo
+  rejection, empty patches preserving content, and nested CompositeQuery persistence.
+- Compatibility: unknown update keys and null/non-array patches now return
+  `VALIDATION_FAILED`. Correct fields using the inline writable-field list; send
+  an operation array, including `[]` for no content edits. Empty patches still
+  run the upstream update path and may refresh audit metadata. Schema clients must
+  send TextPanel `queries: []` or one outer wrapper for query panels.
+- Companion agent-skills correction and final verification are recorded in Outcome.
+
 ## Context (brief)
 v1 (`/api/v1/dashboards`, accept-all, flat `Dashboard{title,layout[],widgets[]}` at `v5`) → v2 (`/api/v2/dashboards`, Perses `{schemaVersion:"v6",name,generateName,tags[],spec}`, strict server-side validation). The v2 dashboards API ships in SigNoz v0.135.0, so that is the minimum SigNoz version for the dashboard tools (documented in the README compat section); this branch merges alongside that release and the companion `SigNoz/dashboards` v6 templates. Because v2 validates server-side, the migration is mostly *removal*: input schemas become embedded JSON, the old `dashboardbuilder`/`panelbuilder` validation drops to pass-through, and the dead typed client methods are deleted (the layered A/B/C breakdown and rationale are in the context file). Handlers follow the package conventions (shared helpers, id-aliasing, structured output). Scope: list/get/create/update/delete + a **patch** tool, plus import/list-templates (registered as pass-throughs); list also exposes the v2 server-side `query` filter DSL (as a `filter` param) plus `sort`/`order`; out of scope: pin/unpin, personalized list.
 
 ## Implementation
 
-**Input schemas.** The three write tools get pre-built JSON Schemas via a local `rawInputSchema()` option, `//go:embed`-ed from `schemas/dashboard_{create,update,patch}.json` and produced by the committed regenerator `schemas/extract_schemas.py` (re-runnable, not a one-off; extraction mechanics in the context file). Each adds top-level `searchContext` (never `required`); update/patch add both `id` and `uuid` (neither `required`; `TestUpdateStructs_IDNotSchemaRequired`). The generator also `pin_discriminators()` every `oneOf`+`discriminator` union — each mapped branch's discriminator property is set to a single-value `const` (and required) so the unions are mutually exclusive under plain JSON Schema (validators ignore OAS `discriminator`); without this, `signoz/CompositeQuery` payloads fail the schema. `TestEmbeddedDashboardSchemasAreValid` + `TestWidgetExamplesValidateAgainstCreateSchema` guard schema validity and examples↔schema agreement. The `schema_compat.go` normalizer handles `$defs`/`oneOf` for clients, unchanged.
+**Input schemas.** The three write tools get pre-built JSON Schemas via a local `rawInputSchema()` option, `//go:embed`-ed from `schemas/dashboard_{create,update,patch}.json` and produced by the committed regenerator `schemas/extract_schemas.py` (re-runnable, not a one-off; extraction mechanics in the context file). Each adds top-level `searchContext` (never `required`); update/patch add both `id` and `uuid` (neither `required`; `TestUpdateStructs_IDNotSchemaRequired`). The generator also `pin_discriminators()` every `oneOf`+`discriminator` union — each mapped branch's discriminator property is set to a single-value `const` (and required) so the unions are mutually exclusive under plain JSON Schema (validators ignore OAS `discriminator`); without this, `signoz/CompositeQuery` payloads fail the schema. It enforces exactly one outer query wrapper per query panel and an empty queries array for TextPanel in create/update while leaving nested `signoz/CompositeQuery` entries unbounded, adds schema guidance that this is not a logical-query limit, narrows the patch root to an array without excluding empty `[]`, and normalizes patch-operation guidance to replace `/queries/0` while preserving append syntax only for appendable arrays. `TestEmbeddedDashboardSchemasAreValid` + `TestWidgetExamplesValidateAgainstCreateSchema` guard schema validity and examples↔schema agreement. The `schema_compat.go` normalizer handles `$defs`/`oneOf` for clients, unchanged.
 
 **Handlers (pass-through) — `dashboards.go`.** All use the shared helpers (`requireArgsMap`/`notAConfigObjectError`, `readResourceID(args,"uuid")`, `errorWithCode`, `upstreamError`).
 - **Create** — strip `searchContext`; default `generateName:true` when no `name`; marshal; `CreateDashboardRaw`. No local validation. Inject `webUrl` (id discovered from the response body) + `structuredResult`.
-- **Update** — read id; keep only updatable body fields; PUT the rest. `name` immutable. The caller unwraps `signoz_get_dashboard`'s `{status,data}` response and sends `data`'s fields at the top level; the envelope itself is **rejected** with a validation error naming `data`. The handler previously unwrapped `data` silently, but `dashboard_update.json` requires `schemaVersion`/`name`/`tags`/`spec` at the top level and advertises no envelope alternative — a schema-aware client rejected the call before that path ran, so the accepted shape now matches the advertised one (OUT-2) and the tool description, README, and manifest all say to extract `data` first. Inject `webUrl` (known id) + `structuredResult`.
-- **Patch** — forward the RFC 6902 op array to `PATCH …/{id}`. Inject `webUrl` (known id) + `structuredResult`. The tool description points to `signoz://dashboard/patch-instructions` for recipes and exact paths; the recipe detail (e.g. the two-op add-panel sequence) lives in the resource, not duplicated in the description.
+- **Update** — read id; keep only updatable body fields, strip the audited read-only/routing fields, and reject every other field with deterministic `VALIDATION_FAILED` recovery before PUT. `name` immutable. The caller unwraps `signoz_get_dashboard`'s `{status,data}` response and sends `data`'s fields at the top level; the envelope itself is **rejected** with a validation error naming `data`. The handler previously unwrapped `data` silently, but `dashboard_update.json` requires `schemaVersion`/`name`/`tags`/`spec` at the top level and advertises no envelope alternative — a schema-aware client rejected the call before that path ran, so the accepted shape now matches the advertised one (OUT-2) and the tool description, README, and manifest all say to extract `data` first. Inject `webUrl` (known id) + `structuredResult`.
+- **Patch** — require a non-nil RFC 6902 op array before client construction, while forwarding empty `[]` unchanged to `PATCH …/{id}`. Route failures through `logUpstreamFailure` so cancellation logs at DEBUG and genuine failures at ERROR. Inject `webUrl` (known id) + `structuredResult`. The tool description points to `signoz://dashboard/patch-instructions` for recipes and exact paths; the recipe detail (e.g. the two-op add-panel sequence) lives in the resource, not duplicated in the description.
 - **Get/Delete** — id via `readResourceID`; get injects `webUrl` + `structuredResult`; delete is 204 → confirmation text.
 - **List** — `paginate.ParseParamsClamped` → `ListDashboards(ctx,limit,offset,filter,sort,order)` (limit clamped to the v2 server-side cap of 200; clamp note surfaced); the optional `filter` param is forwarded as the v2 `query` filter DSL (server-side filtering over dashboard metadata), and optional `sort` (`updated_at`/`created_at`/`name`) / `order` (`asc`/`desc`) are forwarded when set; `util.InjectListWebURL` injects `webUrl` per `dashboards[]` entry, precision-preserving and handling the `{"data":{…}}` envelope; `structuredResult`. The `filter` param description is terse and points to the `signoz://dashboard/list-filter-guide` resource (`dashboard.ListFilterGuide`), which carries the full DSL grammar, per-key operators, value formats, and examples — mirroring the widgets-instructions pattern rather than inlining guidance into the param (which would blow the param-description budget).
 
@@ -44,3 +73,27 @@ v1 (`/api/v1/dashboards`, accept-all, flat `Dashboard{title,layout[],widgets[]}`
 - `manifest.json`, `README.md` — v2 tool set.
 - `.github/scripts/regenerate_dashboard_templates.py` — catalog regenerator made v6-aware (`spec.display.*` + KV tags), v1-tolerant; run against the v6 `SigNoz/dashboards` repo to refresh `dashboard_templates.json`.
 - Tests: `client_test.go`, `tools/{dashboards,schema_compat,id_alias,silent_failures,structured_content,upstream_error}_test.go`, `internal/mcp-server/integration_test.go` (asserts `tools/list` ↔ `manifest.json` parity). `metric_usage_test.go` exercises the v3 dashboards endpoint.
+
+## Outcome
+
+Done: refreshed against main at `bd06aae5`, with all accepted issue #175 fixes
+retained and TextPanel cardinality corrected. Simplified redundant helpers and
+assertions; preserved existing runtime and feature support. The independent review
+caught an overly strict e2e comparison; it now accepts server-added default keys
+while preserving supplied values, list lengths, and query order.
+
+- Go 1.26.0 `make ci READY=1` passed, including race tests, dependency verification,
+  guardrails, both protocol eras, conformance, Python style, and ready-PR docs checks.
+  Used an isolated module cache because two shared-cache dependency directories
+  were modified; source dependencies and checks were unchanged.
+- Focused handler/schema/wire/resource tests passed. All three schemas regenerate
+  byte-for-byte from the pinned release. Dashboard e2e collection and Ruff pass.
+- Docker-based local-ci and live e2e could not run locally because Docker is not
+  available. Hosted e2e remains the live verification gate.
+- Companion: https://github.com/SigNoz/agent-skills/pull/102 corrects the dashboard
+  creating skill and its existing eval expectations. README, resources, schemas,
+  wire fixtures, and plan are synchronized; manifest metadata remains accurate
+  without changing its summary text or catalog.
+- Section 11 reviewed: no MUST exception. EVL-1 model A/B prompts were not rerun;
+  this change expresses source-verified backend constraints and local validation,
+  covered by schema/handler/transport tests and existing lifecycle e2e extensions.

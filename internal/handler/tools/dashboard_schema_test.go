@@ -51,15 +51,8 @@ func TestDashboardSchemasAdvertiseTextPanelAndCanonicalID(t *testing.T) {
 	}
 }
 
-// TestWidgetExamplesValidateAgainstCreateSchema is the cross-contract guard tying
-// the widgets-examples resource to the embedded create schema. Every worked panel
-// served at signoz://dashboard/widgets-examples must satisfy the schema clients
-// are handed. This specifically pins the discriminated-union contract: the Perses
-// query/panel/variable unions rely on OAS `discriminator`, which JSON-Schema
-// validators ignore, so extract_schemas.py narrows each branch's discriminator to
-// a `const`. If a future regen drops that, the signoz/CompositeQuery examples
-// (multiple builder queries + a formula) stop validating here — failing the test
-// instead of silently shipping a schema that rejects the very pattern the docs teach.
+// Validate the served examples because JSON Schema ignores OpenAPI discriminators;
+// losing the narrowed union branches would reject valid CompositeQuery panels.
 func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 	var full jsonschema.Schema
 	if err := json.Unmarshal(createDashboardSchema, &full); err != nil {
@@ -82,25 +75,153 @@ func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
 	}
 	for i, block := range panels {
-		var v any
-		if err := json.Unmarshal([]byte(block), &v); err != nil {
+		var panel map[string]any
+		if err := json.Unmarshal([]byte(block), &panel); err != nil {
 			t.Errorf("example %d is not valid JSON: %v", i, err)
 			continue
 		}
-		if err := resolved.Validate(v); err != nil {
+		if err := resolved.Validate(panel); err != nil {
 			t.Errorf("example %d does not validate against DashboardtypesPanel: %v", i, err)
 		}
-		panel := v.(map[string]any)
+	}
+}
+
+func panelHasMultiEntryCompositeQuery(panel map[string]any) bool {
+	spec, _ := panel["spec"].(map[string]any)
+	queries, _ := spec["queries"].([]any)
+	for _, rawQuery := range queries {
+		query, _ := rawQuery.(map[string]any)
+		querySpec, _ := query["spec"].(map[string]any)
+		plugin, _ := querySpec["plugin"].(map[string]any)
+		if plugin["kind"] != "signoz/CompositeQuery" {
+			continue
+		}
+		pluginSpec, _ := plugin["spec"].(map[string]any)
+		nestedQueries, _ := pluginSpec["queries"].([]any)
+		if len(nestedQueries) > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDashboardSchemasValidateQueryCardinalityByPanelKind(t *testing.T) {
+	var compositePanel, textPanel string
+	var queries []any
+	for _, block := range extractJSONObjects(dashboard.WidgetExamples) {
+		var panel map[string]any
+		if err := json.Unmarshal([]byte(block), &panel); err != nil {
+			t.Fatalf("example panel is not valid JSON: %v", err)
+		}
 		spec := panel["spec"].(map[string]any)
 		plugin := spec["plugin"].(map[string]any)
-		queries := spec["queries"].([]any)
-		if plugin["kind"] == textPanelKind {
-			if len(queries) != 0 {
-				t.Errorf("TextPanel example %d has %d queries, want 0", i, len(queries))
-			}
-		} else if len(queries) != 1 {
-			t.Errorf("query panel example %d has %d queries, want 1", i, len(queries))
+		if plugin["kind"] == "signoz/TextPanel" {
+			textPanel = block
 		}
+		if compositePanel == "" && panelHasMultiEntryCompositeQuery(panel) {
+			compositePanel = block
+			queries = spec["queries"].([]any)
+		}
+	}
+	if compositePanel == "" || textPanel == "" {
+		t.Fatal("need multi-entry CompositeQuery and TextPanel examples in dashboard.WidgetExamples")
+	}
+
+	for schemaName, raw := range map[string][]byte{
+		"create": createDashboardSchema,
+		"update": updateDashboardSchema,
+	} {
+		t.Run(schemaName, func(t *testing.T) {
+			var full jsonschema.Schema
+			if err := json.Unmarshal(raw, &full); err != nil {
+				t.Fatalf("schema does not parse: %v", err)
+			}
+			panelSchema := &jsonschema.Schema{
+				Ref:  "#/$defs/DashboardtypesPanel",
+				Defs: full.Defs,
+			}
+			resolved, err := panelSchema.Resolve(nil)
+			if err != nil {
+				t.Fatalf("panel schema does not resolve: %v", err)
+			}
+
+			for panelName, basePanel := range map[string]string{
+				"composite": compositePanel,
+				"text":      textPanel,
+			} {
+				t.Run(panelName, func(t *testing.T) {
+					for _, tc := range []struct {
+						name         string
+						queries      any
+						omit         bool
+						wantValidFor string
+					}{
+						{name: "zero", queries: []any{}, wantValidFor: "text"},
+						{name: "one", queries: []any{queries[0]}, wantValidFor: "composite"},
+						{name: "two", queries: []any{queries[0], queries[0]}},
+						{name: "null", queries: nil},
+						{name: "missing", omit: true},
+					} {
+						t.Run(tc.name, func(t *testing.T) {
+							var panel map[string]any
+							if err := json.Unmarshal([]byte(basePanel), &panel); err != nil {
+								t.Fatalf("example panel is not valid JSON: %v", err)
+							}
+							spec := panel["spec"].(map[string]any)
+							if tc.omit {
+								delete(spec, "queries")
+							} else {
+								spec["queries"] = tc.queries
+							}
+
+							err := resolved.Validate(panel)
+							wantValid := tc.wantValidFor == panelName
+							if wantValid && err != nil {
+								t.Fatalf("valid queries rejected: %v", err)
+							}
+							if !wantValid && err == nil {
+								t.Fatal("invalid queries accepted")
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestPatchSchemaRequiresArrayButAllowsEmpty(t *testing.T) {
+	var full jsonschema.Schema
+	if err := json.Unmarshal(patchDashboardSchema, &full); err != nil {
+		t.Fatalf("patch schema does not parse: %v", err)
+	}
+	resolved, err := full.Resolve(nil)
+	if err != nil {
+		t.Fatalf("patch schema does not resolve: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		patch     any
+		wantValid bool
+	}{
+		{name: "empty array remains valid", patch: []any{}, wantValid: true},
+		{name: "null is rejected", patch: nil},
+		{name: "object is rejected", patch: map[string]any{}},
+		{name: "string is rejected", patch: "[]"},
+		{name: "number is rejected", patch: float64(1)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := resolved.Validate(map[string]any{"patch": tc.patch})
+			if tc.wantValid && err != nil {
+				t.Fatalf("valid patch payload was rejected: %v", err)
+			}
+			if !tc.wantValid && err == nil {
+				t.Fatalf("invalid patch value %T should be rejected", tc.patch)
+			}
+		})
 	}
 }
 

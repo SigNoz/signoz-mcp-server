@@ -48,7 +48,7 @@ Field Discovery:
 - Do not invent tenant-specific attributes from an example. Adapt each example to fields present in the target tenant.
 
 Query count per panel [CRITICAL]:
-- Query-backed panels hold exactly ONE query. Putting more than one fails backend validation. To plot multiple series or compute a formula, nest them inside that single query as one signoz/CompositeQuery.
+- Query panels require exactly one outer query wrapper. To plot multiple logical queries or compute a formula, put them inside that wrapper as a signoz/CompositeQuery. Replace /spec/panels/<panelId>/spec/queries/0; never append a sibling wrapper.
 - signoz/TextPanel is queryless and must send a non-null empty array: "queries": []. Do not invent a query or dry-run one for a TextPanel.
 - Every panel must include queries. null is rejected, including for TextPanel.
 
