@@ -175,7 +175,7 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Run raw Query Builder v5 requests for formulas, PromQL, or ClickHouse SQL beyond the dedicated signal tools"
+      "description": "Run raw Query Builder v5 requests beyond dedicated signal tools; default absent scalar metric reducers from metadata"
     },
     {
       "name": "signoz_list_notification_channels",
