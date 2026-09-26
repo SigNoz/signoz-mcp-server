@@ -13,8 +13,6 @@ import (
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/version"
-	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,7 +56,7 @@ func TestReadinessAndHealthEndpointsTrackDocsIndex(t *testing.T) {
 		})
 		h.SetDocsIndex(reg)
 		m := NewMCPServer(logger, h, cfg, nil, nil)
-		s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+		s := m.newSDKServer()
 		h.RegisterDocsHandlers(s)
 
 		handler := m.buildHTTP(s).Handler
@@ -92,7 +90,7 @@ func TestLivenessEndpointDoesNotRequireReadiness(t *testing.T) {
 	})
 	h.SetDocsIndex(reg)
 	m := NewMCPServer(logger, h, cfg, nil, nil)
-	s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+	s := m.newSDKServer()
 	h.RegisterDocsHandlers(s)
 	handler := m.buildHTTP(s).Handler
 
@@ -120,7 +118,7 @@ func TestBuildHTTPListenAddress(t *testing.T) {
 				logger: logpkg.New("error"),
 				config: &config.Config{Host: tt.host, Port: "18080"},
 			}
-			s := server.NewMCPServer("SigNozMCP", version.Version)
+			s := m.newSDKServer()
 
 			require.Equal(t, tt.want, m.buildHTTP(s).Addr)
 		})
@@ -146,7 +144,7 @@ func newDocsHTTPHandler(t *testing.T) (http.Handler, *MCPServer) {
 	})
 	h.SetDocsIndex(reg)
 	m := NewMCPServer(logger, h, cfg, nil, nil)
-	s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+	s := m.newSDKServer()
 	h.RegisterDocsHandlers(s)
 	return m.buildHTTP(s).Handler, m
 }
@@ -156,7 +154,7 @@ func serveJSONRPC(t *testing.T, handler http.Handler, sessionID, body string) *h
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	if sessionID != "" {
-		req.Header.Set(server.HeaderKeySessionID, sessionID)
+		req.Header.Set("Mcp-Session-Id", sessionID)
 	}
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -206,7 +204,7 @@ func TestStatelessTransportIssuesNoSessionID(t *testing.T) {
 	})
 	h.SetDocsIndex(reg)
 	m := NewMCPServer(logger, h, cfg, nil, nil)
-	s := server.NewMCPServer("SigNozMCP", version.Version, server.WithToolCapabilities(false), server.WithRecovery())
+	s := m.newSDKServer()
 	h.RegisterDocsHandlers(s)
 	handler := m.buildHTTP(s).Handler
 
@@ -223,7 +221,7 @@ func TestStatelessTransportIssuesNoSessionID(t *testing.T) {
 	// POST initialize — stateless server must NOT issue a session id.
 	initRR := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"itest","version":"1"}}}`)
 	require.Equal(t, http.StatusOK, initRR.Code, "initialize body: %s", initRR.Body.String())
-	require.Empty(t, initRR.Header().Get(server.HeaderKeySessionID), "stateless server must not issue an Mcp-Session-Id")
+	require.Empty(t, initRR.Header().Get("Mcp-Session-Id"), "stateless server must not issue an Mcp-Session-Id")
 
 	// POST a follow-up request with NO session id — must be served, not rejected
 	// as a missing/invalid/terminated session (HTTP 400/404).

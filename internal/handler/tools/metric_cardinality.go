@@ -4,11 +4,10 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
-func (h *Handler) RegisterMetricCardinalityHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterMetricCardinalityHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering metric cardinality handlers")
 
 	tool := mcp.NewTool("signoz_check_metric_cardinality",

@@ -1,7 +1,7 @@
 # Plan: Instance URL Allowlist
 
 ## Status
-In Progress
+Done
 
 ## Context
 The hosted, multi-tenant MCP server proxies to whatever SigNoz backend URL the

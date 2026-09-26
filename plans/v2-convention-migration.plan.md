@@ -1,7 +1,7 @@
 # Plan: Adopt SigNoz v2 convention for rules and notification channels
 
 ## Status
-In Progress
+Done
 
 ## Context
 Upstream SigNoz has moved alert rules to `/api/v2/rules/*` (PR #10957), introduced canonical `createdAt`/`createdBy` audit fields on a v2 `ruletypes.Rule` (PR #10997), tightened Postable/Gettable schemas (PR #10995), and similarly re-homed notification-channel routes onto the render envelope (PR #10941 — added for scope). This PR brings the MCP server's alert, channel, and new downtime tools onto the new convention.

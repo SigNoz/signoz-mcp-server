@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -14,9 +15,8 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestGuardrail_DuplicateRegistrationsRejectedBeforeSDKOverwrite(t *testing.T) {
@@ -30,33 +30,33 @@ func TestGuardrail_DuplicateRegistrationsRejectedBeforeSDKOverwrite(t *testing.T
 	tests := []struct {
 		name string
 		kind registrationKind
-		add  func(*Handler, *server.MCPServer)
+		add  func(*Handler, *mcp.Server)
 	}{
 		{
 			name: "tool",
 			kind: registrationTool,
-			add: func(h *Handler, s *server.MCPServer) {
+			add: func(h *Handler, s *mcp.Server) {
 				h.AddTool(s, mcp.NewTool("duplicate_probe"), toolHandler)
 			},
 		},
 		{
 			name: "resource",
 			kind: registrationResource,
-			add: func(h *Handler, s *server.MCPServer) {
+			add: func(h *Handler, s *mcp.Server) {
 				h.addResource(s, mcp.NewResource("signoz://duplicate/probe", "Duplicate Probe"), resourceHandler)
 			},
 		},
 		{
 			name: "resource template",
 			kind: registrationResourceTemplate,
-			add: func(h *Handler, s *server.MCPServer) {
+			add: func(h *Handler, s *mcp.Server) {
 				h.addResourceTemplate(s, mcp.NewResourceTemplate("signoz://duplicate/{id}", "Duplicate Probe"), templateHandler)
 			},
 		},
 		{
 			name: "prompt",
 			kind: registrationPrompt,
-			add: func(h *Handler, s *server.MCPServer) {
+			add: func(h *Handler, s *mcp.Server) {
 				h.RegisterPrompt(s, mcp.NewPrompt("duplicate_probe"), promptHandler)
 			},
 		},
@@ -65,7 +65,7 @@ func TestGuardrail_DuplicateRegistrationsRejectedBeforeSDKOverwrite(t *testing.T
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := NewHandler(logpkg.New("error"), &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute})
-			s := server.NewMCPServer("registration-test", "0.0.0")
+			s := newMCPTestServer()
 			tt.add(h, s)
 
 			defer func() {
@@ -89,8 +89,35 @@ func TestGuardrail_RegistrationStateScopedPerSDKServer(t *testing.T) {
 		return mcp.NewToolResultText("ok"), nil
 	}
 
-	h.AddTool(server.NewMCPServer("one", "0.0.0"), mcp.NewTool("same_name"), handler)
-	h.AddTool(server.NewMCPServer("two", "0.0.0"), mcp.NewTool("same_name"), handler)
+	h.AddTool(newMCPTestServer(), mcp.NewTool("same_name"), handler)
+	h.AddTool(newMCPTestServer(), mcp.NewTool("same_name"), handler)
+}
+
+func TestGuardrail_ToolRegistrationDoesNotMutateDefinition(t *testing.T) {
+	h := NewHandler(logpkg.New("error"), &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute})
+	tool := mcp.NewTool("immutable_probe",
+		mcp.WithObject("payload", mcp.AdditionalProperties(false)),
+		withReadOnlyToolAnnotations())
+	before, err := json.Marshal(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	register := func() {
+		h.AddTool(newMCPTestServer(), tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return mcp.NewToolResultText("ok"), nil
+		})
+	}
+	register()
+	register()
+
+	after, err := json.Marshal(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("registration mutated reusable tool definition\n before: %s\n  after: %s", before, after)
+	}
 }
 
 func TestGuardrail_ProductionRegistrationsUseCheckedHelpers(t *testing.T) {

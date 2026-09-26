@@ -21,20 +21,25 @@ import (
 	"time"
 	"unicode/utf8"
 
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/index/scorch"
 	"github.com/blevesearch/bleve/v2/mapping"
 	bleveQuery "github.com/blevesearch/bleve/v2/search/query"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const fetchContentByteLimit = 256 * 1024
 const snippetRuneLimit = 200
 
+// indexBatchSize bounds how many analysed documents a build holds in one
+// bleve batch. Keep 64-page batches for build-heap headroom; smaller chunks
+// increase resident memory because in-memory scorch never merges.
+const indexBatchSize = 64
+
 var urlSearchTokenReplacer = strings.NewReplacer("/", " ", "-", " ", "_", " ", ".", " ")
 
-// ErrInvalidSearchQuery marks searchText that Bleve's query-string parser
-// rejects. Callers can classify it as a correctable input error without
-// depending on Bleve's error text.
+// ErrInvalidSearchQuery marks empty or whitespace-only search text.
 var ErrInvalidSearchQuery = errors.New("invalid docs search query")
 
 type invalidSearchQueryError struct {
@@ -57,7 +62,11 @@ func (e *invalidSearchQueryError) Is(target error) bool {
 var embeddedAssets embed.FS
 
 type IndexRegistry struct {
-	mu      sync.RWMutex
+	mu sync.RWMutex
+	// writeMu serializes Swap, PublishSnapshot and ApplyDelta against each
+	// other so no two writers mutate the live index or the current pointer
+	// concurrently. Readers only take mu.
+	writeMu sync.Mutex
 	current *IndexEntry
 	closed  atomic.Bool
 	// ready flips to true only after a Swap with a real corpus succeeds.
@@ -68,10 +77,50 @@ type IndexRegistry struct {
 }
 
 type IndexEntry struct {
-	idx        bleve.Index
-	snapshot   CorpusSnapshot
+	idx      bleve.Index
+	handle   *indexHandle
+	snapshot CorpusSnapshot
+	// fetchedAt serves last_fetched_at from the published snapshot. Content
+	// gating leaves unchanged pages un-reindexed, so the stored field can lag
+	// behind a successful revalidation; the snapshot never does.
+	fetchedAt  map[string]time.Time
 	refs       int64
 	generation uint64
+}
+
+func fetchedAtIndex(snapshot CorpusSnapshot) map[string]time.Time {
+	out := make(map[string]time.Time, len(snapshot.Pages))
+	for _, page := range snapshot.Pages {
+		if !page.FetchedAt.IsZero() {
+			out[page.URL] = page.FetchedAt
+		}
+	}
+	return out
+}
+
+// indexHandle owns one bleve index. Several IndexEntry generations may share
+// a handle when only the snapshot metadata changed (PublishSnapshot) or when a
+// delta was applied to the live index; the index is closed when the last
+// entry referencing it drains.
+type indexHandle struct {
+	idx     bleve.Index
+	entries int64
+	// incrementalApplies counts the deltas applied to this live index.
+	// In-memory scorch never merges segments, so the count bounds how long a
+	// handle may accumulate segments before a rebuild compacts it.
+	incrementalApplies int64
+}
+
+func newIndexEntry(idx bleve.Index, snapshot CorpusSnapshot, generation uint64) *IndexEntry {
+	handle := &indexHandle{idx: idx, entries: 1}
+	return &IndexEntry{idx: idx, handle: handle, snapshot: snapshot, fetchedAt: fetchedAtIndex(snapshot), generation: generation}
+}
+
+// shareIndex returns a new entry that serves snapshot from the same live index
+// as entry. The caller must hold r.mu so the handle cannot drain concurrently.
+func (e *IndexEntry) shareIndex(snapshot CorpusSnapshot) *IndexEntry {
+	atomic.AddInt64(&e.handle.entries, 1)
+	return &IndexEntry{idx: e.idx, handle: e.handle, snapshot: snapshot, fetchedAt: fetchedAtIndex(snapshot), generation: e.generation + 1}
 }
 
 func NewIndexRegistry(ctx context.Context, snapshot CorpusSnapshot) (*IndexRegistry, error) {
@@ -80,7 +129,7 @@ func NewIndexRegistry(ctx context.Context, snapshot CorpusSnapshot) (*IndexRegis
 		return nil, err
 	}
 	reg := &IndexRegistry{}
-	reg.current = &IndexEntry{idx: idx, snapshot: snapshot, generation: 1}
+	reg.current = newIndexEntry(idx, snapshot, 1)
 	reg.ready.Store(true)
 	go func() {
 		<-ctx.Done()
@@ -99,7 +148,7 @@ func NewPlaceholderRegistry(ctx context.Context) (*IndexRegistry, error) {
 		return nil, err
 	}
 	reg := &IndexRegistry{}
-	reg.current = &IndexEntry{idx: idx, snapshot: EmptyCorpus(), generation: 0}
+	reg.current = newIndexEntry(idx, EmptyCorpus(), 0)
 	// ready intentionally left false.
 	go func() {
 		<-ctx.Done()
@@ -122,6 +171,12 @@ func (r *IndexRegistry) Snapshot() (CorpusSnapshot, bool) {
 }
 
 func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	return r.swapLocked(ctx, snapshot)
+}
+
+func (r *IndexRegistry) swapLocked(ctx context.Context, snapshot CorpusSnapshot) error {
 	if r.closed.Load() {
 		return fmt.Errorf("docs index registry is closed")
 	}
@@ -129,15 +184,13 @@ func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error
 	if err != nil {
 		return err
 	}
-	newEntry := &IndexEntry{idx: idx, snapshot: snapshot}
 	r.mu.Lock()
 	old := r.current
+	var generation uint64 = 1
 	if old != nil {
-		newEntry.generation = old.generation + 1
-	} else {
-		newEntry.generation = 1
+		generation = old.generation + 1
 	}
-	r.current = newEntry
+	r.current = newIndexEntry(idx, snapshot, generation)
 	r.mu.Unlock()
 	// Only flip ready after the current pointer swap is visible, so any
 	// Ready()==true observer is guaranteed to see the new entry via acquire().
@@ -148,8 +201,142 @@ func (r *IndexRegistry) Swap(ctx context.Context, snapshot CorpusSnapshot) error
 	return nil
 }
 
+// PublishSnapshot replaces the served snapshot metadata (sitemap, hashes,
+// page records) without touching the live bleve index. It is the cheap path
+// for a refresh whose page contents all matched what is already indexed.
+// It falls back to Swap when there is no current index to share.
+func (r *IndexRegistry) PublishSnapshot(ctx context.Context, snapshot CorpusSnapshot) error {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	if r.closed.Load() {
+		return fmt.Errorf("docs index registry is closed")
+	}
+	r.mu.Lock()
+	old := r.current
+	if old == nil {
+		r.mu.Unlock()
+		return r.swapLocked(ctx, snapshot)
+	}
+	r.current = old.shareIndex(snapshot)
+	r.mu.Unlock()
+	r.ready.Store(true)
+	go closeWhenDrained(ctx, old)
+	return nil
+}
+
+// deltaApplyMaxFraction caps how much of the corpus may change before a delta
+// stops being cheaper than a rebuild. maxIncrementalApplies caps how many
+// deltas one live index may accumulate; the next refresh rebuilds instead,
+// which is the only compaction an in-memory scorch index gets.
+const (
+	deltaApplyMaxFraction = 0.25
+	maxIncrementalApplies = 24
+)
+
+// applyDeltaBeforePublish is a test seam that runs after the batch commits
+// and before the new generation is published. Nil in production.
+var applyDeltaBeforePublish func()
+
+// CanApplyDelta reports whether delta is small enough, and the live index
+// young enough, to update in place instead of rebuilding.
+func (r *IndexRegistry) CanApplyDelta(delta snapshotDelta, nextPages int) bool {
+	if r == nil || r.closed.Load() || nextPages <= 0 || delta.empty() {
+		return false
+	}
+	touched := len(delta.added) + len(delta.changed) + len(delta.removed)
+	if float64(touched) > deltaApplyMaxFraction*float64(nextPages) {
+		return false
+	}
+	r.mu.RLock()
+	entry := r.current
+	r.mu.RUnlock()
+	if entry == nil {
+		return false
+	}
+	return atomic.LoadInt64(&entry.handle.incrementalApplies) < maxIncrementalApplies
+}
+
+// ApplyDelta indexes the added and changed pages and deletes the removed ones
+// on the live index, then publishes next over the same handle. It avoids the
+// rebuild peak entirely at the cost of one extra scorch segment.
+func (r *IndexRegistry) ApplyDelta(ctx context.Context, next CorpusSnapshot, delta snapshotDelta) error {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	if r.closed.Load() {
+		return fmt.Errorf("docs index registry is closed")
+	}
+	r.mu.Lock()
+	old := r.current
+	if old == nil {
+		r.mu.Unlock()
+		return r.swapLocked(ctx, next)
+	}
+	// Hold a reference across the batch so the handle cannot be closed under
+	// us if the previous generation drains mid-apply.
+	atomic.AddInt64(&old.handle.entries, 1)
+	r.mu.Unlock()
+	release := func() {
+		if atomic.AddInt64(&old.handle.entries, -1) == 0 {
+			_ = old.handle.idx.Close()
+		}
+	}
+
+	batch := old.idx.NewBatch()
+	for _, page := range delta.added {
+		canonical, doc, ok := indexDocument(page)
+		if !ok {
+			continue
+		}
+		if err := batch.Index(canonical, doc); err != nil {
+			release()
+			return err
+		}
+	}
+	for _, page := range delta.changed {
+		canonical, doc, ok := indexDocument(page)
+		if !ok {
+			continue
+		}
+		if err := batch.Index(canonical, doc); err != nil {
+			release()
+			return err
+		}
+	}
+	for _, rawURL := range delta.removed {
+		canonical, ok := CanonicalDocURL(rawURL)
+		if !ok {
+			continue
+		}
+		batch.Delete(canonical)
+	}
+	if err := old.idx.Batch(batch); err != nil {
+		release()
+		return err
+	}
+	if applyDeltaBeforePublish != nil {
+		applyDeltaBeforePublish()
+	}
+
+	r.mu.Lock()
+	r.current = old.shareIndex(next)
+	r.mu.Unlock()
+	atomic.AddInt64(&old.handle.incrementalApplies, 1)
+	r.ready.Store(true)
+	release()
+	go closeWhenDrained(ctx, old)
+	return nil
+}
+
 func (r *IndexRegistry) Close(ctx context.Context) {
-	if r == nil || !r.closed.CompareAndSwap(false, true) {
+	if r == nil {
+		return
+	}
+	// Serialize with writers so an in-flight Swap or ApplyDelta cannot publish
+	// a new generation after the current one has been detached and drained,
+	// which would leak a fresh index or drain a shared handle twice.
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	if !r.closed.CompareAndSwap(false, true) {
 		return
 	}
 	r.mu.Lock()
@@ -173,7 +360,7 @@ func (r *IndexRegistry) Search(ctx context.Context, query, sectionSlug string, l
 	if limit > 25 {
 		limit = 25
 	}
-	finalQuery, err := boostedDocsQuery(query)
+	finalQuery, err := boostedDocsQuery(ctx, query)
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -231,8 +418,18 @@ func sectionBreadcrumbForFilter(fields map[string]any, sectionSlug string) (stri
 	return breadcrumb, ok
 }
 
-func boostedDocsQuery(raw string) (bleveQuery.Query, error) {
+// maxSearchTextRunes bounds analyzer and clause work per request; the longest
+// observed production search string is under 400 characters.
+const maxSearchTextRunes = 2048
+
+func boostedDocsQuery(ctx context.Context, raw string) (bleveQuery.Query, error) {
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, &invalidSearchQueryError{cause: errors.New("searchText must contain non-whitespace text")}
+	}
+	if utf8.RuneCountInString(raw) > maxSearchTextRunes {
+		return nil, &invalidSearchQueryError{cause: fmt.Errorf("searchText must be at most %d characters", maxSearchTextRunes)}
+	}
 	title := bleve.NewMatchQuery(raw)
 	title.SetField("title")
 	title.SetBoost(5)
@@ -250,10 +447,64 @@ func boostedDocsQuery(raw string) (bleveQuery.Query, error) {
 	urlTokens.SetBoost(2.5)
 	queryString := bleve.NewQueryStringQuery(raw)
 	queryString.SetBoost(0.5)
+	clauses := []bleveQuery.Query{title, headings, body, sectionBreadcrumb, urlTokens}
 	if err := queryString.Validate(); err != nil {
-		return nil, &invalidSearchQueryError{cause: err}
+		trace.SpanFromContext(ctx).SetAttributes(otelpkg.MCPDocsQueryStringDroppedKey.Bool(true))
+	} else {
+		clauses = append(clauses, queryString)
 	}
-	return bleve.NewDisjunctionQuery(title, headings, body, sectionBreadcrumb, urlTokens, queryString), nil
+	titleAll := bleve.NewMatchQuery(raw)
+	titleAll.SetField("title")
+	titleAll.SetOperator(bleveQuery.MatchQueryOperatorAnd)
+	titleAll.SetBoost(6)
+	bodyAll := bleve.NewMatchQuery(raw)
+	bodyAll.SetField("body")
+	bodyAll.SetOperator(bleveQuery.MatchQueryOperatorAnd)
+	bodyAll.SetBoost(5)
+	clauses = append(clauses, titleAll, bodyAll)
+	clauses = append(clauses, glossaryClauses(raw)...)
+	clauses = append(clauses, minimumMatchClauses(raw, 2, 2)...)
+	return bleve.NewDisjunctionQuery(clauses...), nil
+}
+
+// Long query bags get a preference for matching most distinct non-stopword terms.
+func minimumMatchClauses(raw string, titleBoost, bodyBoost float64) []bleveQuery.Query {
+	const maxDistinctTerms = 64
+	tokens := docsQueryAnalyzer.Analyze([]byte(raw))
+	terms := make([]string, 0, min(len(tokens), maxDistinctTerms))
+	seen := make(map[string]bool, min(len(tokens), maxDistinctTerms))
+	for _, token := range tokens {
+		term := string(token.Term)
+		if seen[term] {
+			continue
+		}
+		// Skip oversized expansions; the original search clauses still apply.
+		if len(terms) == maxDistinctTerms {
+			return nil
+		}
+		seen[term] = true
+		terms = append(terms, term)
+	}
+	if len(terms) < 4 {
+		return nil
+	}
+	clauses := make([]bleveQuery.Query, 0, 2)
+	for _, field := range []struct {
+		name  string
+		boost float64
+	}{{"title", titleBoost}, {"body", bodyBoost}} {
+		perTerm := make([]bleveQuery.Query, 0, len(terms))
+		for _, term := range terms {
+			q := bleve.NewMatchQuery(term)
+			q.SetField(field.name)
+			perTerm = append(perTerm, q)
+		}
+		q := bleve.NewDisjunctionQuery(perTerm...)
+		q.SetMin(float64((3*len(terms) + 4) / 5))
+		q.SetBoost(field.boost)
+		clauses = append(clauses, q)
+	}
+	return clauses
 }
 
 func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (FetchResult, string, error) {
@@ -296,6 +547,7 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		selectedHeading = id
 	}
 	content, truncation := truncateContent(body, fetchContentByteLimit)
+	lastFetchedAt := newestFetchedAt(stringField(fields, "last_fetched_at"), entry.fetchedAt[stringField(fields, "url")])
 	return FetchResult{
 		URL:               stringField(fields, "url"),
 		Title:             stringField(fields, "title"),
@@ -305,8 +557,24 @@ func (r *IndexRegistry) FetchDoc(ctx context.Context, rawURL, heading string) (F
 		Heading:           selectedHeading,
 		AvailableHeadings: headings,
 		TruncationReason:  truncation,
-		LastFetchedAt:     stringField(fields, "last_fetched_at"),
+		LastFetchedAt:     lastFetchedAt,
 	}, "", nil
+}
+
+// newestFetchedAt reconciles the timestamp stored in the document with the
+// one carried by the served snapshot. Content gating leaves an unchanged
+// document's stored value behind the snapshot; a delta applied to the live
+// index can briefly put a re-indexed document ahead of the entry a reader
+// already holds. Whichever is newer is the truth, and the stored value is
+// the fallback when the snapshot has none.
+func newestFetchedAt(stored string, snapshot time.Time) string {
+	if snapshot.IsZero() {
+		return stored
+	}
+	if parsed, err := time.Parse(time.RFC3339, stored); err == nil && !snapshot.After(parsed) {
+		return stored
+	}
+	return snapshot.UTC().Format(time.RFC3339)
 }
 
 func (r *IndexRegistry) acquire() (*IndexEntry, func(), bool) {
@@ -337,7 +605,9 @@ func closeWhenDrained(ctx context.Context, entry *IndexEntry) {
 	ctxDone := false
 	for {
 		if atomic.LoadInt64(&entry.refs) == 0 {
-			_ = entry.idx.Close()
+			if atomic.AddInt64(&entry.handle.entries, -1) == 0 {
+				_ = entry.idx.Close()
+			}
 			return
 		}
 		if !ctxDone {
@@ -369,9 +639,10 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 		return nil, err
 	}
 	batch := idx.NewBatch()
+	pending := 0
 	seenURLs := make(map[string]struct{}, len(snapshot.Pages))
 	for _, page := range snapshot.Pages {
-		canonical, ok := CanonicalDocURL(page.URL)
+		canonical, doc, ok := indexDocument(page)
 		if !ok {
 			continue
 		}
@@ -380,45 +651,68 @@ func BuildIndex(snapshot CorpusSnapshot) (bleve.Index, error) {
 			return nil, fmt.Errorf("duplicate canonical docs URL %q in corpus schema %d", canonical, snapshot.SchemaVersion)
 		}
 		seenURLs[canonical] = struct{}{}
-		sectionSlugs, sectionMap := pageSectionMetadata(page)
-		sectionSlug := page.SectionSlug
-		if sectionSlug == "" && len(sectionSlugs) > 0 {
-			sectionSlug = sectionSlugs[0]
-		}
-		sectionBreadcrumb := page.SectionBreadcrumb
-		if sectionBreadcrumb == "" {
-			sectionBreadcrumb = sectionMap[sectionSlug]
-		}
-		body := page.BodyMarkdown
-		headingsJSON := page.HeadingsJSON
-		if headingsJSON == "" {
-			headingsJSON = mustJSON(ExtractHeadings(body))
-		}
-		doc := map[string]any{
-			"title":                   page.Title,
-			"headings":                headingsJSON,
-			"body":                    body,
-			"section_breadcrumb_text": breadcrumbSearchText(sectionSlugs, sectionMap),
-			"url_text":                urlSearchText(canonical),
-			"section_slug":            sectionSlug,
-			"section_breadcrumb":      sectionBreadcrumb,
-			"section_slugs":           sectionSlugs,
-			"section_map":             mustJSON(sectionMap),
-			"url":                     canonical,
-			"body_markdown":           body,
-			"available_headings":      headingsJSON,
-			"last_fetched_at":         page.FetchedAt.UTC().Format(time.RFC3339),
-		}
 		if err := batch.Index(canonical, doc); err != nil {
 			_ = idx.Close()
 			return nil, err
 		}
+		pending++
+		// Commit in chunks: the analysed form of every pending document stays
+		// live in the batch until it does, which is what drives the peak.
+		if pending >= indexBatchSize {
+			if err := idx.Batch(batch); err != nil {
+				_ = idx.Close()
+				return nil, err
+			}
+			batch = idx.NewBatch()
+			pending = 0
+		}
 	}
-	if err := idx.Batch(batch); err != nil {
-		_ = idx.Close()
-		return nil, err
+	if pending > 0 {
+		if err := idx.Batch(batch); err != nil {
+			_ = idx.Close()
+			return nil, err
+		}
 	}
 	return idx, nil
+}
+
+// indexDocument maps a page record to its bleve document. BuildIndex and
+// ApplyDelta share it so an incrementally updated index is byte-identical to
+// a rebuilt one. ok is false when the URL is out of scope.
+func indexDocument(page PageRecord) (string, map[string]any, bool) {
+	canonical, ok := CanonicalDocURL(page.URL)
+	if !ok {
+		return "", nil, false
+	}
+	sectionSlugs, sectionMap := pageSectionMetadata(page)
+	sectionSlug := page.SectionSlug
+	if sectionSlug == "" && len(sectionSlugs) > 0 {
+		sectionSlug = sectionSlugs[0]
+	}
+	sectionBreadcrumb := page.SectionBreadcrumb
+	if sectionBreadcrumb == "" {
+		sectionBreadcrumb = sectionMap[sectionSlug]
+	}
+	body := page.BodyMarkdown
+	headingsJSON := page.HeadingsJSON
+	if headingsJSON == "" {
+		headingsJSON = mustJSON(ExtractHeadings(body))
+	}
+	return canonical, map[string]any{
+		"title":                   page.Title,
+		"headings":                headingsJSON,
+		"body":                    body,
+		"section_breadcrumb_text": breadcrumbSearchText(sectionSlugs, sectionMap),
+		"url_text":                urlSearchText(canonical),
+		"section_slug":            sectionSlug,
+		"section_breadcrumb":      sectionBreadcrumb,
+		"section_slugs":           sectionSlugs,
+		"section_map":             mustJSON(sectionMap),
+		"url":                     canonical,
+		"body_markdown":           body,
+		"available_headings":      headingsJSON,
+		"last_fetched_at":         page.FetchedAt.UTC().Format(time.RFC3339),
+	}, true
 }
 
 // NormalizePages returns one PageRecord per canonical URL while retaining all
@@ -570,11 +864,11 @@ func newIndexMapping() *mapping.IndexMappingImpl {
 	// Note: bleve v2 removed per-mapping Boost. Boost is applied at query time
 	// via DisjunctionQuery of per-field queries where necessary (see Search).
 	title := bleve.NewTextFieldMapping()
-	title.Analyzer = "standard"
+	title.Analyzer = "en"
 	docMapping.AddFieldMappingsAt("title", title)
 
 	headings := bleve.NewTextFieldMapping()
-	headings.Analyzer = "standard"
+	headings.Analyzer = "en"
 	docMapping.AddFieldMappingsAt("headings", headings)
 
 	body := bleve.NewTextFieldMapping()
@@ -729,21 +1023,36 @@ func truncateContent(s string, maxBytes int) (string, string) {
 // title/headings only (no body fragment). The returned string is trimmed to
 // maxRunes on a rune boundary.
 func chooseSnippet(fragments []string, body, query string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	// Bleve also emits unmarked fallback fragments for fields without matches.
+	for _, frag := range fragments {
+		if strings.Contains(frag, "<mark>") {
+			return trimToRunes(frag, maxRunes)
+		}
+	}
 	for _, frag := range fragments {
 		if strings.TrimSpace(frag) == "" {
 			continue
 		}
 		return trimToRunes(frag, maxRunes)
 	}
-	return makeSnippet(body, query, maxRunes)
+	return trimToRunes(makeSnippet(body, query, maxRunes), maxRunes)
 }
 
 func trimToRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
 	runes := []rune(s)
 	if len(runes) <= maxRunes {
 		return s
 	}
-	return string(runes[:maxRunes]) + "..."
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
 }
 
 func makeSnippet(body, query string, maxRunes int) string {

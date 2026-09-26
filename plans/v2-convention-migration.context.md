@@ -36,3 +36,6 @@
 ## Open Questions
 - [ ] Minimum SigNoz version that ships PRs #10941/#10957/#10995/#10997 — need to fill into README once it's released.
 - [ ] Should MCP-side tightening mirror PR #10995's enum constraints (e.g. `alertType` must be one of four literals), or leave validation entirely to the server? Current lean is: server is the source of truth; MCP stays permissive.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

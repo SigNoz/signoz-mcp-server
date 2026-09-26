@@ -1,7 +1,7 @@
 # Plan: Coded Tool Errors
 
 ## Status
-In Progress
+Done
 
 ## Context
 Tool error results are documented as carrying a stable machine-readable `code`, but many handlers still construct bare `mcp.NewToolResultError` values. Missing tenant credentials are the most important example: `GetClient` fails before any upstream request and the client receives no structured classification.

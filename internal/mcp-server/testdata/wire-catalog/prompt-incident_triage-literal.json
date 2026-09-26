@@ -1,0 +1,34 @@
+{
+  "method": "prompts/get",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "prompts/get",
+    "params": {
+      "arguments": {
+        "alertId": "rule-wire"
+      },
+      "name": "incident_triage"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "description": "Triage alert rule-wire",
+      "messages": [
+        {
+          "content": {
+            "text": "Triage the alert with rule ID \"rule-wire\". Follow these steps:\n\n1. Use signoz_get_alert with id=\"rule-wire\" to get the alert configuration and understand what it monitors.\n2. Use signoz_get_alert_history with id=\"rule-wire\" and timeRange=\"6h\" to see when it started firing.\n3. Based on the alert's signal type:\n   - If logs-based: use signoz_search_logs to find related error logs around the alert trigger time.\n   - If traces-based: use signoz_aggregate_traces to analyze error rates or latency around the trigger time.\n   - If metrics-based: use signoz_query_metrics to see the metric trend around the trigger time.\n4. Summarize: what triggered the alert, when it started, what the current state is, and recommended next steps.",
+            "type": "text"
+          },
+          "role": "user"
+        }
+      ]
+    }
+  }
+}

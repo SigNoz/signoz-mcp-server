@@ -17,9 +17,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -169,92 +174,54 @@ const expiredWorkspaceHTML = `<!DOCTYPE html>
 
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
-		name            string
-		userMeStatus    int    // status for /api/v1/user/me (always hit first)
-		userMeBody      string // body for user/me; defaults to JSON
-		saStatus        int    // status for /api/v1/service_accounts/me (only hit on user/me JSON 404)
-		saBody          string // body for service_accounts/me; defaults to JSON
-		expectedError   bool
-		checkErr        func(t *testing.T, err error)
-		expectUserMeHit bool
-		expectSAHit     bool
+		name          string
+		saStatus      int    // status for /api/v1/service_accounts/me
+		saBody        string // body for service_accounts/me; defaults to JSON
+		expectedError bool
+		checkErr      func(t *testing.T, err error)
 	}{
 		{
-			name:            "user/me succeeds (legacy user-level key)",
-			userMeStatus:    http.StatusOK,
-			expectedError:   false,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "service_accounts/me succeeds",
+			saStatus:      http.StatusOK,
+			expectedError: false,
 		},
 		{
-			name:            "user/me unauthorized returns error directly",
-			userMeStatus:    http.StatusUnauthorized,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "service_accounts/me unauthorized",
+			saStatus:      http.StatusUnauthorized,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:            "user/me 404 falls back to service_accounts/me success",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusOK,
-			expectedError:   false,
-			expectUserMeHit: true,
-			expectSAHit:     true,
-		},
-		{
-			name:            "user/me 404 falls back to service_accounts/me unauthorized",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusUnauthorized,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
+			name:          "service_accounts/me forbidden",
+			saStatus:      http.StatusForbidden,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrUnauthorized)
 			},
 		},
 		{
-			name:            "user/me 500 returns error directly without fallback",
-			userMeStatus:    http.StatusInternalServerError,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "service_accounts/me 500 is an unexpected status",
+			saStatus:      http.StatusInternalServerError,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.Contains(t, err.Error(), "unexpected status 500")
 			},
 		},
 		{
-			name:            "user/me HTML 404 means no instance, skips fallback",
-			userMeStatus:    http.StatusNotFound,
-			userMeBody:      expiredWorkspaceHTML,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     false,
+			name:          "HTML 404 means no SigNoz API at the instance URL",
+			saStatus:      http.StatusNotFound,
+			saBody:        expiredWorkspaceHTML,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.ErrorIs(t, err, ErrInstanceNotFound)
 			},
 		},
 		{
-			name:            "user/me JSON 404 falls back, HTML 404 on service_accounts/me means no instance",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusNotFound,
-			saBody:          expiredWorkspaceHTML,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
-			checkErr: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrInstanceNotFound)
-			},
-		},
-		{
-			name:            "JSON 404 on both endpoints stays a generic unexpected status",
-			userMeStatus:    http.StatusNotFound,
-			saStatus:        http.StatusNotFound,
-			expectedError:   true,
-			expectUserMeHit: true,
-			expectSAHit:     true,
+			name:          "JSON 404 stays a generic unexpected status",
+			saStatus:      http.StatusNotFound,
+			expectedError: true,
 			checkErr: func(t *testing.T, err error) {
 				assert.NotErrorIs(t, err, ErrInstanceNotFound)
 				assert.Contains(t, err.Error(), "unexpected status 404")
@@ -264,7 +231,6 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			userMeRequests := 0
 			saRequests := 0
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -273,24 +239,18 @@ func TestValidateCredentials(t *testing.T) {
 				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
-				body := `{"status":"ok"}`
-				switch r.URL.Path {
-				case "/api/v1/user/me":
-					userMeRequests++
-					w.WriteHeader(tt.userMeStatus)
-					if tt.userMeBody != "" {
-						body = tt.userMeBody
-					}
-				case "/api/v1/service_accounts/me":
-					saRequests++
-					w.WriteHeader(tt.saStatus)
-					if tt.saBody != "" {
-						body = tt.saBody
-					}
-				default:
-					t.Fatalf("unexpected path %s", r.URL.Path)
+				if r.URL.Path != "/api/v1/service_accounts/me" {
+					t.Errorf("unexpected path %s", r.URL.Path)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
 				}
 
+				saRequests++
+				body := `{"status":"ok"}`
+				if tt.saBody != "" {
+					body = tt.saBody
+				}
+				w.WriteHeader(tt.saStatus)
 				_, _ = w.Write([]byte(body))
 			}))
 			defer server.Close()
@@ -311,16 +271,55 @@ func TestValidateCredentials(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			if tt.expectUserMeHit {
-				assert.Equal(t, 1, userMeRequests, "expected user/me to be called")
-			} else {
-				assert.Equal(t, 0, userMeRequests, "expected user/me NOT to be called")
-			}
-			if tt.expectSAHit {
-				assert.Equal(t, 1, saRequests, "expected service_accounts/me to be called")
-			} else {
-				assert.Equal(t, 0, saRequests, "expected service_accounts/me NOT to be called")
-			}
+			assert.Equal(t, 1, saRequests, "expected exactly one service_accounts/me call")
+		})
+	}
+}
+
+func TestEvaluateValidationResponse_DoesNotLogOrReturnRawBody(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		checkError func(*testing.T, error)
+	}{
+		{
+			name:   "HTML 404 keeps instance-not-found classification",
+			status: http.StatusNotFound,
+			body:   "<html>SIGNOZ_API_KEY=validation-secret-canary</html>",
+			checkError: func(t *testing.T, err error) {
+				assert.ErrorIs(t, err, ErrInstanceNotFound)
+			},
+		},
+		{
+			name:   "generic status uses body-free fallback",
+			status: http.StatusInternalServerError,
+			body:   `{"status":"error","message":"SIGNOZ_API_KEY=validation-secret-canary"}`,
+			checkError: func(t *testing.T, err error) {
+				assert.Equal(t, "unexpected status 500", err.Error())
+				var statusErr *HTTPStatusError
+				assert.False(t, errors.As(err, &statusErr), "credential validation keeps its plain error contract")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			client := NewClient(newBufferedLogger(&logBuf, slog.LevelWarn), "https://example.test", "key", SignozApiKey, nil)
+
+			err := client.evaluateValidationResponse(context.Background(), tc.status, []byte(tc.body))
+			require.Error(t, err)
+			tc.checkError(t, err)
+			assert.NotContains(t, err.Error(), "validation-secret-canary")
+			assert.NotContains(t, logBuf.String(), "validation-secret-canary")
+
+			lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+			require.Len(t, lines, 1)
+			var record map[string]any
+			require.NoError(t, json.Unmarshal([]byte(lines[0]), &record))
+			assert.NotContains(t, record, "response")
+			assert.Equal(t, float64(len(tc.body)), record["response.body.size_bytes"])
 		})
 	}
 }
@@ -455,14 +454,32 @@ func TestGetAnalyticsIdentity_CachesResult(t *testing.T) {
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
+	meters, err := otelpkg.NewMeters(meterProvider)
+	require.NoError(t, err)
+	client.SetMeters(meters)
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
 
 	for i := 0; i < 5; i++ {
-		identity, err := client.GetAnalyticsIdentity(context.Background())
+		identity, err := client.GetAnalyticsIdentity(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, "user-1", identity.UserID)
 	}
 
 	assert.Equal(t, 1, requests, "expected identity cache to serve repeated lookups")
+
+	var collected metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &collected))
+	for _, metricName := range []string{"mcp.identity_cache.hit", "mcp.identity_cache.miss"} {
+		sum, found := oteltest.FindInt64SumMetric(collected, metricName)
+		require.True(t, found, "%s metric not found", metricName)
+		require.Len(t, sum.DataPoints, 1, "%s datapoints", metricName)
+		attr, present := sum.DataPoints[0].Attributes.Value(otelpkg.MCPClientSourceKey)
+		require.True(t, present, "%s missing mcp.client_source", metricName)
+		assert.Equal(t, "ai-assistant", attr.AsString(), "%s mcp.client_source", metricName)
+	}
 }
 
 func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
@@ -499,7 +516,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	var logBuf bytes.Buffer
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"status":"error","message":"temporary outage"}`))
+		_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"authorization: auth123temporary-secret-canary"}}`))
 	}))
 	defer server.Close()
 
@@ -512,6 +529,7 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
 	var sawRetryDebug bool
 	var sawTerminalWarn bool
+	var driftWarnings int
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -522,17 +540,28 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 		switch rec["msg"] {
 		case "Retryable status, will retry":
 			assert.Equal(t, "DEBUG", rec["level"])
+			assert.NotContains(t, rec, "response")
+			assert.NotZero(t, rec["response.body.size_bytes"])
 			sawRetryDebug = true
 		case "SigNoz request returned unexpected status":
 			assert.Equal(t, "WARN", rec["level"])
 			assert.Equal(t, true, rec["retryable"])
 			assert.Equal(t, true, rec["retries_exhausted"])
+			assert.NotContains(t, rec, "response")
+			assert.NotZero(t, rec["response.body.size_bytes"])
 			sawTerminalWarn = true
+		case errorEnvelopeWarning:
+			assert.NotZero(t, rec["response.body.size_bytes"])
+			assert.Equal(t, true, rec["recognized"])
+			assert.Equal(t, []any{"message"}, rec["fields"])
+			driftWarnings++
 		}
 	}
 
 	assert.True(t, sawRetryDebug, "expected intermediate retry log at DEBUG")
 	assert.True(t, sawTerminalWarn, "expected terminal retry exhaustion log at WARN")
+	assert.Equal(t, 1, driftWarnings, "shape drift must be warned once per request across retries")
+	assert.NotContains(t, logBuf.String(), "auth123temporary-secret-canary")
 }
 
 func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
@@ -541,7 +570,7 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requests.Add(1) == 1 {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"error","message":"temporary outage"}`))
+			_, _ = w.Write([]byte(`{"status":"error","error":{"code":"unavailable","message":"temporary-outage-canary"}} trailing`))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -557,6 +586,7 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
 	var sawRetryDebug bool
+	var driftWarnings int
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -566,9 +596,14 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 
 		switch rec["msg"] {
 		case "Retryable status, will retry":
+			assert.NotContains(t, rec, "response")
 			sawRetryDebug = true
 		case "SigNoz request returned unexpected status":
 			t.Fatalf("unexpected terminal warn log on eventual success: %v", rec)
+		case errorEnvelopeWarning:
+			assert.Equal(t, false, rec["recognized"])
+			assert.Equal(t, []any{"envelope"}, rec["fields"])
+			driftWarnings++
 		}
 		if _, ok := rec["retries_exhausted"]; ok {
 			t.Fatalf("unexpected retries_exhausted field on eventual success path: %v", rec)
@@ -576,6 +611,39 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 	}
 
 	assert.True(t, sawRetryDebug, "expected intermediate retry log before success")
+	assert.Equal(t, 1, driftWarnings, "transient shape drift must remain detectable")
+	assert.NotContains(t, logBuf.String(), "temporary-outage-canary")
+}
+
+func TestDoRequest_OversizedRendererWarnsOnceWithoutParsingValues(t *testing.T) {
+	var logBuf bytes.Buffer
+	responseBody := `{"status":"error","requestId":"req-1","error":{"code":"invalid_input","message":"oversized-secret-canary` +
+		strings.Repeat("x", maxErrorEnvelopeBytes) + `"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	defer server.Close()
+
+	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", SignozApiKey, nil)
+	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
+	require.Error(t, err)
+	assert.Equal(t, "unexpected status 503", err.Error())
+	assert.NotContains(t, logBuf.String(), "oversized-secret-canary")
+
+	warnings := 0
+	for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		if record["msg"] != errorEnvelopeWarning {
+			continue
+		}
+		warnings++
+		assert.Equal(t, false, record["recognized"])
+		assert.Equal(t, []any{"envelope"}, record["fields"])
+		assert.Equal(t, float64(len(responseBody)), record["response.body.size_bytes"])
+	}
+	assert.Equal(t, 1, warnings, "oversized renderer drift must be warned once across retries")
 }
 
 func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
@@ -676,97 +744,53 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 	var rec map[string]any
 	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &rec))
 	assert.Equal(t, "SigNoz request returned unexpected status", rec["msg"])
-	response, _ := rec["response"].(string)
-	assert.Contains(t, response, "...(truncated)")
-	assert.NotContains(t, response, "tail")
+	assert.NotContains(t, rec, "response")
+	assert.NotContains(t, logBuf.String(), longMessage)
+	assert.NotContains(t, logBuf.String(), "tail")
 }
 
-func TestListMetricKeys(t *testing.T) {
+func TestHTTPStatusError_UnrecognizedBodyUsesStatusFallback(t *testing.T) {
 	tests := []struct {
-		name          string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedData  []string
+		name       string
+		statusCode int
+		body       string
+		want       string
 	}{
-		{
-			name: "successful metric keys retrieval",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": []string{
-					"cpu_data",
-					"memory_data",
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: []string{
-				"cpu_data",
-				"memory_data",
-			},
-		},
-		{
-			name:          "server error",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "unauthorized",
-			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
-			statusCode:    http.StatusUnauthorized,
-			expectedError: true,
-		},
-		{
-			name:          "empty response",
-			resp:          map[string]interface{}{"status": "success", "data": []string{}},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData:  []string{},
-		},
+		{name: "unauthorized plain text", statusCode: http.StatusUnauthorized, body: "expired secret-canary", want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized malformed JSON", statusCode: http.StatusUnauthorized, body: `{"token":"secret-canary"`, want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized JSON string", statusCode: http.StatusUnauthorized, body: `"secret-canary"`, want: "unexpected status 401: authentication failed"},
+		{name: "unauthorized JSON null", statusCode: http.StatusUnauthorized, body: `null`, want: "unexpected status 401: authentication failed"},
+		{name: "forbidden HTML", statusCode: http.StatusForbidden, body: "<html>secret-canary</html>", want: "unexpected status 403: permission denied"},
+		{name: "forbidden JSON array", statusCode: http.StatusForbidden, body: `["secret-canary"]`, want: "unexpected status 403: permission denied"},
+		{name: "forbidden empty", statusCode: http.StatusForbidden, body: "", want: "unexpected status 403: permission denied"},
+		{name: "bad request HTML", statusCode: http.StatusBadRequest, body: "<html>secret-canary</html>", want: "unexpected status 400"},
+		{name: "internal proxy JSON", statusCode: http.StatusInternalServerError, body: `{"status":"error","message":"secret-canary"}`, want: "unexpected status 500"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/metrics/filters/keys", r.URL.Path)
-
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
-
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.ListMetricKeys(ctx)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].([]interface{}); ok {
-					assert.Equal(t, len(tt.expectedData), len(data))
-					for i, expectedKey := range tt.expectedData {
-						if i < len(data) {
-							assert.Equal(t, expectedKey, data[i])
-						}
-					}
-				}
-			}
+			err := &HTTPStatusError{StatusCode: tt.statusCode, Body: tt.body}
+			assert.Equal(t, tt.want, err.Error())
+			assert.NotContains(t, err.Error(), "secret-canary")
+			assert.Equal(t, tt.body, err.Body, "raw body remains available to the recognized-envelope parser")
 		})
 	}
+}
+
+func TestHTTPStatusError_RecognizedBodyUsesSafeGuidance(t *testing.T) {
+	err := &HTTPStatusError{
+		StatusCode: http.StatusBadRequest,
+		Body: `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad query",` +
+			`"url":"https://signoz.io/docs/search","suggestions":["narrow the query"],` +
+			`"errors":[{"message":"bad field","suggestions":["use an existing field"]}],"retry":{"delay":1000000000}}}`,
+	}
+
+	got := err.Error()
+	assert.Contains(t, got, "unexpected status 400: bad query (bad field)")
+	assert.Contains(t, got, "Documentation: https://signoz.io/docs/search")
+	assert.Contains(t, got, "Suggestions: narrow the query")
+	assert.Contains(t, got, "Suggestions for \"bad field\": use an existing field")
+	assert.Contains(t, got, "Retry delay: 1s (1000000000 ns)")
 }
 
 func TestListServices(t *testing.T) {
@@ -1751,30 +1775,33 @@ func TestDeleteAlertRule_v2Returns204(t *testing.T) {
 
 func TestTestNotificationChannel_UsesNewPath(t *testing.T) {
 	var gotPath string
+	var gotBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.TestNotificationChannel(context.Background(), []byte(`{"name":"x"}`))
+	err := client.TestNotificationChannel(context.Background(), []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
 	require.NoError(t, err)
-	assert.Equal(t, "/api/v1/channels/test", gotPath)
+	assert.Equal(t, "/api/v2/notification_channels/test", gotPath)
+	assert.JSONEq(t, `{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook","username":"","password":"","bearerToken":""}}}`, string(gotBody))
 }
 
-func TestUpdateNotificationChannel_Returns204(t *testing.T) {
+func TestUpdateNotificationChannel_UsesV2FullReplacement(t *testing.T) {
 	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotMethod = r.URL.Path, r.Method
-		w.WriteHeader(http.StatusNoContent)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test/hook","username":"","password":"","bearerToken":""}},"id":"550e8400-e29b-41d4-a716-446655440000","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}}`))
 	}))
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.UpdateNotificationChannel(context.Background(), "42", []byte(`{"name":"x"}`))
+	err := client.UpdateNotificationChannel(context.Background(), "550e8400-e29b-41d4-a716-446655440000", []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
 	require.NoError(t, err)
-	assert.Equal(t, "/api/v1/channels/42", gotPath)
+	assert.Equal(t, "/api/v2/notification_channels/550e8400-e29b-41d4-a716-446655440000", gotPath)
 	assert.Equal(t, http.MethodPut, gotMethod)
 }
 
@@ -1787,9 +1814,9 @@ func TestDeleteNotificationChannel(t *testing.T) {
 	defer srv.Close()
 	client := NewClient(logpkg.New("debug"), srv.URL, "k", "SIGNOZ-API-KEY", nil)
 
-	err := client.DeleteNotificationChannel(context.Background(), "42")
+	err := client.DeleteNotificationChannel(context.Background(), "550e8400-e29b-41d4-a716-446655440000")
 	require.NoError(t, err)
-	assert.Equal(t, "/api/v1/channels/42", gotPath)
+	assert.Equal(t, "/api/v2/notification_channels/550e8400-e29b-41d4-a716-446655440000", gotPath)
 	assert.Equal(t, http.MethodDelete, gotMethod)
 }
 
@@ -1806,13 +1833,13 @@ func TestListViews(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	_, err := c.ListViews(context.Background(), "traces", "ak", "ops")
+	_, err := c.ListViews(context.Background(), "traces", "ak")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views", gotPath)
-	assert.Contains(t, gotRawQuery, "sourcePage=traces")
+	assert.Equal(t, "/api/v2/saved_views", gotPath)
+	assert.Contains(t, gotRawQuery, "source=traces")
 	assert.Contains(t, gotRawQuery, "name=ak")
-	assert.Contains(t, gotRawQuery, "category=ops")
+	assert.NotContains(t, gotRawQuery, "category=")
 }
 
 func TestListDashboards_ForwardsFilterSortOrder(t *testing.T) {
@@ -1869,7 +1896,7 @@ func TestGetView(t *testing.T) {
 	_, err := c.GetView(context.Background(), "view-uuid-1")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views/view-uuid-1", gotPath)
+	assert.Equal(t, "/api/v2/saved_views/view-uuid-1", gotPath)
 }
 
 func TestCreateView(t *testing.T) {
@@ -1883,11 +1910,11 @@ func TestCreateView(t *testing.T) {
 	}))
 	defer server.Close()
 	c := NewClient(logpkg.New("error"), server.URL, "k", "SIGNOZ-API-KEY", nil)
-	body := []byte(`{"name":"x","sourcePage":"traces","compositeQuery":{}}`)
+	body := []byte(`{"name":"x","source":"traces","spec":{}}`)
 	_, err := c.CreateView(context.Background(), body)
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPost, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views", gotPath)
+	assert.Equal(t, "/api/v2/saved_views", gotPath)
 	assert.JSONEq(t, string(body), string(gotBody))
 }
 
@@ -1903,7 +1930,7 @@ func TestUpdateView(t *testing.T) {
 	_, err := c.UpdateView(context.Background(), "view-1", []byte(`{}`))
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPut, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
+	assert.Equal(t, "/api/v2/saved_views/view-1", gotPath)
 }
 
 func TestDeleteView(t *testing.T) {
@@ -1918,7 +1945,7 @@ func TestDeleteView(t *testing.T) {
 	_, err := c.DeleteView(context.Background(), "view-1")
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodDelete, gotMethod)
-	assert.Equal(t, "/api/v1/explorer/views/view-1", gotPath)
+	assert.Equal(t, "/api/v2/saved_views/view-1", gotPath)
 }
 
 func TestSharedTransportPoolTuning(t *testing.T) {

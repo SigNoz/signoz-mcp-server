@@ -23,7 +23,7 @@ func TestQueryBuilderGuideExamplesUseExecutableBoundsContract(t *testing.T) {
 		pattern   *regexp.Regexp
 		wantCount int
 	}{
-		{name: "logs", guide: querybuilder.LogsQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 4},
+		{name: "logs", guide: querybuilder.LogsQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 5},
 		{name: "traces", guide: querybuilder.TracesQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 3},
 		{name: "metrics", guide: metricsrules.MetricsGuide, pattern: markdownJSONPattern, wantCount: 5},
 	}

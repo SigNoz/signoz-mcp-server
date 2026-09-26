@@ -28,8 +28,8 @@ func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 
 			var gotBody []byte
 			h := newTestHandler(&client.MockClient{
-				ListNotificationChannelsFn: func(context.Context) (json.RawMessage, error) {
-					return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+				ListNotificationChannelsV2Fn: func(context.Context, types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+					return listedNotificationChannels("slack-alerts"), nil
 				},
 				UpdateAlertRuleFn: func(_ context.Context, id string, body []byte) error {
 					if id != validRuleUUIDv7 {
@@ -70,12 +70,12 @@ func TestAlertReadWriteBackContractAcrossServerVersions(t *testing.T) {
 func TestViewReadWriteBackPreservesQueryBounds(t *testing.T) {
 	const viewID = "view-1"
 	view := map[string]any{
-		"id":         viewID,
-		"name":       "Error Logs",
-		"sourcePage": "logs",
-		"compositeQuery": map[string]any{
-			"queryType": "builder",
-			"panelType": "list",
+		"id":     viewID,
+		"name":   "Error Logs",
+		"source": "logs",
+		"spec": map[string]any{
+			"panelType":   "list",
+			"requestType": "raw",
 			"queries": []any{map[string]any{
 				"type": "builder_query",
 				"spec": map[string]any{
@@ -117,7 +117,7 @@ func TestViewReadWriteBackPreservesQueryBounds(t *testing.T) {
 	if _, present := body["id"]; present {
 		t.Fatalf("server-populated id leaked into view update body: %s", gotBody)
 	}
-	spec := body["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	spec := body["spec"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
 	if spec["limit"] != float64(100) {
 		t.Fatalf("view builder limit did not survive read-write-back: %s", gotBody)
 	}

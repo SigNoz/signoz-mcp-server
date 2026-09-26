@@ -1,0 +1,20 @@
+{
+  "method": "resources/templates/list",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "resources/templates/list",
+    "params": {}
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "resourceTemplates": []
+    }
+  }
+}

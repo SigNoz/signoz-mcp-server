@@ -3,7 +3,7 @@ package toolerrors
 import (
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 func TestCode(t *testing.T) {

@@ -10,7 +10,7 @@ measurement) lives in [`guardrails/README.md`](../guardrails/README.md) and CI;
 this guide never duplicates those numbers or commands.
 
 **Normative language.** `MUST`/`MUST NOT` are binding: violating one requires a
-justified exception recorded in the feature context log or PR description.
+justified exception recorded in the planning record or PR description.
 `SHOULD`/`SHOULD NOT` are strong defaults: deviate only with a stated reason in
 the PR. `MAY` marks an explicitly permitted option. Rules carry stable rubric
 IDs (e.g. `SUR-1`); the PR checklist in section 11 is derived from them and is
@@ -73,7 +73,7 @@ evolution.
 | Read-only / destructive / idempotent behavior | Tool annotations |
 | Routing rules and policies shared across several tools | Server instructions |
 | Long grammars, full schemas, complete worked examples, workflows, catalogs | Resources (`signoz://…`) |
-| Live per-entity content addressed by ID | Resource templates (`signoz://alert/{id}/summary`) |
+| Live tenant content addressed by ID | Read-only tools (`signoz_get_alert`, `signoz_get_dashboard`); resource template only under RES-1 |
 | Reusable user-invoked multi-step workflows | Prompts |
 | Immediate correction and recognized backend guidance for a failed call | Error result (text + structured fields) |
 
@@ -145,8 +145,9 @@ evolution.
 - **[RES-1]** Use resources for content too long or too structured for a
   description: query grammars (`signoz://logs/query-builder-guide`), payload
   schemas and worked examples (`signoz://dashboard/widgets-examples`),
-  multi-step workflows. Use resource templates only for genuinely parameterized
-  live content (`signoz://alert/{id}/summary`).
+  multi-step workflows. Use read-only tools for live tenant entities. Add a
+  resource template only when an application-controlled attachment workflow is
+  demonstrated and the template provides value beyond an existing read tool.
 - **[RES-2]** Resource names and descriptions MUST state what the content is,
   when an agent should read it, and which tools/workflows it supports — they
   are selection surfaces, like tool descriptions.
@@ -252,6 +253,24 @@ The surface advertised at initialization is a stable executable promise.
   by the companion `SigNoz/agent-skills` repository changes, create and link
   its companion PR; internal or additive changes need no skills update.
 
+### Protocol-runtime migrations
+
+- **[CMP-4] Dual-era proof.** A runtime migration MUST exercise legacy
+  `2025-11-25` initialize/initialized flows and modern `2026-07-28`
+  discover/direct-request flows over every production transport. Exact wire
+  behavior belongs in SDK-independent raw tests; an external client such as
+  Inspector is an additional interoperability check, not the contract oracle.
+- **[CMP-5] Protocol-owned differences.** Keep client-visible tool, resource,
+  template, and prompt contracts exact. SDK-owned differences MAY be accepted
+  only when listed narrowly with old/new behavior and a focused regression
+  assertion. Discovery ordering, deprecated logging, sessionless HTTP method
+  handling, cache/result metadata, and unknown-target protocol errors MUST NOT
+  be hidden by broad golden normalization or compatibility middleware.
+- **[CMP-6] Stateless HTTP.** Production Streamable HTTP is JSON POST-only and
+  sessionless: no `Mcp-Session-Id`, no sticky routing, and 405 for MCP GET and
+  DELETE. Standardized modern headers and per-request `_meta` MUST be tested
+  independently because validation can occur before method middleware.
+
 ## 11. Evaluation and PR review checklist
 
 Deterministic facts — counts, byte budgets, schema compilation, URI integrity,
@@ -315,3 +334,4 @@ For any PR touching a client-visible MCP surface, review the applicable items:
 **Compatibility**
 - [ ] No silent breaking change; intentional breaks carry migration note; aliases tracked, not dropped or promised forever (CMP-1, CMP-2)
 - [ ] README/manifest/docs/tests sync done; companion agent-skills outcome stated and linked when needed (CMP-3)
+- [ ] Runtime changes prove both protocol eras on every production transport and enumerate only narrow protocol-owned differences (CMP-4, CMP-5, CMP-6)

@@ -585,7 +585,7 @@ func (h *Handler) recordOAuthFailure(ctx context.Context, r *http.Request, statu
 		slog.String("oauth.error_description", description),
 	}
 	for _, kv := range extraAttrs {
-		attrs = append(attrs, slog.String(string(kv.Key), kv.Value.Emit()))
+		attrs = append(attrs, slog.String(string(kv.Key), kv.Value.String()))
 	}
 	attrs = append(attrs, logpkg.HTTPRequestAttrs(r)...)
 

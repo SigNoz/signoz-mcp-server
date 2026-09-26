@@ -6,16 +6,12 @@
       "type": "string",
       "description": "Dashboard id (UUID) to patch."
     },
-    "uuid": {
-      "type": "string",
-      "description": "Legacy alias for id; accepted for backward compatibility."
-    },
     "patch": {
       "items": {
         "$ref": "#/$defs/DashboardtypesJSONPatchOperation"
       },
       "type": "array",
-      "description": "RFC 6902 operations. A panel's v2 payload must retain exactly one outer query wrapper: replace /spec/panels/<panelId>/spec/queries/0; never add or append a sibling outer wrapper. Use signoz/CompositeQuery inside that wrapper for multiple logical queries or formulas. See signoz://dashboard/patch-instructions."
+      "description": "RFC 6902 operations. A query panel must retain exactly one outer query wrapper: replace /spec/panels/<panelId>/spec/queries/0; never add or append a sibling outer wrapper. Use signoz/CompositeQuery inside that wrapper for multiple logical queries or formulas. signoz/TextPanel uses queries: []. See signoz://dashboard/patch-instructions."
     },
     "searchContext": {
       "type": "string",

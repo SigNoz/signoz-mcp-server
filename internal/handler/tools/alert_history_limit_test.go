@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestHandleGetAlertHistory_LimitClamped pins that an oversized limit is

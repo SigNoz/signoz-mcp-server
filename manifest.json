@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "signoz",
   "display_name": "SigNoz MCP Server",
-  "version": "0.10.0",
+  "version": "0.15.0",
   "description": "Access SigNoz metrics, traces, logs, and dashboards.",
   "author": {
     "name": "SigNoz Team"
@@ -25,6 +25,10 @@
     }
   },
   "tools": [
+    {
+      "name": "signoz_get_org_overview",
+      "description": "Get the current status and overall posture of the SigNoz deployment, with typed telemetry, infrastructure, alert, workspace, authentication, licensing, and configuration projections plus sourceStats containing every reported stats field"
+    },
     {
       "name": "signoz_list_metrics",
       "description": "Discover active metric names and catalog metadata such as type, temporality, and monotonicity; use signoz_query_metrics for values or trends. Set source=\"meter\" for Cost Meter metrics"
@@ -63,7 +67,7 @@
     },
     {
       "name": "signoz_get_alert",
-      "description": "Get one configured alert rule's full definition by id; use before the full-replacement signoz_update_alert"
+      "description": "Get one configured alert rule's full definition by id when a still-current definition is not already available for the prepared signoz_update_alert operation"
     },
     {
       "name": "signoz_get_alert_history",
@@ -71,11 +75,11 @@
     },
     {
       "name": "signoz_create_alert",
-      "description": "Create a new alert after verifying selected notification-channel names; threshold/PromQL rules use v2alpha1 and metric-only anomaly rules use v1"
+      "description": "Create a v2 threshold/PromQL or v1 anomaly alert; direct routing resolves exact displayName values with signoz_list_notification_channels, while confirmed v2 policy routing may omit channels"
     },
     {
       "name": "signoz_update_alert",
-      "description": "Fully replace an alert rule: fetch it first, preserve unchanged fields, and verify every selected notification-channel name"
+      "description": "Fully replace an alert using same-operation signoz_get_alert, authoring-resource, and signoz_list_notification_channels results; route by exact channel displayName and refresh only stale preflights"
     },
     {
       "name": "signoz_delete_alert",
@@ -83,15 +87,15 @@
     },
     {
       "name": "signoz_list_dashboards",
-      "description": "List paginated tenant-dashboard summaries and discover UUIDs, with an optional metadata filter DSL; use signoz_get_dashboard for panel and query definitions"
+      "description": "List paginated dashboard summaries with metadata filters"
     },
     {
       "name": "signoz_get_dashboard",
-      "description": "Get one known tenant dashboard's complete layout, variables, panels, and queries by id"
+      "description": "Get a dashboard by id with layout, panels, queries, and source"
     },
     {
       "name": "signoz_create_dashboard",
-      "description": "Create a custom multi-panel dashboard; use signoz_import_dashboard when a curated template fits and create_view for one Explorer query"
+      "description": "Create a custom dashboard with query panels or static Markdown Text panels; use import for curated templates"
     },
     {
       "name": "signoz_update_dashboard",
@@ -99,7 +103,7 @@
     },
     {
       "name": "signoz_patch_dashboard",
-      "description": "Apply an RFC 6902 JSON Patch to a dashboard by id; replace a panel's outer query wrapper and use signoz/CompositeQuery inside it for multiple logical queries or formulas"
+      "description": "Apply an RFC 6902 JSON Patch to a dashboard by id (partial update without re-sending the whole dashboard)"
     },
     {
       "name": "signoz_delete_dashboard",
@@ -123,7 +127,7 @@
     },
     {
       "name": "signoz_list_views",
-      "description": "List paginated saved Explorer views for traces, logs, metrics, or Cost Meter, with optional name/category filters"
+      "description": "List paginated saved Explorer views for traces, logs, metrics, or Cost Meter, with an optional name filter"
     },
     {
       "name": "signoz_get_view",
@@ -131,7 +135,7 @@
     },
     {
       "name": "signoz_search_docs",
-      "description": "Return ranked official-doc matches with URLs and snippets when no exact SigNoz documentation page is selected"
+      "description": "Search official SigNoz documentation with 2 to 6 keywords and return ranked pages with URLs and snippets; use signoz_fetch_doc for a selected page's full content"
     },
     {
       "name": "signoz_fetch_doc",
@@ -139,11 +143,11 @@
     },
     {
       "name": "signoz_create_view",
-      "description": "Save one reusable Explorer query after reading both view authoring resources; use signoz_create_dashboard for a multi-widget dashboard"
+      "description": "Save one reusable Explorer query spec after reading both view authoring resources; use signoz_create_dashboard for a multi-widget dashboard"
     },
     {
       "name": "signoz_update_view",
-      "description": "Fully replace a fetched saved view while preserving other fields; read its guides when changing sourcePage or compositeQuery, not for name/category/tags-only changes"
+      "description": "Fully replace a fetched saved view while preserving other fields; read its guides when changing source or the typed spec"
     },
     {
       "name": "signoz_delete_view",
@@ -155,7 +159,7 @@
     },
     {
       "name": "signoz_search_logs",
-      "description": "Return individual paginated log records; shortcut parameters need no guide, while custom filters with unfamiliar fields use the logs guide"
+      "description": "Search individual log records with field filters or explicit search() across log contexts; searchText matches only body text"
     },
     {
       "name": "signoz_aggregate_traces",
@@ -171,40 +175,40 @@
     },
     {
       "name": "signoz_execute_builder_query",
-      "description": "Run Query Builder v5 requests that the dedicated log, trace, or metric tools cannot express, including multi-query requests, formulas, PromQL, and ClickHouse SQL; formulas use input limit 10000, result limit 100, and non-empty spec.order"
+      "description": "Run raw Query Builder v5 requests for formulas, PromQL, or ClickHouse SQL beyond the dedicated signal tools"
     },
     {
       "name": "signoz_list_notification_channels",
-      "description": "List paginated notification-channel summaries for exact-name verification, duplicate checks, and ID discovery; use get for provider-specific settings"
+      "description": "List paginated v2 channel summaries; use displayName for alert routing and get for provider settings"
     },
     {
       "name": "signoz_create_notification_channel",
-      "description": "Create a uniquely named notification channel after listing existing names, then send a test notification"
+      "description": "Create a uniquely named channel from canonical config.kind/spec; send a test only when test is true"
     },
     {
       "name": "signoz_update_notification_channel",
-      "description": "Fully replace a notification channel after fetching its complete configuration, then send a test notification"
+      "description": "Replace a channel config after fetching and preserving all settings and credentials; test sends are opt-in"
     },
     {
       "name": "signoz_get_notification_channel",
-      "description": "Get all provider-specific settings for one notification channel by ID"
+      "description": "Get one canonical channel including displayName and full provider config; keep returned credentials private"
     },
     {
       "name": "signoz_delete_notification_channel",
-      "description": "Permanently delete a confirmed notification channel by ID; call directly once resolved, but note that it does not check alert-rule references"
+      "description": "Permanently delete a confirmed channel by ID; resolve backend routing-policy dependency errors before retrying"
     }
   ],
   "resources": [
     {
       "uri": "signoz://alert/examples",
       "name": "Alert Rule Examples",
-      "description": "Read this after signoz://alert/instructions when you need alert payload examples for metrics, logs, traces, exceptions, PromQL, anomalies, formulas, tiered thresholds, cumulative alerts, or notification settings. Verify every example channel name with signoz_list_notification_channels.",
+      "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://alert/instructions",
       "name": "Alert Rule Instructions",
-      "description": "Read this before creating or updating an alert. It explains fields, rule types, queries, thresholds, evaluation, and notification setup. For payload examples, read signoz://alert/examples.",
+      "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
       "mimeType": "text/markdown"
     },
     {
@@ -258,7 +262,7 @@
     {
       "uri": "signoz://dashboard/widgets-examples",
       "name": "Dashboard Widgets Examples",
-      "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
+      "description": "Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, area, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace.",
       "mimeType": "text/markdown"
     },
     {
@@ -318,13 +322,13 @@
     {
       "uri": "signoz://view/examples",
       "name": "Saved View Examples",
-      "description": "Read this after signoz://view/instructions when composing a saved Explorer view. It provides complete Query Builder v5 payloads for traces, logs, metrics, and Cost Meter source pages.",
+      "description": "Read this after signoz://view/instructions when composing a saved view. It provides complete typed spec payloads for traces, logs, metrics, and Cost Meter sources.",
       "mimeType": "text/markdown"
     },
     {
       "uri": "signoz://view/instructions",
       "name": "Saved View Instructions",
-      "description": "Read this before creating or updating a saved Explorer view. It explains view fields, sourcePage, Query Builder v5, Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
+      "description": "Read this before creating or updating a saved view. It explains view fields, source, the typed spec (schemaVersion v2), Cost Meter views, and how to read a view before replacing it. It does not describe dashboards.",
       "mimeType": "text/markdown"
     }
   ],

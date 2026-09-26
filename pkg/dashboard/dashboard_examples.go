@@ -16,9 +16,9 @@ Metrics Query Builder shape (used by all examples below):
   - temporality: cumulative | delta | unspecified.
   - timeAggregation: per-series temporal rollup (rate, sum, avg, min, max, count, increase, latest).
   - spaceAggregation: cross-series combine (sum, avg, min, max, count, p50..p99).
-  - reduceTo: value/number panels only — collapse the series to one scalar (sum, avg, last, min, max, count, median).
+  - reduceTo: value/number panels only; collapse the series to one scalar (sum, avg, last, min, max, count, median).
 - groupBy[] entries: {name, fieldContext:"attribute", fieldDataType:"string", signal:"metrics"}; set legend "{{name}}".
-- order key must be the composed aggregation expression spaceAggregation(timeAggregation(metricName)), e.g. sum(rate(system.cpu.time)) — NOT the bare metric name (rejected); __result or a groupBy key also work.
+- order key must be the composed aggregation expression spaceAggregation(timeAggregation(metricName)), e.g. sum(rate(system.cpu.time)), NOT the bare metric name (rejected); __result or a groupBy key also work.
 - Timeseries panels use query kind "time_series"; value/number and pie use kind "scalar".
 
 === EXAMPLES ===
@@ -491,6 +491,79 @@ The number panel from example 3 plus a signoz/PieChartPanel on system.network.er
         }
       }
     ]
+  }
+}
+
+--- 5. Markdown runbook beside a real query panel ---
+
+This dashboard pairs a queryless TextPanel with a NumberPanel. Both grid items use the canonical content.$ref path into spec.panels; the TextPanel sends queries: [], while the NumberPanel sends exactly one scalar query.
+
+{
+  "schemaVersion": "v6",
+  "generateName": true,
+  "tags": [{ "key": "team", "value": "infra" }],
+  "spec": {
+    "display": { "name": "Network Errors and Runbook", "description": "Current network errors with response guidance" },
+    "variables": [],
+    "links": [],
+    "panels": {
+      "runbook": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Runbook", "description": "Response steps" },
+          "links": [],
+          "plugin": {
+            "kind": "signoz/TextPanel",
+            "spec": {
+              "mode": "markdown",
+              "text": "## Network errors\n\nCheck the affected device, then follow the [runbook](https://example.com/runbook).",
+              "presentation": { "textAlign": "left", "verticalAlign": "top" },
+              "headerOptions": { "hide": false }
+            }
+          },
+          "queries": []
+        }
+      },
+      "net-errors": {
+        "kind": "Panel",
+        "spec": {
+          "display": { "name": "Network Errors", "description": "Total network errors" },
+          "links": [],
+          "plugin": { "kind": "signoz/NumberPanel", "spec": {} },
+          "queries": [{
+            "kind": "scalar",
+            "spec": {
+              "name": "A",
+              "plugin": {
+                "kind": "signoz/BuilderQuery",
+                "spec": {
+                  "signal": "metrics",
+                  "name": "A",
+                  "aggregations": [{
+                    "metricName": "system.network.errors",
+                    "temporality": "cumulative",
+                    "timeAggregation": "rate",
+                    "spaceAggregation": "sum",
+                    "reduceTo": "sum"
+                  }],
+                  "order": [{ "key": { "name": "sum(rate(system.network.errors))" }, "direction": "desc" }],
+                  "limit": 100
+                }
+              }
+            }
+          }]
+        }
+      }
+    },
+    "layouts": [{
+      "kind": "Grid",
+      "spec": {
+        "items": [
+          { "x": 0, "y": 0, "width": 6, "height": 3, "content": { "$ref": "#/spec/panels/runbook" } },
+          { "x": 6, "y": 0, "width": 6, "height": 3, "content": { "$ref": "#/spec/panels/net-errors" } }
+        ]
+      }
+    }]
   }
 }
 `

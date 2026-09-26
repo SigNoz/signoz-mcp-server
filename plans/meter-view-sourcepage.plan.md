@@ -1,7 +1,7 @@
 # Plan: Cost Meter saved-view `sourcePage="meter"`
 
 ## Status
-In Progress
+Done
 
 ## Context
 The SigNoz product models a Cost Meter saved view as a distinct `sourcePage="meter"`

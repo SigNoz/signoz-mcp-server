@@ -16,6 +16,7 @@ type Meters struct {
 	IdentityCacheMisses                metric.Int64Counter
 	DocsSearches                       metric.Int64Counter
 	DocsSearchDuration                 metric.Float64Histogram
+	DocsSearchTopScore                 metric.Float64Histogram
 	DocsFetches                        metric.Int64Counter
 	DocsRefreshes                      metric.Int64Counter
 	DocsRefreshDuration                metric.Float64Histogram
@@ -118,6 +119,13 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 	if err != nil {
 		return nil, err
 	}
+	docsSearchTopScore, err := meter.Float64Histogram(
+		"signoz_docs_search_top_score",
+		metric.WithDescription("Uncalibrated raw Bleve score of the top hit in successful non-empty docs searches"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	docsFetches, err := meter.Int64Counter("signoz_docs_fetches_total", metric.WithDescription("Count of SigNoz docs fetches"))
 	if err != nil {
 		return nil, err
@@ -184,6 +192,7 @@ func NewMeters(mp metric.MeterProvider) (*Meters, error) {
 		IdentityCacheMisses:                identityCacheMisses,
 		DocsSearches:                       docsSearches,
 		DocsSearchDuration:                 docsSearchDuration,
+		DocsSearchTopScore:                 docsSearchTopScore,
 		DocsFetches:                        docsFetches,
 		DocsRefreshes:                      docsRefreshes,
 		DocsRefreshDuration:                docsRefreshDuration,

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestParseLimit_NumberAndString pins that the shared docs-limit parser accepts

@@ -1,8 +1,8 @@
 package docs
 
 import (
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 const (
@@ -20,7 +20,7 @@ func ToolError(code, message string, extra map[string]any) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		IsError: true,
 		Content: []mcp.Content{
-			mcp.TextContent{Type: "text", Text: message},
+			&mcp.TextContent{Text: message},
 		},
 		StructuredContent: structured,
 	}

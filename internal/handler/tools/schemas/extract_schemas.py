@@ -7,17 +7,19 @@ It takes the three v2 (Perses) root schemas from SigNoz's OpenAPI spec, computes
 the transitive $ref closure of each, rewrites the OAS refs into self-contained
 JSON Schema ($defs), converts OAS 3.0 `nullable: true` into JSON-Schema null
 unions, injects the top-level `searchContext` property, and adds the backend's
-exactly-one-outer-query-wrapper-per-panel cardinality constraint plus patch-specific recovery
+panel-specific outer-query cardinality constraint plus patch-specific recovery
 guidance that the upstream reflector cannot express. The Perses plugin
 `oneOf`/discriminator unions are preserved (struct reflection can't express them).
 
 The MCP server is a pass-through: these schemas are served to clients verbatim
-via WithRawInputSchema, and the v2 API is the authoritative validator. Regenerate
+via rawInputSchema, and the v2 API is the authoritative validator. Regenerate
 whenever the upstream OpenAPI dashboard schemas change.
 
 USAGE (the recipe used to produce the committed files):
-    # 1. fetch the upstream spec to the hardcoded input path
-    curl -sL https://raw.githubusercontent.com/SigNoz/signoz/main/docs/api/openapi.yml \
+    # 1. fetch the pinned released spec (v0.143.0, commit
+    #    7ce73f3470371daa7b245716a1b1a3fd6a2daee4) to the hardcoded input path.
+    #    Do not fetch from main; TextPanel and related contracts must match this tag.
+    curl -sL https://raw.githubusercontent.com/SigNoz/signoz/v0.143.0/docs/api/openapi.yml \
         -o /tmp/openapi.yml
     # 2. run this script -> writes /tmp/dash_schemas/{create,update,patch}.json
     pip3 install pyyaml   # if needed
@@ -29,10 +31,9 @@ USAGE (the recipe used to produce the committed files):
 
 NOTE: input (/tmp/openapi.yml) and output (/tmp/dash_schemas/) paths are hardcoded
 below; adjust if you want a different location. The core extraction is the
-verified one-off run that produced the current committed schemas; the K5 id/uuid
-handling on update/patch (canonical `id` + `uuid` alias, neither required) was
-originally applied as manual edits to the JSON afterward and is now folded into
-this script so a regen reproduces the committed files end-to-end.
+verified one-off run that produced the current committed schemas. Update and patch
+advertise canonical `id` only (not schema-required); the legacy `uuid` input alias
+is not generated.
 """
 import yaml, json, os, re
 
@@ -131,31 +132,23 @@ def pin_discriminators(defs):
                 req.append(prop)
 
 def enforce_panel_query_cardinality(defs):
-    """Match the v2 backend's exactly-one-outer-query-wrapper validation.
-
-    The upstream OpenAPI reflector currently omits the slice bounds enforced by
-    DashboardtypesPanelSpec validation. Apply them only to the panel's outer
-    queries array; CompositeQuery's nested queries array intentionally supports
-    multiple entries.
-    """
+    """Constrain outer wrappers without limiting nested CompositeQuery entries."""
     panel_spec = defs.get('DashboardtypesPanelSpec')
     if panel_spec is None:
         return
     queries = panel_spec.get('properties', {}).get('queries')
     if not isinstance(queries, dict) or queries.get('type') != 'array':
         raise SystemExit('DashboardtypesPanelSpec.queries is missing or is not an array')
-    description = ("Exactly one outer v2 query wrapper. This does not limit logical queries: "
-                   "use a signoz/CompositeQuery plugin and put multiple queries or formulas "
-                   "in its spec.queries.")
-    existing_description = queries.get('description')
-    if existing_description not in (None, description):
-        raise SystemExit('DashboardtypesPanelSpec.queries has conflicting description')
-    queries['description'] = description
-    for bound in ('minItems', 'maxItems'):
-        existing = queries.get(bound)
-        if existing not in (None, 1):
-            raise SystemExit(f'DashboardtypesPanelSpec.queries has conflicting {bound}: {existing}')
-        queries[bound] = 1
+    queries['description'] = (
+        "Query panels require exactly one outer query wrapper. Use signoz/CompositeQuery "
+        "inside it for multiple logical queries or formulas. signoz/TextPanel uses an empty array [].")
+    # The backend exempts TextPanel from the one-wrapper rule; its queries must be empty.
+    panel_spec['if'] = {
+        "properties": {"plugin": {"properties": {"kind": {"const": "signoz/TextPanel"}}, "required": ["kind"]}},
+        "required": ["plugin"],
+    }
+    panel_spec['then'] = {"properties": {"queries": {"maxItems": 0}}}
+    panel_spec['else'] = {"properties": {"queries": {"minItems": 1, "maxItems": 1}}}
 
 def enforce_patch_array_type(schema):
     """Reject OpenAPI's nullable patch root while preserving empty arrays.
@@ -210,10 +203,11 @@ def build_defs(root_name):
     return defs
 
 SEARCH_CTX = {"type": "string", "description": "The user's original question or search text that triggered this tool call. Always include the user's raw query here for better results."}
-PATCH_DESCRIPTION = ("RFC 6902 operations. A panel's v2 payload must retain exactly one outer query "
+PATCH_DESCRIPTION = ("RFC 6902 operations. A query panel must retain exactly one outer query "
                      "wrapper: replace /spec/panels/<panelId>/spec/queries/0; never add or append a "
                      "sibling outer wrapper. Use signoz/CompositeQuery inside that wrapper for "
-                     "multiple logical queries or formulas. See signoz://dashboard/patch-instructions.")
+                     "multiple logical queries or formulas. signoz/TextPanel uses queries: []. "
+                     "See signoz://dashboard/patch-instructions.")
 
 def assert_no_oas_refs(doc, label):
     s = json.dumps(doc)
@@ -221,12 +215,28 @@ def assert_no_oas_refs(doc, label):
     if bad:
         raise SystemExit(f"{label}: unresolved OAS refs remain: {set(bad)}")
 
+HEATMAP_DEFS = {'Querybuildertypesv5BucketOptions', 'Querybuildertypesv5BucketOptionsLinear',
+                'Querybuildertypesv5BucketOptionsLog', 'Querybuildertypesv5BucketsKind',
+                'Querybuildertypesv5LinearBucketsSpec', 'Querybuildertypesv5LogBucketsSpec'}
+
+def strip_heatmap(defs):
+    """Heatmaps have no dashboard or saved-view renderer in the SigNoz UI, so the
+    advertised schemas omit the heatmap request type and bucketOptions."""
+    for name in HEATMAP_DEFS:
+        defs.pop(name, None)
+    for d in defs.values():
+        d.get('properties', {}).pop('bucketOptions', None)
+    request_type = defs.get('Querybuildertypesv5RequestType')
+    if request_type and 'enum' in request_type:
+        request_type['enum'] = [v for v in request_type['enum'] if v != 'heatmap']
+    return defs
+
 os.makedirs('/tmp/dash_schemas', exist_ok=True)
 reports = {}
 
 # ---- create: PostableDashboardV2 inlined + searchContext ----
 root = rewrite_refs(schemas['DashboardtypesPostableDashboardV2'])
-defs = build_defs('DashboardtypesPostableDashboardV2')
+defs = strip_heatmap(build_defs('DashboardtypesPostableDashboardV2'))
 create = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
 create.update({k: v for k, v in root.items() if k not in ('type',)})
 create.setdefault('properties', {})['searchContext'] = SEARCH_CTX
@@ -237,12 +247,11 @@ reports['create'] = (root.get('required', []), list(create['properties'].keys())
 
 # ---- update: id + UpdatableDashboardV2 props inlined + searchContext ----
 uroot = rewrite_refs(schemas['DashboardtypesUpdatableDashboardV2'])
-udefs = build_defs('DashboardtypesUpdatableDashboardV2')
+udefs = strip_heatmap(build_defs('DashboardtypesUpdatableDashboardV2'))
 update = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": {}, "required": []}
-# K5 contract: canonical `id` + permanent `uuid` alias, with NEITHER schema-required
-# (a resource id must never be required — TestUpdateStructs_IDNotSchemaRequired).
+# Canonical `id` is advertised and not schema-required (the handler validates
+# presence). Do not emit a `uuid` input alias.
 update['properties']['id'] = {"type": "string", "description": "Dashboard id (UUID) to update."}
-update['properties']['uuid'] = {"type": "string", "description": "Legacy alias for id; accepted for backward compatibility."}
 for k, v in uroot.get('properties', {}).items():
     update['properties'][k] = v
 for r in uroot.get('required', []):
@@ -258,13 +267,12 @@ reports['update'] = (update['required'], list(update['properties'].keys()), len(
 proot = rewrite_refs(schemas['DashboardtypesPatchableDashboardV2'])
 enforce_patch_array_type(proot)
 proot['description'] = PATCH_DESCRIPTION
-pdefs = build_defs('DashboardtypesPatchableDashboardV2')
+pdefs = strip_heatmap(build_defs('DashboardtypesPatchableDashboardV2'))
 enforce_patch_operation_guidance(pdefs)
-# K5 contract: `id` + `uuid` alias, neither required (only `patch` is required).
+# Canonical `id` is advertised; only `patch` is schema-required.
 patch = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
          "properties": {
              "id": {"type": "string", "description": "Dashboard id (UUID) to patch."},
-             "uuid": {"type": "string", "description": "Legacy alias for id; accepted for backward compatibility."},
              "patch": proot,
              "searchContext": SEARCH_CTX,
          },

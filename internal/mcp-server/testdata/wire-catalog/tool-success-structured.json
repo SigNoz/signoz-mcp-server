@@ -1,0 +1,48 @@
+{
+  "method": "tools/call",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "arguments": {},
+      "name": "signoz_list_notification_channels"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"channels\":[{\"id\":\"019947a7-f200-7000-8000-000000000001\",\"name\":\"on-call\",\"displayName\":\"On call\",\"kind\":\"email\",\"createdAt\":\"2026-09-18T00:00:00Z\",\"updatedAt\":\"2026-09-18T00:00:00Z\"}],\"pagination\":{\"count\":1,\"hasMore\":false,\"limit\":20,\"nextOffset\":null,\"offset\":0},\"total\":1}",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "channels": [
+          {
+            "createdAt": "2026-09-18T00:00:00Z",
+            "displayName": "On call",
+            "id": "019947a7-f200-7000-8000-000000000001",
+            "kind": "email",
+            "name": "on-call",
+            "updatedAt": "2026-09-18T00:00:00Z"
+          }
+        ],
+        "pagination": {
+          "count": 1,
+          "hasMore": false,
+          "limit": 20,
+          "nextOffset": null,
+          "offset": 0
+        },
+        "total": 1
+      }
+    }
+  }
+}

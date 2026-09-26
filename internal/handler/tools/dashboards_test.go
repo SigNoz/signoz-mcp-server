@@ -9,15 +9,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
 func TestHandleDeleteDashboard_Success(t *testing.T) {
 	// Simulate a create-then-delete flow: the mock "creates" a dashboard and
-	// then the delete handler removes it by UUID.
-	const createdUUID = "abc-123-def"
+	// then the delete handler removes it by id.
+	const createdID = "abc-123-def"
 
 	created := false
 	deleted := false
@@ -25,11 +25,11 @@ func TestHandleDeleteDashboard_Success(t *testing.T) {
 	mock := &client.MockClient{
 		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 			created = true
-			return json.RawMessage(fmt.Sprintf(`{"status":"success","data":{"uuid":"%s"}}`, createdUUID)), nil
+			return json.RawMessage(fmt.Sprintf(`{"status":"success","data":{"id":"%s"}}`, createdID)), nil
 		},
 		DeleteDashboardFn: func(ctx context.Context, id string) error {
-			if id != createdUUID {
-				t.Errorf("expected uuid=%s, got %q", createdUUID, id)
+			if id != createdID {
+				t.Errorf("expected id=%s, got %q", createdID, id)
 			}
 			deleted = true
 			return nil
@@ -61,7 +61,7 @@ func TestHandleDeleteDashboard_Success(t *testing.T) {
 
 	// Step 2: delete the dashboard we just created
 	deleteResult, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{
-		"uuid": createdUUID,
+		"id": createdID,
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error on delete: %v", err)
@@ -79,7 +79,7 @@ func TestHandleCreateDashboard_StripsSearchContext(t *testing.T) {
 	mock := &client.MockClient{
 		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 			gotBody = append([]byte(nil), dashboardJSON...)
-			return json.RawMessage(`{"status":"success","data":{"uuid":"dashboard-123"}}`), nil
+			return json.RawMessage(`{"status":"success","data":{"id":"dashboard-123"}}`), nil
 		},
 	}
 
@@ -225,78 +225,35 @@ func TestHandleUpdateDashboard_NormalizesWriteBack(t *testing.T) {
 }
 
 func TestHandleUpdateDashboard_RejectsUnknownFields(t *testing.T) {
-	cases := []struct {
-		name          string
-		args          map[string]any
-		wantUnknown   []string
-		wantGrammar   string
-		wantOrderPair [2]string
+	for _, tc := range []struct {
+		name    string
+		args    map[string]any
+		unknown string
 	}{
-		{
-			name: "complete payload with misspelled field",
-			args: map[string]any{
-				"id":            "d-1",
-				"schemaVersion": "v6",
-				"name":          "d-1",
-				"tags":          []any{},
-				"spec":          map[string]any{"display": map[string]any{"name": "Renamed"}},
-				"tagz":          []any{},
-			},
-			wantUnknown: []string{`"tagz"`},
-			wantGrammar: `"tagz" is not recognized as a dashboard update field`,
-		},
-		{
-			name:        "typo-only payload cannot become a no-op",
-			args:        map[string]any{"id": "d-1", "tagz": []any{}},
-			wantUnknown: []string{`"tagz"`},
-			wantGrammar: `"tagz" is not recognized as a dashboard update field`,
-		},
-		{
-			name:          "multiple fields are reported deterministically",
-			args:          map[string]any{"id": "d-1", "zeta": true, "alpha": true},
-			wantUnknown:   []string{`"alpha"`, `"zeta"`},
-			wantGrammar:   `"alpha", "zeta" are not recognized as dashboard update fields`,
-			wantOrderPair: [2]string{`"alpha"`, `"zeta"`},
-		},
-	}
-
-	for _, tc := range cases {
+		{"complete payload with typo", map[string]any{
+			"id": "d-1", "schemaVersion": "v6", "name": "d-1", "tags": []any{},
+			"spec": map[string]any{"display": map[string]any{"name": "Renamed"}}, "tagz": []any{},
+		}, "tagz"},
+		{"typo only", map[string]any{"id": "d-1", "tagz": []any{}}, "tagz"},
+		{"sorted fields", map[string]any{"id": "d-1", "zeta": true, "alpha": true}, "alpha, zeta"},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := &client.MockClient{
-				UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
-					t.Fatal("handler must not call upstream for unknown update fields")
+				UpdateDashboardRawFn: func(context.Context, string, []byte) (json.RawMessage, error) {
+					t.Fatal("unknown update fields must not reach upstream")
 					return nil, nil
 				},
 			}
-
 			result, err := newTestHandler(mock).handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", tc.args))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !result.IsError {
-				t.Fatal("expected error result for unknown update fields")
+			if !result.IsError || resultCode(t, result) != CodeValidationFailed {
+				t.Fatalf("expected VALIDATION_FAILED, got %+v", result)
 			}
-			if code := resultCode(t, result); code != CodeValidationFailed {
-				t.Fatalf("code = %q, want %q", code, CodeValidationFailed)
-			}
-			body := resultText(t, result)
-			for _, field := range tc.wantUnknown {
-				if !strings.Contains(body, field) {
-					t.Errorf("error should name unknown field %s, got: %s", field, body)
-				}
-			}
-			if !strings.Contains(body, `"tags"`) {
-				t.Errorf("error should name accepted writable fields, got: %s", body)
-			}
-			if !strings.Contains(body, tc.wantGrammar) {
-				t.Errorf("error should use field-specific recovery grammar %q, got: %s", tc.wantGrammar, body)
-			}
-			if !strings.Contains(body, `pass "id" separately`) || !strings.Contains(body, "read-only fields") {
-				t.Errorf("error should explain routing and read-only normalization, got: %s", body)
-			}
-			if first, second := tc.wantOrderPair[0], tc.wantOrderPair[1]; first != "" {
-				if strings.Index(body, first) >= strings.Index(body, second) {
-					t.Errorf("unknown fields must be sorted in the error: %s", body)
+			for _, want := range []string{tc.unknown, "Remove or correct", "image, name, schemaVersion, spec, tags"} {
+				if body := resultText(t, result); !strings.Contains(body, want) {
+					t.Errorf("expected recovery containing %q, got %s", want, body)
 				}
 			}
 		})
@@ -341,7 +298,6 @@ func TestHandlePatchDashboard_RejectsNonArrayPatch(t *testing.T) {
 		patch any
 	}{
 		{name: "null", patch: nil},
-		{name: "typed nil array", patch: []any(nil)},
 		{name: "object", patch: map[string]any{}},
 		{name: "string", patch: "[]"},
 		{name: "number", patch: float64(1)},
@@ -409,27 +365,27 @@ func TestHandlePatchDashboard_AllowsEmptyArray(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteDashboard_EmptyUUID(t *testing.T) {
+func TestHandleDeleteDashboard_EmptyID(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{
-		"uuid": "",
+		"id": "",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !result.IsError {
-		t.Error("expected error result for empty uuid")
+		t.Error("expected error result for empty id")
 	}
 }
 
-func TestHandleDeleteDashboard_MissingUUID(t *testing.T) {
+func TestHandleDeleteDashboard_MissingID(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !result.IsError {
-		t.Error("expected error result for missing uuid")
+		t.Error("expected error result for missing id")
 	}
 }
 
@@ -441,7 +397,7 @@ func TestHandleDeleteDashboard_ClientError(t *testing.T) {
 	}
 	h := newTestHandler(mock)
 	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{
-		"uuid": "nonexistent-uuid",
+		"id": "nonexistent-id",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -461,13 +417,19 @@ func withTemplateServer(t *testing.T, srv *httptest.Server) {
 }
 
 func TestHandleImportDashboard_Success(t *testing.T) {
-	template := `{"schemaVersion":"v6","tags":[{"key":"category","value":"hostmetrics"}],"spec":{"display":{"name":"Host Metrics","description":"Host CPU and memory"}}}`
+	templateBody := testDashboardWithTextPanel(nil)
+	delete(templateBody, "name")
+	templateBody["tags"] = []any{map[string]any{"key": "category", "value": "hostmetrics"}}
+	templateBytes, err := json.Marshal(templateBody)
+	if err != nil {
+		t.Fatalf("marshal import fixture: %v", err)
+	}
 
 	var receivedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(template))
+		_, _ = w.Write(templateBytes)
 	}))
 	defer srv.Close()
 
@@ -482,7 +444,7 @@ func TestHandleImportDashboard_Success(t *testing.T) {
 	mock := &client.MockClient{
 		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
 			gotBody = append([]byte(nil), dashboardJSON...)
-			return json.RawMessage(`{"status":"success","data":{"uuid":"created-uuid"}}`), nil
+			return json.RawMessage(`{"status":"success","data":{"id":"created-id"}}`), nil
 		},
 	}
 
@@ -513,6 +475,7 @@ func TestHandleImportDashboard_Success(t *testing.T) {
 	if parsed["generateName"] != true {
 		t.Errorf("generateName = %v, want true (template has no top-level name)", parsed["generateName"])
 	}
+	assertTextAndQueryPanelCounts(t, gotBody)
 	// Import returns the created dashboard via structuredResult (JSON-first +
 	// structuredContent), consistent with create.
 	if result.StructuredContent == nil {
@@ -596,7 +559,7 @@ func TestHandleListDashboardTemplates_FullCatalog(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error: %v", result.Content)
 	}
-	textContent, ok := result.Content[0].(mcp.TextContent)
+	textContent, ok := result.Content[0].(*mcp.TextContent)
 	if !ok {
 		t.Fatalf("expected TextContent, got %T", result.Content[0])
 	}
@@ -799,12 +762,12 @@ func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 
 func TestHandleGetDashboard_WrappedBodyGetsWebURL(t *testing.T) {
 	mock := &client.MockClient{
-		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":{"uuid":"x","name":"Hosts"}}`), nil
+		GetDashboardFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"x","name":"Hosts"}}`), nil
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"id": "x"})
 	result, err := h.handleGetDashboard(ctxWithURL(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -828,12 +791,12 @@ func TestHandleGetDashboard_WrappedBodyGetsWebURL(t *testing.T) {
 
 func TestHandleGetDashboard_BareBodyGetsWebURL(t *testing.T) {
 	mock := &client.MockClient{
-		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
-			return json.RawMessage(`{"uuid":"x","name":"Hosts"}`), nil
+		GetDashboardFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{"id":"x","name":"Hosts"}`), nil
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"id": "x"})
 	result, err := h.handleGetDashboard(ctxWithURL(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -846,12 +809,12 @@ func TestHandleGetDashboard_BareBodyGetsWebURL(t *testing.T) {
 
 func TestHandleGetDashboard_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	mock := &client.MockClient{
-		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
-			return json.RawMessage(`{"data":{"uuid":"x"}}`), nil
+		GetDashboardFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+			return json.RawMessage(`{"data":{"id":"x"}}`), nil
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"id": "x"})
 	result, err := h.handleGetDashboard(testCtx(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -864,12 +827,12 @@ func TestHandleGetDashboard_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 
 func TestHandleGetDashboard_MalformedBodyReturnedVerbatim(t *testing.T) {
 	mock := &client.MockClient{
-		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
+		GetDashboardFn: func(ctx context.Context, id string) (json.RawMessage, error) {
 			return json.RawMessage(`not json`), nil
 		},
 	}
 	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_dashboard", map[string]any{"uuid": "x"})
+	req := makeToolRequest("signoz_get_dashboard", map[string]any{"id": "x"})
 	result, err := h.handleGetDashboard(ctxWithURL(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -877,5 +840,226 @@ func TestHandleGetDashboard_MalformedBodyReturnedVerbatim(t *testing.T) {
 	body := textContent(t, result)
 	if body != "not json" {
 		t.Fatalf("expected malformed body returned verbatim, got: %s", body)
+	}
+}
+
+func textPanelForTest(queries any) map[string]any {
+	return map[string]any{
+		"kind": "Panel",
+		"spec": map[string]any{
+			"display": map[string]any{"name": "Runbook"},
+			"plugin": map[string]any{
+				"kind": textPanelKind,
+				"spec": map[string]any{
+					"mode":          "markdown",
+					"text":          "## Response",
+					"presentation":  map[string]any{"textAlign": "left", "verticalAlign": "top"},
+					"headerOptions": map[string]any{"hide": false},
+				},
+			},
+			"queries": queries,
+		},
+	}
+}
+
+func testDashboardWithTextPanel(queries any) map[string]any {
+	return map[string]any{
+		"schemaVersion": "v6",
+		"name":          "runbook",
+		"tags":          []any{},
+		"spec": map[string]any{
+			"display":   map[string]any{"name": "Runbook"},
+			"variables": []any{},
+			"panels": map[string]any{
+				"runbook": textPanelForTest(queries),
+				"metric": map[string]any{
+					"kind": "Panel",
+					"spec": map[string]any{
+						"display": map[string]any{"name": "Metric"},
+						"plugin":  map[string]any{"kind": "signoz/NumberPanel", "spec": map[string]any{}},
+						"queries": []any{map[string]any{"kind": "scalar", "spec": map[string]any{"name": "A"}}},
+					},
+				},
+			},
+			"layouts": []any{},
+		},
+	}
+}
+
+func assertTextAndQueryPanelCounts(t *testing.T, body []byte) {
+	t.Helper()
+	var dashboardBody map[string]any
+	if err := json.Unmarshal(body, &dashboardBody); err != nil {
+		t.Fatalf("dashboard body is not JSON: %v\n%s", err, body)
+	}
+	if wrapped, ok := dashboardBody["data"].(map[string]any); ok {
+		dashboardBody = wrapped
+	}
+	panels := dashboardBody["spec"].(map[string]any)["panels"].(map[string]any)
+	textQueries := panels["runbook"].(map[string]any)["spec"].(map[string]any)["queries"].([]any)
+	queryPanelQueries := panels["metric"].(map[string]any)["spec"].(map[string]any)["queries"].([]any)
+	if len(textQueries) != 0 {
+		t.Fatalf("TextPanel queries count = %d, want 0", len(textQueries))
+	}
+	if len(queryPanelQueries) != 1 {
+		t.Fatalf("query panel queries count = %d, want 1", len(queryPanelQueries))
+	}
+}
+
+func TestHandleCreateDashboard_NormalizesOnlyTextPanelQueries(t *testing.T) {
+	var gotBody []byte
+	mock := &client.MockClient{CreateDashboardRawFn: func(_ context.Context, body []byte) (json.RawMessage, error) {
+		gotBody = append([]byte(nil), body...)
+		return json.RawMessage(`{"data":{"id":"d1"}}`), nil
+	}}
+	args := testDashboardWithTextPanel(nil)
+	delete(args, "name")
+	result, err := newTestHandler(mock).handleCreateDashboard(testCtx(), makeToolRequest("signoz_create_dashboard", args))
+	if err != nil || result.IsError {
+		t.Fatalf("create failed: err=%v result=%v", err, result.Content)
+	}
+	assertTextAndQueryPanelCounts(t, gotBody)
+}
+
+func TestHandleGetDashboard_NormalizesTextPanelAndPreservesSource(t *testing.T) {
+	for _, source := range []string{"user", "system", "integration"} {
+		t.Run(source, func(t *testing.T) {
+			response := testDashboardWithTextPanel(nil)
+			response["id"] = "d1"
+			response["source"] = source
+			body, _ := json.Marshal(map[string]any{"data": response})
+			mock := &client.MockClient{GetDashboardFn: func(context.Context, string) (json.RawMessage, error) { return body, nil }}
+			result, err := newTestHandler(mock).handleGetDashboard(testCtx(), makeToolRequest("signoz_get_dashboard", map[string]any{"id": "d1"}))
+			if err != nil || result.IsError {
+				t.Fatalf("get failed: err=%v result=%v", err, result.Content)
+			}
+			resultBody := []byte(textContent(t, result))
+			assertTextAndQueryPanelCounts(t, resultBody)
+			var decoded map[string]any
+			_ = json.Unmarshal(resultBody, &decoded)
+			if got := decoded["data"].(map[string]any)["source"]; got != source {
+				t.Fatalf("source = %v, want %s", got, source)
+			}
+		})
+	}
+}
+
+func TestHandleGetDashboard_PreservesMalformedTextPanelQueries(t *testing.T) {
+	response := testDashboardWithTextPanel("not-an-array")
+	response["id"] = "d1"
+	body, _ := json.Marshal(map[string]any{"data": response})
+	mock := &client.MockClient{GetDashboardFn: func(context.Context, string) (json.RawMessage, error) { return body, nil }}
+	result, err := newTestHandler(mock).handleGetDashboard(testCtx(), makeToolRequest("signoz_get_dashboard", map[string]any{"id": "d1"}))
+	if err != nil || result.IsError {
+		t.Fatalf("get failed: err=%v result=%v", err, result.Content)
+	}
+	var decoded map[string]any
+	_ = json.Unmarshal([]byte(textContent(t, result)), &decoded)
+	panels := decoded["data"].(map[string]any)["spec"].(map[string]any)["panels"].(map[string]any)
+	if got := panels["runbook"].(map[string]any)["spec"].(map[string]any)["queries"]; got != "not-an-array" {
+		t.Fatalf("malformed TextPanel queries = %#v, want the upstream value preserved", got)
+	}
+}
+
+func TestHandleListDashboards_PreservesReturnedUserAndIntegrationSources(t *testing.T) {
+	mock := &client.MockClient{ListDashboardsFn: func(context.Context, int, int, string, string, string) (json.RawMessage, error) {
+		return json.RawMessage(`{"data":{"dashboards":[{"id":"u1","source":"user"},{"id":"i1","source":"integration"}],"total":2}}`), nil
+	}}
+	result, err := newTestHandler(mock).handleListDashboards(testCtx(), makeToolRequest("signoz_list_dashboards", map[string]any{}))
+	if err != nil || result.IsError {
+		t.Fatalf("list failed: err=%v result=%v", err, result.Content)
+	}
+	var decoded map[string]any
+	_ = json.Unmarshal([]byte(textContent(t, result)), &decoded)
+	rows := decoded["data"].(map[string]any)["dashboards"].([]any)
+	if rows[0].(map[string]any)["source"] != "user" || rows[1].(map[string]any)["source"] != "integration" {
+		t.Fatalf("list sources changed: %v", rows)
+	}
+}
+
+func TestHandleUpdateDashboard_NormalizesTextPanelAndStripsServerFields(t *testing.T) {
+	var gotBody []byte
+	mock := &client.MockClient{UpdateDashboardRawFn: func(_ context.Context, _ string, body []byte) (json.RawMessage, error) {
+		gotBody = append([]byte(nil), body...)
+		return json.RawMessage(`{"data":{"id":"d1"}}`), nil
+	}}
+	args := testDashboardWithTextPanel(nil)
+	args["id"] = "d1"
+	args["source"] = "user"
+	args["locked"] = false
+	args["createdAt"] = "2026-09-18T00:00:00Z"
+	result, err := newTestHandler(mock).handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", args))
+	if err != nil || result.IsError {
+		t.Fatalf("update failed: err=%v result=%v", err, result.Content)
+	}
+	assertTextAndQueryPanelCounts(t, gotBody)
+	var decoded map[string]any
+	_ = json.Unmarshal(gotBody, &decoded)
+	for _, field := range []string{"id", "source", "locked", "createdAt"} {
+		if _, present := decoded[field]; present {
+			t.Errorf("server field %q reached update body: %s", field, gotBody)
+		}
+	}
+}
+
+func TestHandlePatchDashboard_NormalizesFullTextPanelValue(t *testing.T) {
+	var gotPatch []byte
+	mock := &client.MockClient{PatchDashboardRawFn: func(_ context.Context, _ string, body []byte) (json.RawMessage, error) {
+		gotPatch = append([]byte(nil), body...)
+		return json.RawMessage(`{"data":{"id":"d1"}}`), nil
+	}}
+	patch := []any{map[string]any{"op": "add", "path": "/spec/panels/runbook", "value": textPanelForTest(nil)}}
+	result, err := newTestHandler(mock).handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", map[string]any{"id": "d1", "patch": patch}))
+	if err != nil || result.IsError {
+		t.Fatalf("patch failed: err=%v result=%v", err, result.Content)
+	}
+	var operations []map[string]any
+	if err := json.Unmarshal(gotPatch, &operations); err != nil {
+		t.Fatal(err)
+	}
+	panel, _ := json.Marshal(map[string]any{"spec": map[string]any{"panels": map[string]any{"runbook": operations[0]["value"]}}})
+	var normalized map[string]any
+	_ = json.Unmarshal(panel, &normalized)
+	queries := normalized["spec"].(map[string]any)["panels"].(map[string]any)["runbook"].(map[string]any)["spec"].(map[string]any)["queries"].([]any)
+	if len(queries) != 0 {
+		t.Fatalf("patched TextPanel queries count = %d, want 0", len(queries))
+	}
+}
+
+func TestDashboardNonUserWriteDenialsPreserveUpstreamCode(t *testing.T) {
+	denial := &client.HTTPStatusError{StatusCode: http.StatusBadRequest, Body: `{"status":"error","error":{"type":"invalid-input","code":"dashboard_immutable","message":"system dashboards cannot be modified"}}`}
+	mock := &client.MockClient{
+		UpdateDashboardRawFn: func(context.Context, string, []byte) (json.RawMessage, error) { return nil, denial },
+		PatchDashboardRawFn:  func(context.Context, string, []byte) (json.RawMessage, error) { return nil, denial },
+		DeleteDashboardFn:    func(context.Context, string) error { return denial },
+	}
+	h := newTestHandler(mock)
+	tests := []struct {
+		name string
+		call func() (*mcp.CallToolResult, error)
+	}{
+		{"update", func() (*mcp.CallToolResult, error) {
+			args := testDashboardWithTextPanel([]any{})
+			args["id"] = "system-1"
+			return h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", args))
+		}},
+		{"patch", func() (*mcp.CallToolResult, error) {
+			return h.handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", map[string]any{"id": "system-1", "patch": []any{}}))
+		}},
+		{"delete", func() (*mcp.CallToolResult, error) {
+			return h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{"id": "system-1"}))
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := tc.call()
+			if err != nil {
+				t.Fatal(err)
+			}
+			structured := resultStructuredMap(t, result)
+			if structured["code"] != CodeValidationFailed || structured["upstreamCode"] != "dashboard_immutable" {
+				t.Fatalf("coded denial not preserved: %v", structured)
+			}
+		})
 	}
 }

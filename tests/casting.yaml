@@ -1,0 +1,40 @@
+apiVersion: v1alpha1
+kind: Installation
+metadata:
+  name: signoz
+spec:
+  deployment:
+    mode: docker
+    flavor: compose
+  metastore:
+    kind: sqlite
+  signoz:
+    spec:
+      # Pinned to the v0.143.0 release artifacts (upstream source commit
+      # 7ce73f3470371daa7b245716a1b1a3fd6a2daee4). Foundry defaults both
+      # images to latest, so the digests below are required to prevent drift.
+      # The collector is versioned separately; see the ingester pin below.
+      image: signoz/signoz@sha256:7da6b9c07db100cfcf7949966211b16543e3d6828df31f0f7a24110d734a811c
+      version: v0.143.0
+      # Provision a root admin user on first boot so the e2e tests can log in
+      # without the interactive /api/v1/register flow. These must match
+      # ROOT_EMAIL / ROOT_PASSWORD in fixtures/signoz.py.
+      env:
+        SIGNOZ_USER_ROOT_ENABLED: "true"
+        SIGNOZ_USER_ROOT_EMAIL: "admin@e2e.test"
+        SIGNOZ_USER_ROOT_PASSWORD: "password123Z$"
+        # sqlstore.sqlite.transaction_mode — take the sqlite write lock at
+        # BEGIN instead of on first write, avoiding "database is locked"
+        # errors under concurrent test writes.
+        SIGNOZ_SQLSTORE_SQLITE_TRANSACTION__MODE: "immediate"
+        # Disable the stats/telemetry reporter so e2e runs aren't counted
+        # (statsreporter.enabled defaults to true → the "analytics" provider;
+        # false selects the noop provider).
+        SIGNOZ_STATSREPORTER_ENABLED: "false"
+  ingester:
+    spec:
+      # SigNoz v0.143.0 requires collector v0.144.11 (upgrade guide). It pushes
+      # an OpAMP config with the signozspanmapper and signozllmpricing
+      # processors; older collectors reject it and never open the OTLP ports.
+      image: signoz/signoz-otel-collector@sha256:403e83145e4ca435cbac02f2022fe1635ceadb908fad723e8b1fb1915e26af83
+      version: v0.144.11

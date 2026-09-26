@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -22,6 +22,9 @@ import (
 
 func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 	client := &signozclient.MockClient{
+		GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
+			return json.RawMessage(`{"status":"success","data":{"dashboard.count":1}}`), nil
+		},
 		ListAlertsFn: func(context.Context, types.ListAlertsParams) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":[]}`), nil
 		},
@@ -40,6 +43,9 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 		name string
 		call func() (*mcp.CallToolResult, error)
 	}{
+		{"signoz_get_org_overview", func() (*mcp.CallToolResult, error) {
+			return h.handleGetOrgOverview(testCtx(), makeToolRequest("signoz_get_org_overview", map[string]any{}))
+		}},
 		{"signoz_list_alerts", func() (*mcp.CallToolResult, error) {
 			return h.handleListAlerts(ctxWithURL(), makeToolRequest("signoz_list_alerts", map[string]any{}))
 		}},
@@ -112,7 +118,7 @@ func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
 	}
 }
 
-func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
+func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	reader := sdkmetric.NewManualReader()
@@ -123,7 +129,7 @@ func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &Handler{logger: logger, meters: meters}
-	s := server.NewMCPServer("test", "0.0.0")
+	s := newMCPTestServer()
 	tool := mcp.NewTool("shadow_probe", mcp.WithNumber("webhook_password"))
 	called := false
 	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -131,16 +137,23 @@ func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
 		return mcp.NewToolResultText("ok"), nil
 	})
 
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"webhook_password":"super-secret-value"}}}`))
+	ctx := util.SetClientSource(context.Background(), "ai-assistant")
+	response := callTestToolFromJSONRPC(ctx, t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"searchContext":"create a webhook","webhook_password":"super-secret-value"}}}`))
 	if !called {
 		t.Fatal("input mismatch must not block the handler call")
 	}
+	callTestToolFromJSONRPC(ctx, t, s, json.RawMessage(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"searchContext":"second attempt","webhook_password":"another-secret-value"}}}`))
 	encoded, err := json.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(encoded), inputValidationNoticePrefix) {
-		t.Fatalf("successful result missing in-band validation notice: %s", encoded)
+	const wantNotice = `Input validation notice: parameter "webhook_password" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.`
+	encodedNotice, err := json.Marshal(wantNotice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, encodedNotice[1:len(encodedNotice)-1]) {
+		t.Fatalf("successful result missing exact in-band validation notice: %s", encoded)
 	}
 	if !strings.Contains(string(encoded), `"ok"`) {
 		t.Fatalf("original handler content must be preserved alongside the notice: %s", encoded)
@@ -151,16 +164,37 @@ func TestInputMismatchServedBestEffortAndNeverLogsArgumentValues(t *testing.T) {
 	if !strings.Contains(logs.String(), "tool schema validation mismatch") || !strings.Contains(logs.String(), `"validation.direction":"input"`) {
 		t.Fatalf("missing shadow mismatch warning: %s", logs.String())
 	}
-	if strings.Contains(logs.String(), "super-secret-value") {
+	if count := strings.Count(logs.String(), "tool schema validation mismatch"); count != 1 {
+		t.Fatalf("mismatch warning count = %d, want one representative request per rate-limit window; logs=%s", count, logs.String())
+	}
+	if strings.Contains(logs.String(), "super-secret-value") || strings.Contains(logs.String(), "another-secret-value") {
 		t.Fatalf("validation telemetry leaked raw argument values: %s", logs.String())
+	}
+	if !strings.Contains(logs.String(), `"mcp.request":`) || !strings.Contains(logs.String(), `create a webhook`) || !strings.Contains(logs.String(), `[REDACTED]`) {
+		t.Fatalf("validation telemetry missing reproducible redacted requests: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), `second attempt`) {
+		t.Fatalf("identical mismatch inside rate-limit window should be suppressed: %s", logs.String())
 	}
 	var collected metricdata.ResourceMetrics
 	if err := reader.Collect(context.Background(), &collected); err != nil {
 		t.Fatal(err)
 	}
 	sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.mismatches")
-	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 1 {
+	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 2 {
 		t.Fatalf("shadow mismatch counter = %#v, found=%t", sum, ok)
+	}
+	for key, want := range map[attribute.Key]string{
+		attribute.Key("gen_ai.tool.name"):      "shadow_probe",
+		attribute.Key("validation.direction"):  "input",
+		attribute.Key("validation.path"):       "webhook_password",
+		attribute.Key("validation.constraint"): "schema",
+		otelpkg.MCPClientSourceKey:             "ai-assistant",
+	} {
+		got, present := sum.DataPoints[0].Attributes.Value(key)
+		if !present || got.AsString() != want {
+			t.Fatalf("mismatch metric %s = %v, present=%t; want %q", key, got, present, want)
+		}
 	}
 }
 
@@ -175,7 +209,7 @@ func TestOutputMismatchPassesOriginalResultAndCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &Handler{logger: logger, meters: meters}
-	s := server.NewMCPServer("test", "0.0.0")
+	s := newMCPTestServer()
 	tool := mcp.NewTool("output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
 	}]())
@@ -183,7 +217,7 @@ func TestOutputMismatchPassesOriginalResultAndCounts(t *testing.T) {
 		return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
 	})
 
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
+	response := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
 	if !strings.Contains(string(b), `"count":"wrong"`) || strings.Contains(string(b), `"isError":true`) {
 		t.Fatalf("output mismatch did not pass the original result through: %s", b)
@@ -216,7 +250,7 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 		t.Fatal(err)
 	}
 	h := &Handler{logger: logger, meters: meters}
-	s := server.NewMCPServer("test", "0.0.0")
+	s := newMCPTestServer()
 	tool := mcp.NewTool("nil_output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
 	}]())
@@ -224,7 +258,7 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 		return mcp.NewToolResultText("text-only"), nil
 	})
 
-	response := s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nil_output_probe","arguments":{}}}`))
+	response := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nil_output_probe","arguments":{}}}`))
 	b, _ := json.Marshal(response)
 	if !strings.Contains(string(b), "text-only") || strings.Contains(string(b), `"isError":true`) {
 		t.Fatalf("nil StructuredContent should fail open with the original result: %s", b)
@@ -253,14 +287,18 @@ func TestSchemaCompileFailureRegistersFailOpenAndCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &Handler{logger: logger, meters: meters}
-	s := server.NewMCPServer("test", "0.0.0")
-	tool := mcp.NewToolWithRawSchema("broken_schema_probe", "probe", json.RawMessage(`{"type":`))
+	s := newMCPTestServer()
+	tool := mcp.Tool{
+		Name:        "broken_schema_probe",
+		Description: "probe",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"value":{"$ref":"missing.json"}}}`),
+	}
 	called := false
 	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		called = true
 		return mcp.NewToolResultText("ok"), nil
 	})
-	s.HandleMessage(context.Background(), json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"broken_schema_probe","arguments":{"secret":"do-not-log"}}}`))
+	callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"broken_schema_probe","arguments":{"secret":"do-not-log"}}}`))
 	if !called {
 		t.Fatal("compile failure prevented fail-open handler registration")
 	}

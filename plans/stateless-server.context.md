@@ -130,3 +130,6 @@ investigation.
   - Non-blocking upstream quirks noted: saved-view GET-after-delete returns 500 (SigNoz backend)
     not 404; MCP layer does not reject a structurally-malformed `filters` object (passed through,
     backend ignores). Neither is an MCP regression.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

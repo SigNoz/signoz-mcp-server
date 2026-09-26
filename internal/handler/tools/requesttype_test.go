@@ -9,9 +9,9 @@ import (
 // parseMetricsQueryArgs) only — it asserts the returned error, never a
 // *mcp.CallToolResult, so there is no StructuredContent.code to pin here.
 // Handler-level coverage that the unknown-requestType rejection carries
-// CodeValidationFailed lives where a handler result is available: the
-// build-tagged e2e_familye_test.go (TestE2EFamilyE_K4_RequestTypeValidation)
-// asserts the code on aggregate_logs/query_metrics results.
+// CodeValidationFailed lives where a handler result is available: the live
+// e2e suite (tests/e2e/tests/test_param_validation.py) asserts the code on
+// aggregate_logs/query_metrics results through the MCP transport.
 
 // TestParseAggregateArgs_RejectsUnknownRequestType pins K4: the aggregate tools
 // reject an unknown requestType at the arg layer instead of passing it through.

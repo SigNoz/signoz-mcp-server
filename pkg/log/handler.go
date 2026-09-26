@@ -42,10 +42,11 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if signozURL, ok := util.GetSigNozURL(ctx); ok && signozURL != "" {
 		r.AddAttrs(slog.String("mcp.tenant_url", signozURL))
 	}
-	if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" {
+	toolName, _ := util.GetToolName(ctx)
+	if searchContext, ok := util.GetSearchContext(ctx); ok && searchContext != "" && !IsSecretBearingTool(toolName) {
 		r.AddAttrs(slog.String("mcp.search_context", searchContext))
 	}
-	if toolName, ok := util.GetToolName(ctx); ok && toolName != "" {
+	if toolName != "" {
 		r.AddAttrs(
 			slog.String("gen_ai.tool.name", toolName),
 			slog.String("gen_ai.operation.name", "execute_tool"),
@@ -122,7 +123,7 @@ func captureStacktrace(skip int) string {
 		b.WriteString("\n\t")
 		b.WriteString(frame.File)
 		b.WriteString(":")
-		b.WriteString(fmt.Sprintf("%d", frame.Line))
+		fmt.Fprintf(&b, "%d", frame.Line)
 		if !more {
 			break
 		}

@@ -341,6 +341,19 @@ func TestQueryPayloadValidate_PromQLDefaultsRequestType(t *testing.T) {
 	require.Equal(t, "time_series", q.RequestType)
 }
 
+func TestQueryPayloadValidate_RejectsHeatmapForEveryQueryType(t *testing.T) {
+	for _, query := range []Query{
+		{Type: "promql", Spec: PromQLSpec{Name: "A", Query: `up`}},
+		{Type: "clickhouse_sql", Spec: ClickHouseSQLSpec{Name: "A", Query: `SELECT 1`}},
+		{Type: "builder_query", Spec: QuerySpec{Name: "A", Signal: "metrics"}},
+	} {
+		q := &QueryPayload{Start: 1, End: 2, RequestType: "heatmap", CompositeQuery: CompositeQuery{Queries: []Query{query}}}
+		err := q.Validate()
+		require.Error(t, err, query.Type)
+		require.Contains(t, err.Error(), `requestType "heatmap" is not supported`)
+	}
+}
+
 func TestQueryPayloadRoundTrip_MixedBuilderAndPromQL(t *testing.T) {
 	input := `{
 		"schemaVersion":"v1",
@@ -859,7 +872,7 @@ func TestQueryPayloadValidate_LogsTimeSeriesRequiresAggregations(t *testing.T) {
 // the traces payload hardcoded Offset:0 and ignored the caller's offset, making
 // signoz_search_traces pagination a silent no-op.
 func TestBuildTracesQueryPayload_PropagatesOffset(t *testing.T) {
-	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 25)
+	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 25, TraceSearchCoreFields)
 	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
 	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
 	require.Equal(t, 50, spec.Limit)
@@ -867,7 +880,7 @@ func TestBuildTracesQueryPayload_PropagatesOffset(t *testing.T) {
 }
 
 func TestBuildTracesQueryPayload_UsesCanonicalTraceFields(t *testing.T) {
-	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 0)
+	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 0, TraceDetailSelectFields)
 	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
 	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
 
@@ -952,4 +965,30 @@ func TestBuildTracesQueryPayload_UsesCanonicalTraceFields(t *testing.T) {
 	for name, want := range expected {
 		require.Equal(t, want, fields[name], "select field %q", name)
 	}
+}
+
+func TestQueryPayload_SearchExpressionsPassThroughUnchanged(t *testing.T) {
+	expression := `search('timeout') AND NOT search('panic', body) AND (search('it\'s', body, resource) OR search('C:\\logs', 'attribute')) AND severity_text = 'ERROR'`
+	body := `{"schemaVersion":"v1","start":1700000000000,"end":1700003600000,"requestType":"raw","compositeQuery":{"queries":[{"type":"builder_query","spec":{"name":"A","signal":"logs","disabled":false,"limit":50,"offset":7,"order":[{"key":{"name":"timestamp"},"direction":"desc"}],"having":{"expression":""},"filter":{"expression":` + jsonString(expression) + `}}}]},"formatOptions":{"formatTableResultForUI":false,"fillGaps":false},"variables":{}}`
+
+	var payload QueryPayload
+	require.NoError(t, json.Unmarshal([]byte(body), &payload))
+	require.NoError(t, payload.Validate())
+	out, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var round struct {
+		CompositeQuery struct {
+			Queries []struct {
+				Spec struct {
+					Filter struct {
+						Expression string `json:"expression"`
+					} `json:"filter"`
+				} `json:"spec"`
+			} `json:"queries"`
+		} `json:"compositeQuery"`
+	}
+	require.NoError(t, json.Unmarshal(out, &round))
+	require.Equal(t, expression, round.CompositeQuery.Queries[0].Spec.Filter.Expression,
+		"caller-authored search() bytes must survive validation and remarshal unchanged")
 }

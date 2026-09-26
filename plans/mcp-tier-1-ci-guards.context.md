@@ -63,3 +63,6 @@
 ### 2026-07-20 — Serialized-schema byte ceiling removed
 - The user explicitly chose to remove the total serialized-schema byte guardrail instead of raising or grandfathering it. Tool-name, description, top-level property inventory, and schema-nesting protections remain.
 - This policy change does not alter runtime tool-call payload limits: streamable HTTP still uses the separately configurable `MCP_MAX_REQUEST_BYTES` limit, and stdio does not use that middleware.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

@@ -8,10 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) {
@@ -151,7 +150,7 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 			called := false
 			got := ""
 			h := &Handler{logger: logpkg.New("error")}
-			s := server.NewMCPServer("test", "0.0.0")
+			s := newMCPTestServer()
 			h.addTool(s, entry.Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				called = true
 				var err error
@@ -163,7 +162,7 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 			})
 
 			raw := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tt.tool, tt.arguments)
-			response := s.HandleMessage(context.Background(), json.RawMessage(raw))
+			response := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(raw))
 			encoded, _ := json.Marshal(response)
 			if !called {
 				t.Fatalf("raw-wire call did not reach the handler: %s", encoded)
@@ -198,7 +197,7 @@ func TestRawWireIntegerAboveFloat53ProductionDecodeCharacterization(t *testing.T
 		t.Run(tt.name, func(t *testing.T) {
 			var got int64
 			h := &Handler{logger: logpkg.New("error")}
-			s := server.NewMCPServer("test", "0.0.0")
+			s := newMCPTestServer()
 			tool := mcp.NewTool("precision_probe",
 				mcp.WithString("metricName", mcp.Required()),
 				mcp.WithString("start", intOrStringType()))
@@ -212,7 +211,7 @@ func TestRawWireIntegerAboveFloat53ProductionDecodeCharacterization(t *testing.T
 			})
 
 			raw := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"precision_probe","arguments":{"metricName":"cpu","start":%s}}}`, tt.argument)
-			response := s.HandleMessage(context.Background(), json.RawMessage(raw))
+			response := callTestToolFromJSONRPC(context.Background(), t, s, json.RawMessage(raw))
 			if got != tt.wantStart {
 				encoded, _ := json.Marshal(response)
 				t.Fatalf("production-normalized start = %d, want %d; response=%s", got, tt.wantStart, encoded)

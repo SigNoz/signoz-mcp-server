@@ -38,3 +38,6 @@ Verified directly against the SigNoz API (`/api/v1/explorer/views`, the exact pa
 ## Open Questions
 - [x] Does the SigNoz product actually treat `meter` as a distinct first-class sourcePage with its own route? **Yes** — verified against `SigNoz/signoz` main (2026-06-15) and confirmed live via the API (2026-06-15).
 - [x] Should we also reject `sourcePage="metrics" + source="meter"` going forward? **Yes** — symmetric guard prevents perpetuating the mis-filing; delete+re-create is the path for legacy mis-filed views.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

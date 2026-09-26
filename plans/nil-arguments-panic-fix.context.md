@@ -30,3 +30,6 @@ Follow-up to a panic investigation: "Explore more MCP server panics and crashes 
 
 ## Open Questions
 - [x] Codex review feedback — **resolved**: verdict was "sound and complete"; the one LOW test-coverage gap was closed by extending the regression test to all 12 handlers.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

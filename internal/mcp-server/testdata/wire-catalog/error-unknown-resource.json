@@ -1,0 +1,23 @@
+{
+  "method": "resources/read",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "resources/read",
+    "params": {
+      "uri": "signoz://unknown"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "error": {
+      "code": -32002,
+      "message": "handler not found for resource URI 'signoz://unknown': resource not found"
+    },
+    "id": 0,
+    "jsonrpc": "2.0"
+  }
+}

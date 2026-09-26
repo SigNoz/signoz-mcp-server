@@ -18,6 +18,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+
+
+
+
+## [0.15.0] - 2026-09-25
+
+### Breaking changes
+- align MCP with released SigNoz feature contracts ([#313](https://github.com/SigNoz/signoz-mcp-server/pull/313))
+
+### Added
+- teach panel query dry-runs in the widget guide ([#323](https://github.com/SigNoz/signoz-mcp-server/pull/323))
+- support SigNoz area chart panels ([#320](https://github.com/SigNoz/signoz-mcp-server/pull/320))
+- rank by all-term and most-term matches, stem titles, and guide client queries ([#309](https://github.com/SigNoz/signoz-mcp-server/pull/309))
+
+### Fixed
+- accept SigNoz Slack message settings ([#319](https://github.com/SigNoz/signoz-mcp-server/pull/319))
+- name the real PromQL and ClickHouse envelope types ([#318](https://github.com/SigNoz/signoz-mcp-server/pull/318))
+
+### Documentation
+- correct percentile guards and anomaly guidance ([#314](https://github.com/SigNoz/signoz-mcp-server/pull/314))
+- align planning convention with AI Assistant ([#307](https://github.com/SigNoz/signoz-mcp-server/pull/307))
+
+### CI
+- list breaking changes in the generated changelog ([#316](https://github.com/SigNoz/signoz-mcp-server/pull/316))
+
+### Other
+- remove unused ListMetricKeys ([#322](https://github.com/SigNoz/signoz-mcp-server/pull/322))
+- bump go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc from 1.42.0 to 1.45.0 ([#310](https://github.com/SigNoz/signoz-mcp-server/pull/310))
+- bump go.opentelemetry.io/otel/exporters/otlp/otlptrace from 1.42.0 to 1.45.0 ([#311](https://github.com/SigNoz/signoz-mcp-server/pull/311))
+- bump go.opentelemetry.io/otel/sdk from 1.44.0 to 1.45.0 ([#312](https://github.com/SigNoz/signoz-mcp-server/pull/312))
+- add make ci target and share CI checks with make ([#315](https://github.com/SigNoz/signoz-mcp-server/pull/315))
+- perf(docs): bound docs refresh memory with conditional fetches, content gating, chunked builds, and live-index deltas ([#308](https://github.com/SigNoz/signoz-mcp-server/pull/308))
+- bump google.golang.org/grpc from 1.83.1 to 1.83.2 ([#306](https://github.com/SigNoz/signoz-mcp-server/pull/306))
+- bump google.golang.org/grpc from 1.82.1 to 1.83.1 ([#300](https://github.com/SigNoz/signoz-mcp-server/pull/300))
+- bump hono from 4.13.2 to 4.13.7 in /tools/mcp-ci ([#304](https://github.com/SigNoz/signoz-mcp-server/pull/304))
+- bump fast-uri from 3.1.5 to 3.1.7 in /tools/mcp-ci ([#302](https://github.com/SigNoz/signoz-mcp-server/pull/302))
+- post-release v0.14.0 ([#301](https://github.com/SigNoz/signoz-mcp-server/pull/301))
+
+## [0.14.0] - 2026-09-02
+
+### Added
+- migrate saved view tools to v2 saved_views API (nerve-pod#100) ([#296](https://github.com/SigNoz/signoz-mcp-server/pull/296))
+
+### Changed
+- retire live resource templates ([#295](https://github.com/SigNoz/signoz-mcp-server/pull/295))
+
+### Documentation
+- remove AI-slop patterns and fix misreadings in client-visible copy ([#294](https://github.com/SigNoz/signoz-mcp-server/pull/294))
+
+### Other
+- port the Go e2e families to the Python harness ([#298](https://github.com/SigNoz/signoz-mcp-server/pull/298))
+- foundry-provisioned e2e harness and CI workflow ([#297](https://github.com/SigNoz/signoz-mcp-server/pull/297))
+
+## [0.13.0] - 2026-08-19
+
+### Added
+- migrate to the official Go SDK ([#286](https://github.com/SigNoz/signoz-mcp-server/pull/286))
+
+### Fixed
+- preserve recognized backend error guidance ([#289](https://github.com/SigNoz/signoz-mcp-server/pull/289))
+
+### Documentation
+- add Grok Build MCP configuration ([#292](https://github.com/SigNoz/signoz-mcp-server/pull/292))
+
+### Other
+- upgrade to go 1.26 ([#290](https://github.com/SigNoz/signoz-mcp-server/pull/290))
+- add selected official conformance ([#287](https://github.com/SigNoz/signoz-mcp-server/pull/287))
+
+## [0.12.0] - 2026-08-12
+
+### Changed
+- validate credentials via service_accounts/me only ([#280](https://github.com/SigNoz/signoz-mcp-server/pull/280))
+
+## [0.11.0] - 2026-08-05
+
+### Added
+- capture failed MCP requests ([#276](https://github.com/SigNoz/signoz-mcp-server/pull/276))
+- add organization overview and auth recovery ([#267](https://github.com/SigNoz/signoz-mcp-server/pull/267))
+
+### Fixed
+- support policy routing and preflight reuse ([#264](https://github.com/SigNoz/signoz-mcp-server/pull/264))
+
 ## [0.10.0] - 2026-07-27
 
 ### Changed
@@ -341,3 +424,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.8.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.7.0...v0.8.0
 [0.9.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.8.0...v0.9.0
 [0.10.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.9.0...v0.10.0
+[0.11.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.10.0...v0.11.0
+[0.12.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.11.0...v0.12.0
+[0.13.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.12.0...v0.13.0
+[0.14.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.13.0...v0.14.0
+[0.15.0]: https://github.com/SigNoz/signoz-mcp-server/compare/v0.14.0...v0.15.0

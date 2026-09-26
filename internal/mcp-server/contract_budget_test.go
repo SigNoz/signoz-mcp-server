@@ -12,8 +12,7 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/guardrails"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
-	mcpclient "github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -73,10 +72,15 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 				t.Errorf("initialize preamble missing self-contained guidance %q", required)
 			}
 		}
+		for _, required := range []string{"same still-current prepared operation", "do not repeat them", "Refresh if state may have changed"} {
+			if !strings.Contains(instructions, required) {
+				t.Errorf("initialize instructions missing safe preflight-reuse guidance %q", required)
+			}
+		}
 	})
 
 	t.Run("tool and parameter descriptions", func(t *testing.T) {
-		toolsByName := make(map[string]mcp.Tool, len(listedTools))
+		toolsByName := make(map[string]*mcp.Tool, len(listedTools))
 		maxToolName, maxToolBytes := "", 0
 		maxParameterPath, maxParameterBytes := "", 0
 		for _, tool := range listedTools {
@@ -149,7 +153,15 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_create_alert": {
 				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold alerts over metrics, logs, traces, or exceptions", "metric-only v1 anomaly", "signoz://alert/instructions", "Before creating", "signoz_list_notification_channels", "verify user-provided names", "If validation still rejects a channel name", "never guess"},
+				required: []string{"signoz_update_alert", "v2alpha1 threshold/PromQL alerts", "metric-only v1 anomaly", "signoz://alert/instructions", "same still-current prepared operation", "fully paginated signoz_list_notification_channels", "signoz_create_notification_channel", "never guess or create automatically", "V2 direct routing needs a channel on every tier", "confirmed v2 policy routing may omit tier channels", "v1 anomaly uses direct preferredChannels"},
+			},
+			"signoz_get_alert": {
+				prefix:   "Use this when",
+				required: []string{"complete current definition is not already available for the prepared operation", "Reuse a still-current definition fetched for that operation", "instead of repeating this preflight"},
+			},
+			"signoz_update_alert": {
+				prefix:   "Use this when",
+				required: []string{"full replacement", "signoz_get_alert", "same still-current prepared operation", "preserve every unchanged field", "signoz://alert/instructions", "signoz://alert/examples", "fully paginated signoz_list_notification_channels", "refreshing only if state may have changed", "signoz_create_notification_channel", "never create automatically", "V2 direct routing needs a channel on every tier", "confirmed v2 policy routing may omit tier channels", "v1 anomaly uses direct preferredChannels"},
 			},
 			"signoz_create_dashboard": {
 				prefix:   "Use this when",
@@ -244,30 +256,30 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 	dashboard.InitClickhouseSchema()
 	ctx := context.Background()
-	client, err := mcpclient.NewInProcessClient(buildTestServer(t))
+	client, err := newIntegrationClient(t, buildTestServer(t))
 	if err != nil {
 		t.Fatalf("create in-process client: %v", err)
 	}
-	initializeResult, err := client.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
-		ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-		ClientInfo:      mcp.Implementation{Name: "resource-integrity-test", Version: version.Version},
-	}})
+	initializeResult, err := client.Initialize(ctx, &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo:      &mcp.Implementation{Name: "resource-integrity-test", Version: version.Version},
+	})
 	if err != nil {
 		t.Fatalf("initialize in-process client: %v", err)
 	}
-	toolsResult, err := client.ListTools(ctx, mcp.ListToolsRequest{})
+	toolsResult, err := client.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
-	resourcesResult, err := client.ListResources(ctx, mcp.ListResourcesRequest{})
+	resourcesResult, err := client.ListResources(ctx, &mcp.ListResourcesParams{})
 	if err != nil {
 		t.Fatalf("list resources: %v", err)
 	}
-	templatesResult, err := client.ListResourceTemplates(ctx, mcp.ListResourceTemplatesRequest{})
+	templatesResult, err := client.ListResourceTemplates(ctx, &mcp.ListResourceTemplatesParams{})
 	if err != nil {
 		t.Fatalf("list resource templates: %v", err)
 	}
-	promptsResult, err := client.ListPrompts(ctx, mcp.ListPromptsRequest{})
+	promptsResult, err := client.ListPrompts(ctx, &mcp.ListPromptsParams{})
 	if err != nil {
 		t.Fatalf("list prompts: %v", err)
 	}
@@ -302,9 +314,34 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 			advertisedDescriptions = append(advertisedDescriptions, argument.Description)
 		}
 	}
-	resourceByURI := make(map[string]mcp.Resource, len(resourcesResult.Resources))
+	resourceByURI := make(map[string]*mcp.Resource, len(resourcesResult.Resources))
 	for _, resource := range resourcesResult.Resources {
 		resourceByURI[resource.URI] = resource
+	}
+	resourceContracts := map[string][]string{
+		"signoz://alert/instructions": {
+			"unless its current content was already read for the same prepared operation",
+			"reuse or call signoz_list_notification_channels",
+			"Read signoz://alert/examples only when examples are still needed",
+		},
+		"signoz://alert/examples": {
+			"signoz_list_notification_channels",
+			"offer signoz_create_notification_channel",
+			"Confirmed v2 policy routing may omit direct channels",
+			"cannot use policy routing",
+		},
+	}
+	for uri, requiredPhrases := range resourceContracts {
+		resource, ok := resourceByURI[uri]
+		if !ok {
+			t.Errorf("required alert resource %s is not present in resources/list", uri)
+			continue
+		}
+		for _, required := range requiredPhrases {
+			if !strings.Contains(resource.Description, required) {
+				t.Errorf("%s description missing state-aware guidance %q", uri, required)
+			}
+		}
 	}
 
 	referenced := make(map[string]struct{})
@@ -325,7 +362,7 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 			t.Errorf("advertised resource %s has no MIME type", uri)
 			continue
 		}
-		readResult, err := client.ReadResource(ctx, mcp.ReadResourceRequest{Params: mcp.ReadResourceParams{URI: uri}})
+		readResult, err := client.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
 		if err != nil {
 			t.Errorf("read advertised resource %s: %v", uri, err)
 			continue
@@ -352,26 +389,24 @@ func TestGuardrail_AdvertisedResourceURIsPreserveFullPointer(t *testing.T) {
 	}
 }
 
-func initializedWireCatalog(t *testing.T) (*mcp.InitializeResult, []mcp.Tool) {
+func initializedWireCatalog(t *testing.T) (*mcp.InitializeResult, []*mcp.Tool) {
 	t.Helper()
 
-	client, err := mcpclient.NewInProcessClient(buildTestServer(t))
+	client, err := newIntegrationClient(t, buildTestServer(t))
 	if err != nil {
 		t.Fatalf("create in-process client: %v", err)
 	}
-	initializeResult, err := client.Initialize(context.Background(), mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo: mcp.Implementation{
-				Name:    "contract-budget-test",
-				Version: version.Version,
-			},
+	initializeResult, err := client.Initialize(context.Background(), &mcp.InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		ClientInfo: &mcp.Implementation{
+			Name:    "contract-budget-test",
+			Version: version.Version,
 		},
 	})
 	if err != nil {
 		t.Fatalf("initialize in-process client: %v", err)
 	}
-	toolsResult, err := client.ListTools(context.Background(), mcp.ListToolsRequest{})
+	toolsResult, err := client.ListTools(context.Background(), &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("list initialized tools: %v", err)
 	}
@@ -451,21 +486,16 @@ func schemaNestingDepth(node any) int {
 	return maxDepth
 }
 
-func assertResourceContentIntegrity(t *testing.T, uri, advertisedMIME string, index int, content mcp.ResourceContents) {
+func assertResourceContentIntegrity(t *testing.T, uri, advertisedMIME string, index int, content *mcp.ResourceContents) {
 	t.Helper()
-	var contentURI, contentMIME, payload string
-	switch value := content.(type) {
-	case mcp.TextResourceContents:
-		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Text
-	case *mcp.TextResourceContents:
-		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Text
-	case mcp.BlobResourceContents:
-		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Blob
-	case *mcp.BlobResourceContents:
-		contentURI, contentMIME, payload = value.URI, value.MIMEType, value.Blob
-	default:
-		t.Errorf("resource %s content[%d] has unsupported type %T", uri, index, content)
+	if content == nil {
+		t.Errorf("resource %s content[%d] is nil", uri, index)
 		return
+	}
+	contentURI, contentMIME := content.URI, content.MIMEType
+	payload := content.Text
+	if payload == "" {
+		payload = string(content.Blob)
 	}
 	if contentURI != uri {
 		t.Errorf("resource %s content[%d] URI = %q", uri, index, contentURI)

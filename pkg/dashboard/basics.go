@@ -11,9 +11,13 @@ Critical:
 For full query patterns and signal-specific instructions, consult the schema resources, widget examples and the panels-and-queries guide (signoz://dashboard/widgets-instructions).
 
 Basics:
-Dashboard Title: set spec.display.name to a descriptive name for your dashboard. Do NOT set the top-level "name" when creating a dashboard — it is an immutable machine label the server generates from spec.display.name; however it has to be set when updating a dashboard with the full payload. schemaVersion must be "v6". 
+Dashboard Title: set spec.display.name to a descriptive name for your dashboard. Do NOT set the top-level "name" when creating a dashboard; it is an immutable machine label the server generates from spec.display.name; however it has to be set when updating a dashboard with the full payload. schemaVersion must be "v6". 
 Tags: key/value descriptors (max 10) that encode a dashboard's domain, environment, or ownership so they can be filtered, grouped, and retrieved without ambiguity.
 Description: set spec.display.description as a precise summary of the dashboard's intent, scope, and expected use so a reader can infer what questions it answers and when to rely on it.
+
+Dashboard source and writes:
+- Only source=user dashboards can be updated, patched, or deleted. Let the upstream coded error explain denied writes; do not preflight with a second get.
+- source is server-owned and must not be sent in update bodies. It is not supported by the list filter DSL.
 
 Layout [Critical]:
 - Position panels with a Grid layout in spec.layouts[]: a 12-column grid where x and y define position, width and height define dimensions in grid units.

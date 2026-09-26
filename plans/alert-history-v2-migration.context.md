@@ -122,3 +122,10 @@ to lock). Implementation has not started — plan stays `Planning` until coding 
 - User identified that the review-fix commit had replaced the original detailed implementation plan with a shorter summary.
 - Restored the plan content from `d0313e14dc1894fb3737f2b826deb8e1aebe16e0` and added a separate section describing the review-driven changes that supersede individual original assumptions.
 - No commit or push is authorized for this documentation correction yet.
+
+### 2026-08-25 — Alert-summary resource retired
+- Production telemetry showed 8 alert-summary reads in 90 days, clustered in one tenant and two short sessions, versus 12,702 calls to the equivalent alert definition/history tools.
+- The `resource-template-deprecation` work therefore removed the alert-summary resource. This supersedes only this plan's resource-specific steps; `signoz_get_alert_history` remains the supported v2 history contract.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

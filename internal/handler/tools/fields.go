@@ -4,8 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 const fieldContextParamDesc = "Restrict results to a single field context (optional). Valid values: " +
@@ -18,7 +17,7 @@ const fieldContextParamDesc = "Restrict results to a single field context (optio
 const fieldDataTypeParamDesc = "Restrict results to a single field data type (optional). " +
 	"Valid values: 'string', 'bool', 'int64', 'float64', 'number', or array forms like '[]string'."
 
-func (h *Handler) RegisterFieldsHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering fields handlers")
 
 	getFieldKeysTool := mcp.NewTool("signoz_get_field_keys",

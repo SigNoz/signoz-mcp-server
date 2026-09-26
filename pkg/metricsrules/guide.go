@@ -82,7 +82,7 @@ You can combine multiple metric queries using formulas:
 - Define multiple queries with names like "A", "B", "C"
 - Reference them in a formula expression: "A / B * 100"
 - Both queries in a formula should ideally use the same groupBy fields for compatible label sets
-- Different metrics can have different types — each gets independent aggregation validation
+- Different metrics can have different types; each gets independent aggregation validation
 
 ### Formula Functions
 Supported: exp, log, ln, sqrt, sin, cos, tan, abs, ceil, floor
@@ -254,7 +254,7 @@ range, not each time bucket. A short-lived spike can therefore fall outside the 
 ## Cost Meter (SigNoz usage / billing metrics)
 
 Cost Meter is the data store for the metrics SigNoz meters and bills on. Today these are
-telemetry ingestion volume — logs, spans, and metric data points, by count and by bytes —
+telemetry ingestion volume (logs, spans, and metric data points, by count and by bytes),
 and the set evolves (it may include other billable usage, such as AI credit consumption, in
 future). They answer questions like "which services consume the most telemetry budget?" or
 "ingestion volume by environment week-over-week". These metrics live in a separate store and
@@ -262,10 +262,10 @@ are **not** visible in the default metrics store.
 
 To query them, set ` + "`source: \"meter\"`" + ` on the ` + "`builder_query`" + ` spec (a sibling of
 ` + "`name`" + ` and ` + "`signal`" + `), or pass ` + "`source=\"meter\"`" + ` to **signoz_query_metrics**. Omit
-` + "`source`" + ` (or leave it empty) for ordinary metrics. Everything else — filters, groupBy,
-aggregations, formulas — works exactly as for normal metrics.
+` + "`source`" + ` (or leave it empty) for ordinary metrics. Everything else (filters, groupBy,
+aggregations, formulas) works exactly as for normal metrics.
 
-Even log and span volume are queried this way — as metrics with ` + "`signal: \"metrics\"`" + ` and
+Even log and span volume are queried this way, as metrics with ` + "`signal: \"metrics\"`" + ` and
 ` + "`source: \"meter\"`" + `, not through the logs or traces tools.
 
 ### Hourly aggregation — use ` + "`stepInterval: 3600`" + `
@@ -275,17 +275,17 @@ example below). A smaller step adds no resolution and a query window shorter tha
 most the current, still-incomplete hour (the build tested returns it flagged ` + "`partial: true`" + `;
 some versions return no data). Use a window of at least a few hours. When **signoz_query_metrics**
 is called without ` + "`stepInterval`" + ` it sends none and the backend auto-derives roughly
-` + "`max(60, window/300)`" + ` seconds — below 3600 for any window shorter than ~12.5 days — so pass
+` + "`max(60, window/300)`" + ` seconds, below 3600 for any window shorter than ~12.5 days, so pass
 ` + "`stepInterval: 3600`" + ` explicitly for meter queries.
 
 ### Discover the current meter metrics
 
-Don't assume a fixed list — the meter metric set evolves. Call **signoz_list_metrics** with
+Don't assume a fixed list; the meter metric set evolves. Call **signoz_list_metrics** with
 ` + "`source=\"meter\"`" + ` for the authoritative, current set, with each metric's ` + "`type`" + `,
 ` + "`temporality`" + `, and ` + "`unit`" + `, then apply the normal per-type aggregation rules (see above).
-As of this writing the set is telemetry-ingestion counters (delta monotonic sums) — for
+As of this writing the set is telemetry-ingestion counters (delta monotonic sums), for
 example ` + "`signoz.meter.log.size`" + ` (bytes), ` + "`signoz.meter.span.count`" + `, and
-` + "`signoz.meter.metric.datapoint.size`" + ` — for which ` + "`timeAggregation: rate`" + ` or ` + "`increase`" + `
+` + "`signoz.meter.metric.datapoint.size`" + `, for which ` + "`timeAggregation: rate`" + ` or ` + "`increase`" + `
 with ` + "`spaceAggregation: sum`" + ` is correct. Verify type/unit per metric via signoz_list_metrics
 rather than relying on this example list.
 

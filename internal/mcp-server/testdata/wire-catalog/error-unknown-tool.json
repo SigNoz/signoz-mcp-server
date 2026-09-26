@@ -1,0 +1,24 @@
+{
+  "method": "tools/call",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "arguments": {},
+      "name": "signoz_unknown"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "error": {
+      "code": -32602,
+      "message": "tool 'signoz_unknown' not found: tool not found"
+    },
+    "id": 0,
+    "jsonrpc": "2.0"
+  }
+}

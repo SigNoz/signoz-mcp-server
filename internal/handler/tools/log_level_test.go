@@ -95,20 +95,18 @@ func TestHandlePatchDashboardCancellationLogLevel(t *testing.T) {
 		t.Fatalf("code = %q, want %q", code, CodeCanceled)
 	}
 
-	records := bytes.TrimSpace(buf.Bytes())
-	if len(records) == 0 {
-		t.Fatal("expected a cancellation failure record")
-	}
-	lines := bytes.Split(records, []byte("\n"))
-	var rec map[string]any
-	if err := json.Unmarshal(lines[len(lines)-1], &rec); err != nil {
-		t.Fatalf("decode final log record %q: %v", lines[len(lines)-1], err)
-	}
-	if rec["level"] != "DEBUG" {
-		t.Fatalf("level = %v, want DEBUG", rec["level"])
-	}
 	wantMsg := "Failed to patch dashboard in SigNoz (request cancelled by client)"
-	if rec["msg"] != wantMsg {
-		t.Fatalf("msg = %v, want %q", rec["msg"], wantMsg)
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("decode log record %q: %v", line, err)
+		}
+		if rec["msg"] == wantMsg {
+			if rec["level"] != "DEBUG" {
+				t.Fatalf("level = %v, want DEBUG", rec["level"])
+			}
+			return
+		}
 	}
+	t.Fatalf("missing cancellation log %q in %s", wantMsg, buf.String())
 }

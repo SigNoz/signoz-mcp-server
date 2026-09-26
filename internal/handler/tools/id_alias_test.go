@@ -3,18 +3,18 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // These tests pin the K5 contract: every CRUD resource id is read from the
-// canonical "id" param, with the legacy key (ruleId/uuid/viewId) accepted
-// forever as a silent alias. For each tool we assert the new "id" key works AND
-// the legacy key still works (round-tripping to the same backend id).
+// canonical "id" param. Alert and view legacy keys remain aliases; dashboard
+// tools make the v0.142.0 hard cut and reject uuid with a correction to id.
 
 const aliasUUIDv7 = "0196634d-5d66-75c4-b778-e317f49dab7a"
 
@@ -134,8 +134,8 @@ func TestUpdateAlert_IDAndLegacyAlias(t *testing.T) {
 			var capturedID string
 			var capturedJSON []byte
 			mock := &client.MockClient{
-				ListNotificationChannelsFn: func(ctx context.Context) (json.RawMessage, error) {
-					return json.RawMessage(`{"data":[{"name":"slack-alerts","type":"slack"}]}`), nil
+				ListNotificationChannelsV2Fn: func(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
+					return listedNotificationChannels("slack-alerts"), nil
 				},
 				UpdateAlertRuleFn: func(ctx context.Context, ruleID string, alertJSON []byte) error {
 					capturedID = ruleID
@@ -204,109 +204,51 @@ func TestUpdateAlert_IDAndLegacyAlias(t *testing.T) {
 	}
 }
 
-func TestGetDashboard_IDAndLegacyAlias(t *testing.T) {
-	for _, key := range []string{"id", "uuid"} {
-		t.Run(key, func(t *testing.T) {
-			var captured string
-			mock := &client.MockClient{
-				GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
-					captured = uuid
-					return json.RawMessage(`{"data":{"uuid":"d1"}}`), nil
-				},
-			}
-			h := newTestHandler(mock)
-			req := makeToolRequest("signoz_get_dashboard", map[string]any{key: "d1"})
-			result, err := h.handleGetDashboard(testCtx(), req)
+func TestDashboardCanonicalIDAndLegacyAliasRejection(t *testing.T) {
+	called := false
+	mock := &client.MockClient{
+		GetDashboardFn:       func(context.Context, string) (json.RawMessage, error) { called = true; return nil, nil },
+		UpdateDashboardRawFn: func(context.Context, string, []byte) (json.RawMessage, error) { called = true; return nil, nil },
+		PatchDashboardRawFn:  func(context.Context, string, []byte) (json.RawMessage, error) { called = true; return nil, nil },
+		DeleteDashboardFn:    func(context.Context, string) error { called = true; return nil },
+	}
+	h := newTestHandler(mock)
+
+	tests := []struct {
+		name string
+		call func(map[string]any) (*mcp.CallToolResult, error)
+		args map[string]any
+	}{
+		{"get", func(args map[string]any) (*mcp.CallToolResult, error) {
+			return h.handleGetDashboard(testCtx(), makeToolRequest("signoz_get_dashboard", args))
+		}, map[string]any{}},
+		{"update", func(args map[string]any) (*mcp.CallToolResult, error) {
+			return h.handleUpdateDashboard(testCtx(), makeToolRequest("signoz_update_dashboard", args))
+		}, map[string]any{"schemaVersion": "v6", "name": "d1", "tags": []any{}, "spec": map[string]any{}}},
+		{"patch", func(args map[string]any) (*mcp.CallToolResult, error) {
+			return h.handlePatchDashboard(testCtx(), makeToolRequest("signoz_patch_dashboard", args))
+		}, map[string]any{"patch": []any{}}},
+		{"delete", func(args map[string]any) (*mcp.CallToolResult, error) {
+			return h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", args))
+		}, map[string]any{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			args := maps.Clone(tc.args)
+			args["id"] = "d1"
+			args["uuid"] = "legacy"
+			result, err := tc.call(args)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result.IsError {
-				t.Fatalf("error result: %v", result.Content)
-			}
-			if captured != "d1" {
-				t.Fatalf("backend uuid = %q, want d1 (via %q)", captured, key)
+			if !result.IsError || !strings.Contains(resultText(t, result), `"uuid" is no longer accepted`) {
+				t.Fatalf("expected canonical-id correction, got: %v", result.Content)
 			}
 		})
 	}
-}
-
-func TestDeleteDashboard_IDAndLegacyAlias(t *testing.T) {
-	for _, key := range []string{"id", "uuid"} {
-		t.Run(key, func(t *testing.T) {
-			var captured string
-			mock := &client.MockClient{
-				DeleteDashboardFn: func(ctx context.Context, id string) error {
-					captured = id
-					return nil
-				},
-			}
-			h := newTestHandler(mock)
-			req := makeToolRequest("signoz_delete_dashboard", map[string]any{key: "d1"})
-			result, err := h.handleDeleteDashboard(testCtx(), req)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result.IsError {
-				t.Fatalf("error result: %v", result.Content)
-			}
-			if captured != "d1" {
-				t.Fatalf("backend id = %q, want d1 (via %q)", captured, key)
-			}
-		})
-	}
-}
-
-func TestUpdateDashboard_IDAndLegacyAlias(t *testing.T) {
-	for _, key := range []string{"id", "uuid"} {
-		t.Run(key, func(t *testing.T) {
-			var capturedID string
-			var capturedBody []byte
-			mock := &client.MockClient{
-				UpdateDashboardRawFn: func(ctx context.Context, id string, dashboardJSON []byte) (json.RawMessage, error) {
-					capturedID = id
-					capturedBody = append([]byte(nil), dashboardJSON...)
-					return json.RawMessage(`{"id":"d1"}`), nil
-				},
-			}
-			h := newTestHandler(mock)
-			req := makeToolRequest("signoz_update_dashboard", map[string]any{
-				key:             "d1",
-				"searchContext": "update my dashboard",
-				"schemaVersion": "v6",
-				"name":          "my-dashboard",
-				"tags":          []any{map[string]any{"key": "team", "value": "infra"}},
-				"spec":          map[string]any{"display": map[string]any{"name": "My Dashboard"}},
-			})
-			result, err := h.handleUpdateDashboard(testCtx(), req)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if result.IsError {
-				t.Fatalf("error result: %v", result.Content)
-			}
-			// The id/uuid routes to the URL path...
-			if capturedID != "d1" {
-				t.Fatalf("backend id = %q, want d1 (via %q)", capturedID, key)
-			}
-			// ...and must NOT leak into the PUT body: id/uuid are MCP routing fields
-			// (the id lives in the path) and searchContext is MCP-only — the strict
-			// v2 API rejects any of them as an unknown field.
-			var body map[string]any
-			if err := json.Unmarshal(capturedBody, &body); err != nil {
-				t.Fatalf("forwarded body is not JSON: %v (%s)", err, capturedBody)
-			}
-			for _, stripped := range []string{"id", "uuid", "searchContext"} {
-				if _, present := body[stripped]; present {
-					t.Errorf("%q leaked into the v2 update body: %s", stripped, capturedBody)
-				}
-			}
-			// ...while the v6 dashboard fields are forwarded verbatim.
-			for _, want := range []string{"schemaVersion", "name", "tags", "spec"} {
-				if _, present := body[want]; !present {
-					t.Errorf("v6 field %q missing from forwarded body: %s", want, capturedBody)
-				}
-			}
-		})
+	if called {
+		t.Fatal("legacy dashboard uuid must be rejected before any upstream call")
 	}
 }
 
@@ -369,7 +311,7 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 			var capturedBody []byte
 			mock := &client.MockClient{
 				GetViewFn: func(ctx context.Context, viewID string) (json.RawMessage, error) {
-					return json.RawMessage(`{"data":{"sourcePage":"logs"}}`), nil
+					return json.RawMessage(`{"data":{"source":"logs"}}`), nil
 				},
 				UpdateViewFn: func(ctx context.Context, viewID string, body []byte) (json.RawMessage, error) {
 					capturedID = viewID
@@ -384,11 +326,10 @@ func TestUpdateView_IDAndLegacyAlias(t *testing.T) {
 					// Server-populated "id" is included to prove it gets stripped
 					// from the outgoing body (matches the signoz_get_view shape a
 					// caller is told to paste back under "view").
-					"id":         "v1",
-					"name":       "My View",
-					"sourcePage": "logs",
-					"compositeQuery": map[string]any{
-						"queryType": "builder",
+					"id":     "v1",
+					"name":   "My View",
+					"source": "logs",
+					"spec": map[string]any{
 						"queries": []any{
 							map[string]any{
 								"type": "builder_query",
@@ -469,7 +410,7 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 		}},
 		{"update_view", func() (*mcp.CallToolResult, error) {
 			return h.handleUpdateView(testCtx(), makeToolRequest("signoz_update_view", map[string]any{
-				"view": map[string]any{"name": "n", "sourcePage": "logs", "compositeQuery": map[string]any{}},
+				"view": map[string]any{"name": "n", "source": "logs", "spec": map[string]any{}},
 			}))
 		}},
 	}
@@ -506,22 +447,18 @@ func TestResourceID_MissingBothKeys_Errors(t *testing.T) {
 	}
 }
 
-// TestUpdateStructs_IDNotSchemaRequired pins that the typed update_alert /
-// update_dashboard input schemas advertise BOTH the canonical "id" and the
-// legacy alias key (ruleId/uuid) as OPTIONAL (non-required) properties. This is
-// the schema-aware-client contract: WithInputSchema emits
-// additionalProperties:false, so unless the legacy key is itself an advertised
-// property, a legacy-only call would be rejected before readResourceID's
-// runtime fallback ever runs. Neither key may be in the required list (exactly
-// one is supplied; the handler validates presence).
+// TestUpdateStructs_IDNotSchemaRequired pins the remaining alert alias and the
+// dashboard hard cut. Dashboard update advertises only canonical id; both
+// handlers validate id presence at runtime.
 func TestUpdateStructs_IDNotSchemaRequired(t *testing.T) {
 	cases := []struct {
-		name      string
-		legacyKey string
-		tool      mcp.Tool
+		name        string
+		legacyKey   string
+		allowLegacy bool
+		tool        mcp.Tool
 	}{
-		{"update_alert", "ruleId", mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]())},
-		{"update_dashboard", "uuid", mcp.NewTool("signoz_update_dashboard", rawInputSchema(updateDashboardSchema))},
+		{"update_alert", "ruleId", true, mcp.NewTool("signoz_update_alert", mcp.WithInputSchema[types.UpdateAlertInput]())},
+		{"update_dashboard", "uuid", false, mcp.NewTool("signoz_update_dashboard", rawInputSchema(updateDashboardSchema))},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -529,14 +466,15 @@ func TestUpdateStructs_IDNotSchemaRequired(t *testing.T) {
 			if _, ok := props["id"]; !ok {
 				t.Fatalf("%s: id must remain an advertised property: %#v", tc.name, props)
 			}
-			if _, ok := props[tc.legacyKey]; !ok {
-				t.Fatalf("%s: legacy alias %q must be an advertised property so additionalProperties:false does not reject a legacy-only call: %#v", tc.name, tc.legacyKey, props)
+			_, hasLegacy := props[tc.legacyKey]
+			if hasLegacy != tc.allowLegacy {
+				t.Fatalf("%s: legacy alias %q advertised=%v, want %v: %#v", tc.name, tc.legacyKey, hasLegacy, tc.allowLegacy, props)
 			}
 			required := inputSchemaRequiredFields(t, tc.tool)
 			if containsString(required, "id") {
 				t.Fatalf("%s: id must NOT be in the required list (legacy-only calls must stay schema-valid), got: %#v", tc.name, required)
 			}
-			if containsString(required, tc.legacyKey) {
+			if tc.allowLegacy && containsString(required, tc.legacyKey) {
 				t.Fatalf("%s: legacy alias %q must NOT be required, got: %#v", tc.name, tc.legacyKey, required)
 			}
 		})

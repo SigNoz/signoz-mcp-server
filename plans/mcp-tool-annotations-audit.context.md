@@ -53,3 +53,6 @@
 ## Open Questions
 - [ ] Should `openWorldHint(false)` be set on all tools (single configured SigNoz backend)? Deferred — not part of #142's triple.
 - [ ] Revisit `signoz_update_view` idempotent/destructive hints when nerve-pod#100 is fixed upstream.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

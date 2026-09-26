@@ -1,7 +1,7 @@
 # Plan: Tune the shared HTTP transport connection pool
 
 ## Status
-In Progress
+Done
 
 ## Context
 All `SigNoz` clients share Go's global `http.DefaultTransport` (via

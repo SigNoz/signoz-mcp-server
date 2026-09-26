@@ -1,7 +1,7 @@
 # Plan: Migrate `signoz_get_alert_history` to the v2 rule-history API
 
 ## Status
-In Progress
+Done
 
 ## Context
 The MCP server's `signoz_get_alert_history` tool still calls the v1 endpoint

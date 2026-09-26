@@ -13,8 +13,9 @@ import (
 
 // TestUpstreamErrorPrefix_NonQueryBuilderHandlers locks in N9 (#364): every
 // user-visible upstream client-call failure must surface the uniform
-// "SigNoz API error:" prefix, not a bare or bespoke message. The e2e-tagged
-// suite covers this against a live backend; this mock-driven test pins the
+// "SigNoz API error:" prefix, not a bare or bespoke message. The live e2e
+// suite (tests/e2e/tests/test_upstream_errors.py) covers this against a real
+// backend; this mock-driven test pins the
 // contract per-PR for a representative spread of non-QueryBuilder handlers
 // (list + single-get across alerts, dashboards, services, fields, channels).
 func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
@@ -72,7 +73,7 @@ func TestUpstreamErrorPrefix_NonQueryBuilderHandlers(t *testing.T) {
 				return nil, errors.New(upstreamMsg)
 			}},
 			invoke: func(h *Handler) (bool, string) {
-				r, _ := h.handleGetNotificationChannel(testCtx(), makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "abc"}))
+				r, _ := h.handleGetNotificationChannel(testCtx(), makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "019947a7-f200-7000-8000-000000000001"}))
 				return r.IsError, textContent(t, r)
 			},
 		},

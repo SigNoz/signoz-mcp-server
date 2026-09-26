@@ -6,10 +6,6 @@
       "type": "string",
       "description": "Dashboard id (UUID) to update."
     },
-    "uuid": {
-      "type": "string",
-      "description": "Legacy alias for id; accepted for backward compatibility."
-    },
     "image": {
       "type": "string"
     },
@@ -109,6 +105,79 @@
         }
       },
       "type": "object"
+    },
+    "DashboardtypesAreaChartAppearance": {
+      "properties": {
+        "fillMode": {
+          "$ref": "#/$defs/DashboardtypesAreaFillMode"
+        },
+        "fillOpacity": {
+          "$ref": "#/$defs/DashboardtypesFillOpacity"
+        },
+        "lineInterpolation": {
+          "$ref": "#/$defs/DashboardtypesLineInterpolation"
+        },
+        "lineStyle": {
+          "$ref": "#/$defs/DashboardtypesLineStyle"
+        },
+        "showPoints": {
+          "type": "boolean"
+        },
+        "spanGaps": {
+          "$ref": "#/$defs/DashboardtypesSpanGaps"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesAreaChartPanelSpec": {
+      "properties": {
+        "axes": {
+          "$ref": "#/$defs/DashboardtypesAxes"
+        },
+        "chartAppearance": {
+          "$ref": "#/$defs/DashboardtypesAreaChartAppearance"
+        },
+        "formatting": {
+          "$ref": "#/$defs/DashboardtypesPanelFormatting"
+        },
+        "legend": {
+          "$ref": "#/$defs/DashboardtypesLegend"
+        },
+        "thresholds": {
+          "items": {
+            "$ref": "#/$defs/DashboardtypesThresholdWithLabel"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "visualization": {
+          "$ref": "#/$defs/DashboardtypesAreaChartVisualization"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesAreaChartVisualization": {
+      "properties": {
+        "fillSpans": {
+          "type": "boolean"
+        },
+        "stack": {
+          "$ref": "#/$defs/DashboardtypesStackMode"
+        },
+        "timePreference": {
+          "$ref": "#/$defs/DashboardtypesTimePreference"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesAreaFillMode": {
+      "enum": [
+        "solid",
+        "gradient"
+      ],
+      "type": "string"
     },
     "DashboardtypesAxes": {
       "properties": {
@@ -339,6 +408,22 @@
         "none"
       ],
       "type": "string"
+    },
+    "DashboardtypesFillOpacity": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "DashboardtypesHeaderOptions": {
+      "properties": {
+        "hide": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
     },
     "DashboardtypesHistogramBuckets": {
       "properties": {
@@ -588,12 +673,14 @@
     "DashboardtypesPanelPlugin": {
       "discriminator": {
         "mapping": {
+          "signoz/AreaChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec",
           "signoz/BarChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec",
           "signoz/HistogramPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec",
           "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
           "signoz/NumberPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec",
           "signoz/PieChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesPieChartPanelSpec",
           "signoz/TablePanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTablePanelSpec",
+          "signoz/TextPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec",
           "signoz/TimeSeriesPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec"
         },
         "propertyName": "kind"
@@ -604,6 +691,9 @@
         },
         {
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec"
+        },
+        {
+          "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec"
         },
         {
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec"
@@ -619,7 +709,26 @@
         },
         {
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec"
+        },
+        {
+          "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
         }
+      ],
+      "type": "object"
+    },
+    "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec": {
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signoz/AreaChartPanel"
+        },
+        "spec": {
+          "$ref": "#/$defs/DashboardtypesAreaChartPanelSpec"
+        }
+      },
+      "required": [
+        "kind",
+        "spec"
       ],
       "type": "object"
     },
@@ -719,6 +828,22 @@
       ],
       "type": "object"
     },
+    "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec": {
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signoz/TextPanel"
+        },
+        "spec": {
+          "$ref": "#/$defs/DashboardtypesTextPanelSpec"
+        }
+      },
+      "required": [
+        "kind",
+        "spec"
+      ],
+      "type": "object"
+    },
     "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTimeSeriesPanelSpec": {
       "properties": {
         "kind": {
@@ -757,9 +882,7 @@
             "$ref": "#/$defs/DashboardtypesQuery"
           },
           "type": "array",
-          "description": "Exactly one outer v2 query wrapper. This does not limit logical queries: use a signoz/CompositeQuery plugin and put multiple queries or formulas in its spec.queries.",
-          "minItems": 1,
-          "maxItems": 1
+          "description": "Query panels require exactly one outer query wrapper. Use signoz/CompositeQuery inside it for multiple logical queries or formulas. signoz/TextPanel uses an empty array []."
         }
       },
       "required": [
@@ -767,7 +890,39 @@
         "plugin",
         "queries"
       ],
-      "type": "object"
+      "type": "object",
+      "if": {
+        "properties": {
+          "plugin": {
+            "properties": {
+              "kind": {
+                "const": "signoz/TextPanel"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "plugin"
+        ]
+      },
+      "then": {
+        "properties": {
+          "queries": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "queries": {
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      }
     },
     "DashboardtypesPieChartPanelSpec": {
       "properties": {
@@ -977,6 +1132,14 @@
       },
       "type": "object"
     },
+    "DashboardtypesStackMode": {
+      "enum": [
+        "none",
+        "normal",
+        "percent"
+      ],
+      "type": "string"
+    },
     "DashboardtypesTableFormatting": {
       "properties": {
         "columnUnits": {
@@ -1041,6 +1204,54 @@
         "color",
         "columnName"
       ],
+      "type": "object"
+    },
+    "DashboardtypesTextAlign": {
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ],
+      "type": "string"
+    },
+    "DashboardtypesTextMode": {
+      "enum": [
+        "markdown"
+      ],
+      "type": "string"
+    },
+    "DashboardtypesTextPanelSpec": {
+      "properties": {
+        "headerOptions": {
+          "$ref": "#/$defs/DashboardtypesHeaderOptions"
+        },
+        "mode": {
+          "$ref": "#/$defs/DashboardtypesTextMode"
+        },
+        "presentation": {
+          "$ref": "#/$defs/DashboardtypesTextPresentation"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesTextPresentation": {
+      "properties": {
+        "background": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "textAlign": {
+          "$ref": "#/$defs/DashboardtypesTextAlign"
+        },
+        "verticalAlign": {
+          "$ref": "#/$defs/DashboardtypesVerticalAlign"
+        }
+      },
       "type": "object"
     },
     "DashboardtypesTextVariableSpec": {
@@ -1302,6 +1513,14 @@
         "spec"
       ],
       "type": "object"
+    },
+    "DashboardtypesVerticalAlign": {
+      "enum": [
+        "top",
+        "center",
+        "bottom"
+      ],
+      "type": "string"
     },
     "MetrictypesComparisonSpaceAggregationParam": {
       "properties": {
@@ -2054,6 +2273,7 @@
     "Querybuildertypesv5QueryEnvelope": {
       "discriminator": {
         "mapping": {
+          "builder_ai_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI",
           "builder_formula": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula",
           "builder_query": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder",
           "builder_trace_operator": "#/$defs/Querybuildertypesv5QueryEnvelopeTraceOperator",
@@ -2065,6 +2285,9 @@
       "oneOf": [
         {
           "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilder"
+        },
+        {
+          "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeBuilderAI"
         },
         {
           "$ref": "#/$defs/Querybuildertypesv5QueryEnvelopeFormula"
@@ -2089,6 +2312,21 @@
         "type": {
           "type": "string",
           "const": "builder_query"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "Querybuildertypesv5QueryEnvelopeBuilderAI": {
+      "properties": {
+        "spec": {
+          "$ref": "#/$defs/Querybuildertypesv5QueryBuilderQueryGithubComSigNozSignozPkgTypesQuerybuildertypesQuerybuildertypesv5TraceAggregation"
+        },
+        "type": {
+          "type": "string",
+          "const": "builder_ai_query"
         }
       },
       "required": [
@@ -2159,6 +2397,7 @@
     "Querybuildertypesv5QueryType": {
       "enum": [
         "builder_query",
+        "builder_ai_query",
         "builder_formula",
         "builder_trace_operator",
         "clickhouse_sql",
@@ -2272,7 +2511,9 @@
         "metric",
         "log",
         "span",
+        "trace",
         "resource",
+        "scope",
         "attribute",
         "body",
         ""

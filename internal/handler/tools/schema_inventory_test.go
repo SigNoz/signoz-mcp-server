@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"sort"
 	"testing"
-
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // Tool names themselves are pinned by the manifest-parity integration test;
@@ -15,17 +13,18 @@ import (
 var expectedOutputSchemaTools = []string{
 	"signoz_check_metric_usage",
 	"signoz_fetch_doc",
+	"signoz_get_org_overview",
 	"signoz_list_alert_rules",
 	"signoz_list_alerts",
 	"signoz_search_docs",
 }
 
-func registeredTestTools(t *testing.T) map[string]*server.ServerTool {
+func registeredTestTools(t *testing.T) map[string]*registeredTool {
 	t.Helper()
 	h := newTestHandler(nil)
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterAllToolHandlers(s)
-	return s.ListTools()
+	return listTestTools(t, s)
 }
 
 func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
@@ -46,11 +45,13 @@ func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
 			t.Errorf("compile %s input schema: %v", name, err)
 		} else if compiled == nil {
 			t.Errorf("compile %s input schema returned nil", name)
+		} else if len(compiled.properties) > 0 && compiled.diagnostic == nil {
+			t.Errorf("compile %s input diagnostic schema returned nil", name)
 		}
 		var schema any
 		if err := json.Unmarshal(inputRaw, &schema); err != nil {
 			t.Errorf("decode %s input schema: %v", name, err)
-		} else {
+		} else if !canonicalChannelSchema(name) {
 			assertNoClosedInputObjects(t, name, schema, "<root>")
 		}
 
@@ -119,12 +120,11 @@ func TestAdvertisedUpdateSchemasAcceptRealWriteBackPayloads(t *testing.T) {
 	}
 
 	// A real write-back re-PUTs a fetched v6 dashboard, including server-added
-	// fields the advertised schema doesn't model (id/uuid, audit fields). The
+	// fields the advertised schema doesn't model (id and audit fields). The
 	// advertised schema stays open for client compatibility; the handler strips
 	// the known read-only fields and rejects other unknown fields semantically.
 	validate("signoz_update_dashboard", map[string]any{
 		"id":            "dashboard-1",
-		"uuid":          "dashboard-1",
 		"schemaVersion": "v6",
 		"name":          "latency",
 		"tags":          []any{},

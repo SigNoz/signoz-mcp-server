@@ -1,7 +1,7 @@
 # Plan: MCP Registry Auto-Publish
 
 ## Status
-In Progress
+Done
 
 ## Context
 `io.github.SigNoz/signoz-mcp-server` is already in the official MCP Registry but frozen at a

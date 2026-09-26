@@ -123,14 +123,14 @@ instant vectors, rate(), sum(), histogram_quantile(), etc).
 Forms that DO NOT work for dotted OTel names:
   Form                    | Example                                              | Result
   ------------------------|------------------------------------------------------|-----------------------------------------------
-  Underscored conversion  | rate(payment_latency_ms_bucket[5m])                  | no data — SigNoz does not rename to underscores
-  __name__ selector       | rate({__name__="payment_latency_ms.bucket"}[5m])     | no data — dots rejected inside the value
-  Bare dotted name        | rate(payment_latency_ms.bucket[5m])                  | no data — dot is not a legal identifier char
+  Underscored conversion  | rate(payment_latency_ms_bucket[5m])                  | no data; SigNoz does not rename to underscores
+  __name__ selector       | rate({__name__="payment_latency_ms.bucket"}[5m])     | no data; dots rejected inside the value
+  Bare dotted name        | rate(payment_latency_ms.bucket[5m])                  | no data; dot is not a legal identifier char
 
 ================================================================================
 COMBINING WITH DOTTED LABEL FILTERS
 ================================================================================
-Dotted resource attributes (e.g. deployment.environment, service.name) follow the same rule —
+Dotted resource attributes (e.g. deployment.environment, service.name) follow the same rule:
 quote them both in by(...) and in label matchers:
 
   histogram_quantile(
@@ -152,7 +152,7 @@ freely within the same call:
 
 Vector matching operators follow the same rule:
 
-  # from SigNoz PR #11023 — consumer-group lag (max lag end offset - committed offset)
+  # from SigNoz PR #11023: consumer-group lag (max lag end offset - committed offset)
   (
     max by(topic, partition, "deployment.environment") (kafka_log_end_offset)
     - on(topic, partition, "deployment.environment") group_right
@@ -160,9 +160,9 @@ Vector matching operators follow the same rule:
   ) > 0
 
 Notes:
-  - on(...)     — join the two sides by the listed labels; quote dotted ones.
-  - group_left  — the LEFT side may have many rows per matched key.
-  - group_right — the RIGHT side may have many rows per matched key.
+  - on(...):      join the two sides by the listed labels; quote dotted ones.
+  - group_left:   the LEFT side may have many rows per matched key.
+  - group_right:  the RIGHT side may have many rows per matched key.
   - Empty tuples are legal, e.g.  / ignoring ("instance") group_left () sum without ("pod") (rate(...)) .
   - Backward compatibility: pre-existing queries that use only non-dotted names continue to work unchanged; the quoted form is additive, not a replacement.
 
@@ -177,7 +177,7 @@ actually resolves against data:
   2. Use signoz_get_field_keys with metricName set, to verify the bucket-boundary label is named
      le (it usually is, but custom pipelines can rename it).
   3. Write the PromQL with the UTF-8 quoted selector form: {"metric.name.bucket"}.
-  4. After creating the alert, call signoz_get_alert and check state — inactive under a
+  4. After creating the alert, call signoz_get_alert and check state. An inactive state under a
      metric that you know is breaching the threshold is a strong signal the query isn't resolving
      (typically a name/selector-form mistake from the table above).
 
@@ -186,6 +186,6 @@ SUMMARY
 ================================================================================
 Always use the new format for consistency and OpenTelemetry compatibility.
 Key takeaway: Wrap everything in curly braces, quote anything with dots, metric name goes first.
-For dotted OTel names use the Prometheus 3.x UTF-8 quoted selector form {"metric.name.with.dots"} —
+For dotted OTel names use the Prometheus 3.x UTF-8 quoted selector form {"metric.name.with.dots"};
 no other form resolves in SigNoz's PromQL layer.
 `

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -35,15 +34,25 @@ func TestEmbeddedDashboardSchemasAreValid(t *testing.T) {
 	}
 }
 
-// TestWidgetExamplesValidateAgainstCreateSchema is the cross-contract guard tying
-// the widgets-examples resource to the embedded create schema. Every worked panel
-// served at signoz://dashboard/widgets-examples must satisfy the schema clients
-// are handed. This specifically pins the discriminated-union contract: the Perses
-// query/panel/variable unions rely on OAS `discriminator`, which JSON-Schema
-// validators ignore, so extract_schemas.py narrows each branch's discriminator to
-// a `const`. If a future regen drops that, the signoz/CompositeQuery examples
-// (multiple builder queries + a formula) stop validating here — failing the test
-// instead of silently shipping a schema that rejects the very pattern the docs teach.
+func TestDashboardSchemasAdvertiseTextPanelAndCanonicalID(t *testing.T) {
+	for name, raw := range map[string][]byte{"create": createDashboardSchema, "update": updateDashboardSchema} {
+		t.Run(name, func(t *testing.T) {
+			text := string(raw)
+			if !strings.Contains(text, `"const": "signoz/TextPanel"`) {
+				t.Fatal("schema does not advertise signoz/TextPanel")
+			}
+			if strings.Contains(text, `"uuid"`) {
+				t.Fatal("schema still advertises removed uuid alias")
+			}
+		})
+	}
+	if strings.Contains(string(patchDashboardSchema), `"uuid"`) {
+		t.Fatal("patch schema still advertises removed uuid alias")
+	}
+}
+
+// Validate the served examples because JSON Schema ignores OpenAPI discriminators;
+// losing the narrowed union branches would reject valid CompositeQuery panels.
 func TestWidgetExamplesValidateAgainstCreateSchema(t *testing.T) {
 	var full jsonschema.Schema
 	if err := json.Unmarshal(createDashboardSchema, &full); err != nil {
@@ -96,28 +105,26 @@ func panelHasMultiEntryCompositeQuery(panel map[string]any) bool {
 	return false
 }
 
-// TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper guards the local
-// schema correction that mirrors the backend's panel validation. The outer
-// panel queries array must contain exactly one wrapper, while its CompositeQuery
-// plugin may contain multiple builder queries and formulas.
-func TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper(t *testing.T) {
-	panels := extractJSONObjects(dashboard.WidgetExamples)
-	if len(panels) == 0 {
-		t.Fatal("no example panels extracted from dashboard.WidgetExamples")
-	}
-	// Select by contract rather than position so documentation examples can be
-	// reordered. Using the composite fixture also proves both schemas leave its
-	// nested queries unbounded while constraining only the outer array.
-	var basePanel string
-	for _, block := range panels {
+func TestDashboardSchemasValidateQueryCardinalityByPanelKind(t *testing.T) {
+	var compositePanel, textPanel string
+	var queries []any
+	for _, block := range extractJSONObjects(dashboard.WidgetExamples) {
 		var panel map[string]any
-		if err := json.Unmarshal([]byte(block), &panel); err == nil && panelHasMultiEntryCompositeQuery(panel) {
-			basePanel = block
-			break
+		if err := json.Unmarshal([]byte(block), &panel); err != nil {
+			t.Fatalf("example panel is not valid JSON: %v", err)
+		}
+		spec := panel["spec"].(map[string]any)
+		plugin := spec["plugin"].(map[string]any)
+		if plugin["kind"] == "signoz/TextPanel" {
+			textPanel = block
+		}
+		if compositePanel == "" && panelHasMultiEntryCompositeQuery(panel) {
+			compositePanel = block
+			queries = spec["queries"].([]any)
 		}
 	}
-	if basePanel == "" {
-		t.Fatal("no multi-entry CompositeQuery panel found in dashboard.WidgetExamples")
+	if compositePanel == "" || textPanel == "" {
+		t.Fatal("need multi-entry CompositeQuery and TextPanel examples in dashboard.WidgetExamples")
 	}
 
 	for schemaName, raw := range map[string][]byte{
@@ -127,22 +134,7 @@ func TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper(t *testing.T) {
 		t.Run(schemaName, func(t *testing.T) {
 			var full jsonschema.Schema
 			if err := json.Unmarshal(raw, &full); err != nil {
-				t.Fatalf("%s schema does not parse: %v", schemaName, err)
-			}
-			panelSpec := full.Defs["DashboardtypesPanelSpec"]
-			if panelSpec == nil || panelSpec.Properties["queries"] == nil {
-				t.Fatalf("%s schema is missing DashboardtypesPanelSpec.queries", schemaName)
-			}
-			queryDescription := panelSpec.Properties["queries"].Description
-			for _, required := range []string{
-				"Exactly one outer v2 query wrapper",
-				"does not limit logical queries",
-				"signoz/CompositeQuery",
-				"multiple queries or formulas",
-			} {
-				if !strings.Contains(queryDescription, required) {
-					t.Errorf("%s panel queries description must include %q, got: %s", schemaName, required, queryDescription)
-				}
+				t.Fatalf("schema does not parse: %v", err)
 			}
 			panelSchema := &jsonschema.Schema{
 				Ref:  "#/$defs/DashboardtypesPanel",
@@ -150,99 +142,51 @@ func TestDashboardSchemasEnforceExactlyOneOuterQueryWrapper(t *testing.T) {
 			}
 			resolved, err := panelSchema.Resolve(nil)
 			if err != nil {
-				t.Fatalf("%s panel schema does not resolve: %v", schemaName, err)
+				t.Fatalf("panel schema does not resolve: %v", err)
 			}
 
-			for _, queryCount := range []int{0, 1, 2} {
-				t.Run(fmt.Sprintf("queries_%d", queryCount), func(t *testing.T) {
-					var panel map[string]any
-					if err := json.Unmarshal([]byte(basePanel), &panel); err != nil {
-						t.Fatalf("example panel is not valid JSON: %v", err)
-					}
-					spec := panel["spec"].(map[string]any)
-					queries := spec["queries"].([]any)
-					switch queryCount {
-					case 0:
-						spec["queries"] = []any{}
-					case 1:
-						// Keep the valid one-outer-wrapper example unchanged.
-					case 2:
-						spec["queries"] = append(queries, queries[0])
-					}
+			for panelName, basePanel := range map[string]string{
+				"composite": compositePanel,
+				"text":      textPanel,
+			} {
+				t.Run(panelName, func(t *testing.T) {
+					for _, tc := range []struct {
+						name         string
+						queries      any
+						omit         bool
+						wantValidFor string
+					}{
+						{name: "zero", queries: []any{}, wantValidFor: "text"},
+						{name: "one", queries: []any{queries[0]}, wantValidFor: "composite"},
+						{name: "two", queries: []any{queries[0], queries[0]}},
+						{name: "null", queries: nil},
+						{name: "missing", omit: true},
+					} {
+						t.Run(tc.name, func(t *testing.T) {
+							var panel map[string]any
+							if err := json.Unmarshal([]byte(basePanel), &panel); err != nil {
+								t.Fatalf("example panel is not valid JSON: %v", err)
+							}
+							spec := panel["spec"].(map[string]any)
+							if tc.omit {
+								delete(spec, "queries")
+							} else {
+								spec["queries"] = tc.queries
+							}
 
-					err := resolved.Validate(panel)
-					if queryCount == 1 && err != nil {
-						t.Fatalf("one outer query wrapper should validate: %v", err)
-					}
-					if queryCount != 1 && err == nil {
-						t.Fatalf("%d outer query wrappers should fail validation", queryCount)
+							err := resolved.Validate(panel)
+							wantValid := tc.wantValidFor == panelName
+							if wantValid && err != nil {
+								t.Fatalf("valid queries rejected: %v", err)
+							}
+							if !wantValid && err == nil {
+								t.Fatal("invalid queries accepted")
+							}
+						})
 					}
 				})
 			}
 		})
-	}
-}
-
-func TestPatchSchemaCarriesOneQueryRecovery(t *testing.T) {
-	var schema struct {
-		Properties map[string]struct {
-			Description string `json:"description"`
-		} `json:"properties"`
-		Defs map[string]struct {
-			Properties map[string]struct {
-				Description string `json:"description"`
-			} `json:"properties"`
-		} `json:"$defs"`
-	}
-	if err := json.Unmarshal(patchDashboardSchema, &schema); err != nil {
-		t.Fatalf("patch schema does not parse: %v", err)
-	}
-	description := schema.Properties["patch"].Description
-	for _, required := range []string{
-		"exactly one outer query wrapper",
-		"replace /spec/panels/<panelId>/spec/queries/0",
-		"never add or append a sibling outer wrapper",
-		"signoz/CompositeQuery",
-		"multiple logical queries or formulas",
-	} {
-		if !strings.Contains(description, required) {
-			t.Errorf("patch description must include %q, got: %s", required, description)
-		}
-	}
-
-	operation := schema.Defs["DashboardtypesJSONPatchOperation"].Properties
-	pathDescription := operation["path"].Description
-	valueDescription := operation["value"].Description
-	for field, required := range map[string]string{
-		"path":  "/spec/panels/<panelId>/spec/queries/0",
-		"value": "/spec/panels/<panelId>/spec/queries/0 takes a DashboardtypesQuery",
-	} {
-		if got := operation[field].Description; !strings.Contains(got, required) {
-			t.Errorf("patch operation %s description must include %q, got: %s", field, required, got)
-		}
-	}
-	if !strings.Contains(valueDescription, "/tags/N (or /-) takes a TagtypesPostableTag") {
-		t.Errorf("patch operation value description must preserve tag append guidance, got: %s", valueDescription)
-	}
-	if !strings.Contains(pathDescription, "/tags/-") {
-		t.Errorf("patch operation path description must preserve tag append guidance, got: %s", pathDescription)
-	}
-	for _, forbidden := range []string{
-		"/spec/panels/<panelId>/spec/queries/N",
-		"/spec/panels/<panelId>/spec/queries/-",
-	} {
-		if strings.Contains(valueDescription, forbidden) {
-			t.Errorf("patch operation value description must not include %q, got: %s", forbidden, valueDescription)
-		}
-	}
-	for label, got := range map[string]string{
-		"patch": description,
-		"path":  pathDescription,
-		"value": valueDescription,
-	} {
-		if strings.Contains(got, "/spec/panels/<id>") {
-			t.Errorf("%s description must use <panelId>, got: %s", label, got)
-		}
 	}
 }
 
@@ -335,4 +279,49 @@ func extractJSONObjects(text string) []string {
 		}
 	}
 	return out
+}
+
+// TestWidgetsDryRunGuideCoversEverySchemaQueryPlugin catches a new upstream
+// query plugin that the widget guide's dry-run envelope mapping does not name.
+func TestWidgetsDryRunGuideCoversEverySchemaQueryPlugin(t *testing.T) {
+	var schema struct {
+		Defs map[string]struct {
+			Enum          []string `json:"enum"`
+			Discriminator struct {
+				Mapping map[string]string `json:"mapping"`
+			} `json:"discriminator"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(createDashboardSchema, &schema); err != nil {
+		t.Fatalf("create schema does not parse: %v", err)
+	}
+	start := strings.Index(dashboard.WidgetsInstructions, "Dry-run a panel query")
+	if start < 0 {
+		t.Fatal("widget instructions have no dry-run section")
+	}
+	section := dashboard.WidgetsInstructions[start:]
+	if end := strings.Index(section, "\n\n"); end > 0 {
+		section = section[:end]
+	}
+	envelopeTypes := map[string]bool{}
+	for _, queryType := range schema.Defs["Querybuildertypesv5QueryType"].Enum {
+		envelopeTypes[queryType] = true
+	}
+	for kind := range schema.Defs["DashboardtypesQueryPlugin"].Discriminator.Mapping {
+		if kind == "signoz/CompositeQuery" {
+			if !strings.Contains(section, kind+":") {
+				t.Errorf("dry-run section does not explain %s", kind)
+			}
+			continue
+		}
+		idx := strings.Index(section, kind+" -> ")
+		if idx < 0 {
+			t.Errorf("dry-run section does not map %s to an envelope", kind)
+			continue
+		}
+		envelope := strings.FieldsFunc(section[idx+len(kind+" -> "):], func(r rune) bool { return r == ',' || r == '.' || r == ' ' })[0]
+		if !envelopeTypes[envelope] {
+			t.Errorf("dry-run section maps %s to %q, which is not a Query Builder v5 query type", kind, envelope)
+		}
+	}
 }

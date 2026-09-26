@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
-func (h *Handler) RegisterTopMetricsHandlers(s *server.MCPServer) {
+func (h *Handler) RegisterTopMetricsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering top metrics handlers")
 
 	tool := mcp.NewTool("signoz_get_top_metrics",

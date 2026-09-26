@@ -25,21 +25,31 @@ const (
 // extensions this server uses for multi-tenant attribution and are not
 // defined by the spec.
 const (
-	MCPMethodKey          = attribute.Key("mcp.method.name")
-	MCPProtocolVersionKey = attribute.Key("mcp.protocol.version")
-	MCPSearchContextKey   = attribute.Key("mcp.search_context")
-	MCPTenantURLKey       = attribute.Key("mcp.tenant_url")
-	MCPToolIsErrorKey     = attribute.Key("mcp.tool.is_error")
-	MCPToolErrorCodeKey   = attribute.Key("mcp.tool.error.code")
-	MCPQueryPayloadKey    = attribute.Key("mcp.query.payload")
+	MCPMethodKey                 = attribute.Key("mcp.method.name")
+	MCPProtocolVersionKey        = attribute.Key("mcp.protocol.version")
+	MCPClientNameKey             = attribute.Key("mcp.client.name")
+	MCPClientVersionKey          = attribute.Key("mcp.client.version")
+	MCPClientRootsKey            = attribute.Key("mcp.client.capability.roots")
+	MCPClientSamplingKey         = attribute.Key("mcp.client.capability.sampling")
+	MCPClientElicitationKey      = attribute.Key("mcp.client.capability.elicitation")
+	MCPSearchContextKey          = attribute.Key("mcp.search_context")
+	MCPTenantURLKey              = attribute.Key("mcp.tenant_url")
+	MCPToolIsErrorKey            = attribute.Key("mcp.tool.is_error")
+	MCPToolErrorCodeKey          = attribute.Key("mcp.tool.error.code")
+	MCPQueryPayloadKey           = attribute.Key("mcp.query.payload")
+	MCPDocsSearchTextKey         = attribute.Key("mcp.docs.search_text")
+	MCPDocsSectionSlugKey        = attribute.Key("mcp.docs.section_slug")
+	MCPDocsResultCountKey        = attribute.Key("mcp.docs.result_count")
+	MCPDocsTopScoreKey           = attribute.Key("mcp.docs.top_score")
+	MCPDocsQueryStringDroppedKey = attribute.Key("mcp.docs.query_string_dropped")
 	// MCPToolResultBytes approximates the size, in bytes, of the text content
 	// returned by a tool call — sum of `len(Text)` across TextContent entries.
 	// Non-standard (the registry has no equivalent today); scoped under the
 	// mcp.tool.* namespace used by this server's other tool-call attrs.
 	MCPToolResultBytesKey = attribute.Key("mcp.tool.result.size_bytes")
-	// ClientSource is low-cardinality (categorical) and safe on metrics; the
-	// two assistant IDs are per-execution UUIDs and MUST NOT be applied as
-	// metric attributes.
+	// ClientSource is normalized at ingress to a bounded categorical value and
+	// is safe on metrics. The two assistant IDs are per-execution UUIDs and MUST
+	// NOT be applied as metric attributes.
 	MCPClientSourceKey         = attribute.Key("mcp.client_source")
 	MCPAssistantThreadIDKey    = attribute.Key("mcp.assistant.thread_id")
 	MCPAssistantExecutionIDKey = attribute.Key("mcp.assistant.execution_id")
@@ -75,8 +85,7 @@ func ClientSourceAttr(ctx context.Context) (attribute.KeyValue, bool) {
 	return MCPClientSourceKey.String(source), true
 }
 
-// AppendClientSource appends mcp.client_source. Safe on both span and metric
-// attribute lists — client_source is bounded categorical.
+// AppendClientSource appends the ingress-normalized mcp.client_source.
 func AppendClientSource(ctx context.Context, attrs []attribute.KeyValue) []attribute.KeyValue {
 	if attr, ok := ClientSourceAttr(ctx); ok {
 		return append(attrs, attr)

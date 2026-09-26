@@ -111,7 +111,7 @@ func GetClickHouseSchema(signal string) string {
 		buf.WriteString("\n=== TRACES SCHEMA ===\n")
 		exportSchema(&buf, "signoz_traces", getTracesMigrations())
 	default:
-		buf.WriteString(fmt.Sprintf("Error: unknown signal type '%s'. Use 'logs', 'metrics', or 'traces'\n", signal))
+		fmt.Fprintf(&buf, "Error: unknown signal type '%s'. Use 'logs', 'metrics', or 'traces'\n", signal)
 	}
 
 	return buf.String()

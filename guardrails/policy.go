@@ -14,6 +14,17 @@ const (
 	MaxInputSchemaNestingDepth   = 13
 )
 
+// Docs index memory budgets, enforced by TestGuardrail_DocsIndexBuildPeakHeap
+// against the embedded corpus. A single-batch build of ~750 pages peaks near
+// 325 MiB and is what OOM-killed 512Mi containers (#305); the chunked build
+// measures 135 to 150 MiB. The peak budget sits between the two so a
+// regression to one batch fails while CI jitter does not.
+const (
+	DocsIndexBuildPeakHeapBudgetBytes = 224 << 20
+	DocsIndexResidentBudgetBytes      = 64 << 20
+	MaxDocsIndexBatchSize             = 128
+)
+
 // OfficialServerAliases are published in first-party setup examples or sent
 // during initialize. Some clients combine alias + separator + tool name.
 var OfficialServerAliases = []string{"signoz", "signoz-mcp-server", "SigNozMCP"}
@@ -60,31 +71,6 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"source",
 		"version",
 	},
-	"signoz_create_notification_channel": {
-		"email_html",
-		"email_to",
-		"msteams_text",
-		"msteams_title",
-		"msteams_webhook_url",
-		"name",
-		"opsgenie_api_key",
-		"opsgenie_description",
-		"opsgenie_message",
-		"opsgenie_priority",
-		"pagerduty_description",
-		"pagerduty_routing_key",
-		"pagerduty_severity",
-		"searchContext",
-		"send_resolved",
-		"slack_api_url",
-		"slack_channel",
-		"slack_text",
-		"slack_title",
-		"type",
-		"webhook_password",
-		"webhook_url",
-		"webhook_username",
-	},
 	"signoz_query_metrics": {
 		"end",
 		"filter",
@@ -125,31 +111,5 @@ var GrandfatheredWideSchemaProperties = map[string][]string{
 		"searchContext",
 		"source",
 		"version",
-	},
-	"signoz_update_notification_channel": {
-		"email_html",
-		"email_to",
-		"id",
-		"msteams_text",
-		"msteams_title",
-		"msteams_webhook_url",
-		"name",
-		"opsgenie_api_key",
-		"opsgenie_description",
-		"opsgenie_message",
-		"opsgenie_priority",
-		"pagerduty_description",
-		"pagerduty_routing_key",
-		"pagerduty_severity",
-		"searchContext",
-		"send_resolved",
-		"slack_api_url",
-		"slack_channel",
-		"slack_text",
-		"slack_title",
-		"type",
-		"webhook_password",
-		"webhook_url",
-		"webhook_username",
 	},
 }

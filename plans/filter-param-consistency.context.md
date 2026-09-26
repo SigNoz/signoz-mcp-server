@@ -193,3 +193,6 @@ Build + full `go test ./...` green. Committed on PR #213.
 - [x] File the latent jsonschema_extras description-drop bug separately? → **Yes**, filed as
       signoz-ai-assistant#359 (param-inconsistency cleanup as #360). Issues go in signoz-ai-assistant, not
       signoz-mcp-server (owner direction 2026-06-23).
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

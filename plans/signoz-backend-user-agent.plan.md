@@ -1,7 +1,7 @@
 # Plan: SigNoz Backend User-Agent
 
 ## Status
-In Progress
+Done
 
 ## Context
 Outbound requests currently rely on Go's generic HTTP user agent, so the SigNoz backend cannot identify traffic originating from a particular MCP server release.

@@ -25,3 +25,6 @@
 ## Open Questions
 - [x] Header form → `signoz-mcp-server/<version>`.
 - [x] Custom value → preserved first, with the MCP server product identifier appended.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

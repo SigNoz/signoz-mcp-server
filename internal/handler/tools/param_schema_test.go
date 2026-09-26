@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/server"
-
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
@@ -23,7 +21,7 @@ func registeredToolProps(t *testing.T, toolName string) map[string]any {
 	t.Helper()
 
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
@@ -36,7 +34,7 @@ func registeredToolProps(t *testing.T, toolName string) map[string]any {
 	h.RegisterViewHandlers(s)
 	h.RegisterDocsHandlers(s)
 
-	tools := s.ListTools()
+	tools := listTestTools(t, s)
 	st, ok := tools[toolName]
 	if !ok {
 		t.Fatalf("tool %q not registered", toolName)
@@ -87,9 +85,9 @@ func TestQueryToolLimitSchemaDefaults(t *testing.T) {
 
 func TestExecuteBuilderQueryAgentFacingRouting(t *testing.T) {
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterQueryBuilderV5Handlers(s)
-	registered := s.ListTools()["signoz_execute_builder_query"]
+	registered := listTestTools(t, s)["signoz_execute_builder_query"]
 	description := registered.Tool.Description
 	if !strings.HasPrefix(description, "Use this only when") {
 		t.Fatalf("execute_builder_query description must lead with its selection boundary: %q", description)
@@ -163,9 +161,9 @@ func TestStableSetEnumsArePresent(t *testing.T) {
 		{"signoz_get_alert_history", "state", []string{"disabled", "firing", "inactive", "nodata", "pending", "recovering"}},
 		{"signoz_get_field_keys", "signal", []string{"logs", "metrics", "traces"}},
 		{"signoz_get_field_values", "signal", []string{"logs", "metrics", "traces"}},
-		// sourcePage already carried an enum before this change; pin it so a
+		// "source" carries the v2 saved-views source enum; pin it so a
 		// regression that drops it fails here too.
-		{"signoz_create_view", "sourcePage", []string{"logs", "meter", "metrics", "traces"}},
+		{"signoz_create_view", "source", []string{"logs", "meter", "metrics", "traces"}},
 	}
 
 	for _, tc := range cases {
@@ -195,9 +193,9 @@ func TestAlertHistoryAgentFacingContract(t *testing.T) {
 	}
 
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterAlertsHandlers(s)
-	registered, ok := s.ListTools()["signoz_get_alert_history"]
+	registered, ok := listTestTools(t, s)["signoz_get_alert_history"]
 	if !ok {
 		t.Fatal("signoz_get_alert_history not registered")
 	}
@@ -224,15 +222,14 @@ func TestEvolvingSetsAreFreeStrings(t *testing.T) {
 	}{
 		{"signoz_aggregate_logs", "aggregation"},
 		{"signoz_aggregate_traces", "aggregation"},
-		{"signoz_create_notification_channel", "type"},
 	}
 	// notification-channel type lives on a handler we also need registered.
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
+	s := newMCPTestServer()
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
 	h.RegisterNotificationChannelHandlers(s)
-	registered := s.ListTools()
+	registered := listTestTools(t, s)
 
 	for _, tc := range cases {
 		t.Run(tc.tool+"/"+tc.prop, func(t *testing.T) {
@@ -287,68 +284,73 @@ func TestAggregationDescriptionDriftGuard(t *testing.T) {
 	}
 }
 
-// TestChannelTypeDriftGuard pins the in-code validChannelTypes set (the single
-// source of truth) against the types each notification-channel tool actually
-// advertises in its registered description. channel `type` is a backend-owned/
-// evolving set kept as a free-string, so this is the only guard that the
-// advertised list matches what we accept.
-//
-// The advertised set is DERIVED from the registered tool descriptions (the
-// "SUPPORTED TYPES: ..." line) rather than hardcoded here — so a drift in
-// either the description OR the validChannelTypes map fails the test. Both the
-// create AND update channel tools are covered.
-//
-// TODO(live-backend): the authoritative set is what the SigNoz backend's
-// notification-channel API accepts. Add a periodic/integration check
-// (guarded/skippable) diffing validChannelTypes against a real instance.
+// The released v2 provider union is intentionally pinned with the canonical
+// config contract. This replaces the retired flat type-description inventory.
 func TestChannelTypeDriftGuard(t *testing.T) {
 	h := newTestHandler(&signozclient.MockClient{})
-	s := server.NewMCPServer("test", "0.0.0", server.WithToolCapabilities(false))
-	h.RegisterNotificationChannelHandlers(s)
-	registered := s.ListTools()
-
-	// Single in-code source of truth.
-	inCode := make([]string, 0, len(validChannelTypes))
-	for k := range validChannelTypes {
-		inCode = append(inCode, k)
-	}
-	sort.Strings(inCode)
-
-	for _, toolName := range []string{
-		"signoz_create_notification_channel",
-		"signoz_update_notification_channel",
-	} {
-		t.Run(toolName, func(t *testing.T) {
-			st, ok := registered[toolName]
-			if !ok {
-				t.Fatalf("tool %q not registered", toolName)
+	server := newMCPTestServer()
+	h.RegisterNotificationChannelHandlers(server)
+	registered := listTestTools(t, server)
+	want := []string{"email", "googlechat", "incidentio", "jira", "jsmops", "msteams", "opsgenie", "pagerduty", "slack", "webhook"}
+	for _, name := range []string{"signoz_create_notification_channel", "signoz_update_notification_channel"} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := json.Marshal(registered[name].Tool)
+			if err != nil {
+				t.Fatal(err)
 			}
-			advertised := supportedTypesFromDescription(t, toolName, st.Tool.Description)
-			if !reflect.DeepEqual(advertised, inCode) {
-				t.Fatalf("channel-type set drift: %s advertises %v but validChannelTypes accepts %v; keep them in sync", toolName, advertised, inCode)
+			var doc map[string]any
+			if err := json.Unmarshal(raw, &doc); err != nil {
+				t.Fatal(err)
+			}
+			props := doc["inputSchema"].(map[string]any)["properties"].(map[string]any)
+			for _, legacy := range []string{"type", "send_resolved", "slack_api_url", "webhook_url"} {
+				if _, ok := props[legacy]; ok {
+					t.Errorf("legacy property %s still advertised", legacy)
+				}
+			}
+			cfg, ok := props["config"].(map[string]any)
+			if !ok {
+				t.Fatal("canonical config schema missing")
+			}
+			kinds := map[string]bool{}
+			var walk func(any)
+			walk = func(value any) {
+				switch v := value.(type) {
+				case map[string]any:
+					if properties, ok := v["properties"].(map[string]any); ok {
+						if kind, ok := properties["kind"].(map[string]any); ok {
+							if c, ok := kind["const"].(string); ok {
+								kinds[c] = true
+							}
+							if enums, ok := kind["enum"].([]any); ok {
+								for _, e := range enums {
+									if name, ok := e.(string); ok {
+										kinds[name] = true
+									}
+								}
+							}
+						}
+					}
+					for _, child := range v {
+						walk(child)
+					}
+				case []any:
+					for _, child := range v {
+						walk(child)
+					}
+				}
+			}
+			walk(cfg)
+			got := make([]string, 0, len(kinds))
+			for kind := range kinds {
+				got = append(got, kind)
+			}
+			sort.Strings(got)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("released provider schema kinds = %v, want %v", got, want)
 			}
 		})
 	}
-}
-
-// supportedTypesFromDescription extracts the sorted channel-type list from the
-// "SUPPORTED TYPES: a, b, c" line of a tool description, failing if the marker
-// is absent. This keeps the test from hardcoding the advertised set.
-func supportedTypesFromDescription(t *testing.T, toolName, desc string) []string {
-	t.Helper()
-	const marker = "SUPPORTED TYPES:"
-	idx := strings.Index(desc, marker)
-	if idx < 0 {
-		t.Fatalf("%s description missing %q marker; cannot derive advertised channel types", toolName, marker)
-	}
-	rest := desc[idx+len(marker):]
-	// The list runs to the end of that line.
-	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-		rest = rest[:nl]
-	}
-	types := splitCSV(rest)
-	sort.Strings(types)
-	return types
 }
 
 // liveBackendDriftCheckSkipped is the shared skip hook for the live-backend

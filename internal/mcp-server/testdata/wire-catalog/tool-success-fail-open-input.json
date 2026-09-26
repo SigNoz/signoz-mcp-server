@@ -1,0 +1,39 @@
+{
+  "method": "tools/call",
+  "protocolVersion": "2025-11-25",
+  "request": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "arguments": {
+        "limit": {}
+      },
+      "name": "signoz_list_dashboards"
+    }
+  },
+  "httpStatus": 200,
+  "contentType": "application/json",
+  "framing": "json",
+  "response": {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"dashboards\":[],\"tags\":[],\"total\":0}",
+          "type": "text"
+        },
+        {
+          "text": "Input validation notice: the arguments did not fully match this tool's input schema (jsonschema validation failed with 'mem:///signoz/tools/signoz_list_dashboards/input-schema.json#' - at '/limit': got object, want integer or string). The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.",
+          "type": "text"
+        }
+      ],
+      "structuredContent": {
+        "dashboards": [],
+        "tags": [],
+        "total": 0
+      }
+    }
+  }
+}

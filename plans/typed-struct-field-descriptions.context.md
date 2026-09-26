@@ -51,3 +51,6 @@
 - [x] Does jsonschema-go use `$defs`/`$ref` for these types? — No, fully inlined (non-recursive). Walk is positional/path-aware.
 - [x] Inject before or after `normalizeToolSchemas`? — After: normalize converts `interface{}` `true` schemas to `{}`, so `description` can be set on `any`-typed fields (Target, Value, ThresholdValue, …).
 - [x] Do README/manifest need updating? — No (descriptions not duplicated there).
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

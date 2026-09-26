@@ -97,6 +97,150 @@ run_inspector() {
   ) >"$output_file" 2>"$inspector_stderr"
 }
 
+run_stdio_smoke() {
+  local era=$1
+  local output_file="$PROTOCOL_TMP_DIR/stdio-${era}.json"
+  local stderr_file="$PROTOCOL_TMP_DIR/stdio-${era}.stderr"
+
+  CURRENT_PHASE="stdio ${era} lifecycle"
+  CURRENT_STDOUT=$output_file
+  CURRENT_STDERR=$stderr_file
+
+  timeout --signal=TERM --kill-after=5s "${COMMAND_TIMEOUT_SECONDS}s" \
+    env \
+    TRANSPORT_MODE=stdio \
+    SIGNOZ_URL=https://example.invalid \
+    SIGNOZ_API_KEY=protocol-test-key \
+    ANALYTICS_ENABLED=false \
+    OTEL_TRACES_EXPORTER=none \
+    OTEL_METRICS_EXPORTER=none \
+    node - "$PROTOCOL_TMP_DIR/signoz-mcp-server" "$era" >"$output_file" 2>"$stderr_file" <<'NODE'
+const { spawn } = require("node:child_process");
+const readline = require("node:readline");
+
+const [binary, era] = process.argv.slice(2);
+const child = spawn(binary, [], {
+  env: process.env,
+  stdio: ["pipe", "pipe", "pipe"],
+});
+let serverStderr = "";
+child.stderr.on("data", chunk => {
+  if (serverStderr.length < 16_384) serverStderr += chunk.toString();
+});
+
+const responses = new Map();
+const waiters = new Map();
+const lines = readline.createInterface({ input: child.stdout });
+lines.on("line", line => {
+  let message;
+  try {
+    message = JSON.parse(line);
+  } catch (error) {
+    fail(`invalid JSON from stdio server: ${error.message}`);
+    return;
+  }
+  if (message.id === undefined) return;
+  const waiter = waiters.get(message.id);
+  if (waiter) {
+    waiters.delete(message.id);
+    waiter(message);
+  } else {
+    responses.set(message.id, message);
+  }
+});
+
+function send(message) {
+  child.stdin.write(`${JSON.stringify(message)}\n`);
+}
+
+function receive(id) {
+  const existing = responses.get(id);
+  if (existing) {
+    responses.delete(id);
+    return Promise.resolve(existing);
+  }
+  return new Promise(resolve => waiters.set(id, resolve));
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function modernParams(fields = {}) {
+  return {
+    _meta: {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": {},
+      "io.modelcontextprotocol/clientInfo": { name: "signoz-protocol-ci", version: "1.0.0" },
+    },
+    ...fields,
+  };
+}
+
+function stopServer() {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("stdio server did not stop after SIGTERM"));
+    }, 5_000);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`stdio server exited with code=${code} signal=${signal}\n${serverStderr}`));
+        return;
+      }
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
+}
+
+function fail(message) {
+  process.stderr.write(`${message}\n${serverStderr}`);
+  child.kill("SIGKILL");
+  process.exitCode = 1;
+}
+
+(async () => {
+  if (era === "legacy") {
+    send({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "signoz-protocol-ci", version: "1.0.0" },
+      },
+    });
+    const initialized = await receive(1);
+    assert(initialized.result?.protocolVersion === "2025-11-25", "legacy stdio initialize did not negotiate 2025-11-25");
+    assert(initialized.result?.capabilities?.logging === undefined, "legacy stdio initialize unexpectedly advertised logging");
+    send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+    send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const listed = await receive(2);
+    assert(Array.isArray(listed.result?.tools), "legacy stdio tools/list did not return tools");
+    assert(listed.result.tools.some(tool => tool.name === "signoz_search_docs"), "legacy stdio tools/list omitted signoz_search_docs");
+  } else if (era === "modern") {
+    send({ jsonrpc: "2.0", id: 11, method: "server/discover", params: modernParams() });
+    const discovered = await receive(11);
+    assert(discovered.result?.supportedVersions?.includes("2025-11-25"), "modern stdio discover omitted 2025-11-25");
+    assert(discovered.result?.supportedVersions?.includes("2026-07-28"), "modern stdio discover omitted 2026-07-28");
+    send({ jsonrpc: "2.0", id: 12, method: "tools/list", params: modernParams() });
+    const listed = await receive(12);
+    assert(listed.result?.resultType === "complete", "modern stdio tools/list omitted the complete result type");
+    assert(Array.isArray(listed.result?.tools), "modern stdio tools/list did not return tools");
+    assert(listed.result.tools.some(tool => tool.name === "signoz_search_docs"), "modern stdio tools/list omitted signoz_search_docs");
+  } else {
+    throw new Error(`unknown stdio smoke era: ${era}`);
+  }
+
+  await stopServer();
+  process.stdout.write(`${JSON.stringify({ transport: "stdio", era, status: "passed" })}\n`);
+})().catch(error => fail(error.stack || error.message));
+NODE
+}
+
 assert_json() {
   local phase=$1
   local json_file=$2
@@ -111,9 +255,15 @@ assert_json() {
   fi
 }
 
+# macOS ships GNU timeout only as gtimeout (brew install coreutils).
+if ! command -v timeout >/dev/null 2>&1 && command -v gtimeout >/dev/null 2>&1; then
+  timeout() { gtimeout "$@"; }
+fi
+
 for dependency in curl go jq node timeout; do
   if ! command -v "$dependency" >/dev/null 2>&1; then
     printf 'Required command is unavailable: %s\n' "$dependency" >&2
+    [[ "$dependency" == timeout ]] && printf 'On macOS, install it with: brew install coreutils\n' >&2
     exit 1
   fi
 done
@@ -154,6 +304,9 @@ fi
 
 CURRENT_PHASE="build server"
 go build -o "$PROTOCOL_TMP_DIR/signoz-mcp-server" ./cmd/server >"$CURRENT_STDOUT" 2>"$CURRENT_STDERR"
+
+run_stdio_smoke legacy
+run_stdio_smoke modern
 
 env \
   TRANSPORT_MODE=http \
@@ -211,7 +364,7 @@ assert_json "initialize JSON contract" "$initialize_body" '
   .result.serverInfo.name == "SigNozMCP" and
   (.result.serverInfo.version | type == "string" and length > 0) and
   (.result.instructions | type == "string" and length > 0) and
-  (.result.capabilities | has("tools") and has("resources") and has("prompts") and has("logging"))
+  (.result.capabilities | has("tools") and has("resources") and has("prompts") and (has("logging") | not))
 '
 
 tools_json="$PROTOCOL_TMP_DIR/tools.json"
@@ -232,8 +385,7 @@ assert_json "resources/list contract" "$resources_json" '
 templates_json="$PROTOCOL_TMP_DIR/resource-templates.json"
 run_inspector "Inspector resources/templates/list" "$templates_json" --method resources/templates/list
 assert_json "resources/templates/list contract" "$templates_json" '
-  (.resourceTemplates | type == "array" and length > 0) and
-  all(.resourceTemplates[]; (.name | type == "string" and length > 0) and (.uriTemplate | type == "string" and length > 0))
+  (.resourceTemplates | type == "array" and length == 0)
 '
 
 prompts_json="$PROTOCOL_TMP_DIR/prompts.json"
@@ -272,9 +424,4 @@ assert_json "prompts/get contract" "$prompt_get_json" '
   any(.messages[]; .content.type == "text" and (.content.text | type == "string" and length > 0))
 '
 
-logging_json="$PROTOCOL_TMP_DIR/logging.json"
-run_inspector "Inspector logging/setLevel" "$logging_json" \
-  --method logging/setLevel --log-level info
-assert_json "logging/setLevel contract" "$logging_json" 'type == "object"'
-
-printf '%s\n' 'MCP protocol check passed: initialize, tools, resources, templates, prompts, and logging'
+printf '%s\n' 'MCP protocol check passed: legacy and modern stdio, plus initialized HTTP tools, resources, templates, and prompts'

@@ -1,7 +1,7 @@
 # Plan: Stateless MCP Server
 
 ## Status
-In Progress
+Done
 
 ## Context
 The Streamable HTTP transport currently runs with mcp-go's default

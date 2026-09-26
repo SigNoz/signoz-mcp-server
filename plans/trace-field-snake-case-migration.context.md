@@ -97,3 +97,6 @@
 - [x] Should the current numeric `kind` select field be kept as `kind` with `fieldContext: "span"` and numeric type, or dropped in favor of `kind_string` only? Resolved 2026-06-27: keep numeric `kind` and also select `kind_string`.
 - [x] Which backend versions/environments must pass live verification before rollout? Resolved 2026-06-29: run this PR's live trace-field verification against US staging (`https://app.us.staging.signoz.cloud`) using existing trace data; no live resource creation is needed for this read-only migration check.
 - [x] Is expanding MCP-owned static field metadata the ideal solution for custom attributes and similar tool inputs? Resolved 2026-06-29: no; static metadata is tactical for known MCP-authored fields only. Dynamic resolution or a structured payload contract is tracked in [SigNoz/nerve-pod#20](https://github.com/SigNoz/nerve-pod/issues/20).
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.

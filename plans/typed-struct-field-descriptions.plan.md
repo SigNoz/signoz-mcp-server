@@ -1,7 +1,7 @@
 # Plan: Typed-struct tool field descriptions (#359)
 
 ## Status
-In Progress
+Done
 
 ## Context
 The four typed-struct tools — `signoz_create_alert`, `signoz_update_alert`, `signoz_create_dashboard`, `signoz_update_dashboard` — register their input schema via `mcp.WithInputSchema[T]()`, which generates the schema with `google/jsonschema-go`. That library uses the **`jsonschema` tag value as the field description** and never reads the `jsonschema_extras` tags the structs were (mistakenly) authored with. It also treats `jsonschema:"required"` as description text, so those fields surfaced the literal word "required". Net: the model saw the most structurally complex tools with missing or garbage field docs. (SigNoz/signoz-ai-assistant#359 — a tag-dialect mismatch: the tags were written in `invopop/jsonschema`'s dialect but fed to `google/jsonschema-go`.)

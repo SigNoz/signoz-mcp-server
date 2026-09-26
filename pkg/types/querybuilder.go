@@ -301,6 +301,10 @@ func (q *QueryPayload) Validate() error {
 	if q.RequestType == "" {
 		q.RequestType = inferDefaultRequestType(q.CompositeQuery.Queries)
 	}
+	// Heatmaps have no dashboard or saved-view renderer in the SigNoz UI.
+	if q.RequestType == "heatmap" {
+		return fmt.Errorf(`requestType "heatmap" is not supported; use "time_series" or "scalar" for metrics, PromQL, and ClickHouse SQL queries`)
+	}
 
 	for i, query := range q.CompositeQuery.Queries {
 		switch query.Type {
@@ -923,7 +927,82 @@ func BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval int64, querie
 	return json.Marshal(payload)
 }
 
-func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, limit int, offset int) *QueryPayload {
+// TraceSearchCoreFields is the default column set for signoz_search_traces.
+// Callers add fields with selectFields; SigNoz always adds timestamp, trace_id,
+// and span_id to an explicit list, so rows stay flat.
+var TraceSearchCoreFields = []SelectField{
+	{Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	{Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	{Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span"},
+	{Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+}
+
+// TraceDetailSelectFields is the column set signoz_get_trace_details requests.
+var TraceDetailSelectFields = []SelectField{
+	// Top-level span fields
+	{Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	{Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	{Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span"},
+	{Name: "status_code", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	{Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "http_url", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "kind", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
+	{Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	{Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+	// Resource attributes
+	{Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "cloud.account.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "cloud.platform", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "cloud.provider", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "cloud.region", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "deployment.environment", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "host.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.cluster.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.namespace.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.node.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.pod.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.pod.start_time", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.pod.uid", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "k8s.statefulset.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "service.version", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "signoz.deployment.tier", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "signoz.workload", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	{Name: "signoz.workspace.key.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+
+	// Span attributes
+	{Name: "client.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "http.request.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "http.response.body.size", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "http.response.status_code", FieldDataType: "number", Signal: "traces", FieldContext: "tag"},
+	{Name: "http.route", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "rpc.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "network.peer.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "network.peer.port", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "network.protocol.version", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "server.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "url.path", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "url.scheme", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "db.operation", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "db.statement", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	{Name: "db.system", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+}
+
+func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, limit int, offset int, selectFields []SelectField) *QueryPayload {
 	return &QueryPayload{
 		SchemaVersion: "v1",
 		Start:         startTime,
@@ -943,61 +1022,8 @@ func BuildTracesQueryPayload(startTime, endTime int64, filterExpression string, 
 						Order: []Order{
 							{Key: Key{Name: "timestamp"}, Direction: "desc"},
 						},
-						Having: Having{Expression: ""},
-						SelectFields: []SelectField{
-							// Top-level span fields
-							{Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-							{Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-							{Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span"},
-							{Name: "status_code", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-							{Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "http_url", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "kind", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-							{Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							{Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-							// Resource attributes
-							{Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "cloud.account.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "cloud.platform", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "cloud.provider", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "cloud.region", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "deployment.environment", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "host.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.cluster.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.namespace.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.node.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.pod.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.pod.start_time", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.pod.uid", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "k8s.statefulset.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "service.version", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "signoz.deployment.tier", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "signoz.workload", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-							{Name: "signoz.workspace.key.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-
-							// Span attributes
-							{Name: "client.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "http.request.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "http.response.body.size", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "http.response.status_code", FieldDataType: "number", Signal: "traces", FieldContext: "tag"},
-							{Name: "http.route", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "rpc.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "network.peer.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "network.peer.port", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "network.protocol.version", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "server.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "url.path", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "url.scheme", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "db.operation", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "db.statement", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-							{Name: "db.system", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-						},
+						Having:       Having{Expression: ""},
+						SelectFields: selectFields,
 					},
 				},
 			},

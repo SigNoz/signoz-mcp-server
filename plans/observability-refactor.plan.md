@@ -1,7 +1,7 @@
 # Plan: Observability Refactor
 
 ## Status
-In Progress
+Done
 
 ## Context
 The MCP server's observability has three gaps relative to Zeus's pattern:

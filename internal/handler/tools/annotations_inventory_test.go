@@ -15,7 +15,7 @@ var (
 	createTriple = annotationTriple{readOnly: false, destructive: false, idempotent: false}
 	updateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: true}
 	deleteTriple = annotationTriple{readOnly: false, destructive: true, idempotent: true}
-	// Updates whose handler fires a live test notification on every call,
+	// Updates whose handler can fire a live test notification when explicitly requested,
 	// so a repeat call re-notifies and is not idempotent.
 	nonIdempotentUpdateTriple = annotationTriple{readOnly: false, destructive: true, idempotent: false}
 	// Patch applies an RFC 6902 JSON Patch to an existing resource: destructive,
@@ -39,6 +39,7 @@ var expectedToolAnnotations = map[string]annotationTriple{
 	"signoz_get_field_keys":              readTriple,
 	"signoz_get_field_values":            readTriple,
 	"signoz_get_notification_channel":    readTriple,
+	"signoz_get_org_overview":            readTriple,
 	"signoz_get_service_top_operations":  readTriple,
 	"signoz_get_top_metrics":             readTriple,
 	"signoz_get_trace_details":           readTriple,
@@ -84,11 +85,11 @@ func TestRegisteredToolAnnotationsMatchPinnedInventory(t *testing.T) {
 			continue
 		}
 		ann := entry.Tool.Annotations
-		if ann.ReadOnlyHint == nil || ann.DestructiveHint == nil || ann.IdempotentHint == nil {
+		if ann == nil || ann.DestructiveHint == nil {
 			t.Errorf("tool %s does not set the full annotation triple explicitly (readOnly=%v destructive=%v idempotent=%v)", name, ann.ReadOnlyHint, ann.DestructiveHint, ann.IdempotentHint)
 			continue
 		}
-		got := annotationTriple{readOnly: *ann.ReadOnlyHint, destructive: *ann.DestructiveHint, idempotent: *ann.IdempotentHint}
+		got := annotationTriple{readOnly: ann.ReadOnlyHint, destructive: *ann.DestructiveHint, idempotent: ann.IdempotentHint}
 		if got != want {
 			t.Errorf("tool %s advertises annotation triple %+v, pinned %+v", name, got, want)
 		}

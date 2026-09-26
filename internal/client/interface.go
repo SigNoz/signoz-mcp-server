@@ -11,6 +11,7 @@ import (
 // Handler code depends on this interface, enabling mock-based unit testing.
 type Client interface {
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
+	GetOrgOverview(ctx context.Context) (json.RawMessage, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
 	GetTopMetrics(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
@@ -26,7 +27,7 @@ type Client interface {
 	ListServices(ctx context.Context, start, end string) (json.RawMessage, error)
 	GetServiceTopOperations(ctx context.Context, start, end, service string, tags json.RawMessage) (json.RawMessage, error)
 	QueryBuilderV5(ctx context.Context, body []byte) (json.RawMessage, error)
-	ListViews(ctx context.Context, sourcePage, name, category string) (json.RawMessage, error)
+	ListViews(ctx context.Context, source, name string) (json.RawMessage, error)
 	GetView(ctx context.Context, viewID string) (json.RawMessage, error)
 	CreateView(ctx context.Context, body []byte) (json.RawMessage, error)
 	UpdateView(ctx context.Context, viewID string, body []byte) (json.RawMessage, error)
@@ -39,6 +40,7 @@ type Client interface {
 	DeleteAlertRule(ctx context.Context, ruleID string) error
 	CheckMetricUsage(ctx context.Context, names []string) (map[string]MetricUsage, error)
 	ListNotificationChannels(ctx context.Context) (json.RawMessage, error)
+	ListNotificationChannelsV2(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error)
 	GetNotificationChannel(ctx context.Context, id string) (json.RawMessage, error)
 	CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error)
 	UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error

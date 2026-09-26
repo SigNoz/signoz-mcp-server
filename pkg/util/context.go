@@ -20,10 +20,12 @@ const (
 	assistantExecutionIDContextKey contextKey = "assistant_execution_id"
 )
 
-// ClientSourceUserClient is the default for client_source when the header
-// is absent or blank — emitting a concrete value keeps downstream group-bys
-// free of null-handling.
-const ClientSourceUserClient = "user-client"
+// Client source values used by the bounded request telemetry taxonomy.
+const (
+	ClientSourceUserClient  = "user-client"
+	ClientSourceAIAssistant = "ai-assistant"
+	ClientSourceOther       = "other"
+)
 
 // CallerCorrelationHeaderMaxLen bounds advisory caller-correlation header
 // values. They flow into every log record, span attribute, and Segment
@@ -45,6 +47,20 @@ func NormalizeCallerCorrelationValue(s string) string {
 		return s
 	}
 	return string(runes[:CallerCorrelationHeaderMaxLen])
+}
+
+// NormalizeClientSource collapses the advisory ingress header to a bounded
+// metric-safe taxonomy used consistently across logs, spans, metrics, and
+// analytics.
+func NormalizeClientSource(s string) string {
+	switch normalized := NormalizeCallerCorrelationValue(s); normalized {
+	case ClientSourceAIAssistant:
+		return normalized
+	case "", ClientSourceUserClient:
+		return ClientSourceUserClient
+	default:
+		return ClientSourceOther
+	}
 }
 
 // SetAPIKey stores the API key in the context

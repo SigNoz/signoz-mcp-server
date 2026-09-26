@@ -32,3 +32,6 @@
 - [x] Remove the client cache? → No; tune the transport instead (cache still dedups `/me`).
 - [ ] Make the limits env-configurable? → Deferred; revisit if prod metrics show connection
   churn or idle-FD pressure at a specific tenant scale.
+
+### 2026-08-25 — Status corrected to Done
+- User confirmed that the work represented by this plan is complete. The status was corrected from In Progress to Done; no implementation scope or prior decision was changed.
