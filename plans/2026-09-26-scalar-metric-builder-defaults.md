@@ -35,7 +35,8 @@ Document signal-specific order keys without rewriting caller intent.
 Metric type and monotonicity determine the existing default (counter sum; other
 supported types avg). Time aggregation alone cannot reliably distinguish types.
 Explicit reducers bypass metadata lookup. Query-local caching is scoped by metric
-name and source. Missing monotonicity for sums cannot safely select a reducer.
+name and source; discovery uses the query start/end so historical queries do not
+rely on the default catalog window. Missing monotonicity for sums cannot safely select a reducer.
 Ordering guidance preserves explicit order instead of guessing its meaning.
 
 ## Reference Links

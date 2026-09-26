@@ -38,7 +38,7 @@ func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, client clien
 			key := [2]string{spec.Source, metricName}
 			reducer, cached := reducers[key]
 			if !cached {
-				meta, err := h.fetchMetricMetadata(ctx, client, metricName, spec.Source)
+				meta, err := h.fetchMetricMetadata(ctx, client, payload.Start, payload.End, metricName, spec.Source)
 				if err != nil {
 					return nil, upstreamError(fmt.Errorf("could not choose reduceTo for metric %q: %w; supply reduceTo explicitly to skip metadata lookup", metricName, err))
 				}
