@@ -9,12 +9,15 @@ GOIMPORTS_VERSION ?= v0.48.0
 GOLANGCI_LINT_VERSION ?= v2.12.2
 GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 BASE ?= origin/main
+FUZZ_TIME ?= 10s
+FUZZ_LONG_TIME ?= 5m
+FUZZ_PARALLEL ?= 2
 
 # Tracked and untracked Go files, skipping ignored paths such as .claude/worktrees.
 GO_FILES = $(wildcard $(shell git ls-files -co --exclude-standard '*.go'))
 
 .PHONY: fmt goimports install-goimports require-goimports build test ci check-fmt lint check-deps check-build test-race \
-	check-guardrails mcp-ci-install check-protocol check-conformance check-e2e-style check-repo-docs
+	check-guardrails mcp-ci-install check-protocol check-conformance check-e2e-style check-repo-docs test-fuzz test-fuzz-long
 
 fmt:
 	@echo "🧹 Running gofmt -s..."
@@ -42,10 +45,16 @@ test:
 	@echo "🧪 Running all tests..."
 	@go test -v ./...
 
+test-fuzz:
+	@bash scripts/test-fuzz.sh "$(FUZZ_TIME)" "$(FUZZ_PARALLEL)"
+
+test-fuzz-long:
+	@bash scripts/test-fuzz.sh "$(FUZZ_LONG_TIME)" "$(FUZZ_PARALLEL)"
+
 ##@ CI
 
 # Everything the PR gate runs except the live e2e suite. Needs Node, uv, and goimports.
-ci: check-fmt lint check-deps check-build test-race check-guardrails check-protocol check-conformance check-e2e-style check-repo-docs
+ci: check-fmt lint check-deps check-build test-race check-guardrails check-protocol check-conformance check-e2e-style check-repo-docs test-fuzz
 	@echo "✅ All PR-gate checks passed."
 
 # Read-only: lists files that fmt or goimports would rewrite.
