@@ -39,6 +39,14 @@ name and source; discovery uses the query start/end so historical queries do not
 rely on the default catalog window. Missing monotonicity for sums cannot safely select a reducer.
 Ordering guidance preserves explicit order instead of guessing its meaning.
 
+### 2026-09-26 — Keep scalar details on relevant surfaces
+
+The tool and manifest descriptions retain their cross-signal scope and routing.
+The query parameter gives one sentence about scalar metric defaults; reducer
+choices and the metadata request belong in the metrics guide. Applied defaults
+remain visible in result notes. This follows the user's feedback about repeated
+reduceTo guidance and the field-local placement rule (DSC-3).
+
 ## Reference Links
 
 - https://github.com/SigNoz/nerve-pod/issues/359

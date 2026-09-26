@@ -54,10 +54,9 @@ Valid reduceTo values: sum, count, avg, min, max, last, median
 For scalar metric builder queries, every aggregation needs reduceTo, including
 hidden formula inputs. signoz_execute_builder_query fills an absent reduceTo
 from the metric's metadata in its source, using the defaults above (exponential
-histograms use avg). Explicit fields are preserved. Supply reduceTo to skip the
-lookup; unavailable or ambiguous metadata requires an explicit reducer. Applied
-defaults are reported in the response's decisions note.
-
+histograms use avg). Explicit fields are preserved. Set reduceTo explicitly to
+avoid an extra request for metric metadata. If metadata is unavailable or ambiguous,
+supply a reducer. Applied defaults are reported in the response's decisions note.
 
 ---
 
