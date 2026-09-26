@@ -1,0 +1,41 @@
+name: fuzz
+
+on:
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invariants:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - FuzzSchemaNormalization
+          - FuzzWebURLEnrichment
+          - FuzzQueryPayloadRoundTrip
+          - FuzzExplicitTimestampUnits
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: Run bounded fuzz campaign
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+        run: make test-fuzz-long
+      - name: Save logs and replay inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-${{ github.run_attempt }}
+          path: .fuzz-artifacts/
+          include-hidden-files: true
+          retention-days: 14
