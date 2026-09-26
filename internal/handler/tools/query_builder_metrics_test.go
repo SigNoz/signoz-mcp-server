@@ -27,7 +27,10 @@ func TestHandleExecuteBuilderQuery_ScalarMetricReducers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := make(map[string]int)
 			mock := &client.MockClient{
-				ListMetricsFn: func(_ context.Context, _, _ int64, _ int, name, source string) (json.RawMessage, error) {
+				ListMetricsFn: func(_ context.Context, start, end int64, _ int, name, source string) (json.RawMessage, error) {
+					if start != 1711123200000 || end != 1711130400000 {
+						t.Fatalf("metadata must use the historical query window; got %d..%d", start, end)
+					}
 					if name != "test_metric" {
 						t.Fatalf("unexpected metric %q", name)
 					}
