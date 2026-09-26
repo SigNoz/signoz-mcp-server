@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -71,7 +72,7 @@ func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, client clien
 			key := [2]string{spec.Source, metricName}
 			reducer := reducers[key]
 			if reducer == "" {
-				meta, err := h.fetchMetricMetadata(metadataCtx, client, payload.Start, payload.End, metricName, spec.Source)
+				meta, err := h.fetchBuilderMetricMetadata(metadataCtx, client, payload.Start, payload.End, metricName, spec.Source)
 				if err != nil {
 					return nil, upstreamError(fmt.Errorf("could not choose reduceTo for metric %q: %w; supply reduceTo explicitly to skip metadata lookup", metricName, err))
 				}
@@ -81,6 +82,7 @@ func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, client clien
 				}
 				resolved, err := metricsrules.ApplyDefaults(metricsrules.MetricQueryParams{MetricType: meta.MetricType, IsMonotonic: meta.IsMonotonic}, "scalar")
 				if err != nil {
+					h.logger.WarnContext(ctx, "Unsupported metric metadata type for scalar reducer", slog.String("metricName", metricName), slog.String("source", spec.Source), slog.String("metricType", meta.MetricType))
 					return nil, validationError(field, "cannot be defaulted for this metric type; supply sum, count, avg, min, max, last, or median explicitly")
 				}
 				reducer = resolved.ReduceTo
@@ -91,4 +93,33 @@ func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, client clien
 		}
 	}
 	return decisions, nil
+}
+
+func (h *Handler) fetchBuilderMetricMetadata(ctx context.Context, c client.Client, start, end int64, metricName, source string) (*metricMetadata, error) {
+	meta, err := h.fetchMetricMetadata(ctx, c, start, end, metricName, source)
+	if err != nil || (meta != nil && meta.MetricName == metricName) {
+		return meta, err
+	}
+	// The catalog is a bounded substring search. Its first page can omit an exact name.
+	if source == "meter" {
+		// The exact-name endpoint only reads the ordinary metrics store.
+		data, err := c.ListMetrics(ctx, start, end, 5000, metricName, source)
+		if err != nil {
+			return nil, err
+		}
+		return parseMetricMetadataFromResponse(data, metricName)
+	}
+	data, err := c.GetMetricMetadata(ctx, metricName)
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Data metricMetadataRow `json:"data"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		h.logger.WarnContext(ctx, "Cannot parse exact metric metadata", slog.String("metricName", metricName))
+		return nil, fmt.Errorf("invalid metric metadata response: %w", err)
+	}
+	response.Data.MetricName = metricName
+	return metricMetadataFromRow(response.Data), nil
 }
