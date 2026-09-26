@@ -20,6 +20,7 @@ type Handler struct {
 	logger        *slog.Logger
 	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
 	configURL     string
+	webURL        string
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
 	docsIndex     *docsindex.IndexRegistry
@@ -63,8 +64,19 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 		logger:        log,
 		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
 		configURL:     normalizedURL,
+		webURL:        strings.TrimSuffix(cfg.WebURL, "/"),
 		customHeaders: cfg.CustomHeaders,
 	}
+}
+
+func (h *Handler) resourceWebURLBase(ctx context.Context) string {
+	signozURL, _ := util.GetSigNozURL(ctx)
+	if h.webURL != "" {
+		if requestURL, err := util.NormalizeSigNozURL(signozURL); err == nil && requestURL == h.configURL {
+			return h.webURL
+		}
+	}
+	return signozURL
 }
 
 // GetClient returns a cached SigNoz client for the tenant identified by
