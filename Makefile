@@ -46,10 +46,10 @@ test:
 	@go test -v ./...
 
 test-fuzz:
-	@bash scripts/test-fuzz.sh "$(FUZZ_TIME)" 2m "$(FUZZ_PARALLEL)"
+	@bash scripts/test-fuzz.sh "$(FUZZ_TIME)" "$(FUZZ_PARALLEL)"
 
 test-fuzz-long:
-	@bash scripts/test-fuzz.sh "$(FUZZ_LONG_TIME)" 8m "$(FUZZ_PARALLEL)"
+	@bash scripts/test-fuzz.sh "$(FUZZ_LONG_TIME)" "$(FUZZ_PARALLEL)"
 
 ##@ CI
 

@@ -3,8 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 fuzz_time=${1:-10s}
-target_timeout=${2:-2m}
-workers=${3:-2}
+workers=${2:-2}
 targets=(
   './internal/handler/tools:FuzzSchemaNormalization'
   './pkg/util:FuzzWebURLEnrichment'
@@ -12,10 +11,6 @@ targets=(
   './pkg/timeutil:FuzzExplicitTimestampUnits'
 )
 
-if ! command -v timeout >/dev/null; then
-  echo 'GNU timeout is required (macOS: brew install coreutils).' >&2
-  exit 2
-fi
 if [[ -n ${FUZZ_TARGET:-} ]]; then
   selected=()
   for entry in "${targets[@]}"; do
@@ -38,7 +33,7 @@ echo "Fuzz logs and replay inputs: $run_dir"
   go version
   git rev-parse HEAD
   git status --short
-  echo "fuzztime=$fuzz_time timeout=$target_timeout workers=$workers minimizetime=5s"
+  echo "fuzztime=$fuzz_time workers=$workers minimizetime=5s"
 } > "$run_dir/environment.txt"
 
 status=0
@@ -46,24 +41,30 @@ for entry in "${targets[@]}"; do
   package=${entry%:*}
   target=${entry#*:}
   echo "Fuzzing $package $target ($fuzz_time, $workers workers)"
-  if timeout --kill-after=5s "$target_timeout" go test "$package" -run='^$' -fuzz="^${target}$" \
+  if go test "$package" -run='^$' -fuzz="^${target}$" \
       -fuzztime="$fuzz_time" -fuzzminimizetime=5s -parallel="$workers" \
-      -timeout="$target_timeout" 2>&1 | tee "$run_dir/$target.log"; then
+      2>&1 | tee "$run_dir/$target.log"; then
     continue
   fi
   status=1
   corpus="$package/testdata/fuzz/$target"
-  if [[ -d "$corpus" ]]; then
-    mkdir -p "$run_dir/$package/testdata/fuzz"
-    cp -R "$corpus" "$run_dir/$package/testdata/fuzz/"
-    for input in "$corpus"/*; do
-      [[ -f "$input" ]] || continue
-      printf 'GOTOOLCHAIN=%s go test %s -run="^%s/%s$" -count=1\n' \
-        "$toolchain" "$package" "$target" "$(basename "$input")" | tee -a "$run_dir/replay.txt"
-    done
-  else
-    echo "# $target failed without a saved input; inspect its log for seed failures, build errors, or timeouts." | tee -a "$run_dir/replay.txt"
-    printf 'GOTOOLCHAIN=%s go test %s -run="^%s$" -count=1\n' "$toolchain" "$package" "$target" | tee -a "$run_dir/replay.txt"
+  saved_input=false
+  # Existing corpus files may have nothing to do with this failure.
+  failure_pattern="^[[:space:]]*Failing input written to testdata/fuzz/$target/([0-9a-f]+)$"
+  while IFS= read -r line; do
+    if [[ $line =~ $failure_pattern ]]; then
+      input=${BASH_REMATCH[1]}
+      [[ -f "$corpus/$input" && ! -L "$corpus/$input" ]] || continue
+      mkdir -p "$run_dir/$corpus"
+      cp "$corpus/$input" "$run_dir/$corpus/"
+      printf 'GOTOOLCHAIN=%q go test %q -run=%q -count=1\n' \
+        "$toolchain" "$package" "^$target/$input$" | tee -a "$run_dir/replay.txt"
+      saved_input=true
+    fi
+  done < "$run_dir/$target.log"
+  if [[ $saved_input == false ]]; then
+    echo "# $target failed without a new saved input; inspect its log for seed, build, or runtime failures." | tee -a "$run_dir/replay.txt"
+    printf 'GOTOOLCHAIN=%q go test %q -run=%q -count=1\n' "$toolchain" "$package" "^$target$" | tee -a "$run_dir/replay.txt"
   fi
 done
 exit "$status"

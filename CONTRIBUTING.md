@@ -60,18 +60,18 @@ GOTOOLCHAIN=go1.26.0 make test-fuzz       # 10 seconds per target; included in m
 GOTOOLCHAIN=go1.26.0 make test-fuzz-long  # 5 minutes per target; local use
 ```
 
-Requires GNU `timeout` (`brew install coreutils` on macOS). Use `FUZZ_TARGET` to
-select one target, or override `FUZZ_TIME`, `FUZZ_LONG_TIME`, and `FUZZ_PARALLEL`.
+Use `FUZZ_TARGET` to select one target, or override `FUZZ_TIME`, `FUZZ_LONG_TIME`,
+and `FUZZ_PARALLEL`.
 
-Every PR runs all four targets in one job at 30 seconds each. The entire job has a
-five-minute timeout, including setup and artifact upload; GitHub queue time is
-separate. Manual dispatch uses the same budget. There is no scheduled run.
+Every PR runs all four targets in one job at 30 seconds each, plus build and setup
+time. Manual dispatch uses the same budget. There is no scheduled run or custom timeout.
 Use `make ci FUZZ_TIME=30s` to match the PR fuzzing budget.
 
 Logs and replay commands are saved under `.fuzz-artifacts/` and retained as CI
 artifacts for 14 days. To reproduce a CI failure, restore its package-relative
 `testdata/fuzz` files and run the command in `replay.txt`. Commit minimized failure
 inputs with their fixes; ordinary `go test` reruns them as regression tests.
+Build and seed failures link back to their logs and rerun the existing seed corpus.
 
 ## Testing across external contracts
 

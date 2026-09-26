@@ -24,9 +24,9 @@ Do not assert internal call order or use production code as the expected-value o
 
 Provide short and long bounded commands and a PR/manual workflow. Save native Go
 corpus inputs and replay commands on failure. Ordinary Go tests run the committed
-corpus; a separate PR job generates fresh inputs for 30 seconds per target, with a
-five-minute timeout for the entire job. Runs are credential-free and make no live
-SigNoz requests.
+corpus; a separate PR job generates fresh inputs for 30 seconds per target. Build
+and setup time are additional, with no custom job, step, or runner deadlines. Runs
+are credential-free and make no live SigNoz requests.
 
 ## Files to Modify
 
@@ -35,6 +35,7 @@ SigNoz requests.
 - `pkg/types/querybuilder_fuzz_test.go` — authored query field preservation.
 - `pkg/timeutil/time_fuzz_test.go` — explicit epoch conversion and saturation.
 - `Makefile`, `scripts/test-fuzz.sh`, `.gitignore` — bounded campaign commands.
+- `scripts/fuzz_runner_test.go` — replay safety and current-failure artifact regression coverage.
 - `.github/workflows/fuzz.yaml` — PR runs and failure artifacts.
 - `CONTRIBUTING.md` — concise commands, CI budget, and replay instructions.
 - `CLAUDE.md` — keep the `make ci` check list current and guide future fuzz coverage.
@@ -51,13 +52,11 @@ SigNoz requests.
 - Demonstrate oracle sensitivity with temporary plausible production defects,
   restore them, and record results. Do not add a mutation-testing framework.
 
-### 2026-09-26 — Replace scheduled fuzzing with a bounded PR check
+### 2026-09-26 — Replace scheduled fuzzing with a PR check
 
 - At the user's request, remove the weekly schedule and run fresh-input fuzzing on
-  every PR. Use one job, not a matrix, so the five-minute limit covers the whole
-  workflow's runner time, including setup, compilation, and artifact upload.
-- Spend 30 seconds per target (two minutes of fuzzing total), leaving headroom for
-  build and setup. Cap the fuzz step at four minutes and the job at five minutes.
+  every PR in one job. Spend 30 seconds per target (two minutes of fuzzing total),
+  plus build and setup time.
 - Include the short campaign in `make ci`; retain longer local campaigns for manual
   investigation. This user-directed change replaces the issue's periodic-run requirement.
 - Keep contributor instructions concise; target rationale and seed provenance live
@@ -65,10 +64,26 @@ SigNoz requests.
 - Document how to grow coverage: prefer extending existing targets and require a
   distinct realistic failure plus a stable invariant for each new target.
 
+### 2026-09-26 — Remove deadlines and correct failure replay
+
+- The user superseded the earlier five-minute CI cap: remove the workflow's job/step
+  timeouts and the runner's GNU timeout wrapper and custom Go test timeout. The
+  30-second input-generation budget remains. Cold compilation is no longer limited
+  by the old two-minute wrapper.
+- Copy only the corpus hash explicitly reported by the current Go failure log.
+  Build and seed failures get a labeled fallback command, not unrelated old files.
+- Shell-escape replay arguments and accept only Go's reported hexadecimal corpus
+  names. A regression test covers generated, seed, and build failures with hostile
+  pre-existing filenames; it reproduces both replay defects on the old runner.
+- The review's Homebrew-only-gtimeout claim does not match the current formula or
+  the local installation, both of which expose timeout too. Removing the wrapper
+  removes the fuzz runner's dependency regardless.
+
 ## Reference Links
 
 - [Issue](https://github.com/SigNoz/nerve-pod/issues/136)
 - [Go fuzzing](https://go.dev/doc/security/fuzz/)
+- [Homebrew coreutils](https://formulae.brew.sh/formula/coreutils)
 
 ## Verification
 
@@ -78,6 +93,11 @@ SigNoz requests.
 - After switching to PR fuzzing, `GOTOOLCHAIN=go1.26.0 make ci FUZZ_TIME=30s`
   passed, including all four 30-second fuzz campaigns; workflow lint and ready-plan
   validation passed for the updated workflow and documentation.
+- After removing custom deadlines and correcting replay, the same full CI command
+  passed again. The new runner regression test failed on the prior script for both
+  shell execution and stale-corpus reporting, then passed on the corrected script.
+  A native Go fuzz probe with hostile pre-existing corpus names verified that only
+  the current failure is archived and its replay fails before a fix and passes after it.
 - `actionlint` v1.7.7 and `bash -n scripts/test-fuzz.sh` passed.
 - Temporary Go overlays proved all four targets detect plausible defects: leaving
   boolean schemas unnormalized, round-tripping enrichment through float64, losing

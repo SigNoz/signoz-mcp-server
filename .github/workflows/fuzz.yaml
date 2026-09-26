@@ -11,15 +11,13 @@ jobs:
   invariants:
     name: invariants
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
           cache: true
-      - name: Run bounded fuzz campaign
-        timeout-minutes: 4
+      - name: Run fuzz campaign
         run: make test-fuzz FUZZ_TIME=30s
       - name: Save logs and replay inputs
         if: always()
