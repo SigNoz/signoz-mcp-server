@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -177,6 +179,108 @@ func TestHandleExecuteBuilderQuery_MetricMetadataFailure(t *testing.T) {
 			if tc.status == 0 && !strings.Contains(resultText(t, result), "reduceTo") {
 				t.Fatalf("missing recovery guidance: %v", result.Content)
 			}
+		})
+	}
+}
+
+func TestHandleExecuteBuilderQuery_MetricMetadataBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		metrics, sources, wantCalls int
+		explicit, wantError         bool
+	}{
+		{name: "at_limit_with_duplicates", metrics: 16, sources: 1, wantCalls: 16},
+		{name: "over_limit", metrics: 17, sources: 1, wantError: true},
+		{name: "sources_count_separately", metrics: 9, sources: 2, wantError: true},
+		{name: "explicit_reducers_bypass_budget", metrics: 17, sources: 2, explicit: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lookups, executions := 0, 0
+			mock := &client.MockClient{
+				ListMetricsFn: func(_ context.Context, _, _ int64, _ int, name, _ string) (json.RawMessage, error) {
+					lookups++
+					return json.RawMessage(fmt.Sprintf(`{"data":{"metrics":[{"metricName":%q,"type":"gauge"}]}}`, name)), nil
+				},
+				QueryBuilderV5Fn: func(ctx context.Context, _ []byte) (json.RawMessage, error) {
+					executions++
+					if _, bounded := ctx.Deadline(); bounded {
+						t.Fatal("metadata deadline leaked into query execution")
+					}
+					return json.RawMessage(`{}`), nil
+				},
+			}
+			query := scalarMetricBuilderQuery()
+			var queries []any
+			for source := 0; source < tc.sources; source++ {
+				var aggregations []any
+				for metric := 0; metric < tc.metrics; metric++ {
+					for range 2 {
+						agg := map[string]any{"metricName": fmt.Sprintf("metric_%d", metric)}
+						if tc.explicit {
+							agg["reduceTo"] = "last"
+						}
+						aggregations = append(aggregations, agg)
+					}
+				}
+				queries = append(queries, map[string]any{"type": "builder_query", "spec": map[string]any{
+					"name": fmt.Sprintf("Q%d", source), "signal": "metrics", "source": []string{"", "meter"}[source], "aggregations": aggregations,
+				}})
+			}
+			query["compositeQuery"].(map[string]any)["queries"] = queries
+			result, err := newTestHandler(mock).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+			if err != nil || result.IsError != tc.wantError || lookups != tc.wantCalls {
+				t.Fatalf("result=%v err=%v lookups=%d", result, err, lookups)
+			}
+			if tc.wantError {
+				if executions != 0 || resultCode(t, result) != CodeValidationFailed || !strings.Contains(resultText(t, result), "reduceTo explicitly") {
+					t.Fatalf("query ran or recovery missing: executions=%d result=%v", executions, result)
+				}
+			} else if executions != 1 {
+				t.Fatalf("executions=%d, want 1", executions)
+			}
+		})
+	}
+}
+
+func TestHandleExecuteBuilderQuery_MetricMetadataDeadline(t *testing.T) {
+	for _, parentTimeout := range []time.Duration{0, 5 * time.Second} {
+		t.Run(parentTimeout.String(), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx := testCtx()
+				wantElapsed := 30 * time.Second
+				if parentTimeout > 0 {
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithTimeout(ctx, parentTimeout)
+					defer cancel()
+					wantElapsed = parentTimeout
+				}
+				mock := &client.MockClient{
+					ListMetricsFn: func(ctx context.Context, _, _ int64, _ int, name, _ string) (json.RawMessage, error) {
+						select {
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						case <-time.After(20 * time.Second):
+							return json.RawMessage(fmt.Sprintf(`{"data":{"metrics":[{"metricName":%q,"type":"gauge"}]}}`, name)), nil
+						}
+					},
+					QueryBuilderV5Fn: func(context.Context, []byte) (json.RawMessage, error) {
+						t.Fatal("query must not execute after metadata timeout")
+						return nil, nil
+					},
+				}
+				query := scalarMetricBuilderQuery()
+				query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{
+					"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "first"}, map[string]any{"metricName": "second"}},
+				}}}
+				start := time.Now()
+				result, err := newTestHandler(mock).handleExecuteBuilderQuery(ctx, makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+				if err != nil || !result.IsError || resultCode(t, result) != CodeTimeout || !strings.Contains(resultText(t, result), "reduceTo explicitly") {
+					t.Fatalf("result=%v err=%v", result, err)
+				}
+				if elapsed := time.Since(start); elapsed != wantElapsed {
+					t.Fatalf("metadata took %v, want %v total across lookups", elapsed, wantElapsed)
+				}
+			})
 		})
 	}
 }

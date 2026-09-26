@@ -47,6 +47,28 @@ choices and the metadata request belong in the metrics guide. Applied defaults
 remain visible in result notes. This follows the user's feedback about repeated
 reduceTo guidance and the field-local placement rule (DSC-3).
 
+### 2026-09-26 — Compatibility review and bounded discovery
+
+SigNoz v0.143.0 and current main explicitly validate reduceTo for scalar metrics;
+the backend sums or averages the resulting bucket values. The MCP's existing
+counter-sum policy is not a backend default or proof of the user's intended
+statistic: summing rates is not a count, and averaging percentiles is not a
+full-window percentile. Keep the API's explicit contract; document these
+semantics in the metrics guide and keep authored reducers explicit in skills.
+
+Security review found unbounded per-request discovery. Preflight at most 16
+distinct metric/source pairs before any upstream call and share a 30-second
+deadline across discovery. These bounds leave normal small composite queries
+room while preventing request-size-dependent network amplification and sequential
+per-call timeout accumulation. Existing explicit-reducer queries bypass both.
+Handler tests cover the boundary, duplicates, source separation, shared timeout,
+parent deadline, and unchanged query-execution context.
+
+The live regression covers a gauge against pinned SigNoz v0.143.0; type-specific
+handler tests use mocked metadata. This is not exhaustive live coverage for
+counters, histograms, shifted windows, or future backend releases. Metadata
+availability remains an extra dependency only when reduceTo is omitted.
+
 ## Reference Links
 
 - https://github.com/SigNoz/nerve-pod/issues/359
@@ -58,6 +80,8 @@ reduceTo guidance and the field-local placement rule (DSC-3).
 - Passed focused handler, routing, wire-catalog, and description-budget checks.
 - Passed `GOTOOLCHAIN=go1.26.0 make ci`, including race tests, guardrails,
   Inspector, both protocol-era conformance scenarios, Python style, and repo docs.
+- Re-ran the full gate and `make check-repo-docs READY=1` after adding the
+  discovery budget, shared deadline, regression cases, and semantic caveats; all passed.
 - Added a seeded scalar-gauge e2e regression requiring numeric data and equivalence
   to explicit avg; the PR's ephemeral SigNoz CI suite owns live execution.
 - Companion skill passes quick_validate, pinned skills-ref, version/config checks,
@@ -67,6 +91,10 @@ reduceTo guidance and the field-local placement rule (DSC-3).
 - Reviewed applicable MCP best-practices section 11 items; no MUST exceptions,
   guardrail relaxations, or breaking changes. Existing annotations, searchContext,
   output envelope, and coded upstream errors are preserved.
+- SigNoz main reducer and validation tests pass with its Go 1.25.7 toolchain:
+  `go test ./pkg/types/querybuildertypes/querybuildertypesv5 -run 'TestFunctionReduceTo|Test.*Valid' -count=1`.
+  Go 1.26 cannot build that checkout's pinned sonic dependency; no upstream files
+  or dependencies were changed.
 
 ## Outcome
 
