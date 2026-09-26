@@ -13,7 +13,7 @@ subgraph Startup["Server Initialization"]
     LOG --> OTEL["Init OpenTelemetry<br/>(Tracer, Meter; OTLP export only when configured)"]
     OTEL --> HANDLER["Handler with LRU clientCache"]
     HANDLER --> CHSCHEMA["dashboard.InitClickhouseSchema"]
-    CHSCHEMA --> MCPSRV["NewMCPServer<br/>official MCP Go SDK v1.7.0"]
+    CHSCHEMA --> MCPSRV["NewMCPServer<br/>official MCP Go SDK v1.8.0"]
     MCPSRV --> REGISTER["Register all tool handlers<br/>(Org Overview, Metrics, TopMetrics, MetricUsage, Alerts, Dashboards, Services,<br/>QueryBuilderV5, Logs, Docs, Traces)"]
     REGISTER --> MODE{"TransportMode?"}
 end
@@ -129,7 +129,7 @@ LOOKUP -.->|read/write| LRU_C
 
 ## MCP Runtime and Transports
 
-The runtime is `github.com/modelcontextprotocol/go-sdk` v1.7.0. The same
+The runtime is `github.com/modelcontextprotocol/go-sdk` v1.8.0. The same
 production catalog supports both lifecycle models on HTTP and stdio:
 
 | Protocol era | Lifecycle and request identity |
@@ -171,7 +171,9 @@ catalog. API credentials, SigNoz URL, and default client source are seeded into
 the process context. SIGTERM/context cancellation is normalized as graceful
 shutdown. An invalid JSON frame terminates that one-client process under the
 official SDK; the server does not carry a custom framing layer solely to retain
-the previous parse-error-and-continue behavior.
+the previous parse-error-and-continue behavior. The SDK bounds inbound frames to
+16 MiB by default and rejects JSON nesting deeper than 1,000 levels. These
+transport rejections terminate the connection before handler dispatch.
 
 ## OAuth 2.1 — Stateless Token Design
 
