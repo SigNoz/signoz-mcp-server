@@ -1,8 +1,8 @@
 # Plan: Invariant fuzz verification
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/136
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/327
 
 ## Context
 
@@ -78,10 +78,6 @@ upstream integration coverage. No relevant recorded live payload was found in th
 packages; the reused raw trace fixture models the upstream response shape.
 
 ## Outcome
-
-Local implementation and verification are complete. This plan stays In Progress
-until a PR is opened: the repository validator requires a PR link for Done plans.
-Add that link and mark Done before the PR leaves draft; it should not merge incomplete.
 
 Added four focused native targets, short/long commands, weekly/manual CI with
 failure artifacts, and contributor instructions. No production behavior or public
