@@ -366,7 +366,7 @@ MCP_SERVER_PORT=8000 \
 
 ## MCP Protocol Compatibility
 
-SigNoz uses the official MCP Go SDK v1.7.0 and supports both current lifecycle
+SigNoz uses the official MCP Go SDK v1.8.0 and supports both current lifecycle
 models over HTTP and stdio:
 
 | Protocol era | Lifecycle |
@@ -379,6 +379,9 @@ The HTTP `/mcp` endpoint is stateless and sessionless. MCP messages use JSON
 not issue or require `Mcp-Session-Id`. `GET /mcp` and `DELETE /mcp` return
 `405 Method Not Allowed`, so deployments need neither sticky routing nor the old
 GET listener/heartbeat. Existing client configuration does not change.
+
+Stdio input has a 16 MiB frame limit. Split larger requests into smaller calls.
+`MCP_MAX_REQUEST_BYTES` controls HTTP request bodies only.
 
 The server intentionally does not advertise the deprecated logging capability.
 Discovery ordering is not a compatibility guarantee. Unknown tools, resources,

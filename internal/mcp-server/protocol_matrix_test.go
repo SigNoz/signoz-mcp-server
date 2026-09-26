@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -326,33 +327,53 @@ func TestProductionIOTransportProtocolLifecycleMatrix(t *testing.T) {
 	})
 }
 
-func TestProductionIOTransportMalformedFrameTerminatesConnection(t *testing.T) {
-	clientToServerReader, clientToServerWriter := io.Pipe()
-	serverToClientReader, serverToClientWriter := io.Pipe()
-	serverSession, err := buildTestServer(t).Connect(context.Background(), &mcp.IOTransport{
-		Reader: clientToServerReader,
-		Writer: serverToClientWriter,
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
+func TestProductionIOTransportInvalidFrameTerminatesConnection(t *testing.T) {
+	// Exercise the default framing limits shared by IOTransport and StdioTransport.
+	tests := []struct {
+		name      string
+		frame     string
+		wantError string
+	}{
+		{name: "malformed JSON", frame: "not-json"},
+		{
+			name:      "oversized frame",
+			frame:     `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"padding":"` + strings.Repeat("x", 16<<20) + `"}}`,
+			wantError: "maximum line length",
+		},
+		{
+			name:      "excessive nesting",
+			frame:     `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"padding":` + strings.Repeat("[", 1001) + "0" + strings.Repeat("]", 1001) + `}}`,
+			wantError: "maximum nesting depth",
+		},
 	}
-	t.Cleanup(func() {
-		_ = clientToServerWriter.Close()
-		_ = serverToClientReader.Close()
-		_ = serverSession.Close()
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientToServerReader, clientToServerWriter := io.Pipe()
+			serverToClientReader, serverToClientWriter := io.Pipe()
+			serverSession, err := buildTestServer(t).Connect(context.Background(), &mcp.IOTransport{
+				Reader: clientToServerReader,
+				Writer: serverToClientWriter,
+			}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_ = clientToServerWriter.Close()
+				_ = serverToClientReader.Close()
+				_ = serverSession.Close()
+			})
 
-	if _, err := io.WriteString(clientToServerWriter, "not-json\n"); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- serverSession.Wait() }()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("malformed IOTransport frame ended the connection without an error")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("malformed IOTransport frame did not terminate the connection")
+			go func() { _, _ = io.WriteString(clientToServerWriter, tt.frame+"\n") }()
+			done := make(chan error, 1)
+			go func() { done <- serverSession.Wait() }()
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("invalid frame error = %v, want non-nil error containing %q", err, tt.wantError)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("invalid IOTransport frame did not terminate the connection")
+			}
+		})
 	}
 }
