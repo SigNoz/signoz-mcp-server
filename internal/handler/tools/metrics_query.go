@@ -19,6 +19,7 @@ import (
 // TemporalityMissing / IsMonotonicMissing flag that a matched row lacked the
 // field; they drive the drift WARN and the "unknown/assumed" decision note.
 type metricMetadata struct {
+	MetricName         string
 	MetricType         string
 	IsMonotonic        bool
 	Temporality        string
@@ -55,7 +56,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Auto-fetch metric metadata if not provided
 	if mqr.MetricType == "" {
-		meta, fetchErr := h.fetchMetricMetadata(ctx, client, mqr.MetricName, mqr.Source)
+		meta, fetchErr := h.fetchMetricMetadata(ctx, client, 0, 0, mqr.MetricName, mqr.Source)
 		if fetchErr != nil {
 			return upstreamError(fmt.Errorf(
 				"could not auto-fetch metric metadata for %q: %w. "+
@@ -257,9 +258,9 @@ func buildMetricsDecisionsNote(decisions, defaultWarnings, backendWarnings []str
 // correct store rather than the default metrics store.
 func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
-}, metricName, source string) (*metricMetadata, error) {
+}, start, end int64, metricName, source string) (*metricMetadata, error) {
 	// Search with exact metric name, limit 10 to find it
-	result, err := client.ListMetrics(ctx, 0, 0, 10, metricName, source)
+	result, err := client.ListMetrics(ctx, start, end, 10, metricName, source)
 	if err != nil {
 		return nil, err
 	}
@@ -309,6 +310,7 @@ func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 		temporality = *m.Temporality
 	}
 	meta := &metricMetadata{
+		MetricName:  m.MetricName,
 		MetricType:  mt,
 		IsMonotonic: isMono,
 		Temporality: temporality,
@@ -378,7 +380,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 
 	// Auto-fetch if needed
 	if metricType == "" {
-		meta, err := h.fetchMetricMetadata(ctx, client, fq.MetricName, source)
+		meta, err := h.fetchMetricMetadata(ctx, client, 0, 0, fq.MetricName, source)
 		if err != nil {
 			// Upstream (ListMetrics) failure — tag it so the caller surfaces the
 			// uniform "SigNoz API error:" prefix. The "metric not found" and

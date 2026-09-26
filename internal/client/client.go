@@ -564,6 +564,12 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
+func (s *SigNoz) GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error) {
+	params := url.Values{"metricName": {metricName}}
+	reqURL := fmt.Sprintf("%s/api/v2/metrics/metadata?%s", s.baseURL, params.Encode())
+	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
+}
+
 func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
 	if qp := params.QueryParams(); len(qp) > 0 {

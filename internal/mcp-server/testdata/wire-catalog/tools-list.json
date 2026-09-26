@@ -4309,7 +4309,7 @@
           "inputSchema": {
             "properties": {
               "query": {
-                "description": "Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.",
+                "description": "Complete Query Builder v5 object: schemaVersion, integer Unix-ms start/end, requestType, compositeQuery, formatOptions, variables. For scalar metrics, omitted reduceTo defaults by metric type. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order; the server inserts signal-aware defaults (limit 100; formula inputs 10000). Use spec.order, not orderBy. Order key.name: raw rows use timestamp; metric aggregates and formulas use __result; log/trace aggregates use an expression (count()), alias, zero-based index (\"0\"), or groupBy key. A query name (A), __result_0, or timestamp is not a generic aggregate order key. Omit order for signal-aware defaults.",
                 "properties": {},
                 "type": "object"
               },
