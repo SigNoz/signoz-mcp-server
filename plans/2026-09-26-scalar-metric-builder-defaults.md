@@ -1,8 +1,8 @@
 # Plan: Scalar metric builder defaults
 
-Status: In Progress
+Status: Done
 Issue: https://github.com/SigNoz/nerve-pod/issues/359
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/328
 
 ## Context
 
@@ -50,7 +50,7 @@ Ordering guidance preserves explicit order instead of guessing its meaning.
 - Passed `GOTOOLCHAIN=go1.26.0 make ci`, including race tests, guardrails,
   Inspector, both protocol-era conformance scenarios, Python style, and repo docs.
 - Added a seeded scalar-gauge e2e regression requiring numeric data and equivalence
-  to explicit avg; the PR's ephemeral SigNoz CI suite will execute it.
+  to explicit avg; the PR's ephemeral SigNoz CI suite owns live execution.
 - Companion skill passes quick_validate, pinned skills-ref, version/config checks,
   clean portable packaging, and plugin/MCP schemas. Evaluation cases added;
   before/after model sessions were not run (EVL-1 deviation supported by the
@@ -65,5 +65,5 @@ Implemented absent-field defaults with exact metric/source lookup, shared metric
 rules, explicit-value preservation, and decision notes. Documented order keys
 without normalizing authored order. Companion:
 https://github.com/SigNoz/agent-skills/pull/103.
-No implementation scope deferred. E2E execution and automated PR review are pending
-CI and will be monitored before handoff.
+No implementation scope deferred. Live e2e outcomes and automated review findings
+are tracked in the linked PR checks and review threads.
