@@ -177,3 +177,48 @@ def test_list_tools_succeed(mcp_client: MCPClient) -> None:
         limit = 5 if tool == "signoz_list_notification_channels" else "5"
         result = assert_tool_ok(mcp_client.call_tool(tool, {"searchContext": f"call {tool}", "limit": limit}))
         json.loads(first_text_block(result))
+
+
+def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
+    """An omitted gauge reducer succeeds and matches an explicit average on seeded data."""
+    metric = f"mcp_e2e_{test_id.replace('-', '_')}_scalar_gauge"
+    seed_metrics(f"mcp-e2e-{test_id}", metric, count=2, age_seconds=120)
+    now = int(time.time() * 1000)
+    aggregation = {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum"}
+    query = {
+        "schemaVersion": "v1",
+        "start": now - 3_600_000,
+        "end": now,
+        "requestType": "scalar",
+        "compositeQuery": {
+            "queries": [
+                {
+                    "type": "builder_query",
+                    "spec": {"name": "A", "signal": "metrics", "aggregations": [aggregation]},
+                }
+            ]
+        },
+    }
+
+    def visible() -> dict | None:
+        result = mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "average seeded gauge", "query": query}
+        )
+        if result.get("isError", False):
+            return None
+        results = json.loads(first_text_block(result))["data"]["data"]["results"]
+        values = [value for item in results for row in item.get("data", []) for value in row]
+        return result if any(isinstance(value, (int, float)) and value > 0 for value in values) else None
+
+    defaulted = wait_for(visible, f"scalar metric {metric} available with default reducer")
+    assert "reduceTo=avg" in note_blocks(defaulted)
+    aggregation["reduceTo"] = "avg"
+    explicit = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_execute_builder_query", {"searchContext": "explicit average seeded gauge", "query": query}
+        )
+    )
+    default_data = json.loads(first_text_block(defaulted))["data"]["data"]["results"][0]["data"]
+    explicit_data = json.loads(first_text_block(explicit))["data"]["data"]["results"][0]["data"]
+    assert default_data == explicit_data
+    assert "reduceTo=" not in note_blocks(explicit)

@@ -25,9 +25,9 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 			"Use this only when dedicated log, trace, and metric tools cannot express the request, including multi-query requests, formulas, PromQL, and ClickHouse SQL. "+
 				"Use signoz_search_logs/signoz_search_traces for raw rows, signoz_aggregate_logs/signoz_aggregate_traces for grouped or top-N analysis, and signoz_query_metrics for ordinary metrics queries. "+
 				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. "+
-				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
+				"Scalar metric aggregations need reduceTo; absent fields default from metric metadata. Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete Query Builder v5 object: schemaVersion, integer Unix-ms start/end, requestType, compositeQuery, formatOptions, variables. Each scalar metric aggregation needs reduceTo: absent fields default to sum for monotonic counters, avg for gauges, non-monotonic sums and histograms, using source-aware metadata; explicit values are preserved. Supply reduceTo to skip lookup. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order; the server inserts signal-aware defaults (limit 100; formula inputs 10000). Use spec.order, not orderBy. Order key.name: raw rows use timestamp; metric aggregates and formulas use __result; log/trace aggregates use an expression (count()), alias, zero-based index (\"0\"), or groupBy key. A query name (A), __result_0, or timestamp is not a generic aggregate order key. Omit order for signal-aware defaults.")),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)
@@ -103,16 +103,21 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		return errorWithCode(CodeValidationFailed, "query validation error: "+err.Error()), nil
 	}
 
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return clientError(err), nil
+	}
+	decisions, errResult := h.defaultBuilderMetricReducers(ctx, client, &queryPayload)
+	if errResult != nil {
+		return errResult, nil
+	}
+
 	finalQueryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal validated query payload", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal validated query payload: " + err.Error()), nil
 	}
 
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
-	}
 	data, err := client.QueryBuilderV5(ctx, finalQueryJSON)
 	if err != nil {
 		h.logQueryFailure(ctx, "Failed to execute query builder v5", err)
@@ -125,6 +130,9 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
 	// Returning the body verbatim previously dropped them entirely.
 	var notes []string
+	if len(decisions) > 0 {
+		notes = append(notes, buildMetricsDecisionsNote(decisions, nil, nil))
+	}
 	if len(queryPayload.AppliedBounds) > 0 {
 		notes = append(notes, queryBoundsDecisionsNote(queryPayload.AppliedBounds, queryPayload.RequestType))
 	}

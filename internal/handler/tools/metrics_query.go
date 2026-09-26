@@ -19,6 +19,7 @@ import (
 // TemporalityMissing / IsMonotonicMissing flag that a matched row lacked the
 // field; they drive the drift WARN and the "unknown/assumed" decision note.
 type metricMetadata struct {
+	MetricName         string
 	MetricType         string
 	IsMonotonic        bool
 	Temporality        string
@@ -309,6 +310,7 @@ func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 		temporality = *m.Temporality
 	}
 	meta := &metricMetadata{
+		MetricName:  m.MetricName,
 		MetricType:  mt,
 		IsMonotonic: isMono,
 		Temporality: temporality,
