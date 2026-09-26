@@ -180,9 +180,11 @@ def test_list_tools_succeed(mcp_client: MCPClient) -> None:
 
 
 def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """An omitted gauge reducer succeeds and matches an explicit average on seeded data."""
+    """Defaulting finds the exact gauge beyond substring hits and matches explicit avg."""
     metric = f"mcp_e2e_{test_id.replace('-', '_')}_scalar_gauge"
     seed_metrics(f"mcp-e2e-{test_id}", metric, count=2, age_seconds=120)
+    for i in range(11):
+        seed_metrics(f"mcp-e2e-{test_id}", f"a{i}_{metric}", count=2, age_seconds=120)
     now = int(time.time() * 1000)
     aggregation = {"metricName": metric, "timeAggregation": "avg", "spaceAggregation": "sum"}
     query = {
@@ -199,6 +201,24 @@ def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: 
             ]
         },
     }
+
+    def first_page_excludes_exact_metric() -> bool:
+        result = mcp_client.call_tool(
+            "signoz_list_metrics",
+            {
+                "searchContext": "verify substring collisions for scalar metric lookup",
+                "searchText": metric,
+                "limit": 10,
+                "start": query["start"],
+                "end": query["end"],
+            },
+        )
+        if result.get("isError", False):
+            return False
+        names = [row["metricName"] for row in json.loads(first_text_block(result))["data"]["metrics"]]
+        return len(names) == 10 and metric not in names
+
+    wait_for(first_page_excludes_exact_metric, "exact metric outside the first substring-search page")
 
     def visible() -> dict | None:
         result = mcp_client.call_tool(

@@ -1,10 +1,13 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -172,12 +175,92 @@ func TestHandleExecuteBuilderQuery_MetricMetadataFailure(t *testing.T) {
 			}
 			query := scalarMetricBuilderQuery()
 			query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{"name": "A", "signal": "metrics", "aggregations": []any{map[string]any{"metricName": "test_metric"}}}}}
-			result, err := newTestHandler(mock).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+			var logs bytes.Buffer
+			h := newTestHandler(mock)
+			h.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+			result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
 			if err != nil || !result.IsError || resultCode(t, result) != tc.code {
 				t.Fatalf("result=%v err=%v", result, err)
 			}
 			if tc.status == 0 && !strings.Contains(resultText(t, result), "reduceTo") {
 				t.Fatalf("missing recovery guidance: %v", result.Content)
+			}
+			if tc.name == "unknown_type" && (!strings.Contains(logs.String(), `"level":"WARN"`) || !strings.Contains(logs.String(), `"metricType":"new_type"`)) {
+				t.Fatalf("unsupported upstream type was not observable: %s", logs.String())
+			}
+		})
+	}
+}
+
+func TestHandleExecuteBuilderQuery_MetricMetadataBeyondFirstPage(t *testing.T) {
+	for _, tc := range []struct {
+		name, source, code string
+		status             int
+	}{
+		{name: "exact_name", status: http.StatusOK},
+		{name: "meter_store", source: "meter", status: http.StatusOK},
+		{name: "exact_lookup_unauthorized", status: http.StatusUnauthorized, code: CodeUnauthorized},
+		{name: "exact_lookup_forbidden", status: http.StatusForbidden, code: CodePermissionDenied},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const metricName = "test+metric&name"
+			executed := false
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v2/metrics":
+					if r.URL.Query().Get("source") != tc.source || r.URL.Query().Get("searchText") != metricName {
+						t.Errorf("catalog lookup lost source/name: %v", r.URL.Query())
+					}
+					var rows []map[string]any
+					for i := range 11 {
+						rows = append(rows, map[string]any{"metricName": fmt.Sprintf("a%d_%s", i, metricName), "type": "gauge"})
+					}
+					rows = append(rows, map[string]any{"metricName": metricName, "type": "sum", "isMonotonic": true})
+					if r.URL.Query().Get("limit") == "10" {
+						rows = rows[:10]
+					} else if tc.source != "meter" || r.URL.Query().Get("limit") != "5000" {
+						t.Errorf("unexpected catalog fallback: %v", r.URL.Query())
+					}
+					if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"metrics": rows}}); err != nil {
+						t.Error(err)
+					}
+				case "/api/v2/metrics/metadata":
+					if r.Method != http.MethodGet || r.URL.Query().Get("metricName") != metricName || tc.source == "meter" {
+						t.Errorf("wrong exact-name request: %s %s", r.Method, r.URL)
+					}
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(`{"data":{"type":"sum","isMonotonic":true,"temporality":"cumulative"}}`))
+				case "/api/v5/query_range":
+					executed = true
+					var query map[string]any
+					if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+						t.Error(err)
+						return
+					}
+					queries := query["compositeQuery"].(map[string]any)["queries"].([]any)
+					agg := queries[0].(map[string]any)["spec"].(map[string]any)["aggregations"].([]any)[0].(map[string]any)
+					if agg["reduceTo"] != "sum" {
+						t.Errorf("reducer came from a different metric: %v", agg)
+					}
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					t.Errorf("unexpected request: %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer upstream.Close()
+			query := scalarMetricBuilderQuery()
+			query["compositeQuery"].(map[string]any)["queries"] = []any{map[string]any{"type": "builder_query", "spec": map[string]any{
+				"name": "A", "signal": "metrics", "source": tc.source, "aggregations": []any{map[string]any{"metricName": metricName}},
+			}}}
+			c := client.NewClient(slog.Default(), upstream.URL, "test-key", "SIGNOZ-API-KEY", nil)
+			result, err := newTestHandler(c).handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
+			if err != nil || result.IsError != (tc.code != "") || executed != (tc.code == "") {
+				t.Fatalf("result=%v err=%v executed=%v", result, err, executed)
+			}
+			if tc.code != "" && resultCode(t, result) != tc.code {
+				t.Fatalf("wrong upstream error code: %v", result)
 			}
 		})
 	}

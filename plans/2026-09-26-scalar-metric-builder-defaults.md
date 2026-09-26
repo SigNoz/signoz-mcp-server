@@ -69,6 +69,21 @@ handler tests use mocked metadata. This is not exhaustive live coverage for
 counters, histograms, shifted windows, or future backend releases. Metadata
 availability remains an extra dependency only when reduceTo is omitted.
 
+### 2026-09-26 — Exact-name fallback and type drift
+
+A ten-result substring catalog page can exclude the requested name. When that
+happens, ordinary metrics use the exact-name metadata endpoint; Cost Meter stays
+in its own store and widens to the backend's maximum 5000 catalog results, since
+the exact endpoint does not accept a source. If a meter metric still cannot be
+identified, the caller must supply reduceTo. Fallbacks share the same discovery
+deadline and request-local cache. Unsupported metadata types emit a structured
+WARN before returning field-specific recovery guidance.
+
+Extend the existing seeded gauge e2e with 11 substring collisions, verify that the
+first catalog page excludes the target, then require successful scalar output
+equal to explicit avg. HTTP handler tests exercise exact-name query encoding,
+Cost Meter store isolation, reducer selection, and fallback 401/403 propagation.
+
 ## Reference Links
 
 - https://github.com/SigNoz/nerve-pod/issues/359
@@ -82,6 +97,9 @@ availability remains an extra dependency only when reduceTo is omitted.
   Inspector, both protocol-era conformance scenarios, Python style, and repo docs.
 - Re-ran the full gate and `make check-repo-docs READY=1` after adding the
   discovery budget, shared deadline, regression cases, and semantic caveats; all passed.
+- Full `make ci` passed again with exact-name fallback, structured type-drift
+  warnings, HTTP-level fallback regressions, and the extended e2e scenario.
+  CI owns live execution of the substring-collision scenario after the push.
 - Added a seeded scalar-gauge e2e regression requiring numeric data and equivalence
   to explicit avg; the PR's ephemeral SigNoz CI suite owns live execution.
 - Companion skill passes quick_validate, pinned skills-ref, version/config checks,
