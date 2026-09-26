@@ -57,6 +57,14 @@ from the metric's metadata in its source, using the defaults above (exponential
 histograms use avg). Explicit fields are preserved. Set reduceTo explicitly to
 avoid an extra request for metric metadata. If metadata is unavailable or ambiguous,
 supply a reducer. Applied defaults are reported in the response's decisions note.
+Automatic lookup is limited to 16 distinct metric/source pairs and 30 seconds
+across the request. Set reduceTo explicitly when either limit is reached.
+
+Choose reduceTo for the intended statistic. These are MCP defaults, not a
+guarantee that metric type identifies that statistic. For a counter rate, avg
+averages the per-second rates; sum adds the bucket rates and is not a total count.
+For histogram percentiles, avg averages the per-bucket percentiles; it does not
+compute a percentile over all observations in the window.
 
 ---
 
