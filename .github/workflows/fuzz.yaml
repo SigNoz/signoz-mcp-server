@@ -19,11 +19,14 @@ jobs:
           cache: true
       - name: Run fuzz campaign
         run: make test-fuzz FUZZ_TIME=30s
-      - name: Save logs and replay inputs
+      - name: Save logs and failing inputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-${{ github.run_attempt }}
-          path: .fuzz-artifacts/
+          path: |
+            .fuzz-artifacts/**/environment.txt
+            .fuzz-artifacts/**/*.log
+            .fuzz-artifacts/**/testdata/fuzz/**
           include-hidden-files: true
           retention-days: 14

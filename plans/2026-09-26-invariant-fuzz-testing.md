@@ -23,7 +23,8 @@ exact numbers, valid JSON, normalization stability, and documented time units.
 Do not assert internal call order or use production code as the expected-value oracle.
 
 Provide short and long bounded commands and a PR/manual workflow. Save native Go
-corpus inputs and replay commands on failure. Ordinary Go tests run the committed
+corpus inputs and logs on failure; keep replay instructions in contributor docs.
+Ordinary Go tests run the committed
 corpus; a separate PR job generates fresh inputs for 30 seconds per target. Build
 and setup time are additional, with no custom job, step, or runner deadlines. Runs
 are credential-free and make no live SigNoz requests.
@@ -35,7 +36,7 @@ are credential-free and make no live SigNoz requests.
 - `pkg/types/querybuilder_fuzz_test.go` — authored query field preservation.
 - `pkg/timeutil/time_fuzz_test.go` — explicit epoch conversion and saturation.
 - `Makefile`, `scripts/test-fuzz.sh`, `.gitignore` — bounded campaign commands.
-- `scripts/fuzz_runner_test.go` — replay safety and current-failure artifact regression coverage.
+- `scripts/fuzz_runner_test.go` — current-failure artifact regression coverage.
 - `.github/workflows/fuzz.yaml` — PR runs and failure artifacts.
 - `CONTRIBUTING.md` — concise commands, CI budget, and replay instructions.
 - `CLAUDE.md` — keep the `make ci` check list current and guide future fuzz coverage.
@@ -79,6 +80,16 @@ are credential-free and make no live SigNoz requests.
   the local installation, both of which expose timeout too. Removing the wrapper
   removes the fuzz runner's dependency regardless.
 
+### 2026-09-26 — Keep executable replay commands out of artifacts
+
+- PR code can overwrite artifact files, so escaping generated commands does not
+  make a downloaded replay script trustworthy. Remove generated commands entirely
+  and upload only logs, environment metadata, and corpus data.
+- Keep a fixed replay command in CONTRIBUTING.md. Contributors review the PR code
+  and inputs before restoring corpus files; artifact text is never executable guidance.
+- Retain the runner regression for copying only the current failure and labeling
+  failures without new inputs. Remove the obsolete executable-replay assertions.
+
 ## Reference Links
 
 - [Issue](https://github.com/SigNoz/nerve-pod/issues/136)
@@ -98,6 +109,10 @@ are credential-free and make no live SigNoz requests.
   shell execution and stale-corpus reporting, then passed on the corrected script.
   A native Go fuzz probe with hostile pre-existing corpus names verified that only
   the current failure is archived and its replay fails before a fix and passes after it.
+- After removing generated replay commands, `GOTOOLCHAIN=go1.26.0 make ci FUZZ_TIME=30s`
+  passed again. The runner's generated/seed/build failure regression and workflow
+  lint passed. A native Go probe restored the archived corpus and verified that the
+  fixed command in contributor docs fails before a defect fix and passes after it.
 - `actionlint` v1.7.7 and `bash -n scripts/test-fuzz.sh` passed.
 - Temporary Go overlays proved all four targets detect plausible defects: leaving
   boolean schemas unnormalized, round-tripping enrichment through float64, losing

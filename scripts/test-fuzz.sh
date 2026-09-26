@@ -27,8 +27,7 @@ fi
 
 mkdir -p .fuzz-artifacts
 run_dir=$(mktemp -d .fuzz-artifacts/run.XXXXXX)
-toolchain=$(go env GOVERSION)
-echo "Fuzz logs and replay inputs: $run_dir"
+echo "Fuzz logs and failing inputs: $run_dir"
 {
   go version
   git rev-parse HEAD
@@ -57,14 +56,11 @@ for entry in "${targets[@]}"; do
       [[ -f "$corpus/$input" && ! -L "$corpus/$input" ]] || continue
       mkdir -p "$run_dir/$corpus"
       cp "$corpus/$input" "$run_dir/$corpus/"
-      printf 'GOTOOLCHAIN=%q go test %q -run=%q -count=1\n' \
-        "$toolchain" "$package" "^$target/$input$" | tee -a "$run_dir/replay.txt"
       saved_input=true
     fi
   done < "$run_dir/$target.log"
   if [[ $saved_input == false ]]; then
-    echo "# $target failed without a new saved input; inspect its log for seed, build, or runtime failures." | tee -a "$run_dir/replay.txt"
-    printf 'GOTOOLCHAIN=%q go test %q -run=%q -count=1\n' "$toolchain" "$package" "^$target$" | tee -a "$run_dir/replay.txt"
+    echo "$target failed without a new saved input; inspect this log for seed, build, or runtime failures." | tee -a "$run_dir/$target.log"
   fi
 done
 exit "$status"

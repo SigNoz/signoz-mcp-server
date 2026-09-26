@@ -67,11 +67,12 @@ Every PR runs all four targets in one job at 30 seconds each, plus build and set
 time. Manual dispatch uses the same budget. There is no scheduled run or custom timeout.
 Use `make ci FUZZ_TIME=30s` to match the PR fuzzing budget.
 
-Logs and replay commands are saved under `.fuzz-artifacts/` and retained as CI
-artifacts for 14 days. To reproduce a CI failure, restore its package-relative
-`testdata/fuzz` files and run the command in `replay.txt`. Commit minimized failure
-inputs with their fixes; ordinary `go test` reruns them as regression tests.
-Build and seed failures link back to their logs and rerun the existing seed corpus.
+Logs and failing inputs are saved under `.fuzz-artifacts/` and retained as CI
+artifacts for 14 days. Treat PR artifacts as untrusted data; never execute commands
+from them. After reviewing the PR code and inputs, restore the package-relative
+`testdata/fuzz` files and run `go test ./... -run='^Fuzz' -count=1` using the Go
+version in `environment.txt`. Commit minimized inputs with their fixes so ordinary
+`go test` reruns them. Build and seed failures are recorded in the target's log.
 
 ## Testing across external contracts
 
