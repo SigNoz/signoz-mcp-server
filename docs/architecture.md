@@ -215,6 +215,9 @@ maintainer adds `safe-to-test`, records pending required statuses, and dispatche
 this dispatcher or clear its pending commit statuses.
 Approval waits for GitHub's mergeability calculation and requires a merge
 revision; a timeout or conflict leaves the head gate pending without dispatch.
+A scheduled metadata-only reconciler gates merge revisions that appear later,
+then retries failed approval/reset runs. It shares the per-PR status-write lock,
+preserves existing merge statuses, and never grants approval itself.
 
 The worker validates the approval before checking out the head and pinned merge
 revision in separate matrix jobs. It reports success only for those tested

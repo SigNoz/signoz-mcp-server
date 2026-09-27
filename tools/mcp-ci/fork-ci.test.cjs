@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '../..');
 const read = name => YAML.parse(fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8'));
 const gate = read('fork-approval.yaml');
 const worker = read('fork-ci.yaml');
+const reconciler = read('fork-reconcile.yaml');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const script = job => job.steps.find(step => step.uses === 'actions/github-script@v7').with.script;
 const sha = 'a'.repeat(40);
@@ -43,7 +44,10 @@ function fixture() {
     }
   }
   state.github = {rest: {
-    pulls: {get: async () => ({data: state.readPR ? state.readPR() : state.pr})},
+    pulls: {
+      get: async () => ({data: state.readPR ? state.readPR() : state.pr}),
+      list: async () => ({data: state.prs || [state.pr]}),
+    },
     repos: {
       getCollaboratorPermissionLevel: async () => ({data: {permission: state.permission}}),
       createCommitStatus: async params => {
@@ -62,9 +66,16 @@ function fixture() {
       createWorkflowDispatch: async params => state.calls.push(['dispatch', params]),
       getWorkflowRun: async () => ({data: state.source}),
       listWorkflowRuns: async () => ({data: {workflow_runs: state.runs}}),
+      reRunWorkflow: async params => {
+        state.calls.push(['rerun', params]);
+        if (state.rerunError) throw new Error('rerun API error');
+      },
     },
   }};
-  state.github.paginate = async method => (await method()).data.workflow_runs;
+  state.github.paginate = async (method, params) => {
+    const {data} = await method(params);
+    return data.workflow_runs || data;
+  };
   state.run = async job => new AsyncFunction('context', 'github', 'core', 'process', 'setTimeout', script(job))(
     {...context, runId: job === gate.jobs.approval ? context.runId : 200}, state.github,
     {setOutput: (key, value) => {state.outputs[key] = value;}}, {env: state.env}, callback => callback(),
@@ -305,6 +316,90 @@ test('a newer approval for another PR does not preserve the old label', async ()
   assert.deepEqual(state.pr.labels, []);
 });
 
+for (const action of ['labeled', 'synchronize']) {
+  test(`a merge computed after ${action} times out is gated and its trusted workflow retried`, async () => {
+    const state = fixture();
+    state.context.payload.action = action;
+    state.pr.mergeable = null;
+    state.pr.merge_commit_sha = null;
+    if (action === 'synchronize') state.source.display_title = `reset-fork #317 ${sha}`;
+    await assert.rejects(state.run(gate.jobs.approval), /merge revision/);
+    state.source.status = 'completed';
+    state.source.conclusion = 'failure';
+    state.pr.mergeable = true;
+    state.pr.merge_commit_sha = 'd'.repeat(40);
+    await state.run(reconciler.jobs.reconcile);
+    assert.equal(state.status('contract', state.pr.merge_commit_sha).state, 'pending');
+    assert.equal(state.status('contract', state.pr.merge_commit_sha).target_url, approvalURL);
+    assert.deepEqual(state.calls.find(([kind]) => kind === 'rerun')[1], {...repo, run_id: 100});
+    await state.run(gate.jobs.approval);
+    const dispatch = state.calls.find(([kind]) => kind === 'dispatch');
+    if (action === 'labeled') assert.equal(dispatch[1].inputs.merge_sha, state.pr.merge_commit_sha);
+    else {
+      assert.equal(dispatch, undefined);
+      assert.deepEqual(state.pr.labels, []);
+    }
+  });
+}
+
+test('reconciliation does not replace existing merge results', async () => {
+  const state = fixture();
+  await state.run(worker.jobs.report);
+  state.calls.length = 0;
+  await state.run(reconciler.jobs.reconcile);
+  assert.deepEqual(state.calls, []);
+  assert.equal(state.status('contract', mergeSHA).state, 'success');
+});
+
+test('reconciliation gates a new base merge without reusing a successful old approval', async () => {
+  const state = fixture();
+  await state.run(worker.jobs.report);
+  state.calls.length = 0;
+  state.pr.merge_commit_sha = 'd'.repeat(40);
+  state.source.status = 'completed';
+  state.source.conclusion = 'success';
+  await state.run(reconciler.jobs.reconcile);
+  assert.equal(state.status('contract', state.pr.merge_commit_sha).state, 'pending');
+  assert.equal(state.calls.some(([kind]) => kind === 'rerun'), false);
+});
+
+test('reconciliation leaves unresolved merge computation for the next scheduled run', async () => {
+  const state = fixture();
+  state.pr.mergeable = null;
+  state.pr.merge_commit_sha = null;
+  await state.run(reconciler.jobs.reconcile);
+  assert.deepEqual(state.calls, []);
+});
+
+test('reconciliation cannot rerun an untrusted workflow', async () => {
+  const state = fixture();
+  state.source.path = '.github/workflows/fake.yaml';
+  await assert.rejects(state.run(reconciler.jobs.reconcile), /trusted workflow/);
+  assert.deepEqual(state.calls, []);
+});
+
+test('rerun API failure leaves the late merge gate pending for another retry', async () => {
+  const state = fixture();
+  state.pr.merge_commit_sha = 'd'.repeat(40);
+  state.source.status = 'completed';
+  state.source.conclusion = 'failure';
+  state.rerunError = true;
+  await assert.rejects(state.run(reconciler.jobs.reconcile), /rerun API error/);
+  assert.equal(state.status('contract', state.pr.merge_commit_sha).state, 'pending');
+  state.rerunError = false;
+  state.calls.length = 0;
+  await state.run(reconciler.jobs.reconcile);
+  assert.deepEqual(state.calls, [['rerun', {...repo, run_id: 100}]]);
+});
+
+test('scheduled discovery only selects forks and Dependabot', async () => {
+  const state = fixture();
+  const internal = {...state.pr, number: 1, head: {...state.pr.head, repo: {full_name: `${repo.owner}/${repo.repo}`}}};
+  state.prs = [state.pr, internal, {...internal, number: 2, user: {login: 'dependabot[bot]'}}];
+  await state.run(reconciler.jobs.discover);
+  assert.deepEqual(JSON.parse(state.outputs.prs), [317, 2]);
+});
+
 for (const action of ['synchronize', 'labeled']) {
   test(`out-of-order ${action} cannot overwrite a newer approval after reporting`, async () => {
     const state = fixture();
@@ -364,6 +459,7 @@ test('a report API failure cannot restore the required gate early', async () => 
 test('fork execution cannot inherit secrets, write tokens, caches, or reporter files', () => {
   assert.deepEqual(Object.keys(gate.on), ['pull_request_target']);
   assert.deepEqual(Object.keys(worker.on), ['workflow_dispatch']);
+  assert.deepEqual(Object.keys(reconciler.on), ['schedule', 'workflow_dispatch']);
   assert.equal(worker['cache-mode'], 'none');
   assert.deepEqual(worker.permissions, {});
   for (const name of ['checks', 'e2e']) {
@@ -377,13 +473,14 @@ test('fork execution cannot inherit secrets, write tokens, caches, or reporter f
     assert.equal(job.strategy['fail-fast'], false);
     assert.equal(checkout.with['persist-credentials'], false);
   }
-  for (const job of [gate.jobs.approval, worker.jobs.authorize, worker.jobs.report]) {
+  for (const job of [gate.jobs.approval, worker.jobs.authorize, worker.jobs.report, ...Object.values(reconciler.jobs)]) {
     assert.equal(job.steps.every(step => step.uses === 'actions/github-script@v7'), true);
   }
   assert.equal(gate.jobs.approval.concurrency.group, 'fork-status-${{ github.event.number }}');
   assert.equal(worker.jobs.report.concurrency.group, 'fork-status-${{ inputs.pr }}');
+  assert.equal(reconciler.jobs.reconcile.concurrency.group, 'fork-status-${{ matrix.pr }}');
   // GitHub's default single pending slot would let a stale reporter cancel a queued reset.
-  for (const job of [gate.jobs.approval, worker.jobs.report]) {
+  for (const job of [gate.jobs.approval, worker.jobs.report, reconciler.jobs.reconcile]) {
     assert.equal(job.concurrency.queue, 'max');
     assert.equal(job.concurrency['cancel-in-progress'], false);
   }

@@ -32,6 +32,7 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   `mcp-protocol.yaml` — retain ordinary internal jobs; route forks to the worker.
 - `.github/workflows/fork-approval.yaml` — trusted approval and reset dispatcher.
 - `.github/workflows/fork-ci.yaml` — approval validation, isolated code jobs, and reporter.
+- `.github/workflows/fork-reconcile.yaml` — recover late merge revisions after timeout.
 - `tools/mcp-ci/fork-ci.test.cjs`, package manifests, and `Makefile` — regression checks.
 - `tests/README.md`, `docs/architecture.md` — workflow and trust-boundary documentation.
 
@@ -89,19 +90,32 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   events, and API failures during invalidation, label removal, and reporting.
   An initial API failure propagates without pretending the reset succeeded.
 
+### 2026-09-28 — Recover merge computation after the polling timeout
+
+- Review confirmed that a late merge commit received no trusted status after
+  the bounded poll failed. Add scheduled metadata reconciliation, sharing the
+  same per-PR lock, to put a pending gate on that revision before retrying its
+  original failed approval/reset workflow. Preserve existing merge statuses.
+- Reconciliation validates the source workflow and revision, never checks out
+  PR code, and never grants approval. The original workflow rechecks the current
+  PR state on retry. Scheduled delivery can be delayed by GitHub; manual dispatch
+  is available. The live rollout remains tracked by #329.
+
 ## Verification
 
 - Previous iteration `3dec54c`: all active GitHub checks and 61/61 live E2E tests
   passed, with resource and environment cleanup confirmed by a delegated verifier.
-- The final dispatcher/worker scripts have 58 behavior and security-boundary
+- The dispatcher, worker, and reconciler scripts have 66 behavior and security-boundary
   tests against mocked GitHub APIs: approval, stale/revoked metadata, required
   statuses, unrelated labels, untrusted origins, API errors, failures, and cleanup
   of approval state, and retrying the same approved run. These are part of `make ci` and the protocol CI job.
 - Six targeted regressions fail against the previous workflows and pass with
   these fixes. Six further regressions fail before the queued-label and merge
-  computation fixes and pass afterward. All 58 policy tests pass.
+  computation fixes and pass afterward. Late-merge recovery tests cover approval
+  and reset retries, existing results, source provenance, and retry API failure.
+  All 66 policy tests pass.
 - Final `make ci`, workflow lint (with documented schema exceptions), the ready
-  docs check, and all 58 approval tests pass. Results are recorded in the PR body.
+  docs check, and all 66 approval tests pass. Results are recorded in the PR body.
 - Live dispatcher/worker activation requires these files on `main`. Local tests
   do not claim to exercise GitHub's event delivery or branch-rule integration.
 

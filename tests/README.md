@@ -110,8 +110,13 @@ label changes leave the existing approval and results alone.
 
 The dispatcher waits up to 30 seconds for GitHub to compute a mergeable test
 revision. It leaves the head gate pending and fails without dispatching if the
-merge revision is unavailable. Resolve conflicts or retry the approval workflow
-after GitHub finishes computing it; head-only approval is rejected.
+merge revision is unavailable; head-only approval is rejected.
+`fork-reconcile.yaml` checks open fork and Dependabot PRs on a five-minute
+schedule. When a late merge revision appears, it records a pending `contract`
+status before retrying the original failed approval/reset workflow. That retry
+rechecks the original event against current PR metadata. GitHub may delay scheduled
+runs; maintainers can also dispatch reconciliation manually. Conflicts still need
+to be resolved in the contributor branch.
 
 The dispatched worker rechecks the approval, then runs `make ci`, the ready-plan
 check when applicable, and live E2E for both the approved head and its pinned merge
@@ -151,11 +156,12 @@ mock GitHub APIs. `actionlint` v1.7.12 does not yet recognize GitHub's documente
 actionlint \
   -ignore '^unexpected key "cache-mode" for "workflow" section' \
   -ignore '^unexpected key "queue" for "concurrency" section' \
-  .github/workflows/fork-approval.yaml .github/workflows/fork-ci.yaml
+  .github/workflows/fork-approval.yaml .github/workflows/fork-ci.yaml \
+  .github/workflows/fork-reconcile.yaml
 ```
 
 Keep `cache-mode: none`: disabling cache actions alone does not revoke a job's
-cache token. Keep `queue: max` on both jobs sharing the status-write lock. See
+cache token. Keep `queue: max` on all jobs sharing the status-write lock. See
 [GitHub's concurrency queue](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)
 and [GitHub's cache access controls](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode).
 
