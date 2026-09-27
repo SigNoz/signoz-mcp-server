@@ -14,10 +14,10 @@ via WithRawInputSchema, and the v2 API is the authoritative validator. Regenerat
 whenever the upstream OpenAPI dashboard schemas change.
 
 USAGE (the recipe used to produce the committed files):
-    # 1. fetch the pinned released spec (v0.142.0, commit
-    #    57268e50b4907194cf4a6628143df3d6aaa1424e) to the hardcoded input path.
+    # 1. fetch the pinned released spec (v0.143.0, commit
+    #    7ce73f3470371daa7b245716a1b1a3fd6a2daee4) to the hardcoded input path.
     #    Do not fetch from main; TextPanel and related contracts must match this tag.
-    curl -sL https://raw.githubusercontent.com/SigNoz/signoz/v0.142.0/docs/api/openapi.yml \
+    curl -sL https://raw.githubusercontent.com/SigNoz/signoz/v0.143.0/docs/api/openapi.yml \
         -o /tmp/openapi.yml
     # 2. run this script -> writes /tmp/dash_schemas/{create,update,patch}.json
     pip3 install pyyaml   # if needed

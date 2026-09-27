@@ -15,6 +15,8 @@ ENDPOINT = "http://localhost:8080"
 TESTS_DIR = Path(__file__).resolve().parent.parent
 CASTING = TESTS_DIR / "casting.yaml"
 POURS = TESTS_DIR / "pours"
+# Foundry's container name for the ClickHouse schema migrator job.
+MIGRATOR = "signoz-telemetrystore-migrator"
 
 
 def _wait_for_port(endpoint: str, timeout: float = 240.0) -> None:
@@ -32,6 +34,33 @@ def _wait_for_port(endpoint: str, timeout: float = 240.0) -> None:
         time.sleep(3)
 
     raise TimeoutError(f"{endpoint} did not respond within {timeout}s (last={last})")
+
+
+def _wait_for_migrations(timeout: float = 600.0) -> None:
+    """Wait until the telemetry-store migrator exits cleanly.
+
+    SigNoz answers on 8080 before the ClickHouse schema exists; queries in that
+    window fail with "Unknown table" (e.g. signoz_metadata.distributed_column_evolution_metadata).
+    """
+    deadline = time.time() + timeout
+    state = None
+
+    while time.time() < deadline:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Status}} {{.State.ExitCode}}", MIGRATOR],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        state = result.stdout.strip() or result.stderr.strip()
+        if state == "exited 0":
+            return
+        if state.startswith("exited "):
+            raise RuntimeError(f"{MIGRATOR} failed (state={state}); check `docker logs {MIGRATOR}`")
+
+        time.sleep(3)
+
+    raise TimeoutError(f"{MIGRATOR} did not finish within {timeout}s (last state={state})")
 
 
 def compose_file() -> Path | None:
@@ -52,6 +81,7 @@ def cast(foundryctl: str) -> str:
     )
 
     _wait_for_port(ENDPOINT)
+    _wait_for_migrations()
     return ENDPOINT
 
 

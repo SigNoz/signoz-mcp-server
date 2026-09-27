@@ -366,7 +366,7 @@ MCP_SERVER_PORT=8000 \
 
 ## MCP Protocol Compatibility
 
-SigNoz uses the official MCP Go SDK v1.7.0 and supports both current lifecycle
+SigNoz uses the official MCP Go SDK v1.8.0 and supports both current lifecycle
 models over HTTP and stdio:
 
 | Protocol era | Lifecycle |
@@ -379,6 +379,9 @@ The HTTP `/mcp` endpoint is stateless and sessionless. MCP messages use JSON
 not issue or require `Mcp-Session-Id`. `GET /mcp` and `DELETE /mcp` return
 `405 Method Not Allowed`, so deployments need neither sticky routing nor the old
 GET listener/heartbeat. Existing client configuration does not change.
+
+Stdio input has a 16 MiB frame limit. Split larger requests into smaller calls.
+`MCP_MAX_REQUEST_BYTES` controls HTTP request bodies only.
 
 The server intentionally does not advertise the deprecated logging capability.
 Discovery ordering is not a compatibility guarantee. Unknown tools, resources,
@@ -647,7 +650,10 @@ Static Markdown panels use `signoz/TextPanel` with `queries: []`, plus
 `plugin.spec.mode: "markdown"`, `text`, `presentation`, and `headerOptions`.
 Include the panel's layout reference. Query-bearing panels still require one
 query; Text panels do not need a query dry run. Widget examples and patch
-instructions include both kinds. Dashboard inputs use canonical `id`; the
+instructions include both kinds. Area charts use `signoz/AreaChartPanel` with
+one `time_series` query; `visualization.stack` (`none`, `normal`, or
+`percent`) stacks grouped series, and `chartAppearance.fillMode` is `solid` or
+`gradient`. Dashboard inputs use canonical `id`; the
 legacy `uuid` input is rejected on the changed dashboard tools.
 
 #### `signoz_import_dashboard`
@@ -886,6 +892,8 @@ Return individual paginated span rows matching service, operation, error, durati
   - `start` / `end` (optional) - Start/end time in unix milliseconds. When both are provided, they override `timeRange`.
   - `limit` (optional) - Maximum span rows to return (default: 100, max: 10000; higher values are clamped; paginate with `offset`)
   - `offset` (optional) - Number of span rows to skip (default: 0)
+  - `selectFields` (optional) - Extra fields to return on each row, added to the default set. An array of field names or a comma-separated string, at most 50. Names can be span columns (`db_name`), resource attributes (`k8s.pod.name`), or span attributes (`http.route`); a `resource.`, `attribute.`, or `span.` prefix picks the context. Discover names with `signoz_get_field_keys` (`signal="traces"`)
+  - **Default fields**: each row carries `timestamp`, `trace_id`, `span_id`, `parent_span_id`, `name`, `service.name`, `kind_string`, `duration_nano`, `has_error`, `status_code_string`, `status_message`, `response_status_code`, and `http_method`, plus any `selectFields`. Every field is a flat row key; a field missing from a row was not selected
   - **Ordering**: generated raw trace queries use `timestamp desc`.
   - **Completeness note**: the response appends a note reporting `hasMore` (inferred from `returnedRows == limit`) and the `nextOffset` to fetch, so a truncated page is never mistaken for the full result set
   - **Output note**: raw result row keys follow canonical Query Builder field names (for example `trace_id`, `span_id`, `duration_nano`, `has_error`). Legacy caller-provided filters such as `hasError` still pass through to the backend alias layer, but new response parsers should read the canonical snake_case keys.
@@ -983,6 +991,8 @@ display names before creating a channel.
 - **Provider kinds**: `slack`, `email`, `webhook`, `pagerduty`, `opsgenie`,
   `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`. The registered
   `config.spec` schema documents each provider's fields and required settings.
+  Slack also accepts message settings: `color`, `titleLink`, `pretext`,
+  `fallback`, `footer`, `fields`, and `actions`.
 - **Resolve notifications**: `config.spec.sendResolved` uses the provider's
   default when omitted. Get returns its effective value; preserve it on update.
 - **Test sends**: `test` defaults to `false`. Set `test: true` only when a test

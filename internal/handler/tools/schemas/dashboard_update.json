@@ -106,6 +106,79 @@
       },
       "type": "object"
     },
+    "DashboardtypesAreaChartAppearance": {
+      "properties": {
+        "fillMode": {
+          "$ref": "#/$defs/DashboardtypesAreaFillMode"
+        },
+        "fillOpacity": {
+          "$ref": "#/$defs/DashboardtypesFillOpacity"
+        },
+        "lineInterpolation": {
+          "$ref": "#/$defs/DashboardtypesLineInterpolation"
+        },
+        "lineStyle": {
+          "$ref": "#/$defs/DashboardtypesLineStyle"
+        },
+        "showPoints": {
+          "type": "boolean"
+        },
+        "spanGaps": {
+          "$ref": "#/$defs/DashboardtypesSpanGaps"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesAreaChartPanelSpec": {
+      "properties": {
+        "axes": {
+          "$ref": "#/$defs/DashboardtypesAxes"
+        },
+        "chartAppearance": {
+          "$ref": "#/$defs/DashboardtypesAreaChartAppearance"
+        },
+        "formatting": {
+          "$ref": "#/$defs/DashboardtypesPanelFormatting"
+        },
+        "legend": {
+          "$ref": "#/$defs/DashboardtypesLegend"
+        },
+        "thresholds": {
+          "items": {
+            "$ref": "#/$defs/DashboardtypesThresholdWithLabel"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "visualization": {
+          "$ref": "#/$defs/DashboardtypesAreaChartVisualization"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesAreaChartVisualization": {
+      "properties": {
+        "fillSpans": {
+          "type": "boolean"
+        },
+        "stack": {
+          "$ref": "#/$defs/DashboardtypesStackMode"
+        },
+        "timePreference": {
+          "$ref": "#/$defs/DashboardtypesTimePreference"
+        }
+      },
+      "type": "object"
+    },
+    "DashboardtypesAreaFillMode": {
+      "enum": [
+        "solid",
+        "gradient"
+      ],
+      "type": "string"
+    },
     "DashboardtypesAxes": {
       "properties": {
         "isLogScale": {
@@ -335,6 +408,14 @@
         "none"
       ],
       "type": "string"
+    },
+    "DashboardtypesFillOpacity": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": [
+        "number",
+        "null"
+      ]
     },
     "DashboardtypesHeaderOptions": {
       "properties": {
@@ -592,6 +673,7 @@
     "DashboardtypesPanelPlugin": {
       "discriminator": {
         "mapping": {
+          "signoz/AreaChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec",
           "signoz/BarChartPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec",
           "signoz/HistogramPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesHistogramPanelSpec",
           "signoz/ListPanel": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesListPanelSpec",
@@ -611,6 +693,9 @@
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesBarChartPanelSpec"
         },
         {
+          "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec"
+        },
+        {
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesNumberPanelSpec"
         },
         {
@@ -628,6 +713,22 @@
         {
           "$ref": "#/$defs/DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesTextPanelSpec"
         }
+      ],
+      "type": "object"
+    },
+    "DashboardtypesPanelPluginVariantGithubComSigNozSignozPkgTypesDashboardtypesAreaChartPanelSpec": {
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signoz/AreaChartPanel"
+        },
+        "spec": {
+          "$ref": "#/$defs/DashboardtypesAreaChartPanelSpec"
+        }
+      },
+      "required": [
+        "kind",
+        "spec"
       ],
       "type": "object"
     },
@@ -997,6 +1098,14 @@
         }
       },
       "type": "object"
+    },
+    "DashboardtypesStackMode": {
+      "enum": [
+        "none",
+        "normal",
+        "percent"
+      ],
+      "type": "string"
     },
     "DashboardtypesTableFormatting": {
       "properties": {

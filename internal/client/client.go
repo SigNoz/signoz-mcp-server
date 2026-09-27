@@ -564,14 +564,6 @@ func (s *SigNoz) ListMetrics(ctx context.Context, start, end int64, limit int, s
 	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
 }
 
-func (s *SigNoz) ListMetricKeys(ctx context.Context) (json.RawMessage, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/metrics/filters/keys", s.baseURL)
-	s.logger.DebugContext(s.ensureTenantContext(ctx), "Making request to SigNoz API",
-		slog.String("method", "GET"),
-		slog.String("endpoint", "/api/v1/metrics/filters/keys"))
-	return s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
-}
-
 func (s *SigNoz) ListAlerts(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
 	reqURL := fmt.Sprintf("%s/api/v1/alerts", s.baseURL)
 	if qp := params.QueryParams(); len(qp) > 0 {
@@ -781,7 +773,7 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
 	limit := 1000
 
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0)
+	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0, types.TraceDetailSelectFields)
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query payload: %w", err)

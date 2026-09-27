@@ -872,7 +872,7 @@ func TestQueryPayloadValidate_LogsTimeSeriesRequiresAggregations(t *testing.T) {
 // the traces payload hardcoded Offset:0 and ignored the caller's offset, making
 // signoz_search_traces pagination a silent no-op.
 func TestBuildTracesQueryPayload_PropagatesOffset(t *testing.T) {
-	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 25)
+	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 25, TraceSearchCoreFields)
 	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
 	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
 	require.Equal(t, 50, spec.Limit)
@@ -880,7 +880,7 @@ func TestBuildTracesQueryPayload_PropagatesOffset(t *testing.T) {
 }
 
 func TestBuildTracesQueryPayload_UsesCanonicalTraceFields(t *testing.T) {
-	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 0)
+	payload := BuildTracesQueryPayload(1000, 2000, "service.name = 'x'", 50, 0, TraceDetailSelectFields)
 	spec, ok := payload.CompositeQuery.Queries[0].Spec.(QuerySpec)
 	require.True(t, ok, "expected QuerySpec, got %T", payload.CompositeQuery.Queries[0].Spec)
 

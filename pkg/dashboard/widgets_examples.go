@@ -143,6 +143,47 @@ A timeseries widget that groups a count() of trace spans by the service.name res
   }
 }
 
+--- area Widgets ---
+
+Example: Request Volume (area panel: stacked series per service)
+
+An area widget over the same grouped count() as the previous example. The plugin is signoz/AreaChartPanel; visualization.stack "normal" stacks the per-service series so the top edge shows total volume ("percent" would show each service's share instead). chartAppearance sets a gradient fill at 0.4 opacity. Counts add up meaningfully, so stacking is safe here; do not stack latency or ratios.
+
+{
+  "kind": "Panel",
+  "spec": {
+    "display": { "name": "Request Volume", "description": "Requests over time, stacked by service" },
+    "plugin": {
+      "kind": "signoz/AreaChartPanel",
+      "spec": {
+        "visualization": { "stack": "normal" },
+        "chartAppearance": { "fillMode": "gradient", "fillOpacity": 0.4 },
+        "legend": { "position": "bottom" }
+      }
+    },
+    "queries": [
+      {
+        "kind": "time_series",
+        "spec": {
+          "name": "A",
+          "plugin": {
+            "kind": "signoz/BuilderQuery",
+            "spec": {
+              "signal": "traces",
+              "name": "A",
+              "aggregations": [ { "expression": "count()" } ],
+              "groupBy": [ { "name": "service.name", "fieldContext": "resource", "fieldDataType": "string", "signal": "traces" } ],
+              "legend": "{{service.name}}",
+              "order": [ { "key": { "name": "count()" }, "direction": "desc" } ],
+              "limit": 100
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
 --- list Widgets ---
 
 Example: Errors (list panel: raw trace rows, newest first)

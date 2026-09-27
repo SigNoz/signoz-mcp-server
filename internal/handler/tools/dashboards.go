@@ -858,7 +858,7 @@ func (h *Handler) registerDashboardResources(s *mcp.Server) {
 	widgetsExamplesResource := mcp.NewResource(
 		"signoz://dashboard/widgets-examples",
 		"Dashboard Widgets Examples",
-		mcp.WithResourceDescription("Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace."),
+		mcp.WithResourceDescription("Read this after the dashboard and widget instructions when building panels. It provides one worked, server-verified v6 panel payload per panel type (timeseries, area, list, pie, table, value/number) to copy structurally. Verify field names in the target SigNoz workspace."),
 		mcp.WithMIMEType("text/markdown"),
 		mcp.WithResourceSize(int64(len(dashboard.WidgetExamples))),
 	)

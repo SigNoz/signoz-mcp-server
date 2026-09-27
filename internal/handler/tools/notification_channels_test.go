@@ -273,6 +273,11 @@ func TestHandleUpdateNotificationChannel_NormalizesOnlyUpstreamUnsetStrings(t *t
 		"id": testNotificationChannelID,
 		"config": notificationConfig("slack", map[string]any{
 			"apiUrl": "https://hooks.slack.test/secret", "channel": "#ops", "title": "", "text": "",
+			"color": "", "titleLink": "", "pretext": "", "fallback": "", "footer": "",
+			"fields": []any{map[string]any{"title": "Service", "value": "checkout", "short": true}},
+			"actions": []any{map[string]any{
+				"type": "button", "text": "Runbook", "url": "https://runbooks.test/checkout", "style": "", "name": "", "value": "",
+			}},
 		}),
 	}))
 	if err != nil || result.IsError {
@@ -286,8 +291,17 @@ func TestHandleUpdateNotificationChannel_NormalizesOnlyUpstreamUnsetStrings(t *t
 	if _, ok := spec["title"]; ok {
 		t.Fatalf("unset title was retained: %s", updateBody)
 	}
-	if _, ok := spec["text"]; ok {
-		t.Fatalf("unset text was retained: %s", updateBody)
+	for _, field := range []string{"text", "color", "titleLink", "pretext", "fallback", "footer"} {
+		if _, ok := spec[field]; ok {
+			t.Fatalf("unset %s was retained: %s", field, updateBody)
+		}
+	}
+	if fields, _ := spec["fields"].([]any); len(fields) != 1 {
+		t.Fatalf("slack fields were not forwarded: %s", updateBody)
+	}
+	action, _ := spec["actions"].([]any)[0].(map[string]any)
+	if action["url"] != "https://runbooks.test/checkout" || action["text"] != "Runbook" {
+		t.Fatalf("slack action was not forwarded: %s", updateBody)
 	}
 	if channel, ok := spec["channel"]; !ok || channel != "#ops" {
 		t.Fatalf("ordinary channel was not preserved: %s", updateBody)

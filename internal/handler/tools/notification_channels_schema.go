@@ -144,7 +144,7 @@ func rejectLegacyNotificationArgs(arguments any, update bool) *mcp.CallToolResul
 }
 
 // normalizeNotificationUpdateArguments removes only the empty strings that the
-// v0.142.0 response encoder uses for unset UnsetOrNonEmptyString fields. Create
+// upstream response encoder uses for unset UnsetOrNonEmptyString fields. Create
 // requests remain strict, while get-merge-update can round-trip an ordinary
 // upstream response without turning an unset field into authored input.
 func normalizeNotificationUpdateArguments(arguments any) any {
@@ -240,6 +240,8 @@ func notificationConfigSchema(allowUpstreamUnset bool) map[string]any {
 	variants := []any{
 		notificationConfigVariant("slack", []string{"apiUrl"}, map[string]any{
 			"sendResolved": boolSchema(), "apiUrl": secretStringSchema(), "channel": stringSchema(), "title": optionalString(), "text": optionalString(),
+			"color": optionalString(), "titleLink": optionalString(), "pretext": optionalString(), "fallback": optionalString(), "footer": optionalString(),
+			"fields": slackFieldsSchema(), "actions": slackActionsSchema(),
 		}),
 		notificationConfigVariant("email", []string{"to"}, map[string]any{
 			"sendResolved": boolSchema(), "to": stringSchema(), "html": optionalString(), "headers": stringMapSchema(),
@@ -290,6 +292,28 @@ func notificationConfigVariant(kind string, required []string, specProperties ma
 		"required":             []string{"kind", "spec"},
 		"additionalProperties": false,
 	}
+}
+
+func slackFieldsSchema() map[string]any {
+	return map[string]any{"type": "array", "items": map[string]any{
+		"type": "object", "required": []string{"title", "value"}, "additionalProperties": false,
+		"properties": map[string]any{"title": nonEmptyStringSchema(), "value": nonEmptyStringSchema(), "short": boolSchema()},
+	}}
+}
+
+func slackActionsSchema() map[string]any {
+	return map[string]any{"type": "array", "items": map[string]any{
+		"type": "object", "required": []string{"type", "text"}, "additionalProperties": false,
+		"description": "A link button needs url; a message button needs name.",
+		"properties": map[string]any{
+			"type": nonEmptyStringSchema(), "text": nonEmptyStringSchema(), "url": stringSchema(), "style": stringSchema(),
+			"name": stringSchema(), "value": stringSchema(),
+			"confirm": map[string]any{
+				"type": "object", "required": []string{"text"}, "additionalProperties": false,
+				"properties": map[string]any{"text": nonEmptyStringSchema(), "title": stringSchema(), "okText": stringSchema(), "dismissText": stringSchema()},
+			},
+		},
+	}}
 }
 
 func stringSchema() map[string]any         { return map[string]any{"type": "string"} }

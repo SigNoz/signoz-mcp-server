@@ -102,7 +102,7 @@ def _login_as_root(endpoint: str, email: str, password: str, *, ready_timeout: f
 
 
 def assert_backend_version(endpoint: str) -> None:
-    """Fail unless the cast backend identifies itself as SigNoz v0.142.0+.
+    """Fail unless the cast backend identifies itself as SigNoz v0.143.0+.
 
     Image digests pin the artifact, while this check catches a Foundry casting
     bug that renders a different service onto the published backend port.
@@ -126,7 +126,7 @@ def assert_backend_version(endpoint: str) -> None:
     match = re.fullmatch(r"v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version)
     assert match, f"backend returned a non-semantic version ({version!r})"
     major, minor, patch = (int(part) for part in match.groups())
-    assert (major, minor, patch) >= (0, 142, 0), f"backend version {version} is older than v0.142.0"
+    assert (major, minor, patch) >= (0, 143, 0), f"backend version {version} is older than v0.143.0"
 
 
 def apply_license(endpoint: str, bearer_token: str, license_key: str) -> None:

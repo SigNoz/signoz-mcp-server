@@ -102,7 +102,7 @@ func (s *SigNoz) ListNotificationChannelsV2(ctx context.Context, params types.No
 		}
 	}
 	if drift {
-		s.logger.Warn("Notification channel list contains fields or kinds outside the pinned v0.142.0 contract; preserving the summaries")
+		s.logger.Warn("Notification channel list contains fields or kinds outside the pinned v0.143.0 contract; preserving the summaries")
 	}
 	return types.NotificationChannelList{Channels: wire.Channels, Total: *wire.Total}, nil
 }
@@ -186,7 +186,7 @@ func (s *SigNoz) validateNotificationChannelData(data []byte) error {
 		}
 	}
 	if drift {
-		s.logger.Warn("Notification channel response contains fields outside the pinned v0.142.0 typed contract; preserving the upstream object")
+		s.logger.Warn("Notification channel response contains fields outside the pinned v0.143.0 typed contract; preserving the upstream object")
 	}
 	return nil
 }
@@ -224,7 +224,7 @@ func notificationResponseSpec(kind string) (any, []string, []string) {
 	}
 	switch kind {
 	case "slack":
-		return entry(&types.NotificationChannelSlackSpec{}, []string{"apiUrl"}, "apiUrl", "channel", "title", "text")
+		return entry(&types.NotificationChannelSlackSpec{}, []string{"apiUrl"}, "apiUrl", "channel", "title", "text", "color", "titleLink", "pretext", "fallback", "footer", "fields", "actions")
 	case "email":
 		return entry(&types.NotificationChannelEmailSpec{}, []string{"to"}, "to", "html", "headers")
 	case "webhook":
