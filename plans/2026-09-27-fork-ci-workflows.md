@@ -1,8 +1,8 @@
 # Plan: Run Fork CI Without Privileged Checkouts
 
-Status: In Progress
+Status: Done
 Issue:
-PR:
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/329
 
 ## Context
 
