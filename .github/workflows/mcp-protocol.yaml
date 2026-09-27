@@ -8,7 +8,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
   workflow_dispatch:
 
 permissions:
@@ -18,8 +17,7 @@ jobs:
   inspector:
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]') ||
-      (github.event.action == 'labeled' && github.event.label.name == 'safe-to-test')
+      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
     name: inspector
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -44,13 +42,12 @@ jobs:
           cache-dependency-path: tools/mcp-ci/package-lock.json
 
       - name: Run MCP protocol checks
-        run: make check-protocol
+        run: make check-protocol check-fork-ci
 
   conformance:
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]') ||
-      (github.event.action == 'labeled' && github.event.label.name == 'safe-to-test')
+      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
     name: conformance
     runs-on: ubuntu-latest
     timeout-minutes: 10

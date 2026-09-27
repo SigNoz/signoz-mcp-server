@@ -45,7 +45,7 @@ test:
 ##@ CI
 
 # Everything the PR gate runs except the live e2e suite. Needs Node, uv, and goimports.
-ci: check-fmt lint check-deps check-build test-race check-guardrails check-protocol check-conformance check-e2e-style check-repo-docs
+ci: check-fmt lint check-deps check-build test-race check-guardrails check-protocol check-conformance check-fork-ci check-e2e-style check-repo-docs
 	@echo "✅ All PR-gate checks passed."
 
 # Read-only: lists files that fmt or goimports would rewrite.
@@ -95,6 +95,9 @@ check-protocol: mcp-ci-install
 check-conformance: mcp-ci-install
 	@bash -n scripts/test-mcp-conformance.sh
 	@scripts/test-mcp-conformance.sh
+
+check-fork-ci: mcp-ci-install
+	@node --test tools/mcp-ci/fork-ci.test.cjs
 
 check-e2e-style:
 	@echo "🐍 Checking e2e Python style..."

@@ -204,3 +204,20 @@ The auth middleware forwards each credential upstream on the **header the client
 When OAuth is enabled, the middleware first tries to decrypt an `Authorization` Bearer token as a server-issued OAuth access token; a valid one unwraps to a stored API key forwarded via `SIGNOZ-API-KEY`. Only if decryption fails (and a SigNoz URL is available) is the token treated as a direct credential and forwarded on `Authorization`.
 
 > **Removed (breaking):** earlier versions used a shape heuristic (`isJWTToken`) to reroute non-JWT `Authorization` tokens to `SIGNOZ-API-KEY`. That heuristic misrouted opaque user/session tokens (which SigNoz only accepts on `Authorization`) and has been removed. Clients sending a service-account API key must use the `SIGNOZ-API-KEY` header, not `Authorization`.
+
+
+## Fork CI trust boundary
+
+Fork validation is authorized by `fork-approval.yaml` on the default branch.
+Its metadata-only `pull_request_target` job approves an immutable SHA when a
+maintainer adds `safe-to-test`, records pending required statuses, and dispatches
+`fork-ci.yaml` from the default branch. Contributor workflow edits cannot replace
+this dispatcher or clear its pending commit statuses.
+
+The worker validates the approval before checking out code. Its code jobs use
+read-only permissions, no repository secrets, disabled credential persistence,
+and no cache access. A fresh reporter runner writes commit statuses from GitHub's
+job conclusions; it consumes no files or artifacts from the code runners.
+Label resets and result publication share a per-PR concurrency group, and the
+reporter checks the approval identity again before publishing. New commits and
+changes to review readiness require fresh approval. See [the CI guide](../tests/README.md#ci).

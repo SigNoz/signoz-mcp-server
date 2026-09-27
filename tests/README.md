@@ -97,27 +97,40 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 
 ## CI
 
-`.github/workflows/e2e.yaml` runs this suite on internal pull requests and on
-`workflow_dispatch`. All checks on fork and Dependabot PRs, including E2E, wait
-for a maintainer to add `safe-to-test`. That label event approves its exact head
-commit. New commits, reopening a PR, or marking it ready for review require fresh
-approval; an existing label does not start checks on those events. These runs use
-the ordinary `pull_request` event, read-only permissions, and community SigNoz
-without repository secrets. Internal and manual runs can use the optional license.
-The workflow calls `make setup-e2e-env`, `make test-e2e-reuse`, and
-`make cleanup-test-e2e` to keep setup, test results, and teardown in separate steps.
+Internal PRs use the shared Primus jobs and `.github/workflows/e2e.yaml`.
+Internal and manual E2E runs can use the optional license. Fork and Dependabot
+PRs require a maintainer with repository write access to add `safe-to-test`.
 
-`.github/workflows/ci.yaml` runs `make ci` for approved fork and Dependabot PRs
-without repository secrets. The separate formatting, repository-docs, guardrail,
-and protocol jobs require the same approval. The repository-docs job reports
-missing approval before checking out any code, so a skipped check cannot bypass
-ready-for-review plan validation. Internal PRs retain the shared Primus jobs.
+`.github/workflows/fork-approval.yaml` runs from the trusted default branch on
+`pull_request_target`. It only edits GitHub metadata: it records pending commit
+statuses and dispatches `.github/workflows/fork-ci.yaml` from the default branch
+for the exact approved head SHA. It never checks out PR code. New commits,
+reopening, marking ready, or removing `safe-to-test` invalidate approval. Other
+label changes leave the existing approval and results alone.
 
-`.github/workflows/fork-approval.yaml` removes stale approval labels. It uses
-`pull_request_target` only to edit PR labels and never checks out or executes PR
-code. If the label has not yet been removed, a maintainer can remove and reapply it.
+The dispatched worker rechecks the approval, then runs `make ci`, the ready-plan
+check when applicable, and live E2E on separate GitHub-hosted runners. Code jobs
+receive only a read-only token, no repository secrets or persisted Git credentials,
+and no cache access. E2E uses community SigNoz. A separate metadata-only reporter
+publishes results on the approved SHA, preserving the required check names. A
+newer approval or reset prevents an old worker from publishing stale results.
 
-The workflow repair must reach `main` before label events stop invoking the old
-test workflows and the approval-reset workflow takes effect. GitHub reads
-`pull_request_target` workflows from the default branch, even when a pull request
-changes those files.
+Pending commit statuses keep the required checks blocked even if a contributor
+edits a PR workflow to report successful or skipped jobs. GitHub's own fork-run
+approval settings govern arbitrary contributor-added workflows; the label policy
+controls this repository's validation and trusted results.
+
+`make check-fork-ci` tests the dispatcher, approval validation, and reporter with
+mock GitHub APIs. `actionlint` v1.7.12 does not yet recognize GitHub's documented
+`cache-mode` key; lint `fork-ci.yaml` with only that schema diagnostic excluded:
+
+```bash
+actionlint -ignore '^unexpected key "cache-mode" for "workflow" section' .github/workflows/fork-ci.yaml
+```
+
+Keep `cache-mode: none`: disabling cache actions alone does not revoke a job's
+cache token. See [GitHub's cache access controls](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode).
+
+The workflow repair must reach `main` before the dispatcher and worker can run.
+Then refresh fork PRs against `main` and add `safe-to-test`. Rerunning an old
+`pull_request_target` failure continues using its old workflow definition.

@@ -1,35 +1,66 @@
 name: fork-approval
+run-name: >-
+  ${{ github.event.action == 'labeled' && github.event.label.name == 'safe-to-test' &&
+      format('approve-fork #{0} {1} {2}', github.event.number, github.event.pull_request.head.sha, github.event.pull_request.draft && 'draft' || 'ready') ||
+      format('reset-fork #{0} {1}', github.event.number, github.event.pull_request.head.sha) }}
 
 on:
   pull_request_target:
-    branches:
-      - main
-    types:
-      - synchronize
-      - reopened
-      - ready_for_review
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
-permissions:
-  pull-requests: write
+permissions: {}
 
 jobs:
-  reset:
+  approval:
     if: |
       (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') &&
-      contains(github.event.pull_request.labels.*.name, 'safe-to-test')
+      (!contains(fromJSON('["labeled", "unlabeled"]'), github.event.action) || github.event.label.name == 'safe-to-test')
     runs-on: ubuntu-latest
+    concurrency:
+      group: fork-status-${{ github.event.number }}
+      cancel-in-progress: false
+    permissions:
+      actions: write
+      pull-requests: write
+      statuses: write
     steps:
-      # This privileged job only edits PR metadata; it never checks out code.
-      - name: Require approval for the new revision
+      # This job only handles GitHub metadata; it never checks out PR code.
+      - name: Record approval and dispatch the trusted worker
         uses: actions/github-script@v7
         with:
           script: |
-            try {
-              await github.rest.issues.removeLabel({
-                ...context.repo,
-                issue_number: context.issue.number,
-                name: 'safe-to-test',
+            const snapshot = context.payload.pull_request;
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: snapshot.number});
+            if (pr.state !== 'open' || pr.head.sha !== snapshot.head.sha || pr.draft !== snapshot.draft) return;
+            const approved = context.payload.action === 'labeled' && context.payload.label?.name === 'safe-to-test';
+            const labeled = pr.labels.some(label => label.name === 'safe-to-test');
+            if (approved && !labeled) return;
+            if (approved) {
+              const {data} = await github.rest.repos.getCollaboratorPermissionLevel({...context.repo, username: context.actor});
+              if (!['admin', 'maintain', 'write'].includes(data.permission)) {
+                throw new Error('safe-to-test must be added by a maintainer with repository write access');
+              }
+            } else if (labeled) {
+              try {
+                await github.rest.issues.removeLabel({...context.repo, issue_number: pr.number, name: 'safe-to-test'});
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            // Commit statuses remain pending even if a fork manufactures skipped or passing check runs.
+            const contexts = ['fork-approval', 'fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py', 'e2e'];
+            const revisions = [...new Set([pr.head.sha, pr.merge_commit_sha].filter(Boolean))];
+            for (const sha of revisions) for (const name of contexts) {
+              await github.rest.repos.createCommitStatus({
+                ...context.repo, sha, context: name, state: 'pending',
+                description: approved ? 'Approved revision: validation queued' : 'Waiting for a maintainer to add safe-to-test',
+                target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               });
-            } catch (error) {
-              if (error.status !== 404) throw error;
+            }
+            if (approved) {
+              await github.rest.actions.createWorkflowDispatch({
+                ...context.repo, workflow_id: 'fork-ci.yaml', ref: context.payload.repository.default_branch,
+                inputs: {pr: String(pr.number), sha: pr.head.sha, merge_sha: pr.merge_commit_sha || '', draft: String(pr.draft), approval_run: String(context.runId)},
+              });
             }

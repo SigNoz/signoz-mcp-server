@@ -1,0 +1,197 @@
+name: fork-ci
+run-name: 'Fork CI #${{ inputs.pr }} at ${{ inputs.sha }}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Approved pull request number
+        type: string
+        required: true
+      sha:
+        description: Approved immutable head SHA
+        type: string
+        required: true
+      merge_sha:
+        description: Merge revision whose checks share the PR status
+        type: string
+        required: false
+      draft:
+        description: Draft state when approved
+        type: string
+        required: true
+      approval_run:
+        description: Trusted approval workflow run ID
+        type: string
+        required: true
+
+permissions: {}
+# Dispatch runs otherwise have default-branch cache write access.
+cache-mode: none
+
+jobs:
+  authorize:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      sha: ${{ steps.approval.outputs.sha }}
+      merge_sha: ${{ steps.approval.outputs.merge_sha }}
+      draft: ${{ steps.approval.outputs.draft }}
+      pr: ${{ steps.approval.outputs.pr }}
+      approval_url: ${{ steps.approval.outputs.approval_url }}
+    steps:
+      - name: Validate approval for this exact revision
+        id: approval
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {pr: number, sha, merge_sha = '', draft, approval_run} = context.payload.inputs;
+            if (!/^[1-9][0-9]*$/.test(number) || !/^[a-f0-9]{40}$/.test(sha) || (merge_sha && !/^[a-f0-9]{40}$/.test(merge_sha)) || !/^[1-9][0-9]*$/.test(approval_run) || !['true', 'false'].includes(draft)) {
+              throw new Error('Invalid approval inputs');
+            }
+            const {data: source} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(approval_run)});
+            const title = `approve-fork #${number} ${sha} ${draft === 'true' ? 'draft' : 'ready'}`;
+            if (source.event !== 'pull_request_target' || source.path !== '.github/workflows/fork-approval.yaml' || source.display_title !== title) {
+              throw new Error('Approval did not originate in the trusted label workflow');
+            }
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: Number(number)});
+            if (pr.state !== 'open' || pr.base.ref !== context.payload.repository.default_branch || pr.head.sha !== sha || (pr.merge_commit_sha || '') !== merge_sha || String(pr.draft) !== draft || !pr.labels.some(label => label.name === 'safe-to-test')) {
+              throw new Error('Approval is stale or has been revoked');
+            }
+            const {data: statuses} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
+            const approval = statuses.statuses.find(status => status.context === 'fork-approval');
+            if (approval?.state !== 'pending' || approval.target_url !== source.html_url) {
+              throw new Error('A newer approval or reset superseded this run');
+            }
+            core.setOutput('sha', sha);
+            core.setOutput('merge_sha', merge_sha);
+            core.setOutput('draft', draft);
+            core.setOutput('pr', number);
+            core.setOutput('approval_url', source.html_url);
+
+  checks:
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout approved revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - run: make install-goimports
+      - name: Run all public checks
+        env:
+          DRAFT: ${{ needs.authorize.outputs.draft }}
+          BASE: origin/${{ github.event.repository.default_branch }}
+        run: |
+          make ci
+          if [ "$DRAFT" = "false" ]; then
+            make check-repo-docs READY=1 BASE="$BASE"
+          fi
+
+  e2e:
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      FOUNDRY_VERSION: v0.2.17
+    steps:
+      - name: Checkout approved revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - name: Install foundryctl
+        run: |
+          curl -fsSL https://signoz.io/foundry.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/foundryctl" version
+      - name: Start community SigNoz
+        run: make setup-e2e-env
+      - name: Run E2E tests
+        run: make test-e2e-reuse
+      - name: Teardown
+        if: always()
+        run: |
+          make cleanup-test-e2e || true
+          compose_file="$(find tests/pours -name compose.yaml -print -quit 2>/dev/null || true)"
+          if [ -n "$compose_file" ]; then
+            docker compose -f "$compose_file" down -v || true
+            rm -rf tests/pours
+          fi
+
+  report:
+    needs: [authorize, checks, e2e]
+    if: always() && needs.authorize.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: fork-status-${{ inputs.pr }}
+      cancel-in-progress: false
+    permissions:
+      pull-requests: read
+      statuses: write
+    steps:
+      # Only trusted job conclusions cross into this fresh, privileged runner.
+      - name: Report results on the approved commit
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.authorize.outputs.pr }}
+          APPROVED_SHA: ${{ needs.authorize.outputs.sha }}
+          APPROVED_MERGE_SHA: ${{ needs.authorize.outputs.merge_sha }}
+          APPROVED_DRAFT: ${{ needs.authorize.outputs.draft }}
+          APPROVAL_URL: ${{ needs.authorize.outputs.approval_url }}
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        with:
+          script: |
+            const sha = process.env.APPROVED_SHA;
+            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: Number(process.env.PR_NUMBER)});
+            if (pr.state !== 'open' || pr.head.sha !== sha || (pr.merge_commit_sha || '') !== process.env.APPROVED_MERGE_SHA || String(pr.draft) !== process.env.APPROVED_DRAFT || !pr.labels.some(label => label.name === 'safe-to-test')) return;
+            const {data: statuses} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
+            const approval = statuses.statuses.find(status => status.context === 'fork-approval');
+            if (approval?.state !== 'pending' || approval.target_url !== process.env.APPROVAL_URL) return;
+            const checks = process.env.CHECKS_RESULT === 'success';
+            const e2e = process.env.E2E_RESULT === 'success';
+            const contexts = ['fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py'];
+            const revisions = [...new Set([sha, process.env.APPROVED_MERGE_SHA].filter(Boolean))];
+            for (const revision of revisions) for (const name of [...contexts, 'e2e', 'fork-approval']) {
+              const passed = name === 'e2e' ? e2e : name === 'fork-approval' ? checks && e2e : checks;
+              await github.rest.repos.createCommitStatus({
+                ...context.repo, sha: revision, context: name, state: passed ? 'success' : 'failure',
+                description: passed ? 'Approved revision passed validation' : 'Approved revision failed validation',
+                target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+            }

@@ -7,6 +7,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
-    "@modelcontextprotocol/inspector-cli": "1.0.0"
+    "@modelcontextprotocol/inspector-cli": "1.0.0",
+    "yaml": "2.9.0"
   }
 }

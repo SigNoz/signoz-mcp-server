@@ -1,4 +1,4 @@
-# Plan: Run Fork CI Without Privileged Checkouts
+# Plan: Require Trusted Approval for Fork CI
 
 Status: Done
 Issue:
@@ -6,86 +6,84 @@ PR: https://github.com/SigNoz/signoz-mcp-server/pull/329
 
 ## Context
 
-Fork PR #317 fails when `safe-to-test` invokes the existing
-`pull_request_target` workflows. Checkout rejects executing fork code in the
-privileged base-repository context. The shared Primus workflows also require
-private-repository credentials.
-
-The corrected workflows on #317 passed their full local gate and all 63 live
-E2E cases. Reapplying the label still ran the old workflows from `main`, because
-`pull_request_target` reads its workflow there. This CI-only change must land
-first; the resource browser-link feature stays in #317.
+Fork PR #317 fails when `safe-to-test` invokes existing `pull_request_target`
+workflows that check out contributor code with privileged credentials. Checkout
+rejects this combination. Primus also requires private-repository credentials.
+The workflow repair must reach `main`; the browser-link feature stays in #317.
 
 ## Approach
 
-Use ordinary `pull_request` jobs with read-only permissions for fork and
-Dependabot PRs. Run the existing `make ci` gate using public tools, retain
-Primus for internal PRs, and require `safe-to-test` for every fork CI job.
-Only the label-added event authorizes its immutable head revision; new commits,
-reopening, and marking a PR ready require fresh approval. A metadata-only
-`pull_request_target` workflow removes stale labels without checking out code.
-Fork and Dependabot E2E runs receive no license secret. Disable persisted Git
-credentials and explicitly install Go in E2E.
+Keep internal PRs on Primus and require explicit approval for all fork and
+Dependabot validation. A trusted, metadata-only target-event workflow records
+pending commit statuses on the head and available merge revision, then dispatches a default-branch worker for the approved
+SHA. The worker validates the current approval, runs public checks and community
+E2E with read-only permissions and no secrets or cache access, and reports results
+from a separate runner. Code runners never receive write tokens.
 
-After this lands on `main`, refresh #317 against `main` and verify the new
-head's checks. Rerunning old target-event runs does not adopt the fixed workflow.
+New commits, reopening, readiness changes, and label removal invalidate approval.
+Unrelated labels preserve it. Pending statuses use existing required check names,
+so skipped or manufactured check runs cannot bypass the trusted approval gate.
+GitHub's repository fork-run policy remains responsible for arbitrary new
+contributor workflows, which cannot be prohibited by editable PR YAML alone.
 
 ## Files to Modify
 
-- `.github/workflows/ci.yaml` — public fork checks and internal Primus routing.
-- `.github/workflows/e2e.yaml` — ordinary PR events and conditional license access.
-- `.github/workflows/checks.yaml`, `.github/workflows/guardrails.yaml`,
-  `.github/workflows/mcp-protocol.yaml` — approval before any fork checkout.
-- `.github/workflows/fork-approval.yaml` — reset stale approval using only PR metadata.
-- `tests/README.md` — CI execution and default-branch rollout behavior.
+- `.github/workflows/ci.yaml`, `e2e.yaml`, `checks.yaml`, `guardrails.yaml`, and
+  `mcp-protocol.yaml` — retain ordinary internal jobs; route forks to the worker.
+- `.github/workflows/fork-approval.yaml` — trusted approval and reset dispatcher.
+- `.github/workflows/fork-ci.yaml` — approval validation, isolated code jobs, and reporter.
+- `tools/mcp-ci/fork-ci.test.cjs`, package manifests, and `Makefile` — regression checks.
+- `tests/README.md`, `docs/architecture.md` — workflow and trust-boundary documentation.
 
 ## Key Decisions
 
-### 2026-09-27 — Land the workflow repair before the feature
+### 2026-09-27 — Land the CI repair before the feature
 
-- Decision: extract the already-verified workflows into a CI-only PR.
-- Rationale: edits confined to a fork cannot retire a default-branch event.
-- No checkout safety bypass or guardrail relaxation is introduced. Existing
-  race, lint, dependency, build, guardrail, protocol, and style targets still run.
+- Extract CI changes into #329; #317 retains only issue #303 changes.
+- After merge, refresh #317 against `main` and approve its new head.
+- Keep the full public `make ci` gate and ready-plan validation. No checkout
+  safety override or runtime guardrail relaxation is introduced.
 
-### 2026-09-27 — Require approval for all fork CI
+### 2026-09-27 — Keep approval outside contributor-controlled YAML
 
-- Decision: gate every fork and Dependabot check on the addition of `safe-to-test`,
-  as requested by the maintainer. Merely finding the label on a synchronize event
-  does not authorize the new revision, even if label cleanup has not run yet.
-- The repository-docs job fails before checkout when approval is missing. This
-  preserves the required check on `ready_for_review` instead of silently skipping
-  the ready-plan rules. The reset workflow also handles reopening and ready events.
-- The only privileged workflow edits labels with the built-in GitHub token and
-  executes no checked-out code. Test jobs keep read-only permissions and no fork
-  repository secrets. Internal jobs and manual E2E/protocol runs retain their paths.
+- Review identified that ordinary PR job conditions are editable by a fork and
+  that unrelated labels invalidated the docs check. Both require a trusted gate.
+- The dispatcher uses only the built-in token for label, status, and dispatch
+  APIs. It verifies the label actor has write access and pins the approved SHA.
+- The worker verifies approval provenance, current SHA, draft state, label, and
+  latest approval identity. Its reporter uses trusted job conclusions only.
+- Dispatcher and reporter serialize status writes per PR. Results from a revoked
+  or superseded approval cannot overwrite pending checks for the new approval.
+- Preserve all six contexts in the current main-branch ruleset. GitHub requires
+  both a commit status and a check run to pass when they share a required name.
+- Disable worker cache access with GitHub's scoped `cache-mode: none` control.
+  Actionlint v1.7.12 lacks this new schema field; exclude only that documented
+  unknown-key diagnostic, while the regression test pins the no-cache boundary.
+  This is a linter compatibility exception, not a relaxation of cache security.
 
 ## Verification
 
-- The initial workflows passed `actionlint` v1.7.12 and a condition matrix
-  for internal, fork, Dependabot, labeled/unlabeled, and manual contexts on #317.
-- #317 commit `03b9010`: public `make ci` job and all 63 E2E tests passed.
-- CI-only branch: `GOTOOLCHAIN=go1.26.0 make ci` and `actionlint` v1.7.12 pass.
-- Expanded approval policy: a local 25-case matrix passes against the workflow
-  conditions and the inline reset script. It covers unlabeled and stale-label
-  fork/Dependabot events, explicit approval, unrelated labels, all public check
-  jobs, pinned revisions, read-only permissions, absent license secrets, internal
-  PRs, manual dispatch, ready-plan enforcement, and reset API 404/403 behavior.
-- Reran `GOTOOLCHAIN=go1.26.0 make ci` and `actionlint` v1.7.12 across all six
-  changed workflows after adding the approval gates; both pass.
-- Live label-reset triggering requires this workflow to reach `main`; the local
-  reset tests use a mock GitHub API and do not claim live label-reset verification.
+- Previous iteration `3dec54c`: all active GitHub checks and 61/61 live E2E tests
+  passed, with resource and environment cleanup confirmed by a delegated verifier.
+- The final dispatcher/worker scripts have 40 behavior and security-boundary
+  tests against mocked GitHub APIs: approval, stale/revoked metadata, required
+  statuses, unrelated labels, untrusted origins, API errors, failures, and cleanup
+  of approval state. These are part of `make ci` and the protocol CI job.
+- Final `make ci`, workflow lint (with the cache schema exception), and the ready
+  docs check are rerun before pushing; results are recorded in the PR body.
+- Live dispatcher/worker activation requires these files on `main`. Local tests
+  do not claim to exercise GitHub's event delivery or branch-rule integration.
 
 ## Outcome
 
-Implementation validated for the default branch. Merge and refresh of #317
-remain pending; the old label-triggered failures will persist until that rollout.
-Every fork and Dependabot check now requires explicit approval for its revision.
-Only the separate metadata job can write PR labels, and it never checks out code.
+Implementation complete. Merge, fork refresh, and live approval-to-worker rollout
+remain pending on #329. PR #317 contains no GitHub workflow changes. The final
+revision's check results and rollout constraints are recorded in the PR body.
 
 ## Reference Links
 
 - [Feature PR #317](https://github.com/SigNoz/signoz-mcp-server/pull/317)
-- [Passing fork CI](https://github.com/SigNoz/signoz-mcp-server/actions/runs/36304528422)
-- [Passing full E2E](https://github.com/SigNoz/signoz-mcp-server/actions/runs/36304528210)
-- [GitHub event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target)
+- [Passing 61-test E2E run](https://github.com/SigNoz/signoz-mcp-server/actions/runs/36307808454)
+- [GitHub event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
+- [Required status and check names](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
+- [Scoped cache permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode)

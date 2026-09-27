@@ -8,7 +8,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
   workflow_dispatch:
 
 defaults:
@@ -39,12 +38,9 @@ jobs:
       PYTHON_VERSION: "3.13"
       PY_SRC: tests
   e2e:
-    # Only the label event approves a fork revision; synchronize must not reuse
-    # its old label while the metadata-only reset workflow is still queued.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]') ||
-      (github.event.action == 'labeled' && github.event.label.name == 'safe-to-test')
+      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
