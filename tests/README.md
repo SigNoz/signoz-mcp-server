@@ -97,6 +97,18 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 
 ## CI
 
-`.github/workflows/e2e.yaml` runs this suite on every non-fork pull request
-(fork PRs run only after a maintainer applies `safe-to-test`) and on
-`workflow_dispatch`, calling the same `make test-e2e` entrypoint.
+`.github/workflows/e2e.yaml` runs this suite on internal pull requests and on
+`workflow_dispatch`. Fork and Dependabot PRs run after a maintainer applies
+`safe-to-test`, including subsequent pushes while the label remains. These runs
+use the ordinary `pull_request` event, a read-only token, and community SigNoz
+without repository secrets. Internal and manual runs can use the optional license.
+The workflow calls `make setup-e2e-env`, `make test-e2e-reuse`, and
+`make cleanup-test-e2e` to keep setup, test results, and teardown in separate steps.
+
+`.github/workflows/ci.yaml` runs `make ci` for fork and Dependabot PRs without
+requiring a label or repository secrets. This includes Go checks, Python style,
+guardrails, and protocol checks. Internal PRs retain the shared Primus jobs.
+
+Workflow changes that remove `pull_request_target` must reach `main` before
+label events stop invoking the old workflows. GitHub reads that event's workflow
+from the default branch, even when a pull request changes the workflow file.
