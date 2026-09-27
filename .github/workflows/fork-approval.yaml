@@ -6,8 +6,7 @@ run-name: >-
 
 on:
   pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled, edited]
 
 permissions: {}
 
@@ -15,6 +14,8 @@ jobs:
   approval:
     if: |
       (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') &&
+      (github.event.pull_request.base.ref == github.event.repository.default_branch || github.event.changes.base.ref.from == github.event.repository.default_branch) &&
+      (github.event.action != 'edited' || github.event.changes.base.ref.from != '') &&
       (!contains(fromJSON('["labeled", "unlabeled"]'), github.event.action) || github.event.label.name == 'safe-to-test')
     runs-on: ubuntu-latest
     concurrency:
@@ -34,7 +35,7 @@ jobs:
             const snapshot = context.payload.pull_request;
             const getPR = async () => (await github.rest.pulls.get({...context.repo, pull_number: snapshot.number})).data;
             let pr = await getPR();
-            const current = () => pr.state === 'open' && pr.base.ref === context.payload.repository.default_branch && pr.head.sha === snapshot.head.sha && pr.draft === snapshot.draft;
+            const current = () => pr.state === 'open' && pr.base.ref === snapshot.base.ref && pr.head.sha === snapshot.head.sha && pr.draft === snapshot.draft;
             if (!current()) return;
             const approved = context.payload.action === 'labeled' && context.payload.label?.name === 'safe-to-test';
             const labeled = pr.labels.some(label => label.name === 'safe-to-test');

@@ -1,6 +1,6 @@
 # Plan: Require Trusted Approval for Fork CI
 
-Status: Done
+Status: In Progress
 Issue:
 PR: https://github.com/SigNoz/signoz-mcp-server/pull/329
 
@@ -22,7 +22,9 @@ from a separate runner. Code runners never receive write tokens.
 
 New commits, reopening, readiness changes, and label removal invalidate approval.
 Unrelated labels preserve it. Pending statuses use existing required check names,
-so skipped or manufactured check runs cannot bypass the trusted approval gate.
+so skipped or manufactured check runs cannot clear an already-posted pending
+status. This does not cover the interval before the first trusted status exists;
+required-workflow or separate-app enforcement is still needed.
 GitHub's repository fork-run policy remains responsible for arbitrary new
 contributor workflows, which cannot be prohibited by editable PR YAML alone.
 
@@ -101,11 +103,24 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   PR state on retry. Scheduled delivery can be delayed by GitHub; manual dispatch
   is available. The live rollout remains tracked by #329.
 
+### 2026-09-28 — Retargeting, internal merge checks, and remaining enforcement
+
+- Reset approval when the base branch changes to or from the default branch,
+  ignore title/body edits, and recheck the target branch before publishing results.
+- Restore GitHub's default synthetic merge checkout for internal PR checks,
+  protocol jobs, guardrails, and E2E so results certify the revision they test.
+- Review identified a valid initial gap: skipped required checks can pass before
+  the target-event dispatcher creates its first pending status. Keep #329 in draft.
+  An organization required-workflow rule, or a gate with a separate trusted App
+  identity, is needed. The current CLI token lacks `admin:org`; availability of
+  required-workflow rules is awaiting confirmation. Do not present another check
+  name under the same GitHub Actions identity as a complete enforcement fix.
+
 ## Verification
 
 - Previous iteration `3dec54c`: all active GitHub checks and 61/61 live E2E tests
   passed, with resource and environment cleanup confirmed by a delegated verifier.
-- The dispatcher, worker, and reconciler scripts have 66 behavior and security-boundary
+- The dispatcher, worker, and reconciler scripts have 71 behavior and security-boundary
   tests against mocked GitHub APIs: approval, stale/revoked metadata, required
   statuses, unrelated labels, untrusted origins, API errors, failures, and cleanup
   of approval state, and retrying the same approved run. These are part of `make ci` and the protocol CI job.
@@ -113,17 +128,22 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   these fixes. Six further regressions fail before the queued-label and merge
   computation fixes and pass afterward. Late-merge recovery tests cover approval
   and reset retries, existing results, source provenance, and retry API failure.
-  All 66 policy tests pass.
-- Final `make ci`, workflow lint (with documented schema exceptions), the ready
-  docs check, and all 66 approval tests pass. Results are recorded in the PR body.
+  Four further regressions reproduce retargeting and internal merge-checkout
+  defects before their fixes. All 71 policy tests pass.
+- `make ci`, workflow lint (with documented schema exceptions), and draft-plan
+  validation pass. Ready-plan validation remains blocked by the unfinished
+  enforcement work. Results are recorded in the PR body.
 - Live dispatcher/worker activation requires these files on `main`. Local tests
   do not claim to exercise GitHub's event delivery or branch-rule integration.
 
 ## Outcome
 
-Implementation complete. Merge, fork refresh, and live approval-to-worker rollout
-remain pending on #329. PR #317 contains no GitHub workflow changes. The final
-revision's check results and rollout constraints are recorded in the PR body.
+CI repairs and verified code findings are implemented. Enforcement before the
+first trusted status is still incomplete, tracked by the unresolved review in
+#329; the PR remains draft. Required-workflow availability or a separately
+authenticated gate must be decided before implementation and rollout can finish.
+PR #317 contains no GitHub workflow changes. Check results and rollout constraints
+are recorded in the PR body.
 
 ## Reference Links
 

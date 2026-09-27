@@ -28,6 +28,7 @@ function fixture() {
     repo, actor: 'maintainer', runId: 100, runNumber: 100, serverUrl: 'https://github.com',
     payload: {
       repository: {default_branch: 'main'}, action: 'labeled', label: {name: 'safe-to-test'},
+      changes: {base: {ref: {from: ''}}},
       pull_request: structuredClone(pr),
       inputs: {pr: '317', sha, merge_sha: mergeSHA, draft: 'false', approval_run: '100'},
     },
@@ -215,7 +216,7 @@ for (const [checks, e2e] of [['success', 'success'], ['failure', 'success'], ['s
   });
 }
 
-for (const key of ['different commit', 'draft became ready', 'closed PR', 'revoked label', 'partial reset on merge revision', 'newer approval']) {
+for (const key of ['different commit', 'draft became ready', 'closed PR', 'revoked label', 'different target branch', 'partial reset on merge revision', 'newer approval']) {
   test(`late report cannot overwrite ${key}`, async () => {
     const state = fixture();
     invalidApprovals[key](state);
@@ -223,6 +224,34 @@ for (const key of ['different commit', 'draft became ready', 'closed PR', 'revok
     assert.deepEqual(state.calls, []);
   });
 }
+
+for (const [from, to] of [['main', 'release'], ['release', 'main']]) {
+  test(`retargeting from ${from} to ${to} resets approval and blocks old reports`, async () => {
+    const state = fixture();
+    await state.run(worker.jobs.report);
+    state.calls.length = 0;
+    state.context.payload.action = 'edited';
+    state.context.payload.changes.base.ref.from = from;
+    state.context.payload.pull_request.base.ref = to;
+    state.pr.base.ref = to;
+    state.context.runId = 101;
+    state.context.runNumber = 101;
+    assert.equal(gateMatches(state), true);
+    await state.run(gate.jobs.approval);
+    assert.equal(state.status('contract').state, 'pending');
+    assert.deepEqual(state.pr.labels, []);
+    assert.equal(state.calls.some(([kind]) => kind === 'dispatch'), false);
+    state.calls.length = 0;
+    await state.run(worker.jobs.report);
+    assert.deepEqual(state.calls, []);
+  });
+}
+
+test('editing a title or body does not reset approval', () => {
+  const state = fixture();
+  state.context.payload.action = 'edited';
+  assert.equal(gateMatches(state), false);
+});
 
 test('every revision receiving success is selected for checks and E2E', async () => {
   const state = fixture();
@@ -456,6 +485,19 @@ test('a report API failure cannot restore the required gate early', async () => 
 });
 
 // Drift pins protect the trust boundary, not incidental workflow formatting.
+test('internal PR checks use the merge revision evaluated by GitHub', () => {
+  for (const name of ['checks.yaml', 'guardrails.yaml', 'mcp-protocol.yaml', 'e2e.yaml']) {
+    for (const job of Object.values(read(name).jobs)) {
+      for (const step of job.steps || []) {
+        if (step.uses === 'actions/checkout@v4') {
+          // The checkout default is github.sha: the synthetic merge commit for pull_request.
+          assert.ok(step.with?.ref === undefined || step.with.ref === '${{ github.sha }}', name);
+        }
+      }
+    }
+  }
+});
+
 test('fork execution cannot inherit secrets, write tokens, caches, or reporter files', () => {
   assert.deepEqual(Object.keys(gate.on), ['pull_request_target']);
   assert.deepEqual(Object.keys(worker.on), ['workflow_dispatch']);

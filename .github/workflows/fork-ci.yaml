@@ -193,7 +193,7 @@ jobs:
           script: |
             const sha = process.env.APPROVED_SHA;
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: Number(process.env.PR_NUMBER)});
-            if (pr.state !== 'open' || pr.head.sha !== sha || String(pr.draft) !== process.env.APPROVED_DRAFT || !pr.labels.some(label => label.name === 'safe-to-test')) return;
+            if (pr.state !== 'open' || pr.base.ref !== context.payload.repository.default_branch || pr.head.sha !== sha || String(pr.draft) !== process.env.APPROVED_DRAFT || !pr.labels.some(label => label.name === 'safe-to-test')) return;
             const revisions = [...new Set([sha, process.env.APPROVED_MERGE_SHA].filter(Boolean))];
             for (const revision of revisions) {
               const {data} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: revision});

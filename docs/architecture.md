@@ -213,6 +213,9 @@ Its metadata-only `pull_request_target` job approves an immutable SHA when a
 maintainer adds `safe-to-test`, records pending required statuses, and dispatches
 `fork-ci.yaml` from the default branch. Contributor workflow edits cannot replace
 this dispatcher or clear its pending commit statuses.
+The interval before the first trusted status exists is not protected by these
+statuses. Rollout is blocked on a required workflow rule or separately authenticated
+gate, tracked in [PR #329](https://github.com/SigNoz/signoz-mcp-server/pull/329#discussion_r4116512274).
 Approval waits for GitHub's mergeability calculation and requires a merge
 revision; a timeout or conflict leaves the head gate pending without dispatch.
 A scheduled metadata-only reconciler gates merge revisions that appear later,
@@ -232,5 +235,6 @@ reporter checks the approval identity again before publishing. The already-requi
 mutations, and reports restore it last. The dispatcher also rejects events older
 than the recorded approval's workflow run number. It preserves re-applied labels
 when a newer matching approval run is queued but has not written a marker yet.
-New commits and
-changes to review readiness require fresh approval. See [the CI guide](../tests/README.md#ci).
+New commits, changes to review readiness, and retargeting to or away from the
+default branch require fresh approval. Reports recheck the target branch.
+Internal checks retain GitHub's synthetic merge checkout. See [the CI guide](../tests/README.md#ci).

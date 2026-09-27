@@ -53,7 +53,6 @@ jobs:
       - name: self-checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: go-install
         uses: actions/setup-go@v5

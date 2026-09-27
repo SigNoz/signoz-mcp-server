@@ -106,7 +106,10 @@ PRs require a maintainer with repository write access to add `safe-to-test`.
 statuses and dispatches `.github/workflows/fork-ci.yaml` from the default branch
 for the exact approved head SHA. It never checks out PR code. New commits,
 reopening, marking ready, or removing `safe-to-test` invalidate approval. Other
-label changes leave the existing approval and results alone.
+label changes leave the existing approval and results alone. Retargeting to or
+away from the default branch resets approval; title and body edits do not.
+Internal PR jobs use GitHub's synthetic merge checkout, matching the revision
+on which their required check results are evaluated.
 
 The dispatcher waits up to 30 seconds for GitHub to compute a mergeable test
 revision. It leaves the head gate pending and fails without dispatching if the
@@ -143,10 +146,13 @@ were tested; the newly computed merge commit receives no success from that run.
 The repository's existing strict up-to-date rule requires updating the branch
 before merging. That head change triggers the usual fresh-approval requirement.
 
-Pending commit statuses keep the required checks blocked even if a contributor
-edits a PR workflow to report successful or skipped jobs. GitHub's own fork-run
-approval settings govern arbitrary contributor-added workflows; the label policy
-controls this repository's validation and trusted results.
+Once posted, pending commit statuses block the matching required checks even if
+a contributor reports successful or skipped jobs. They do not close the initial
+window before the trusted dispatcher posts the first status. Rollout remains
+blocked on a required workflow rule or a gate with a separate, trusted GitHub App
+identity; another check name using the same GitHub Actions identity is forgeable
+by editable PR workflows. Track enforcement in [PR #329](https://github.com/SigNoz/signoz-mcp-server/pull/329#discussion_r4116512274).
+GitHub's own fork-run approval settings govern arbitrary contributor-added workflows.
 
 `make check-fork-ci` tests the dispatcher, approval validation, and reporter with
 mock GitHub APIs. `actionlint` v1.7.12 does not yet recognize GitHub's documented
