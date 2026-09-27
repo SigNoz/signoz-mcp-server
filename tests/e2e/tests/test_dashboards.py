@@ -1,8 +1,14 @@
 """Dashboard v6 panel lifecycles, panel query dry-runs, and released system-dashboard contracts."""
 
 import time
+from contextlib import ExitStack
+from copy import deepcopy
+from urllib.parse import urlsplit
+
+import pytest
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok, first_json, text_blocks
+from fixtures.mcpserver import MCPServer
 from fixtures.signoz import SigNoz
 
 
@@ -205,6 +211,113 @@ def test_system_dashboard_is_hidden_but_gettable_and_source_is_not_a_list_filter
     assert system_data.get("source") == "system"
     assert system_data.get("schemaVersion") == "v6"
     assert "id" not in system_data
+
+
+@pytest.mark.parametrize(
+    "mcp_server_with_web_url",
+    ["https://mcp-e2e-web.invalid", "http://localhost:3301"],
+    indirect=True,
+    ids=["public-browser-origin", "localhost-browser-origin"],
+)
+def test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallback(
+    mcp_server_with_web_url: MCPServer, signoz: SigNoz, test_id: str
+) -> None:
+    server = mcp_server_with_web_url
+    assert urlsplit(server.backend_url).hostname == "localhost"
+    other_backend = server.backend_url.replace("localhost", "127.0.0.1")
+    source = signoz.api("GET", "/api/v2/dashboards/system/ai-o11y-overview")
+    assert source.status_code == 200, source.text[:500]
+    source_data = _data(source.json())
+    title = f"mcp-e2e-web-url-{test_id}"
+    dashboard = {
+        "searchContext": "clone the system dashboard to verify browser links and API routing",
+        "schemaVersion": source_data["schemaVersion"],
+        "tags": [],
+        "spec": deepcopy(source_data["spec"]),
+    }
+    dashboard["spec"]["display"]["name"] = title
+
+    with ExitStack() as clients:
+        configured = MCPClient(server.mcp_url)
+        clients.callback(configured.close)
+        alternate = MCPClient(server.mcp_url, headers={"X-SigNoz-URL": other_backend})
+        clients.callback(alternate.close)
+        created = _data(first_json(assert_tool_ok(configured.call_tool("signoz_create_dashboard", dashboard))))
+        dashboard_id = _dashboard_id(created)
+        args = {"searchContext": "read the temporary browser-link dashboard", "id": dashboard_id}
+        expected_web_url = f"{server.web_url}/dashboard/{dashboard_id}"
+
+        def assert_persisted(expected: dict) -> None:
+            response = signoz.api("GET", f"/api/v2/dashboards/{dashboard_id}")
+            assert response.status_code == 200, response.text[:500]
+            persisted = _data(response.json())
+            for field in ("id", "name", "schemaVersion", "tags", "spec"):
+                assert persisted[field] == expected[field], f"{field} did not round-trip through the API backend"
+            assert "webUrl" not in persisted, "the browser link was persisted in the dashboard"
+
+        try:
+            assert created["webUrl"] == expected_web_url
+            assert created["spec"]["display"]["name"] == title
+            assert_persisted(created)
+
+            # Both URL spellings reach the same real backend, but only the configured
+            # origin may use SIGNOZ_WEB_URL. Neither browser origin serves the API.
+            for label, client, origin in (
+                ("configured", configured, server.web_url),
+                ("request", alternate, other_backend),
+            ):
+                web_url = f"{origin}/dashboard/{dashboard_id}"
+                fetched = _data(first_json(assert_tool_ok(client.call_tool("signoz_get_dashboard", args))))
+                assert fetched["webUrl"] == web_url
+                listed = _data(
+                    first_json(
+                        assert_tool_ok(
+                            client.call_tool(
+                                "signoz_list_dashboards",
+                                {
+                                    "searchContext": "find the browser-link dashboard",
+                                    "filter": f"name CONTAINS '{title}'",
+                                },
+                            )
+                        )
+                    )
+                )
+                row = next(item for item in listed["dashboards"] if item["id"] == dashboard_id)
+                assert row["webUrl"] == web_url
+
+                replacement = deepcopy(fetched)
+                replacement["searchContext"] = "rename the temporary browser-link dashboard"
+                replacement["spec"]["display"]["name"] = f"{title}-{label}"
+                updated = _data(first_json(assert_tool_ok(client.call_tool("signoz_update_dashboard", replacement))))
+                assert updated["webUrl"] == web_url
+                assert updated["spec"]["display"]["name"] == replacement["spec"]["display"]["name"]
+                assert_persisted(updated)
+
+                patched_title = f"{title}-{label}-patched"
+                patched = _data(
+                    first_json(
+                        assert_tool_ok(
+                            client.call_tool(
+                                "signoz_patch_dashboard",
+                                {
+                                    **args,
+                                    "patch": [{"op": "replace", "path": "/spec/display/name", "value": patched_title}],
+                                },
+                            )
+                        )
+                    )
+                )
+                assert patched["webUrl"] == web_url
+                assert patched["spec"]["display"]["name"] == patched_title
+                assert_persisted(patched)
+
+            fetched = _data(first_json(assert_tool_ok(configured.call_tool("signoz_get_dashboard", args))))
+            assert fetched["webUrl"] == expected_web_url
+            assert fetched["spec"]["display"]["name"] == f"{title}-request-patched"
+        finally:
+            assert_tool_ok(configured.call_tool("signoz_delete_dashboard", args))
+            gone = signoz.api("GET", f"/api/v2/dashboards/{dashboard_id}")
+            assert gone.status_code == 404, f"dashboard {dashboard_id} remained after cleanup: HTTP {gone.status_code}"
 
 
 def _area_panel(spec: dict) -> dict:

@@ -9,6 +9,7 @@ real, ephemeral SigNoz instance provisioned by [foundry](https://github.com/SigN
 - Docker (builds `Dockerfile.e2e` and runs the server container)
 - `foundryctl` on `PATH` (or pass `--foundry-binary-path`)
 - Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/)
+- Go (builds a native MCP server for localhost browser-link tests)
 
 ## Running
 
@@ -53,6 +54,9 @@ uv run pytest --basetemp=./tmp/ e2e/tests/test_logs.py::test_seeded_logs_are_sea
   published to a docker-assigned free host port (docker-py's
   `client.api.port`, the same mechanism testcontainers' `get_exposed_port`
   wraps in the signoz repo tests), then waits for `/readyz`.
+- Browser-link tests run a native MCP server against the same cast SigNoz so
+  literal `localhost` reaches the backend on both Linux and macOS. They exercise
+  `SIGNOZ_WEB_URL` through the HTTP transport.
 - Tests talk to the server through the official Python MCP SDK
   (`fixtures/mcpclient.py` wraps it in a sync facade over a background event
   loop) and to SigNoz directly (`SigNoz.api`) for setup and verification.
@@ -93,7 +97,8 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
-  lifecycle, cleanup verification, and read-only system dashboard behavior.
+  lifecycle, browser-link origins with a localhost backend and per-request
+  fallback, cleanup verification, and read-only system dashboard behavior.
 
 ## CI
 

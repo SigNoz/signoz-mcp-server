@@ -26,14 +26,17 @@ behavior.
   — cover configuration and API/UI URL separation.
 - `pkg/util/url.go` — distinguish browser-origin validation from tenant backend
   validation while sharing origin parsing and canonicalization.
-- `README.md`, `docs/architecture.md` — document the option.
+- `tests/fixtures/mcpserver.py`, `tests/e2e/tests/test_dashboards.py` — exercise
+  configured and per-request browser origins against live SigNoz through HTTP MCP.
+- `README.md`, `docs/architecture.md`, `tests/README.md` — document the option
+  and E2E setup.
 
 ## Key Decisions
 
 ### 2026-09-24 — Keep tenant URL selection request-scoped
 
-- Decision: use `SIGNOZ_WEB_URL` only when the context URL normalizes to the
-  configured `SIGNOZ_URL`.
+- Decision: use `SIGNOZ_WEB_URL` only when the request's backend URL matches
+  the configured `SIGNOZ_URL`.
 - Rationale: OAuth and `X-SigNoz-URL` can select another tenant; its own URL must
   remain the deep-link host, and API client identity must not change.
 
@@ -66,14 +69,30 @@ behavior.
 - `GOTOOLCHAIN=go1.26.0 make check-repo-docs READY=1 BASE=main` passes.
 - Reviewed against `docs/mcp-best-practices.md` section 11 with no MUST exceptions
   or SHOULD deviations.
-- No live SigNoz verification is needed for the local origin-selection change;
-  upstream request and response contracts are unchanged.
+- Added a parameterized live E2E regression for public and localhost browser
+  origins with a localhost API backend. It clones a system dashboard, checks
+  create/get/list/update/patch browser links, verifies backend fields through
+  direct reads, switches to a different per-request URL, and confirms deletion.
+- E2E Python style and collection pass (63 cases collected across the suite).
+- The two browser-origin E2E cases pass against live SigNoz v0.143.0. A temporary
+  in-memory fixture override reused the existing local test stack without casting
+  or tearing it down. The native MCP server used `http://localhost:8080`; the
+  alternate request used `http://127.0.0.1:8080`.
+- Direct backend reads confirmed `id`, `name`, `schemaVersion`, `tags`, and `spec`
+  round-tripped, while `webUrl` remained response-only. Both temporary dashboards
+  returned 404 after deletion, the temporary session key was revoked and confirmed
+  absent, and the native MCP processes were reaped.
+- Live invocation from `tests/` used a credential-free temporary runner:
+  `GOTOOLCHAIN=go1.26.0 uv run python /tmp/signoz-pr317-focused-live.py`, selecting
+  `test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallback`.
+  The other E2E cases were not rerun in this verification.
 
 ## Outcome
 
 Implementation now supports separate API and browser origins, including
 localhost deployments, while keeping links scoped to each request's backend.
-The localhost regressions are fixed and the full local CI gate passes.
+The localhost regressions are fixed, the full local CI gate passes, and the
+focused live E2E cases confirm the behavior through HTTP MCP.
 
 No tool metadata, schemas, server instructions, or wire-catalog entries change.
 No SigNoz/agent-skills companion change is needed for this additive server setting.
