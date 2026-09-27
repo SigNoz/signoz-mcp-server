@@ -32,8 +32,10 @@ jobs:
         with:
           script: |
             const snapshot = context.payload.pull_request;
-            const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: snapshot.number});
-            if (pr.state !== 'open' || pr.head.sha !== snapshot.head.sha || pr.draft !== snapshot.draft) return;
+            const getPR = async () => (await github.rest.pulls.get({...context.repo, pull_number: snapshot.number})).data;
+            let pr = await getPR();
+            const current = () => pr.state === 'open' && pr.base.ref === context.payload.repository.default_branch && pr.head.sha === snapshot.head.sha && pr.draft === snapshot.draft;
+            if (!current()) return;
             const approved = context.payload.action === 'labeled' && context.payload.label?.name === 'safe-to-test';
             const labeled = pr.labels.some(label => label.name === 'safe-to-test');
             if (approved && !labeled) return;
@@ -46,7 +48,7 @@ jobs:
             if (!approved && labeled && !snapshot.labels.some(label => label.name === 'safe-to-test')) return;
             const runPrefix = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/`;
             // The merge revision is the required-status target when GitHub has computed it.
-            const revisions = [...new Set([pr.merge_commit_sha, pr.head.sha].filter(Boolean))];
+            let revisions = [...new Set([pr.merge_commit_sha, pr.head.sha].filter(Boolean))];
             for (const sha of revisions) {
               const {data} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
               const marker = data.statuses.find(status => status.context === 'contract');
@@ -66,11 +68,33 @@ jobs:
             });
             // Invalidate the already-required gate and its approval identity before any other mutation.
             for (const sha of revisions) await pending(sha, 'contract');
+            // GitHub computes mergeability asynchronously; never dispatch a head-only approval.
+            for (let attempt = 0; attempt < 6 && (pr.mergeable !== true || !pr.merge_commit_sha); attempt++) {
+              if (pr.mergeable === false) break;
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              pr = await getPR();
+              if (!current() || (approved && !pr.labels.some(label => label.name === 'safe-to-test'))) return;
+            }
+            if (pr.mergeable !== true || !/^[a-f0-9]{40}$/.test(pr.merge_commit_sha || '')) {
+              throw new Error('GitHub has not produced a merge revision; resolve conflicts or retry this workflow');
+            }
+            const mergeWasPending = revisions.includes(pr.merge_commit_sha);
+            revisions = [...new Set([pr.merge_commit_sha, pr.head.sha])];
+            if (!mergeWasPending) await pending(pr.merge_commit_sha, 'contract');
             if (!approved && labeled) {
-              try {
-                await github.rest.issues.removeLabel({...context.repo, issue_number: pr.number, name: 'safe-to-test'});
-              } catch (error) {
-                if (error.status !== 404) throw error;
+              // A re-applied label may have a queued approval with no status marker yet.
+              const {data: reset} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: context.runId});
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                ...context.repo, workflow_id: 'fork-approval.yaml', event: 'pull_request_target', created: `>=${reset.created_at}`, per_page: 100,
+              });
+              const title = `approve-fork #${pr.number} ${pr.head.sha} ${pr.draft ? 'draft' : 'ready'}`;
+              const newerApproval = runs.some(run => run.run_number > context.runNumber && run.event === 'pull_request_target' && run.display_title === title);
+              if (!newerApproval) {
+                try {
+                  await github.rest.issues.removeLabel({...context.repo, issue_number: pr.number, name: 'safe-to-test'});
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
               }
             }
             const contexts = ['fork-approval', 'fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py', 'e2e'];
@@ -78,6 +102,6 @@ jobs:
             if (approved) {
               await github.rest.actions.createWorkflowDispatch({
                 ...context.repo, workflow_id: 'fork-ci.yaml', ref: context.payload.repository.default_branch,
-                inputs: {pr: String(pr.number), sha: pr.head.sha, merge_sha: pr.merge_commit_sha || '', draft: String(pr.draft), approval_run: String(context.runId)},
+                inputs: {pr: String(pr.number), sha: pr.head.sha, merge_sha: pr.merge_commit_sha, draft: String(pr.draft), approval_run: String(context.runId)},
               });
             }

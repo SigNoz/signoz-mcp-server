@@ -108,6 +108,11 @@ for the exact approved head SHA. It never checks out PR code. New commits,
 reopening, marking ready, or removing `safe-to-test` invalidate approval. Other
 label changes leave the existing approval and results alone.
 
+The dispatcher waits up to 30 seconds for GitHub to compute a mergeable test
+revision. It leaves the head gate pending and fails without dispatching if the
+merge revision is unavailable. Resolve conflicts or retry the approval workflow
+after GitHub finishes computing it; head-only approval is rejected.
+
 The dispatched worker rechecks the approval, then runs `make ci`, the ready-plan
 check when applicable, and live E2E for both the approved head and its pinned merge
 revision on separate GitHub-hosted runners. Code jobs
@@ -124,6 +129,9 @@ therefore leave the gate blocked. Older events cannot overwrite a newer approval
 even when GitHub schedules concurrency groups out of order. Both metadata jobs
 use `queue: max` so a later reporter cannot replace a pending reset; GitHub permits
 up to 100 pending jobs in this queue.
+Before removing a label, a reset also checks for a newer approval workflow run
+for the same PR, head, and draft state. This preserves a re-applied label while
+its approval is still queued and has not written its status marker yet.
 
 If `main` advances during a run, results still apply to the frozen revisions that
 were tested; the newly computed merge commit receives no success from that run.

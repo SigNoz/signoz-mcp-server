@@ -19,7 +19,7 @@ const requiredChecks = ['test / go', 'fmt / go', 'deps / go', 'build / go', 'lin
 
 function fixture() {
   const pr = {
-    number: 317, state: 'open', draft: false, base: {ref: 'main'}, merge_commit_sha: mergeSHA,
+    number: 317, state: 'open', draft: false, base: {ref: 'main'}, mergeable: true, merge_commit_sha: mergeSHA,
     head: {sha, repo: {full_name: 'contributor/signoz-mcp-server'}},
     user: {login: 'contributor'}, labels: [{name: 'safe-to-test'}],
   };
@@ -32,8 +32,8 @@ function fixture() {
     },
   };
   const state = {
-    pr, context, permission: 'write', statuses: new Map(), calls: [], outputs: {},
-    source: {run_number: 100, event: 'pull_request_target', path: '.github/workflows/fork-approval.yaml', display_title: `approve-fork #317 ${sha} ready`, html_url: approvalURL},
+    pr, context, permission: 'write', statuses: new Map(), calls: [], outputs: {}, runs: [],
+    source: {run_number: 100, created_at: '2026-09-27T18:00:00Z', event: 'pull_request_target', path: '.github/workflows/fork-approval.yaml', display_title: `approve-fork #317 ${sha} ready`, html_url: approvalURL},
     env: {PR_NUMBER: '317', APPROVED_SHA: sha, APPROVED_MERGE_SHA: mergeSHA, APPROVED_DRAFT: 'false', APPROVAL_URL: approvalURL, CHECKS_RESULT: 'success', E2E_RESULT: 'success'},
   };
   state.status = (name, revision = sha) => state.statuses.get(`${revision}:${name}`);
@@ -43,7 +43,7 @@ function fixture() {
     }
   }
   state.github = {rest: {
-    pulls: {get: async () => ({data: state.pr})},
+    pulls: {get: async () => ({data: state.readPR ? state.readPR() : state.pr})},
     repos: {
       getCollaboratorPermissionLevel: async () => ({data: {permission: state.permission}}),
       createCommitStatus: async params => {
@@ -61,11 +61,13 @@ function fixture() {
     actions: {
       createWorkflowDispatch: async params => state.calls.push(['dispatch', params]),
       getWorkflowRun: async () => ({data: state.source}),
+      listWorkflowRuns: async () => ({data: {workflow_runs: state.runs}}),
     },
   }};
-  state.run = async job => new AsyncFunction('context', 'github', 'core', 'process', script(job))(
+  state.github.paginate = async method => (await method()).data.workflow_runs;
+  state.run = async job => new AsyncFunction('context', 'github', 'core', 'process', 'setTimeout', script(job))(
     {...context, runId: job === gate.jobs.approval ? context.runId : 200}, state.github,
-    {setOutput: (key, value) => {state.outputs[key] = value;}}, {env: state.env},
+    {setOutput: (key, value) => {state.outputs[key] = value;}}, {env: state.env}, callback => callback(),
   );
   return state;
 }
@@ -166,6 +168,7 @@ test('a failed approved run can be retried without reapplying the label', async 
 
 const invalidApprovals = {
   'malformed input': s => {s.context.payload.inputs.sha = 'main';},
+  'missing merge revision': s => {s.context.payload.inputs.merge_sha = '';},
   'untrusted trigger': s => {s.source.event = 'pull_request';},
   'different workflow': s => {s.source.path = '.github/workflows/fake.yaml';},
   'reset event': s => {s.source.display_title = `reset-fork #317 ${sha}`;},
@@ -232,14 +235,43 @@ test('a main update preserves results only for the frozen tested revisions', asy
   assert.equal(state.status('contract', newMerge), undefined);
 });
 
-for (const merge of ['', sha]) {
-  test(`absent or duplicate merge revision (${merge || 'absent'}) runs once`, async () => {
+test('duplicate head and merge revision runs once', async () => {
+  const state = fixture();
+  state.context.payload.inputs.merge_sha = sha;
+  await state.run(worker.jobs.authorize);
+  assert.deepEqual(JSON.parse(state.outputs.revisions), [sha]);
+});
+
+test('approval waits for GitHub to compute and gate the merge revision', async () => {
+  const state = fixture();
+  let reads = 0;
+  state.readPR = () => ++reads < 3 ? {...state.pr, mergeable: null, merge_commit_sha: null} : state.pr;
+  await state.run(gate.jobs.approval);
+  const dispatch = state.calls.find(([kind]) => kind === 'dispatch')[1];
+  assert.equal(dispatch.inputs.merge_sha, mergeSHA);
+  for (const revision of [sha, mergeSHA]) assert.equal(state.status('contract', revision).state, 'pending');
+});
+
+for (const mergeable of [null, false]) {
+  test(`approval without a computed merge (${mergeable}) never dispatches a head-only run`, async () => {
     const state = fixture();
-    state.context.payload.inputs.merge_sha = merge;
-    await state.run(worker.jobs.authorize);
-    assert.deepEqual(JSON.parse(state.outputs.revisions), [sha]);
+    state.pr.mergeable = mergeable;
+    state.pr.merge_commit_sha = null;
+    await assert.rejects(state.run(gate.jobs.approval), /merge revision/);
+    assert.equal(state.calls.some(([kind]) => kind === 'dispatch'), false);
+    assert.equal(state.status('contract').state, 'pending');
   });
 }
+
+test('a head update while computing the merge cannot approve the new revision', async () => {
+  const state = fixture();
+  let reads = 0;
+  state.readPR = () => ++reads === 1
+    ? {...state.pr, mergeable: null, merge_commit_sha: null}
+    : {...state.pr, head: {...state.pr.head, sha: 'b'.repeat(40)}};
+  await state.run(gate.jobs.approval);
+  assert.equal(state.calls.some(([kind]) => kind === 'dispatch'), false);
+});
 
 test('an unlabeled snapshot cannot erase a label added while its reset was queued', async () => {
   const state = fixture();
@@ -248,6 +280,29 @@ test('an unlabeled snapshot cannot erase a label added while its reset was queue
   await state.run(gate.jobs.approval);
   assert.deepEqual(state.calls, []);
   assert.equal(state.pr.labels[0].name, 'safe-to-test');
+});
+
+test('a queued reset preserves a re-applied label until its newer approval runs', async () => {
+  const state = fixture();
+  state.context.payload.action = 'synchronize';
+  state.runs = [{...state.source, run_number: 101, status: 'queued'}];
+  await state.run(gate.jobs.approval);
+  assert.equal(state.pr.labels[0]?.name, 'safe-to-test');
+  assert.equal(state.status('contract').state, 'pending');
+  assert.equal(state.calls.some(([kind]) => kind === 'dispatch'), false);
+  state.context.payload.action = 'labeled';
+  state.context.runId = 101;
+  state.context.runNumber = 101;
+  await state.run(gate.jobs.approval);
+  assert.equal(state.calls.filter(([kind]) => kind === 'dispatch').length, 1);
+});
+
+test('a newer approval for another PR does not preserve the old label', async () => {
+  const state = fixture();
+  state.context.payload.action = 'synchronize';
+  state.runs = [{...state.source, run_number: 101, display_title: `approve-fork #999 ${sha} ready`}];
+  await state.run(gate.jobs.approval);
+  assert.deepEqual(state.pr.labels, []);
 });
 
 for (const action of ['synchronize', 'labeled']) {

@@ -15,7 +15,7 @@ on:
       merge_sha:
         description: Merge revision whose checks share the PR status
         type: string
-        required: false
+        required: true
       draft:
         description: Draft state when approved
         type: string
@@ -50,8 +50,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const {pr: number, sha, merge_sha = '', draft, approval_run} = context.payload.inputs;
-            if (!/^[1-9][0-9]*$/.test(number) || !/^[a-f0-9]{40}$/.test(sha) || (merge_sha && !/^[a-f0-9]{40}$/.test(merge_sha)) || !/^[1-9][0-9]*$/.test(approval_run) || !['true', 'false'].includes(draft)) {
+            const {pr: number, sha, merge_sha, draft, approval_run} = context.payload.inputs;
+            if (!/^[1-9][0-9]*$/.test(number) || !/^[a-f0-9]{40}$/.test(sha) || !/^[a-f0-9]{40}$/.test(merge_sha || '') || !/^[1-9][0-9]*$/.test(approval_run) || !['true', 'false'].includes(draft)) {
               throw new Error('Invalid approval inputs');
             }
             const {data: source} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(approval_run)});

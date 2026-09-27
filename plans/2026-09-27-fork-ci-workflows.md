@@ -15,7 +15,7 @@ The workflow repair must reach `main`; the browser-link feature stays in #317.
 
 Keep internal PRs on Primus and require explicit approval for all fork and
 Dependabot validation. A trusted, metadata-only target-event workflow records
-pending commit statuses on the head and available merge revision, then dispatches
+pending commit statuses on the head and computed merge revision, then dispatches
 a default-branch worker for the approved SHA. Both revisions are tested. The worker validates the current approval, runs public checks and community
 E2E with read-only permissions and no secrets or cache access, and reports results
 from a separate runner. Code runners never receive write tokens.
@@ -79,6 +79,12 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   slot canceling resets when reporters arrive. Set `queue: max` on both jobs;
   queued resets are retained, subject to GitHub's 100-pending-job platform limit.
   The policy regression fails on the prior configuration and passes with queuing.
+- Preserve a re-applied label when a newer matching approval workflow run is
+  queued and has no status marker yet. Status invalidation still occurs; only
+  the newer label workflow can dispatch validation.
+- Wait up to 30 seconds for GitHub to compute a mergeable test revision. Keep
+  the head gate pending and fail without dispatch on timeout or conflict.
+  Require a merge SHA at the worker boundary, and recheck PR identity while polling.
 - Regression tests cover tested/reported revisions, advancing `main`, reordered
   events, and API failures during invalidation, label removal, and reporting.
   An initial API failure propagates without pretending the reset succeeded.
@@ -87,14 +93,15 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
 
 - Previous iteration `3dec54c`: all active GitHub checks and 61/61 live E2E tests
   passed, with resource and environment cleanup confirmed by a delegated verifier.
-- The final dispatcher/worker scripts have 52 behavior and security-boundary
+- The final dispatcher/worker scripts have 58 behavior and security-boundary
   tests against mocked GitHub APIs: approval, stale/revoked metadata, required
   statuses, unrelated labels, untrusted origins, API errors, failures, and cleanup
   of approval state, and retrying the same approved run. These are part of `make ci` and the protocol CI job.
 - Six targeted regressions fail against the previous workflows and pass with
-  these fixes. All 52 policy tests pass.
+  these fixes. Six further regressions fail before the queued-label and merge
+  computation fixes and pass afterward. All 58 policy tests pass.
 - Final `make ci`, workflow lint (with documented schema exceptions), the ready
-  docs check, and all 52 approval tests pass. Results are recorded in the PR body.
+  docs check, and all 58 approval tests pass. Results are recorded in the PR body.
 - Live dispatcher/worker activation requires these files on `main`. Local tests
   do not claim to exercise GitHub's event delivery or branch-rule integration.
 

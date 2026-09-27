@@ -213,6 +213,8 @@ Its metadata-only `pull_request_target` job approves an immutable SHA when a
 maintainer adds `safe-to-test`, records pending required statuses, and dispatches
 `fork-ci.yaml` from the default branch. Contributor workflow edits cannot replace
 this dispatcher or clear its pending commit statuses.
+Approval waits for GitHub's mergeability calculation and requires a merge
+revision; a timeout or conflict leaves the head gate pending without dispatch.
 
 The worker validates the approval before checking out the head and pinned merge
 revision in separate matrix jobs. It reports success only for those tested
@@ -225,5 +227,7 @@ Label resets and result publication share a per-PR concurrency group with
 reporter checks the approval identity again before publishing. The already-required
 `contract` status carries that identity: resets mark it pending before other
 mutations, and reports restore it last. The dispatcher also rejects events older
-than the recorded approval's workflow run number. New commits and
+than the recorded approval's workflow run number. It preserves re-applied labels
+when a newer matching approval run is queued but has not written a marker yet.
+New commits and
 changes to review readiness require fresh approval. See [the CI guide](../tests/README.md#ci).
