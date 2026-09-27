@@ -1,0 +1,35 @@
+name: fork-approval
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  pull-requests: write
+
+jobs:
+  reset:
+    if: |
+      (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') &&
+      contains(github.event.pull_request.labels.*.name, 'safe-to-test')
+    runs-on: ubuntu-latest
+    steps:
+      # This privileged job only edits PR metadata; it never checks out code.
+      - name: Require approval for the new revision
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                ...context.repo,
+                issue_number: context.issue.number,
+                name: 'safe-to-test',
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }

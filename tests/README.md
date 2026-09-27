@@ -98,17 +98,26 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 ## CI
 
 `.github/workflows/e2e.yaml` runs this suite on internal pull requests and on
-`workflow_dispatch`. Fork and Dependabot PRs run after a maintainer applies
-`safe-to-test`, including subsequent pushes while the label remains. These runs
-use the ordinary `pull_request` event, a read-only token, and community SigNoz
+`workflow_dispatch`. All checks on fork and Dependabot PRs, including E2E, wait
+for a maintainer to add `safe-to-test`. That label event approves its exact head
+commit. New commits, reopening a PR, or marking it ready for review require fresh
+approval; an existing label does not start checks on those events. These runs use
+the ordinary `pull_request` event, read-only permissions, and community SigNoz
 without repository secrets. Internal and manual runs can use the optional license.
 The workflow calls `make setup-e2e-env`, `make test-e2e-reuse`, and
 `make cleanup-test-e2e` to keep setup, test results, and teardown in separate steps.
 
-`.github/workflows/ci.yaml` runs `make ci` for fork and Dependabot PRs without
-requiring a label or repository secrets. This includes Go checks, Python style,
-guardrails, and protocol checks. Internal PRs retain the shared Primus jobs.
+`.github/workflows/ci.yaml` runs `make ci` for approved fork and Dependabot PRs
+without repository secrets. The separate formatting, repository-docs, guardrail,
+and protocol jobs require the same approval. The repository-docs job reports
+missing approval before checking out any code, so a skipped check cannot bypass
+ready-for-review plan validation. Internal PRs retain the shared Primus jobs.
 
-Workflow changes that remove `pull_request_target` must reach `main` before
-label events stop invoking the old workflows. GitHub reads that event's workflow
-from the default branch, even when a pull request changes the workflow file.
+`.github/workflows/fork-approval.yaml` removes stale approval labels. It uses
+`pull_request_target` only to edit PR labels and never checks out or executes PR
+code. If the label has not yet been removed, a maintainer can remove and reapply it.
+
+The workflow repair must reach `main` before label events stop invoking the old
+test workflows and the approval-reset workflow takes effect. GitHub reads
+`pull_request_target` workflows from the default branch, even when a pull request
+changes those files.

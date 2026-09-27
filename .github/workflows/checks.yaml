@@ -9,6 +9,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - labeled
 
 permissions:
   contents: read
@@ -16,11 +17,17 @@ permissions:
 jobs:
   # The shared ci / fmt job rewrites files without diffing, so it cannot fail on drift.
   fmt:
+    if: |
+      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]') ||
+      (github.event.action == 'labeled' && github.event.label.name == 'safe-to-test')
     name: fmt
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -38,9 +45,21 @@ jobs:
     name: repo-docs
     runs-on: ubuntu-latest
     steps:
+      # A skipped required check can count as passing. Fail before checkout so
+      # ready_for_review cannot bypass plan validation with an old approval.
+      - name: Require approval before checking fork code
+        if: |
+          (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') &&
+          !(github.event.action == 'labeled' && github.event.label.name == 'safe-to-test')
+        run: |
+          echo '::error::A maintainer must add safe-to-test to approve checks for this revision. Remove and reapply it if already present.'
+          exit 1
+
       - name: Checkout pull request
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Go

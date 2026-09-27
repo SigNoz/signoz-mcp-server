@@ -4,17 +4,28 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
 
 permissions:
   contents: read
 
 jobs:
   contract:
+    if: |
+      (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]') ||
+      (github.event.action == 'labeled' && github.event.label.name == 'safe-to-test')
     name: contract
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v5
