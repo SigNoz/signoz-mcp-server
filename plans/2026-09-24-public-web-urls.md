@@ -30,6 +30,8 @@ behavior.
   configured and per-request browser origins against live SigNoz through HTTP MCP.
 - `README.md`, `docs/architecture.md`, `tests/README.md` — document the option
   and E2E setup.
+- `.github/workflows/ci.yaml`, `.github/workflows/e2e.yaml` — let this contributor
+  PR run the CI and live E2E gates without privileged fork checkouts.
 
 ## Key Decisions
 
@@ -51,6 +53,19 @@ behavior.
 - Tenant backend validation, OAuth forms, token contents, and API routing retain
   their existing behavior. Browser origins still reject user information, paths,
   queries, fragments, unsupported schemes, and unspecified bind addresses.
+
+### 2026-09-27 — Run fork validation without repository secrets
+
+- Decision: use ordinary `pull_request` jobs with read-only permissions for fork
+  and Dependabot PRs. Run `make ci` with public tools; retain private Primus jobs
+  for internal PRs. Keep `safe-to-test` as the cost gate for fork E2E runs, which
+  receive no license secret. Check out immutable revisions without storing Git
+  credentials and explicitly install Go for the native localhost fixture.
+- Rationale: seven checks on this PR failed before reaching the tests because
+  `actions/checkout` rejects fork code in `pull_request_target`. Primus also needs
+  private-repository credentials, so changing the event alone is insufficient.
+- The user requested this CI repair on the same PR. No checkout safety bypass or
+  guardrail relaxation is introduced; `make ci` runs the existing local gate.
 
 ## Verification
 
@@ -86,6 +101,12 @@ behavior.
   `GOTOOLCHAIN=go1.26.0 uv run python /tmp/signoz-pr317-focused-live.py`, selecting
   `test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallback`.
   The other E2E cases were not rerun in this verification.
+- CI repair: `actionlint` v1.7.12 passes for both changed workflows. Evaluated
+  their conditions for internal, fork, and Dependabot PRs with and without the
+  label, plus manual E2E dispatch. Fork and Dependabot cases select public checks
+  and never receive the license, including when labeled.
+- Reran `GOTOOLCHAIN=go1.26.0 make ci` after the workflow changes; all checks pass.
+  GitHub execution of the new fork path is verified after pushing.
 
 ## Outcome
 
@@ -93,6 +114,11 @@ Implementation now supports separate API and browser origins, including
 localhost deployments, while keeping links scoped to each request's backend.
 The localhost regressions are fixed, the full local CI gate passes, and the
 focused live E2E cases confirm the behavior through HTTP MCP.
+
+Fork validation now uses ordinary pull-request jobs with read-only permissions.
+The optional E2E license and private Primus credentials remain limited to trusted
+contexts. The CI repair is included here to unblock this contributor PR, as
+requested by the maintainer.
 
 No tool metadata, schemas, server instructions, or wire-catalog entries change.
 No SigNoz/agent-skills companion change is needed for this additive server setting.
