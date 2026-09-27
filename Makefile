@@ -14,7 +14,7 @@ BASE ?= origin/main
 GO_FILES = $(wildcard $(shell git ls-files -co --exclude-standard '*.go'))
 
 .PHONY: fmt goimports install-goimports require-goimports build test ci check-fmt lint check-deps check-build test-race \
-	check-guardrails mcp-ci-install check-protocol check-conformance check-e2e-style check-repo-docs
+	check-guardrails mcp-ci-install check-protocol check-conformance check-fork-ci check-e2e-style check-repo-docs
 
 fmt:
 	@echo "🧹 Running gofmt -s..."

@@ -58,7 +58,8 @@ function fixture() {
     },
   }};
   state.run = async job => new AsyncFunction('context', 'github', 'core', 'process', script(job))(
-    context, state.github, {setOutput: (key, value) => {state.outputs[key] = value;}}, {env: state.env},
+    {...context, runId: job === gate.jobs.approval ? context.runId : 200}, state.github,
+    {setOutput: (key, value) => {state.outputs[key] = value;}}, {env: state.env},
   );
   return state;
 }
@@ -144,6 +145,17 @@ test('worker accepts current approval and forwards only validated metadata', asy
   const state = fixture();
   await state.run(worker.jobs.authorize);
   assert.deepEqual(state.outputs, {sha, merge_sha: mergeSHA, draft: 'false', pr: '317', approval_url: approvalURL});
+});
+
+test('a failed approved run can be retried without reapplying the label', async () => {
+  const state = fixture();
+  state.env.E2E_RESULT = 'failure';
+  await state.run(worker.jobs.report);
+  assert.equal(state.statuses.get('fork-approval').state, 'failure');
+  await state.run(worker.jobs.authorize);
+  state.env.E2E_RESULT = 'success';
+  await state.run(worker.jobs.report);
+  assert.equal(state.statuses.get('fork-approval').state, 'success');
 });
 
 const invalidApprovals = {

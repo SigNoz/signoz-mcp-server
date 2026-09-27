@@ -65,12 +65,12 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
 
 - Previous iteration `3dec54c`: all active GitHub checks and 61/61 live E2E tests
   passed, with resource and environment cleanup confirmed by a delegated verifier.
-- The final dispatcher/worker scripts have 40 behavior and security-boundary
+- The final dispatcher/worker scripts have 41 behavior and security-boundary
   tests against mocked GitHub APIs: approval, stale/revoked metadata, required
   statuses, unrelated labels, untrusted origins, API errors, failures, and cleanup
-  of approval state. These are part of `make ci` and the protocol CI job.
-- Final `make ci`, workflow lint (with the cache schema exception), and the ready
-  docs check are rerun before pushing; results are recorded in the PR body.
+  of approval state, and retrying the same approved run. These are part of `make ci` and the protocol CI job.
+- Final `make ci`, workflow lint (with the cache schema exception), the ready
+  docs check, and all 41 approval tests pass. Results are recorded in the PR body.
 - Live dispatcher/worker activation requires these files on `main`. Local tests
   do not claim to exercise GitHub's event delivery or branch-rule integration.
 

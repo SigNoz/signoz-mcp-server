@@ -64,7 +64,9 @@ jobs:
             }
             const {data: statuses} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
             const approval = statuses.statuses.find(status => status.context === 'fork-approval');
-            if (approval?.state !== 'pending' || approval.target_url !== source.html_url) {
+            const runURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const queued = approval?.state === 'pending' && approval.target_url === source.html_url;
+            if (!queued && approval?.target_url !== runURL) {
               throw new Error('A newer approval or reset superseded this run');
             }
             core.setOutput('sha', sha);
@@ -182,7 +184,9 @@ jobs:
             if (pr.state !== 'open' || pr.head.sha !== sha || (pr.merge_commit_sha || '') !== process.env.APPROVED_MERGE_SHA || String(pr.draft) !== process.env.APPROVED_DRAFT || !pr.labels.some(label => label.name === 'safe-to-test')) return;
             const {data: statuses} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
             const approval = statuses.statuses.find(status => status.context === 'fork-approval');
-            if (approval?.state !== 'pending' || approval.target_url !== process.env.APPROVAL_URL) return;
+            const runURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const queued = approval?.state === 'pending' && approval.target_url === process.env.APPROVAL_URL;
+            if (!queued && approval?.target_url !== runURL) return;
             const checks = process.env.CHECKS_RESULT === 'success';
             const e2e = process.env.E2E_RESULT === 'success';
             const contexts = ['fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py'];

@@ -114,6 +114,7 @@ receive only a read-only token, no repository secrets or persisted Git credentia
 and no cache access. E2E uses community SigNoz. A separate metadata-only reporter
 publishes results on the approved SHA, preserving the required check names. A
 newer approval or reset prevents an old worker from publishing stale results.
+A failed run can be retried while its approval remains current.
 
 Pending commit statuses keep the required checks blocked even if a contributor
 edits a PR workflow to report successful or skipped jobs. GitHub's own fork-run

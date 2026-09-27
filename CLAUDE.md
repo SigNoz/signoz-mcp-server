@@ -10,8 +10,8 @@ contracts.
 
 - `make ci`: run before pushing. Runs everything the PR gate runs except the live e2e suite:
   `check-fmt`, `lint` (golangci-lint pinned to CI's version), `check-deps`, `check-build`,
-  `test-race`, `check-guardrails`, `check-protocol`, `check-conformance`, `check-e2e-style`, and
-  `check-repo-docs`. Each step is also its own target. Needs Node, uv, goimports
+  `test-race`, `check-guardrails`, `check-protocol`, `check-conformance`, `check-fork-ci`,
+  `check-e2e-style`, and `check-repo-docs`. Each step is also its own target. Needs Node, uv, goimports
   (`make install-goimports`), and GNU `timeout` (on macOS, `brew install coreutils`). CI uses
   Go 1.26; with a newer local Go, run `GOTOOLCHAIN=go1.26.0 make ci` to match it.
 - `make test`: all Go tests, verbose. One test: `go test ./internal/handler/tools -run TestName -count=1`.
