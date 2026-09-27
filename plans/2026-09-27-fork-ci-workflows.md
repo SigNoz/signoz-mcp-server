@@ -57,8 +57,9 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
 - Preserve all six contexts in the current main-branch ruleset. GitHub requires
   both a commit status and a check run to pass when they share a required name.
 - Disable worker cache access with GitHub's scoped `cache-mode: none` control.
-  Actionlint v1.7.12 lacks this new schema field; exclude only that documented
-  unknown-key diagnostic, while the regression test pins the no-cache boundary.
+  Actionlint v1.7.12 lacks the cache-mode and concurrency-queue schema fields;
+  exclude only those documented unknown-key diagnostics. Regression tests pin
+  both runtime controls.
   This is a linter compatibility exception, not a relaxation of cache security.
 
 ### 2026-09-27 — Fix verified review findings
@@ -74,6 +75,10 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
 - Invalidate `contract` first, merge revision before head, before label mutation
   or other status writes. Restore it last after both test suites pass. Check its
   identity on both revisions so an interrupted reset also fences old reporters.
+- A subsequent valid finding identified GitHub's single pending concurrency
+  slot canceling resets when reporters arrive. Set `queue: max` on both jobs;
+  queued resets are retained, subject to GitHub's 100-pending-job platform limit.
+  The policy regression fails on the prior configuration and passes with queuing.
 - Regression tests cover tested/reported revisions, advancing `main`, reordered
   events, and API failures during invalidation, label removal, and reporting.
   An initial API failure propagates without pretending the reset succeeded.
@@ -88,7 +93,7 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   of approval state, and retrying the same approved run. These are part of `make ci` and the protocol CI job.
 - Six targeted regressions fail against the previous workflows and pass with
   these fixes. All 52 policy tests pass.
-- Final `make ci`, workflow lint (with the cache schema exception), the ready
+- Final `make ci`, workflow lint (with documented schema exceptions), the ready
   docs check, and all 52 approval tests pass. Results are recorded in the PR body.
 - Live dispatcher/worker activation requires these files on `main`. Local tests
   do not claim to exercise GitHub's event delivery or branch-rule integration.

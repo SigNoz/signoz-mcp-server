@@ -220,7 +220,8 @@ revisions. Its code jobs use
 read-only permissions, no repository secrets, disabled credential persistence,
 and no cache access. A fresh reporter runner writes commit statuses from GitHub's
 job conclusions; it consumes no files or artifacts from the code runners.
-Label resets and result publication share a per-PR concurrency group, and the
+Label resets and result publication share a per-PR concurrency group with
+`queue: max`, retaining pending resets when reporters arrive. The
 reporter checks the approval identity again before publishing. The already-required
 `contract` status carries that identity: resets mark it pending before other
 mutations, and reports restore it last. The dispatcher also rejects events older

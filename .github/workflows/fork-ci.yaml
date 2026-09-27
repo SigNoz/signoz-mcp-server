@@ -172,6 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: fork-status-${{ inputs.pr }}
+      queue: max
       cancel-in-progress: false
     permissions:
       pull-requests: read

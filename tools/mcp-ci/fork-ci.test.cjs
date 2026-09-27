@@ -327,6 +327,10 @@ test('fork execution cannot inherit secrets, write tokens, caches, or reporter f
   }
   assert.equal(gate.jobs.approval.concurrency.group, 'fork-status-${{ github.event.number }}');
   assert.equal(worker.jobs.report.concurrency.group, 'fork-status-${{ inputs.pr }}');
-  assert.equal(worker.jobs.report.concurrency['cancel-in-progress'], false);
+  // GitHub's default single pending slot would let a stale reporter cancel a queued reset.
+  for (const job of [gate.jobs.approval, worker.jobs.report]) {
+    assert.equal(job.concurrency.queue, 'max');
+    assert.equal(job.concurrency['cancel-in-progress'], false);
+  }
   assert.match(worker.jobs.checks.steps.at(-1).run, /check-repo-docs READY=1/);
 });

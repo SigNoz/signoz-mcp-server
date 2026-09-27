@@ -121,7 +121,9 @@ The existing required `contract` status also records approval identity. Resets
 invalidate that gate first, starting with the merge revision GitHub evaluates,
 and reporters restore it last, only after both test suites pass. Later API errors
 therefore leave the gate blocked. Older events cannot overwrite a newer approval,
-even when GitHub schedules concurrency groups out of order.
+even when GitHub schedules concurrency groups out of order. Both metadata jobs
+use `queue: max` so a later reporter cannot replace a pending reset; GitHub permits
+up to 100 pending jobs in this queue.
 
 If `main` advances during a run, results still apply to the frozen revisions that
 were tested; the newly computed merge commit receives no success from that run.
@@ -135,14 +137,19 @@ controls this repository's validation and trusted results.
 
 `make check-fork-ci` tests the dispatcher, approval validation, and reporter with
 mock GitHub APIs. `actionlint` v1.7.12 does not yet recognize GitHub's documented
-`cache-mode` key; lint `fork-ci.yaml` with only that schema diagnostic excluded:
+`cache-mode` and concurrency `queue` keys. Exclude only those schema diagnostics:
 
 ```bash
-actionlint -ignore '^unexpected key "cache-mode" for "workflow" section' .github/workflows/fork-ci.yaml
+actionlint \
+  -ignore '^unexpected key "cache-mode" for "workflow" section' \
+  -ignore '^unexpected key "queue" for "concurrency" section' \
+  .github/workflows/fork-approval.yaml .github/workflows/fork-ci.yaml
 ```
 
 Keep `cache-mode: none`: disabling cache actions alone does not revoke a job's
-cache token. See [GitHub's cache access controls](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode).
+cache token. Keep `queue: max` on both jobs sharing the status-write lock. See
+[GitHub's concurrency queue](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)
+and [GitHub's cache access controls](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode).
 
 The workflow repair must reach `main` before the dispatcher and worker can run.
 Then refresh fork PRs against `main` and add `safe-to-test`. Rerunning an old

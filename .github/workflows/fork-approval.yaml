@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: fork-status-${{ github.event.number }}
+      queue: max
       cancel-in-progress: false
     permissions:
       actions: write
