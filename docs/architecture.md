@@ -214,10 +214,15 @@ maintainer adds `safe-to-test`, records pending required statuses, and dispatche
 `fork-ci.yaml` from the default branch. Contributor workflow edits cannot replace
 this dispatcher or clear its pending commit statuses.
 
-The worker validates the approval before checking out code. Its code jobs use
+The worker validates the approval before checking out the head and pinned merge
+revision in separate matrix jobs. It reports success only for those tested
+revisions. Its code jobs use
 read-only permissions, no repository secrets, disabled credential persistence,
 and no cache access. A fresh reporter runner writes commit statuses from GitHub's
 job conclusions; it consumes no files or artifacts from the code runners.
 Label resets and result publication share a per-PR concurrency group, and the
-reporter checks the approval identity again before publishing. New commits and
+reporter checks the approval identity again before publishing. The already-required
+`contract` status carries that identity: resets mark it pending before other
+mutations, and reports restore it last. The dispatcher also rejects events older
+than the recorded approval's workflow run number. New commits and
 changes to review readiness require fresh approval. See [the CI guide](../tests/README.md#ci).

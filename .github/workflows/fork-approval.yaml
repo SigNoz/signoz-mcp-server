@@ -41,23 +41,39 @@ jobs:
               if (!['admin', 'maintain', 'write'].includes(data.permission)) {
                 throw new Error('safe-to-test must be added by a maintainer with repository write access');
               }
-            } else if (labeled) {
+            }
+            if (!approved && labeled && !snapshot.labels.some(label => label.name === 'safe-to-test')) return;
+            const runPrefix = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/`;
+            // The merge revision is the required-status target when GitHub has computed it.
+            const revisions = [...new Set([pr.merge_commit_sha, pr.head.sha].filter(Boolean))];
+            for (const sha of revisions) {
+              const {data} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
+              const marker = data.statuses.find(status => status.context === 'contract');
+              if (!marker) continue;
+              const id = marker.target_url?.startsWith(runPrefix) ? marker.target_url.slice(runPrefix.length) : '';
+              if (!/^[1-9][0-9]*$/.test(id)) throw new Error('Unrecognized approval marker');
+              const {data: previous} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(id)});
+              if (previous.path !== '.github/workflows/fork-approval.yaml' || previous.event !== 'pull_request_target') {
+                throw new Error('Approval marker did not originate in the trusted workflow');
+              }
+              if (previous.run_number > context.runNumber) return;
+            }
+            const pending = (sha, name) => github.rest.repos.createCommitStatus({
+              ...context.repo, sha, context: name, state: 'pending',
+              description: approved ? 'Approved revision: validation queued' : 'Waiting for a maintainer to add safe-to-test',
+              target_url: `${runPrefix}${context.runId}`,
+            });
+            // Invalidate the already-required gate and its approval identity before any other mutation.
+            for (const sha of revisions) await pending(sha, 'contract');
+            if (!approved && labeled) {
               try {
                 await github.rest.issues.removeLabel({...context.repo, issue_number: pr.number, name: 'safe-to-test'});
               } catch (error) {
                 if (error.status !== 404) throw error;
               }
             }
-            // Commit statuses remain pending even if a fork manufactures skipped or passing check runs.
-            const contexts = ['fork-approval', 'fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py', 'e2e'];
-            const revisions = [...new Set([pr.head.sha, pr.merge_commit_sha].filter(Boolean))];
-            for (const sha of revisions) for (const name of contexts) {
-              await github.rest.repos.createCommitStatus({
-                ...context.repo, sha, context: name, state: 'pending',
-                description: approved ? 'Approved revision: validation queued' : 'Waiting for a maintainer to add safe-to-test',
-                target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              });
-            }
+            const contexts = ['fork-approval', 'fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py', 'e2e'];
+            for (const sha of revisions) for (const name of contexts) await pending(sha, name);
             if (approved) {
               await github.rest.actions.createWorkflowDispatch({
                 ...context.repo, workflow_id: 'fork-ci.yaml', ref: context.payload.repository.default_branch,

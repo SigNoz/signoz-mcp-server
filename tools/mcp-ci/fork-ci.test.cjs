@@ -24,7 +24,7 @@ function fixture() {
     user: {login: 'contributor'}, labels: [{name: 'safe-to-test'}],
   };
   const context = {
-    repo, actor: 'maintainer', runId: 100, serverUrl: 'https://github.com',
+    repo, actor: 'maintainer', runId: 100, runNumber: 100, serverUrl: 'https://github.com',
     payload: {
       repository: {default_branch: 'main'}, action: 'labeled', label: {name: 'safe-to-test'},
       pull_request: structuredClone(pr),
@@ -33,19 +33,25 @@ function fixture() {
   };
   const state = {
     pr, context, permission: 'write', statuses: new Map(), calls: [], outputs: {},
-    source: {event: 'pull_request_target', path: '.github/workflows/fork-approval.yaml', display_title: `approve-fork #317 ${sha} ready`, html_url: approvalURL},
+    source: {run_number: 100, event: 'pull_request_target', path: '.github/workflows/fork-approval.yaml', display_title: `approve-fork #317 ${sha} ready`, html_url: approvalURL},
     env: {PR_NUMBER: '317', APPROVED_SHA: sha, APPROVED_MERGE_SHA: mergeSHA, APPROVED_DRAFT: 'false', APPROVAL_URL: approvalURL, CHECKS_RESULT: 'success', E2E_RESULT: 'success'},
   };
-  state.statuses.set('fork-approval', {context: 'fork-approval', state: 'pending', target_url: approvalURL});
+  state.status = (name, revision = sha) => state.statuses.get(`${revision}:${name}`);
+  for (const revision of [sha, mergeSHA]) {
+    for (const name of ['contract', 'fork-approval']) {
+      state.statuses.set(`${revision}:${name}`, {sha: revision, context: name, state: 'pending', target_url: approvalURL});
+    }
+  }
   state.github = {rest: {
     pulls: {get: async () => ({data: state.pr})},
     repos: {
       getCollaboratorPermissionLevel: async () => ({data: {permission: state.permission}}),
       createCommitStatus: async params => {
         state.calls.push(['status', params]);
-        state.statuses.set(params.context, params);
+        if (state.statusError?.(params)) throw new Error('status API error');
+        state.statuses.set(`${params.sha}:${params.context}`, params);
       },
-      getCombinedStatusForRef: async () => ({data: {statuses: [...state.statuses.values()]}}),
+      getCombinedStatusForRef: async ({ref}) => ({data: {statuses: [...state.statuses.values()].filter(status => status.sha === ref)}}),
     },
     issues: {removeLabel: async params => {
       state.calls.push(['remove', params]);
@@ -81,7 +87,7 @@ test('maintainer label dispatches exactly the approved head through the default 
   assert.equal(dispatch.ref, 'main');
   assert.equal(dispatch.workflow_id, 'fork-ci.yaml');
   assert.deepEqual(dispatch.inputs, {pr: '317', sha, merge_sha: mergeSHA, draft: 'false', approval_run: '100'});
-  for (const name of requiredChecks) assert.equal(state.statuses.get(name).state, 'pending');
+  for (const name of requiredChecks) assert.equal(state.status(name).state, 'pending');
   assert.equal(state.calls.filter(([kind]) => kind === 'remove').length, 0);
 });
 
@@ -93,7 +99,7 @@ for (const action of ['opened', 'synchronize', 'reopened', 'ready_for_review', '
     assert.equal(gateMatches(state), true);
     await state.run(gate.jobs.approval);
     assert.equal(state.calls.some(([kind]) => kind === 'dispatch'), false);
-    for (const name of requiredChecks) assert.equal(state.statuses.get(name).state, 'pending');
+    for (const name of requiredChecks) assert.equal(state.status(name).state, 'pending');
     assert.equal(state.pr.labels.length, 0);
   });
 }
@@ -144,18 +150,18 @@ for (const code of [404, 403]) {
 test('worker accepts current approval and forwards only validated metadata', async () => {
   const state = fixture();
   await state.run(worker.jobs.authorize);
-  assert.deepEqual(state.outputs, {sha, merge_sha: mergeSHA, draft: 'false', pr: '317', approval_url: approvalURL});
+  assert.deepEqual(state.outputs, {sha, merge_sha: mergeSHA, revisions: JSON.stringify([sha, mergeSHA]), draft: 'false', pr: '317', approval_url: approvalURL});
 });
 
 test('a failed approved run can be retried without reapplying the label', async () => {
   const state = fixture();
   state.env.E2E_RESULT = 'failure';
   await state.run(worker.jobs.report);
-  assert.equal(state.statuses.get('fork-approval').state, 'failure');
+  assert.equal(state.status('fork-approval').state, 'failure');
   await state.run(worker.jobs.authorize);
   state.env.E2E_RESULT = 'success';
   await state.run(worker.jobs.report);
-  assert.equal(state.statuses.get('fork-approval').state, 'success');
+  assert.equal(state.status('fork-approval').state, 'success');
 });
 
 const invalidApprovals = {
@@ -164,13 +170,12 @@ const invalidApprovals = {
   'different workflow': s => {s.source.path = '.github/workflows/fake.yaml';},
   'reset event': s => {s.source.display_title = `reset-fork #317 ${sha}`;},
   'different commit': s => {s.pr.head.sha = 'b'.repeat(40);},
-  'changed merge revision': s => {s.pr.merge_commit_sha = 'd'.repeat(40);},
   'draft became ready': s => {s.pr.draft = true;},
   'closed PR': s => {s.pr.state = 'closed';},
   'revoked label': s => {s.pr.labels = [];},
   'different target branch': s => {s.pr.base.ref = 'release';},
-  'newer approval': s => {s.statuses.get('fork-approval').target_url = `${approvalURL}1`;},
-  'already completed approval': s => {s.statuses.get('fork-approval').state = 'success';},
+  'partial reset on merge revision': s => {s.status('contract', mergeSHA).target_url = `${approvalURL}1`;},
+  'newer approval': s => {s.status('contract').target_url = `${approvalURL}1`;},
 };
 for (const [name, change] of Object.entries(invalidApprovals)) {
   test(`worker rejects ${name} before any checkout`, async () => {
@@ -188,15 +193,15 @@ for (const [checks, e2e] of [['success', 'success'], ['failure', 'success'], ['s
     state.env.CHECKS_RESULT = checks;
     state.env.E2E_RESULT = e2e;
     await state.run(worker.jobs.report);
-    for (const name of requiredChecks) assert.equal(state.statuses.get(name).state, checks === 'success' ? 'success' : 'failure');
-    assert.equal(state.statuses.get('repo-docs').state, checks === 'success' ? 'success' : 'failure');
-    assert.equal(state.statuses.get('e2e').state, e2e === 'success' ? 'success' : 'failure');
-    assert.equal(state.statuses.get('fork-approval').state, checks === 'success' && e2e === 'success' ? 'success' : 'failure');
+    for (const name of requiredChecks) assert.equal(state.status(name).state, checks === 'success' && (name !== 'contract' || e2e === 'success') ? 'success' : 'failure');
+    assert.equal(state.status('repo-docs').state, checks === 'success' ? 'success' : 'failure');
+    assert.equal(state.status('e2e').state, e2e === 'success' ? 'success' : 'failure');
+    assert.equal(state.status('fork-approval').state, checks === 'success' && e2e === 'success' ? 'success' : 'failure');
     assert.deepEqual([...new Set(state.calls.map(([, status]) => status.sha))], [sha, mergeSHA]);
   });
 }
 
-for (const key of ['different commit', 'changed merge revision', 'draft became ready', 'closed PR', 'revoked label', 'newer approval']) {
+for (const key of ['different commit', 'draft became ready', 'closed PR', 'revoked label', 'partial reset on merge revision', 'newer approval']) {
   test(`late report cannot overwrite ${key}`, async () => {
     const state = fixture();
     invalidApprovals[key](state);
@@ -204,6 +209,101 @@ for (const key of ['different commit', 'changed merge revision', 'draft became r
     assert.deepEqual(state.calls, []);
   });
 }
+
+test('every revision receiving success is selected for checks and E2E', async () => {
+  const state = fixture();
+  await state.run(worker.jobs.authorize);
+  const tested = JSON.parse(state.outputs.revisions);
+  assert.deepEqual(tested, [sha, mergeSHA]);
+  await state.run(worker.jobs.report);
+  const reported = [...new Set(state.calls.filter(([kind]) => kind === 'status').map(([, status]) => status.sha))];
+  assert.deepEqual(reported, tested);
+});
+
+test('a main update preserves results only for the frozen tested revisions', async () => {
+  const state = fixture();
+  const newMerge = 'd'.repeat(40);
+  state.pr.merge_commit_sha = newMerge;
+  await state.run(worker.jobs.authorize);
+  assert.deepEqual(JSON.parse(state.outputs.revisions), [sha, mergeSHA]);
+  await state.run(worker.jobs.report);
+  assert.equal(state.status('contract').state, 'success');
+  assert.equal(state.status('contract', mergeSHA).state, 'success');
+  assert.equal(state.status('contract', newMerge), undefined);
+});
+
+for (const merge of ['', sha]) {
+  test(`absent or duplicate merge revision (${merge || 'absent'}) runs once`, async () => {
+    const state = fixture();
+    state.context.payload.inputs.merge_sha = merge;
+    await state.run(worker.jobs.authorize);
+    assert.deepEqual(JSON.parse(state.outputs.revisions), [sha]);
+  });
+}
+
+test('an unlabeled snapshot cannot erase a label added while its reset was queued', async () => {
+  const state = fixture();
+  state.context.payload.action = 'synchronize';
+  state.context.payload.pull_request.labels = [];
+  await state.run(gate.jobs.approval);
+  assert.deepEqual(state.calls, []);
+  assert.equal(state.pr.labels[0].name, 'safe-to-test');
+});
+
+for (const action of ['synchronize', 'labeled']) {
+  test(`out-of-order ${action} cannot overwrite a newer approval after reporting`, async () => {
+    const state = fixture();
+    await state.run(worker.jobs.report);
+    state.calls.length = 0;
+    state.context.payload.action = action;
+    state.context.runId = 99;
+    state.context.runNumber = 99;
+    await state.run(gate.jobs.approval);
+    assert.deepEqual(state.calls, []);
+    assert.equal(state.status('contract').state, 'success');
+    assert.equal(state.status('contract').target_url, approvalURL);
+    assert.equal(state.pr.labels[0].name, 'safe-to-test');
+  });
+}
+
+for (const failure of ['label', 'fork-approval', 'head-contract']) {
+  test(`reset failure at ${failure} leaves the evaluated revision blocked`, async () => {
+    const state = fixture();
+    await state.run(worker.jobs.report);
+    state.calls.length = 0;
+    state.context.runId = 101;
+    state.context.runNumber = 101;
+    state.context.payload.action = 'reopened';
+    if (failure === 'label') state.removeError = 403;
+    else state.statusError = value => failure === 'head-contract'
+      ? value.context === 'contract' && value.sha === sha
+      : value.context === failure;
+    await assert.rejects(state.run(gate.jobs.approval), /API error/);
+    assert.equal(state.status('contract', mergeSHA).state, 'pending');
+    assert.match(state.status('contract', mergeSHA).target_url, /101$/);
+    // Even when the reset fails before label removal, an old reporter cannot restore success.
+    state.statusError = undefined;
+    state.calls.length = 0;
+    await state.run(worker.jobs.report);
+    assert.deepEqual(state.calls, []);
+  });
+}
+
+test('initial invalidation failure propagates before label removal or dispatch', async () => {
+  const state = fixture();
+  state.context.payload.action = 'reopened';
+  state.statusError = () => true;
+  await assert.rejects(state.run(gate.jobs.approval), /API error/);
+  assert.equal(state.calls.some(([kind]) => kind !== 'status'), false);
+  assert.equal(state.pr.labels[0].name, 'safe-to-test');
+});
+
+test('a report API failure cannot restore the required gate early', async () => {
+  const state = fixture();
+  state.statusError = value => value.context === 'fork-approval';
+  await assert.rejects(state.run(worker.jobs.report), /API error/);
+  for (const revision of [sha, mergeSHA]) assert.equal(state.status('contract', revision).state, 'pending');
+});
 
 // Drift pins protect the trust boundary, not incidental workflow formatting.
 test('fork execution cannot inherit secrets, write tokens, caches, or reporter files', () => {
@@ -217,7 +317,9 @@ test('fork execution cannot inherit secrets, write tokens, caches, or reporter f
     assert.equal(job.needs, 'authorize');
     assert.doesNotMatch(JSON.stringify(job), /secrets\./);
     const checkout = job.steps.find(step => step.uses === 'actions/checkout@v4');
-    assert.equal(checkout.with.ref, '${{ needs.authorize.outputs.sha }}');
+    assert.equal(checkout.with.ref, '${{ matrix.revision }}');
+    assert.equal(job.strategy.matrix.revision, '${{ fromJSON(needs.authorize.outputs.revisions) }}');
+    assert.equal(job.strategy['fail-fast'], false);
     assert.equal(checkout.with['persist-credentials'], false);
   }
   for (const job of [gate.jobs.approval, worker.jobs.authorize, worker.jobs.report]) {

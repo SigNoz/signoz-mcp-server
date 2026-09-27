@@ -40,6 +40,7 @@ jobs:
     outputs:
       sha: ${{ steps.approval.outputs.sha }}
       merge_sha: ${{ steps.approval.outputs.merge_sha }}
+      revisions: ${{ steps.approval.outputs.revisions }}
       draft: ${{ steps.approval.outputs.draft }}
       pr: ${{ steps.approval.outputs.pr }}
       approval_url: ${{ steps.approval.outputs.approval_url }}
@@ -59,16 +60,16 @@ jobs:
               throw new Error('Approval did not originate in the trusted label workflow');
             }
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: Number(number)});
-            if (pr.state !== 'open' || pr.base.ref !== context.payload.repository.default_branch || pr.head.sha !== sha || (pr.merge_commit_sha || '') !== merge_sha || String(pr.draft) !== draft || !pr.labels.some(label => label.name === 'safe-to-test')) {
+            if (pr.state !== 'open' || pr.base.ref !== context.payload.repository.default_branch || pr.head.sha !== sha || String(pr.draft) !== draft || !pr.labels.some(label => label.name === 'safe-to-test')) {
               throw new Error('Approval is stale or has been revoked');
             }
-            const {data: statuses} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
-            const approval = statuses.statuses.find(status => status.context === 'fork-approval');
-            const runURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const queued = approval?.state === 'pending' && approval.target_url === source.html_url;
-            if (!queued && approval?.target_url !== runURL) {
-              throw new Error('A newer approval or reset superseded this run');
+            const revisions = [...new Set([sha, merge_sha].filter(Boolean))];
+            for (const revision of revisions) {
+              const {data} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: revision});
+              const approval = data.statuses.find(status => status.context === 'contract');
+              if (approval?.target_url !== source.html_url) throw new Error('A newer approval or reset superseded this run');
             }
+            core.setOutput('revisions', JSON.stringify(revisions));
             core.setOutput('sha', sha);
             core.setOutput('merge_sha', merge_sha);
             core.setOutput('draft', draft);
@@ -77,6 +78,11 @@ jobs:
 
   checks:
     needs: authorize
+    if: needs.authorize.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: ${{ fromJSON(needs.authorize.outputs.revisions) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -85,7 +91,7 @@ jobs:
       - name: Checkout approved revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.authorize.outputs.sha }}
+          ref: ${{ matrix.revision }}
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -114,6 +120,11 @@ jobs:
 
   e2e:
     needs: authorize
+    if: needs.authorize.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: ${{ fromJSON(needs.authorize.outputs.revisions) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -124,7 +135,7 @@ jobs:
       - name: Checkout approved revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.authorize.outputs.sha }}
+          ref: ${{ matrix.revision }}
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
@@ -181,21 +192,29 @@ jobs:
           script: |
             const sha = process.env.APPROVED_SHA;
             const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: Number(process.env.PR_NUMBER)});
-            if (pr.state !== 'open' || pr.head.sha !== sha || (pr.merge_commit_sha || '') !== process.env.APPROVED_MERGE_SHA || String(pr.draft) !== process.env.APPROVED_DRAFT || !pr.labels.some(label => label.name === 'safe-to-test')) return;
-            const {data: statuses} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: sha});
-            const approval = statuses.statuses.find(status => status.context === 'fork-approval');
-            const runURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const queued = approval?.state === 'pending' && approval.target_url === process.env.APPROVAL_URL;
-            if (!queued && approval?.target_url !== runURL) return;
+            if (pr.state !== 'open' || pr.head.sha !== sha || String(pr.draft) !== process.env.APPROVED_DRAFT || !pr.labels.some(label => label.name === 'safe-to-test')) return;
+            const revisions = [...new Set([sha, process.env.APPROVED_MERGE_SHA].filter(Boolean))];
+            for (const revision of revisions) {
+              const {data} = await github.rest.repos.getCombinedStatusForRef({...context.repo, ref: revision});
+              const approval = data.statuses.find(status => status.context === 'contract');
+              if (approval?.target_url !== process.env.APPROVAL_URL) return;
+            }
             const checks = process.env.CHECKS_RESULT === 'success';
             const e2e = process.env.E2E_RESULT === 'success';
-            const contexts = ['fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py'];
-            const revisions = [...new Set([sha, process.env.APPROVED_MERGE_SHA].filter(Boolean))];
+            const contexts = ['fork-checks', 'test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'fmt', 'repo-docs', 'inspector', 'conformance', 'py-fmt / py', 'py-lint / py'];
             for (const revision of revisions) for (const name of [...contexts, 'e2e', 'fork-approval']) {
               const passed = name === 'e2e' ? e2e : name === 'fork-approval' ? checks && e2e : checks;
               await github.rest.repos.createCommitStatus({
                 ...context.repo, sha: revision, context: name, state: passed ? 'success' : 'failure',
                 description: passed ? 'Approved revision passed validation' : 'Approved revision failed validation',
                 target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+            }
+            // Publish the required gate last; interrupted reports leave it blocking the merge.
+            for (const revision of revisions) {
+              await github.rest.repos.createCommitStatus({
+                ...context.repo, sha: revision, context: 'contract', state: checks && e2e ? 'success' : 'failure',
+                description: checks && e2e ? 'Approved revision passed validation' : 'Approved revision failed validation',
+                target_url: process.env.APPROVAL_URL,
               });
             }

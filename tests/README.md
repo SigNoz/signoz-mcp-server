@@ -109,12 +109,24 @@ reopening, marking ready, or removing `safe-to-test` invalidate approval. Other
 label changes leave the existing approval and results alone.
 
 The dispatched worker rechecks the approval, then runs `make ci`, the ready-plan
-check when applicable, and live E2E on separate GitHub-hosted runners. Code jobs
+check when applicable, and live E2E for both the approved head and its pinned merge
+revision on separate GitHub-hosted runners. Code jobs
 receive only a read-only token, no repository secrets or persisted Git credentials,
 and no cache access. E2E uses community SigNoz. A separate metadata-only reporter
 publishes results on the approved SHA, preserving the required check names. A
 newer approval or reset prevents an old worker from publishing stale results.
 A failed run can be retried while its approval remains current.
+
+The existing required `contract` status also records approval identity. Resets
+invalidate that gate first, starting with the merge revision GitHub evaluates,
+and reporters restore it last, only after both test suites pass. Later API errors
+therefore leave the gate blocked. Older events cannot overwrite a newer approval,
+even when GitHub schedules concurrency groups out of order.
+
+If `main` advances during a run, results still apply to the frozen revisions that
+were tested; the newly computed merge commit receives no success from that run.
+The repository's existing strict up-to-date rule requires updating the branch
+before merging. That head change triggers the usual fresh-approval requirement.
 
 Pending commit statuses keep the required checks blocked even if a contributor
 edits a PR workflow to report successful or skipped jobs. GitHub's own fork-run
