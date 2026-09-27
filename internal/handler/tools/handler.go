@@ -72,6 +72,11 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 func (h *Handler) resourceWebURLBase(ctx context.Context) string {
 	signozURL, _ := util.GetSigNozURL(ctx)
 	if h.webURL != "" {
+		// Operator-configured backends may use localhost, which the
+		// request-supplied URL validator intentionally rejects.
+		if signozURL != "" && signozURL == h.configURL {
+			return h.webURL
+		}
 		if requestURL, err := util.NormalizeSigNozURL(signozURL); err == nil && requestURL == h.configURL {
 			return h.webURL
 		}

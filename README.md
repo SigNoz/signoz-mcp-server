@@ -1054,7 +1054,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | Variable          | Description                                                                    | Required                            |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
 | `SIGNOZ_URL`      | SigNoz instance URL                                                            | Yes (stdio); Optional (http with OAuth) |
-| `SIGNOZ_WEB_URL`  | Public SigNoz UI origin for deep links on requests using `SIGNOZ_URL`; must be an `http` or `https` origin with no path, query, or fragment | No |
+| `SIGNOZ_WEB_URL`  | Browser-accessible SigNoz UI origin for deep links on requests using `SIGNOZ_URL`; accepts `localhost` for port forwarding and requires an `http` or `https` origin with no path, query, or fragment | No |
 | `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → API Keys in the SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |

@@ -100,7 +100,7 @@ func LoadConfig() (*Config, error) {
 	webURL := getEnv(SignozWebURL, "")
 	if webURL != "" {
 		var err error
-		webURL, err = util.NormalizeSigNozURL(webURL)
+		webURL, err = util.NormalizeSigNozWebURL(webURL)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", SignozWebURL, err)
 		}

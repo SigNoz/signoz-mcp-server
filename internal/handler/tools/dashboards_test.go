@@ -535,53 +535,110 @@ func TestHandleListDashboards_AddsWebURL(t *testing.T) {
 }
 
 func TestHandleListDashboards_UsesPublicWebURLWithoutChangingAPIURL(t *testing.T) {
-	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
-			apiURL, _ := util.GetSigNozURL(ctx)
-			if apiURL != "http://signoz.internal:8080" {
-				t.Errorf("API URL = %q, want internal URL", apiURL)
+	for _, tc := range []struct {
+		name         string
+		localhostAPI bool
+		webURL       string
+	}{
+		{"numeric loopback backend", false, "https://signoz.example.com/"},
+		{"localhost backend", true, "https://signoz.example.com/"},
+		{"localhost browser", false, "http://localhost:3301/"},
+		{"unset override", true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := make(chan *http.Request, 1)
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests <- r
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}}`))
+			}))
+			defer backend.Close()
+			apiURL := backend.URL
+			if tc.localhostAPI {
+				apiURL = strings.Replace(apiURL, "127.0.0.1", "localhost", 1)
 			}
-			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
-		},
-	}
-	cfg := &config.Config{URL: "http://signoz.internal:8080", WebURL: "https://signoz.example.com/"}
-	h := NewHandler(logpkg.New("error"), cfg)
-	h.clientOverride = mock
-	result, err := h.handleListDashboards(util.SetSigNozURL(testCtx(), cfg.URL), makeToolRequest("signoz_list_dashboards", map[string]any{}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-	if body := textContent(t, result); !strings.Contains(body, `"webUrl":"https://signoz.example.com/dashboard/abc-123"`) {
-		t.Fatalf("expected public webUrl, got: %s", body)
+			t.Setenv(config.SignozURL, apiURL)
+			t.Setenv(config.SignozWebURL, tc.webURL)
+			t.Setenv(config.SignozApiKey, "test-key")
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			h := NewHandler(logpkg.New("error"), cfg)
+			ctx := util.SetAPIKey(util.SetSigNozURL(testCtx(), cfg.URL), cfg.APIKey)
+			result, err := h.handleListDashboards(ctx, makeToolRequest("signoz_list_dashboards", map[string]any{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsError {
+				t.Fatalf("handler returned error result: %v", result.Content)
+			}
+			select {
+			case request := <-requests:
+				if request.Method != http.MethodGet || request.URL.Path != "/api/v2/dashboards" {
+					t.Errorf("API request = %s %s, want GET /api/v2/dashboards", request.Method, request.URL.Path)
+				}
+				if request.Header.Get("SIGNOZ-API-KEY") != "test-key" {
+					t.Error("API request did not retain its credentials")
+				}
+			default:
+				t.Fatal("API backend did not receive the request")
+			}
+			base := strings.TrimSuffix(tc.webURL, "/")
+			if base == "" {
+				base = apiURL
+			}
+			want := `"webUrl":"` + base + `/dashboard/abc-123"`
+			if body := textContent(t, result); !strings.Contains(body, want) {
+				t.Fatalf("expected %s, got: %s", want, body)
+			}
+		})
 	}
 }
 
-func TestHandleListDashboards_UsesTenantURLForPerTenantWebURL(t *testing.T) {
-	mock := &client.MockClient{
-		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
-			apiURL, _ := util.GetSigNozURL(ctx)
-			if apiURL != "https://tenant.example.com" {
-				t.Errorf("API URL = %q, want tenant URL", apiURL)
+func TestHandleListDashboards_SelectsWebURLForTenant(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		configURL  string
+		requestURL string
+		wantBase   string
+	}{
+		{"other tenant", "http://signoz.internal:8080", "https://tenant.example.com", "https://tenant.example.com"},
+		{"localhost config with other tenant", "http://localhost:8080", "https://tenant.example.com", "https://tenant.example.com"},
+		{"different port", "http://localhost:8080", "http://localhost:9090", "http://localhost:9090"},
+		{"no configured backend", "", "https://tenant.example.com", "https://tenant.example.com"},
+		{"equivalent origins", "https://SIGNOZ.INTERNAL:443/", "https://signoz.internal", "https://signoz.example.com"},
+		{"no request backend", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &client.MockClient{
+				ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
+					if apiURL, _ := util.GetSigNozURL(ctx); apiURL != tc.requestURL {
+						t.Errorf("API URL = %q, want %q", apiURL, tc.requestURL)
+					}
+					return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
+				},
 			}
-			return json.RawMessage(`{"dashboards":[{"id":"abc-123","name":"Hosts"}],"tags":[],"total":1}`), nil
-		},
-	}
-	cfg := &config.Config{URL: "http://signoz.internal:8080", WebURL: "https://signoz.example.com"}
-	h := NewHandler(logpkg.New("error"), cfg)
-	h.clientOverride = mock
-	ctx := util.SetSigNozURL(testCtx(), "https://tenant.example.com")
-	result, err := h.handleListDashboards(ctx, makeToolRequest("signoz_list_dashboards", map[string]any{}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-	if body := textContent(t, result); !strings.Contains(body, `"webUrl":"https://tenant.example.com/dashboard/abc-123"`) {
-		t.Fatalf("expected tenant webUrl, got: %s", body)
+			cfg := &config.Config{URL: tc.configURL, WebURL: "https://signoz.example.com"}
+			h := NewHandler(logpkg.New("error"), cfg)
+			h.clientOverride = mock
+			ctx := util.SetSigNozURL(testCtx(), tc.requestURL)
+			result, err := h.handleListDashboards(ctx, makeToolRequest("signoz_list_dashboards", map[string]any{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IsError {
+				t.Fatalf("handler returned error result: %v", result.Content)
+			}
+			body := textContent(t, result)
+			if tc.wantBase == "" {
+				if strings.Contains(body, `"webUrl"`) {
+					t.Fatalf("expected no webUrl, got: %s", body)
+				}
+			} else if want := `"webUrl":"` + tc.wantBase + `/dashboard/abc-123"`; !strings.Contains(body, want) {
+				t.Fatalf("expected %s, got: %s", want, body)
+			}
+		})
 	}
 }
 
