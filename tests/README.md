@@ -146,13 +146,21 @@ were tested; the newly computed merge commit receives no success from that run.
 The repository's existing strict up-to-date rule requires updating the branch
 before merging. That head change triggers the usual fresh-approval requirement.
 
-Once posted, pending commit statuses block the matching required checks even if
-a contributor reports successful or skipped jobs. They do not close the initial
-window before the trusted dispatcher posts the first status. Rollout remains
-blocked on a required workflow rule or a gate with a separate, trusted GitHub App
-identity; another check name using the same GitHub Actions identity is forgeable
-by editable PR workflows. Track enforcement in [PR #329](https://github.com/SigNoz/signoz-mcp-server/pull/329#discussion_r4116512274).
-GitHub's own fork-run approval settings govern arbitrary contributor-added workflows.
+The repository's `main` ruleset must require the distinct `fork-approval` status,
+with GitHub Actions as its source, alongside the existing six required contexts.
+Its absence blocks merging before the dispatcher starts; forks receive success
+only after approved checks and E2E pass. No workflow job may use `fork-approval`
+as its name, because a skipped job would satisfy that requirement.
+
+The metadata-only `internal-approval` job in `checks.yaml` publishes the status
+for internal PRs on both their head and the event's merge revision. It never
+checks out code or grants the exemption to forks or Dependabot. Other required
+CI checks still have to pass for internal PRs.
+
+This closes the scheduling race in the repository's workflows. Deliberately
+editing PR workflows to forge a same-named check remains outside this guarantee;
+preventing that requires a protected workflow rule or a separate App identity.
+GitHub's own fork-run approval settings and required code reviews still apply.
 
 `make check-fork-ci` tests the dispatcher, approval validation, and reporter with
 mock GitHub APIs. `actionlint` v1.7.12 does not yet recognize GitHub's documented
@@ -171,6 +179,10 @@ cache token. Keep `queue: max` on all jobs sharing the status-write lock. See
 [GitHub's concurrency queue](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)
 and [GitHub's cache access controls](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#controlling-cache-access-with-cache-mode).
 
-The workflow repair must reach `main` before the dispatcher and worker can run.
+Before rollout, add `fork-approval` (source: GitHub Actions) to the [main ruleset](https://github.com/SigNoz/signoz-mcp-server/rules/7672051).
+Keep all existing checks and the strict up-to-date policy. First verify that
+this PR's internal publisher creates the status; existing PRs without it will
+remain blocked until refreshed with these workflows. The repair must reach
+`main` before the dispatcher and worker can run.
 Then refresh fork PRs against `main` and add `safe-to-test`. Rerunning an old
 `pull_request_target` failure continues using its old workflow definition.

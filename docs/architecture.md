@@ -213,9 +213,13 @@ Its metadata-only `pull_request_target` job approves an immutable SHA when a
 maintainer adds `safe-to-test`, records pending required statuses, and dispatches
 `fork-ci.yaml` from the default branch. Contributor workflow edits cannot replace
 this dispatcher or clear its pending commit statuses.
-The interval before the first trusted status exists is not protected by these
-statuses. Rollout is blocked on a required workflow rule or separately authenticated
-gate, tracked in [PR #329](https://github.com/SigNoz/signoz-mcp-server/pull/329#discussion_r4116512274).
+The distinct `fork-approval` status must be required by the repository ruleset.
+Its absence blocks merging before the dispatcher posts its first status, and
+the worker reports success only after approved validation passes. No job shares
+that status name. A metadata-only `internal-approval` job publishes the exemption
+for internal PRs while their ordinary required CI checks remain enforced.
+This closes the normal scheduling race; it does not prevent deliberate
+same-name check forgery through edited PR workflows.
 Approval waits for GitHub's mergeability calculation and requires a merge
 revision; a timeout or conflict leaves the head gate pending without dispatch.
 A scheduled metadata-only reconciler gates merge revisions that appear later,

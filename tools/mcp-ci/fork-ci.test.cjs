@@ -9,14 +9,15 @@ const read = name => YAML.parse(fs.readFileSync(path.join(root, '.github/workflo
 const gate = read('fork-approval.yaml');
 const worker = read('fork-ci.yaml');
 const reconciler = read('fork-reconcile.yaml');
+const internalApproval = read('checks.yaml').jobs['internal-approval'];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const script = job => job.steps.find(step => step.uses === 'actions/github-script@v7').with.script;
 const sha = 'a'.repeat(40);
 const mergeSHA = 'c'.repeat(40);
 const repo = {owner: 'SigNoz', repo: 'signoz-mcp-server'};
 const approvalURL = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/100`;
-// These contexts come from the main branch ruleset, not the workflow implementation.
-const requiredChecks = ['test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract'];
+// The required-check policy includes the distinct fork-approval context added in this rollout.
+const requiredChecks = ['test / go', 'fmt / go', 'deps / go', 'build / go', 'lint / go', 'contract', 'fork-approval'];
 
 function fixture() {
   const pr = {
@@ -25,7 +26,7 @@ function fixture() {
     user: {login: 'contributor'}, labels: [{name: 'safe-to-test'}],
   };
   const context = {
-    repo, actor: 'maintainer', runId: 100, runNumber: 100, serverUrl: 'https://github.com',
+    repo, sha: mergeSHA, actor: 'maintainer', runId: 100, runNumber: 100, serverUrl: 'https://github.com',
     payload: {
       repository: {default_branch: 'main'}, action: 'labeled', label: {name: 'safe-to-test'},
       changes: {base: {ref: {from: ''}}},
@@ -135,6 +136,35 @@ test('internal PRs do not enter the fork dispatcher; Dependabot does', () => {
   assert.equal(gateMatches(state), true);
 });
 
+test('internal PRs publish only the approval exemption on their head and tested merge', async () => {
+  const state = fixture();
+  state.pr.head.repo.full_name = `${repo.owner}/${repo.repo}`;
+  state.context.payload.pull_request.head.repo.full_name = state.pr.head.repo.full_name;
+  state.pr.labels = [];
+  state.pr.merge_commit_sha = 'd'.repeat(40);
+  await state.run(internalApproval);
+  assert.equal(state.calls.length, 2);
+  for (const [kind, status] of state.calls) {
+    assert.equal(kind, 'status');
+    assert.equal(status.context, 'fork-approval');
+    assert.equal(status.state, 'success');
+  }
+  assert.deepEqual(state.calls.map(([, status]) => status.sha), [sha, mergeSHA]);
+});
+
+for (const reason of ['fork', 'Dependabot', 'new head', 'closed', 'retargeted']) {
+  test(`the internal approval path cannot approve a ${reason} PR`, async () => {
+    const state = fixture();
+    if (reason !== 'fork') state.pr.head.repo.full_name = `${repo.owner}/${repo.repo}`;
+    if (reason === 'Dependabot') state.pr.user.login = 'dependabot[bot]';
+    if (reason === 'new head') state.pr.head.sha = 'b'.repeat(40);
+    if (reason === 'closed') state.pr.state = 'closed';
+    if (reason === 'retargeted') state.pr.base.ref = 'release';
+    await state.run(internalApproval);
+    assert.deepEqual(state.calls, []);
+  });
+}
+
 for (const change of [s => {s.pr.head.sha = 'b'.repeat(40);}, s => {s.pr.draft = true;}, s => {s.pr.state = 'closed';}, s => {s.pr.labels = []; }]) {
   test('outdated approval event cannot authorize or reset the current PR', async () => {
     const state = fixture();
@@ -208,7 +238,7 @@ for (const [checks, e2e] of [['success', 'success'], ['failure', 'success'], ['s
     state.env.CHECKS_RESULT = checks;
     state.env.E2E_RESULT = e2e;
     await state.run(worker.jobs.report);
-    for (const name of requiredChecks) assert.equal(state.status(name).state, checks === 'success' && (name !== 'contract' || e2e === 'success') ? 'success' : 'failure');
+    for (const name of requiredChecks) assert.equal(state.status(name).state, checks === 'success' && (!['contract', 'fork-approval'].includes(name) || e2e === 'success') ? 'success' : 'failure');
     assert.equal(state.status('repo-docs').state, checks === 'success' ? 'success' : 'failure');
     assert.equal(state.status('e2e').state, e2e === 'success' ? 'success' : 'failure');
     assert.equal(state.status('fork-approval').state, checks === 'success' && e2e === 'success' ? 'success' : 'failure');
@@ -485,6 +515,16 @@ test('a report API failure cannot restore the required gate early', async () => 
 });
 
 // Drift pins protect the trust boundary, not incidental workflow formatting.
+test('skipped PR jobs cannot satisfy the distinct approval context', () => {
+  for (const name of fs.readdirSync(path.join(root, '.github/workflows')).filter(name => /\.ya?ml$/.test(name))) {
+    for (const [id, job] of Object.entries(read(name).jobs)) {
+      assert.notEqual(job.name || id, 'fork-approval', name);
+    }
+  }
+  assert.deepEqual(internalApproval.permissions, {'pull-requests': 'read', statuses: 'write'});
+  assert.equal(internalApproval.steps.every(step => step.uses === 'actions/github-script@v7'), true);
+});
+
 test('internal PR checks use the merge revision evaluated by GitHub', () => {
   for (const name of ['checks.yaml', 'guardrails.yaml', 'mcp-protocol.yaml', 'e2e.yaml']) {
     for (const job of Object.values(read(name).jobs)) {

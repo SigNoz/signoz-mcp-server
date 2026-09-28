@@ -23,8 +23,9 @@ from a separate runner. Code runners never receive write tokens.
 New commits, reopening, readiness changes, and label removal invalidate approval.
 Unrelated labels preserve it. Pending statuses use existing required check names,
 so skipped or manufactured check runs cannot clear an already-posted pending
-status. This does not cover the interval before the first trusted status exists;
-required-workflow or separate-app enforcement is still needed.
+status. Require the distinct `fork-approval` status in the repository ruleset so
+its absence blocks merging before the dispatcher starts. Internal PRs publish
+that status through a metadata-only job with a different name.
 GitHub's repository fork-run policy remains responsible for arbitrary new
 contributor workflows, which cannot be prohibited by editable PR YAML alone.
 
@@ -110,17 +111,30 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
 - Restore GitHub's default synthetic merge checkout for internal PR checks,
   protocol jobs, guardrails, and E2E so results certify the revision they test.
 - Review identified a valid initial gap: skipped required checks can pass before
-  the target-event dispatcher creates its first pending status. Keep #329 in draft.
-  An organization required-workflow rule, or a gate with a separate trusted App
-  identity, is needed. The current CLI token lacks `admin:org`; availability of
-  required-workflow rules is awaiting confirmation. Do not present another check
-  name under the same GitHub Actions identity as a complete enforcement fix.
+  the target-event dispatcher creates its first pending status.
+
+### 2026-09-28 — Require the distinct approval status at repository level
+
+- The user selected the repository-level fix for the scheduling race. Require
+  `fork-approval` from GitHub Actions in the existing main ruleset, preserving
+  the six existing required checks and strict up-to-date behavior.
+- Add an internal-PR publisher to `checks.yaml`. It writes only the approval
+  exemption, on the event's head and merge revision, after checking live PR
+  metadata. Forks, Dependabot, stale heads, closed PRs, and retargeted PRs cannot
+  use it. The job name differs from the required status so skipping it on a fork
+  cannot satisfy the approval requirement.
+- Keep the stronger claim separate: required check names do not prevent
+  deliberate same-name check forgery. Protected workflow or separate-App
+  enforcement would address that broader threat and is outside this fix.
+- Validate the publisher in CI before activating the rule. Repository access
+  is currently `maintain`, so rule activation may require an administrator.
+  Existing PRs need refreshed workflows before they can produce the new status.
 
 ## Verification
 
 - Previous iteration `3dec54c`: all active GitHub checks and 61/61 live E2E tests
   passed, with resource and environment cleanup confirmed by a delegated verifier.
-- The dispatcher, worker, and reconciler scripts have 71 behavior and security-boundary
+- The approval scripts have 78 behavior and security-boundary
   tests against mocked GitHub APIs: approval, stale/revoked metadata, required
   statuses, unrelated labels, untrusted origins, API errors, failures, and cleanup
   of approval state, and retrying the same approved run. These are part of `make ci` and the protocol CI job.
@@ -129,21 +143,21 @@ contributor workflows, which cannot be prohibited by editable PR YAML alone.
   computation fixes and pass afterward. Late-merge recovery tests cover approval
   and reset retries, existing results, source provenance, and retry API failure.
   Four further regressions reproduce retargeting and internal merge-checkout
-  defects before their fixes. All 71 policy tests pass.
+  defects before their fixes. Internal exemption tests cover the head and event
+  merge revision and all important rejection paths. All 78 policy tests pass.
 - `make ci`, workflow lint (with documented schema exceptions), and draft-plan
-  validation pass. Ready-plan validation remains blocked by the unfinished
-  enforcement work. Results are recorded in the PR body.
+  validation pass. Ready-plan validation remains blocked until repository rule
+  activation is confirmed. Results are recorded in the PR body.
 - Live dispatcher/worker activation requires these files on `main`. Local tests
   do not claim to exercise GitHub's event delivery or branch-rule integration.
 
 ## Outcome
 
-CI repairs and verified code findings are implemented. Enforcement before the
-first trusted status is still incomplete, tracked by the unresolved review in
-#329; the PR remains draft. Required-workflow availability or a separately
-authenticated gate must be decided before implementation and rollout can finish.
-PR #317 contains no GitHub workflow changes. Check results and rollout constraints
-are recorded in the PR body.
+The repository-level scheduling-race fix is implemented. Activation of the
+required `fork-approval` context and live fork rollout remain pending in #329;
+the PR stays draft until the rule is confirmed. No organization-level rule is
+needed for this scoped fix. PR #317 contains no GitHub workflow changes.
+Check results and rollout constraints are recorded in the PR body.
 
 ## Reference Links
 
