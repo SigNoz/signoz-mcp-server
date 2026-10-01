@@ -2,7 +2,7 @@
 
 Status: Done
 Issue: #303
-PR: https://github.com/SigNoz/signoz-mcp-server/pull/317
+PR: https://github.com/SigNoz/signoz-mcp-server/pull/332
 
 ## Context
 
@@ -30,6 +30,8 @@ behavior.
   configured and per-request browser origins against live SigNoz through HTTP MCP.
 - `README.md`, `docs/architecture.md`, `tests/README.md` — document the option
   and E2E setup.
+- `docker-compose.yml`, `manifest.json` — forward the optional browser origin
+  through Docker Compose and the Claude Desktop bundle.
 
 ## Key Decisions
 
@@ -51,6 +53,16 @@ behavior.
 - Tenant backend validation, OAuth forms, token contents, and API routing retain
   their existing behavior. Browser origins still reject user information, paths,
   queries, fragments, unsupported schemes, and unspecified bind addresses.
+
+### 2026-10-01 — Forward browser origins through packaged launchers
+
+- Docker Compose forwards `SIGNOZ_WEB_URL` from the shell or `.env` file, with
+  an empty value when unset. The Desktop bundle exposes an optional
+  `signoz_web_url` field with an empty default and maps it to `SIGNOZ_WEB_URL`.
+- This fixes the launch-configuration omission reproduced in review. The user
+  selected this fix and deferred the malformed-URL logging and expanded IPv6
+  unspecified-address findings. Runtime URL validation is unchanged.
+- The user requested an independent review of the full PR before pushing.
 
 ## Verification
 
@@ -89,6 +101,25 @@ behavior.
 - The subsequent full GitHub E2E run on `03b9010` passed all 63 tests, including
   both browser-origin cases and their dashboard-deletion checks. The feature
   code and tests are unchanged after extracting the workflow changes to #329.
+- The launcher follow-up passes `GOTOOLCHAIN=go1.26.0 make ci`, including
+  formatting, lint, dependencies, builds, race tests, guardrails, protocol,
+  conformance, E2E style, and repository docs checks.
+- Real Docker Compose rendering confirms the browser URL is empty when unset
+  and forwarded for HTTPS and localhost origins, while the API URL is unchanged.
+  These checks used synthetic settings and did not launch containers.
+- The official `@anthropic-ai/mcpb@2.1.2` configuration resolver forwards omitted,
+  blank, HTTPS, and localhost settings correctly, retaining the API URL and key.
+  Its strict manifest validator rejects the preexisting top-level `resources`
+  key identically on `main`, the prior PR head, and the launcher follow-up.
+  All other fields pass the official v0.2 schema when that key is excluded from
+  an in-memory validation copy; the tracked resource metadata is unchanged.
+- An independent agent reviewed the full 17-file PR before pushing, including
+  all affected handlers, tenant isolation, API routing and credentials, URL
+  normalization, launcher wiring, documentation, metadata, E2E fixtures, and
+  cleanup. It found no additional actionable issues and passed focused
+  configuration, handler-link, and URL utility tests with Go 1.26.0.
+  The review was read-only and performed no new live SigNoz verification;
+  runtime E2E evidence predates the launcher follow-up.
 
 ## Outcome
 
@@ -97,15 +128,19 @@ localhost deployments, while keeping links scoped to each request's backend.
 The localhost regressions are fixed, the full local CI gate passes, and the
 focused live E2E cases confirm the behavior through HTTP MCP.
 
-No tool metadata, schemas, server instructions, or wire-catalog entries change.
+The Desktop bundle's configuration schema and environment mapping now include
+the optional browser origin. Tool metadata, tool schemas, server instructions,
+and wire-catalog entries are unchanged.
 No SigNoz/agent-skills companion change is needed for this additive server setting.
 
-The separate fork CI repair is tracked in #329. This PR contains only the browser
-URL setting, its tests, and its documentation.
+PR #317 was recreated as #332 with the original commits and contributor
+authorship preserved. The launcher follow-up is limited to the optional browser
+URL setting and its documentation. The user closed #329 and permanently
+excluded CI changes from this work.
 
 ## Reference Links
 
 - [Issue #303](https://github.com/SigNoz/signoz-mcp-server/issues/303)
 - [PR #317](https://github.com/SigNoz/signoz-mcp-server/pull/317)
+- [PR #332](https://github.com/SigNoz/signoz-mcp-server/pull/332)
 - [Full E2E verification](https://github.com/SigNoz/signoz-mcp-server/actions/runs/36305264712)
-- [Separate CI repair #329](https://github.com/SigNoz/signoz-mcp-server/pull/329)

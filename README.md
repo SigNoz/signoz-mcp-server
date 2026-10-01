@@ -1093,6 +1093,8 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 
 The MCP server does not run an OTLP log exporter; logs are emitted as JSON to stderr. `OTEL_LOGS_EXPORTER` is therefore not used.
 
+Docker Compose forwards `SIGNOZ_WEB_URL` from your shell or `.env` file. Leave it unset to use `SIGNOZ_URL` for resource links.
+
 ## Claude Desktop Extension
 
 ### Building the Bundle
@@ -1107,8 +1109,10 @@ make bundle
 
 1. Open **Claude Desktop → Settings → Developer → Edit Config → Add bundle.mcpb**
 2. Select `./bundle/bundle.mcpb`
-3. Enter your `SIGNOZ_URL`, `SIGNOZ_API_KEY`, and optionally `LOG_LEVEL`
+3. Enter your `SIGNOZ_URL`, `SIGNOZ_API_KEY`, and optionally `SIGNOZ_WEB_URL` and `LOG_LEVEL`
 4. Restart Claude Desktop
+
+Set **SigNoz Web URL** to the browser-accessible UI origin when **SigNoz URL** points to an internal API address. Leave it blank to use **SigNoz URL** for resource links.
 
 ## End-to-End Tests
 

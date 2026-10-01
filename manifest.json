@@ -19,6 +19,7 @@
       "args": [],
       "env": {
         "SIGNOZ_URL": "${user_config.signoz_url}",
+        "SIGNOZ_WEB_URL": "${user_config.signoz_web_url}",
         "SIGNOZ_API_KEY": "${user_config.signoz_api_key}",
         "LOG_LEVEL": "${user_config.log_level}"
       }
@@ -346,6 +347,14 @@
       "description": "URL to your SigNoz instance",
       "required": true,
       "sensitive": false
+    },
+    "signoz_web_url": {
+      "type": "string",
+      "title": "SigNoz Web URL",
+      "description": "Browser URL for resource links when SigNoz URL points to an internal address. Use an HTTP(S) origin without a path, query, or fragment. Leave blank to use SigNoz URL.",
+      "required": false,
+      "sensitive": false,
+      "default": ""
     },
     "signoz_api_key": {
       "type": "string",
