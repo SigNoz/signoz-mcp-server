@@ -80,6 +80,50 @@ func TestLoadConfig_CustomHeaders(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_WebURL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"unset", "", ""},
+		{"public origin", "https://signoz.example.com/", "https://signoz.example.com"},
+		{"localhost browser", "http://LOCALHOST:3301/", "http://localhost:3301"},
+		{"default port", "https://SIGNOZ.EXAMPLE.COM:443/", "https://signoz.example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(SignozURL, "http://signoz.internal:8080")
+			t.Setenv(SignozWebURL, tc.raw)
+			cfg, err := LoadConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cfg.WebURL)
+		})
+	}
+}
+
+func TestLoadConfig_RejectsInvalidWebURL(t *testing.T) {
+	for _, tc := range []struct {
+		raw     string
+		wantErr string
+	}{
+		{"https://signoz.example.com/signoz", "without a path"},
+		{"https://signoz.example.com?orgId=1", "without query parameters"},
+		{"https://signoz.example.com#dashboard", "without a fragment"},
+		{"https://user:password@signoz.example.com", "must not include user info"},
+		{"ftp://signoz.example.com", "must be http or https"},
+		{"https://", "must include a host"},
+		{"http://0.0.0.0:3301", "not allowed"},
+		{"http://[::]:3301", "not allowed"},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Setenv(SignozWebURL, tc.raw)
+			_, err := LoadConfig()
+			require.ErrorContains(t, err, "SIGNOZ_WEB_URL")
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
 func TestValidateConfig_HTTPAllowsCredentialsFromHeaders(t *testing.T) {
 	cfg := &Config{
 		TransportMode: "http",

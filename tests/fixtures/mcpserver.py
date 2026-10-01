@@ -1,5 +1,8 @@
 import os
+import socket
+import subprocess
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +27,8 @@ READY_TIMEOUT = 60.0
 @dataclass(frozen=True)
 class MCPServer:
     base_url: str
+    backend_url: str = ""
+    web_url: str = ""
 
     @property
     def mcp_url(self) -> str:
@@ -40,17 +45,19 @@ def _container_logs(container, lines: int = 120) -> str:
         return f"<could not read container logs: {err}>"
 
 
-def _wait_ready(base_url: str, container, timeout: float = READY_TIMEOUT) -> None:
+def _wait_ready(
+    base_url: str,
+    is_running: Callable[[], bool],
+    diagnostics: Callable[[], str],
+    timeout: float = READY_TIMEOUT,
+) -> None:
     """Wait until /readyz returns 200 (it 503s while the docs index warms)."""
     deadline = time.time() + timeout
     last = None
 
     while time.time() < deadline:
-        container.reload()
-        if container.status != "running":
-            raise RuntimeError(
-                f"MCP server container is {container.status} before becoming ready; logs:\n{_container_logs(container)}"
-            )
+        if not is_running():
+            raise RuntimeError(f"MCP server stopped before becoming ready: {diagnostics()}")
         try:
             resp = requests.get(f"{base_url}/readyz", timeout=5)
             if resp.status_code == 200:
@@ -61,9 +68,7 @@ def _wait_ready(base_url: str, container, timeout: float = READY_TIMEOUT) -> Non
             last = err
         time.sleep(1)
 
-    raise TimeoutError(
-        f"MCP server did not become ready within {timeout}s (last={last}); logs:\n{_container_logs(container)}"
-    )
+    raise TimeoutError(f"MCP server did not become ready within {timeout}s (last={last}); {diagnostics()}")
 
 
 @pytest.fixture(scope="session")
@@ -129,13 +134,72 @@ def mcp_server(request: pytest.FixtureRequest, signoz: SigNoz) -> MCPServer:
 
     request.addfinalizer(stop)
 
+    def is_running() -> bool:
+        container.reload()
+        return container.status == "running"
+
     try:
         binding = client.api.port(container.id, CONTAINER_PORT)
         host_port = int(binding[0]["HostPort"])
         base_url = f"http://127.0.0.1:{host_port}"
-        _wait_ready(base_url, container)
+        _wait_ready(base_url, is_running, lambda: _container_logs(container))
     except Exception:
         stop()
         raise
 
     return MCPServer(base_url=base_url)
+
+
+@pytest.fixture(scope="session")
+def mcp_server_binary(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    binary = tmp_path_factory.mktemp("mcp-server") / "signoz-mcp-server"
+    Commander.from_path("go", cwd=REPO_ROOT).run("build", "-o", str(binary), "./cmd/server/", timeout=900)
+    return binary
+
+
+@pytest.fixture
+def mcp_server_with_web_url(
+    request: pytest.FixtureRequest, mcp_server_binary: Path, signoz: SigNoz
+) -> Iterator[MCPServer]:
+    """Run natively so literal localhost reaches the same cast SigNoz on Linux and macOS."""
+    __tracebackhide__ = True
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+
+    backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
+    web_url = request.param
+    base_url = f"http://127.0.0.1:{port}"
+    process = subprocess.Popen(
+        [str(mcp_server_binary)],
+        cwd=REPO_ROOT,
+        env=os.environ
+        | {
+            "TRANSPORT_MODE": "http",
+            "MCP_SERVER_HOST": "127.0.0.1",
+            "MCP_SERVER_PORT": str(port),
+            "SIGNOZ_URL": backend_url,
+            "SIGNOZ_WEB_URL": web_url,
+            "SIGNOZ_API_KEY": signoz.access_token,
+            "SIGNOZ_CUSTOM_HEADERS": "",
+            "SIGNOZ_INSTANCE_URL_ALLOWLIST": "",
+            "OAUTH_ENABLED": "false",
+            "LOG_LEVEL": "error",
+            "ANALYTICS_ENABLED": "false",
+            "OTEL_TRACES_EXPORTER": "none",
+            "OTEL_METRICS_EXPORTER": "none",
+        },
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+    )
+    try:
+        _wait_ready(base_url, lambda: process.poll() is None, lambda: f"exit code: {process.poll()}")
+        yield MCPServer(base_url=base_url, backend_url=backend_url, web_url=web_url)
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+        logger.info("local MCP server process stopped and reaped")

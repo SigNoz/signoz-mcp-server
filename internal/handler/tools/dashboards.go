@@ -326,7 +326,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 
 	// Inject a webUrl deep link into each "dashboards" entry (keyed by "id").
 	// Fails open: any parse problem or missing base URL leaves result unchanged.
-	if base, hasURL := util.GetSigNozURL(ctx); hasURL {
+	if base := h.resourceWebURLBase(ctx); base != "" {
 		resultJSON = util.InjectListWebURL(resultJSON, base, "dashboard", "dashboards", "id")
 	}
 
@@ -363,15 +363,15 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 		return upstreamError(err), nil
 	}
 	data = normalizeDashboardResponse(data)
-	data = enrichDashboardWebURL(ctx, data, id)
+	data = h.enrichDashboardWebURL(ctx, data, id)
 	return structuredResult(data), nil
 }
 
 // enrichDashboardWebURL injects a webUrl deep link into a single-dashboard
 // passthrough body. Delegates to util.InjectWebURL, which preserves large
 // int64 fields and fails open on unparseable input.
-func enrichDashboardWebURL(ctx context.Context, data []byte, id string) []byte {
-	base, _ := util.GetSigNozURL(ctx)
+func (h *Handler) enrichDashboardWebURL(ctx context.Context, data []byte, id string) []byte {
+	base := h.resourceWebURLBase(ctx)
 	return util.InjectWebURL(data, base, "dashboard", id)
 }
 
@@ -380,9 +380,9 @@ func enrichDashboardWebURL(ctx context.Context, data []byte, id string) []byte {
 // (under a "data" envelope or at top level) with a
 // targeted probe that does not touch the body, then delegates the actual
 // injection to util.InjectWebURL (precision-preserving, fails open).
-func enrichCreatedDashboardWebURL(ctx context.Context, data []byte) []byte {
-	base, ok := util.GetSigNozURL(ctx)
-	if !ok || base == "" {
+func (h *Handler) enrichCreatedDashboardWebURL(ctx context.Context, data []byte) []byte {
+	base := h.resourceWebURLBase(ctx)
+	if base == "" {
 		return data
 	}
 	var probe struct {
@@ -440,7 +440,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = enrichCreatedDashboardWebURL(ctx, data)
+	data = h.enrichCreatedDashboardWebURL(ctx, data)
 	return structuredResult(data), nil
 }
 
@@ -500,7 +500,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = enrichCreatedDashboardWebURL(ctx, data)
+	data = h.enrichCreatedDashboardWebURL(ctx, data)
 	return structuredResult(data), nil
 }
 
@@ -598,7 +598,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = enrichDashboardWebURL(ctx, data, id)
+	data = h.enrichDashboardWebURL(ctx, data, id)
 	return structuredResult(data), nil
 }
 
@@ -642,7 +642,7 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = enrichDashboardWebURL(ctx, data, id)
+	data = h.enrichDashboardWebURL(ctx, data, id)
 	return structuredResult(data), nil
 }
 

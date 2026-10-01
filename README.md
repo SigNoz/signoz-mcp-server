@@ -468,7 +468,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 
 For detailed usage and examples, see the [full documentation](https://signoz.io/docs/ai/signoz-mcp-server/).
 
-> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`, `signoz_import_dashboard`) include a `webUrl` field when the request carries a SigNoz instance URL: an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`).
+> **Resource deep links:** the resource read tools (`signoz_list_dashboards`, `signoz_get_dashboard`, `signoz_list_alerts`, `signoz_list_alert_rules`, `signoz_get_alert`, `signoz_list_services`, `signoz_search_traces`, `signoz_get_trace_details`) and the dashboard write tools (`signoz_create_dashboard`, `signoz_update_dashboard`, `signoz_patch_dashboard`, `signoz_import_dashboard`) include a `webUrl` field when the request carries a SigNoz instance URL: an absolute deep link to the resource in the SigNoz web UI (per result row for `signoz_search_traces`). Set `SIGNOZ_WEB_URL` when `SIGNOZ_URL` points to an internal API address and users need links to the public UI address. Requests for other tenant URLs keep their own URL in `webUrl`.
 
 ### Agent Routing Guidance
 
@@ -1064,6 +1064,7 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 | Variable          | Description                                                                    | Required                            |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------- |
 | `SIGNOZ_URL`      | SigNoz instance URL                                                            | Yes (stdio); Optional (http with OAuth) |
+| `SIGNOZ_WEB_URL`  | Browser-accessible SigNoz UI origin for deep links on requests using `SIGNOZ_URL`; accepts `localhost` for port forwarding and requires an `http` or `https` origin with no path, query, or fragment | No |
 | `SIGNOZ_API_KEY`  | SigNoz API key (get from Settings → API Keys in the SigNoz UI) | Yes (stdio); Optional (http with OAuth) |
 | `LOG_LEVEL`       | Logging level: `info`(default), `debug`, `warn`, `error`                       | No                                  |
 | `TRANSPORT_MODE`  | MCP transport mode: `stdio`(default) or `http`                                 | No                                  |
@@ -1092,6 +1093,8 @@ Runs a SigNoz Query Builder v5 request that the dedicated tools cannot express, 
 
 The MCP server does not run an OTLP log exporter; logs are emitted as JSON to stderr. `OTEL_LOGS_EXPORTER` is therefore not used.
 
+Docker Compose forwards `SIGNOZ_WEB_URL` from your shell or `.env` file. Leave it unset to use `SIGNOZ_URL` for resource links.
+
 ## Claude Desktop Extension
 
 ### Building the Bundle
@@ -1106,8 +1109,10 @@ make bundle
 
 1. Open **Claude Desktop → Settings → Developer → Edit Config → Add bundle.mcpb**
 2. Select `./bundle/bundle.mcpb`
-3. Enter your `SIGNOZ_URL`, `SIGNOZ_API_KEY`, and optionally `LOG_LEVEL`
+3. Enter your `SIGNOZ_URL`, `SIGNOZ_API_KEY`, and optionally `SIGNOZ_WEB_URL` and `LOG_LEVEL`
 4. Restart Claude Desktop
+
+Set **SigNoz Web URL** to the browser-accessible UI origin when **SigNoz URL** points to an internal API address. Leave it blank to use **SigNoz URL** for resource links.
 
 ## End-to-End Tests
 
