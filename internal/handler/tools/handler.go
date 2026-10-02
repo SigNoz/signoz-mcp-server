@@ -12,6 +12,7 @@ import (
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
@@ -20,7 +21,6 @@ type Handler struct {
 	logger        *slog.Logger
 	clientCache   *expirable.LRU[string, *signozclient.SigNoz]
 	configURL     string
-	webURL        string
 	customHeaders map[string]string
 	meters        *otelpkg.Meters
 	docsIndex     *docsindex.IndexRegistry
@@ -64,24 +64,23 @@ func NewHandler(log *slog.Logger, cfg *config.Config) *Handler {
 		logger:        log,
 		clientCache:   expirable.NewLRU[string, *signozclient.SigNoz](cfg.ClientCacheSize, nil, cfg.ClientCacheTTL),
 		configURL:     normalizedURL,
-		webURL:        strings.TrimSuffix(cfg.WebURL, "/"),
 		customHeaders: cfg.CustomHeaders,
 	}
 }
 
-func (h *Handler) resourceWebURLBase(ctx context.Context) string {
-	signozURL, _ := util.GetSigNozURL(ctx)
-	if h.webURL != "" {
-		// Operator-configured backends may use localhost, which the
-		// request-supplied URL validator intentionally rejects.
-		if signozURL != "" && signozURL == h.configURL {
-			return h.webURL
-		}
-		if requestURL, err := util.NormalizeSigNozURL(signozURL); err == nil && requestURL == h.configURL {
-			return h.webURL
-		}
+func (h *Handler) getResourceClient(ctx context.Context) (signozclient.Client, string, *mcp.CallToolResult) {
+	client, err := h.GetClient(ctx)
+	if err != nil {
+		return nil, "", clientError(err)
 	}
-	return signozURL
+	base, err := client.GetExternalURL(ctx)
+	if err != nil {
+		return nil, "", upstreamError(err)
+	}
+	if base == "" {
+		base, _ = util.GetSigNozURL(ctx)
+	}
+	return client, base, nil
 }
 
 // GetClient returns a cached SigNoz client for the tenant identified by

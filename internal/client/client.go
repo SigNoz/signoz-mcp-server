@@ -99,6 +99,9 @@ type SigNoz struct {
 	identityMu       sync.Mutex
 	cachedIdentity   *AnalyticsIdentity
 	identityCachedAt time.Time
+	webURLMu         sync.Mutex
+	cachedWebURL     string
+	webURLExpiresAt  time.Time
 	meters           *otelpkg.Meters
 }
 
