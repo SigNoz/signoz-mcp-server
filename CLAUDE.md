@@ -10,8 +10,8 @@ contracts.
 
 - `make ci`: run before pushing. Runs everything the PR gate runs except the live e2e suite:
   `check-fmt`, `lint` (golangci-lint pinned to CI's version), `check-deps`, `check-build`,
-  `test-race`, `check-guardrails`, `check-protocol`, `check-conformance`, `check-e2e-style`, and
-  `check-repo-docs`. Each step is also its own target. Needs Node, uv, goimports
+  `test-race`, `check-guardrails`, `check-protocol`, `check-conformance`, `check-e2e-style`,
+  `check-repo-docs`, and `test-fuzz`. Each step is also its own target. Needs Node, uv, goimports
   (`make install-goimports`), and GNU `timeout` (on macOS, `brew install coreutils`). CI uses
   Go 1.26; with a newer local Go, run `GOTOOLCHAIN=go1.26.0 make ci` to match it.
 - `make test`: all Go tests, verbose. One test: `go test ./internal/handler/tools -run TestName -count=1`.
@@ -33,6 +33,10 @@ contracts.
 - Before adding a test, search for one that covers the same behavior and extend it. Cover each
   behavior once, at the lowest layer that runs the real code. Name test files and functions after
   the behavior they cover, not the review round or issue that prompted them.
+- Consider fuzzing for parsing, normalization, or serialization changes with varied inputs.
+  Extend an existing target first. Add a target only for a distinct, plausible user-visible
+  failure and a stable invariant; state that failure in a short comment. Seed it from regressions
+  or real payloads where available, and commit minimized failures with their fixes.
 - Exception: drift pins are fine when they guard a contract, such as the wire catalog, `guardrails/`
   budgets, and recorded upstream responses. Say what drift the test catches in its name or a
   one-line comment.
