@@ -14,6 +14,7 @@ type MockClient struct {
 	GetAnalyticsIdentityFn       func(ctx context.Context) (*AnalyticsIdentity, error)
 	GetOrgOverviewFn             func(ctx context.Context) (json.RawMessage, error)
 	ListMetricsFn                func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
+	GetMetricMetadataFn          func(ctx context.Context, metricName string) (json.RawMessage, error)
 	GetTopMetricsFn              func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error)
 	ListAlertsFn                 func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error)
 	ListAlertRulesFn             func(ctx context.Context) (json.RawMessage, error)
@@ -70,6 +71,13 @@ func (m *MockClient) GetOrgOverview(ctx context.Context) (json.RawMessage, error
 func (m *MockClient) ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error) {
 	if m.ListMetricsFn != nil {
 		return m.ListMetricsFn(ctx, start, end, limit, searchText, source)
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (m *MockClient) GetMetricMetadata(ctx context.Context, metricName string) (json.RawMessage, error) {
+	if m.GetMetricMetadataFn != nil {
+		return m.GetMetricMetadataFn(ctx, metricName)
 	}
 	return json.RawMessage(`{}`), nil
 }
