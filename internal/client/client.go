@@ -98,6 +98,9 @@ type SigNoz struct {
 	identityMu       sync.Mutex
 	cachedIdentity   *AnalyticsIdentity
 	identityCachedAt time.Time
+	webURLMu         sync.Mutex
+	cachedWebURL     string
+	webURLExpiresAt  time.Time
 	meters           *otelpkg.Meters
 }
 
@@ -457,6 +460,13 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 		_ = resp.Body.Close()
 
+		// A broken error body must not turn a known auth rejection into a
+		// transport error that discovery callers can treat as a fallback.
+		if (readErr != nil || int64(len(respBody)) > maxResponseBytes) &&
+			(resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			s.logger.WarnContext(ctx, "SigNoz auth error response body unreadable; preserving status", slog.Int("status", resp.StatusCode))
+			return nil, newHTTPStatusError(resp.StatusCode, nil)
+		}
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read response body: %w", readErr)
 		}

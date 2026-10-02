@@ -1,6 +1,11 @@
+import json
 import re
+import subprocess
 import time
-from dataclasses import dataclass, field
+from collections.abc import Iterator
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -238,6 +243,66 @@ def restore_service_account_key(endpoint: str) -> SigNoz:
         service_account_id=service_account_id,
         bearer_token=bearer_token,
     )
+
+
+@pytest.fixture
+def signoz_global_external_url(request: pytest.FixtureRequest, signoz: SigNoz, tmp_path: Path) -> Iterator[str]:
+    """Change only the dedicated foundry service, restoring its original config afterward."""
+    __tracebackhide__ = True
+    response = signoz.api("GET", "/api/v1/global/config")
+    assert response.status_code == 200, "could not read the real SigNoz global configuration"
+    original = response.json()["data"]["external_url"]
+    assert isinstance(original, str), "global config data.external_url must be a string"
+    external_url = request.param
+    if external_url is None:
+        assert original in ("", "<unset>", "//<unset>", "//%3Cunset%3E"), (
+            "fallback case requires an unconfigured test stack"
+        )
+        yield ""
+        return
+
+    compose = foundry.compose_file()
+    assert compose is not None and signoz.endpoint == foundry.ENDPOINT, "requires the dedicated foundry test stack"
+    service = "signoz-signoz-0"
+    override = tmp_path / "global-external-url.json"
+    override.write_text(
+        json.dumps({"services": {service: {"environment": {"SIGNOZ_GLOBAL_EXTERNAL__URL": external_url}}}})
+    )
+    command = ["docker", "compose", "-f", str(compose)]
+
+    def restart(extra: list[str], expected: str) -> None:
+        __tracebackhide__ = True
+        result = subprocess.run(
+            [*command, *extra, "up", "--detach", "--no-deps", "--force-recreate", service],
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        assert result.returncode == 0, "could not restart the dedicated SigNoz service"
+        # SigNoz mounts its API under the external URL's path as well as its UI.
+        parsed = urlsplit(expected)
+        prefix = parsed.path.rstrip("/") if parsed.scheme in ("http", "https") else ""
+        routed = replace(signoz, endpoint=signoz.endpoint + prefix)
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                config = routed.api("GET", "/api/v1/global/config")
+                if config.status_code == 200 and config.json().get("data", {}).get("external_url") == expected:
+                    logger.info("confirmed real SigNoz global.external_url configuration")
+                    return
+            except (requests.RequestException, ValueError):
+                pass
+            time.sleep(1)
+        raise TimeoutError("SigNoz did not return the expected global.external_url after restart")
+
+    try:
+        restart(["-f", str(override)], external_url)
+        yield external_url.rstrip("/")
+    finally:
+        try:
+            restart([], original)
+        finally:
+            override.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")

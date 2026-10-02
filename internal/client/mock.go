@@ -11,6 +11,7 @@ import (
 // Each method delegates to the corresponding function field when non-nil,
 // otherwise returns a default empty JSON object and nil error.
 type MockClient struct {
+	GetExternalURLFn             func(ctx context.Context) (string, error)
 	GetAnalyticsIdentityFn       func(ctx context.Context) (*AnalyticsIdentity, error)
 	GetOrgOverviewFn             func(ctx context.Context) (json.RawMessage, error)
 	ListMetricsFn                func(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)
@@ -52,6 +53,13 @@ type MockClient struct {
 
 // Compile-time check that MockClient satisfies Client.
 var _ Client = (*MockClient)(nil)
+
+func (m *MockClient) GetExternalURL(ctx context.Context) (string, error) {
+	if m.GetExternalURLFn != nil {
+		return m.GetExternalURLFn(ctx)
+	}
+	return "", nil
+}
 
 func (m *MockClient) GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error) {
 	if m.GetAnalyticsIdentityFn != nil {

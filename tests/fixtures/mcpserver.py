@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import docker
 import pytest
@@ -28,7 +29,7 @@ READY_TIMEOUT = 60.0
 class MCPServer:
     base_url: str
     backend_url: str = ""
-    web_url: str = ""
+    external_url: str = ""
 
     @property
     def mcp_url(self) -> str:
@@ -158,8 +159,8 @@ def mcp_server_binary(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def mcp_server_with_web_url(
-    request: pytest.FixtureRequest, mcp_server_binary: Path, signoz: SigNoz
+def mcp_server_with_global_external_url(
+    mcp_server_binary: Path, signoz: SigNoz, signoz_global_external_url: str
 ) -> Iterator[MCPServer]:
     """Run natively so literal localhost reaches the same cast SigNoz on Linux and macOS."""
     __tracebackhide__ = True
@@ -168,7 +169,7 @@ def mcp_server_with_web_url(
         port = listener.getsockname()[1]
 
     backend_url = signoz.endpoint.replace("127.0.0.1", "localhost")
-    web_url = request.param
+    backend_url += urlsplit(signoz_global_external_url).path.rstrip("/")
     base_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
         [str(mcp_server_binary)],
@@ -179,7 +180,6 @@ def mcp_server_with_web_url(
             "MCP_SERVER_HOST": "127.0.0.1",
             "MCP_SERVER_PORT": str(port),
             "SIGNOZ_URL": backend_url,
-            "SIGNOZ_WEB_URL": web_url,
             "SIGNOZ_API_KEY": signoz.access_token,
             "SIGNOZ_CUSTOM_HEADERS": "",
             "SIGNOZ_INSTANCE_URL_ALLOWLIST": "",
@@ -194,7 +194,7 @@ def mcp_server_with_web_url(
     )
     try:
         _wait_ready(base_url, lambda: process.poll() is None, lambda: f"exit code: {process.poll()}")
-        yield MCPServer(base_url=base_url, backend_url=backend_url, web_url=web_url)
+        yield MCPServer(base_url=base_url, backend_url=backend_url, external_url=signoz_global_external_url)
     finally:
         process.terminate()
         try:

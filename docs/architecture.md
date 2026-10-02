@@ -6,7 +6,7 @@
 flowchart TB
 
 subgraph Startup["Server Initialization"]
-    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_WEB_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>OAUTH_ENABLED, OAUTH_TOKEN_SECRET, OAUTH_ISSUER_URL,<br/>OTEL_EXPORTER_OTLP_*"]
+    ENV["Env Vars: SIGNOZ_URL, SIGNOZ_API_KEY,<br/>LOG_LEVEL, TRANSPORT_MODE, MCP_SERVER_PORT,<br/>CLIENT_CACHE_SIZE, CLIENT_CACHE_TTL_MINUTES,<br/>OAUTH_ENABLED, OAUTH_TOKEN_SECRET, OAUTH_ISSUER_URL,<br/>OTEL_EXPORTER_OTLP_*"]
     ENV --> CFG["config.LoadConfig"]
     CFG --> VALIDATE["config.ValidateConfig"]
     VALIDATE --> LOG["log.New"]
@@ -204,3 +204,21 @@ The auth middleware forwards each credential upstream on the **header the client
 When OAuth is enabled, the middleware first tries to decrypt an `Authorization` Bearer token as a server-issued OAuth access token; a valid one unwraps to a stored API key forwarded via `SIGNOZ-API-KEY`. Only if decryption fails (and a SigNoz URL is available) is the token treated as a direct credential and forwarded on `Authorization`.
 
 > **Removed (breaking):** earlier versions used a shape heuristic (`isJWTToken`) to reroute non-JWT `Authorization` tokens to `SIGNOZ-API-KEY`. That heuristic misrouted opaque user/session tokens (which SigNoz only accepts on `Authorization`) and has been removed. Clients sending a service-account API key must use the `SIGNOZ-API-KEY` header, not `Authorization`.
+
+## Resource browser links
+
+SigNoz owns the browser URL in `global.external_url`. Before a resource operation
+that emits links, the request's existing tenant client reads
+`GET /api/v1/global/config` from its API backend. The client caches a valid or
+unconfigured value for five minutes and an unavailable or invalid response for
+one minute. Cache scope includes the backend URL, authentication header, and
+credential through the existing bounded tenant-client cache.
+
+Only absolute HTTP(S) browser URLs without user information, queries, fragments,
+or unspecified bind addresses are accepted. Base paths and URL escaping are
+preserved. The discovered URL is used only to construct `webUrl` values; API
+traffic and credentials never move to that address. Unset configuration falls
+back to the request's API URL. Failed discovery and response-contract violations
+produce a WARN log and the same fallback. Upstream 401/403 responses propagate
+as coded errors before the resource request, so link discovery cannot fail after
+a dashboard mutation has already committed.

@@ -55,8 +55,15 @@ uv run pytest --basetemp=./tmp/ e2e/tests/test_logs.py::test_seeded_logs_are_sea
   `client.api.port`, the same mechanism testcontainers' `get_exposed_port`
   wraps in the signoz repo tests), then waits for `/readyz`.
 - Browser-link tests run a native MCP server against the same cast SigNoz so
-  literal `localhost` reaches the backend on both Linux and macOS. They exercise
-  `SIGNOZ_WEB_URL` through the HTTP transport.
+  literal `localhost` reaches the backend on both Linux and macOS. They temporarily
+  restart only the dedicated foundry SigNoz service with
+  `SIGNOZ_GLOBAL_EXTERNAL__URL` (`global.external_url`), verify the real
+  `GET /api/v1/global/config` response, and restore the original setting afterward.
+  MCP HTTP calls check external paths, localhost browser links, and per-request
+  backend aliases; an unconfigured instance checks backend URL fallback.
+  The path case includes the prefix in `SIGNOZ_URL`, because SigNoz mounts its API
+  there too. Per-request alias checks use the origin cases.
+  The pinned backend returns `data.external_url: "//<unset>"` when unconfigured.
 - Tests talk to the server through the official Python MCP SDK
   (`fixtures/mcpclient.py` wraps it in a sync facade over a background event
   loop) and to SigNoz directly (`SigNoz.api`) for setup and verification.
@@ -97,8 +104,9 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
-  lifecycle, browser-link origins with a localhost backend and per-request
-  fallback, cleanup verification, and read-only system dashboard behavior.
+  lifecycle, global-config browser links across create/get/list/update/patch with
+  a localhost backend and per-request aliases, unset-config fallback, confirmed
+  cleanup, and read-only system dashboard behavior.
 
 ## CI
 

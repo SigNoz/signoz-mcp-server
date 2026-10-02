@@ -147,9 +147,9 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 	h.logger.DebugContext(ctx, "Tool called: signoz_search_traces",
 		slog.String("filter", reqData.FilterExpression))
 
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	result, err := client.QueryBuilderV5(ctx, queryJSON)
 	if err != nil {
@@ -157,7 +157,7 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return upstreamQueryError(err, "traces"), nil
 	}
 
-	result = h.enrichSearchTracesWebURL(ctx, result)
+	result = h.enrichSearchTracesWebURL(ctx, base, result)
 	return rawSearchResult(ctx, h.logger, "signoz_search_traces", result, reqData.Limit, reqData.Offset, reqData.LimitClamped), nil
 }
 
@@ -197,24 +197,23 @@ func (h *Handler) handleGetTraceDetails(ctx context.Context, req mcp.CallToolReq
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_trace_details", slog.String("traceId", traceID), slog.Bool("includeSpans", includeSpans), slog.String("start", start), slog.String("end", end))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	result, err := client.GetTraceDetails(ctx, traceID, includeSpans, startTime, endTime)
 	if err != nil {
 		h.logUpstreamFailure(ctx, "Failed to get trace details", err, slog.String("traceId", traceID))
 		return upstreamError(err), nil
 	}
-	result = h.enrichTraceWebURL(ctx, result, traceID)
+	result = h.enrichTraceWebURL(ctx, base, result, traceID)
 	return structuredResult(result), nil
 }
 
 // enrichTraceWebURL injects a webUrl deep link into a single-trace passthrough
 // body. Delegates to util.InjectWebURL, which preserves large int64 fields
 // (e.g. duration_nano) and fails open on unparseable input.
-func (h *Handler) enrichTraceWebURL(ctx context.Context, data []byte, traceID string) []byte {
-	base := h.resourceWebURLBase(ctx)
+func (h *Handler) enrichTraceWebURL(ctx context.Context, base string, data []byte, traceID string) []byte {
 	return util.InjectWebURL(data, base, "trace", traceID)
 }
 
@@ -231,8 +230,7 @@ func (h *Handler) enrichTraceWebURL(ctx context.Context, data []byte, traceID st
 // degradation is detectable: envelope drift (results[] not reachable), rows-key
 // drift (result objects present but no readable rows[] array), and column-alias
 // drift (rows present but none enrichable). An ordinary empty result stays silent.
-func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, data []byte) []byte {
-	base := h.resourceWebURLBase(ctx)
+func (h *Handler) enrichSearchTracesWebURL(ctx context.Context, base string, data []byte) []byte {
 	if base == "" {
 		return data // no instance URL on the request — nothing to enrich, nothing to warn about
 	}
