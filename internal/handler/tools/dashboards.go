@@ -314,9 +314,9 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 		order = strings.TrimSpace(stringArg(args, "order"))
 	}
 
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	resultJSON, err := client.ListDashboards(ctx, limit, offset, filter, sort, order)
 	if err != nil {
@@ -326,7 +326,7 @@ func (h *Handler) handleListDashboards(ctx context.Context, req mcp.CallToolRequ
 
 	// Inject a webUrl deep link into each "dashboards" entry (keyed by "id").
 	// Fails open: any parse problem or missing base URL leaves result unchanged.
-	if base := h.resourceWebURLBase(ctx); base != "" {
+	if base != "" {
 		resultJSON = util.InjectListWebURL(resultJSON, base, "dashboard", "dashboards", "id")
 	}
 
@@ -353,9 +353,9 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_dashboard", slog.String("id", id))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	data, err := client.GetDashboard(ctx, id)
 	if err != nil {
@@ -363,15 +363,14 @@ func (h *Handler) handleGetDashboard(ctx context.Context, req mcp.CallToolReques
 		return upstreamError(err), nil
 	}
 	data = normalizeDashboardResponse(data)
-	data = h.enrichDashboardWebURL(ctx, data, id)
+	data = h.enrichDashboardWebURL(ctx, base, data, id)
 	return structuredResult(data), nil
 }
 
 // enrichDashboardWebURL injects a webUrl deep link into a single-dashboard
 // passthrough body. Delegates to util.InjectWebURL, which preserves large
 // int64 fields and fails open on unparseable input.
-func (h *Handler) enrichDashboardWebURL(ctx context.Context, data []byte, id string) []byte {
-	base := h.resourceWebURLBase(ctx)
+func (h *Handler) enrichDashboardWebURL(ctx context.Context, base string, data []byte, id string) []byte {
 	return util.InjectWebURL(data, base, "dashboard", id)
 }
 
@@ -380,8 +379,7 @@ func (h *Handler) enrichDashboardWebURL(ctx context.Context, data []byte, id str
 // (under a "data" envelope or at top level) with a
 // targeted probe that does not touch the body, then delegates the actual
 // injection to util.InjectWebURL (precision-preserving, fails open).
-func (h *Handler) enrichCreatedDashboardWebURL(ctx context.Context, data []byte) []byte {
-	base := h.resourceWebURLBase(ctx)
+func (h *Handler) enrichCreatedDashboardWebURL(ctx context.Context, base string, data []byte) []byte {
 	if base == "" {
 		return data
 	}
@@ -428,9 +426,9 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_create_dashboard")
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 
@@ -440,7 +438,7 @@ func (h *Handler) handleCreateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = h.enrichCreatedDashboardWebURL(ctx, data)
+	data = h.enrichCreatedDashboardWebURL(ctx, base, data)
 	return structuredResult(data), nil
 }
 
@@ -489,9 +487,9 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 		return InternalErrorResult(fmt.Sprintf("Template encode error: %s", err.Error())), nil
 	}
 
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	data, err := client.CreateDashboardRaw(ctx, cleanJSON)
 	if err != nil {
@@ -500,7 +498,7 @@ func (h *Handler) handleImportDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = h.enrichCreatedDashboardWebURL(ctx, data)
+	data = h.enrichCreatedDashboardWebURL(ctx, base, data)
 	return structuredResult(data), nil
 }
 
@@ -587,9 +585,9 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_update_dashboard", slog.String("id", id))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	data, err := client.UpdateDashboardRaw(ctx, id, body)
 	if err != nil {
@@ -598,7 +596,7 @@ func (h *Handler) handleUpdateDashboard(ctx context.Context, req mcp.CallToolReq
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = h.enrichDashboardWebURL(ctx, data, id)
+	data = h.enrichDashboardWebURL(ctx, base, data, id)
 	return structuredResult(data), nil
 }
 
@@ -631,9 +629,9 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_patch_dashboard", slog.String("id", id))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	data, err := client.PatchDashboardRaw(ctx, id, body)
 	if err != nil {
@@ -642,7 +640,7 @@ func (h *Handler) handlePatchDashboard(ctx context.Context, req mcp.CallToolRequ
 	}
 
 	data = normalizeDashboardResponse(data)
-	data = h.enrichDashboardWebURL(ctx, data, id)
+	data = h.enrichDashboardWebURL(ctx, base, data, id)
 	return structuredResult(data), nil
 }
 

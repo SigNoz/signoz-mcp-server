@@ -10,16 +10,6 @@ import (
 // target and returns the canonical origin form (scheme://host[:port]).
 // It only allows origin URLs and strips default ports for stable cache keys.
 func NormalizeSigNozURL(rawURL string) (string, error) {
-	return normalizeSigNozOrigin(rawURL, false)
-}
-
-// Browser links may point to a locally forwarded UI; tenant-supplied backend
-// URLs retain the stricter host restrictions in NormalizeSigNozURL.
-func NormalizeSigNozWebURL(rawURL string) (string, error) {
-	return normalizeSigNozOrigin(rawURL, true)
-}
-
-func normalizeSigNozOrigin(rawURL string, allowLocalhost bool) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
 		return "", fmt.Errorf("malformed URL: %w", err)
@@ -46,7 +36,7 @@ func normalizeSigNozOrigin(rawURL string, allowLocalhost bool) (string, error) {
 	if host == "" {
 		return "", fmt.Errorf("URL must include a host")
 	}
-	if (host == "localhost" && !allowLocalhost) || host == "0.0.0.0" || host == "::" {
+	if host == "localhost" || host == "0.0.0.0" || host == "::" {
 		return "", fmt.Errorf("host %q is not allowed", host)
 	}
 

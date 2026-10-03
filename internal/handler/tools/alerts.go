@@ -177,9 +177,9 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 		}
 	}
 
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	alerts, err := client.ListAlerts(ctx, params)
 	if err != nil {
@@ -194,7 +194,6 @@ func (h *Handler) handleListAlerts(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	// takes only meaningful data
-	base := h.resourceWebURLBase(ctx)
 	alertsList := make([]types.Alert, 0, len(apiResponse.Data))
 	for _, apiAlert := range apiResponse.Data {
 		webURL, _ := util.ResourceWebURL(base, "alert", apiAlert.Labels.RuleID)
@@ -229,9 +228,9 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_alert_rules")
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	rules, err := client.ListAlertRules(ctx)
 	if err != nil {
@@ -245,7 +244,6 @@ func (h *Handler) handleListAlertRules(ctx context.Context, req mcp.CallToolRequ
 		return upstreamResponseError("failed to parse alert rules response: " + err.Error()), nil
 	}
 
-	base := h.resourceWebURLBase(ctx)
 	ruleSummaries := make([]types.AlertRuleSummary, 0, len(apiResponse.Data))
 	for _, apiRule := range apiResponse.Data {
 		createdAt := apiRule.CreatedAt
@@ -302,9 +300,9 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 	}
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_get_alert", slog.String("id", ruleID))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	respJSON, err := client.GetAlertByRuleID(ctx, ruleID)
 	if err != nil {
@@ -312,15 +310,14 @@ func (h *Handler) handleGetAlert(ctx context.Context, req mcp.CallToolRequest) (
 		return upstreamError(err), nil
 	}
 
-	respJSON = h.enrichAlertWebURL(ctx, respJSON, ruleID)
+	respJSON = h.enrichAlertWebURL(ctx, base, respJSON, ruleID)
 	return structuredResult(respJSON), nil
 }
 
 // enrichAlertWebURL injects a webUrl deep link into a single-alert passthrough
 // body. Delegates to util.InjectWebURL, which preserves large int64 fields and
 // fails open on unparseable input.
-func (h *Handler) enrichAlertWebURL(ctx context.Context, data []byte, ruleID string) []byte {
-	base := h.resourceWebURLBase(ctx)
+func (h *Handler) enrichAlertWebURL(ctx context.Context, base string, data []byte, ruleID string) []byte {
 	return util.InjectWebURL(data, base, "alert", ruleID)
 }
 

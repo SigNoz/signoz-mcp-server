@@ -10,6 +10,7 @@ import (
 // Client defines the interface for interacting with the SigNoz API.
 // Handler code depends on this interface, enabling mock-based unit testing.
 type Client interface {
+	GetExternalURL(ctx context.Context) (string, error)
 	GetAnalyticsIdentity(ctx context.Context) (*AnalyticsIdentity, error)
 	GetOrgOverview(ctx context.Context) (json.RawMessage, error)
 	ListMetrics(ctx context.Context, start, end int64, limit int, searchText, source string) (json.RawMessage, error)

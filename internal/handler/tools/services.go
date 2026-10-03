@@ -57,9 +57,9 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
 	h.logger.DebugContext(ctx, "Tool called: signoz_list_services", slog.String("start", start), slog.String("end", end), slog.Int("limit", limit), slog.Int("offset", offset))
-	client, err := h.GetClient(ctx)
-	if err != nil {
-		return clientError(err), nil
+	client, base, clientErr := h.getResourceClient(ctx)
+	if clientErr != nil {
+		return clientErr, nil
 	}
 	result, err := client.ListServices(ctx, start, end)
 	if err != nil {
@@ -73,7 +73,7 @@ func (h *Handler) handleListServices(ctx context.Context, req mcp.CallToolReques
 		return upstreamResponseError("failed to parse response: " + err.Error()), nil
 	}
 
-	if base := h.resourceWebURLBase(ctx); base != "" {
+	if base != "" {
 		for _, item := range services {
 			m, ok := item.(map[string]any)
 			if !ok {
