@@ -1111,7 +1111,7 @@ global:
 
 Keep `SIGNOZ_URL` on the MCP server pointed at its reachable API address, such as `http://signoz:8080`. If the deployment uses a path prefix, include it in the API address as required by SigNoz and your proxy routing. Configure a backend path in `SIGNOZ_URL`: per-request URLs supplied through OAuth or `X-SigNoz-URL` currently support origins only.
 
-Browser links use the discovered URL, including any configured base path, while API requests retain their destination and credentials. Each tenant client caches discovery for five minutes. An unset external URL uses the request's API URL; unavailable or invalid global configuration logs a warning and retries discovery after one minute. Authentication and permission errors are returned to the client.
+Browser links use the discovered URL, including any configured base path, while API requests retain their destination and credentials. Each tenant client caches discovery for 15 minutes. An unset external URL uses the request's API URL; unavailable or invalid global configuration logs a warning and retries discovery after one minute. Authentication and permission errors are returned to the client.
 
 ## Claude Desktop Extension
 

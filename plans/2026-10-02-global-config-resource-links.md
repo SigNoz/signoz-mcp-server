@@ -45,6 +45,12 @@ where to configure it.
   includes backend URL, auth header, and credential; never share caller state.
 - Keep the website refresh in a companion draft PR in SigNoz/signoz.io.
 
+### 2026-10-03 — Increase discovery cache lifetime
+
+- Cache valid and unconfigured global external URLs for 15 minutes, as requested,
+  to reduce repeated configuration lookups. Failed discovery still retries after
+  one minute. README, architecture, and companion website docs match this lifetime.
+
 ## Reference Links
 
 - https://github.com/SigNoz/signoz-mcp-server/issues/303
@@ -53,6 +59,10 @@ where to configure it.
 
 ## Verification
 
+- After the cache increase on 2026-10-03, `GOTOOLCHAIN=go1.26.0 make ci`
+  passed again, including the existing cache reuse and refresh tests. Companion
+  docs metadata, redirect, and CMS frontmatter checks/tests and
+  `yarn build --webpack` passed again.
 - `GOTOOLCHAIN=go1.26.0 make ci`: all PR-gate checks passed, including race,
   guardrails, both protocol eras, conformance, E2E style, and repo documentation.
 - Independent full review of the server and website diffs completed. Resolved

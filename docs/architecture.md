@@ -210,7 +210,7 @@ When OAuth is enabled, the middleware first tries to decrypt an `Authorization` 
 SigNoz owns the browser URL in `global.external_url`. Before a resource operation
 that emits links, the request's existing tenant client reads
 `GET /api/v1/global/config` from its API backend. The client caches a valid or
-unconfigured value for five minutes and an unavailable or invalid response for
+unconfigured value for 15 minutes and an unavailable or invalid response for
 one minute. Cache scope includes the backend URL, authentication header, and
 credential through the existing bounded tenant-client cache.
 

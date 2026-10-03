@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	externalURLCacheTTL = 5 * time.Minute
+	externalURLCacheTTL = 15 * time.Minute
 	externalURLRetryTTL = time.Minute
 	externalURLTimeout  = 3 * time.Second
 )
