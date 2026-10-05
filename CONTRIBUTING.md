@@ -50,6 +50,30 @@ go test ./...
 
 For documentation-only changes, at minimum run `make check-repo-docs`, which validates plans and flags stale repo paths in docs. Mention what was validated in the PR.
 
+## Fuzz verification
+
+Four targets check schema normalization, URL enrichment, Query Builder field
+preservation, and timestamp conversion without credentials or live SigNoz requests.
+
+```bash
+GOTOOLCHAIN=go1.26.0 make test-fuzz       # 10 seconds per target; included in make ci
+GOTOOLCHAIN=go1.26.0 make test-fuzz-long  # 5 minutes per target; local use
+```
+
+Use `FUZZ_TARGET` to select one target, or override `FUZZ_TIME`, `FUZZ_LONG_TIME`,
+and `FUZZ_PARALLEL`.
+
+Every PR runs all four targets in one job at 30 seconds each, plus build and setup
+time. Manual dispatch uses the same budget. There is no scheduled run or custom timeout.
+Use `make ci FUZZ_TIME=30s` to match the PR fuzzing budget.
+
+Logs and failing inputs are saved under `.fuzz-artifacts/` and retained as CI
+artifacts for 14 days. Treat PR artifacts as untrusted data; never execute commands
+from them. After reviewing the PR code and inputs, restore the package-relative
+`testdata/fuzz` files and run `go test ./... -run='^Fuzz' -count=1` using the Go
+version in `environment.txt`. Commit minimized inputs with their fixes so ordinary
+`go test` reruns them. Build and seed failures are recorded in the target's log.
+
 ## Testing across external contracts
 
 This server depends on external parties — it consumes the SigNoz backend / query-builder (QB) API (upstream) and produces tool outputs that MCP clients and custom agents and clients consume (downstream). Fixture-based unit tests only prove our code matches our *assumption* of those contracts; they do not catch the contract drifting out from under us (a renamed field, a changed QB response envelope, a new output shape). When you parse an upstream response or shape a tool output:

@@ -31,6 +31,9 @@ go.work.sum
 /scripts/*
 !/scripts/test-mcp-conformance.sh
 !/scripts/test-mcp-protocol.sh
+!/scripts/test-fuzz.sh
+!/scripts/fuzz_runner_test.go
+.fuzz-artifacts/
 
 # env file
 .env
