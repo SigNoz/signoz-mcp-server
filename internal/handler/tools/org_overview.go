@@ -225,7 +225,8 @@ func (h *Handler) handleGetOrgOverview(ctx context.Context, _ mcp.CallToolReques
 		h.logUpstreamFailure(ctx, "Failed to get deployment overview", err)
 		errorResult := upstreamError(err)
 		var statusErr *signozclient.HTTPStatusError
-		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+		routeMissing := errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound
+		if routeMissing || errors.Is(err, signozclient.ErrNonJSONResponse) {
 			const recovery = "recovery: Verify that the configured SigNoz URL points to an active deployment. If the deployment is reachable but this route is unavailable, use signoz_list_dashboards, signoz_list_alert_rules, signoz_list_notification_channels, signoz_list_views, signoz_list_metrics, signoz_list_alerts, signoz_search_logs, signoz_search_traces, or signoz_query_metrics as appropriate."
 			for i, content := range errorResult.Content {
 				if text, ok := content.(*mcp.TextContent); ok {
