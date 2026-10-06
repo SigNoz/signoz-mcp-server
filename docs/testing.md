@@ -5,14 +5,20 @@ version; this doc has the reasoning, the map of where a new test belongs, and re
 examples of bad tests from this repo. Keep a test only if both of these hold
 
 - a failure means a behavior someone depends on broke
-- no build step could have removed the need for the test
+- no build step could have removed the need for the test (a test that our hand-typed copy
+  of an upstream enum rejects unknown values is one a generated enum would delete)
 
-A test in this repo answers exactly one of three questions. Did we keep a decision we
-made (the translation from the SigNoz contract to the MCP contract, and its side
-effects)? Is the agent-facing surface still right (guardrail budgets hold, retrieval
-quality holds, catalog changes get reviewed)? Is the world still what we built against (the pinned e2e suite,
-runtime WARNs)? A test that answers none of these should not exist, and a test about
-upstream's data model marks a construction gap, not a coverage gap.
+A test in this repo answers exactly one of three questions:
+
+- Did we keep a decision we made? The translation from the SigNoz contract to the MCP
+  contract, and its side effects.
+- Is the agent-facing surface still right? Guardrail budgets hold, retrieval quality
+  holds, and changes to the catalog (everything an LLM client gets from this server:
+  tool names, schemas, descriptions, resources) get reviewed.
+- Is the world still what we built against? The pinned e2e suite and runtime WARNs.
+
+A test that answers none of these should not exist, and a test about upstream's data
+model marks a construction gap, not a coverage gap.
 
 Much of the existing suite predates this standard. Where a test and this doc disagree, the
 doc wins so treat the disagreement as debt, shrink it when you touch the test, and never
@@ -27,22 +33,25 @@ against it; the skills hardcode tool names and payload shapes in what they teach
 why a contract change can need a companion skills change (CMP-3 in `CLAUDE.md`).
 Most production code translates between that contract and the SigNoz APIs. The expensive
 bugs are therefore contract drift and broken recovery paths.
-Remove as much of that risk as possible by construction, and make tests cover what is left.
-The remainder is the decisions made in the translation and their side effects, a few
-deliberate pins on hand-written surfaces (descriptions and instructions are authored
-English, so nothing can generate them; the pin makes changes reviewed instead of silent),
-and the e2e check that the pinned SigNoz release still behaves the way we assume. A test
+Remove as much of that risk as possible by construction, i.e. derive artifacts from one
+source of truth instead of hand-maintaining copies (see Construction before detection),
+and make tests cover what is left. The remainder is the decisions made in the translation
+and their side effects, a few deliberate pins on hand-written surfaces, and the e2e check
+that the pinned SigNoz release still behaves the way we assume. A pin is a test that
+compares a surface against a recorded copy of it, so every change fails and gets
+reviewed; descriptions and instructions earn one because they are authored English that
+nothing can generate. A test
 records a decision or checks that agreement. It never re-asserts something a build step
 derives, and it never tests internals.
 
-Most diffs here are written by agents and reviewed by humans. That makes a test three
-things at once:
+Most diffs here are written by agents and reviewed by humans, which gives every test
+three readers:
 
 - the spec the next agent reads to learn what a handler promises before changing it,
 - the pass/fail signal the agent iterates against while working,
 - the reviewer's evidence that the contract held after the change.
 
-A weak test fails all three jobs at once. A test that passes against wrong code teaches
+A weak test fails all three readers at once. A test that passes against wrong code teaches
 the agent that the code is right. A test that fails on an intended change teaches the
 agent that editing tests until they pass is normal work. Both lessons compound across
 every future change, which is why these rules are strict.
@@ -67,16 +76,16 @@ both copies agreed). Close these by construction. Import upstream types from the
 Go module or generate them from its published OpenAPI spec, generate `manifest.json` from
 the registered tools, and render instruction examples by marshaling real values of the
 imported types. Each change deletes the copy, the bug class, and the test that guarded
-it.
+it. Until the replacement build step is implemented and verified, keep the existing
+parity coverage; the test leaves with the gap, not before it.
 
 Two gaps cannot be closed by construction, and tests carry them:
 
-- The unclosed wire. The server compiles against one SigNoz release and talks to tenants
-  running others, often behind proxies that answer for them. Generated types describe what
-  the current release sends when SigNoz itself answers; they say nothing about the legacy
-  error envelope that deployed versions still emit, an ingress returning HTML for a 502,
-  or a wrong tenant URL returning some other service's JSON, and a lenient decoder accepts
-  all of those as zero values without complaint. The only way to learn what actually
+- The unclosed wire. Generated types guarantee the static side: our request and response
+  shapes match the release we compiled against. They say nothing about what a live
+  deployment actually sends back: an older SigNoz emitting the legacy error envelope, an
+  ingress answering a 502 with HTML, a wrong tenant URL returning some other service's
+  JSON. A lenient decoder accepts all of those as zero values. The only way to learn what
   arrives is to run against it, so `tests/e2e` runs against the pinned release (the
   compatibility matrix in executable form, proven again on every version bump) and
   runtime WARN logs cover the deployed versions the suite cannot reach. The External
@@ -261,13 +270,17 @@ rules:
 ## Six questions before a test merges
 
 1. Could a build step make this test unnecessary, by deriving the copy, importing the
-   type, or generating the artifact? Then close the gap instead of taxing it.
+   type, or generating the artifact? Then close the gap instead of taxing it. Example: a
+   manifest parity test; generate `manifest.json` from the registered tools instead.
 2. Can it fail for any reason other than a depended-on behavior changing? Then it is a
-   change detector: rewrite it against the behavior or delete it.
+   change detector: rewrite it against the behavior or delete it. Flakiness counts: a
+   test that can fail on timing, ordering, or a live dependency alone also fails here.
 3. Would it still pass if the code under test returned the wrong thing? Then it asserts
    nothing: strengthen the stub and the assertions, or delete it.
 4. Could a reader reconstruct the contract from the test body alone? If they must open
-   helpers or fixtures to know what is expected, inline the meaning.
+   helpers or fixtures to know what is expected, inline the meaning, and keep each
+   expected value one pasteable literal; a SQL string assembled from `+` fragments makes
+   the reader rebuild it by hand.
 5. Is this behavior already pinned at a lower layer? Then test only the wiring this layer
    adds, or move the test down.
 6. Does the failure output name the broken contract and the fix direction? If it prints
