@@ -129,15 +129,15 @@ validator by hand). This layer should dissolve into imported or generated types;
 stays ours is the guidance each rejection carries and the defaults we inject.
 Do not grow it, and do not use its tests as templates.
 
-Client-side rules split three ways, and only the first kind is permanent. Adapter work
-(unwrap a pasted envelope, strip server-populated fields, translate rejections into coded
-guidance) is this server's own job. A guard that compensates for validation SigNoz lacks,
-where upstream accepts a write its own UI cannot render, is a stopgap: file the upstream
-issue, pin the premise with a tripwire in `tests/e2e/tests/test_upstream_premises.py`
-that drives SigNoz directly, and when that tripwire fails because upstream now enforces
-the rule, delete the guard, its tests, and the tripwire together. A rule upstream already
-enforces needs no copy here at all: let SigNoz reject, and let the recovery path carry
-the guidance.
+Client-side rules split two ways. Adapter work (unwrap a pasted envelope, strip
+server-populated fields, translate rejections into coded guidance) is this server's own
+job. Validation is SigNoz's alone: a rule upstream enforces needs no copy here, because
+`upstreamError` already maps its 400 to `VALIDATION_FAILED` carrying the upstream
+message, and a rule upstream lacks gets an upstream issue, never a guard. A guard here
+forks authority and drifts; the hand-copied saved-view source enum rejected
+"ai_observability" in the release after upstream added it. When a missing upstream rule
+would let an agent save an unrenderable result, teach the rule in the `signoz://`
+instructions as guidance; do not enforce it.
 
 ## What a high-ROI test looks like
 

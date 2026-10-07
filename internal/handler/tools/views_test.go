@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -39,30 +38,26 @@ func TestHandleListViews_Traces(t *testing.T) {
 	}
 }
 
-func TestHandleListViews_MissingSource(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_list_views", map[string]any{})
-	result, _ := h.handleListViews(testCtx(), req)
-	if got := resultCode(t, result); got != CodeValidationFailed {
-		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+func TestHandleListViews_OmittedSourceListsAll(t *testing.T) {
+	// SigNoz treats source as an optional filter; the handler forwards the
+	// empty value instead of rejecting it.
+	var gotSource string
+	mock := &client.MockClient{
+		ListViewsFn: func(ctx context.Context, source, name string) (json.RawMessage, error) {
+			gotSource = source
+			return json.RawMessage(`{"status":"success","data":[{"id":"v1","name":"a"}]}`), nil
+		},
 	}
-	if text := resultText(t, result); !strings.Contains(text, `"source" is required`) {
-		t.Fatalf("error text = %q, want it to say source is required", text)
+	h := newTestHandler(mock)
+	result, err := h.handleListViews(testCtx(), makeToolRequest("signoz_list_views", map[string]any{}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-}
-
-func TestHandleListViews_InvalidSource(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_list_views", map[string]any{
-		"source": "exceptions",
-	})
-	result, _ := h.handleListViews(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error, got success")
+	if result.IsError {
+		t.Fatalf("omitted source must list all views, got error: %v", result.Content)
 	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "traces") || !strings.Contains(body, "logs") || !strings.Contains(body, "metrics") {
-		t.Errorf("error should list valid source values; got: %s", body)
+	if gotSource != "" {
+		t.Fatalf("forwarded source = %q, want empty", gotSource)
 	}
 }
 
@@ -133,18 +128,32 @@ func TestHandleCreateView_Success(t *testing.T) {
 	}
 }
 
-func TestHandleCreateView_MissingName(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
+// TestHandleCreateView_UpstreamValidationMapsToValidationFailed pins the
+// no-guard contract: SigNoz is the only validator of the view body, and its
+// 400 reaches the client as VALIDATION_FAILED with the upstream message.
+func TestHandleCreateView_UpstreamValidationMapsToValidationFailed(t *testing.T) {
+	mock := &client.MockClient{
+		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
+			return nil, &client.HTTPStatusError{
+				StatusCode: 400,
+				Body:       `{"status":"error","error":{"code":"invalid_input","message":"name: is required"}}`,
+			}
+		},
+	}
+	h := newTestHandler(mock)
+	result, err := h.handleCreateView(testCtx(), makeToolRequest("signoz_create_view", map[string]any{
 		"source": "traces",
 		"spec":   map[string]any{},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got := resultCode(t, result); got != CodeValidationFailed {
 		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
 	}
-	if text := resultText(t, result); !strings.Contains(text, `"name" is required`) {
-		t.Fatalf("error text = %q, want it to say name is required", text)
+	structured := resultStructuredMap(t, result)
+	if structured["upstreamMessage"] != "name: is required" {
+		t.Fatalf("upstreamMessage = %v, want the SigNoz validation message", structured["upstreamMessage"])
 	}
 }
 
@@ -550,58 +559,6 @@ func TestHandleListViews_NonArrayDataIsEmpty(t *testing.T) {
 	}
 }
 
-func TestHandleCreateView_RejectsSignalSourceMismatch(t *testing.T) {
-	// Documented rule: builder_query.spec.signal must equal source.
-	// Upstream doesn't enforce this; a mismatch silently saves a broken view.
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "bad",
-		"source": "logs",
-		"spec": map[string]any{
-			"panelType":   "list",
-			"requestType": "raw",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A", "signal": "traces"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error for signal/source mismatch")
-	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "signal") || !strings.Contains(body, "source") {
-		t.Errorf("error should mention signal and source; got: %s", body)
-	}
-}
-
-func TestHandleCreateView_RejectsEmptyBuilderSignal(t *testing.T) {
-	// Upstream doesn't enforce signal presence on builder_query; an empty
-	// signal silently saves an unusable view. Reject at the MCP boundary.
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "missing-signal",
-		"source": "logs",
-		"spec": map[string]any{
-			"panelType":   "list",
-			"requestType": "raw",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error for empty signal")
-	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "signal") {
-		t.Errorf("error should mention signal; got: %s", body)
-	}
-}
-
 func TestHandleCreateView_IgnoresSignalOnNonBuilderQuery(t *testing.T) {
 	// promql/clickhouse_sql queries don't carry a `signal` field; validator
 	// should leave them alone.
@@ -704,105 +661,6 @@ func TestHandleCreateView_AllowsMeterView(t *testing.T) {
 	}
 }
 
-func TestHandleCreateView_RejectsMeterWithoutSource(t *testing.T) {
-	// A "meter" view that omits source="meter" would silently query the
-	// default metrics store. Reject it at the MCP boundary.
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "bad-meter",
-		"source": "meter",
-		"spec": map[string]any{
-			"panelType":   "graph",
-			"requestType": "time_series",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A", "signal": "metrics"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected rejection for meter view without source=meter")
-	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "source") || !strings.Contains(body, "meter") {
-		t.Errorf("error should mention source and meter; got: %s", body)
-	}
-}
-
-func TestHandleCreateView_RejectsMeterWrongSignal(t *testing.T) {
-	// A "meter" view is queried as metrics; any other signal is invalid.
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "bad-meter-signal",
-		"source": "meter",
-		"spec": map[string]any{
-			"panelType":   "graph",
-			"requestType": "time_series",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A", "signal": "logs", "source": "meter"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected rejection for meter view with non-metrics signal")
-	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "metrics") {
-		t.Errorf("error should require signal metrics; got: %s", body)
-	}
-}
-
-func TestHandleCreateView_RejectsSourceMeterOnMetricsPage(t *testing.T) {
-	// source="meter" belongs on the "meter" page, not mis-filed under
-	// "metrics" (this is the exact mis-filing the meter source fixes).
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "misfiled-meter",
-		"source": "metrics",
-		"spec": map[string]any{
-			"panelType":   "graph",
-			"requestType": "time_series",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A", "signal": "metrics", "source": "meter"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected rejection for source=meter on metrics page")
-	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "meter") || !strings.Contains(body, "source") {
-		t.Errorf("error should point to source \"meter\"; got: %s", body)
-	}
-}
-
-func TestHandleCreateView_RejectsSourceMeterOnTracesPage(t *testing.T) {
-	// The anti-mis-filing guard is not metrics-only: source="meter" is invalid
-	// on any non-meter page, including traces.
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "misfiled-meter-traces",
-		"source": "traces",
-		"spec": map[string]any{
-			"panelType":   "list",
-			"requestType": "raw",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A", "signal": "traces", "source": "meter"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected rejection for source=meter on traces page")
-	}
-}
-
 func TestHandleUpdateView_AllowsMeterView(t *testing.T) {
 	// Updating an existing meter view (source unchanged) must pass the
 	// meter validation branch and reach the client.
@@ -848,43 +706,18 @@ func TestHandleUpdateView_AllowsMeterView(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateView_RejectsSignalMismatch(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_update_view", map[string]any{
-		"viewId": "v1",
-		"view": map[string]any{
-			"name":   "x",
-			"source": "logs",
-			"spec": map[string]any{
-				"panelType":   "list",
-				"requestType": "raw",
-				"queries": []any{map[string]any{
-					"type": "builder_query",
-					"spec": map[string]any{"name": "A", "signal": "metrics"},
-				}},
-			},
-		},
-	})
-	result, _ := h.handleUpdateView(testCtx(), req)
-	if got := resultCode(t, result); got != CodeValidationFailed {
-		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
-	}
-	text := resultText(t, result)
-	if !strings.Contains(text, "metrics") || !strings.Contains(text, "logs") || !strings.Contains(text, "signal") {
-		t.Fatalf("error text = %q, want it to name the mismatched signal and source", text)
-	}
-}
-
-func TestHandleUpdateView_RejectsSourceChange(t *testing.T) {
-	// Saved views are scoped to an Explorer. The handler must GET the
-	// existing view and reject a source that differs.
-	updateCalled := false
+func TestHandleUpdateView_SourceChangeForwardedWithoutPrefetch(t *testing.T) {
+	// SigNoz owns the update semantics: a changed source moves the view to
+	// that Explorer. The handler forwards it and performs no diagnostic GET.
+	getCalled := false
+	var gotBody []byte
 	mock := &client.MockClient{
 		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"id":"v1","name":"old","source":"traces","spec":{"queries":[]}}}`), nil
+			getCalled = true
+			return json.RawMessage(`{"status":"success","data":{"id":"v1","source":"traces"}}`), nil
 		},
 		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
-			updateCalled = true
+			gotBody = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
@@ -892,7 +725,6 @@ func TestHandleUpdateView_RejectsSourceChange(t *testing.T) {
 	req := makeToolRequest("signoz_update_view", map[string]any{
 		"viewId": "v1",
 		"view": map[string]any{
-			"name":   "renamed",
 			"source": "logs",
 			"spec": map[string]any{
 				"queries": []any{map[string]any{
@@ -903,56 +735,13 @@ func TestHandleUpdateView_RejectsSourceChange(t *testing.T) {
 		},
 	})
 	result, _ := h.handleUpdateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected source-change to be rejected")
-	}
-	if updateCalled {
-		t.Errorf("UpdateView must not be called when source is changing")
-	}
-	body := renderContent(result.Content)
-	if !strings.Contains(body, "source") || !strings.Contains(body, "traces") || !strings.Contains(body, "logs") {
-		t.Errorf("error should name existing and new source; got: %s", body)
-	}
-}
-
-func TestHandleUpdateView_ProceedsWhenGetViewFails(t *testing.T) {
-	// If the source-lock pre-fetch fails (network blip, 404 after a
-	// concurrent delete), prefer to let the PUT attempt proceed rather than
-	// block on a diagnostic GET. Upstream will return its own error.
-	var gotID string
-	var gotBody []byte
-	mock := &client.MockClient{
-		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return nil, fmt.Errorf("boom")
-		},
-		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
-			gotID = id
-			gotBody = body
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_update_view", map[string]any{
-		"viewId": "v1",
-		"view": map[string]any{
-			"name":   "x",
-			"source": "traces",
-			"spec": map[string]any{
-				"queries": []any{map[string]any{
-					"type": "builder_query",
-					"spec": map[string]any{"name": "A", "signal": "traces"},
-				}},
-			},
-		},
-	})
-	result, _ := h.handleUpdateView(testCtx(), req)
 	if result.IsError {
-		t.Fatalf("expected handler to proceed when GetView fails; got: %v", result.Content)
+		t.Fatalf("source change must be forwarded, got error: %v", result.Content)
 	}
-	if gotID != "v1" {
-		t.Fatalf("UpdateView id = %q, want v1", gotID)
+	if getCalled {
+		t.Fatal("update must not pre-fetch the view")
 	}
-	if body := string(gotBody); !strings.Contains(body, `"source":"traces"`) {
-		t.Fatalf("update body lost the view fields: %s", body)
+	if !strings.Contains(string(gotBody), `"source":"logs"`) {
+		t.Fatalf("update body lost the new source: %s", gotBody)
 	}
 }

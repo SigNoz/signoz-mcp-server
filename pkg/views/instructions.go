@@ -19,7 +19,7 @@ meter / Cost Meter, and AI Observability explorers). The tools call the
 | id              | string (UUID)     | No (server-assigned) | Path param on get/update/delete. Do not send on create/update |
 | name            | string            | Yes, unless generateName is true | DNS-1123 label (lowercase letters, digits, hyphens). Immutable after create; the display label lives in spec.displayName |
 | generateName    | bool              | No                  | When true, the server generates name from spec.displayName and name must be empty. Default: false |
-| source          | string            | Yes                 | One of: "traces", "logs", "metrics", "meter". "meter" is the Cost Meter Explorer (a distinct page) |
+| source          | string            | Yes                 | For example "traces", "logs", "metrics", "meter" (the Cost Meter Explorer, a distinct page), or "ai_observability". SigNoz validates the value |
 | schemaVersion   | string            | No                  | Always "v2"; the MCP server fills it in when omitted |
 | spec            | object            | Yes                 | Typed view content (see below) |
 | createdAt / createdBy, updatedAt / updatedBy | — | Server-populated | Do not send |
@@ -64,7 +64,8 @@ allowed but skipped by the signal check.
 
 - **signal must equal source** for "traces"/"logs"/"metrics".
   A "source":"traces" view must use "signal":"traces" in every
-  builder_query spec.
+  builder_query spec. SigNoz accepts a mismatch, but the Explorer
+  renders only matching views, so the saved view would be unusable.
 - **Cost Meter views are special.** A Cost Meter view is "source":"meter"
   (its own Explorer page) but is queried as metrics: every builder_query
   spec sets "signal":"metrics" AND "source":"meter". Do not file a Cost
@@ -72,6 +73,8 @@ allowed but skipped by the signal check.
   list.
 - **name is immutable.** Upstream rejects name on update; spec.displayName
   carries the visible label.
+- **Changing source on update moves the view** to that Explorer's list.
+  Keep the existing source unless the user asked to move the view.
 - **panelType by intent:** "list" for tabular spans/logs; "graph" for
   time-series; "table" for grouped tables; "value" for a single number;
   "trace" for a trace waterfall.

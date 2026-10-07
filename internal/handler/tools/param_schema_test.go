@@ -161,9 +161,6 @@ func TestStableSetEnumsArePresent(t *testing.T) {
 		{"signoz_get_alert_history", "state", []string{"disabled", "firing", "inactive", "nodata", "pending", "recovering"}},
 		{"signoz_get_field_keys", "signal", []string{"logs", "metrics", "traces"}},
 		{"signoz_get_field_values", "signal", []string{"logs", "metrics", "traces"}},
-		// "source" carries the v2 saved-views source enum; pin it so a
-		// regression that drops it fails here too.
-		{"signoz_create_view", "source", []string{"logs", "meter", "metrics", "traces"}},
 	}
 
 	for _, tc := range cases {
@@ -222,11 +219,17 @@ func TestEvolvingSetsAreFreeStrings(t *testing.T) {
 	}{
 		{"signoz_aggregate_logs", "aggregation"},
 		{"signoz_aggregate_traces", "aggregation"},
+		// The saved-view source set is SigNoz-owned and grows (it gained
+		// "ai_observability" in v0.145); a schema enum here would reject
+		// values upstream accepts.
+		{"signoz_list_views", "source"},
+		{"signoz_create_view", "source"},
 	}
 	h := newTestHandler(&signozclient.MockClient{})
 	s := newMCPTestServer()
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
+	h.RegisterViewHandlers(s)
 	registered := listTestTools(t, s)
 
 	for _, tc := range cases {
