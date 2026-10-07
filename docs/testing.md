@@ -88,8 +88,11 @@ Two gaps cannot be closed by construction, and tests carry them:
   JSON. A lenient decoder accepts all of those as zero values. The only way to learn what
   arrives is to run against it, so `tests/e2e` runs against the pinned release (the
   compatibility matrix in executable form, proven again on every version bump) and
-  runtime WARN logs cover the deployed versions the suite cannot reach. The External
-  Contracts section of `CLAUDE.md` is the authority on this boundary.
+  runtime WARN logs cover the deployed versions the suite cannot reach. Known upstream
+  validation gaps live as an executable ledger in `tests/e2e/tests/test_upstream_gaps.py`:
+  each test asserts today's permissive behavior and fails on the bump that fixes it, with
+  retirement instructions in its failure message. The External Contracts section of
+  `CLAUDE.md` is the authority on this boundary.
 - Our own decisions. Strip read-only fields before the PUT, never retry a mutation, map
   an upstream code to ours, keep the
   upstream suggestions, redact an echoed credential, say so when results truncate. Nothing

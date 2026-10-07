@@ -81,6 +81,11 @@ the PR. Budgets and CI mechanics live in `guardrails/README.md`. In the same PR:
   because some clients send every scalar as a string.
 - Each server release targets the latest SigNoz release. Don't name SigNoz versions in tool or
   parameter descriptions, `signoz://` resources, or README tool sections.
+- When bumping the pinned SigNoz release or the skaff spec, re-survey the validation surface of
+  the APIs this server calls and update `tests/e2e/tests/test_upstream_gaps.py` and its issue
+  checklist (SigNoz/nerve-pod#401) in the same PR. A gap test failing on the bump means SigNoz
+  fixed that gap: follow the failure message (close the issue item, delete the test, update the
+  texts it names) instead of changing the assertion.
 - Only expose features the SigNoz UI can render. An agent can save a query into a dashboard or
   saved view, so a request type or panel the UI lacks (for example heatmaps) breaks it there.
 - The PR summary lists the doc and metadata updates and says whether SigNoz/agent-skills needs a
