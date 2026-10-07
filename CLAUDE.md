@@ -27,18 +27,29 @@ contracts.
 
 ## Tests
 
-- Assert observable behavior: tool results, coded errors, structured content, and the requests
-  the client sends upstream. A refactor that keeps behavior should leave every test green. Prefer
-  exercising the handler or client over unexported helpers.
-- No change-detector tests. That means asserting a constant equals its own literal, pinning
-  internal call order, or mirroring the implementation step by step. If the only way a test can
-  fail is someone editing the code under test, don't write it.
+- `docs/testing.md` is the full standard: construction before detection, the layer map, what a
+  high-ROI test looks like, and the six questions a test must clear before it merges. Read it
+  before writing or reviewing tests; the bullets below are the summary. Existing tests that
+  disagree with it are debt, not templates: shrink the disagreement when you touch one.
+- Construction before detection: never add a test a build step could make unnecessary. Derive
+  the copy, import or generate the type, generate the artifact instead. A test about upstream's
+  data model marks a construction gap, not a coverage gap.
+- Tests record our decisions. Assert observable behavior: tool results, coded errors, structured
+  content, and the requests the client sends upstream. A refactor that keeps behavior should
+  leave every test green. Prefer exercising the handler or client over unexported helpers, and
+  never conclude success from a permissive mock returning something (a bare `!IsError` check
+  asserts nothing).
+- No change-detector tests: asserting a constant equals its own literal, pinning counts or
+  internal call order, or rebuilding the artifact under test by hand instead of reading the
+  registered one. If the only way a test can fail is someone editing the code under test, don't
+  write it.
 - Before adding a test, search for one that covers the same behavior and extend it. Cover each
   behavior once, at the lowest layer that runs the real code. Name test files and functions after
   the behavior they cover, not the review round or issue that prompted them.
-- Exception: drift pins are fine when they guard a contract, such as the wire catalog, `guardrails/`
-  budgets, and recorded upstream responses. Say what drift the test catches in its name or a
-  one-line comment.
+- Pins only for surfaces nothing can derive: the hand-authored wire catalog, `guardrails/`
+  budgets, and the docs golden baseline. Say what drift each catches in its name or a one-line
+  comment; a pin guarding a derivable copy is a construction gap. Behavior that depends on real
+  SigNoz gets an e2e test against the pinned release, the executable compatibility matrix.
 
 ## Changing a Tool, Resource, Prompt, or Configuration Contract
 
