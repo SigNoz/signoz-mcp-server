@@ -334,7 +334,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. V2 direct routing needs a channel on every threshold tier; SigNoz ignores a v2 top-level preferredChannels list (those channels are never notified). Confirmed v2 policy routing may omit tier channels; v1 anomaly uses preferredChannels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -4202,7 +4202,7 @@
           "inputSchema": {
             "properties": {
               "id": {
-                "description": "Alert rule UUIDv7. Required; obtain it from signoz_list_alert_rules.",
+                "description": "Alert rule UUID. Required; obtain it from signoz_list_alert_rules.",
                 "type": "string"
               },
               "searchContext": {
@@ -4427,7 +4427,7 @@
           "inputSchema": {
             "properties": {
               "id": {
-                "description": "Alert rule ID (UUIDv7 on v2 servers). Required; obtain it from signoz_list_alert_rules.",
+                "description": "Alert rule UUID. Required; obtain it from signoz_list_alert_rules.",
                 "type": "string"
               },
               "searchContext": {
@@ -6696,7 +6696,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. V2 direct routing needs a channel on every threshold tier; SigNoz ignores a v2 top-level preferredChannels list (those channels are never notified). Confirmed v2 policy routing may omit tier channels; v1 anomaly uses preferredChannels.",
           "inputSchema": {
             "properties": {
               "alert": {

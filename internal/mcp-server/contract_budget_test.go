@@ -153,7 +153,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_create_alert": {
 				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold/PromQL alerts", "metric-only v1 anomaly", "signoz://alert/instructions", "same still-current prepared operation", "fully paginated signoz_list_notification_channels", "signoz_create_notification_channel", "never guess or create automatically", "V2 direct routing needs a channel on every tier", "confirmed v2 policy routing may omit tier channels", "v1 anomaly uses direct preferredChannels"},
+				required: []string{"signoz_update_alert", "v2alpha1 threshold/PromQL alerts", "metric-only v1 anomaly", "signoz://alert/instructions", "same still-current prepared operation", "fully paginated signoz_list_notification_channels", "signoz_create_notification_channel", "never guess or create automatically", "V2 direct routing needs a channel on every threshold tier", "SigNoz ignores a v2 top-level preferredChannels list", "Confirmed v2 policy routing may omit tier channels", "v1 anomaly uses preferredChannels"},
 			},
 			"signoz_get_alert": {
 				prefix:   "Use this when",
@@ -161,7 +161,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			},
 			"signoz_update_alert": {
 				prefix:   "Use this when",
-				required: []string{"full replacement", "signoz_get_alert", "same still-current prepared operation", "preserve every unchanged field", "signoz://alert/instructions", "signoz://alert/examples", "fully paginated signoz_list_notification_channels", "refreshing only if state may have changed", "signoz_create_notification_channel", "never create automatically", "V2 direct routing needs a channel on every tier", "confirmed v2 policy routing may omit tier channels", "v1 anomaly uses direct preferredChannels"},
+				required: []string{"full replacement", "signoz_get_alert", "same still-current prepared operation", "preserve every unchanged field", "signoz://alert/instructions", "signoz://alert/examples", "fully paginated signoz_list_notification_channels", "refreshing only if state may have changed", "signoz_create_notification_channel", "never create automatically", "V2 direct routing needs a channel on every threshold tier", "SigNoz ignores a v2 top-level preferredChannels list", "Confirmed v2 policy routing may omit tier channels", "v1 anomaly uses preferredChannels"},
 			},
 			"signoz_create_dashboard": {
 				prefix:   "Use this when",

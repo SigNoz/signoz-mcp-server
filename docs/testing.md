@@ -90,8 +90,8 @@ Two gaps cannot be closed by construction, and tests carry them:
   compatibility matrix in executable form, proven again on every version bump) and
   runtime WARN logs cover the deployed versions the suite cannot reach. The External
   Contracts section of `CLAUDE.md` is the authority on this boundary.
-- Our own decisions. Strip read-only fields before the PUT, never retry a mutation, abort
-  the write when a page of channels returns 401, map an upstream code to ours, keep the
+- Our own decisions. Strip read-only fields before the PUT, never retry a mutation, map
+  an upstream code to ours, keep the
   upstream suggestions, redact an echoed credential, say so when results truncate. Nothing
   upstream defines these, and typing both ends does not test the middle, because the
   translation from the SigNoz contract to the MCP contract is a hand-written function
@@ -179,8 +179,8 @@ error code, compose the guidance, decide the side effects, emit the result. Impo
 make decode correct by construction and delete its tests. Everything after decode is ours,
 so tests pin it: the code mapping (a global 403 stays `PERMISSION_DENIED` with the
 upstream code attached, never an empty result), preserved upstream guidance and
-suggestions, redaction of echoed credentials, and the side-effect decisions, such as no
-retry on mutations and aborting a write on mid-pagination auth failure. A broken recovery
+suggestions, redaction of echoed credentials, and the side-effect decisions, such as
+never retrying a mutation. A broken recovery
 path produces the worst failure this server has, a confident wrong answer built on a
 swallowed error.
 

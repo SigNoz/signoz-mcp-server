@@ -436,7 +436,7 @@ HTTP mode exposes unauthenticated probe endpoints. New Kubernetes deployments sh
 | `signoz_get_alert_history` | Get one rule's firing or state-transition history |
 | `signoz_create_alert` | Create a v2 direct/policy-routed alert or a direct-routed v1 anomaly alert |
 | `signoz_update_alert` | Fully replace an existing alert rule by `id` |
-| `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUIDv7 `id` |
+| `signoz_delete_alert` | Permanently delete a confirmed alert rule by UUID `id` |
 | `signoz_list_dashboards` | List tenant-dashboard summaries and discover UUIDs |
 | `signoz_get_dashboard` | Get one dashboard's full layout, variables, panels, and queries |
 | `signoz_create_dashboard` | Create a custom multi-panel dashboard |
@@ -611,7 +611,7 @@ Lists configured alert-rule summaries from `GET /api/v2/rules`, including inacti
 
 Gets one alert rule's full definition (`GET /api/v2/rules/{id}`). Use `signoz_list_alert_rules` to discover IDs. Before `signoz_update_alert`, call this only when a complete current definition is not already available for the prepared operation; reuse a still-current result and preserve unchanged fields.
 
-- **Parameters**: `id` (required) - Alert rule ID (UUIDv7 on v2-capable servers).
+- **Parameters**: `id` (required) - Alert rule UUID.
 - **Note**: Response shape depends on the SigNoz server version. Post-#10997 servers return the canonical `Rule` type with `createdAt/updatedAt/createdBy/updatedBy`; older servers return `GettableRule` with `createAt/updateAt/createBy/updateBy` (no 'd').
 
 #### `signoz_list_dashboards`
@@ -941,7 +941,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
-- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier and rejects top-level `preferredChannels`; v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier and ignores top-level `preferredChannels` (channels listed there are never notified); v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
 - **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`
@@ -949,7 +949,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces the rule: reuse `signoz_get_alert`, `signoz://alert/instructions`, `signoz://alert/examples`, and fully paginated `signoz_list_notification_channels` results only from the same still-current prepared operation; otherwise read/call them, refreshing only if state may have changed, then preserve unchanged fields. Direct v2 needs an exact listed displayName on every tier; confirmed v2 policy routing may omit them. V1 anomalies use direct top-level `preferredChannels` and cannot use policy routing.
 
 - **Parameters**:
-  - `id` (required) - UUIDv7 of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
+  - `id` (required) - UUID of the rule to update (obtain from `signoz_list_alert_rules` / `signoz_get_alert`).
   - Plus all fields of the alert rule schema (same shape as `signoz_create_alert`).
 
 #### `signoz_delete_alert`
@@ -957,7 +957,7 @@ Update an existing alert rule via `PUT /api/v2/rules/{id}`. This fully replaces 
 Delete an alert rule via `DELETE /api/v2/rules/{id}`. Irreversible: discover the ID with `signoz_list_alert_rules` and confirm the exact rule first. When both steps are already complete, call the delete tool directly without repeating list/get preflight.
 
 - **Parameters**:
-  - `id` (required) - UUIDv7 of the rule to delete. The server rejects non-UUIDv7 values with `invalid_input`.
+  - `id` (required) - UUID of the rule to delete. SigNoz rejects a malformed id with `invalid_input`.
 
 #### `signoz_delete_dashboard`
 
