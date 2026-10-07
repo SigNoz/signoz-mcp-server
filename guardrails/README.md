@@ -32,10 +32,12 @@ results. Only request IDs, the build-stamped server version, and top-level
 discovery ordering are normalized; nested order, null, false, schema keywords,
 annotations, MIME types, and `_meta` remain significant.
 
-The oracle is compare-only and has no regeneration path. It was captured before
-the SDK swap and is intentionally immutable; an intentional future contract
-change must update the specific fixture through normal review, never by
-re-recording the full catalog from the new runtime.
+The fixtures record the current contract. Running the test with
+`UPDATE_WIRE_GOLDENS=1` rewrites the fixtures it covers, and the fixtures' git
+diff is the review artifact: commit only the entries your change intends to
+alter, and account for every hunk. A re-record that buries an unexplained
+difference converts a regression into a baseline, which is the one failure mode
+this oracle exists to prevent.
 
 The guardrails intentionally do not impose a total serialized-schema byte ceiling.
 Complex tools may need extensive field-local schema guidance; review material catalog

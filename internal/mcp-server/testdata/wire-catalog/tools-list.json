@@ -14,6 +14,7 @@
     "id": 0,
     "jsonrpc": "2.0",
     "result": {
+      "cacheScope": "public",
       "tools": [
         {
           "annotations": {
@@ -10517,7 +10518,8 @@
           },
           "name": "signoz_update_view"
         }
-      ]
+      ],
+      "ttlMs": 0
     }
   }
 }

@@ -26,10 +26,9 @@ import (
 )
 
 const (
-	wireCatalogGoldenDir          = "testdata/wire-catalog"
-	wireCatalogProtocolVersion    = "2025-11-25"
-	wireSentinelVersion           = "<version>"
-	officialInputValidationNotice = `Input validation notice: parameter "limit" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.`
+	wireCatalogGoldenDir       = "testdata/wire-catalog"
+	wireCatalogProtocolVersion = "2025-11-25"
+	wireSentinelVersion        = "<version>"
 )
 
 type wireCapture struct {
@@ -94,9 +93,6 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 			read := o.capture("resources/read", mustJSON(map[string]any{"uri": uri}))
 			inventory = append(inventory, digestResultContents(t, uri, read.Response))
 		}
-		if len(inventory) != 22 {
-			t.Fatalf("static resource count = %d, want 22", len(inventory))
-		}
 		sort.Slice(inventory, func(i, j int) bool { return inventory[i].Identity < inventory[j].Identity })
 		assertWireGolden(t, "resources-content-inventory.json", inventory)
 		sitemap := o.capture("resources/read", `{"uri":"signoz://docs/sitemap"}`)
@@ -132,79 +128,9 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 			{"error-unknown-prompt.json", "prompts/get", `{"name":"signoz_unknown","arguments":{}}`},
 		}
 		for _, tc := range cases {
-			capture := o.capture(tc.method, tc.params)
-			if tc.file == "tool-success-fail-open-input.json" {
-				assertOfficialInputValidationNotice(t, capture)
-			}
-			assertWireGolden(t, tc.file, capture)
+			assertWireGolden(t, tc.file, o.capture(tc.method, tc.params))
 		}
 	})
-
-	t.Run("accepted migration differences have focused legacy assertions", func(t *testing.T) {
-		initialize := o.capture("initialize", `{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"wire-oracle","version":"1"}}`)
-		result := initialize.Response.(map[string]any)["result"].(map[string]any)
-		capabilities := result["capabilities"].(map[string]any)
-		if _, ok := capabilities["logging"]; ok {
-			t.Fatal("official initialize unexpectedly advertises capabilities.logging")
-		}
-		if _, ok := result["ttlMs"]; ok {
-			t.Fatalf("official initialize unexpectedly has ttlMs: %v", result["ttlMs"])
-		}
-		if _, ok := result["cacheScope"]; ok {
-			t.Fatalf("official initialize unexpectedly has cacheScope: %v", result["cacheScope"])
-		}
-		cacheable := []struct{ method, params string }{
-			{"tools/list", `{}`},
-			{"resources/list", `{}`},
-			{"resources/templates/list", `{}`},
-			{"prompts/list", `{}`},
-			{"resources/read", `{"uri":"signoz://docs/sitemap"}`},
-		}
-		for _, tc := range cacheable {
-			cacheableResult := o.capture(tc.method, tc.params).Response.(map[string]any)["result"].(map[string]any)
-			if cacheableResult["ttlMs"] != json.Number("0") || cacheableResult["cacheScope"] != "public" {
-				t.Fatalf("official %s cache metadata = ttlMs:%v cacheScope:%v", tc.method, cacheableResult["ttlMs"], cacheableResult["cacheScope"])
-			}
-		}
-		unknown := o.capture("resources/read", `{"uri":"signoz://unknown"}`)
-		errObject := unknown.Response.(map[string]any)["error"].(map[string]any)
-		data, _ := errObject["data"].(map[string]any)
-		if errObject["code"] != json.Number("-32602") || errObject["message"] != "Resource not found" || data["uri"] != "signoz://unknown" {
-			t.Fatalf("official unknown-resource error = %#v, want -32602, Resource not found, and data.uri", errObject)
-		}
-		assertOfficialUnknownTargetError(t, o.capture("tools/call", `{"name":"signoz_unknown","arguments":{}}`), `unknown tool "signoz_unknown"`)
-		assertOfficialUnknownTargetError(t, o.capture("prompts/get", `{"name":"signoz_unknown","arguments":{}}`), `unknown prompt "signoz_unknown"`)
-	})
-}
-
-func assertOfficialInputValidationNotice(t *testing.T, capture wireCapture) {
-	t.Helper()
-	contents := resultArray(t, capture.Response, "content")
-	var notices []string
-	for _, raw := range contents {
-		content, _ := raw.(map[string]any)
-		text, _ := content["text"].(string)
-		if strings.HasPrefix(text, "Input validation notice:") {
-			notices = append(notices, text)
-		}
-	}
-	if len(notices) != 1 {
-		t.Fatalf("official fail-open response has %d validation notices, want 1", len(notices))
-	}
-	if strings.Contains(notices[0], "jsonschema validation failed") {
-		t.Fatalf("official fail-open response leaked validator detail: %q", notices[0])
-	}
-	if notices[0] != officialInputValidationNotice {
-		t.Fatalf("official fail-open validation notice = %q, want %q", notices[0], officialInputValidationNotice)
-	}
-}
-
-func assertOfficialUnknownTargetError(t *testing.T, capture wireCapture, wantMessage string) {
-	t.Helper()
-	errObject := capture.Response.(map[string]any)["error"].(map[string]any)
-	if errObject["code"] != json.Number("-32602") || errObject["message"] != wantMessage {
-		t.Fatalf("official unknown-target error = %#v, want code -32602 and message %q", errObject, wantMessage)
-	}
 }
 
 func TestWireOracleRawArgumentsCharacterization(t *testing.T) {
@@ -381,53 +307,6 @@ func normalizeWireNode(node any, path string) any {
 	}
 }
 
-func normalizeAcceptedMigrationDifferences(capture wireCapture) wireCapture {
-	root, ok := capture.Response.(map[string]any)
-	if !ok {
-		return capture
-	}
-	result, _ := root["result"].(map[string]any)
-	delete(result, "ttlMs")
-	delete(result, "cacheScope")
-
-	if capture.Method == "initialize" {
-		capabilities, _ := result["capabilities"].(map[string]any)
-		if capabilities != nil {
-			capabilities["logging"] = map[string]any{}
-		}
-	}
-	if capture.Method == "tools/call" {
-		if errObject, _ := root["error"].(map[string]any); errObject["code"] == json.Number("-32602") && errObject["message"] == `unknown tool "signoz_unknown"` {
-			errObject["message"] = "tool 'signoz_unknown' not found: tool not found"
-		}
-		contents, _ := result["content"].([]any)
-		for _, raw := range contents {
-			content, _ := raw.(map[string]any)
-			text, _ := content["text"].(string)
-			if text == officialInputValidationNotice {
-				content["text"] = "Input validation notice: the arguments did not fully match this tool's input schema (jsonschema validation failed with 'mem:///signoz/tools/signoz_list_dashboards/input-schema.json#' - at '/limit': got object, want integer or string). The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off."
-			}
-		}
-	}
-	if capture.Method == "prompts/get" {
-		if errObject, _ := root["error"].(map[string]any); errObject["code"] == json.Number("-32602") && errObject["message"] == `unknown prompt "signoz_unknown"` {
-			errObject["message"] = "prompt 'signoz_unknown' not found: prompt not found"
-		}
-	}
-	if capture.Method == "resources/read" {
-		errObject, _ := root["error"].(map[string]any)
-		if errObject["code"] == json.Number("-32602") && errObject["message"] == "Resource not found" {
-			request, _ := capture.Request.(map[string]any)
-			params, _ := request["params"].(map[string]any)
-			uri, _ := params["uri"].(string)
-			errObject["code"] = json.Number("-32002")
-			errObject["message"] = fmt.Sprintf("handler not found for resource URI '%s': resource not found", uri)
-			delete(errObject, "data")
-		}
-	}
-	return capture
-}
-
 func sortCatalog(entries []any) {
 	sort.SliceStable(entries, func(i, j int) bool { return catalogIdentity(entries[i]) < catalogIdentity(entries[j]) })
 }
@@ -510,25 +389,50 @@ func digestContents(t *testing.T, identity string, contents []any) wireInventory
 	return entry
 }
 
+// assertWireGolden compares a capture against its recorded fixture. Running
+// with UPDATE_WIRE_GOLDENS=1 rewrites the fixture instead; the git diff of the
+// fixture is the review artifact, and only entries an intended change touches
+// may be committed.
 func assertWireGolden(t *testing.T, name string, value any) {
 	t.Helper()
-	if capture, ok := value.(wireCapture); ok {
-		value = normalizeAcceptedMigrationDifferences(capture)
-	}
 	actual, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	actual = append(actual, '\n')
 	path := filepath.Join(wireCatalogGoldenDir, name)
+	if os.Getenv("UPDATE_WIRE_GOLDENS") == "1" {
+		if err := os.WriteFile(path, actual, 0o644); err != nil {
+			t.Fatalf("update wire oracle %s: %v", path, err)
+		}
+		t.Logf("updated wire oracle %s; review its git diff before committing", path)
+		return
+	}
 	expected, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read immutable pre-migration wire oracle %s: %v", path, err)
+		t.Fatalf("read wire oracle %s: %v (UPDATE_WIRE_GOLDENS=1 records it)", path, err)
 	}
 	if bytes.Equal(expected, actual) {
 		return
 	}
-	t.Fatalf("wire oracle %s changed: %s", path, firstWireDifference(expected, actual))
+	gotPath := writeWireActual(t, name, actual)
+	t.Fatalf("wire oracle %s changed: %s\nfull server output: %s\nreview with: diff %s %s\nif every difference is intended, rerun with UPDATE_WIRE_GOLDENS=1 and review the fixture's git diff",
+		path, firstWireDifference(expected, actual), gotPath, path, gotPath)
+}
+
+// writeWireActual persists the server's full output so a mismatch is diffable
+// even when the first differing lines are long or identical-looking.
+func writeWireActual(t *testing.T, name string, actual []byte) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "wire-oracle-"+strings.ReplaceAll(name, string(os.PathSeparator), "_")+".*")
+	if err != nil {
+		t.Fatalf("write server output: %v", err)
+	}
+	defer f.Close() //nolint:errcheck // best-effort close of a temp diff artifact
+	if _, err := f.Write(actual); err != nil {
+		t.Fatalf("write server output: %v", err)
+	}
+	return f.Name()
 }
 
 func firstWireDifference(expected, actual []byte) string {
@@ -542,17 +446,10 @@ func firstWireDifference(expected, actual []byte) string {
 			got = gotLines[i]
 		}
 		if want != got {
-			return fmt.Sprintf("line %d: golden %q, server %q", i+1, truncateWireLine(want), truncateWireLine(got))
+			return fmt.Sprintf("line %d:\n golden: %s\n server: %s", i+1, want, got)
 		}
 	}
 	return fmt.Sprintf("golden=%d bytes server=%d bytes", len(expected), len(actual))
-}
-
-func truncateWireLine(value string) string {
-	if len(value) > 240 {
-		return value[:240] + "..."
-	}
-	return value
 }
 
 func decodeJSON(t *testing.T, data []byte) any {

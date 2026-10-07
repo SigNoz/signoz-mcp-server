@@ -14,7 +14,9 @@
     "id": 0,
     "jsonrpc": "2.0",
     "result": {
-      "resourceTemplates": []
+      "cacheScope": "public",
+      "resourceTemplates": [],
+      "ttlMs": 0
     }
   }
 }
