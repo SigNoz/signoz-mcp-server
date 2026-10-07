@@ -733,7 +733,7 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
 List saved Explorer views or discover a view UUID for one Logs, Traces, Metrics, Cost Meter, or AI Observability page. A view stores one reusable Explorer query spec; it is not a multi-panel dashboard. Apply name filters before pagination and follow `pagination.nextOffset` while `pagination.hasMore` is true.
 
 - **Parameters**:
-  - `source` (required) - One of: `traces`, `logs`, `metrics`, `meter`. Cost Meter views are filed under `meter` (a distinct Explorer page), not `metrics`
+  - `source` (optional) - Explorer to filter by, for example `traces`, `logs`, `metrics`, `meter` (Cost Meter, a distinct Explorer page), or `ai_observability`; SigNoz validates the value. Omit to list views from every Explorer
   - `name` (optional) - Partial-match filter on view name (server-side)
   - `limit` (optional) - Page size (default: 50, max: 1000; higher values are clamped)
   - `offset` (optional) - Number of results to skip (default: 0)
@@ -783,7 +783,7 @@ Save one reusable Explorer query spec. Use `signoz_create_dashboard` for a multi
 - **Parameters** (v2 typed shape):
   - `name` (optional) - View name (DNS-1123 label). Required unless `generateName` is true
   - `generateName` (optional) - When true, the server generates `name` from `spec.displayName` and `name` must be empty
-  - `source` (required) - Which Explorer this view belongs to
+  - `source` (required) - Which Explorer this view belongs to, for example `traces`, `logs`, `metrics`, `meter`, or `ai_observability`; SigNoz validates the value
   - `spec` (required) - Typed view content: `displayName`, `panelType`, `requestType`, `queries`, `selectedFields`, `display`
   - `schemaVersion` (optional) - Always `v2`; defaults when omitted
 - **Required**: Read both MCP resources `signoz://view/instructions` and `signoz://view/examples` before composing any payload.
