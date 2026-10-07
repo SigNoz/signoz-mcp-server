@@ -129,6 +129,16 @@ validator by hand). This layer should dissolve into imported or generated types;
 stays ours is the guidance each rejection carries and the defaults we inject.
 Do not grow it, and do not use its tests as templates.
 
+Client-side rules split three ways, and only the first kind is permanent. Adapter work
+(unwrap a pasted envelope, strip server-populated fields, translate rejections into coded
+guidance) is this server's own job. A guard that compensates for validation SigNoz lacks,
+where upstream accepts a write its own UI cannot render, is a stopgap: file the upstream
+issue, pin the premise with a tripwire in `tests/e2e/tests/test_upstream_premises.py`
+that drives SigNoz directly, and when that tripwire fails because upstream now enforces
+the rule, delete the guard, its tests, and the tripwire together. A rule upstream already
+enforces needs no copy here at all: let SigNoz reject, and let the recovery path carry
+the guidance.
+
 ## What a high-ROI test looks like
 
 - **It asserts what a client can observe.** Tool result, coded error, structured content,
