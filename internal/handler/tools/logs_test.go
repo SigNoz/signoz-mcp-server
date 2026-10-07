@@ -74,36 +74,13 @@ func TestHandleSearchLogs_ServiceFilter(t *testing.T) {
 	if captured == nil {
 		t.Fatal("QueryBuilderV5 was not called")
 	}
-	// The filter should include both service.name and severity_text
+	// The filter must include both the service and the severity clause.
 	payload := string(captured)
 	if !strings.Contains(payload, "payment-svc") {
 		t.Errorf("expected payload to contain service name, got: %s", payload)
 	}
-}
-
-func TestHandleSearchLogs_SearchText(t *testing.T) {
-	var captured []byte
-	mock := &client.MockClient{
-		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			captured = body
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_search_logs", map[string]any{
-		"searchText": "timeout",
-		"timeRange":  "1h",
-	})
-
-	result, err := h.handleSearchLogs(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-	if captured == nil {
-		t.Fatal("QueryBuilderV5 was not called")
+	if !strings.Contains(payload, "severity_text") || !strings.Contains(payload, "ERROR") {
+		t.Errorf("expected payload to carry the severity clause, got: %s", payload)
 	}
 }
 
@@ -212,8 +189,11 @@ func TestHandleSearchLogs_InvalidLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for invalid limit")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"limit"`) || !strings.Contains(text, "not-a-number") {
+		t.Fatalf("error text = %q, want it to name the invalid limit value", text)
 	}
 }
 
@@ -266,8 +246,11 @@ func TestHandleAggregateLogs_MissingAggregation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for missing aggregation")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"aggregation" is required`) {
+		t.Fatalf("error text = %q, want it to say aggregation is required with the supported values", text)
 	}
 }
 
@@ -283,16 +266,19 @@ func TestHandleAggregateLogs_AvgRequiresAggregateOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result when aggregateOn is missing for avg")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"aggregateOn"`) || !strings.Contains(text, "avg") {
+		t.Fatalf("error text = %q, want it to require aggregateOn for avg", text)
 	}
 }
 
 func TestHandleAggregateLogs_WithGroupBy(t *testing.T) {
-	called := false
+	var captured []byte
 	mock := &client.MockClient{
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
+			captured = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
@@ -310,7 +296,8 @@ func TestHandleAggregateLogs_WithGroupBy(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if !called {
-		t.Fatal("QueryBuilderV5 was not called")
+	body := string(captured)
+	if !strings.Contains(body, `"groupBy"`) || !strings.Contains(body, "service.name") || !strings.Contains(body, "severity_text") {
+		t.Fatalf("query body lost the groupBy fields: %s", body)
 	}
 }

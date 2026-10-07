@@ -37,22 +37,6 @@ func TestParseLimit_NumberAndString(t *testing.T) {
 	}
 }
 
-// TestParseLimit_NumberOrString pins the docs limit parser: clients send the
-// limit as a JSON number or a string, and both reach the handler as the same
-// value. The registered schema union for search_docs.limit is pinned in
-// TestNumericParamsAdvertiseIntegerStringUnion.
-func TestParseLimit_NumberOrString(t *testing.T) {
-	if got := parseLimit(float64(3), 10); got != 3 {
-		t.Fatalf("parseLimit(number 3) = %d, want 3", got)
-	}
-	if got := parseLimit("3", 10); got != 3 {
-		t.Fatalf("parseLimit(string \"3\") = %d, want 3", got)
-	}
-	if got := parseLimit(nil, 10); got != 10 {
-		t.Fatalf("parseLimit(missing) = %d, want default 10", got)
-	}
-}
-
 // TestIntArg_NumberOrString pins the shared loose int parser used by limit/offset.
 func TestIntArg_NumberOrString(t *testing.T) {
 	cases := []struct {
