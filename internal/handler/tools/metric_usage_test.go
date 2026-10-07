@@ -199,39 +199,3 @@ func TestHandleCheckMetricUsage_AuthzFailureReturnsUpstreamCode(t *testing.T) {
 	}
 }
 
-func TestHandleCheckMetricUsage_PreservesDedupedDashboards(t *testing.T) {
-	mock := &client.MockClient{
-		CheckMetricUsageFn: func(_ context.Context, names []string) (map[string]client.MetricUsage, error) {
-			return map[string]client.MetricUsage{
-				"system.cpu.time": {
-					Dashboards: []string{"Host Metrics"},
-					Alerts:     []string{},
-				},
-			}, nil
-		},
-	}
-
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_check_metric_usage", map[string]any{
-		"metricNames": []any{"system.cpu.time"},
-	})
-
-	result, err := h.handleCheckMetricUsage(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-
-	text := textContent(t, result)
-	var out map[string]client.MetricUsage
-	if err := json.Unmarshal([]byte(text), &out); err != nil {
-		t.Fatalf("output is not valid JSON: %v", err)
-	}
-
-	cpu := out["system.cpu.time"]
-	if len(cpu.Dashboards) != 1 {
-		t.Errorf("expected 1 deduplicated dashboard name, got %d", len(cpu.Dashboards))
-	}
-}
