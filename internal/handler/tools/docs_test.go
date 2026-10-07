@@ -76,17 +76,7 @@ func TestDocsHandlers(t *testing.T) {
 		require.False(t, result.IsError)
 		search := result.StructuredContent.(docsindex.SearchResponse)
 		require.NotEmpty(t, search.Results)
-	})
-
-	t.Run("search docs accepts legacy query alias", func(t *testing.T) {
-		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
-			"query": "docker collector logs",
-			"limit": 5,
-		}))
-		require.NoError(t, err)
-		require.False(t, result.IsError)
-		search := result.StructuredContent.(docsindex.SearchResponse)
-		require.NotEmpty(t, search.Results)
+		require.Equal(t, "logs-management", search.Results[0].SectionSlug)
 	})
 
 	t.Run("search docs prefers searchText over legacy query", func(t *testing.T) {

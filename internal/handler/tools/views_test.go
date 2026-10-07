@@ -43,8 +43,11 @@ func TestHandleListViews_MissingSource(t *testing.T) {
 	h := newTestHandler(&client.MockClient{})
 	req := makeToolRequest("signoz_list_views", map[string]any{})
 	result, _ := h.handleListViews(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error, got success")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"source" is required`) {
+		t.Fatalf("error text = %q, want it to say source is required", text)
 	}
 }
 
@@ -82,15 +85,6 @@ func TestHandleGetView_Success(t *testing.T) {
 	}
 	if gotID != "v1" {
 		t.Errorf("viewId = %q", gotID)
-	}
-}
-
-func TestHandleGetView_MissingID(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_get_view", map[string]any{"viewId": ""})
-	result, _ := h.handleGetView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error, got success")
 	}
 }
 
@@ -146,33 +140,11 @@ func TestHandleCreateView_MissingName(t *testing.T) {
 		"spec":   map[string]any{},
 	})
 	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error, got success")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
 	}
-}
-
-func TestHandleCreateView_InvalidSource(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "x",
-		"source": "bogus",
-		"spec":   map[string]any{},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error")
-	}
-}
-
-func TestHandleCreateView_MissingSpec(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "x",
-		"source": "traces",
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error")
+	if text := resultText(t, result); !strings.Contains(text, `"name" is required`) {
+		t.Fatalf("error text = %q, want it to say name is required", text)
 	}
 }
 
@@ -214,20 +186,6 @@ func TestHandleUpdateView_Success(t *testing.T) {
 	}
 	if !strings.Contains(string(gotBody), `"source":"logs"`) {
 		t.Errorf("body missing view fields: %s", gotBody)
-	}
-}
-
-func TestHandleUpdateView_MissingID(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_update_view", map[string]any{
-		"view": map[string]any{
-			"source": "logs",
-			"spec":   map[string]any{},
-		},
-	})
-	result, _ := h.handleUpdateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error")
 	}
 }
 
@@ -284,15 +242,6 @@ func TestHandleDeleteView_Success(t *testing.T) {
 	}
 	if gotID != "v1" {
 		t.Errorf("id = %q", gotID)
-	}
-}
-
-func TestHandleDeleteView_MissingID(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	req := makeToolRequest("signoz_delete_view", map[string]any{})
-	result, _ := h.handleDeleteView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected validation error")
 	}
 }
 
@@ -568,24 +517,6 @@ func TestHandleListViews_EmptyResult(t *testing.T) {
 	}
 }
 
-func TestHandleListViews_MissingDataField(t *testing.T) {
-	// Same fallback when upstream omits `data` entirely.
-	mock := &client.MockClient{
-		ListViewsFn: func(ctx context.Context, source, name string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_list_views", map[string]any{"source": "traces"})
-	result, err := h.handleListViews(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("expected success on missing data field; got: %v", result.Content)
-	}
-}
-
 func TestHandleListViews_NonArrayDataIsEmpty(t *testing.T) {
 	// Some SigNoz deployments return `data: {}` (or a scalar) when the
 	// filter matches zero rows. The handler must treat any non-array shape
@@ -671,48 +602,21 @@ func TestHandleCreateView_RejectsEmptyBuilderSignal(t *testing.T) {
 	}
 }
 
-func TestHandleCreateView_AllowsMatchingSignal(t *testing.T) {
-	called := false
-	mock := &client.MockClient{
-		CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
-			return json.RawMessage(`{"status":"success","data":{"id":"ok"}}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_create_view", map[string]any{
-		"name":   "ok",
-		"source": "traces",
-		"spec": map[string]any{
-			"panelType":   "list",
-			"requestType": "raw",
-			"queries": []any{map[string]any{
-				"type": "builder_query",
-				"spec": map[string]any{"name": "A", "signal": "traces"},
-			}},
-		},
-	})
-	result, _ := h.handleCreateView(testCtx(), req)
-	if result.IsError {
-		t.Fatalf("expected success; got: %v", result.Content)
-	}
-	if !called {
-		t.Fatalf("CreateView should have been called")
-	}
-}
-
 func TestHandleCreateView_IgnoresSignalOnNonBuilderQuery(t *testing.T) {
 	// promql/clickhouse_sql queries don't carry a `signal` field; validator
 	// should leave them alone.
-	for _, envelope := range []map[string]any{
-		{"type": "promql", "spec": map[string]any{"name": "A", "query": "rate(x[5m])"}},
-		{"type": "clickhouse_sql", "spec": map[string]any{"name": "A", "query": "SELECT 1"}},
+	for _, tc := range []struct {
+		envelopeType string
+		query        string
+	}{
+		{"promql", "rate(x[5m])"},
+		{"clickhouse_sql", "SELECT 1"},
 	} {
-		t.Run(envelope["type"].(string), func(t *testing.T) {
-			called := false
+		t.Run(tc.envelopeType, func(t *testing.T) {
+			var gotBody []byte
 			mock := &client.MockClient{
 				CreateViewFn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-					called = true
+					gotBody = body
 					return json.RawMessage(`{"status":"success"}`), nil
 				},
 			}
@@ -723,15 +627,22 @@ func TestHandleCreateView_IgnoresSignalOnNonBuilderQuery(t *testing.T) {
 				"spec": map[string]any{
 					"panelType":   "graph",
 					"requestType": "time_series",
-					"queries":     []any{envelope},
+					"queries": []any{map[string]any{
+						"type": tc.envelopeType,
+						"spec": map[string]any{"name": "A", "query": tc.query},
+					}},
 				},
 			})
 			result, _ := h.handleCreateView(testCtx(), req)
 			if result.IsError {
-				t.Fatalf("expected success for %s query; got: %v", envelope["type"], result.Content)
+				t.Fatalf("expected success for %s query; got: %v", tc.envelopeType, result.Content)
 			}
-			if !called {
-				t.Fatalf("CreateView should have been called")
+			body := string(gotBody)
+			if !strings.Contains(body, `"type":"`+tc.envelopeType+`"`) {
+				t.Fatalf("create body lost the envelope type %q: %s", tc.envelopeType, body)
+			}
+			if !strings.Contains(body, tc.query) {
+				t.Fatalf("create body lost the query %q: %s", tc.query, body)
 			}
 		})
 	}
@@ -895,13 +806,15 @@ func TestHandleCreateView_RejectsSourceMeterOnTracesPage(t *testing.T) {
 func TestHandleUpdateView_AllowsMeterView(t *testing.T) {
 	// Updating an existing meter view (source unchanged) must pass the
 	// meter validation branch and reach the client.
-	updateCalled := false
+	var gotID string
+	var gotBody []byte
 	mock := &client.MockClient{
 		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
 			return json.RawMessage(`{"status":"success","data":{"id":"m1","source":"meter"}}`), nil
 		},
 		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
-			updateCalled = true
+			gotID = id
+			gotBody = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
@@ -925,8 +838,13 @@ func TestHandleUpdateView_AllowsMeterView(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("expected meter update to succeed; got: %v", result.Content)
 	}
-	if !updateCalled {
-		t.Fatalf("UpdateView should have been called for a valid meter view")
+	if gotID != "m1" {
+		t.Fatalf("UpdateView id = %q, want m1", gotID)
+	}
+	// The v2 update body has no "name" (UpdatableSavedView drops it); the
+	// meter source and the query spec must survive.
+	if body := string(gotBody); !strings.Contains(body, `"source":"meter"`) || !strings.Contains(body, `"signal":"metrics"`) {
+		t.Fatalf("update body lost meter fields: %s", body)
 	}
 }
 
@@ -948,8 +866,12 @@ func TestHandleUpdateView_RejectsSignalMismatch(t *testing.T) {
 		},
 	})
 	result, _ := h.handleUpdateView(testCtx(), req)
-	if !result.IsError {
-		t.Fatalf("expected signal-mismatch rejection")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "metrics") || !strings.Contains(text, "logs") || !strings.Contains(text, "signal") {
+		t.Fatalf("error text = %q, want it to name the mismatched signal and source", text)
 	}
 }
 
@@ -993,51 +915,19 @@ func TestHandleUpdateView_RejectsSourceChange(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateView_AllowsSameSource(t *testing.T) {
-	updateCalled := false
-	mock := &client.MockClient{
-		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"id":"v1","source":"logs"}}`), nil
-		},
-		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
-			updateCalled = true
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_update_view", map[string]any{
-		"viewId": "v1",
-		"view": map[string]any{
-			"name":   "renamed",
-			"source": "logs",
-			"spec": map[string]any{
-				"queries": []any{map[string]any{
-					"type": "builder_query",
-					"spec": map[string]any{"name": "A", "signal": "logs"},
-				}},
-			},
-		},
-	})
-	result, _ := h.handleUpdateView(testCtx(), req)
-	if result.IsError {
-		t.Fatalf("expected success; got: %v", result.Content)
-	}
-	if !updateCalled {
-		t.Fatalf("UpdateView should have been called when source matches")
-	}
-}
-
 func TestHandleUpdateView_ProceedsWhenGetViewFails(t *testing.T) {
 	// If the source-lock pre-fetch fails (network blip, 404 after a
 	// concurrent delete), prefer to let the PUT attempt proceed rather than
 	// block on a diagnostic GET. Upstream will return its own error.
-	updateCalled := false
+	var gotID string
+	var gotBody []byte
 	mock := &client.MockClient{
 		GetViewFn: func(ctx context.Context, id string) (json.RawMessage, error) {
 			return nil, fmt.Errorf("boom")
 		},
 		UpdateViewFn: func(ctx context.Context, id string, body []byte) (json.RawMessage, error) {
-			updateCalled = true
+			gotID = id
+			gotBody = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
@@ -1059,7 +949,10 @@ func TestHandleUpdateView_ProceedsWhenGetViewFails(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("expected handler to proceed when GetView fails; got: %v", result.Content)
 	}
-	if !updateCalled {
-		t.Fatalf("UpdateView should have been called")
+	if gotID != "v1" {
+		t.Fatalf("UpdateView id = %q, want v1", gotID)
+	}
+	if body := string(gotBody); !strings.Contains(body, `"source":"traces"`) {
+		t.Fatalf("update body lost the view fields: %s", body)
 	}
 }

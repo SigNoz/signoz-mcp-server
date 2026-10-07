@@ -198,4 +198,3 @@ func TestHandleCheckMetricUsage_AuthzFailureReturnsUpstreamCode(t *testing.T) {
 		})
 	}
 }
-

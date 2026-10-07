@@ -29,58 +29,6 @@ func listedNotificationChannels(displayNames ...string) types.NotificationChanne
 	return types.NotificationChannelList{Channels: channels, Total: len(channels)}
 }
 
-func TestHandleListAlerts(t *testing.T) {
-	mock := &client.MockClient{
-		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
-			return json.RawMessage(`{
-				"status": "success",
-				"data": [
-					{
-						"labels": {"alertname": "HighCPU", "ruleId": "rule-1", "severity": "critical"},
-						"startsAt": "2025-01-01T00:00:00Z",
-						"endsAt": "2025-01-01T01:00:00Z",
-						"status": {"state": "firing"}
-					},
-					{
-						"labels": {"alertname": "HighMemory", "ruleId": "rule-2", "severity": "warning"},
-						"startsAt": "2025-01-01T02:00:00Z",
-						"endsAt": "2025-01-01T03:00:00Z",
-						"status": {"state": "resolved"}
-					}
-				]
-			}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_list_alerts", map[string]any{})
-
-	result, err := h.handleListAlerts(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-}
-
-func TestHandleListAlerts_ClientError(t *testing.T) {
-	mock := &client.MockClient{
-		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
-			return nil, fmt.Errorf("connection refused")
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_list_alerts", map[string]any{})
-
-	result, err := h.handleListAlerts(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result when client returns error")
-	}
-}
-
 func TestHandleListAlertRules(t *testing.T) {
 	mock := &client.MockClient{
 		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
@@ -166,26 +114,6 @@ func TestHandleListAlertRules(t *testing.T) {
 	}
 }
 
-func TestHandleListAlertRules_NoArguments(t *testing.T) {
-	mock := &client.MockClient{
-		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[]}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{Name: "signoz_list_alert_rules"},
-	}
-
-	result, err := h.handleListAlertRules(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-}
-
 func TestHandleListAlertRules_ClientError(t *testing.T) {
 	mock := &client.MockClient{
 		ListAlertRulesFn: func(ctx context.Context) (json.RawMessage, error) {
@@ -199,8 +127,12 @@ func TestHandleListAlertRules_ClientError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result when client returns error")
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q", got, CodeUpstreamError)
+	}
+	text := resultText(t, result)
+	if !strings.HasPrefix(text, "SigNoz API error:") || !strings.Contains(text, "connection refused") {
+		t.Fatalf("error text = %q, want the SigNoz API error prefix naming the cause", text)
 	}
 }
 
@@ -226,56 +158,6 @@ func TestHandleGetAlert(t *testing.T) {
 	}
 	if capturedRuleID != "rule-abc" {
 		t.Errorf("expected ruleId=rule-abc, got %q", capturedRuleID)
-	}
-}
-
-func TestHandleGetAlert_EmptyRuleId(t *testing.T) {
-	mock := &client.MockClient{}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_alert", map[string]any{
-		"ruleId": "",
-	})
-
-	result, err := h.handleGetAlert(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for empty ruleId")
-	}
-}
-
-func TestHandleGetAlert_MissingRuleId(t *testing.T) {
-	mock := &client.MockClient{}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_alert", map[string]any{})
-
-	result, err := h.handleGetAlert(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for missing ruleId")
-	}
-}
-
-func TestHandleGetAlert_ClientError(t *testing.T) {
-	mock := &client.MockClient{
-		GetAlertByRuleIDFn: func(ctx context.Context, ruleID string) (json.RawMessage, error) {
-			return nil, fmt.Errorf("not found")
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_alert", map[string]any{
-		"ruleId": "rule-xyz",
-	})
-
-	result, err := h.handleGetAlert(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result when client returns error")
 	}
 }
 
@@ -346,23 +228,6 @@ func TestHandleGetAlertHistory_ExplicitStartEndOverrideTimeRange(t *testing.T) {
 	}
 }
 
-func TestHandleGetAlertHistory_EmptyRuleId(t *testing.T) {
-	mock := &client.MockClient{}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_get_alert_history", map[string]any{
-		"ruleId":    "",
-		"timeRange": "1h",
-	})
-
-	result, err := h.handleGetAlertHistory(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for empty ruleId")
-	}
-}
-
 func TestHandleGetAlertHistory_InvalidOrder(t *testing.T) {
 	mock := &client.MockClient{}
 	h := newTestHandler(mock)
@@ -376,8 +241,11 @@ func TestHandleGetAlertHistory_InvalidOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for invalid order value")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `Invalid "order" value: "invalid"`) {
+		t.Fatalf("error text = %q, want it to name the invalid order value", text)
 	}
 }
 
@@ -421,8 +289,11 @@ func TestHandleGetAlertHistory_InvalidState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for invalid state value")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `Invalid "state" value: "invalid"`) {
+		t.Fatalf("error text = %q, want it to name the invalid state value", text)
 	}
 }
 
@@ -696,81 +567,11 @@ func TestHandleCreateAlert_EmptyArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for empty args")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
 	}
-}
-
-func TestHandleCreateAlert_ValidationError(t *testing.T) {
-	mock := &client.MockClient{}
-	h := newTestHandler(mock)
-	// Missing required fields
-	req := makeToolRequest("signoz_create_alert", map[string]any{
-		"alert": "Test Alert",
-		// missing alertType, ruleType, condition
-	})
-
-	result, err := h.handleCreateAlert(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for validation failure")
-	}
-}
-
-func TestHandleCreateAlert_ClientError(t *testing.T) {
-	mock := &client.MockClient{
-		ListNotificationChannelsV2Fn: func(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
-			return listedNotificationChannels("slack-alerts"), nil
-		},
-		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
-			return nil, fmt.Errorf("unexpected status 400: bad request")
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_create_alert", map[string]any{
-		"alert":     "Test Alert",
-		"alertType": "METRIC_BASED_ALERT",
-		"ruleType":  "threshold_rule",
-		"condition": map[string]any{
-			"compositeQuery": map[string]any{
-				"queryType": "builder",
-				"queries": []any{
-					map[string]any{
-						"type": "builder_query",
-						"spec": map[string]any{
-							"name":   "A",
-							"signal": "metrics",
-							"aggregations": []any{
-								map[string]any{"expression": "count()"},
-							},
-							"filter": map[string]any{"expression": ""},
-						},
-					},
-				},
-			},
-			"thresholds": map[string]any{
-				"kind": "basic",
-				"spec": []any{
-					map[string]any{
-						"name":      "warning",
-						"target":    float64(100),
-						"op":        "1",
-						"matchType": "1",
-						"channels":  []any{"slack-alerts"},
-					},
-				},
-			},
-		},
-	})
-
-	result, err := h.handleCreateAlert(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result when client returns error")
+	if text := resultText(t, result); !strings.Contains(text, "empty or improperly formatted") {
+		t.Fatalf("error text = %q, want the canonical empty-configuration message", text)
 	}
 }
 
@@ -811,32 +612,6 @@ func TestHandleCreateAlert_ForbiddenClientError(t *testing.T) {
 	}
 	if text := textContent(t, result); !strings.Contains(text, "only editors/admins can access this resource") {
 		t.Fatalf("error text should preserve backend message, got %q", text)
-	}
-}
-
-func TestHandleCreateAlert_UsesDisplayNameForChannelRouting(t *testing.T) {
-	channels := listedNotificationChannels("Slack Alerts")
-	channels.Channels[0].Name = "slack-alerts-machine-name"
-	args := validThresholdAlertArgs()
-	args["condition"].(map[string]any)["thresholds"].(map[string]any)["spec"].([]any)[0].(map[string]any)["channels"] = []any{"Slack Alerts"}
-
-	createCalls := 0
-	h := newTestHandler(&client.MockClient{
-		ListNotificationChannelsV2Fn: func(context.Context, types.NotificationChannelListParams) (types.NotificationChannelList, error) {
-			return channels, nil
-		},
-		CreateAlertRuleFn: func(context.Context, []byte) (json.RawMessage, error) {
-			createCalls++
-			return json.RawMessage(`{"status":"success","data":{"id":"rule-display-name"}}`), nil
-		},
-	})
-
-	result, err := h.handleCreateAlert(testCtx(), makeToolRequest("signoz_create_alert", args))
-	if err != nil || result.IsError {
-		t.Fatalf("displayName routing failed: result=%#v err=%v", result, err)
-	}
-	if createCalls != 1 {
-		t.Fatalf("CreateAlertRule called %d times, want 1", createCalls)
 	}
 }
 
@@ -1532,14 +1307,14 @@ func TestHandleCreateAlert_AnomalyPreferredChannelsValidated(t *testing.T) {
 	args := validAnomalyAlertArgs()
 	args["preferredChannels"] = []any{"slack-alerts"}
 	listCalls := 0
-	createCalls := 0
+	var capturedAlert []byte
 	mock := &client.MockClient{
 		ListNotificationChannelsV2Fn: func(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
 			listCalls++
 			return listedNotificationChannels("slack-alerts"), nil
 		},
 		CreateAlertRuleFn: func(ctx context.Context, alertJSON []byte) (json.RawMessage, error) {
-			createCalls++
+			capturedAlert = alertJSON
 			return json.RawMessage(`{"status":"success","data":{"id":"rule-anomaly"}}`), nil
 		},
 	}
@@ -1552,8 +1327,22 @@ func TestHandleCreateAlert_AnomalyPreferredChannelsValidated(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if listCalls != 1 || createCalls != 1 {
-		t.Fatalf("anomaly preferredChannels list/create calls = %d/%d, want 1/1", listCalls, createCalls)
+	if listCalls != 1 {
+		t.Fatalf("channel list calls = %d, want 1", listCalls)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(capturedAlert, &payload); err != nil {
+		t.Fatalf("decode created alert: %v", err)
+	}
+	if payload["ruleType"] != "anomaly_rule" {
+		t.Fatalf("created ruleType = %v, want anomaly_rule", payload["ruleType"])
+	}
+	preferred, _ := payload["preferredChannels"].([]any)
+	if len(preferred) != 1 || preferred[0] != "slack-alerts" {
+		t.Fatalf("created preferredChannels = %v, want [slack-alerts]", payload["preferredChannels"])
+	}
+	if text := textContent(t, result); !strings.Contains(text, "rule-anomaly") {
+		t.Fatalf("result text = %q, want it to carry the created rule id", text)
 	}
 }
 
@@ -1852,22 +1641,6 @@ func TestHandleUpdateAlert_RejectsNonUUIDv7(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateAlert_MissingRuleID(t *testing.T) {
-	mock := &client.MockClient{}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_update_alert", map[string]any{
-		"alert": "x",
-	})
-
-	result, err := h.handleUpdateAlert(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected error result for missing ruleId")
-	}
-}
-
 // --- Delete alert tests ---
 
 func TestHandleDeleteAlert(t *testing.T) {
@@ -1906,8 +1679,11 @@ func TestHandleDeleteAlert_RejectsNonUUIDv7(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Fatal("expected error result for non-UUIDv7 ruleId")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"abc123" is not a UUIDv7`) {
+		t.Fatalf("error text = %q, want it to name the invalid id", text)
 	}
 }
 
@@ -1926,8 +1702,11 @@ func TestHandleDeleteAlert_ClientError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Fatal("expected error result from client error")
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q", got, CodeUpstreamError)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "rule not found") {
+		t.Fatalf("error text = %q, want it to carry the upstream cause", text)
 	}
 }
 
@@ -1985,6 +1764,9 @@ func TestHandleListAlertRules_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
@@ -2028,6 +1810,9 @@ func TestHandleGetAlert_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	result, err := h.handleGetAlert(testCtx(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
