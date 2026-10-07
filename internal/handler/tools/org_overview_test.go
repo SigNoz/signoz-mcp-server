@@ -14,6 +14,32 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
+// wantTrue, wantEq, and wantPtr assert one projection field each, so a failure
+// names the exact field and both values instead of dumping a whole struct.
+func wantTrue(t *testing.T, field string, got bool) {
+	t.Helper()
+	if !got {
+		t.Fatalf("%s = false, want true", field)
+	}
+}
+
+func wantEq[T comparable](t *testing.T, field string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", field, got, want)
+	}
+}
+
+func wantPtr[T comparable](t *testing.T, field string, got *T, want T) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("%s = nil, want %v", field, want)
+	}
+	if *got != want {
+		t.Fatalf("%s = %v, want %v", field, *got, want)
+	}
+}
+
 func TestHandleGetOrgOverview_ProjectsEveryCurrentFamilyAndPreservesAllSourceStats(t *testing.T) {
 	const largeCount = uint64(9007199254740993)
 	payload := completeOrgOverviewPayload(nil)
@@ -48,69 +74,80 @@ func TestHandleGetOrgOverview_ProjectsEveryCurrentFamilyAndPreservesAllSourceSta
 	if err := json.Unmarshal([]byte(outputJSON), &got); err != nil {
 		t.Fatalf("decode typed overview: %v", err)
 	}
-	if !got.Data.Signals.Logs.Available || got.Data.Signals.Logs.Count == nil || *got.Data.Signals.Logs.Count != 123 || got.Data.Signals.Logs.LastObservedTime == nil || *got.Data.Signals.Logs.LastObservedTime != "2026-08-02T10:00:00Z" {
-		t.Fatalf("logs projection = %#v", got.Data.Signals.Logs)
-	}
-	if !got.Data.Signals.Metrics.Available || got.Data.Signals.Metrics.Count == nil || *got.Data.Signals.Metrics.Count != 456 || got.Data.Signals.Metrics.Infrastructure.SystemExists == nil || !*got.Data.Signals.Metrics.Infrastructure.SystemExists || got.Data.Signals.Metrics.Infrastructure.K8sExists == nil || *got.Data.Signals.Metrics.Infrastructure.K8sExists {
-		t.Fatalf("metrics projection = %#v", got.Data.Signals.Metrics)
-	}
-	if !got.Data.Signals.Traces.Available || got.Data.Signals.Traces.Count == nil || *got.Data.Signals.Traces.Count != 789 {
-		t.Fatalf("traces projection = %#v", got.Data.Signals.Traces)
-	}
-	if !got.Data.Dashboards.Available || got.Data.Dashboards.Count == nil || *got.Data.Dashboards.Count != largeCount || got.Data.Dashboards.PublicCount == nil || *got.Data.Dashboards.PublicCount != 1 || got.Data.Dashboards.Panels.Count == nil || *got.Data.Dashboards.Panels.Count != 7 {
-		t.Fatalf("dashboard projection = %#v", got.Data.Dashboards)
-	}
-	if !got.Data.Alerts.Rules.Available || got.Data.Alerts.Rules.Count == nil || *got.Data.Alerts.Rules.Count != 3 || got.Data.Alerts.Rules.ByType["anomaly"] != 1 || got.Data.Alerts.Rules.BySignal["metric"] != 2 {
-		t.Fatalf("alert rules projection = %#v", got.Data.Alerts.Rules)
-	}
-	if !got.Data.Alerts.Runtime.Available || got.Data.Alerts.Runtime.FiringRuleCount == nil || *got.Data.Alerts.Runtime.FiringRuleCount != 1 || got.Data.Alerts.Runtime.LastFiredTimeUnix == nil || *got.Data.Alerts.Runtime.LastFiredTimeUnix != 1785668400 {
-		t.Fatalf("alert runtime projection = %#v", got.Data.Alerts.Runtime)
-	}
-	if !got.Data.Alerts.NotificationChannels.Available || got.Data.Alerts.NotificationChannels.Count == nil || *got.Data.Alerts.NotificationChannels.Count != 5 || got.Data.Alerts.NotificationChannels.ByType["slack"] != 1 {
-		t.Fatalf("notification channel projection = %#v", got.Data.Alerts.NotificationChannels)
-	}
+	wantTrue(t, "signals.logs.available", got.Data.Signals.Logs.Available)
+	wantPtr(t, "signals.logs.count", got.Data.Signals.Logs.Count, 123)
+	wantPtr(t, "signals.logs.lastObservedTime", got.Data.Signals.Logs.LastObservedTime, "2026-08-02T10:00:00Z")
+	wantTrue(t, "signals.metrics.available", got.Data.Signals.Metrics.Available)
+	wantPtr(t, "signals.metrics.count", got.Data.Signals.Metrics.Count, 456)
+	wantPtr(t, "signals.metrics.infrastructure.systemExists", got.Data.Signals.Metrics.Infrastructure.SystemExists, true)
+	wantPtr(t, "signals.metrics.infrastructure.k8sExists", got.Data.Signals.Metrics.Infrastructure.K8sExists, false)
+	wantTrue(t, "signals.traces.available", got.Data.Signals.Traces.Available)
+	wantPtr(t, "signals.traces.count", got.Data.Signals.Traces.Count, 789)
+	wantTrue(t, "dashboards.available", got.Data.Dashboards.Available)
+	wantPtr(t, "dashboards.count", got.Data.Dashboards.Count, largeCount)
+	wantPtr(t, "dashboards.publicCount", got.Data.Dashboards.PublicCount, 1)
+	wantPtr(t, "dashboards.panels.count", got.Data.Dashboards.Panels.Count, 7)
+	wantTrue(t, "alerts.rules.available", got.Data.Alerts.Rules.Available)
+	wantPtr(t, "alerts.rules.count", got.Data.Alerts.Rules.Count, 3)
+	wantEq(t, `alerts.rules.byType["anomaly"]`, got.Data.Alerts.Rules.ByType["anomaly"], 1)
+	wantEq(t, `alerts.rules.bySignal["metric"]`, got.Data.Alerts.Rules.BySignal["metric"], 2)
+	wantTrue(t, "alerts.runtime.available", got.Data.Alerts.Runtime.Available)
+	wantPtr(t, "alerts.runtime.firingRuleCount", got.Data.Alerts.Runtime.FiringRuleCount, 1)
+	wantPtr(t, "alerts.runtime.lastFiredTimeUnix", got.Data.Alerts.Runtime.LastFiredTimeUnix, 1785668400)
+	wantTrue(t, "alerts.notificationChannels.available", got.Data.Alerts.NotificationChannels.Available)
+	wantPtr(t, "alerts.notificationChannels.count", got.Data.Alerts.NotificationChannels.Count, 5)
+	wantEq(t, `alerts.notificationChannels.byType["slack"]`, got.Data.Alerts.NotificationChannels.ByType["slack"], 1)
 	if _, exists := got.Data.Alerts.NotificationChannels.ByType["slack.enabled"]; exists {
 		t.Fatalf("deeper future channel keys must stay source-only: %#v", got.Data.Alerts.NotificationChannels.ByType)
 	}
-	if !got.Data.Views.Available || got.Data.Views.Count == nil || *got.Data.Views.Count != 4 || got.Data.Views.BySource["meter"] != 1 {
-		t.Fatalf("saved-view projection = %#v", got.Data.Views)
-	}
-	if !got.Data.LogPipelines.Available || got.Data.LogPipelines.Count == nil || *got.Data.LogPipelines.Count != 2 || got.Data.LogPipelines.EnabledCount == nil || *got.Data.LogPipelines.EnabledCount != 1 {
-		t.Fatalf("log-pipeline projection = %#v", got.Data.LogPipelines)
-	}
+	wantTrue(t, "views.available", got.Data.Views.Available)
+	wantPtr(t, "views.count", got.Data.Views.Count, 4)
+	wantEq(t, `views.bySource["meter"]`, got.Data.Views.BySource["meter"], 1)
+	wantTrue(t, "logPipelines.available", got.Data.LogPipelines.Available)
+	wantPtr(t, "logPipelines.count", got.Data.LogPipelines.Count, 2)
+	wantPtr(t, "logPipelines.enabledCount", got.Data.LogPipelines.EnabledCount, 1)
 	aws := got.Data.CloudIntegrations.Providers["aws"]
 	azure := got.Data.CloudIntegrations.Providers["azure"]
-	if got.Data.CloudIntegrations.SourceAvailability != "complete" || !aws.DataAvailable || aws.ConnectedAccounts == nil || *aws.ConnectedAccounts != 4 || !azure.DataAvailable || azure.ConnectedAccounts == nil || *azure.ConnectedAccounts != 0 {
-		t.Fatalf("cloud integrations projection = %#v", got.Data.CloudIntegrations)
-	}
-	if !got.Data.Users.Available || got.Data.Users.Count == nil || *got.Data.Users.Count != 99 || got.Data.Users.ActiveCount == nil || *got.Data.Users.ActiveCount != 90 || got.Data.Users.DeletedCount == nil || *got.Data.Users.DeletedCount != 4 || got.Data.Users.PendingInviteCount == nil || *got.Data.Users.PendingInviteCount != 5 {
-		t.Fatalf("users projection = %#v", got.Data.Users)
-	}
-	if !got.Data.Authentication.Tokens.Available || got.Data.Authentication.Tokens.Count == nil || *got.Data.Authentication.Tokens.Count != 2 || got.Data.Authentication.Tokens.LastObservedTimeUnix == nil || *got.Data.Authentication.Tokens.LastObservedTimeUnix != 1785661200 || !got.Data.Authentication.Domains.Available || got.Data.Authentication.Domains.Count == nil || *got.Data.Authentication.Domains.Count != 1 || got.Data.Authentication.Domains.ByType["google_auth"] != 1 {
-		t.Fatalf("authentication projection = %#v", got.Data.Authentication)
-	}
-	if !got.Data.ServiceAccounts.Available || got.Data.ServiceAccounts.Count == nil || *got.Data.ServiceAccounts.Count != 6 || got.Data.ServiceAccounts.KeyCount == nil || *got.Data.ServiceAccounts.KeyCount != 7 {
-		t.Fatalf("service-account projection = %#v", got.Data.ServiceAccounts)
-	}
-	if !got.Data.Authorization.Roles.Available || got.Data.Authorization.Roles.Count == nil || *got.Data.Authorization.Roles.Count != 3 || got.Data.Authorization.Roles.ByType["custom"] != 1 || got.Data.Authorization.Roles.ByType["managed"] != 2 {
-		t.Fatalf("authorization projection = %#v", got.Data.Authorization)
-	}
+	wantEq(t, "cloudIntegrations.sourceAvailability", got.Data.CloudIntegrations.SourceAvailability, "complete")
+	wantTrue(t, `cloudIntegrations.providers["aws"].dataAvailable`, aws.DataAvailable)
+	wantPtr(t, `cloudIntegrations.providers["aws"].connectedAccounts`, aws.ConnectedAccounts, 4)
+	wantTrue(t, `cloudIntegrations.providers["azure"].dataAvailable`, azure.DataAvailable)
+	wantPtr(t, `cloudIntegrations.providers["azure"].connectedAccounts`, azure.ConnectedAccounts, 0)
+	wantTrue(t, "users.available", got.Data.Users.Available)
+	wantPtr(t, "users.count", got.Data.Users.Count, 99)
+	wantPtr(t, "users.activeCount", got.Data.Users.ActiveCount, 90)
+	wantPtr(t, "users.deletedCount", got.Data.Users.DeletedCount, 4)
+	wantPtr(t, "users.pendingInviteCount", got.Data.Users.PendingInviteCount, 5)
+	wantTrue(t, "authentication.tokens.available", got.Data.Authentication.Tokens.Available)
+	wantPtr(t, "authentication.tokens.count", got.Data.Authentication.Tokens.Count, 2)
+	wantPtr(t, "authentication.tokens.lastObservedTimeUnix", got.Data.Authentication.Tokens.LastObservedTimeUnix, 1785661200)
+	wantTrue(t, "authentication.domains.available", got.Data.Authentication.Domains.Available)
+	wantPtr(t, "authentication.domains.count", got.Data.Authentication.Domains.Count, 1)
+	wantEq(t, `authentication.domains.byType["google_auth"]`, got.Data.Authentication.Domains.ByType["google_auth"], 1)
+	wantTrue(t, "serviceAccounts.available", got.Data.ServiceAccounts.Available)
+	wantPtr(t, "serviceAccounts.count", got.Data.ServiceAccounts.Count, 6)
+	wantPtr(t, "serviceAccounts.keyCount", got.Data.ServiceAccounts.KeyCount, 7)
+	wantTrue(t, "authorization.roles.available", got.Data.Authorization.Roles.Available)
+	wantPtr(t, "authorization.roles.count", got.Data.Authorization.Roles.Count, 3)
+	wantEq(t, `authorization.roles.byType["custom"]`, got.Data.Authorization.Roles.ByType["custom"], 1)
+	wantEq(t, `authorization.roles.byType["managed"]`, got.Data.Authorization.Roles.ByType["managed"], 2)
 	if _, exists := got.Data.Authorization.Roles.ByType["custom.scope"]; exists {
 		t.Fatalf("deeper future role keys must stay source-only: %#v", got.Data.Authorization.Roles.ByType)
 	}
-	if got.Data.License.ID == nil || *got.Data.License.ID != "019fc113-6e1f-7e91-8a4c-47013e400dfa" || got.Data.License.PlanName == nil || *got.Data.License.PlanName != "Enterprise" || got.Data.License.StateName == nil || *got.Data.License.StateName != "active" || got.Data.License.FreeUntil == nil || *got.Data.License.FreeUntil != "2026-09-01T00:00:00Z" {
-		t.Fatalf("license projection = %#v", got.Data.License)
-	}
-	if got.Data.Configuration.SQLStoreProvider == nil || *got.Data.Configuration.SQLStoreProvider != "postgres" || got.Data.Configuration.TokenizerProvider == nil || *got.Data.Configuration.TokenizerProvider != "opaque" || got.Data.Configuration.CacheProvider == nil || *got.Data.Configuration.CacheProvider != "redis" {
-		t.Fatalf("configuration projection = %#v", got.Data.Configuration)
-	}
+	wantPtr(t, "license.id", got.Data.License.ID, "019fc113-6e1f-7e91-8a4c-47013e400dfa")
+	wantPtr(t, "license.planName", got.Data.License.PlanName, "Enterprise")
+	wantPtr(t, "license.stateName", got.Data.License.StateName, "active")
+	wantPtr(t, "license.freeUntil", got.Data.License.FreeUntil, "2026-09-01T00:00:00Z")
+	wantPtr(t, "configuration.sqlStoreProvider", got.Data.Configuration.SQLStoreProvider, "postgres")
+	wantPtr(t, "configuration.tokenizerProvider", got.Data.Configuration.TokenizerProvider, "opaque")
+	wantPtr(t, "configuration.cacheProvider", got.Data.Configuration.CacheProvider, "redis")
 
-	if got.Data.Metadata.ReportedStatCount != len(sourceStats) || got.Data.Metadata.ProjectedStatCount != len(sourceStats)-5 || got.Data.Metadata.UnprojectedStatCount != 5 {
-		t.Fatalf("projection counts do not reconcile: %#v", got.Data.Metadata)
-	}
-	if got.Data.Metadata.ProjectionPartial || len(got.Data.Metadata.IncompleteGroups) != 0 || len(got.Data.Metadata.InvalidProjectionFields) != 0 {
-		t.Fatalf("complete typed projection reported partial metadata: %#v", got.Data.Metadata)
-	}
+	wantEq(t, "metadata.reportedStatCount", got.Data.Metadata.ReportedStatCount, len(sourceStats))
+	wantEq(t, "metadata.projectedStatCount", got.Data.Metadata.ProjectedStatCount, len(sourceStats)-5)
+	wantEq(t, "metadata.unprojectedStatCount", got.Data.Metadata.UnprojectedStatCount, 5)
+	wantEq(t, "metadata.projectionPartial", got.Data.Metadata.ProjectionPartial, false)
+	wantEq(t, "metadata.incompleteGroups", len(got.Data.Metadata.IncompleteGroups), 0)
+	wantEq(t, "metadata.invalidProjectionFields", len(got.Data.Metadata.InvalidProjectionFields), 0)
 	if strings.Contains(logs.String(), "level=WARN") {
 		t.Fatalf("unknown future object/array/null fields must not trigger WARN: %s", logs.String())
 	}

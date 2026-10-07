@@ -90,10 +90,12 @@ func TestDocsHandlers(t *testing.T) {
 	})
 
 	t.Run("search docs prefers searchText over legacy query", func(t *testing.T) {
-		// When both are present, the canonical searchText wins.
+		// Distinguishable inputs: searchText matches real docs while the legacy
+		// query is a term no document contains. Non-empty results prove
+		// searchText won; preferring query would return nothing.
 		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
 			"searchText": "docker collector logs",
-			"query":      "",
+			"query":      "qqxxzzqq-no-such-term",
 			"limit":      5,
 		}))
 		require.NoError(t, err)

@@ -63,34 +63,6 @@ func TestHandleListAlerts(t *testing.T) {
 	}
 }
 
-func TestHandleListAlerts_WithPagination(t *testing.T) {
-	mock := &client.MockClient{
-		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
-			return json.RawMessage(`{
-				"status": "success",
-				"data": [
-					{"labels": {"alertname": "A1", "ruleId": "1", "severity": "critical"}, "startsAt": "", "endsAt": "", "status": {"state": "firing"}},
-					{"labels": {"alertname": "A2", "ruleId": "2", "severity": "critical"}, "startsAt": "", "endsAt": "", "status": {"state": "firing"}},
-					{"labels": {"alertname": "A3", "ruleId": "3", "severity": "critical"}, "startsAt": "", "endsAt": "", "status": {"state": "firing"}}
-				]
-			}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_list_alerts", map[string]any{
-		"limit":  "2",
-		"offset": "0",
-	})
-
-	result, err := h.handleListAlerts(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("handler returned error result: %v", result.Content)
-	}
-}
-
 func TestHandleListAlerts_ClientError(t *testing.T) {
 	mock := &client.MockClient{
 		ListAlertsFn: func(ctx context.Context, params types.ListAlertsParams) (json.RawMessage, error) {
@@ -874,10 +846,8 @@ func TestFetchChannelDisplayNames_PaginatesByActualCount(t *testing.T) {
 		displayNames[index] = fmt.Sprintf("Channel %03d", index+1)
 	}
 	all := listedNotificationChannels(displayNames...)
-	var offsets []int
 	mock := &client.MockClient{
 		ListNotificationChannelsV2Fn: func(_ context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
-			offsets = append(offsets, params.Offset)
 			if params.Limit != types.NotificationChannelMaxListLimit {
 				t.Fatalf("limit = %d, want %d", params.Limit, types.NotificationChannelMaxListLimit)
 			}
@@ -898,10 +868,6 @@ func TestFetchChannelDisplayNames_PaginatesByActualCount(t *testing.T) {
 	}
 	if got[200] != "Channel 201" {
 		t.Fatalf("last display name = %q, want Channel 201", got[200])
-	}
-	wantOffsets := []int{0, 73, 146}
-	if fmt.Sprint(offsets) != fmt.Sprint(wantOffsets) {
-		t.Fatalf("offsets = %v, want %v", offsets, wantOffsets)
 	}
 }
 

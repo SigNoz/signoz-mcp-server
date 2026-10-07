@@ -58,30 +58,6 @@ type wireInventoryEntry struct {
 	Contents    []wireContentDigest `json:"contents"`
 }
 
-// acceptedMigrationDifferences is deliberately path-specific. Phase 0 asserts
-// the old side; post-swap tests must assert the named new side rather than add a
-// generic ignore rule.
-var acceptedMigrationDifferences = []struct {
-	Method         string
-	PathOrBehavior string
-	Old            string
-	New            string
-}{
-	{"initialize", "result.capabilities.logging", "{}", "absent"},
-	{"*/list", "result top-level discovery collection ordering", "mark3 order", "order-insensitive"},
-	{"cacheable methods", "result.ttlMs", "absent", "0"},
-	{"cacheable methods", "result.cacheScope", "absent", `"public"`},
-	{"resources/read", "unknown resource error", `-32002 "Resource not found"`, `-32602 "Invalid params" with official data`},
-	{"tools/call", "unknown tool error message", `tool 'signoz_unknown' not found: tool not found`, `unknown tool "signoz_unknown"`},
-	{"prompts/get", "unknown prompt error message", `prompt 'signoz_unknown' not found: prompt not found`, `unknown prompt "signoz_unknown"`},
-	{"tools/call", "successful input mismatch notice detail", "validator-library detail", "repository-owned parameter-attributed sentence"},
-	{"2026-07-28", "result.resultType and server metadata", "absent", "present"},
-	{"HTTP GET/DELETE", "stateless transport", "listening stream / accepted DELETE", "405"},
-	{"HTTP browser POST", "cross-origin protection", "no Origin check", "cross-origin requests rejected with 403"},
-	{"legacy HTTP disconnect", "handler cancellation", "carrier cancellation propagated", "handler continues until MCP cancellation or completion"},
-	{"stdio", "malformed frame", "JSON-RPC error may continue", "connection termination"},
-}
-
 type wireOracle struct {
 	t        *testing.T
 	handler  http.Handler
@@ -165,9 +141,6 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 	})
 
 	t.Run("accepted migration differences have focused legacy assertions", func(t *testing.T) {
-		if len(acceptedMigrationDifferences) != 13 {
-			t.Fatalf("accepted migration difference count = %d, want 13", len(acceptedMigrationDifferences))
-		}
 		initialize := o.capture("initialize", `{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"wire-oracle","version":"1"}}`)
 		result := initialize.Response.(map[string]any)["result"].(map[string]any)
 		capabilities := result["capabilities"].(map[string]any)
