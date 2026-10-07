@@ -1965,27 +1965,37 @@ func TestSharedTransportPoolTuning(t *testing.T) {
 // (never silently truncated into invalid JSON), bounding single-request memory
 // on the shared multi-tenant pod.
 func TestDoRequest_RejectsOversizeResponse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		// Stream just past the cap without buffering it all server-side.
-		chunk := bytes.Repeat([]byte("a"), 1<<20) // 1 MiB
-		var written int64
-		for written <= maxResponseBytes {
-			n, err := w.Write(chunk)
-			if err != nil {
-				return
+	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				// Stream just past the cap without buffering it all server-side.
+				chunk := bytes.Repeat([]byte("a"), 1<<20) // 1 MiB
+				var written int64
+				for written <= maxResponseBytes {
+					n, err := w.Write(chunk)
+					if err != nil {
+						return
+					}
+					written += int64(n)
+				}
+			}))
+			defer server.Close()
+
+			var logBuf bytes.Buffer
+			client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
+			_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
+			require.Error(t, err)
+			if status == http.StatusOK {
+				assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+			} else {
+				var statusErr *HTTPStatusError
+				require.ErrorAs(t, err, &statusErr)
+				assert.Equal(t, status, statusErr.StatusCode)
+				assert.Empty(t, statusErr.Body)
 			}
-			written += int64(n)
-		}
-	}))
-	defer server.Close()
-
-	var logBuf bytes.Buffer
-	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, 30*time.Second)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+		})
+	}
 }
 
 // TestDoRequest_AllowsLargeUnderCapResponse verifies a large-but-under-cap
