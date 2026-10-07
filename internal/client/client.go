@@ -397,128 +397,34 @@ func (s *SigNoz) doRequestWithReplayPolicy(ctx context.Context, method, reqURL s
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	var lastErr error
-	errorEnvelopeDriftWarned := false
-	wait := retryBaseWait
-	maxAttempts := 1
-	if replaySafe {
-		maxAttempts = maxRetries
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(withReplaySafe(ctx, replaySafe), method, reqURL, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	for attempt := range maxAttempts {
-		var reqBody io.Reader
-		if body != nil {
-			reqBody = bytes.NewReader(body)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-
-		s.setRequestHeaders(ctx, req, true)
-
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			// Don't retry on context cancellation.
-			if ctx.Err() != nil {
-				return nil, fmt.Errorf("request cancelled: %w", err)
-			}
-			lastErr = fmt.Errorf("failed to do request: %w", err)
-			if attempt < maxAttempts-1 {
-				s.logger.DebugContext(ctx, "Request failed, will retry",
-					slog.String("url", reqURL),
-					slog.Int("attempt", attempt+1),
-					logpkg.ErrAttr(err))
-				select {
-				case <-ctx.Done():
-					return nil, fmt.Errorf("retry aborted: %w", lastErr)
-				case <-time.After(wait):
-				}
-				wait *= retryMultiply
-				continue
-			}
-			if maxAttempts > 1 {
-				s.logger.WarnContext(ctx, "Request failed after retries exhausted",
-					slog.String("url", reqURL),
-					slog.Int("attempt", attempt+1),
-					logpkg.ErrAttr(err))
-			} else {
-				s.logger.WarnContext(ctx, "Request failed and method is not replay-safe",
-					slog.String("url", reqURL),
-					slog.String("method", method),
-					logpkg.ErrAttr(err))
-			}
-			break
-		}
-
-		// Read one byte past the cap to detect (and reject, not truncate) an
-		// over-limit response. Oversize is terminal, not retried.
-		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-		_ = resp.Body.Close()
-
-		if readErr != nil {
-			return nil, fmt.Errorf("failed to read response body: %w", readErr)
-		}
-		if int64(len(respBody)) > maxResponseBytes {
-			return nil, fmt.Errorf("response body (status %d) exceeds maximum allowed size of %d bytes; if this was a data query, narrow it (reduce limit, time range, or cardinality)", resp.StatusCode, maxResponseBytes)
-		}
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return respBody, nil
-		}
-
-		statusErr := newHTTPStatusError(resp.StatusCode, respBody)
-		if !errorEnvelopeDriftWarned {
-			parsedError := ParseUpstreamErrorBody(statusErr.Body)
-			if parsedError.StatusError && (!parsedError.Recognized || len(parsedError.DriftFields) > 0) {
-				attrs := []any{
-					slog.Int("status", resp.StatusCode),
-					slog.Int("attempt", attempt+1),
-					slog.Int("response.body.size_bytes", len(respBody)),
-					slog.Bool("recognized", parsedError.Recognized),
-				}
-				if len(parsedError.DriftFields) > 0 {
-					attrs = append(attrs, slog.Any("fields", append([]string(nil), parsedError.DriftFields...)))
-				}
-				s.logger.WarnContext(ctx, errorEnvelopeWarning, attrs...)
-				errorEnvelopeDriftWarned = true
-			}
-		}
-
-		// Retry on transient server errors.
-		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts-1 {
-			lastErr = statusErr
-			s.logger.DebugContext(ctx, "Retryable status, will retry",
-				slog.String("url", reqURL),
-				slog.Int("status", resp.StatusCode),
-				slog.Int("attempt", attempt+1),
-				slog.Int("response.body.size_bytes", len(respBody)))
-			select {
-			case <-ctx.Done():
-				return nil, fmt.Errorf("retry aborted: %w", lastErr)
-			case <-time.After(wait):
-			}
-			wait *= retryMultiply
-			continue
-		}
-
-		retryable := replaySafe && isRetryableStatus(resp.StatusCode)
-		attrs := []any{
-			slog.String("url", reqURL),
-			slog.Int("status", resp.StatusCode),
-			slog.Int("attempt", attempt+1),
-			slog.Int("response.body.size_bytes", len(respBody)),
-			slog.Bool("retryable", retryable),
-		}
-		if retryable {
-			attrs = append(attrs, slog.Bool("retries_exhausted", true))
-		}
-		s.logger.WarnContext(ctx, "SigNoz request returned unexpected status", attrs...)
-		return nil, statusErr
+	resp, err := doer{s: s}.Do(req)
+	if err != nil {
+		return nil, err
 	}
+	return readResponse(resp)
+}
 
-	return nil, lastErr
+// readResponse returns a buffered response's body on 2xx and an HTTPStatusError
+// otherwise.
+func readResponse(resp *http.Response) (json.RawMessage, error) {
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return body, nil
+	}
+	return nil, newHTTPStatusError(resp.StatusCode, body)
 }
 
 func newHTTPStatusError(statusCode int, respBody []byte) *HTTPStatusError {

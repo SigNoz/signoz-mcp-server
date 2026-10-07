@@ -127,6 +127,27 @@ HIT --> CLIENT
 LOOKUP -.->|read/write| LRU_C
 ```
 
+### SigNoz API client layers
+
+`internal/client` is the only package that calls SigNoz. Every API call except credential
+validation goes through one transport, the `doer` in `internal/client/doer.go`, which stamps the auth and custom headers, retries
+replay-safe requests on transport errors and 429/502/503/504, and buffers each response under a
+64 MiB cap. Requests reach the `doer` in one of two ways:
+
+- **Generated client** (`internal/apiclient`): built by `make gen` with
+  [skaff](https://github.com/SigNoz/skaff) from the operations in `skaff.yml` and the OpenAPI spec of
+  the pinned SigNoz release. It builds paths, query strings, and request bodies. Calls go through
+  `callAPI`, which also rejects a 2xx HTML page (a SigNoz version without the route, or an auth
+  proxy's login page) with `ErrNonJSONResponse`. Generated files are never hand-edited; regenerate
+  after bumping `SIGNOZ_SPEC_REF`, `SKAFF_VERSION`, or `skaff.yml`.
+- **Hand-written requests** (`doRequest`): for areas not yet moved to the generated client and for
+  routes missing from the spec, such as the services endpoints.
+
+Both paths return the raw response body. Tools pass it through or parse only the fields they need,
+so fields the spec doesn't model still reach clients. Request bodies go through the generated
+`WithBody` methods with the bytes the tool built, and the generated enum `Valid()` helpers are
+never called, so SigNoz stays the only validator.
+
 ## MCP Runtime and Transports
 
 The runtime is `github.com/modelcontextprotocol/go-sdk` v1.8.0. The same

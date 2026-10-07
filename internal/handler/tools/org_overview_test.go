@@ -435,33 +435,40 @@ func TestHandleGetOrgOverview_AuthzFailureReturnsUpstreamCode(t *testing.T) {
 	}
 }
 
-func TestHandleGetOrgOverview_NotFoundIncludesConditionalRecovery(t *testing.T) {
-	for _, body := range []string{
-		`{"status":"error","error":{"code":"not_found","message":"route not found"}}`,
-		`<html><body>workspace not found</body></html>`,
+func TestHandleGetOrgOverview_UnavailableRouteIncludesConditionalRecovery(t *testing.T) {
+	notFound := func(body string) error {
+		return fmt.Errorf("organization overview: %w", &client.HTTPStatusError{StatusCode: http.StatusNotFound, Body: body})
+	}
+	for _, tc := range []struct {
+		name     string
+		err      error
+		wantCode string
+	}{
+		{name: "json 404", err: notFound(`{"status":"error","error":{"code":"not_found","message":"route not found"}}`), wantCode: CodeNotFound},
+		{name: "html 404", err: notFound(`<html><body>workspace not found</body></html>`), wantCode: CodeNotFound},
+		{name: "html 200", err: fmt.Errorf("organization overview: %w", client.ErrNonJSONResponse), wantCode: CodeUpstreamError},
 	} {
-		h := newTestHandler(&client.MockClient{
-			GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
-				return nil, fmt.Errorf("organization overview: %w", &client.HTTPStatusError{
-					StatusCode: http.StatusNotFound,
-					Body:       body,
-				})
-			},
-		})
+		t.Run(tc.name, func(t *testing.T) {
+			h := newTestHandler(&client.MockClient{
+				GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
+					return nil, tc.err
+				},
+			})
 
-		result, err := h.handleGetOrgOverview(testCtx(), makeToolRequest("signoz_get_org_overview", map[string]any{}))
-		if err != nil || !result.IsError {
-			t.Fatalf("expected coded tool error: result=%#v err=%v", result, err)
-		}
-		if code := resultCode(t, result); code != CodeNotFound {
-			t.Fatalf("code = %q, want %q", code, CodeNotFound)
-		}
-		text := textContent(t, result)
-		for _, want := range []string{"Verify that the configured SigNoz URL points to an active deployment", "signoz_list_dashboards", "signoz_list_alert_rules", "signoz_search_logs", "signoz_query_metrics"} {
-			if !strings.Contains(text, want) {
-				t.Fatalf("404 recovery missing %q: %s", want, text)
+			result, err := h.handleGetOrgOverview(testCtx(), makeToolRequest("signoz_get_org_overview", map[string]any{}))
+			if err != nil || !result.IsError {
+				t.Fatalf("expected coded tool error: result=%#v err=%v", result, err)
 			}
-		}
+			if code := resultCode(t, result); code != tc.wantCode {
+				t.Fatalf("code = %q, want %q", code, tc.wantCode)
+			}
+			text := textContent(t, result)
+			for _, want := range []string{"Verify that the configured SigNoz URL points to an active deployment", "signoz_list_dashboards", "signoz_list_alert_rules", "signoz_search_logs", "signoz_query_metrics"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("recovery missing %q: %s", want, text)
+				}
+			}
+		})
 	}
 }
 

@@ -1,0 +1,50 @@
+# Operations the generated SigNoz API client covers (`make gen`). skaff reads only each entry's
+# path and method for the client and its request types; the Terraform-style
+# resources/data_sources grouping carries no meaning here, so non-CRUD calls (PATCH, test sends,
+# read-only POSTs) are listed under data_sources. Calls missing from the spec stay hand-written
+# in internal/client.
+provider:
+  name: signoz
+
+resources:
+  rule:
+    create: {path: /api/v2/rules, method: POST}
+    read: {path: "/api/v2/rules/{id}", method: GET}
+    update: {path: "/api/v2/rules/{id}", method: PUT}
+    delete: {path: "/api/v2/rules/{id}", method: DELETE}
+  dashboard:
+    create: {path: /api/v2/dashboards, method: POST}
+    read: {path: "/api/v2/dashboards/{id}", method: GET}
+    update: {path: "/api/v2/dashboards/{id}", method: PUT}
+    delete: {path: "/api/v2/dashboards/{id}", method: DELETE}
+  saved_view:
+    create: {path: /api/v2/saved_views, method: POST}
+    read: {path: "/api/v2/saved_views/{id}", method: GET}
+    update: {path: "/api/v2/saved_views/{id}", method: PUT}
+    delete: {path: "/api/v2/saved_views/{id}", method: DELETE}
+  notification_channel:
+    create: {path: /api/v2/notification_channels, method: POST}
+    read: {path: "/api/v2/notification_channels/{id}", method: GET}
+    update: {path: "/api/v2/notification_channels/{id}", method: PUT}
+    delete: {path: "/api/v2/notification_channels/{id}", method: DELETE}
+
+data_sources:
+  service_account_me: {read: {path: /api/v1/service_accounts/me, method: GET}}
+  user_me: {read: {path: /api/v2/users/me, method: GET}}
+  stats: {read: {path: /api/v1/stats, method: GET}}
+  alerts: {read: {path: /api/v1/alerts, method: GET}}
+  rules: {read: {path: /api/v3/rules, method: GET}}
+  rule_history_timeline: {read: {path: "/api/v2/rules/{id}/history/timeline", method: GET}}
+  dashboards: {read: {path: /api/v2/dashboards, method: GET}}
+  dashboard_patch: {read: {path: "/api/v2/dashboards/{id}", method: PATCH}}
+  saved_views: {read: {path: /api/v2/saved_views, method: GET}}
+  notification_channels: {read: {path: /api/v2/notification_channels, method: GET}}
+  notification_channel_test: {read: {path: /api/v2/notification_channels/test, method: POST}}
+  query_range: {read: {path: /api/v5/query_range, method: POST}}
+  field_keys: {read: {path: /api/v1/fields/keys, method: GET}}
+  field_values: {read: {path: /api/v1/fields/values, method: GET}}
+  metrics: {read: {path: /api/v2/metrics, method: GET}}
+  metrics_treemap: {read: {path: /api/v2/metrics/treemap, method: POST}}
+  metric_attributes: {read: {path: /api/v2/metrics/attributes, method: GET}}
+  metric_dashboards: {read: {path: /api/v3/metrics/dashboards, method: GET}}
+  metric_alerts: {read: {path: /api/v2/metrics/alerts, method: GET}}

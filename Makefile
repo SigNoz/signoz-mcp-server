@@ -129,6 +129,45 @@ docs-index:
 	@go run ./cmd/build-docs-index
 	@echo "✅ corpus.gob.gz + corpus.manifest.json regenerated. Diff the manifest and commit both files."
 
+##@ Generated SigNoz API client
+
+# Bump SIGNOZ_SPEC_REF with each SigNoz release, then run `make gen` and commit the result.
+SKAFF_VERSION ?= v0.0.6
+SIGNOZ_SPEC_REF ?= v0.145.0
+SKAFF := bin/skaff-$(SKAFF_VERSION)
+APICLIENT_DIR := internal/apiclient
+APITYPES_DIR := $(APICLIENT_DIR)/apitypes
+
+.PHONY: gen gen-check
+
+# SigNoz/skaff is private: downloading it needs a gh login that can read the repo.
+$(SKAFF):
+	@echo ">> Downloading skaff $(SKAFF_VERSION)"
+	@mkdir -p bin
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	asset=skaff_$$(go env GOOS)_$$(go env GOARCH) && \
+	gh release download $(SKAFF_VERSION) --repo SigNoz/skaff --pattern "$$asset.tar.gz" --dir "$$tmp" && \
+	tar -xzf "$$tmp/$$asset.tar.gz" -C "$$tmp" && \
+	mv "$$tmp/$$asset/bin/skaff" $@ && chmod +x $@
+
+# apitypes takes several minutes, so this runs per spec or skaff bump, not in `make ci`.
+gen: $(SKAFF)
+	@echo ">> Generating the SigNoz API client from SigNoz $(SIGNOZ_SPEC_REF)"
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	curl -sSfL https://raw.githubusercontent.com/SigNoz/signoz/$(SIGNOZ_SPEC_REF)/docs/api/openapi.yml -o "$$tmp/openapi.yml" && \
+	rm -rf $(APITYPES_DIR) $(APICLIENT_DIR)/zz_generated_client.go && \
+	$(SKAFF) apitypes --openapi "$$tmp/openapi.yml" --config skaff.yml --output $(APITYPES_DIR) --package apitypes && \
+	$(SKAFF) client --openapi "$$tmp/openapi.yml" --config skaff.yml \
+		--output $(APICLIENT_DIR)/zz_generated_client.go --package apiclient \
+		--apitypes-import github.com/SigNoz/signoz-mcp-server/$(APITYPES_DIR)
+	@echo "✅ Generated client written to $(APICLIENT_DIR). Commit it with skaff.yml and the version pins."
+
+# Fails when the committed client differs from a fresh generation (hand edits or stale output).
+gen-check: gen
+	@git diff --exit-code -- $(APICLIENT_DIR) && \
+	untracked=$$(git ls-files -o --exclude-standard -- $(APICLIENT_DIR)) && \
+	if [ -n "$$untracked" ]; then printf '%s\n' "$$untracked"; echo "Generated files are not committed."; exit 1; fi
+
 bundle:
 	@echo "🚀 Building SigNoz Claude MCP extension..."
 	@mkdir -p bundle/server
