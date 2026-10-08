@@ -41,7 +41,7 @@ type UpdateAlertInput struct {
 // condition.op/matchType/target/algorithm/seasonality (no thresholds block).
 type AlertRule struct {
 	Alert             string            `json:"alert" jsonschema:"Name of the alert rule. Must be unique and descriptive."`
-	AlertType         AlertType         `json:"alertType" jsonschema:"Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT."`
+	AlertType         AlertType         `json:"alertType" jsonschema:"Signal type, for example METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT, or AI_TRACES_BASED_ALERT. SigNoz validates the value."`
 	RuleType          RuleType          `json:"ruleType" jsonschema:"Evaluation type: threshold_rule (compare against value) or promql_rule (PromQL expression) or anomaly_rule (anomaly detection on metrics)."`
 	Description       string            `json:"description,omitempty" jsonschema:"Human-readable description of what this alert monitors."`
 	Condition         AlertCondition    `json:"condition" jsonschema:"Alert condition containing the query and threshold configuration."`

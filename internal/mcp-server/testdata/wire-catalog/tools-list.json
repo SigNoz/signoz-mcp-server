@@ -342,7 +342,7 @@
                 "type": "string"
               },
               "alertType": {
-                "description": "Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT.",
+                "description": "Signal type, for example METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT, or AI_TRACES_BASED_ALERT. SigNoz validates the value.",
                 "type": "string"
               },
               "annotations": {
@@ -6704,7 +6704,7 @@
                 "type": "string"
               },
               "alertType": {
-                "description": "Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT.",
+                "description": "Signal type, for example METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT, or AI_TRACES_BASED_ALERT. SigNoz validates the value.",
                 "type": "string"
               },
               "annotations": {

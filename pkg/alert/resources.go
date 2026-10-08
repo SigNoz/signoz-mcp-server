@@ -19,7 +19,7 @@ Schemas supported:
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
-1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT.
+1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT. LLM/agent span signals → AI_TRACES_BASED_ALERT.
 2. **Pick ruleType.** Default to threshold_rule. Use promql_rule only if the user provided a PromQL expression. Use anomaly_rule only for metric deviation detection; it uses a different (v1) schema. See the Anomaly Alerts section.
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
@@ -34,6 +34,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 | METRIC_BASED_ALERT | metrics | Monitoring numeric metrics (CPU, memory, request rate, latency) |
 | LOGS_BASED_ALERT | logs | Monitoring log patterns, error counts, log volume |
 | TRACES_BASED_ALERT | traces | Monitoring span latency, error rates, throughput |
+| AI_TRACES_BASED_ALERT | traces (AI/LLM spans) | Monitoring LLM and agent span signals |
 | EXCEPTIONS_BASED_ALERT | exceptions | Monitoring exception counts (typically uses clickhouse_sql) |
 
 ## Rule Types (ruleType)
