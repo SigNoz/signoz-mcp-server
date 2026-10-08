@@ -1058,8 +1058,8 @@ func TestHandleListDashboards_NullDataEmptyPage(t *testing.T) {
 			t.Fatalf("body=%s expected success, got error result: %v", body, result.Content)
 		}
 		text := textContent(t, result)
-		if !json.Valid([]byte(text)) {
-			t.Fatalf("body=%s response not forwarded as JSON: %s", body, text)
+		if text != body {
+			t.Fatalf("degenerate body must be forwarded verbatim: got %s, want %s", text, body)
 		}
 	}
 }

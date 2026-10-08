@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
@@ -12,27 +11,6 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 	"github.com/SigNoz/signoz-mcp-server/pkg/views"
 )
-
-// validSources is the allow-list for the v2 saved-views source param.
-// "meter" is the Cost Meter Explorer — a distinct page in the SigNoz
-// product (its own Meter Explorer route), even though its queries run
-// against the metrics signal with spec.source="meter".
-var validSources = map[string]struct{}{
-	"traces":  {},
-	"logs":    {},
-	"metrics": {},
-	"meter":   {},
-}
-
-func validateSource(s string) error {
-	if s == "" {
-		return fmt.Errorf(`%s "source" is required. Must be one of: "traces", "logs", "metrics", "meter"`, validationErrorPrefix)
-	}
-	if _, ok := validSources[s]; !ok {
-		return fmt.Errorf(`%s "source" must be one of: "traces", "logs", "metrics", "meter" (got %q)`, validationErrorPrefix, s)
-	}
-	return nil
-}
 
 // RegisterViewHandlers registers the saved-views CRUD tools plus the
 // signoz://view/instructions and signoz://view/examples resources.
@@ -43,7 +21,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription("Use this when the user wants to discover saved views or find a view UUID for the Logs, Traces, Metrics, or Cost Meter explorer pages. A view stores one query spec; it is not a multi-widget dashboard. Apply name filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition."),
-		mcp.WithString("source", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Explorer whose views to list: "traces", "logs", "metrics", or "meter". Use "meter" for Cost Meter, not "metrics".`)),
+		mcp.WithString("source", mcp.Description(`Explorer whose views to list, for example "traces", "logs", "metrics", "meter" (Cost Meter), or "ai_observability". SigNoz validates the value. Omit to list views from every Explorer.`)),
 		mcp.WithString("name", mcp.Description("Partial, server-side match on the saved-view name. Omit to include every name.")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
@@ -68,7 +46,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		),
 		mcp.WithString("name", mcp.Description("The view's machine name, a DNS-1123 label (lowercase letters, digits, hyphens). The human-facing display name lives in spec.displayName. Required unless generateName is true.")),
 		mcp.WithBoolean("generateName", mcp.Description("When true, the server generates the view name from spec.displayName; name must be empty. Default: false.")),
-		mcp.WithString("source", mcp.Required(), mcp.Enum("traces", "logs", "metrics", "meter"), mcp.Description(`Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
+		mcp.WithString("source", mcp.Required(), mcp.Description(`Which Explorer this view belongs to, for example "traces", "logs", "metrics", "meter" (Cost Meter), or "ai_observability". SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
 		mcp.WithObject("spec", mcp.Required(), mcp.AdditionalProperties(true), mcp.Description("The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.")),
 	)
 	h.addTool(s, createTool, h.handleCreateView)
@@ -140,8 +118,7 @@ func savedViewSchemaProperties() map[string]any {
 	return map[string]any{
 		"source": map[string]any{
 			"type":        "string",
-			"enum":        []string{"traces", "logs", "metrics", "meter"},
-			"description": `Which Explorer this view belongs to. One of: "traces", "logs", "metrics", "meter". Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
+			"description": `Which Explorer this view belongs to, for example "traces", "logs", "metrics", "meter" (Cost Meter), or "ai_observability". SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
 		},
 		"spec": map[string]any{
 			"type":                 "object",
@@ -162,94 +139,6 @@ func withRequiredFields(fields ...string) mcp.PropertyOption {
 // best and rejects them at worst.
 var serverPopulatedViewFields = []string{
 	"id", "createdAt", "createdBy", "updatedAt", "updatedBy",
-}
-
-// validateBuilderSignal enforces the documented signal/source rules for a
-// view's builder_query specs inside spec.queries. Upstream enforces none of
-// this, so missing, mismatched, or mis-filed values silently save unusable
-// views.
-//
-//   - Every builder_query spec must set `signal`.
-//   - Cost Meter views (source "meter") are a distinct Explorer page in the
-//     SigNoz product but are queried against the metrics signal with
-//     spec.source="meter". So a "meter" view must use signal "metrics" AND
-//     source "meter" — omitting source="meter" would silently query the
-//     default metrics store instead of the meter store.
-//   - For the ordinary pages (traces/logs/metrics),
-//     `signal` must equal source, and source must not be "meter" — a Cost
-//     Meter query belongs on the dedicated "meter" page, not mis-filed
-//     under "metrics".
-//
-// Non-builder queries (promql, clickhouse_sql) don't carry these fields and
-// are skipped.
-func validateBuilderSignal(spec any, source string) error {
-	s, ok := spec.(map[string]any)
-	if !ok {
-		return nil
-	}
-	queries, ok := s["queries"].([]any)
-	if !ok {
-		return nil
-	}
-	for i, q := range queries {
-		entry, ok := q.(map[string]any)
-		if !ok {
-			continue
-		}
-		if qt, _ := entry["type"].(string); qt != "builder_query" {
-			continue
-		}
-		qspec, ok := entry["spec"].(map[string]any)
-		if !ok {
-			continue
-		}
-		signal, _ := qspec["signal"].(string)
-		qsource, _ := qspec["source"].(string)
-
-		if source == "meter" {
-			// Cost Meter views are queried as metrics against the meter store.
-			if signal == "" {
-				return fmt.Errorf(
-					`%s spec.queries[%d].spec.signal is required for a "meter" view and must be "metrics"`,
-					validationErrorPrefix, i,
-				)
-			}
-			if signal != "metrics" {
-				return fmt.Errorf(
-					`%s spec.queries[%d].spec.signal = %q but a "meter" (Cost Meter) view must use signal "metrics"`,
-					validationErrorPrefix, i, signal,
-				)
-			}
-			if qsource != "meter" {
-				return fmt.Errorf(
-					`%s spec.queries[%d].spec.source = %q but a "meter" (Cost Meter) view must set source "meter"`,
-					validationErrorPrefix, i, qsource,
-				)
-			}
-			continue
-		}
-
-		if signal == "" {
-			return fmt.Errorf(
-				`%s spec.queries[%d].spec.signal is required and must equal source (%q)`,
-				validationErrorPrefix, i, source,
-			)
-		}
-		if signal != source {
-			return fmt.Errorf(
-				`%s spec.queries[%d].spec.signal = %q but source = %q, they must match`,
-				validationErrorPrefix, i, signal, source,
-			)
-		}
-		// A Cost Meter query (source="meter") must live on the "meter" page.
-		if qsource == "meter" {
-			return fmt.Errorf(
-				`%s spec.queries[%d].spec.source = "meter" requires source "meter" (a Cost Meter view), but source = %q`,
-				validationErrorPrefix, i, source,
-			)
-		}
-	}
-	return nil
 }
 
 // stripNonBodyFields removes MCP-specific metadata (searchContext, viewId)
@@ -316,10 +205,6 @@ func (h *Handler) handleListViews(ctx context.Context, req mcp.CallToolRequest) 
 		return notAJSONObjectError(), nil
 	}
 	source, _ := args["source"].(string)
-	if err := validateSource(source); err != nil {
-		h.logger.WarnContext(ctx, "list_views validation failed", slog.String("source", source))
-		return errorWithCode(CodeValidationFailed, err.Error()), nil
-	}
 	name, _ := args["name"].(string)
 	limit, offset, limitClamped := paginate.ParseParamsClamped(req.Params.Arguments)
 
@@ -396,22 +281,11 @@ func (h *Handler) handleCreateView(ctx context.Context, req mcp.CallToolRequest)
 	}
 	unwrapViewEnvelope(args)
 
-	generateName, _ := args["generateName"].(bool)
+	// SigNoz is the only validator of the view body (name/generateName,
+	// source, spec); its rejection comes back as a coded VALIDATION_FAILED
+	// with the upstream message.
 	name, _ := args["name"].(string)
-	if !generateName && name == "" {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "name" is required unless "generateName" is true. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
-	}
 	source, _ := args["source"].(string)
-	if err := validateSource(source); err != nil {
-		return errorWithCode(CodeValidationFailed, err.Error()), nil
-	}
-	spec, present := args["spec"]
-	if !present {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "spec" is required. Read signoz://view/instructions and signoz://view/examples for the schema.`), nil
-	}
-	if err := validateBuilderSignal(spec, source); err != nil {
-		return errorWithCode(CodeValidationFailed, err.Error()), nil
-	}
 	// schemaVersion is not a supported input; force "v2" so a caller-supplied
 	// value can never reach upstream.
 	args["schemaVersion"] = "v2"
@@ -469,17 +343,9 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view" is required. Pass the SavedView body under "view". Call signoz_get_view first and use the "data" field it returns.`), nil
 	}
 
+	// SigNoz is the only validator of the view body; its rejection comes back
+	// as a coded VALIDATION_FAILED with the upstream message.
 	source, _ := view["source"].(string)
-	if err := validateSource(source); err != nil {
-		return errorWithCode(CodeValidationFailed, err.Error()), nil
-	}
-	spec, present := view["spec"]
-	if !present {
-		return errorWithCode(CodeValidationFailed, `Parameter validation failed: "view.spec" is required. Call signoz_get_view first and pass its data field back as "view".`), nil
-	}
-	if err := validateBuilderSignal(spec, source); err != nil {
-		return errorWithCode(CodeValidationFailed, err.Error()), nil
-	}
 	// schemaVersion is not a supported input; force "v2" so a caller-supplied
 	// value can never reach upstream.
 	view["schemaVersion"] = "v2"
@@ -499,23 +365,6 @@ func (h *Handler) handleUpdateView(ctx context.Context, req mcp.CallToolRequest)
 	client, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
-	}
-	// Saved views are keyed to an Explorer; upstream PUT treats a source
-	// switch as moving the view to a different Explorer. Pre-fetch and
-	// reject the change — callers who truly want a cross-Explorer view
-	// should delete and re-create.
-	if existing, ferr := client.GetView(ctx, viewID); ferr == nil {
-		var probe struct {
-			Data struct {
-				Source string `json:"source"`
-			} `json:"data"`
-		}
-		if jerr := json.Unmarshal(existing, &probe); jerr == nil && probe.Data.Source != "" && probe.Data.Source != source {
-			return errorWithCode(CodeValidationFailed, fmt.Sprintf(
-				`Parameter validation failed: cannot change source on update (existing=%q, new=%q). Saved views are scoped to an Explorer; delete and re-create to move across Explorers.`,
-				probe.Data.Source, source,
-			)), nil
-		}
 	}
 	data, err := client.UpdateView(ctx, viewID, body)
 	if err != nil {

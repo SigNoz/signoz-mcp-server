@@ -7,8 +7,8 @@
         "kind": "text",
         "uri": "signoz://alert/examples",
         "mimeType": "text/markdown",
-        "serializedLength": 31947,
-        "sha256": "b102b4716f0ad4cd024275580c6f0ba81b6a4d25c7f94372eabb8dc89a4ca328"
+        "serializedLength": 29776,
+        "sha256": "a01a654648e98d79f56ada45cf28290d7e26285e5a05a603a012f2d68f8556be"
       }
     ]
   },
@@ -20,8 +20,8 @@
         "kind": "text",
         "uri": "signoz://alert/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 23973,
-        "sha256": "ec5c74209b6f1cbb6cf61f6d4f9dec8f9a1fb5d1a85fe895e88634b448516540"
+        "serializedLength": 24242,
+        "sha256": "6f209eb4557544aaa31fb152230715408055c3eea0832720b58561a1d2f5f3e3"
       }
     ]
   },
@@ -280,8 +280,8 @@
         "kind": "text",
         "uri": "signoz://view/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 7219,
-        "sha256": "5800a542af189ebaed5b1a88fda0d82c023c0420851ac6f7e3125664457299eb"
+        "serializedLength": 7517,
+        "sha256": "68c329b6691d63ce7b4ef3246a637038a3fa5df7e406c22e0aacfbfc257383b4"
       }
     ]
   }

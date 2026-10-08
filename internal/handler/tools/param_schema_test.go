@@ -161,9 +161,6 @@ func TestStableSetEnumsArePresent(t *testing.T) {
 		{"signoz_get_alert_history", "state", []string{"disabled", "firing", "inactive", "nodata", "pending", "recovering"}},
 		{"signoz_get_field_keys", "signal", []string{"logs", "metrics", "traces"}},
 		{"signoz_get_field_values", "signal", []string{"logs", "metrics", "traces"}},
-		// "source" carries the v2 saved-views source enum; pin it so a
-		// regression that drops it fails here too.
-		{"signoz_create_view", "source", []string{"logs", "meter", "metrics", "traces"}},
 	}
 
 	for _, tc := range cases {
@@ -222,13 +219,17 @@ func TestEvolvingSetsAreFreeStrings(t *testing.T) {
 	}{
 		{"signoz_aggregate_logs", "aggregation"},
 		{"signoz_aggregate_traces", "aggregation"},
+		// The saved-view source set is SigNoz-owned and grows (it gained
+		// "ai_observability" in v0.145); a schema enum here would reject
+		// values upstream accepts.
+		{"signoz_list_views", "source"},
+		{"signoz_create_view", "source"},
 	}
-	// notification-channel type lives on a handler we also need registered.
 	h := newTestHandler(&signozclient.MockClient{})
 	s := newMCPTestServer()
 	h.RegisterLogsHandlers(s)
 	h.RegisterTracesHandlers(s)
-	h.RegisterNotificationChannelHandlers(s)
+	h.RegisterViewHandlers(s)
 	registered := listTestTools(t, s)
 
 	for _, tc := range cases {
@@ -254,20 +255,16 @@ func TestEvolvingSetsAreFreeStrings(t *testing.T) {
 	}
 }
 
-// TestAggregationDescriptionDriftGuard pins the in-code valid-aggregation set
-// against the documented list in the param description. The aggregation
-// operators are a backend-owned/evolving set kept as a free-string at the
-// schema layer (TestEvolvingSetsAreFreeStrings), so nothing else guards that
-// the value we advertise in the description matches the set we actually
-// accept. If someone adds/removes an operator in validAggregations without
-// updating allowedAggregations (or vice-versa), this fails — drift becomes a
-// failing test, not a confused user (CLAUDE.md cross-contract mandate).
+// TestAggregationDescriptionDriftGuard pins the aggregation set named in the
+// validation-error guidance (allowedAggregations) against the set the parser
+// accepts (validAggregations). The error text is a recovery path an agent acts
+// on, so the two sets drifting apart would send agents retrying with values we
+// reject, or hide values we accept. The registered tool descriptions are pinned
+// separately by the wire catalog.
 //
-// TODO(live-backend): this pins the MCP-advertised set against itself. The
-// authoritative set is the SigNoz query-builder backend's accepted aggregation
-// operators. Add a periodic/integration check (guarded/skippable, see
-// liveBackendDriftCheckSkipped) that diffs validAggregations against what a
-// real instance accepts, so a backend-side addition is also surfaced.
+// TODO(live-backend): the authoritative set is the SigNoz query-builder
+// backend's accepted operators; an e2e check should diff validAggregations
+// against a real instance.
 func TestAggregationDescriptionDriftGuard(t *testing.T) {
 	// Derive the documented set from allowedAggregations.
 	documented := splitCSV(allowedAggregations)
@@ -357,20 +354,6 @@ func TestChannelTypeDriftGuard(t *testing.T) {
 // drift checks referenced by the TODO(live-backend) notes above. A real
 // implementation would hit a live SigNoz instance; until that is wired up (and
 // gated behind credentials), the check is skipped so unit runs stay hermetic.
-func liveBackendDriftCheckSkipped(t *testing.T) bool {
-	t.Helper()
-	t.Skip("live-backend drift check not wired up; see TODO(live-backend) in param_schema_test.go")
-	return true
-}
-
-// TestLiveAggregationSetMatchesBackend is the guarded/skippable live-backend
-// counterpart to TestAggregationDescriptionDriftGuard. It is intentionally a
-// no-op skip today; it exists as the named hook the cross-contract mandate
-// asks for so a future periodic job can fill it in.
-func TestLiveAggregationSetMatchesBackend(t *testing.T) {
-	liveBackendDriftCheckSkipped(t)
-}
-
 func splitCSV(s string) []string {
 	var out []string
 	cur := ""
@@ -461,9 +444,10 @@ func TestTagsSchemaIsString(t *testing.T) {
 	}
 }
 
-// TestSearchDocsParamRenamedWithLegacyAlias pins N12: the canonical param is
-// "searchText" (schema), and the handler permanently accepts the legacy "query"
-// key as a silent alias.
+// TestSearchDocsParamRenamedWithLegacyAlias pins the schema half of the N12
+// rename: "searchText" is the canonical registered param and the legacy
+// "query" never reappears in the schema. The handler-side alias behavior is
+// covered in docs_test.go.
 func TestSearchDocsParamRenamedWithLegacyAlias(t *testing.T) {
 	props := registeredToolProps(t, "signoz_search_docs")
 	if _, ok := props["searchText"]; !ok {

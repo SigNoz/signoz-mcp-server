@@ -86,10 +86,10 @@ func TestHandleSearchTraces_ErrorAndDurationFilters(t *testing.T) {
 }
 
 func TestHandleSearchTraces_OperationFilter(t *testing.T) {
-	called := false
+	var captured []byte
 	mock := &client.MockClient{
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
+			captured = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
@@ -107,8 +107,9 @@ func TestHandleSearchTraces_OperationFilter(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if !called {
-		t.Fatal("QueryBuilderV5 was not called")
+	body := string(captured)
+	if !strings.Contains(body, `service.name = 'api-gw'`) || !strings.Contains(body, `name = 'GET /users'`) {
+		t.Fatalf("query filter lost the service or operation clause: %s", body)
 	}
 }
 
@@ -285,22 +286,6 @@ func payloadGroupByFields(t *testing.T, payload []byte) []payloadSelectField {
 	return decoded.CompositeQuery.Queries[0].Spec.GroupBy
 }
 
-func TestHandleAggregateTraces_MissingAggregation(t *testing.T) {
-	mock := &client.MockClient{}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_aggregate_traces", map[string]any{
-		"timeRange": "1h",
-	})
-
-	result, err := h.handleAggregateTraces(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for missing aggregation")
-	}
-}
-
 func TestHandleAggregateTraces_InvalidAggregation(t *testing.T) {
 	mock := &client.MockClient{}
 	h := newTestHandler(mock)
@@ -313,16 +298,19 @@ func TestHandleAggregateTraces_InvalidAggregation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for invalid aggregation")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "invalid_agg") {
+		t.Fatalf("error text = %q, want it to name the invalid aggregation", text)
 	}
 }
 
 func TestHandleAggregateTraces_TimeSeries(t *testing.T) {
-	called := false
+	var captured []byte
 	mock := &client.MockClient{
 		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
+			captured = body
 			return json.RawMessage(`{"status":"success"}`), nil
 		},
 	}
@@ -340,8 +328,8 @@ func TestHandleAggregateTraces_TimeSeries(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if !called {
-		t.Fatal("QueryBuilderV5 was not called")
+	if body := string(captured); !strings.Contains(body, `"requestType":"time_series"`) {
+		t.Fatalf("query body lost the requested requestType: %s", body)
 	}
 }
 
@@ -422,8 +410,11 @@ func TestHandleGetTraceDetails_EmptyTraceId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for empty traceId")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"traceId"`) {
+		t.Fatalf("error text = %q, want it to name the empty traceId", text)
 	}
 }
 
@@ -491,6 +482,9 @@ func TestHandleGetTraceDetails_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
@@ -546,6 +540,9 @@ func TestHandleSearchTraces_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	result, err := h.handleSearchTraces(testCtx(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {

@@ -14,6 +14,7 @@
     "id": 0,
     "jsonrpc": "2.0",
     "result": {
+      "cacheScope": "public",
       "tools": [
         {
           "annotations": {
@@ -333,7 +334,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. V2 direct routing needs a channel on every threshold tier; SigNoz ignores a v2 top-level preferredChannels list (those channels are never notified). Confirmed v2 policy routing may omit tier channels; v1 anomaly uses preferredChannels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -341,7 +342,7 @@
                 "type": "string"
               },
               "alertType": {
-                "description": "Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT.",
+                "description": "Signal type, for example METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT, or AI_TRACES_BASED_ALERT. SigNoz validates the value.",
                 "type": "string"
               },
               "annotations": {
@@ -4172,13 +4173,7 @@
                 "type": "string"
               },
               "source": {
-                "description": "Which Explorer this view belongs to. One of: \"traces\", \"logs\", \"metrics\", \"meter\". Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
-                "enum": [
-                  "traces",
-                  "logs",
-                  "metrics",
-                  "meter"
-                ],
+                "description": "Which Explorer this view belongs to, for example \"traces\", \"logs\", \"metrics\", \"meter\" (Cost Meter), or \"ai_observability\". SigNoz validates the value. Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
                 "type": "string"
               },
               "spec": {
@@ -4207,7 +4202,7 @@
           "inputSchema": {
             "properties": {
               "id": {
-                "description": "Alert rule UUIDv7. Required; obtain it from signoz_list_alert_rules.",
+                "description": "Alert rule UUID. Required; obtain it from signoz_list_alert_rules.",
                 "type": "string"
               },
               "searchContext": {
@@ -4432,7 +4427,7 @@
           "inputSchema": {
             "properties": {
               "id": {
-                "description": "Alert rule ID (UUIDv7 on v2 servers). Required; obtain it from signoz_list_alert_rules.",
+                "description": "Alert rule UUID. Required; obtain it from signoz_list_alert_rules.",
                 "type": "string"
               },
               "searchContext": {
@@ -6228,19 +6223,11 @@
                 "type": "string"
               },
               "source": {
-                "description": "Explorer whose views to list: \"traces\", \"logs\", \"metrics\", or \"meter\". Use \"meter\" for Cost Meter, not \"metrics\".",
-                "enum": [
-                  "traces",
-                  "logs",
-                  "metrics",
-                  "meter"
-                ],
+                "description": "Explorer whose views to list, for example \"traces\", \"logs\", \"metrics\", \"meter\" (Cost Meter), or \"ai_observability\". SigNoz validates the value. Omit to list views from every Explorer.",
                 "type": "string"
               }
             },
-            "required": [
-              "source"
-            ],
+            "required": [],
             "type": "object"
           },
           "name": "signoz_list_views"
@@ -6709,7 +6696,7 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. V2 direct routing needs a channel on every threshold tier; SigNoz ignores a v2 top-level preferredChannels list (those channels are never notified). Confirmed v2 policy routing may omit tier channels; v1 anomaly uses preferredChannels.",
           "inputSchema": {
             "properties": {
               "alert": {
@@ -6717,7 +6704,7 @@
                 "type": "string"
               },
               "alertType": {
-                "description": "Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT.",
+                "description": "Signal type, for example METRIC_BASED_ALERT, LOGS_BASED_ALERT, TRACES_BASED_ALERT, EXCEPTIONS_BASED_ALERT, or AI_TRACES_BASED_ALERT. SigNoz validates the value.",
                 "type": "string"
               },
               "annotations": {
@@ -10490,13 +10477,7 @@
                 "description": "Complete saved view after the requested changes. Start with the data returned by signoz_get_view and pass the full object here.",
                 "properties": {
                   "source": {
-                    "description": "Which Explorer this view belongs to. One of: \"traces\", \"logs\", \"metrics\", \"meter\". Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
-                    "enum": [
-                      "traces",
-                      "logs",
-                      "metrics",
-                      "meter"
-                    ],
+                    "description": "Which Explorer this view belongs to, for example \"traces\", \"logs\", \"metrics\", \"meter\" (Cost Meter), or \"ai_observability\". SigNoz validates the value. Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
                     "type": "string"
                   },
                   "spec": {
@@ -10517,7 +10498,8 @@
           },
           "name": "signoz_update_view"
         }
-      ]
+      ],
+      "ttlMs": 0
     }
   }
 }

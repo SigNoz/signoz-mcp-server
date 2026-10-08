@@ -15,11 +15,11 @@ Schemas supported:
 1. Read signoz://alert/examples for complete payloads unless already read for the same prepared operation.
 2. Update is a full replacement. Reuse signoz_get_alert only from the same still-current prepared operation; refresh if state may have changed, then preserve unchanged fields.
 3. Use signoz_get_field_keys to discover filter/groupBy attributes, reusing results from that operation.
-4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName and top-level preferredChannels is rejected. V1 anomaly rules use exact returned displayName values in top-level preferredChannels and cannot use policy routing. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels; any supplied displayName values still require verification.
+4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName; SigNoz ignores top-level preferredChannels on v2 rules, so channels listed there are never notified. V1 anomaly rules use exact returned displayName values in top-level preferredChannels and cannot use policy routing. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels; any supplied displayName values still require verification.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
-1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT.
+1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT. LLM/agent span signals → AI_TRACES_BASED_ALERT.
 2. **Pick ruleType.** Default to threshold_rule. Use promql_rule only if the user provided a PromQL expression. Use anomaly_rule only for metric deviation detection; it uses a different (v1) schema. See the Anomaly Alerts section.
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
@@ -34,6 +34,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 | METRIC_BASED_ALERT | metrics | Monitoring numeric metrics (CPU, memory, request rate, latency) |
 | LOGS_BASED_ALERT | logs | Monitoring log patterns, error counts, log volume |
 | TRACES_BASED_ALERT | traces | Monitoring span latency, error rates, throughput |
+| AI_TRACES_BASED_ALERT | traces (AI/LLM spans) | Monitoring LLM and agent span signals |
 | EXCEPTIONS_BASED_ALERT | exceptions | Monitoring exception counts (typically uses clickhouse_sql) |
 
 ## Rule Types (ruleType)
@@ -68,7 +69,7 @@ The envelope type must match compositeQuery.queryType:
 - filter: {expression: "service.name = 'frontend' AND http.status_code >= 500"}
 - groupBy: [{name, fieldContext: "resource" | "attribute", fieldDataType}]
 - limit: positive maximum number of groups. Use 100 for standalone queries. Use 10000 for a builder query referenced by a formula because SigNoz limits each component before formula evaluation.
-- order: non-empty Query Builder v5 wire ordering. Metrics use [{key: {name: "__result"}, direction: "desc"}]; logs/traces use the primary aggregation expression descending. Do not use dashboard editor orderBy.
+- order and limit: omit both on alert queries. On a grouped query they cap evaluation to the top-N series (SigNoz builds a top-N CTE from them), so series beyond N are silently never evaluated; a "below" alert ordered descending can miss every breaching series. Set them only when top-N alerting is the explicit intent, using Query Builder v5 wire ordering (metrics: [{key: {name: "__result"}, direction: "desc"}]), never dashboard editor orderBy.
 - functions: post-query transforms. Required for anomaly_rule: [{name: "anomaly", args: [{name: "z_score_threshold", value: 2}]}]
 - disabled: true when the query is used only as an input to a formula
 
@@ -101,11 +102,9 @@ For the full guide (syntax, examples by metric type, anti-pattern table, pre-fli
 - name: formula identifier (F1, F2, …)
 - expression: math expression referencing other query names (e.g. "(A / B) * 100"). Supports +, -, *, /, and functions like abs(), sqrt(), log(), exp()
 - legend: legend template
-- limit: 100
-- order: [{key: {name: "__result"}, direction: "desc"}]
 - Set selectedQueryName to the formula name (e.g. "F1") so the alert triggers on the formula result
 
-For time-series alerts, each limit ranks groups over the whole evaluation window. A group with a short-lived local spike can fall outside the returned top N. Formula inputs therefore use the maximum explicit bound of 10000 and formula outputs use 100; narrow the filters/grouping when input cardinality can exceed 10000.
+Omit limit and order on formula and input queries too: a limit ranks groups over the whole evaluation window and drops everything outside the top N, so a group with a short-lived spike can silently never be evaluated.
 
 ## Aggregation shapes
 
@@ -297,7 +296,7 @@ Example: deployment.environment = "production" AND threshold.name = "critical"
 | notificationSettings.usePolicy | thresholds[].channels | Effective routing |
 |--------------------------------|-----------------------|-------------------|
 | false (default) | present on every tier | Send each tier to its listed channels |
-| false | absent on any tier | Invalid; preferredChannels is not a v2 fallback |
+| false | absent on any tier | SigNoz rejects it; preferredChannels is not a v2 fallback |
 | true | omit (any supplied names are still validated) | Match alert labels against the org-level routing policy; send to policy-matched channels |
 
 ## Annotations
@@ -403,8 +402,6 @@ Fires when a pod consumes more than 80% of its requested CPU for the whole evalu
             "signal": "metrics",
             "stepInterval": 60,
             "aggregations": [{"metricName": "k8s.pod.cpu_request_utilization", "timeAggregation": "avg", "spaceAggregation": "max"}],
-            "limit": 100,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "filter": {"expression": "k8s.deployment.name = 'api-service'"},
             "groupBy": [
               {"name": "k8s.pod.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -458,8 +455,6 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
           "spec": {
             "name": "A", "signal": "metrics", "stepInterval": 60, "disabled": true,
             "aggregations": [{"metricName": "k8s.volume.available", "timeAggregation": "max", "spaceAggregation": "max"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "filter": {"expression": "k8s.volume.type = 'persistentVolumeClaim'"},
             "groupBy": [
               {"name": "k8s.persistentvolumeclaim.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -472,8 +467,6 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
           "spec": {
             "name": "B", "signal": "metrics", "stepInterval": 60, "disabled": true,
             "aggregations": [{"metricName": "k8s.volume.capacity", "timeAggregation": "max", "spaceAggregation": "max"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "filter": {"expression": "k8s.volume.type = 'persistentVolumeClaim'"},
             "groupBy": [
               {"name": "k8s.persistentvolumeclaim.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -486,8 +479,6 @@ Computes disk utilization as (1 - available/capacity) * 100 by combining two dis
           "spec": {
             "name": "F1",
             "expression": "(1 - A/B) * 100",
-            "limit": 100,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "legend": "{{k8s.persistentvolumeclaim.name}} ({{k8s.namespace.name}})"
           }
         }
@@ -583,8 +574,6 @@ Anomaly rules are not yet supported under schemaVersion v2alpha1, so this exampl
           "spec": {
             "name": "A", "signal": "metrics", "stepInterval": 21600,
             "aggregations": [{"metricName": "otelcol_receiver_accepted_spans", "timeAggregation": "rate", "spaceAggregation": "sum"}],
-            "limit": 100,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "filter": {"expression": "tenant_tier = 'premium'"},
             "groupBy": [{"name": "tenant_id", "fieldContext": "attribute", "fieldDataType": "string"}],
             "functions": [
@@ -634,8 +623,6 @@ Counts matching log records (ERROR severity + body contains) over a rolling wind
           "spec": {
             "name": "A", "signal": "logs", "stepInterval": 60,
             "aggregations": [{"expression": "count()"}],
-            "limit": 100,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name = 'payments-api' AND severity_text = 'ERROR' AND body CONTAINS 'panic'"},
             "groupBy": [
               {"name": "k8s.pod.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -689,8 +676,6 @@ Two disabled log count queries (A = errors, B = total) combined via a builder_fo
           "spec": {
             "name": "A", "signal": "logs", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name = 'payments-api' AND severity_text IN ['ERROR', 'FATAL']"},
             "groupBy": [{"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}]
           }
@@ -700,15 +685,13 @@ Two disabled log count queries (A = errors, B = total) combined via a builder_fo
           "spec": {
             "name": "B", "signal": "logs", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name = 'payments-api'"},
             "groupBy": [{"name": "deployment.environment", "fieldContext": "resource", "fieldDataType": "string"}]
           }
         },
         {
           "type": "builder_formula",
-          "spec": {"name": "F1", "expression": "(A / B) * 100", "limit": 100, "order": [{"key": {"name": "__result"}, "direction": "desc"}], "legend": "{{deployment.environment}}"}
+          "spec": {"name": "F1", "expression": "(A / B) * 100", "legend": "{{deployment.environment}}"}
         }
       ]
     },
@@ -755,8 +738,6 @@ Builder query against the traces signal with p99(duration_nano). The series unit
           "spec": {
             "name": "A", "signal": "traces", "stepInterval": 60,
             "aggregations": [{"expression": "p99(duration_nano)"}],
-            "limit": 100,
-            "order": [{"key": {"name": "p99(duration_nano)"}, "direction": "desc"}],
             "filter": {"expression": "service.name = 'search-api' AND name = 'GET /api/v1/search'"},
             "groupBy": [
               {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -810,8 +791,6 @@ Two disabled trace count queries (A = error spans, B = total spans) combined via
           "spec": {
             "name": "A", "signal": "traces", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name = 'search-api' AND has_error = true"},
             "groupBy": [
               {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -824,8 +803,6 @@ Two disabled trace count queries (A = error spans, B = total spans) combined via
           "spec": {
             "name": "B", "signal": "traces", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name = 'search-api'"},
             "groupBy": [
               {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -835,7 +812,7 @@ Two disabled trace count queries (A = error spans, B = total spans) combined via
         },
         {
           "type": "builder_formula",
-          "spec": {"name": "F1", "expression": "(A / B) * 100", "limit": 100, "order": [{"key": {"name": "__result"}, "direction": "desc"}], "legend": "{{service.name}} {{http.route}}"}
+          "spec": {"name": "F1", "expression": "(A / B) * 100", "legend": "{{service.name}} {{http.route}}"}
         }
       ]
     },
@@ -881,8 +858,6 @@ Two tiers (warning and critical) in a single rule, each with its own target, op,
           "spec": {
             "name": "A", "signal": "metrics", "stepInterval": 60, "disabled": true,
             "aggregations": [{"metricName": "kafka_log_end_offset", "timeAggregation": "max", "spaceAggregation": "max"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "filter": {"expression": "topic != '__consumer_offsets'"},
             "groupBy": [
               {"name": "topic", "fieldContext": "attribute", "fieldDataType": "string"},
@@ -895,8 +870,6 @@ Two tiers (warning and critical) in a single rule, each with its own target, op,
           "spec": {
             "name": "B", "signal": "metrics", "stepInterval": 60, "disabled": true,
             "aggregations": [{"metricName": "kafka_consumer_committed_offset", "timeAggregation": "max", "spaceAggregation": "max"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "__result"}, "direction": "desc"}],
             "filter": {"expression": "topic != '__consumer_offsets'"},
             "groupBy": [
               {"name": "topic", "fieldContext": "attribute", "fieldDataType": "string"},
@@ -906,7 +879,7 @@ Two tiers (warning and critical) in a single rule, each with its own target, op,
         },
         {
           "type": "builder_formula",
-          "spec": {"name": "F1", "expression": "A - B", "limit": 100, "order": [{"key": {"name": "__result"}, "direction": "desc"}], "legend": "{{topic}}/{{partition}}"}
+          "spec": {"name": "F1", "expression": "A - B", "legend": "{{topic}}/{{partition}}"}
         }
       ]
     },
@@ -956,8 +929,6 @@ Demonstrates groupBy (noise control), newGroupEvalDelay (grace period for new se
           "spec": {
             "name": "A", "signal": "traces", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name CONTAINS 'api' AND http.status_code >= 500"},
             "groupBy": [
               {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -970,8 +941,6 @@ Demonstrates groupBy (noise control), newGroupEvalDelay (grace period for new se
           "spec": {
             "name": "B", "signal": "traces", "stepInterval": 60, "disabled": true,
             "aggregations": [{"expression": "count()"}],
-            "limit": 10000,
-            "order": [{"key": {"name": "count()"}, "direction": "desc"}],
             "filter": {"expression": "service.name CONTAINS 'api'"},
             "groupBy": [
               {"name": "service.name", "fieldContext": "resource", "fieldDataType": "string"},
@@ -981,7 +950,7 @@ Demonstrates groupBy (noise control), newGroupEvalDelay (grace period for new se
         },
         {
           "type": "builder_formula",
-          "spec": {"name": "F1", "expression": "(A / B) * 100", "limit": 100, "order": [{"key": {"name": "__result"}, "direction": "desc"}], "legend": "{{service.name}} ({{deployment.environment}})"}
+          "spec": {"name": "F1", "expression": "(A / B) * 100", "legend": "{{service.name}} ({{deployment.environment}})"}
         }
       ]
     },
@@ -1031,7 +1000,6 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
             "aggregations": [
               {"metricName": "signoz.meter.log.size", "timeAggregation": "increase", "spaceAggregation": "sum"}
             ],
-            "limit": 100,
             "order": [{"key": {"name": "__result"}, "direction": "desc"}]
           }
         }

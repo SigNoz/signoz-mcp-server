@@ -640,3 +640,47 @@ func TestNotificationConfigSchemaExampleIsAccepted(t *testing.T) {
 		t.Fatalf("upstream body = %s", sent)
 	}
 }
+
+func TestHandleGetNotificationChannel_ReturnsChannel(t *testing.T) {
+	var gotID string
+	mock := &client.MockClient{GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
+		gotID = id
+		return json.RawMessage(`{"status":"success","data":{"id":"550e8400-e29b-41d4-a716-446655440000","name":"slack-alerts","type":"slack"}}`), nil
+	}}
+	result, err := newTestHandler(mock).handleGetNotificationChannel(testCtx(), makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "550e8400-e29b-41d4-a716-446655440000"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if gotID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Fatalf("GetNotificationChannel id = %q, want 550e8400-e29b-41d4-a716-446655440000", gotID)
+	}
+	text := textContent(t, result)
+	if !strings.Contains(text, "slack-alerts") || !strings.Contains(text, "550e8400-e29b-41d4-a716-446655440000") {
+		t.Fatalf("result lost the channel fields: %s", text)
+	}
+}
+
+func TestHandleDeleteNotificationChannel_DeletesByID(t *testing.T) {
+	var gotID string
+	mock := &client.MockClient{DeleteNotificationChannelFn: func(ctx context.Context, id string) error {
+		gotID = id
+		return nil
+	}}
+	result, err := newTestHandler(mock).handleDeleteNotificationChannel(testCtx(), makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "550e8400-e29b-41d4-a716-446655440999"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
+	if gotID != "550e8400-e29b-41d4-a716-446655440999" {
+		t.Fatalf("DeleteNotificationChannel id = %q, want 550e8400-e29b-41d4-a716-446655440999", gotID)
+	}
+	text := textContent(t, result)
+	if !strings.Contains(text, `"status":"success"`) || !strings.Contains(text, `"id":"550e8400-e29b-41d4-a716-446655440999"`) {
+		t.Fatalf("delete result = %q, want success with the deleted id", text)
+	}
+}

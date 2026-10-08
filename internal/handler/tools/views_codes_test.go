@@ -20,38 +20,6 @@ func TestViewValidationErrorsCarryCode(t *testing.T) {
 		name string
 		call func() (*mcp.CallToolResult, error)
 	}{
-		{"list_views invalid source", func() (*mcp.CallToolResult, error) {
-			return h.handleListViews(testCtx(), makeToolRequest("signoz_list_views", map[string]any{
-				"source": "bogus",
-			}))
-		}},
-		{"create_view invalid source", func() (*mcp.CallToolResult, error) {
-			return h.handleCreateView(testCtx(), makeToolRequest("signoz_create_view", map[string]any{
-				"name":   "v",
-				"source": "bogus",
-				"spec":   map[string]any{},
-			}))
-		}},
-		{"create_view missing spec", func() (*mcp.CallToolResult, error) {
-			return h.handleCreateView(testCtx(), makeToolRequest("signoz_create_view", map[string]any{
-				"name":   "v",
-				"source": "traces",
-			}))
-		}},
-		{"create_view signal/source mismatch", func() (*mcp.CallToolResult, error) {
-			return h.handleCreateView(testCtx(), makeToolRequest("signoz_create_view", map[string]any{
-				"name":   "v",
-				"source": "traces",
-				"spec": map[string]any{
-					"queries": []any{
-						map[string]any{
-							"type": "builder_query",
-							"spec": map[string]any{"signal": "logs"},
-						},
-					},
-				},
-			}))
-		}},
 		{"update_view missing view", func() (*mcp.CallToolResult, error) {
 			return h.handleUpdateView(testCtx(), makeToolRequest("signoz_update_view", map[string]any{
 				"id": "019b1af4-3ef5-734d-8ba8-cc12fb5b5978",

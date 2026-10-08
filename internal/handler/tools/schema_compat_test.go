@@ -488,6 +488,7 @@ func TestNumericParamsAdvertiseIntegerStringUnion(t *testing.T) {
 		{"signoz_list_services", "limit"},
 		{"signoz_list_views", "limit"},
 		{"signoz_list_views", "offset"},
+		{"signoz_search_docs", "limit"},
 	}
 
 	for _, tc := range cases {

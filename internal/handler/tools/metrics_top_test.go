@@ -3,20 +3,20 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/client"
 )
 
 func TestHandleGetTopMetrics_ReturnsSamples(t *testing.T) {
-	calls := 0
+	upstream := `{"status":"success","data":{"samples":[
+			{"metricName":"k8s.node.condition","percentage":8.13,"totalValue":45235627},
+			{"metricName":"http_requests_total","percentage":5.20,"totalValue":28918400}
+		]}}`
 	mock := &client.MockClient{
 		GetTopMetricsFn: func(ctx context.Context, start, end int64, limit int) (json.RawMessage, error) {
-			calls++
-			return json.RawMessage(`{"status":"success","data":{"samples":[
-				{"metricName":"k8s.node.condition","percentage":8.13,"totalValue":45235627},
-				{"metricName":"http_requests_total","percentage":5.20,"totalValue":28918400}
-			]}}`), nil
+			return json.RawMessage(upstream), nil
 		},
 	}
 	h := newTestHandler(mock)
@@ -29,8 +29,9 @@ func TestHandleGetTopMetrics_ReturnsSamples(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("handler returned error result: %v", result.Content)
 	}
-	if calls != 1 {
-		t.Fatalf("expected exactly 1 client call, got %d", calls)
+	text := textContent(t, result)
+	if !strings.Contains(text, "k8s.node.condition") || !strings.Contains(text, "http_requests_total") {
+		t.Fatalf("result lost the upstream samples: %s", text)
 	}
 }
 

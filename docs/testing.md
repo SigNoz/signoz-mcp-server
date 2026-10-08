@@ -88,10 +88,13 @@ Two gaps cannot be closed by construction, and tests carry them:
   JSON. A lenient decoder accepts all of those as zero values. The only way to learn what
   arrives is to run against it, so `tests/e2e` runs against the pinned release (the
   compatibility matrix in executable form, proven again on every version bump) and
-  runtime WARN logs cover the deployed versions the suite cannot reach. The External
-  Contracts section of `CLAUDE.md` is the authority on this boundary.
-- Our own decisions. Strip read-only fields before the PUT, never retry a mutation, abort
-  the write when a page of channels returns 401, map an upstream code to ours, keep the
+  runtime WARN logs cover the deployed versions the suite cannot reach. Known upstream
+  validation gaps live as an executable ledger in `tests/e2e/tests/test_upstream_gaps.py`:
+  each test asserts today's permissive behavior and fails on the bump that fixes it, with
+  retirement instructions in its failure message. The External Contracts section of
+  `CLAUDE.md` is the authority on this boundary.
+- Our own decisions. Strip read-only fields before the PUT, never retry a mutation, map
+  an upstream code to ours, keep the
   upstream suggestions, redact an echoed credential, say so when results truncate. Nothing
   upstream defines these, and typing both ends does not test the middle, because the
   translation from the SigNoz contract to the MCP contract is a hand-written function
@@ -128,6 +131,16 @@ settings upstream had added, and every Slack channel update failed with
 validator by hand). This layer should dissolve into imported or generated types; what
 stays ours is the guidance each rejection carries and the defaults we inject.
 Do not grow it, and do not use its tests as templates.
+
+Client-side rules split two ways. Adapter work (unwrap a pasted envelope, strip
+server-populated fields, translate rejections into coded guidance) is this server's own
+job. Validation is SigNoz's alone: a rule upstream enforces needs no copy here, because
+`upstreamError` already maps its 400 to `VALIDATION_FAILED` carrying the upstream
+message, and a rule upstream lacks gets an upstream issue, never a guard. A guard here
+forks authority and drifts; the hand-copied saved-view source enum rejected
+"ai_observability" in the release after upstream added it. When a missing upstream rule
+would let an agent save an unrenderable result, teach the rule in the `signoz://`
+instructions as guidance; do not enforce it.
 
 ## What a high-ROI test looks like
 
@@ -169,8 +182,8 @@ error code, compose the guidance, decide the side effects, emit the result. Impo
 make decode correct by construction and delete its tests. Everything after decode is ours,
 so tests pin it: the code mapping (a global 403 stays `PERMISSION_DENIED` with the
 upstream code attached, never an empty result), preserved upstream guidance and
-suggestions, redaction of echoed credentials, and the side-effect decisions, such as no
-retry on mutations and aborting a write on mid-pagination auth failure. A broken recovery
+suggestions, redaction of echoed credentials, and the side-effect decisions, such as
+never retrying a mutation. A broken recovery
 path produces the worst failure this server has, a confident wrong answer built on a
 swallowed error.
 
