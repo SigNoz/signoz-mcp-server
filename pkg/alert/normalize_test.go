@@ -59,9 +59,10 @@ func TestNormalize_MinimalValidAlert(t *testing.T) {
 		t.Fatalf("failed to parse result: %v", err)
 	}
 
-	// Check defaults were applied
-	if parsed["version"] != "v5" {
-		t.Errorf("expected version=v5, got %v", parsed["version"])
+	// Check defaults were applied. version is deliberately absent: upstream
+	// defaults an empty version to v5 itself, so the MCP adds no copy.
+	if _, present := parsed["version"]; present {
+		t.Errorf("version should be left to upstream's default, got %v", parsed["version"])
 	}
 	if parsed["schemaVersion"] != "v2alpha1" {
 		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])

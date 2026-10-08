@@ -485,8 +485,8 @@ func TestHandleCreateAlert(t *testing.T) {
 	if err := json.Unmarshal(capturedJSON, &parsed); err != nil {
 		t.Fatalf("failed to parse captured JSON: %v", err)
 	}
-	if parsed["version"] != "v5" {
-		t.Errorf("expected version=v5, got %v", parsed["version"])
+	if _, present := parsed["version"]; present {
+		t.Errorf("version should be left to upstream's default, got %v", parsed["version"])
 	}
 	if parsed["schemaVersion"] != "v2alpha1" {
 		t.Errorf("expected schemaVersion=v2alpha1, got %v", parsed["schemaVersion"])
