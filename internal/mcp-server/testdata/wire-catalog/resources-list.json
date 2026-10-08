@@ -20,14 +20,14 @@
           "description": "Read this after signoz://alert/instructions only when examples are still needed. Resolve illustrative direct/anomaly names with signoz_list_notification_channels; if none fits, offer signoz_create_notification_channel. Confirmed v2 policy routing may omit direct channels; anomaly cannot use policy routing.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Examples",
-          "size": 28566,
+          "size": 26694,
           "uri": "signoz://alert/examples"
         },
         {
           "description": "Read this before creating or updating an alert unless its current content was already read for the same prepared operation. It explains fields, rule types, queries, thresholds, evaluation, and when to reuse or call signoz_list_notification_channels. Read signoz://alert/examples only when examples are still needed.",
           "mimeType": "text/markdown",
           "name": "Alert Rule Instructions",
-          "size": 23365,
+          "size": 23430,
           "uri": "signoz://alert/instructions"
         },
         {

@@ -8,8 +8,6 @@ package alert
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // NormalizeFromMap marshals the arguments and normalizes them as an alert body.
@@ -28,9 +26,6 @@ func Normalize(jsonBytes []byte) ([]byte, error) {
 	if err := json.Unmarshal(jsonBytes, &rule); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
-	if err := normalizeQueryBounds(rule); err != nil {
-		return nil, fmt.Errorf("condition.compositeQuery.queries: %w", err)
-	}
 	applyDefaults(rule)
 	// Anomaly rules use the v1 schema (top-level evalWindow/frequency,
 	// condition.op/matchType/target). They must not carry a v2alpha1
@@ -43,87 +38,6 @@ func Normalize(jsonBytes []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to serialize normalized alert: %w", err)
 	}
 	return out, nil
-}
-
-// the map-based validation round trip unchanged.
-func normalizeQueryBounds(rule map[string]any) error {
-	cond := mapVal(rule, "condition")
-	if cond == nil {
-		return nil
-	}
-	cq := mapVal(cond, "compositeQuery")
-	if cq == nil {
-		return nil
-	}
-
-	rawQueries := sliceVal(cq, "queries")
-	encoded, err := json.Marshal(rawQueries)
-	if err != nil {
-		return fmt.Errorf("cannot encode query bounds for validation: %w", err)
-	}
-	var queries []types.Query
-	if err := json.Unmarshal(encoded, &queries); err != nil {
-		return fmt.Errorf("cannot decode query bounds for validation: %w", err)
-	}
-
-	payload := types.QueryPayload{
-		RequestType: "time_series",
-		CompositeQuery: types.CompositeQuery{
-			Queries: queries,
-		},
-	}
-	if err := payload.ApplyBuilderBounds(); err != nil {
-		return err
-	}
-
-	for i, query := range payload.CompositeQuery.Queries {
-		if i >= len(rawQueries) {
-			break
-		}
-		rawQuery, ok := rawQueries[i].(map[string]any)
-		if !ok {
-			continue
-		}
-		spec := mapVal(rawQuery, "spec")
-		if spec == nil {
-			continue
-		}
-
-		switch normalized := query.Spec.(type) {
-		case types.QuerySpec:
-			spec["limit"] = normalized.Limit
-			copyNormalizedOrder(spec, normalized.Order)
-		case types.FormulaSpec:
-			spec["limit"] = normalized.Limit
-			copyNormalizedOrder(spec, normalized.Order)
-		}
-	}
-	return nil
-}
-
-// copyNormalizedOrder canonicalizes key names and directions while retaining
-// any additional order-key metadata returned by the backend. Defaults replace
-// an omitted, null, or empty order with the shared typed shape.
-func copyNormalizedOrder(spec map[string]any, normalized []types.Order) {
-	rawOrder, ok := spec["order"].([]any)
-	if !ok || len(rawOrder) != len(normalized) {
-		spec["order"] = normalized
-		return
-	}
-	for i := range normalized {
-		entry, ok := rawOrder[i].(map[string]any)
-		if !ok {
-			spec["order"] = normalized
-			return
-		}
-		key, ok := entry["key"].(map[string]any)
-		if !ok {
-			spec["order"] = normalized
-			return
-		}
-		key["name"] = normalized[i].Key.Name
-		entry["direction"] = normalized[i].Direction
-	}
 }
 
 // validateRequired checks that all required top-level fields are present.
