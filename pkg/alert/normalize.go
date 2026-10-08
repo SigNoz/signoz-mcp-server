@@ -182,7 +182,11 @@ func applyDefaults(rule map[string]any) {
 // applyV2Defaults sets v2alpha1 schema fields and defaults.
 // This runs after applyDefaults.
 func applyV2Defaults(rule map[string]any) {
-	rule["schemaVersion"] = "v2alpha1"
+	// A true default, not an overwrite: an explicit schemaVersion (including
+	// a legitimate v1-shaped rule) passes through for SigNoz to handle.
+	if strVal(rule, "schemaVersion") == "" {
+		rule["schemaVersion"] = "v2alpha1"
+	}
 
 	// Default evaluation block if missing
 	if rule["evaluation"] == nil {

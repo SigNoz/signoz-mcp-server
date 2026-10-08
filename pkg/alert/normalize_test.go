@@ -588,3 +588,15 @@ func minimalValidAnomalyRule() map[string]any {
 		},
 	}
 }
+
+func TestNormalize_ExplicitSchemaVersionPassesThrough(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["schemaVersion"] = "v1"
+	out, err := NormalizeFromMap(rule)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(out), `"schemaVersion":"v1"`) {
+		t.Fatalf("explicit schemaVersion was overwritten: %s", out)
+	}
+}
