@@ -529,3 +529,48 @@ func propTypeUnion(t *testing.T, props map[string]any, name string) []string {
 		return nil
 	}
 }
+
+// registeredToolProps registers every tool family on a fresh server (a nil
+// client is fine: nothing dials upstream during registration) and returns the
+// named tool's input-schema properties for schema-shape assertions.
+func registeredToolProps(t *testing.T, toolName string) map[string]any {
+	t.Helper()
+
+	h := newTestHandler(nil)
+	s := newMCPTestServer()
+
+	h.RegisterLogsHandlers(s)
+	h.RegisterTracesHandlers(s)
+	h.RegisterMetricsHandlers(s)
+	h.RegisterQueryBuilderV5Handlers(s)
+	h.RegisterTopMetricsHandlers(s)
+	h.RegisterAlertsHandlers(s)
+	h.RegisterFieldsHandlers(s)
+	h.RegisterServiceHandlers(s)
+	h.RegisterViewHandlers(s)
+	h.RegisterDocsHandlers(s)
+
+	tools := listTestTools(t, s)
+	st, ok := tools[toolName]
+	if !ok {
+		t.Fatalf("tool %q not registered", toolName)
+	}
+
+	b, err := json.Marshal(st.Tool)
+	if err != nil {
+		t.Fatalf("marshal tool %q: %v", toolName, err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal tool %q JSON: %v", toolName, err)
+	}
+	schema, ok := doc["inputSchema"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool %q inputSchema = %#v, want object", toolName, doc["inputSchema"])
+	}
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool %q properties = %#v, want object", toolName, schema["properties"])
+	}
+	return props
+}

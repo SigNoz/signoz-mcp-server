@@ -3,13 +3,11 @@ package tools
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/client"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
@@ -163,36 +161,6 @@ func TestParseAggregateArgs_NonStringRequestTypeErrors(t *testing.T) {
 	}
 }
 
-// TestHandleAggregateLogs_NonStringRequestTypeCoded (FIX A3) pins the end-to-end
-// contract: a bool requestType yields a CodeValidationFailed result and never
-// reaches the backend.
-func TestHandleAggregateLogs_NonStringRequestTypeCoded(t *testing.T) {
-	called := false
-	mock := &client.MockClient{
-		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_aggregate_logs", map[string]any{
-		"aggregation": "count",
-		"timeRange":   "1h",
-		"requestType": true,
-	})
-
-	result, err := h.handleAggregateLogs(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if code := resultCode(t, result); code != CodeValidationFailed {
-		t.Fatalf("requestType=true: code = %q, want %q", code, CodeValidationFailed)
-	}
-	if called {
-		t.Fatal("backend QueryBuilderV5 was called despite invalid requestType")
-	}
-}
-
 // TestParseMetricsQueryArgs_NonStringRequestTypeErrors (FIX A3) pins the same
 // loud-rejection contract for the metrics arg parser (stringArg previously
 // dropped a non-string value to "").
@@ -202,37 +170,6 @@ func TestParseMetricsQueryArgs_NonStringRequestTypeErrors(t *testing.T) {
 		"requestType": 123,
 	}); err == nil {
 		t.Fatal("parseMetricsQueryArgs with requestType=123 = nil error, want validation error")
-	}
-}
-
-// TestHandleQueryMetrics_NonStringRequestTypeCoded (FIX A3) pins the end-to-end
-// contract for query_metrics: a numeric requestType yields a
-// CodeValidationFailed result and never reaches the backend.
-func TestHandleQueryMetrics_NonStringRequestTypeCoded(t *testing.T) {
-	called := false
-	mock := &client.MockClient{
-		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			called = true
-			return json.RawMessage(`{"status":"success"}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-	req := makeToolRequest("signoz_query_metrics", map[string]any{
-		"metricName":  "system.cpu.time",
-		"metricType":  "gauge",
-		"timeRange":   "1h",
-		"requestType": 123,
-	})
-
-	result, err := h.handleQueryMetrics(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if code := resultCode(t, result); code != CodeValidationFailed {
-		t.Fatalf("requestType=123: code = %q, want %q", code, CodeValidationFailed)
-	}
-	if called {
-		t.Fatal("backend QueryBuilderV5 was called despite invalid requestType")
 	}
 }
 

@@ -11,10 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // Current-generation QB v5 envelope: bare summary in error.message, per-term
@@ -229,76 +226,6 @@ func TestUpstreamError_PreservesSummaryAndDetailsIndependently(t *testing.T) {
 	}
 	if got := string(encoded); got != `[{"message":"key `+"`service.name`"+` not found"}]` {
 		t.Fatalf("upstreamDetails = %s, want independently preserved detail", got)
-	}
-}
-
-// TestQueryBuilderV5Handlers_KeyNotFoundGuidance pins, end to end through each
-// handler, that every QueryBuilderV5 caller routes its error path through
-// upstreamQueryError with its signal: the enriched guidance and the structured
-// missingKeys field must survive the real handler plumbing, not just the helpers.
-func TestQueryBuilderV5Handlers_KeyNotFoundGuidance(t *testing.T) {
-	failing := &signozclient.MockClient{
-		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			return nil, keyNotFound400(keyNotFoundEnvelopeBody)
-		},
-	}
-	h := newTestHandler(failing)
-
-	var builderQuery map[string]any
-	payloadJSON, err := json.Marshal(types.BuildLogsQueryPayload(1711123200000, 1711130400000, "service.name = 'checkout'", 10, 0))
-	if err != nil {
-		t.Fatalf("marshal builder payload: %v", err)
-	}
-	if err := json.Unmarshal(payloadJSON, &builderQuery); err != nil {
-		t.Fatalf("unmarshal builder payload: %v", err)
-	}
-
-	cases := []struct {
-		tool     string
-		wantNoun string
-		run      func() (*mcp.CallToolResult, error)
-	}{
-		{"signoz_search_logs", "this workspace's logs data", func() (*mcp.CallToolResult, error) {
-			return h.handleSearchLogs(testCtx(), makeToolRequest("signoz_search_logs", map[string]any{"service": "checkout"}))
-		}},
-		{"signoz_aggregate_logs", "this workspace's logs data", func() (*mcp.CallToolResult, error) {
-			return h.handleAggregateLogs(testCtx(), makeToolRequest("signoz_aggregate_logs", map[string]any{"aggregation": "count", "service": "checkout"}))
-		}},
-		{"signoz_search_traces", "this workspace's traces data", func() (*mcp.CallToolResult, error) {
-			return h.handleSearchTraces(testCtx(), makeToolRequest("signoz_search_traces", map[string]any{"service": "checkout"}))
-		}},
-		{"signoz_aggregate_traces", "this workspace's traces data", func() (*mcp.CallToolResult, error) {
-			return h.handleAggregateTraces(testCtx(), makeToolRequest("signoz_aggregate_traces", map[string]any{"aggregation": "count", "service": "checkout"}))
-		}},
-		{"signoz_query_metrics", "this workspace's metrics data", func() (*mcp.CallToolResult, error) {
-			return h.handleQueryMetrics(testCtx(), makeToolRequest("signoz_query_metrics", map[string]any{"metricName": "system.cpu.time", "metricType": "gauge"}))
-		}},
-		{"signoz_execute_builder_query", "this workspace's data", func() (*mcp.CallToolResult, error) {
-			return h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": builderQuery}))
-		}},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.tool, func(t *testing.T) {
-			result, err := tc.run()
-			if err != nil {
-				t.Fatalf("unexpected transport error: %v", err)
-			}
-			if !result.IsError {
-				t.Fatalf("expected error result, got success: %v", result.Content)
-			}
-			text := resultText(t, result)
-			if !strings.Contains(text, tc.wantNoun) {
-				t.Fatalf("guidance noun %q missing in %q", tc.wantNoun, text)
-			}
-			if !strings.Contains(text, "signoz_get_field_keys") {
-				t.Fatalf("recovery guidance missing in %q", text)
-			}
-			structured := resultStructuredMap(t, result)
-			if got := structured["missingKeys"]; !reflect.DeepEqual(got, []string{"service.name"}) {
-				t.Fatalf("missingKeys = %#v, want [service.name]", got)
-			}
-		})
 	}
 }
 

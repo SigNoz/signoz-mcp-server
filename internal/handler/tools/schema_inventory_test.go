@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // Tool names themselves are pinned by the manifest-parity integration test;
@@ -136,4 +138,44 @@ func TestAdvertisedUpdateSchemasAcceptRealWriteBackPayloads(t *testing.T) {
 		"createdAt":          "2026-01-01T00:00:00Z",
 		"unknownServerField": true,
 	})
+}
+
+const validRuleUUIDv7 = "0196634d-5d66-75c4-b778-e317f49dab7a"
+
+func validAlertWriteBackFixture() map[string]any {
+	return map[string]any{
+		"alert":     "Updated Alert",
+		"alertType": "METRIC_BASED_ALERT",
+		"ruleType":  "threshold_rule",
+		"condition": map[string]any{
+			"compositeQuery": map[string]any{
+				"queryType": "builder",
+				"panelType": "graph",
+				"queries": []any{map[string]any{
+					"type": "builder_query",
+					"spec": map[string]any{
+						"name":   "A",
+						"signal": "metrics",
+						"limit":  types.DefaultAggregateQueryLimit,
+						"order": []any{map[string]any{
+							"key":       map[string]any{"name": "__result"},
+							"direction": "desc",
+						}},
+						"aggregations": []any{map[string]any{"expression": "count()"}},
+						"filter":       map[string]any{"expression": ""},
+					},
+				}},
+			},
+			"thresholds": map[string]any{
+				"kind": "basic",
+				"spec": []any{map[string]any{
+					"name":      "critical",
+					"target":    float64(200),
+					"op":        "1",
+					"matchType": "1",
+					"channels":  []any{"slack-alerts"},
+				}},
+			},
+		},
+	}
 }
