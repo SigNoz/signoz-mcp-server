@@ -1209,3 +1209,15 @@ func decodedSpec(t *testing.T, payload []byte) map[string]any {
 	}
 	return rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
 }
+
+func TestValidate_ExplicitSchemaVersionPassesThrough(t *testing.T) {
+	rule := minimalValidAlert()
+	rule["schemaVersion"] = "v1"
+	out, err := ValidateFromMap(rule)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(out), `"schemaVersion":"v1"`) {
+		t.Fatalf("explicit schemaVersion was overwritten: %s", out)
+	}
+}
