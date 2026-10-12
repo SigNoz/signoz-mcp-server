@@ -113,9 +113,6 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 	if spec["target"] != float64(100) {
 		t.Errorf("expected threshold target=100, got %v", spec["target"])
 	}
-	querySpec := cond["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
-	assertAlertQueryBounds(t, querySpec, 100, "__result")
-
 	// annotations
 	annotations, ok := parsed["annotations"].(map[string]any)
 	if !ok {
@@ -123,136 +120,6 @@ func TestValidate_MinimalValidAlert(t *testing.T) {
 	}
 	if _, hasDesc := annotations["description"]; !hasDesc {
 		t.Error("expected default description annotation")
-	}
-}
-
-func TestValidate_DisabledIntermediateFormulaDefaultsInputAndResultBounds(t *testing.T) {
-	rule := minimalValidAlert()
-	cq := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)
-	cq["queries"] = []any{
-		map[string]any{"type": "builder_query", "spec": map[string]any{
-			"name": "A", "signal": "metrics", "disabled": true,
-			"aggregations": []any{map[string]any{"metricName": "errors", "spaceAggregation": "sum"}},
-			"limit":        0, "order": []any{},
-		}},
-		map[string]any{"type": "builder_query", "spec": map[string]any{
-			"name": "B", "signal": "metrics", "disabled": true,
-			"aggregations": []any{map[string]any{"metricName": "requests", "spaceAggregation": "sum"}},
-		}},
-		map[string]any{"type": "builder_query", "spec": map[string]any{
-			"name": "C", "signal": "metrics",
-			"aggregations": []any{map[string]any{"metricName": "latency", "spaceAggregation": "avg"}},
-		}},
-		map[string]any{"type": "builder_formula", "spec": map[string]any{
-			"name": "F1", "expression": "A / B", "disabled": true,
-			"limit": 0, "order": nil,
-		}},
-	}
-	rule["condition"].(map[string]any)["selectedQueryName"] = "C"
-
-	out, err := ValidateFromMap(rule)
-	if err != nil {
-		t.Fatalf("formula alert should validate: %v", err)
-	}
-	queries := decodedAlertQueries(t, out)
-	assertAlertQueryBounds(t, queries[0]["spec"].(map[string]any), 10000, "__result")
-	assertAlertQueryBounds(t, queries[1]["spec"].(map[string]any), 10000, "__result")
-	assertAlertQueryBounds(t, queries[2]["spec"].(map[string]any), 100, "__result")
-	assertAlertQueryBounds(t, queries[3]["spec"].(map[string]any), 100, "__result")
-}
-
-func TestValidate_DefaultsLogAlertOrderToPrimaryAggregation(t *testing.T) {
-	rule := minimalValidAlert()
-	rule["alertType"] = "LOGS_BASED_ALERT"
-	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
-	spec["signal"] = "logs"
-	spec["aggregations"] = []any{map[string]any{"expression": "count()"}}
-
-	out, err := ValidateFromMap(rule)
-	if err != nil {
-		t.Fatalf("log alert should validate: %v", err)
-	}
-	assertAlertQueryBounds(t, decodedAlertQueries(t, out)[0]["spec"].(map[string]any), 100, "count()")
-}
-
-func TestValidate_PreservesPositiveBoundsAndOrderMetadata(t *testing.T) {
-	rule := minimalValidAlert()
-	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
-	spec["limit"] = "42"
-	spec["order"] = []any{map[string]any{
-		"key":       map[string]any{"name": " __result ", "description": "Result"},
-		"direction": " DESC ",
-	}}
-
-	out, err := ValidateFromMap(rule)
-	if err != nil {
-		t.Fatalf("authored bounds should validate: %v", err)
-	}
-	normalized := decodedAlertQueries(t, out)[0]["spec"].(map[string]any)
-	assertAlertQueryBounds(t, normalized, 42, "__result")
-	key := normalized["order"].([]any)[0].(map[string]any)["key"].(map[string]any)
-	if key["description"] != "Result" {
-		t.Fatalf("order-key metadata was not preserved: %v", key)
-	}
-}
-
-func TestValidate_RejectsInvalidBuilderBounds(t *testing.T) {
-	tests := []struct {
-		name    string
-		mutate  func(map[string]any)
-		wantMsg string
-	}{
-		{name: "negative limit", mutate: func(spec map[string]any) { spec["limit"] = -1 }, wantMsg: "spec.limit"},
-		{name: "limit above backend maximum", mutate: func(spec map[string]any) { spec["limit"] = 10001 }, wantMsg: "maximum is 10000"},
-		{name: "fractional limit", mutate: func(spec map[string]any) { spec["limit"] = 1.5 }, wantMsg: "must be an integer"},
-		{name: "invalid direction", mutate: func(spec map[string]any) {
-			spec["order"] = []any{map[string]any{"key": map[string]any{"name": "__result"}, "direction": "sideways"}}
-		}, wantMsg: "valid values are"},
-		{name: "dashboard orderBy", mutate: func(spec map[string]any) {
-			spec["orderBy"] = []any{map[string]any{"columnName": "__result", "order": "desc"}}
-		}, wantMsg: "dashboard/editor field"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rule := minimalValidAlert()
-			spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
-			tc.mutate(spec)
-			_, err := ValidateFromMap(rule)
-			if err == nil || !strings.Contains(err.Error(), tc.wantMsg) {
-				t.Fatalf("error = %v, want message containing %q", err, tc.wantMsg)
-			}
-		})
-	}
-}
-
-func decodedAlertQueries(t *testing.T, payload []byte) []map[string]any {
-	t.Helper()
-	var rule map[string]any
-	if err := json.Unmarshal(payload, &rule); err != nil {
-		t.Fatalf("failed to parse alert payload: %v", err)
-	}
-	rawQueries := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)
-	queries := make([]map[string]any, len(rawQueries))
-	for i := range rawQueries {
-		queries[i] = rawQueries[i].(map[string]any)
-	}
-	return queries
-}
-
-func assertAlertQueryBounds(t *testing.T, spec map[string]any, wantLimit float64, wantOrderKey string) {
-	t.Helper()
-	if spec["limit"] != wantLimit {
-		t.Fatalf("limit = %v, want %.0f", spec["limit"], wantLimit)
-	}
-	order, ok := spec["order"].([]any)
-	if !ok || len(order) != 1 {
-		t.Fatalf("order = %v, want one entry", spec["order"])
-	}
-	entry := order[0].(map[string]any)
-	key := entry["key"].(map[string]any)
-	if key["name"] != wantOrderKey || entry["direction"] != "desc" {
-		t.Fatalf("order = %v, want %s desc", order, wantOrderKey)
 	}
 }
 
@@ -864,7 +731,11 @@ func TestValidate_AnomalyRule_Accepted(t *testing.T) {
 		t.Errorf("expected frequency=3h, got %v", parsed["frequency"])
 	}
 	querySpec := parsed["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
-	assertAlertQueryBounds(t, querySpec, 100, "__result")
+	for _, field := range []string{"limit", "order"} {
+		if _, present := querySpec[field]; present {
+			t.Errorf("%s must not be injected into alert queries (limit/order cap grouped evaluation to top-N), got %v", field, querySpec[field])
+		}
+	}
 	if functions, ok := querySpec["functions"].([]any); !ok || len(functions) != 1 {
 		t.Fatalf("anomaly functions were not preserved: %v", querySpec["functions"])
 	}
@@ -1303,4 +1174,37 @@ func TestValidate_InvalidSourceValueRejected(t *testing.T) {
 	if !strings.Contains(err.Error(), "source") {
 		t.Errorf("expected source error, got: %v", err)
 	}
+}
+
+func TestValidate_ExplicitTopNBoundsPassThroughUnchanged(t *testing.T) {
+	rule := minimalValidAlert()
+	spec := rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
+	spec["limit"] = 25
+	spec["order"] = []any{map[string]any{"key": map[string]any{"name": "__result"}, "direction": "asc"}}
+
+	out, err := ValidateFromMap(rule)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	normalized := decodedSpec(t, out)
+	if normalized["limit"] != float64(25) {
+		t.Fatalf("explicit limit was rewritten: %v", normalized["limit"])
+	}
+	order, ok := normalized["order"].([]any)
+	if !ok || len(order) != 1 {
+		t.Fatalf("explicit order was rewritten: %v", normalized["order"])
+	}
+	entry := order[0].(map[string]any)
+	if entry["direction"] != "asc" || entry["key"].(map[string]any)["name"] != "__result" {
+		t.Fatalf("explicit order was rewritten: %v", entry)
+	}
+}
+
+func decodedSpec(t *testing.T, payload []byte) map[string]any {
+	t.Helper()
+	var rule map[string]any
+	if err := json.Unmarshal(payload, &rule); err != nil {
+		t.Fatalf("failed to parse alert payload: %v", err)
+	}
+	return rule["condition"].(map[string]any)["compositeQuery"].(map[string]any)["queries"].([]any)[0].(map[string]any)["spec"].(map[string]any)
 }
