@@ -522,7 +522,7 @@
                                   "type": "string"
                                 },
                                 "limit": {
-                                  "description": "Positive maximum number of result groups. Use 100 for standalone alert queries and formula results. Use 10000 for each builder query referenced by a formula because input limits are applied before formula evaluation.",
+                                  "description": "Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent.",
                                   "type": "integer"
                                 },
                                 "name": {
@@ -530,7 +530,7 @@
                                   "type": "string"
                                 },
                                 "order": {
-                                  "description": "Query Builder v5 result order. Use __result desc for metrics and formulas; use the primary aggregation descending for logs and traces. This is the wire field order, not dashboard editor orderBy.",
+                                  "description": "Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy.",
                                   "items": {
                                     "properties": {
                                       "direction": {
@@ -6898,7 +6898,7 @@
                                   "type": "string"
                                 },
                                 "limit": {
-                                  "description": "Positive maximum number of result groups. Use 100 for standalone alert queries and formula results. Use 10000 for each builder query referenced by a formula because input limits are applied before formula evaluation.",
+                                  "description": "Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent.",
                                   "type": "integer"
                                 },
                                 "name": {
@@ -6906,7 +6906,7 @@
                                   "type": "string"
                                 },
                                 "order": {
-                                  "description": "Query Builder v5 result order. Use __result desc for metrics and formulas; use the primary aggregation descending for logs and traces. This is the wire field order, not dashboard editor orderBy.",
+                                  "description": "Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy.",
                                   "items": {
                                     "properties": {
                                       "direction": {

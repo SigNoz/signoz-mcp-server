@@ -115,8 +115,8 @@ type AlertQuerySpec struct {
 	Aggregations []AlertAggregation   `json:"aggregations,omitempty" jsonschema:"Aggregation expressions for builder queries. For metrics signal use the object shape: [{metricName: k8s.pod.cpu_request_utilization, timeAggregation: avg, spaceAggregation: max}]. For logs/traces use the expression shape: [{expression: count()}] or [{expression: p99(duration_nano)}]."`
 	Filter       *AlertQueryFilter    `json:"filter,omitempty" jsonschema:"Filter expression for builder queries. Example: {expression: service.name = frontend AND http.status_code >= 500}."`
 	GroupBy      []AlertGroupByField  `json:"groupBy,omitempty" jsonschema:"Fields to group by. Grouped dimensions appear as labels in alert notifications."`
-	Limit        int                  `json:"limit,omitempty" jsonschema:"Positive maximum number of result groups. Use 100 for standalone alert queries and formula results. Use 10000 for each builder query referenced by a formula because input limits are applied before formula evaluation."`
-	Order        []AlertOrderField    `json:"order,omitempty" jsonschema:"Query Builder v5 result order. Use __result desc for metrics and formulas; use the primary aggregation descending for logs and traces. This is the wire field order, not dashboard editor orderBy."`
+	Limit        int                  `json:"limit,omitempty" jsonschema:"Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent."`
+	Order        []AlertOrderField    `json:"order,omitempty" jsonschema:"Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy."`
 	Having       *AlertQueryFilter    `json:"having,omitempty" jsonschema:"Having clause to filter aggregation results."`
 	Functions    []AlertQueryFunction `json:"functions,omitempty" jsonschema:"Post-query functions applied to the series. Required for anomaly_rule: wrap with {name: anomaly, args: [{name: z_score_threshold, value: 2}]}."`
 
