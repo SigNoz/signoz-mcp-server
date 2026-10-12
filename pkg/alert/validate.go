@@ -547,11 +547,6 @@ func validateCrossConstraints(rule map[string]any, errs *ValidationError) {
 
 // applyDefaults fills in missing fields with sensible defaults.
 func applyDefaults(rule map[string]any) {
-	// version defaults to v5
-	if strVal(rule, "version") == "" {
-		rule["version"] = "v5"
-	}
-
 	// source defaults to mcp
 	if strVal(rule, "source") == "" {
 		rule["source"] = "mcp"
