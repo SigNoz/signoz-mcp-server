@@ -57,11 +57,7 @@ func (h *Handler) handleGetFieldKeys(ctx context.Context, req mcp.CallToolReques
 		return notAJSONObjectError(), nil
 	}
 
-	signal, ok := args["signal"].(string)
-	if !ok || signal == "" || (signal != "metrics" && signal != "traces" && signal != "logs") {
-		return validationError("signal", `must be one of: "metrics", "traces", "logs"`), nil
-	}
-
+	signal, _ := args["signal"].(string)
 	searchText, _ := args["searchText"].(string)
 	metricName, _ := args["metricName"].(string)
 	fieldContext, _ := args["fieldContext"].(string)
@@ -87,16 +83,8 @@ func (h *Handler) handleGetFieldValues(ctx context.Context, req mcp.CallToolRequ
 		return notAJSONObjectError(), nil
 	}
 
-	signal, ok := args["signal"].(string)
-	if !ok || signal == "" || (signal != "metrics" && signal != "traces" && signal != "logs") {
-		return validationError("signal", `must be one of: "metrics", "traces", "logs"`), nil
-	}
-
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return validationError("name", `must be a non-empty string. Example: "service.name", "http.status_code"`), nil
-	}
-
+	signal, _ := args["signal"].(string)
+	name, _ := args["name"].(string)
 	searchText, _ := args["searchText"].(string)
 	metricName, _ := args["metricName"].(string)
 	fieldContext, _ := args["fieldContext"].(string)
