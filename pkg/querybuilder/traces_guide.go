@@ -23,7 +23,7 @@ Examples:
 
 == FIELD DISCOVERY ==
 
-Unknown keys hard-error. Built-in span columns are stable, but resource and span/tag attributes depend
+Unknown keys hard-error. Built-in span columns are stable, but resource and span attributes depend
 on this workspace's instrumentation. Do not guess unfamiliar field names. Discover keys, then confirm
 their observed values before filtering:
   signoz_get_field_keys(signal="traces", fieldContext="span")
@@ -31,9 +31,11 @@ their observed values before filtering:
   signoz_get_field_keys(signal="traces", fieldContext="attribute")
   signoz_get_field_values(signal="traces", name="<field>", fieldContext="<matching context>")
 
-The fieldContext value "tag" is accepted as an alias for "attribute" by the discovery tools; Query
-Builder selectFields and groupBy use "tag". The resource and tag names below are common examples, not
-a complete catalog for every workspace.
+Span attributes use fieldContext "attribute" everywhere: in the discovery tools and in Query Builder
+selectFields and groupBy entries. Older query payloads spell the same context with the legacy value
+"tag"; translate it to "attribute" for discovery, because SigNoz ignores "tag" when listing keys and
+returns no values for it. The resource and attribute names below are common examples, not a complete
+catalog for every workspace.
 
 == FIELD NAMES — THREE CATEGORIES ==
 
@@ -57,7 +59,7 @@ to make the built-in/span-column intent explicit:
   kind_string          string    — 'Server', 'Client', 'Internal', 'Producer', 'Consumer'
   response_status_code string    — HTTP response status as string; do not use for numeric comparisons
 
-For numeric HTTP status comparisons, use a numeric span/tag attribute such as
+For numeric HTTP status comparisons, use a numeric span attribute such as
 attribute.http.response.status_code after verifying it exists for your data.
 
 selectFields entry:
@@ -81,7 +83,7 @@ selectFields entry (fieldContext: "resource" required):
   {"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"}
   {"name": "k8s.namespace.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"}
 
---- 3. Span/tag attributes (dot notation, fieldContext: "tag") ---
+--- 3. Span attributes (dot notation, fieldContext: "attribute") ---
 
 OTel span attributes set per-span:
 
@@ -91,8 +93,8 @@ OTel span attributes set per-span:
   rpc.method         string — RPC method name
   messaging.system   string — messaging system (e.g. "kafka")
 
-selectFields entry (fieldContext: "tag" required):
-  {"name": "http.response.status_code", "fieldDataType": "number", "signal": "traces", "fieldContext": "tag"}
+selectFields entry (fieldContext: "attribute" required):
+  {"name": "http.response.status_code", "fieldDataType": "number", "signal": "traces", "fieldContext": "attribute"}
 
 == RESULT BOUNDS AND ORDERING ==
 
@@ -229,5 +231,5 @@ Prefer start/end to bound the time window. The built-in "timestamp" COLUMN is na
 | Span ID                     | span_id            | span          |
 | Service name                | service.name       | resource      |
 | Kubernetes namespace        | k8s.namespace.name | resource      |
-| HTTP response code (attr)   | http.response.status_code | tag   |
+| HTTP response code (attr)   | http.response.status_code | attribute |
 `

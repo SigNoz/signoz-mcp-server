@@ -165,7 +165,7 @@
           "description": "Read this before writing Query Builder v5 JSON for traces or filtering on unfamiliar trace fields. It explains filter syntax, field discovery, built-in span fields, row and aggregate queries, limits, ordering, timestamps, and examples for rows, single values, and time series.",
           "mimeType": "text/markdown",
           "name": "Traces Query Builder Guide",
-          "size": 9714,
+          "size": 9915,
           "uri": "signoz://traces/query-builder-guide"
         }
       ]
