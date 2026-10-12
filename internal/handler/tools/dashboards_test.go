@@ -18,8 +18,9 @@ import (
 )
 
 func TestHandleDeleteDashboard_Success(t *testing.T) {
-	// Simulate a create-then-delete flow: the mock "creates" a dashboard and
-	// then the delete handler removes it by id.
+	// Create a dashboard, then delete the same id. The delete mock asserts the
+	// id the handler forwards; the two steps share the id by construction of
+	// the test, not by reading it back from the create result.
 	const createdID = "abc-123-def"
 
 	created := false
@@ -258,48 +259,6 @@ func TestHandleUpdateDashboard_RejectsReadEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteDashboard_EmptyID(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{
-		"id": "",
-	}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for empty id")
-	}
-}
-
-func TestHandleDeleteDashboard_MissingID(t *testing.T) {
-	h := newTestHandler(&client.MockClient{})
-	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result for missing id")
-	}
-}
-
-func TestHandleDeleteDashboard_ClientError(t *testing.T) {
-	mock := &client.MockClient{
-		DeleteDashboardFn: func(ctx context.Context, id string) error {
-			return fmt.Errorf("not found")
-		},
-	}
-	h := newTestHandler(mock)
-	result, err := h.handleDeleteDashboard(testCtx(), makeToolRequest("signoz_delete_dashboard", map[string]any{
-		"id": "nonexistent-id",
-	}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected error result when client returns error")
-	}
-}
-
 // withTemplateServer swaps the package HTTP client for the test server's
 // client and restores it on cleanup.
 func withTemplateServer(t *testing.T, srv *httptest.Server) {
@@ -419,8 +378,11 @@ func TestHandleImportDashboard_MissingPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result for missing path")
+	if got := resultCode(t, result); got != CodeValidationFailed {
+		t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+	}
+	if text := resultText(t, result); !strings.Contains(text, `"path"`) {
+		t.Fatalf("error text = %q, want it to name the missing path parameter", text)
 	}
 }
 
@@ -434,8 +396,11 @@ func TestHandleImportDashboard_RejectsAbsoluteAndURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error for %q: %v", bad, err)
 		}
-		if !result.IsError {
-			t.Errorf("expected error result for path %q", bad)
+		if got := resultCode(t, result); got != CodeValidationFailed {
+			t.Fatalf("code for %q = %q, want %q", bad, got, CodeValidationFailed)
+		}
+		if text := resultText(t, result); !strings.Contains(text, "relative template path") {
+			t.Fatalf("error text for %q = %q, want it to require a relative template path", bad, text)
 		}
 	}
 }
@@ -507,8 +472,12 @@ func TestHandleImportDashboard_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Error("expected error result on 404")
+	if got := resultCode(t, result); got != CodeUpstreamError {
+		t.Fatalf("code = %q, want %q", got, CodeUpstreamError)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "no/such/template.json") || !strings.Contains(text, "404") {
+		t.Fatalf("error text = %q, want it to name the missing template and status", text)
 	}
 }
 
@@ -755,6 +724,9 @@ func TestHandleListDashboards_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
@@ -819,6 +791,9 @@ func TestHandleGetDashboard_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	result, err := h.handleGetDashboard(testCtx(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
 	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {

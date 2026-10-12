@@ -44,6 +44,9 @@ func TestHandleListServices_OmitsWebURLWhenNoBaseURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if result.IsError {
+		t.Fatalf("handler returned error result: %v", result.Content)
+	}
 	body := textContent(t, result)
 	if strings.Contains(body, "webUrl") {
 		t.Fatalf("expected NO webUrl without base URL, got: %s", body)
