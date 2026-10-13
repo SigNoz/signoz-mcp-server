@@ -720,7 +720,7 @@ The response is `{ "status": "success", "data": { "items": [...], "total": <n>, 
   - `timeRange` (optional) - Relative time range `<number><unit>` where unit is `m`/`h`/`d` (e.g. '30m', '1h', '6h', '7d'; defaults to last 6 hours; ignored when both `start` and `end` are provided)
   - `start` (optional) - Start timestamp in unix milliseconds (defaults to 6 hours ago).
   - `end` (optional) - End timestamp in unix milliseconds (defaults to now)
-  - `state` (optional) - Filter by alert state. Enum: `inactive`, `pending`, `recovering`, `firing`, `nodata`, `disabled` (omit for all transitions)
+  - `state` (optional) - Filter by alert state: `inactive`, `pending`, `recovering`, `firing`, `nodata`, or `disabled` (omit for all transitions)
   - `filter` (optional) - SigNoz query-builder expression over timeline labels. Combine conditions with `AND`, `OR`, and parentheses; quote strings with single quotes. Example: `severity = 'critical' AND (team = 'payments' OR service.name = 'checkout')`. To discover keys, first call without a filter and inspect `data.items[].labels[].key.name`. The backend-shaped `filterExpression` alias remains accepted for compatibility, but `filter` is canonical.
   - `cursor` (optional) - Opaque continuation cursor. Repeat the original time range, state, filter, and order when fetching the next page. Omit `cursor` for the first page.
   - `limit` (optional) - Rows per page. Default: 20; max: 10000 (higher values are clamped).
@@ -941,7 +941,7 @@ Create a new alert rule in SigNoz via `POST /api/v2/rules`.
 - **Schema varies by `ruleType`**:
   - `threshold_rule` / `promql_rule` → **v2alpha1** (structured `condition.thresholds`, `evaluation`, `notificationSettings`).
   - `anomaly_rule` → **v1**, metrics only: top-level `evalWindow`/`frequency`, condition anomaly fields, and direct top-level `preferredChannels`. Omit `thresholds`, `evaluation`, `notificationSettings`, and `schemaVersion`; policy routing is unsupported.
-- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier and rejects top-level `preferredChannels`; v1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels; supplied names are still validated.
+- **Notification routing**: For direct routing, reuse a fully paginated `signoz_list_notification_channels` result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. V2 needs an exact returned displayName on every tier: SigNoz rejects a tier with no channels or a channel name that does not exist, and top-level `preferredChannels` plays no part in v2 routing. V1 anomaly uses direct top-level `preferredChannels`. If none fits, ask the user or offer `signoz_create_notification_channel` with user-provided config; never create automatically. Confirmed v2 policy routing may omit tier channels.
 - **Tip**: Reuse alert resources only when already read for the same prepared operation; otherwise read `signoz://alert/instructions` and `signoz://alert/examples`. For PromQL, read `signoz://promql/instructions` when needed.
 
 #### `signoz_update_alert`

@@ -353,9 +353,12 @@ func TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription(t *testing
 		if tool.Name == "signoz_create_alert" {
 			sawCreateAlert = true
 			props := schemaProperties(t, tool.Name, schema)
-			alert, _ := props["alert"].(map[string]any)
-			if alert == nil || alert["description"] != "Name of the alert rule. Must be unique and descriptive." {
-				t.Errorf("signoz_create_alert .alert description = %v, want authored prose", alert["description"])
+			// The rule shape is the upstream-generated PostableRule (no
+			// authored field descriptions); searchContext is the wrapper
+			// field that proves authored jsonschema tags reach registration.
+			sc, _ := props["searchContext"].(map[string]any)
+			if sc == nil || sc["description"] != "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses." {
+				t.Errorf("signoz_create_alert .searchContext description = %v, want authored prose", sc["description"])
 			}
 		}
 	}

@@ -333,268 +333,52 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants a new SigNoz alert rule; use signoz_update_alert to change an existing rule. Supports v2alpha1 threshold/PromQL alerts and metric-only v1 anomaly alerts. Reuse signoz://alert/instructions and signoz://alert/examples from the same prepared operation; for PromQL read signoz://promql/instructions when needed. For direct routing, reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If none fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never guess or create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. v1 anomaly rules route with top-level preferredChannels; v2 rules do not use it.",
           "inputSchema": {
             "properties": {
               "alert": {
-                "description": "Name of the alert rule. Must be unique and descriptive.",
                 "type": "string"
               },
               "alertType": {
-                "description": "Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT.",
                 "type": "string"
               },
               "annotations": {
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values.",
-                "type": "object"
+                "type": [
+                  "null",
+                  "object"
+                ]
               },
               "condition": {
-                "description": "Alert condition containing the query and threshold configuration.",
                 "properties": {
                   "absentFor": {
-                    "description": "Minutes (equivalent to consecutive evaluation cycles when frequency is 1m) to wait with no data before firing an absent-data alert. Example: absentFor=15 with frequency=1m fires after 15 evaluations return no series.",
-                    "minimum": 0,
-                    "type": "integer"
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
                   },
                   "alertOnAbsent": {
-                    "description": "Alert when no data is received within the evaluation window.",
-                    "type": "boolean"
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
                   },
                   "algorithm": {
-                    "description": "v1 (anomaly_rule) only. Anomaly detection algorithm; the supported value is standard (z-score based).",
-                    "type": "string"
+                    "type": [
+                      "null",
+                      "string"
+                    ]
                   },
                   "compositeQuery": {
-                    "description": "The composite query defining what data to monitor.",
                     "properties": {
                       "panelType": {
-                        "description": "Panel type. Use graph for alerts. Defaults to graph.",
                         "type": "string"
                       },
                       "queries": {
-                        "description": "Array of queries. At least one query is required.",
                         "items": {
-                          "properties": {
-                            "spec": {
-                              "description": "Query specification.",
-                              "properties": {
-                                "aggregations": {
-                                  "description": "Aggregation expressions for builder queries. For metrics signal use the object shape: [{metricName: k8s.pod.cpu_request_utilization, timeAggregation: avg, spaceAggregation: max}]. For logs/traces use the expression shape: [{expression: count()}] or [{expression: p99(duration_nano)}].",
-                                  "items": {
-                                    "properties": {
-                                      "expression": {
-                                        "description": "Aggregation expression (logs/traces signal). Examples: count(), avg(duration), p99(duration_nano), count_distinct(user_id), sum(bytes). Do not set metricName/timeAggregation/spaceAggregation when using this shape.",
-                                        "type": "string"
-                                      },
-                                      "metricName": {
-                                        "description": "Metric name (metrics signal only). Example: k8s.pod.cpu_request_utilization. Use alongside timeAggregation and spaceAggregation. Do not set expression when using this shape.",
-                                        "type": "string"
-                                      },
-                                      "spaceAggregation": {
-                                        "description": "Cross-series space aggregation (metrics signal only). Common values: sum, avg, min, max, count. For histograms use percentiles: p50, p75, p90, p95, p99.",
-                                        "type": "string"
-                                      },
-                                      "timeAggregation": {
-                                        "description": "Per-series time aggregation (metrics signal only). Common values: avg, max, min, sum, rate, increase, count, count_distinct, latest. Default by metric type: gauge→avg, cumulative counter→rate, delta counter→sum.",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "disabled": {
-                                  "description": "Whether this query is disabled.",
-                                  "type": "boolean"
-                                },
-                                "expression": {
-                                  "description": "Formula expression referencing other query names (e.g. A / B * 100). Used for builder_formula type.",
-                                  "type": "string"
-                                },
-                                "filter": {
-                                  "description": "Filter expression for builder queries. Example: {expression: service.name = frontend AND http.status_code \u003e= 500}.",
-                                  "properties": {
-                                    "expression": {
-                                      "description": "Filter expression using field operators. Example: service.name = frontend AND http.status_code \u003e= 500. Use empty string for no filter.",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "expression"
-                                  ],
-                                  "type": [
-                                    "null",
-                                    "object"
-                                  ]
-                                },
-                                "functions": {
-                                  "description": "Post-query functions applied to the series. Required for anomaly_rule: wrap with {name: anomaly, args: [{name: z_score_threshold, value: 2}]}.",
-                                  "items": {
-                                    "properties": {
-                                      "args": {
-                                        "description": "Function arguments. Example for anomaly: [{name: z_score_threshold, value: 2}].",
-                                        "items": {
-                                          "properties": {
-                                            "name": {
-                                              "description": "Argument name (e.g. z_score_threshold).",
-                                              "type": "string"
-                                            },
-                                            "value": {
-                                              "description": "Argument value. Can be number, string, or bool depending on the function."
-                                            }
-                                          },
-                                          "required": [
-                                            "name"
-                                          ],
-                                          "type": "object"
-                                        },
-                                        "type": [
-                                          "null",
-                                          "array"
-                                        ]
-                                      },
-                                      "name": {
-                                        "description": "Function name (e.g. anomaly for ruleType=anomaly_rule).",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "name"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "groupBy": {
-                                  "description": "Fields to group by. Grouped dimensions appear as labels in alert notifications.",
-                                  "items": {
-                                    "properties": {
-                                      "fieldContext": {
-                                        "description": "Field context: resource for resource attributes or tag for span/log attributes. Required for non-top-level fields.",
-                                        "type": "string"
-                                      },
-                                      "fieldDataType": {
-                                        "description": "Data type of the field: string or int64 or float64 or bool.",
-                                        "type": "string"
-                                      },
-                                      "name": {
-                                        "description": "Field name to group by (e.g. service.name or http.method or severity_text).",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "name"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "having": {
-                                  "description": "Having clause to filter aggregation results.",
-                                  "properties": {
-                                    "expression": {
-                                      "description": "Filter expression using field operators. Example: service.name = frontend AND http.status_code \u003e= 500. Use empty string for no filter.",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "expression"
-                                  ],
-                                  "type": [
-                                    "null",
-                                    "object"
-                                  ]
-                                },
-                                "legend": {
-                                  "description": "Legend template for the query.",
-                                  "type": "string"
-                                },
-                                "limit": {
-                                  "description": "Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent.",
-                                  "type": "integer"
-                                },
-                                "name": {
-                                  "description": "Query name (e.g. A or B or C). Used as reference in formulas and selectedQueryName.",
-                                  "type": "string"
-                                },
-                                "order": {
-                                  "description": "Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy.",
-                                  "items": {
-                                    "properties": {
-                                      "direction": {
-                                        "description": "Sort direction: asc or desc.",
-                                        "type": "string"
-                                      },
-                                      "key": {
-                                        "properties": {
-                                          "name": {
-                                            "description": "Field or aggregation expression to order by (e.g. timestamp or count()).",
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": [
-                                          "name"
-                                        ],
-                                        "type": "object"
-                                      }
-                                    },
-                                    "required": [
-                                      "key",
-                                      "direction"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "query": {
-                                  "description": "PromQL or ClickHouse SQL query string. Used when queryType is promql or clickhouse_sql. PromQL with OTel dotted metric names MUST use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data. Read signoz://promql/instructions for the full guide (histogram patterns dotted labels pre-flight checklist).",
-                                  "type": "string"
-                                },
-                                "signal": {
-                                  "description": "Signal type for builder queries: metrics or logs or traces. Required for builder_query type.",
-                                  "type": "string"
-                                },
-                                "source": {
-                                  "description": "Data-source filter for metrics builder_query only. Set to meter to alert on Cost Meter (usage/billing) metrics such as signoz.meter.log.size; omit otherwise.",
-                                  "type": "string"
-                                },
-                                "stepInterval": {
-                                  "description": "Step interval in seconds for time aggregation. Use 60 for metrics alerts.",
-                                  "type": [
-                                    "null",
-                                    "integer"
-                                  ]
-                                }
-                              },
-                              "required": [
-                                "name"
-                              ],
-                              "type": "object"
-                            },
-                            "type": {
-                              "description": "Query envelope type. Must match compositeQuery.queryType: builder → builder_query or builder_formula; promql → promql; clickhouse_sql → clickhouse_sql. Also accepted: builder_trace_operator for trace operator queries.",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "type",
-                            "spec"
-                          ],
+                          "properties": {},
                           "type": "object"
                         },
                         "type": [
@@ -603,117 +387,72 @@
                         ]
                       },
                       "queryType": {
-                        "description": "Query type: builder for Query Builder or promql for PromQL or clickhouse_sql for ClickHouse SQL.",
                         "type": "string"
                       },
                       "unit": {
-                        "description": "Unit of the queried data (Y-axis unit). Used for value formatting in alert messages and for unit conversion with targetUnit in thresholds. Common values: percent, ms, s, bytes, ns, reqps, ops.",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "queryType",
-                      "queries"
-                    ],
-                    "type": "object"
-                  },
-                  "matchType": {
-                    "description": "v1 (anomaly_rule) only. Match type - same accepted values as threshold.matchType (at_least_once, all_the_times, on_average/avg, in_total/sum, last).",
-                    "type": "string"
-                  },
-                  "op": {
-                    "description": "v1 (anomaly_rule) only. Comparison operator applied to the anomaly score - same accepted values as threshold.op (above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds).",
-                    "type": "string"
-                  },
-                  "requireMinPoints": {
-                    "description": "Require a minimum number of data points before evaluating the condition.",
-                    "type": "boolean"
-                  },
-                  "requiredNumPoints": {
-                    "description": "Minimum number of data points required when requireMinPoints is true.",
-                    "type": "integer"
-                  },
-                  "seasonality": {
-                    "description": "v1 (anomaly_rule) only. Seasonality pattern for anomaly detection: hourly, daily, or weekly.",
-                    "type": "string"
-                  },
-                  "selectedQueryName": {
-                    "description": "Which query name triggers the alert (e.g. A or B or F1). Required when multiple queries exist. Defaults to the first query name.",
-                    "type": "string"
-                  },
-                  "target": {
-                    "description": "v1 (anomaly_rule) only. Threshold value compared against the anomaly score."
-                  },
-                  "thresholds": {
-                    "description": "v2alpha1 only (threshold_rule, promql_rule) and always required, including when alertOnAbsent=true. Each threshold level (critical, error, warning, info) can route independently. Omit entirely for anomaly_rule - use condition.op/matchType/target there instead.",
-                    "properties": {
-                      "kind": {
-                        "description": "Threshold kind. Currently only basic is supported.",
-                        "type": "string"
-                      },
-                      "spec": {
-                        "description": "Array of threshold specifications. Each threshold can route to different channels.",
-                        "items": {
-                          "properties": {
-                            "channels": {
-                              "description": "Existing notification channel names for this v2 threshold tier. Direct routing requires at least one nonblank exact name on every tier; preferredChannels is not a fallback. Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing if state may have changed. Confirmed notificationSettings.usePolicy=true may omit channels, but supplied names are validated.",
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": [
-                                "null",
-                                "array"
-                              ]
-                            },
-                            "matchType": {
-                              "description": "How to evaluate the threshold. Canonical: at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total). Numeric 1-5 also accepted but discouraged.",
-                              "type": "string"
-                            },
-                            "name": {
-                              "description": "Threshold tier: critical, error, warning, or info. Also used as the routing label - alerts carry threshold_name equal to this value.",
-                              "type": "string"
-                            },
-                            "op": {
-                              "description": "Comparison operator. Canonical literals: above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: \u003e, \u003c, =, !=, \u003e=, \u003c=. Numeric 1-7 also accepted but discouraged.",
-                              "type": "string"
-                            },
-                            "recoveryTarget": {
-                              "description": "Hysteresis - value at which a firing alert is considered resolved. Useful to avoid flapping near the threshold (e.g. target=80 percent, recoveryTarget=75 percent). Use null to use the threshold target itself as the recovery point.",
-                              "type": [
-                                "null",
-                                "number"
-                              ]
-                            },
-                            "target": {
-                              "description": "Threshold value to compare against.",
-                              "type": [
-                                "null",
-                                "number"
-                              ]
-                            },
-                            "targetUnit": {
-                              "description": "Unit of the threshold target value. If different from compositeQuery.unit the backend converts between them during evaluation. Common values: percent, ms, s, bytes, ns.",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name",
-                            "target",
-                            "matchType",
-                            "op"
-                          ],
-                          "type": "object"
-                        },
                         "type": [
                           "null",
-                          "array"
+                          "string"
                         ]
                       }
                     },
                     "required": [
-                      "kind",
-                      "spec"
+                      "panelType",
+                      "queries",
+                      "queryType"
                     ],
+                    "type": "object"
+                  },
+                  "matchType": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "op": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "requireMinPoints": {
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
+                  },
+                  "requiredNumPoints": {
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
+                  },
+                  "seasonality": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "selectedQueryName": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "target": {
+                    "type": [
+                      "null",
+                      "number"
+                    ]
+                  },
+                  "targetUnit": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "thresholds": {
+                    "properties": {},
                     "type": [
                       "null",
                       "object"
@@ -726,97 +465,48 @@
                 "type": "object"
               },
               "description": {
-                "description": "Human-readable description of what this alert monitors.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "disabled": {
-                "description": "Whether the alert rule is disabled. Defaults to false (enabled).",
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "evalWindow": {
-                "description": "v1 schema only (anomaly_rule). Evaluation window as a Go duration string (e.g. 5m, 15m, 1h, 24h). For threshold/promql rules, use evaluation.spec.evalWindow instead.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "evaluation": {
-                "description": "v2alpha1 only. Evaluation configuration. kind=rolling (sliding window) auto-generated with defaults (5m/1m) if omitted; kind=cumulative (daily/monthly reset) for period-total alerts such as daily error counts or Cost Meter spend budgets. Skipped entirely for anomaly_rule which uses top-level evalWindow/frequency instead.",
-                "properties": {
-                  "kind": {
-                    "description": "Evaluation kind: rolling (sliding lookback window) or cumulative (accumulates from a fixed daily/monthly reset boundary). Cumulative works for any period-total alert (e.g. daily error counts, monthly request budgets); Cost Meter spend budgets are one common use.",
-                    "type": "string"
-                  },
-                  "spec": {
-                    "description": "Evaluation specification. For kind=rolling set evalWindow + frequency; for kind=cumulative set schedule + frequency + timezone.",
-                    "properties": {
-                      "evalWindow": {
-                        "description": "Rolling kind only. Evaluation window as a Go duration string (e.g. 5m, 15m, 30m, 1h, 4h, 24h).",
-                        "type": "string"
-                      },
-                      "frequency": {
-                        "description": "Evaluation frequency as a Go duration string (e.g. 1m, 5m, 15m).",
-                        "type": "string"
-                      },
-                      "schedule": {
-                        "description": "Cumulative kind only. Fixed reset boundary the accumulation window starts from.",
-                        "properties": {
-                          "hour": {
-                            "description": "Hour of the reset boundary (0-23); e.g. 0 for midnight.",
-                            "type": "integer"
-                          },
-                          "minute": {
-                            "description": "Minute of the reset boundary (0-59); e.g. 0 for the top of the hour.",
-                            "type": "integer"
-                          },
-                          "type": {
-                            "description": "Reset cadence: daily or monthly.",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "minute",
-                          "hour"
-                        ],
-                        "type": [
-                          "null",
-                          "object"
-                        ]
-                      },
-                      "timezone": {
-                        "description": "Cumulative kind only. IANA timezone for the schedule boundary (e.g. UTC).",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "frequency"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "spec"
-                ],
+                "properties": {},
                 "type": [
                   "null",
                   "object"
                 ]
               },
               "frequency": {
-                "description": "v1 schema only (anomaly_rule). Evaluation frequency as a Go duration string (e.g. 1m, 5m, 3h). For threshold/promql rules, use evaluation.spec.frequency instead.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "labels": {
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Labels for the alert rule. MUST include severity (one of critical, error, warning, info). When thresholds is used, threshold.name (e.g. critical) acts as the routing tier - set labels.severity to match the highest tier you want this rule to carry. Additional labels like team/service/environment enable routing policies.",
-                "type": "object"
+                "type": [
+                  "null",
+                  "object"
+                ]
               },
               "notificationSettings": {
-                "description": "v2alpha1 only. Notification settings - controls grouping and re-notification behavior. Auto-generated with defaults if omitted.",
                 "properties": {
                   "groupBy": {
-                    "description": "Fields to group alert notifications by (e.g. service.name, k8s.namespace.name). Reduces notification noise by batching alerts with the same group key.",
                     "items": {
                       "type": "string"
                     },
@@ -826,14 +516,14 @@
                     ]
                   },
                   "newGroupEvalDelay": {
-                    "description": "Grace period (Go duration string, e.g. 2m) during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online.",
-                    "type": "string"
+                    "type": [
+                      "null",
+                      "string"
+                    ]
                   },
                   "renotify": {
-                    "description": "Re-notification configuration.",
                     "properties": {
                       "alertStates": {
-                        "description": "Alert states that trigger re-notification. Accepted values: firing, nodata. Other values are rejected.",
                         "items": {
                           "type": "string"
                         },
@@ -843,25 +533,28 @@
                         ]
                       },
                       "enabled": {
-                        "description": "Whether re-notification is enabled.",
-                        "type": "boolean"
+                        "type": [
+                          "null",
+                          "boolean"
+                        ]
                       },
                       "interval": {
-                        "description": "Re-notification interval as a Go duration string (e.g. 15m, 30m, 1h, 4h).",
-                        "type": "string"
+                        "type": [
+                          "null",
+                          "string"
+                        ]
                       }
                     },
-                    "required": [
-                      "enabled"
-                    ],
                     "type": [
                       "null",
                       "object"
                     ]
                   },
                   "usePolicy": {
-                    "description": "v2 threshold_rule/promql_rule routing mode only. false (default) requires at least one nonblank valid channel on every threshold tier. true routes through the org-level policy matching on labels, so threshold channels may be omitted; every supplied threshold channel name is still validated. Top-level preferredChannels is rejected in both modes.",
-                    "type": "boolean"
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
                   }
                 },
                 "type": [
@@ -870,7 +563,6 @@
                 ]
               },
               "preferredChannels": {
-                "description": "v1 anomaly_rule direct routing only. Use at least one nonblank exact name. Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing if state may have changed. Never guess. Omit for v2 threshold/promql rules; use each tier's channels or confirmed notificationSettings.usePolicy=true.",
                 "items": {
                   "type": "string"
                 },
@@ -880,31 +572,36 @@
                 ]
               },
               "ruleType": {
-                "description": "Evaluation type: threshold_rule (compare against value) or promql_rule (PromQL expression) or anomaly_rule (anomaly detection on metrics).",
                 "type": "string"
               },
               "schemaVersion": {
-                "description": "Schema version. Set to v2alpha1 automatically for threshold_rule/promql_rule. Must be omitted (or empty) for anomaly_rule.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
               "source": {
-                "description": "Source URL for the alert. Set automatically.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "version": {
-                "description": "API version. Always v5. Set automatically if omitted.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               }
             },
             "required": [
               "alert",
               "alertType",
-              "ruleType",
-              "condition"
+              "condition",
+              "ruleType"
             ],
             "type": "object"
           },
@@ -3864,14 +3561,6 @@
               },
               "state": {
                 "description": "Filter by alert state: inactive, pending, recovering, firing, nodata, or disabled. Omit to return all transitions.",
-                "enum": [
-                  "inactive",
-                  "pending",
-                  "recovering",
-                  "firing",
-                  "nodata",
-                  "disabled"
-                ],
                 "type": "string"
               },
               "timeRange": {
@@ -6067,268 +5756,52 @@
             "openWorldHint": true,
             "readOnlyHint": false
           },
-          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. V2 direct routing needs a channel on every tier and rejects preferredChannels; confirmed v2 policy routing may omit tier channels; v1 anomaly uses direct preferredChannels.",
+          "description": "Use this when the user wants to change an existing SigNoz alert rule; use signoz_create_alert for a new rule. This is a full replacement: call signoz_get_alert unless its complete result is available from the same still-current prepared operation, then preserve every unchanged field. Likewise reuse signoz://alert/instructions, signoz://alert/examples, and a fully paginated signoz_list_notification_channels result only from that operation; otherwise read/call them, refreshing only if state may have changed. Use exact returned immutable routing displayName values, not machine name. If no direct channel fits, ask the user or offer signoz_create_notification_channel with settings the user provides; never create automatically. SigNoz rejects a threshold tier with no channels or an unknown channel name; confirmed v2 policy routing may omit tier channels. v1 anomaly rules route with top-level preferredChannels; v2 rules do not use it.",
           "inputSchema": {
             "properties": {
               "alert": {
-                "description": "Name of the alert rule. Must be unique and descriptive.",
                 "type": "string"
               },
               "alertType": {
-                "description": "Signal type: METRIC_BASED_ALERT or LOGS_BASED_ALERT or TRACES_BASED_ALERT or EXCEPTIONS_BASED_ALERT.",
                 "type": "string"
               },
               "annotations": {
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Annotations like description and summary. Supports template variables: {{$value}} for current metric value and {{$threshold}} for the threshold and {{$labels.key}} for label values.",
-                "type": "object"
+                "type": [
+                  "null",
+                  "object"
+                ]
               },
               "condition": {
-                "description": "Alert condition containing the query and threshold configuration.",
                 "properties": {
                   "absentFor": {
-                    "description": "Minutes (equivalent to consecutive evaluation cycles when frequency is 1m) to wait with no data before firing an absent-data alert. Example: absentFor=15 with frequency=1m fires after 15 evaluations return no series.",
-                    "minimum": 0,
-                    "type": "integer"
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
                   },
                   "alertOnAbsent": {
-                    "description": "Alert when no data is received within the evaluation window.",
-                    "type": "boolean"
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
                   },
                   "algorithm": {
-                    "description": "v1 (anomaly_rule) only. Anomaly detection algorithm; the supported value is standard (z-score based).",
-                    "type": "string"
+                    "type": [
+                      "null",
+                      "string"
+                    ]
                   },
                   "compositeQuery": {
-                    "description": "The composite query defining what data to monitor.",
                     "properties": {
                       "panelType": {
-                        "description": "Panel type. Use graph for alerts. Defaults to graph.",
                         "type": "string"
                       },
                       "queries": {
-                        "description": "Array of queries. At least one query is required.",
                         "items": {
-                          "properties": {
-                            "spec": {
-                              "description": "Query specification.",
-                              "properties": {
-                                "aggregations": {
-                                  "description": "Aggregation expressions for builder queries. For metrics signal use the object shape: [{metricName: k8s.pod.cpu_request_utilization, timeAggregation: avg, spaceAggregation: max}]. For logs/traces use the expression shape: [{expression: count()}] or [{expression: p99(duration_nano)}].",
-                                  "items": {
-                                    "properties": {
-                                      "expression": {
-                                        "description": "Aggregation expression (logs/traces signal). Examples: count(), avg(duration), p99(duration_nano), count_distinct(user_id), sum(bytes). Do not set metricName/timeAggregation/spaceAggregation when using this shape.",
-                                        "type": "string"
-                                      },
-                                      "metricName": {
-                                        "description": "Metric name (metrics signal only). Example: k8s.pod.cpu_request_utilization. Use alongside timeAggregation and spaceAggregation. Do not set expression when using this shape.",
-                                        "type": "string"
-                                      },
-                                      "spaceAggregation": {
-                                        "description": "Cross-series space aggregation (metrics signal only). Common values: sum, avg, min, max, count. For histograms use percentiles: p50, p75, p90, p95, p99.",
-                                        "type": "string"
-                                      },
-                                      "timeAggregation": {
-                                        "description": "Per-series time aggregation (metrics signal only). Common values: avg, max, min, sum, rate, increase, count, count_distinct, latest. Default by metric type: gauge→avg, cumulative counter→rate, delta counter→sum.",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "disabled": {
-                                  "description": "Whether this query is disabled.",
-                                  "type": "boolean"
-                                },
-                                "expression": {
-                                  "description": "Formula expression referencing other query names (e.g. A / B * 100). Used for builder_formula type.",
-                                  "type": "string"
-                                },
-                                "filter": {
-                                  "description": "Filter expression for builder queries. Example: {expression: service.name = frontend AND http.status_code \u003e= 500}.",
-                                  "properties": {
-                                    "expression": {
-                                      "description": "Filter expression using field operators. Example: service.name = frontend AND http.status_code \u003e= 500. Use empty string for no filter.",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "expression"
-                                  ],
-                                  "type": [
-                                    "null",
-                                    "object"
-                                  ]
-                                },
-                                "functions": {
-                                  "description": "Post-query functions applied to the series. Required for anomaly_rule: wrap with {name: anomaly, args: [{name: z_score_threshold, value: 2}]}.",
-                                  "items": {
-                                    "properties": {
-                                      "args": {
-                                        "description": "Function arguments. Example for anomaly: [{name: z_score_threshold, value: 2}].",
-                                        "items": {
-                                          "properties": {
-                                            "name": {
-                                              "description": "Argument name (e.g. z_score_threshold).",
-                                              "type": "string"
-                                            },
-                                            "value": {
-                                              "description": "Argument value. Can be number, string, or bool depending on the function."
-                                            }
-                                          },
-                                          "required": [
-                                            "name"
-                                          ],
-                                          "type": "object"
-                                        },
-                                        "type": [
-                                          "null",
-                                          "array"
-                                        ]
-                                      },
-                                      "name": {
-                                        "description": "Function name (e.g. anomaly for ruleType=anomaly_rule).",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "name"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "groupBy": {
-                                  "description": "Fields to group by. Grouped dimensions appear as labels in alert notifications.",
-                                  "items": {
-                                    "properties": {
-                                      "fieldContext": {
-                                        "description": "Field context: resource for resource attributes or tag for span/log attributes. Required for non-top-level fields.",
-                                        "type": "string"
-                                      },
-                                      "fieldDataType": {
-                                        "description": "Data type of the field: string or int64 or float64 or bool.",
-                                        "type": "string"
-                                      },
-                                      "name": {
-                                        "description": "Field name to group by (e.g. service.name or http.method or severity_text).",
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "name"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "having": {
-                                  "description": "Having clause to filter aggregation results.",
-                                  "properties": {
-                                    "expression": {
-                                      "description": "Filter expression using field operators. Example: service.name = frontend AND http.status_code \u003e= 500. Use empty string for no filter.",
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "expression"
-                                  ],
-                                  "type": [
-                                    "null",
-                                    "object"
-                                  ]
-                                },
-                                "legend": {
-                                  "description": "Legend template for the query.",
-                                  "type": "string"
-                                },
-                                "limit": {
-                                  "description": "Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent.",
-                                  "type": "integer"
-                                },
-                                "name": {
-                                  "description": "Query name (e.g. A or B or C). Used as reference in formulas and selectedQueryName.",
-                                  "type": "string"
-                                },
-                                "order": {
-                                  "description": "Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy.",
-                                  "items": {
-                                    "properties": {
-                                      "direction": {
-                                        "description": "Sort direction: asc or desc.",
-                                        "type": "string"
-                                      },
-                                      "key": {
-                                        "properties": {
-                                          "name": {
-                                            "description": "Field or aggregation expression to order by (e.g. timestamp or count()).",
-                                            "type": "string"
-                                          }
-                                        },
-                                        "required": [
-                                          "name"
-                                        ],
-                                        "type": "object"
-                                      }
-                                    },
-                                    "required": [
-                                      "key",
-                                      "direction"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": [
-                                    "null",
-                                    "array"
-                                  ]
-                                },
-                                "query": {
-                                  "description": "PromQL or ClickHouse SQL query string. Used when queryType is promql or clickhouse_sql. PromQL with OTel dotted metric names MUST use the Prometheus 3.x UTF-8 quoted-selector form: {\"metric.name.with.dots\"}. Underscored / __name__ / bare-dotted forms return no data. Read signoz://promql/instructions for the full guide (histogram patterns dotted labels pre-flight checklist).",
-                                  "type": "string"
-                                },
-                                "signal": {
-                                  "description": "Signal type for builder queries: metrics or logs or traces. Required for builder_query type.",
-                                  "type": "string"
-                                },
-                                "source": {
-                                  "description": "Data-source filter for metrics builder_query only. Set to meter to alert on Cost Meter (usage/billing) metrics such as signoz.meter.log.size; omit otherwise.",
-                                  "type": "string"
-                                },
-                                "stepInterval": {
-                                  "description": "Step interval in seconds for time aggregation. Use 60 for metrics alerts.",
-                                  "type": [
-                                    "null",
-                                    "integer"
-                                  ]
-                                }
-                              },
-                              "required": [
-                                "name"
-                              ],
-                              "type": "object"
-                            },
-                            "type": {
-                              "description": "Query envelope type. Must match compositeQuery.queryType: builder → builder_query or builder_formula; promql → promql; clickhouse_sql → clickhouse_sql. Also accepted: builder_trace_operator for trace operator queries.",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "type",
-                            "spec"
-                          ],
+                          "properties": {},
                           "type": "object"
                         },
                         "type": [
@@ -6337,117 +5810,72 @@
                         ]
                       },
                       "queryType": {
-                        "description": "Query type: builder for Query Builder or promql for PromQL or clickhouse_sql for ClickHouse SQL.",
                         "type": "string"
                       },
                       "unit": {
-                        "description": "Unit of the queried data (Y-axis unit). Used for value formatting in alert messages and for unit conversion with targetUnit in thresholds. Common values: percent, ms, s, bytes, ns, reqps, ops.",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "queryType",
-                      "queries"
-                    ],
-                    "type": "object"
-                  },
-                  "matchType": {
-                    "description": "v1 (anomaly_rule) only. Match type - same accepted values as threshold.matchType (at_least_once, all_the_times, on_average/avg, in_total/sum, last).",
-                    "type": "string"
-                  },
-                  "op": {
-                    "description": "v1 (anomaly_rule) only. Comparison operator applied to the anomaly score - same accepted values as threshold.op (above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds).",
-                    "type": "string"
-                  },
-                  "requireMinPoints": {
-                    "description": "Require a minimum number of data points before evaluating the condition.",
-                    "type": "boolean"
-                  },
-                  "requiredNumPoints": {
-                    "description": "Minimum number of data points required when requireMinPoints is true.",
-                    "type": "integer"
-                  },
-                  "seasonality": {
-                    "description": "v1 (anomaly_rule) only. Seasonality pattern for anomaly detection: hourly, daily, or weekly.",
-                    "type": "string"
-                  },
-                  "selectedQueryName": {
-                    "description": "Which query name triggers the alert (e.g. A or B or F1). Required when multiple queries exist. Defaults to the first query name.",
-                    "type": "string"
-                  },
-                  "target": {
-                    "description": "v1 (anomaly_rule) only. Threshold value compared against the anomaly score."
-                  },
-                  "thresholds": {
-                    "description": "v2alpha1 only (threshold_rule, promql_rule) and always required, including when alertOnAbsent=true. Each threshold level (critical, error, warning, info) can route independently. Omit entirely for anomaly_rule - use condition.op/matchType/target there instead.",
-                    "properties": {
-                      "kind": {
-                        "description": "Threshold kind. Currently only basic is supported.",
-                        "type": "string"
-                      },
-                      "spec": {
-                        "description": "Array of threshold specifications. Each threshold can route to different channels.",
-                        "items": {
-                          "properties": {
-                            "channels": {
-                              "description": "Existing notification channel names for this v2 threshold tier. Direct routing requires at least one nonblank exact name on every tier; preferredChannels is not a fallback. Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing if state may have changed. Confirmed notificationSettings.usePolicy=true may omit channels, but supplied names are validated.",
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": [
-                                "null",
-                                "array"
-                              ]
-                            },
-                            "matchType": {
-                              "description": "How to evaluate the threshold. Canonical: at_least_once, all_the_times, on_average, in_total, last. Aliases accepted: avg (=on_average), sum (=in_total). Numeric 1-5 also accepted but discouraged.",
-                              "type": "string"
-                            },
-                            "name": {
-                              "description": "Threshold tier: critical, error, warning, or info. Also used as the routing label - alerts carry threshold_name equal to this value.",
-                              "type": "string"
-                            },
-                            "op": {
-                              "description": "Comparison operator. Canonical literals: above, below, equal, not_equal, above_or_equal, below_or_equal, outside_bounds. Short forms accepted: eq, not_eq, above_or_eq, below_or_eq. Symbolic accepted: \u003e, \u003c, =, !=, \u003e=, \u003c=. Numeric 1-7 also accepted but discouraged.",
-                              "type": "string"
-                            },
-                            "recoveryTarget": {
-                              "description": "Hysteresis - value at which a firing alert is considered resolved. Useful to avoid flapping near the threshold (e.g. target=80 percent, recoveryTarget=75 percent). Use null to use the threshold target itself as the recovery point.",
-                              "type": [
-                                "null",
-                                "number"
-                              ]
-                            },
-                            "target": {
-                              "description": "Threshold value to compare against.",
-                              "type": [
-                                "null",
-                                "number"
-                              ]
-                            },
-                            "targetUnit": {
-                              "description": "Unit of the threshold target value. If different from compositeQuery.unit the backend converts between them during evaluation. Common values: percent, ms, s, bytes, ns.",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name",
-                            "target",
-                            "matchType",
-                            "op"
-                          ],
-                          "type": "object"
-                        },
                         "type": [
                           "null",
-                          "array"
+                          "string"
                         ]
                       }
                     },
                     "required": [
-                      "kind",
-                      "spec"
+                      "panelType",
+                      "queries",
+                      "queryType"
                     ],
+                    "type": "object"
+                  },
+                  "matchType": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "op": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "requireMinPoints": {
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
+                  },
+                  "requiredNumPoints": {
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
+                  },
+                  "seasonality": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "selectedQueryName": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "target": {
+                    "type": [
+                      "null",
+                      "number"
+                    ]
+                  },
+                  "targetUnit": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "thresholds": {
+                    "properties": {},
                     "type": [
                       "null",
                       "object"
@@ -6460,84 +5888,35 @@
                 "type": "object"
               },
               "description": {
-                "description": "Human-readable description of what this alert monitors.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "disabled": {
-                "description": "Whether the alert rule is disabled. Defaults to false (enabled).",
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "evalWindow": {
-                "description": "v1 schema only (anomaly_rule). Evaluation window as a Go duration string (e.g. 5m, 15m, 1h, 24h). For threshold/promql rules, use evaluation.spec.evalWindow instead.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "evaluation": {
-                "description": "v2alpha1 only. Evaluation configuration. kind=rolling (sliding window) auto-generated with defaults (5m/1m) if omitted; kind=cumulative (daily/monthly reset) for period-total alerts such as daily error counts or Cost Meter spend budgets. Skipped entirely for anomaly_rule which uses top-level evalWindow/frequency instead.",
-                "properties": {
-                  "kind": {
-                    "description": "Evaluation kind: rolling (sliding lookback window) or cumulative (accumulates from a fixed daily/monthly reset boundary). Cumulative works for any period-total alert (e.g. daily error counts, monthly request budgets); Cost Meter spend budgets are one common use.",
-                    "type": "string"
-                  },
-                  "spec": {
-                    "description": "Evaluation specification. For kind=rolling set evalWindow + frequency; for kind=cumulative set schedule + frequency + timezone.",
-                    "properties": {
-                      "evalWindow": {
-                        "description": "Rolling kind only. Evaluation window as a Go duration string (e.g. 5m, 15m, 30m, 1h, 4h, 24h).",
-                        "type": "string"
-                      },
-                      "frequency": {
-                        "description": "Evaluation frequency as a Go duration string (e.g. 1m, 5m, 15m).",
-                        "type": "string"
-                      },
-                      "schedule": {
-                        "description": "Cumulative kind only. Fixed reset boundary the accumulation window starts from.",
-                        "properties": {
-                          "hour": {
-                            "description": "Hour of the reset boundary (0-23); e.g. 0 for midnight.",
-                            "type": "integer"
-                          },
-                          "minute": {
-                            "description": "Minute of the reset boundary (0-59); e.g. 0 for the top of the hour.",
-                            "type": "integer"
-                          },
-                          "type": {
-                            "description": "Reset cadence: daily or monthly.",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "minute",
-                          "hour"
-                        ],
-                        "type": [
-                          "null",
-                          "object"
-                        ]
-                      },
-                      "timezone": {
-                        "description": "Cumulative kind only. IANA timezone for the schedule boundary (e.g. UTC).",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "frequency"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "spec"
-                ],
+                "properties": {},
                 "type": [
                   "null",
                   "object"
                 ]
               },
               "frequency": {
-                "description": "v1 schema only (anomaly_rule). Evaluation frequency as a Go duration string (e.g. 1m, 5m, 3h). For threshold/promql rules, use evaluation.spec.frequency instead.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "id": {
                 "description": "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert.",
@@ -6547,14 +5926,14 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Labels for the alert rule. MUST include severity (one of critical, error, warning, info). When thresholds is used, threshold.name (e.g. critical) acts as the routing tier - set labels.severity to match the highest tier you want this rule to carry. Additional labels like team/service/environment enable routing policies.",
-                "type": "object"
+                "type": [
+                  "null",
+                  "object"
+                ]
               },
               "notificationSettings": {
-                "description": "v2alpha1 only. Notification settings - controls grouping and re-notification behavior. Auto-generated with defaults if omitted.",
                 "properties": {
                   "groupBy": {
-                    "description": "Fields to group alert notifications by (e.g. service.name, k8s.namespace.name). Reduces notification noise by batching alerts with the same group key.",
                     "items": {
                       "type": "string"
                     },
@@ -6564,14 +5943,14 @@
                     ]
                   },
                   "newGroupEvalDelay": {
-                    "description": "Grace period (Go duration string, e.g. 2m) during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online.",
-                    "type": "string"
+                    "type": [
+                      "null",
+                      "string"
+                    ]
                   },
                   "renotify": {
-                    "description": "Re-notification configuration.",
                     "properties": {
                       "alertStates": {
-                        "description": "Alert states that trigger re-notification. Accepted values: firing, nodata. Other values are rejected.",
                         "items": {
                           "type": "string"
                         },
@@ -6581,25 +5960,28 @@
                         ]
                       },
                       "enabled": {
-                        "description": "Whether re-notification is enabled.",
-                        "type": "boolean"
+                        "type": [
+                          "null",
+                          "boolean"
+                        ]
                       },
                       "interval": {
-                        "description": "Re-notification interval as a Go duration string (e.g. 15m, 30m, 1h, 4h).",
-                        "type": "string"
+                        "type": [
+                          "null",
+                          "string"
+                        ]
                       }
                     },
-                    "required": [
-                      "enabled"
-                    ],
                     "type": [
                       "null",
                       "object"
                     ]
                   },
                   "usePolicy": {
-                    "description": "v2 threshold_rule/promql_rule routing mode only. false (default) requires at least one nonblank valid channel on every threshold tier. true routes through the org-level policy matching on labels, so threshold channels may be omitted; every supplied threshold channel name is still validated. Top-level preferredChannels is rejected in both modes.",
-                    "type": "boolean"
+                    "type": [
+                      "null",
+                      "boolean"
+                    ]
                   }
                 },
                 "type": [
@@ -6608,7 +5990,6 @@
                 ]
               },
               "preferredChannels": {
-                "description": "v1 anomaly_rule direct routing only. Use at least one nonblank exact name. Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing if state may have changed. Never guess. Omit for v2 threshold/promql rules; use each tier's channels or confirmed notificationSettings.usePolicy=true.",
                 "items": {
                   "type": "string"
                 },
@@ -6622,31 +6003,36 @@
                 "type": "string"
               },
               "ruleType": {
-                "description": "Evaluation type: threshold_rule (compare against value) or promql_rule (PromQL expression) or anomaly_rule (anomaly detection on metrics).",
                 "type": "string"
               },
               "schemaVersion": {
-                "description": "Schema version. Set to v2alpha1 automatically for threshold_rule/promql_rule. Must be omitted (or empty) for anomaly_rule.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "searchContext": {
                 "description": "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.",
                 "type": "string"
               },
               "source": {
-                "description": "Source URL for the alert. Set automatically.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               },
               "version": {
-                "description": "API version. Always v5. Set automatically if omitted.",
-                "type": "string"
+                "type": [
+                  "null",
+                  "string"
+                ]
               }
             },
             "required": [
               "alert",
               "alertType",
-              "ruleType",
-              "condition"
+              "condition",
+              "ruleType"
             ],
             "type": "object"
           },
