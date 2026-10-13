@@ -89,6 +89,12 @@ def create_alert_rule(client: MCPClient, name: str, *, channel_name: str) -> str
                 "alert": name,
                 "alertType": "LOGS_BASED_ALERT",
                 "ruleType": "threshold_rule",
+                # SigNoz requires the full explicit v2alpha1 payload: nothing
+                # fills schemaVersion (omitting it flips to v1 semantics),
+                # evaluation, or notificationSettings.
+                "schemaVersion": "v2alpha1",
+                "evaluation": {"kind": "rolling", "spec": {"evalWindow": "5m", "frequency": "1m"}},
+                "notificationSettings": {"usePolicy": False},
                 "condition": {
                     "thresholds": {
                         "kind": "basic",
