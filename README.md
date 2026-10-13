@@ -855,7 +855,7 @@ The same expressions work in log aggregations and saved-query specs.
 
 #### `signoz_get_field_keys`
 
-Discover field names available for filtering or grouping metrics, traces, or logs. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key.
+Discover field names available for filtering or grouping metrics, traces, or logs. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. A `data.complete` of `false` means SigNoz truncated the key list; narrow with `searchText` or `fieldContext`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
@@ -867,7 +867,7 @@ Discover field names available for filtering or grouping metrics, traces, or log
 
 #### `signoz_get_field_values`
 
-Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value.
+Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value. A `data.complete` of `false` means SigNoz truncated the value list; narrow with `searchText`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`

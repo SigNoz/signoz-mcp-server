@@ -4558,7 +4558,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. After choosing a key, use signoz_get_field_values to discover valid values.",
+          "description": "Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. After choosing a key, use signoz_get_field_values to discover valid values.",
           "inputSchema": {
             "properties": {
               "fieldContext": {
@@ -4618,7 +4618,7 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value.",
+          "description": "Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value. SigNoz sets data.complete=false when it truncated the value list; narrow with searchText to see more.",
           "inputSchema": {
             "properties": {
               "fieldContext": {
