@@ -738,17 +738,9 @@ func (s *SigNoz) GetNotificationChannel(ctx context.Context, id string) (json.Ra
 }
 
 func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []byte) (json.RawMessage, error) {
-	var create types.NotificationChannelCreate
-	if err := json.Unmarshal(receiverJSON, &create); err != nil {
-		return nil, err
-	}
-	body, err := json.Marshal(create)
-	if err != nil {
-		return nil, err
-	}
 	reqURL := fmt.Sprintf("%s/api/v2/notification_channels", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Creating notification channel")
-	response, requestErr := s.doNotificationChannelWrite(ctx, http.MethodPost, reqURL, body, ChannelWriteTimeout)
+	response, requestErr := s.doNotificationChannelWrite(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 	if requestErr != nil {
 		return nil, requestErr
 	}
@@ -760,20 +752,9 @@ func (s *SigNoz) CreateNotificationChannel(ctx context.Context, receiverJSON []b
 }
 
 func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, receiverJSON []byte) error {
-	if err := types.ValidateUUID(id); err != nil {
-		return err
-	}
-	var update types.NotificationChannelUpdate
-	if err := json.Unmarshal(receiverJSON, &update); err != nil {
-		return err
-	}
-	body, err := json.Marshal(update)
-	if err != nil {
-		return err
-	}
 	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Updating notification channel", slog.String("id", id))
-	response, requestErr := s.doNotificationChannelWrite(ctx, http.MethodPut, reqURL, body, ChannelWriteTimeout)
+	response, requestErr := s.doNotificationChannelWrite(ctx, http.MethodPut, reqURL, receiverJSON, ChannelWriteTimeout)
 	if requestErr != nil {
 		return requestErr
 	}
@@ -784,9 +765,6 @@ func (s *SigNoz) UpdateNotificationChannel(ctx context.Context, id string, recei
 }
 
 func (s *SigNoz) DeleteNotificationChannel(ctx context.Context, id string) error {
-	if err := types.ValidateUUID(id); err != nil {
-		return err
-	}
 	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Deleting notification channel", slog.String("id", id))
 	_, err := s.doNotificationChannelWrite(ctx, http.MethodDelete, reqURL, nil, ChannelWriteTimeout)
@@ -812,16 +790,8 @@ func (s *SigNoz) GetTopMetrics(ctx context.Context, start, end int64, limit int)
 }
 
 func (s *SigNoz) TestNotificationChannel(ctx context.Context, receiverJSON []byte) error {
-	var testable types.NotificationChannelUpdate
-	if err := json.Unmarshal(receiverJSON, &testable); err != nil {
-		return err
-	}
-	body, err := json.Marshal(testable)
-	if err != nil {
-		return err
-	}
 	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/test", s.baseURL)
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Testing notification channel")
-	_, err = s.doNotificationChannelWrite(ctx, http.MethodPost, reqURL, body, ChannelWriteTimeout)
+	_, err := s.doNotificationChannelWrite(ctx, http.MethodPost, reqURL, receiverJSON, ChannelWriteTimeout)
 	return err
 }

@@ -22,13 +22,13 @@ func (h *Handler) RegisterNotificationChannelHandlers(server *mcp.Server) {
 	), h.handleListNotificationChannels)
 	h.addTool(server, mcp.NewTool("signoz_create_notification_channel",
 		withCreateToolAnnotations(),
-		mcp.WithDescription("Create a notification channel from one complete canonical config. Supply name, or set generateName=true with displayName. test defaults to false: ask whether the user wants one live test notification and set test=true only if they agree. Use signoz_update_notification_channel to replace an existing channel configuration."),
-		notificationSchemaOption(notificationCreateSchema()),
+		mcp.WithDescription("Use this when the user wants a new notification channel; use signoz_update_notification_channel to replace an existing one. The payload is config: {kind, spec} plus name, or generateName=true with displayName. Known kinds, validated by SigNoz: slack, email, webhook, pagerduty, opsgenie, msteams, googlechat, jira, jsmops, incidentio. SigNoz rejects an unknown kind, an unknown or missing spec field, and a duplicate name, each with the exact requirement. Minimal example: {\"name\":\"ops-hook\",\"config\":{\"kind\":\"webhook\",\"spec\":{\"url\":\"https://example.com/hook\"}}}. name is an immutable DNS-1123 label; alert routing references displayName (SigNoz defaults it from name). test defaults to false: ask whether the user wants one live test notification and set test=true only if they agree; the channel remains created if the test fails."),
+		mcp.WithInputSchema[types.CreateNotificationChannelInput](),
 	), h.handleCreateNotificationChannel)
 	h.addTool(server, mcp.NewTool("signoz_update_notification_channel",
 		withNonIdempotentUpdateToolAnnotations(),
-		mcp.WithDescription("Replace one notification channel's complete config. The immutable name and displayName are not accepted. First call signoz_get_notification_channel and preserve every setting the user did not ask to change. Empty optional template fields returned by SigNoz are normalized back to unset during this update. Set test=true only when the user wants one live test notification after the update; the default is false."),
-		notificationSchemaOption(notificationUpdateSchema()),
+		mcp.WithDescription("Use this when the user wants to replace one notification channel's complete config: {kind, spec}; it is a full replacement and may change the provider kind. First call signoz_get_notification_channel and preserve every setting the user did not ask to change; send only id and config, because name and displayName are immutable. A fetched config is writable as-is; to unset an optional field, omit it, because SigNoz rejects an empty string for template-backed fields such as titles and messages. SigNoz also rejects an unknown kind and an unknown or missing spec field with the exact requirement. Set test=true only when the user wants one live test notification after the update; the default is false and the update remains committed if the test fails."),
+		mcp.WithInputSchema[types.UpdateNotificationChannelInput](),
 	), h.handleUpdateNotificationChannel)
 	h.addTool(server, mcp.NewTool("signoz_get_notification_channel",
 		withReadOnlyToolAnnotations(),
@@ -127,27 +127,31 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	if err := decodeNotificationArgs(req.Params.Arguments, &args); err != nil {
 		return notificationValidationError(err), nil
 	}
-	create := types.NotificationChannelCreate{
-		Name: args.Name, GenerateName: args.GenerateName, DisplayName: args.DisplayName, Config: args.Config,
+	if len(args.Config) == 0 {
+		return notificationValidationError(errors.New(`"config" is required: {kind, spec}`)), nil
 	}
-	if !create.GenerateName && create.DisplayName == "" {
-		create.DisplayName = create.Name
+	createBody := map[string]any{"config": args.Config}
+	if args.Name != "" {
+		createBody["name"] = args.Name
 	}
-	if err := create.Validate(); err != nil {
-		return notificationValidationError(err), nil
+	if args.GenerateName {
+		createBody["generateName"] = true
 	}
-	body, err := json.Marshal(create)
+	if args.DisplayName != "" {
+		createBody["displayName"] = args.DisplayName
+	}
+	body, err := json.Marshal(createBody)
 	if err != nil {
 		return InternalErrorResult("failed to marshal notification channel create request"), nil
 	}
-	h.logger.DebugContext(ctx, "Tool called: signoz_create_notification_channel", slog.String("kind", create.Config.Kind))
+	h.logger.DebugContext(ctx, "Tool called: signoz_create_notification_channel", slog.String("kind", notificationConfigKind(args.Config)))
 	upstream, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
 	channel, err := upstream.CreateNotificationChannel(ctx, body)
 	if err != nil {
-		h.logNotificationChannelFailure(ctx, "Failed to create notification channel", err, slog.String("kind", create.Config.Kind))
+		h.logNotificationChannelFailure(ctx, "Failed to create notification channel", err, slog.String("kind", notificationConfigKind(args.Config)))
 		var committed *client.CommittedNotificationChannelError
 		if errors.As(err, &committed) {
 			return committedNotificationChannelResult(committed, args.Test), nil
@@ -161,7 +165,7 @@ func (h *Handler) handleCreateNotificationChannel(ctx context.Context, req mcp.C
 	}
 	notes := []string{}
 	if args.Test {
-		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, create.Config, id)
+		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, args.Config, id)
 		if authResult != nil {
 			return authResult, nil
 		}
@@ -182,27 +186,26 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		return result, nil
 	}
 	var args notificationUpdateArgs
-	if err := decodeNotificationArgs(normalizeNotificationUpdateArguments(req.Params.Arguments), &args); err != nil {
+	if err := decodeNotificationArgs(req.Params.Arguments, &args); err != nil {
 		return notificationValidationError(err), nil
 	}
-	if err := types.ValidateUUID(args.ID); err != nil {
-		return notificationValidationError(err), nil
+	if args.ID == "" {
+		return notificationValidationError(errors.New(`"id" is required; obtain it from signoz_list_notification_channels`)), nil
 	}
-	update := types.NotificationChannelUpdate{Config: args.Config}
-	if err := update.Validate(); err != nil {
-		return notificationValidationError(err), nil
+	if len(args.Config) == 0 {
+		return notificationValidationError(errors.New(`"config" is required: {kind, spec}`)), nil
 	}
-	body, err := json.Marshal(update)
+	body, err := json.Marshal(map[string]any{"config": args.Config})
 	if err != nil {
 		return InternalErrorResult("failed to marshal notification channel update request"), nil
 	}
-	h.logger.DebugContext(ctx, "Tool called: signoz_update_notification_channel", slog.String("id", args.ID), slog.String("kind", update.Config.Kind))
+	h.logger.DebugContext(ctx, "Tool called: signoz_update_notification_channel", slog.String("id", args.ID), slog.String("kind", notificationConfigKind(args.Config)))
 	upstream, err := h.GetClient(ctx)
 	if err != nil {
 		return clientError(err), nil
 	}
 	if err := upstream.UpdateNotificationChannel(ctx, args.ID, body); err != nil {
-		h.logNotificationChannelFailure(ctx, "Failed to update notification channel", err, slog.String("id", args.ID), slog.String("kind", update.Config.Kind))
+		h.logNotificationChannelFailure(ctx, "Failed to update notification channel", err, slog.String("id", args.ID), slog.String("kind", notificationConfigKind(args.Config)))
 		var committed *client.CommittedNotificationChannelError
 		if errors.As(err, &committed) {
 			if committed.ID == "" {
@@ -230,7 +233,7 @@ func (h *Handler) handleUpdateNotificationChannel(ctx context.Context, req mcp.C
 		result["channel"] = json.RawMessage(channel)
 	}
 	if args.Test {
-		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, update.Config, args.ID)
+		testResult, note, authResult := h.testCommittedNotificationChannel(ctx, upstream, args.Config, args.ID)
 		if authResult != nil {
 			return authResult, nil
 		}
@@ -251,8 +254,8 @@ func decodeNotificationIDArgs(req mcp.CallToolRequest) (notificationIDArgs, *mcp
 	if err := decodeNotificationArgs(req.Params.Arguments, &args); err != nil {
 		return args, notificationValidationError(err)
 	}
-	if err := types.ValidateUUID(args.ID); err != nil {
-		return args, notificationValidationError(err)
+	if args.ID == "" {
+		return args, notificationValidationError(errors.New(`"id" is required; obtain it from signoz_list_notification_channels`))
 	}
 	return args, nil
 }
@@ -269,10 +272,18 @@ func notificationChannelID(channel json.RawMessage) string {
 	return identity.ID
 }
 
-func (h *Handler) testCommittedNotificationChannel(ctx context.Context, upstream client.Client, config types.NotificationChannelConfig, id string) (map[string]any, string, *mcp.CallToolResult) {
-	body, err := json.Marshal(struct {
-		Config types.NotificationChannelConfig `json:"config"`
-	}{Config: config})
+// notificationConfigKind peeks config.kind for logging; the config itself is
+// forwarded to SigNoz verbatim, which is the only validator of its shape.
+func notificationConfigKind(config json.RawMessage) string {
+	var envelope struct {
+		Kind string `json:"kind"`
+	}
+	_ = json.Unmarshal(config, &envelope)
+	return envelope.Kind
+}
+
+func (h *Handler) testCommittedNotificationChannel(ctx context.Context, upstream client.Client, config json.RawMessage, id string) (map[string]any, string, *mcp.CallToolResult) {
+	body, err := json.Marshal(map[string]any{"config": config})
 	if err != nil {
 		return unattemptedNotificationTestResult(true, "test was not attempted because its request could not be prepared"), "note: the channel was committed, but the server could not prepare the requested test notification.", nil
 	}

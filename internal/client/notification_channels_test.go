@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -91,21 +90,20 @@ func TestListNotificationChannelsV2_AllowsTerminalAndShortProgressingPages(t *te
 	}
 }
 
-func TestListNotificationChannelsV2_PreservesLegacyEmptyKindAndWarns(t *testing.T) {
-	var logs bytes.Buffer
-	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+func TestListNotificationChannelsV2_PreservesEmptyKind(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"status":"success","data":{"channels":[{"id":"`+clientNotificationID+`","name":"legacy","displayName":"Legacy","kind":"","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}],"total":1}}`)
 	}))
 	defer server.Close()
-	client := NewClient(logger, server.URL, "key", "SIGNOZ-API-KEY", nil)
+	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
 	got, err := client.ListNotificationChannelsV2(context.Background(), types.NotificationChannelListParams{})
 	require.NoError(t, err)
 	require.Equal(t, "", got.Channels[0].Kind)
-	require.Contains(t, logs.String(), "outside the pinned v0.143.0 contract")
 }
 
-func TestGetNotificationChannel_PreservesOrdinaryEmptyAndUnknownFields(t *testing.T) {
+// The provider config is SigNoz's contract: a readback passes through verbatim,
+// unknown and empty fields included, with no drift log that could leak secrets.
+func TestGetNotificationChannel_PreservesEmptyAndUnknownFieldsSilently(t *testing.T) {
 	const secret = "https://hooks.slack.test/secret"
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
@@ -117,62 +115,16 @@ func TestGetNotificationChannel_PreservesOrdinaryEmptyAndUnknownFields(t *testin
 	require.NoError(t, err)
 	require.Contains(t, string(got), `"futureRoot":{"kept":true}`)
 	require.Contains(t, string(got), `"futureSpec":"kept"`)
-	require.Contains(t, logs.String(), "preserving the upstream object")
-	require.NotContains(t, logs.String(), secret)
+	require.Empty(t, logs.String())
 }
 
-func TestValidateNotificationChannelData_AcceptsPinnedProviderResponseShapes(t *testing.T) {
-	specs := map[string]string{
-		"slack":      `{"sendResolved":true,"apiUrl":"https://hooks.slack.test/x","channel":"","title":"","text":"","color":"","titleLink":"","pretext":"","fallback":"","footer":""}`,
-		"email":      `{"sendResolved":true,"to":"ops@example.test","html":"","headers":{}}`,
-		"webhook":    `{"sendResolved":true,"url":"https://example.test/hook","username":"","password":"","bearerToken":""}`,
-		"pagerduty":  `{"sendResolved":true,"routingKey":"key","url":"","source":"","client":"","clientUrl":"","description":"","severity":"","component":"","group":"","class":"","details":{}}`,
-		"opsgenie":   `{"sendResolved":true,"apiKey":"key","apiUrl":"","message":"","description":"","source":"","details":{},"priority":""}`,
-		"msteams":    `{"sendResolved":true,"webhookUrl":"https://teams.test/hook","title":"","text":""}`,
-		"googlechat": `{"sendResolved":true,"webhookUrl":"https://chat.test/hook","title":"","text":""}`,
-		"jira":       `{"sendResolved":false,"site":"https://site.atlassian.net","project":"OPS","issueType":"Incident","summary":"","description":"","priority":"","labels":[],"resolveTransition":"","reopenTransition":"","reopenDuration":"","wontFixResolution":"","customFields":{},"email":"ops@example.test","apiToken":"token"}`,
-		"jsmops":     `{"sendResolved":true,"apiKey":"key","message":"","description":"","priority":"","tags":""}`,
-		"incidentio": `{"sendResolved":true,"url":"https://incident.test","token":"token","title":"","description":"","metadata":{}}`,
-	}
-	for kind, spec := range specs {
-		t.Run(kind, func(t *testing.T) {
-			var logs bytes.Buffer
-			logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
-			client := NewClient(logger, "http://example.invalid", "key", "SIGNOZ-API-KEY", nil)
-			data := []byte(`{"name":"channel","displayName":"Channel","config":{"kind":"` + kind + `","spec":` + spec + `},"id":"` + clientNotificationID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}`)
-			require.NoError(t, client.validateNotificationChannelData(data))
-			require.Empty(t, logs.String(), "pinned response shapes must not report contract violations")
-		})
-	}
-}
-
-func TestGetNotificationChannel_WarnsWhenReadbackViolatesProviderRules(t *testing.T) {
-	const secret = "never-log-this-token"
-	var logs bytes.Buffer
-	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	response := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"sendResolved":true,"url":"https://example.test/hook","username":"user","password":"` + secret + `","bearerToken":"` + secret + `"}},"id":"` + clientNotificationID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}}`
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, response) }))
+func TestGetNotificationChannel_RejectsMissingID(t *testing.T) {
+	body := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test"}},"createdAt":"x","updatedAt":"x"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) }))
 	defer server.Close()
-	client := NewClient(logger, server.URL, "key", "SIGNOZ-API-KEY", nil)
-	got, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
-	require.NoError(t, err, "a readable channel stays readable")
-	require.Contains(t, string(got), `"bearerToken"`)
-	require.Contains(t, logs.String(), "violates its provider config rules")
-	require.Contains(t, logs.String(), "bearerToken cannot be combined")
-	require.NotContains(t, logs.String(), secret)
-}
-
-func TestGetNotificationChannel_RejectsMissingIDAndBadSpecShape(t *testing.T) {
-	for _, body := range []string{
-		`{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test"}},"createdAt":"x","updatedAt":"x"}}`,
-		`{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":[]},"id":"` + clientNotificationID + `","createdAt":"x","updatedAt":"x"}}`,
-	} {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) }))
-		client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
-		_, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
-		server.Close()
-		require.Error(t, err)
-	}
+	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
+	_, err := client.GetNotificationChannel(context.Background(), clientNotificationID)
+	require.ErrorContains(t, err, "missing id")
 }
 
 func TestNotificationChannelMutations_AreSingleAttempt(t *testing.T) {
@@ -210,39 +162,17 @@ func TestNotificationChannelMutations_AreSingleAttempt(t *testing.T) {
 	}
 }
 
-func TestTestNotificationChannel_StrictRootAndSpec(t *testing.T) {
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1) }))
-	defer server.Close()
-	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
-	for _, body := range [][]byte{
-		[]byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test"}},"extra":true}`),
-		[]byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test","extra":true}}}`),
-	} {
-		require.Error(t, client.TestNotificationChannel(context.Background(), body))
-	}
-	require.Zero(t, calls.Load())
-}
-
-func TestCreateNotificationChannel_ParseFailurePreservesCommittedID(t *testing.T) {
+// A write whose response cannot be decoded must still surface as committed,
+// carrying the id the caller supplied so recovery can target the channel.
+func TestUpdateNotificationChannel_ParseFailureSurfacesCommittedID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"status":"success","data":{"id":"`+clientNotificationID+`","name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test"}}}}`)
+		_, _ = io.WriteString(w, `not-json`)
 	}))
 	defer server.Close()
 	client := NewClient(logpkg.New("error"), server.URL, "key", "SIGNOZ-API-KEY", nil)
-	_, err := client.CreateNotificationChannel(context.Background(), []byte(`{"name":"channel","config":{"kind":"webhook","spec":{"url":"https://example.test"}}}`))
+	err := client.UpdateNotificationChannel(context.Background(), clientNotificationID, []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test"}}}`))
 	var committed *CommittedNotificationChannelError
 	require.ErrorAs(t, err, &committed)
 	require.Equal(t, clientNotificationID, committed.ID)
-	require.Equal(t, "channel", committed.Name)
-}
-
-func TestNotificationResponseDriftWarningDoesNotContainConfig(t *testing.T) {
-	var logs bytes.Buffer
-	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	client := NewClient(logger, "http://example.invalid", "key", "SIGNOZ-API-KEY", nil)
-	err := client.validateNotificationChannelData([]byte(`{"name":"channel","displayName":"Channel","config":{"kind":"new-provider","spec":{"token":"never-log-me"}},"id":"` + clientNotificationID + `","createdAt":"x","updatedAt":"x","newField":true}`))
-	require.NoError(t, err)
-	require.True(t, strings.Contains(logs.String(), "preserving"))
-	require.NotContains(t, logs.String(), "never-log-me")
+	require.Equal(t, "update", committed.Operation)
 }

@@ -50,19 +50,6 @@ CREDENTIAL_FIELDS = {
     "incidentio": ("token",),
 }
 
-EMPTY_OPTIONAL_FIELDS = {
-    "slack": "channel",
-    "email": "html",
-    "webhook": "username",
-    "pagerduty": "source",
-    "opsgenie": "description",
-    "msteams": "text",
-    "googlechat": "text",
-    "jira": "description",
-    "jsmops": "description",
-    "incidentio": "description",
-}
-
 
 def _channel_data(result: dict) -> dict:
     payload = first_block_json(result)
@@ -99,14 +86,12 @@ def test_every_provider_config_round_trips_and_update_preserves_it(
         returned_spec = returned_config["spec"]
         credentials = {field: returned_spec[field] for field in CREDENTIAL_FIELDS.get(kind, ())}
 
-        # Use the complete real GET response as the update base. It includes
-        # unset optional strings serialized as ""; update must accept those
-        # response values and preserve credentials.
+        # The taught update flow: a fetched config is writable as-is, so the
+        # complete readback is the update base and only the requested field
+        # changes.
         replacement = {"kind": returned_config["kind"], "spec": dict(returned_spec)}
         update_field, updated_value = UPDATE_FIELDS[kind]
         replacement["spec"][update_field] = updated_value
-        empty_field = EMPTY_OPTIONAL_FIELDS[kind]
-        replacement["spec"][empty_field] = ""
 
         updated = assert_tool_ok(
             mcp_client.call_tool(
@@ -127,7 +112,7 @@ def test_every_provider_config_round_trips_and_update_preserves_it(
         assert updated_config["spec"][update_field] == updated_value
         assert updated_config["spec"]["sendResolved"] is False
         for field, value in returned_spec.items():
-            if field not in (update_field, empty_field) and value != "":
+            if field != update_field:
                 assert updated_config["spec"][field] == value, f"{kind}.{field} changed during full-config update"
         for field, value in credentials.items():
             assert updated_config["spec"][field] == value, f"{kind}.{field} was not preserved by full-config update"
@@ -255,3 +240,37 @@ def test_slack_message_settings_round_trip_through_get_and_full_update(mcp_clien
         if channel_id:
             delete_channel(mcp_client, channel_id)
             assert channel_gone(mcp_client, channel_id), f"slack channel {channel_id} remained after cleanup"
+
+
+def test_update_rejects_blanked_template_field(mcp_client: MCPClient, test_id: str) -> None:
+    """The taught trap: unset an optional field by omitting it, never with "".
+
+    A fetched config is writable as-is (the round-trip test above proves it),
+    but SigNoz rejects an explicit empty string for template-backed fields; the
+    update description teaches omitting the field instead. If SigNoz starts
+    accepting "" as unset, this pin fails and that teaching can go.
+    """
+    name = f"mcp-e2e-blanked-{test_id}".lower().replace("_", "-")
+    channel_id = create_channel(
+        mcp_client,
+        name,
+        {"kind": "msteams", "spec": {"webhookUrl": "https://example.invalid/e2e-blanked", "sendResolved": False}},
+    )
+    try:
+        result = mcp_client.call_tool(
+            "signoz_update_notification_channel",
+            {
+                "searchContext": "unset the msteams text by blanking it",
+                "id": channel_id,
+                "config": {
+                    "kind": "msteams",
+                    "spec": {"webhookUrl": "https://example.invalid/e2e-blanked", "sendResolved": False, "text": ""},
+                },
+                "test": False,
+            },
+        )
+        assert result.get("isError", False), "SigNoz accepted an empty template field; drop the omit-to-unset teaching"
+        assert "invalid spec JSON" in text_blocks(result), f"unexpected rejection: {text_blocks(result)[:300]}"
+    finally:
+        delete_channel(mcp_client, channel_id)
+        assert channel_gone(mcp_client, channel_id), "blanked-field channel remained after cleanup"

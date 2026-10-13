@@ -1787,7 +1787,8 @@ func TestTestNotificationChannel_UsesNewPath(t *testing.T) {
 	err := client.TestNotificationChannel(context.Background(), []byte(`{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`))
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v2/notification_channels/test", gotPath)
-	assert.JSONEq(t, `{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook","username":"","password":"","bearerToken":""}}}`, string(gotBody))
+	// The body is forwarded verbatim; SigNoz is the only validator of its shape.
+	assert.JSONEq(t, `{"config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}}}`, string(gotBody))
 }
 
 func TestUpdateNotificationChannel_UsesV2FullReplacement(t *testing.T) {
