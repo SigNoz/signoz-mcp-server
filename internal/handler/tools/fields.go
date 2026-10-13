@@ -9,13 +9,15 @@ import (
 
 const fieldContextParamDesc = "Restrict results to a single field context (optional). Valid values: " +
 	"'resource' (resource attributes, e.g. service.name, k8s.namespace.name), " +
-	"'attribute' (user-ingested attributes; 'tag' is accepted as an alias), " +
+	"'attribute' (user-ingested span/log attributes), " +
 	"'scope' (instrumentation scope), " +
-	"'log' / 'span' / 'metric' (intrinsic/built-in columns of the logs/traces/metrics signal), " +
-	"'body' (fields inside a JSON log body). Use this to tell intrinsic columns apart from user attributes."
+	"'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), " +
+	"'body' (fields inside a JSON log body). " +
+	"For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it."
 
 const fieldDataTypeParamDesc = "Restrict results to a single field data type (optional). " +
-	"Valid values: 'string', 'bool', 'int64', 'float64', 'number', or array forms like '[]string'."
+	"Valid values: 'string', 'bool', 'int64', 'float64', 'number'. " +
+	"SigNoz treats an array form like '[]string' as its element type."
 
 func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 	h.logger.Debug("Registering fields handlers")
@@ -27,7 +29,7 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
 		mcp.WithString("metricName", mcp.Description("Metric name to scope field keys (optional, only relevant when signal=metrics).")),
-		mcp.WithString("fieldContext", mcp.Description(fieldContextParamDesc)),
+		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "body"), mcp.Description(fieldContextParamDesc)),
 		mcp.WithString("fieldDataType", mcp.Description(fieldDataTypeParamDesc)),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to discover Cost Meter fields; omit for the default metrics store. Omit for logs and traces.")),
 	)
@@ -42,7 +44,7 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 		mcp.WithString("name", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name', 'http.status_code').")),
 		mcp.WithString("searchText", mcp.Description("Filter the returned values by substring (optional).")),
 		mcp.WithString("metricName", mcp.Description("Metric name to scope field values (optional, only relevant when signal=metrics).")),
-		mcp.WithString("fieldContext", mcp.Description(fieldContextParamDesc+" Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.")),
+		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "body"), mcp.Description(fieldContextParamDesc+" Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.")),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to fetch Cost Meter field values; omit for the default metrics store. Omit for logs and traces.")),
 	)
 
