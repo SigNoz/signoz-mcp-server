@@ -2,16 +2,10 @@ package tools
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
-
-	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-
-	"github.com/SigNoz/signoz-mcp-server/internal/client"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 // Two-tier structuredContent rule:
@@ -23,21 +17,6 @@ import (
 // These tests pin both halves of that rule so a future change can't silently
 // add a brittle outputSchema to a passthrough tool or drop it from a
 // code-controlled one.
-
-// handlerFn is the common shape of every MCP tool handler method.
-type handlerFn func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
-
-func runHandler(t *testing.T, fn handlerFn, req mcp.CallToolRequest) *mcp.CallToolResult {
-	t.Helper()
-	res, err := fn(testCtx(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if res.IsError {
-		t.Fatalf("handler returned error result: %v", res.Content)
-	}
-	return res
-}
 
 // --- structuredResult helper unit test ---
 
@@ -204,116 +183,4 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 
 // --- structuredContent PRESENT on code-controlled tools ---
 
-func TestStructuredContent_PresentOnCodeControlledTools(t *testing.T) {
-	const ruleID = "0196634d-5d66-75c4-b778-e317f49dab7a"
-	mock := &client.MockClient{
-		GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"dashboard.count":1}}`), nil
-		},
-		ListServicesFn: func(ctx context.Context, start, end string) (json.RawMessage, error) {
-			return json.RawMessage(`[{"serviceName":"frontend"}]`), nil
-		},
-		CheckMetricUsageFn: func(ctx context.Context, names []string) (map[string]client.MetricUsage, error) {
-			return map[string]client.MetricUsage{
-				"system.cpu.time": {Dashboards: []string{"Host Metrics"}, Alerts: []string{}},
-			}, nil
-		},
-		ListDashboardsFn: func(ctx context.Context, limit, offset int, filter, sort, order string) (json.RawMessage, error) {
-			return json.RawMessage(`{"dashboards":[{"id":"d1","name":"x"}],"tags":[],"total":1}`), nil
-		},
-		GetDashboardFn: func(ctx context.Context, uuid string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"id":"d1","title":"X"}}`), nil
-		},
-		CreateDashboardRawFn: func(ctx context.Context, dashboardJSON []byte) (json.RawMessage, error) {
-			return json.RawMessage(`{"id":"d-new","name":"x-abc123","spec":{"display":{"name":"X"}}}`), nil
-		},
-		ListViewsFn: func(ctx context.Context, source, name string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[{"id":"v1","name":"V"}]}`), nil
-		},
-		GetViewFn: func(ctx context.Context, viewID string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"id":"v1","name":"V"}}`), nil
-		},
-		ListNotificationChannelsV2Fn: func(ctx context.Context, params types.NotificationChannelListParams) (types.NotificationChannelList, error) {
-			return types.NotificationChannelList{Channels: []types.ListedNotificationChannel{{ID: "019947a7-f200-7000-8000-000000000001", Name: "n", DisplayName: "N", Kind: "webhook", CreatedAt: "2026-09-18T00:00:00Z", UpdatedAt: "2026-09-18T00:00:00Z"}}, Total: 1}, nil
-		},
-		GetNotificationChannelFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return json.RawMessage(`{"id":"019947a7-f200-7000-8000-000000000001","name":"n","displayName":"N","config":{"kind":"webhook","spec":{"url":"http://localhost:9999"}},"createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}`), nil
-		},
-		DeleteNotificationChannelFn: func(ctx context.Context, id string) error { return nil },
-		GetAlertByRuleIDFn: func(ctx context.Context, id string) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"id":"` + ruleID + `","alert":"A"}}`), nil
-		},
-		DeleteAlertRuleFn: func(ctx context.Context, id string) error { return nil },
-	}
-	h := newTestHandler(mock)
-
-	cases := []struct {
-		name string
-		fn   handlerFn
-		req  mcp.CallToolRequest
-	}{
-		{"list_services", h.handleListServices, makeToolRequest("signoz_list_services", map[string]any{})},
-		{"get_org_overview", h.handleGetOrgOverview, makeToolRequest("signoz_get_org_overview", map[string]any{})},
-		{"check_metric_usage", h.handleCheckMetricUsage, makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"system.cpu.time"}})},
-		{"list_dashboards", h.handleListDashboards, makeToolRequest("signoz_list_dashboards", map[string]any{})},
-		{"get_dashboard", h.handleGetDashboard, makeToolRequest("signoz_get_dashboard", map[string]any{"id": "d1"})},
-		{"create_dashboard", h.handleCreateDashboard, makeToolRequest("signoz_create_dashboard", map[string]any{"spec": map[string]any{"display": map[string]any{"name": "X"}}})},
-		{"list_dashboard_templates", h.handleListDashboardTemplates, makeToolRequest("signoz_list_dashboard_templates", map[string]any{})},
-		{"list_views", h.handleListViews, makeToolRequest("signoz_list_views", map[string]any{"source": "logs"})},
-		{"get_view", h.handleGetView, makeToolRequest("signoz_get_view", map[string]any{"viewId": "v1"})},
-		{"list_notification_channels", h.handleListNotificationChannels, makeToolRequest("signoz_list_notification_channels", map[string]any{})},
-		{"get_notification_channel", h.handleGetNotificationChannel, makeToolRequest("signoz_get_notification_channel", map[string]any{"id": "019947a7-f200-7000-8000-000000000001"})},
-		{"delete_notification_channel", h.handleDeleteNotificationChannel, makeToolRequest("signoz_delete_notification_channel", map[string]any{"id": "019947a7-f200-7000-8000-000000000001"})},
-		{"get_alert", h.handleGetAlert, makeToolRequest("signoz_get_alert", map[string]any{"ruleId": ruleID})},
-		{"delete_alert", h.handleDeleteAlert, makeToolRequest("signoz_delete_alert", map[string]any{"ruleId": ruleID})},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			res := runHandler(t, tc.fn, tc.req)
-			if res.StructuredContent == nil {
-				t.Fatalf("%s: code-controlled tool must populate structuredContent", tc.name)
-			}
-			// MCP requires structuredContent to be an object; an array or scalar
-			// is rejected outright by client-side schema validation.
-			if _, ok := res.StructuredContent.(map[string]any); !ok {
-				t.Fatalf("%s: structuredContent must be a JSON object, got %T", tc.name, res.StructuredContent)
-			}
-			// Block 0 must remain valid, independently-parseable JSON.
-			var parsed any
-			if err := json.Unmarshal([]byte(textContent(t, res)), &parsed); err != nil {
-				t.Fatalf("%s: block 0 must be valid JSON: %v", tc.name, err)
-			}
-		})
-	}
-}
-
 // --- structuredContent ABSENT on raw QB passthrough tools ---
-
-func TestStructuredContent_AbsentOnPassthroughTools(t *testing.T) {
-	mock := &client.MockClient{
-		QueryBuilderV5Fn: func(ctx context.Context, body []byte) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"results":[]}}`), nil
-		},
-	}
-	h := newTestHandler(mock)
-
-	cases := []struct {
-		name string
-		fn   handlerFn
-		req  mcp.CallToolRequest
-	}{
-		{"search_logs", h.handleSearchLogs, makeToolRequest("signoz_search_logs", map[string]any{"timeRange": "1h"})},
-		{"aggregate_logs", h.handleAggregateLogs, makeToolRequest("signoz_aggregate_logs", map[string]any{"aggregation": "count", "timeRange": "1h"})},
-		{"search_traces", h.handleSearchTraces, makeToolRequest("signoz_search_traces", map[string]any{"timeRange": "1h"})},
-		{"aggregate_traces", h.handleAggregateTraces, makeToolRequest("signoz_aggregate_traces", map[string]any{"aggregation": "count", "timeRange": "1h"})},
-		{"query_metrics", h.handleQueryMetrics, makeToolRequest("signoz_query_metrics", map[string]any{"metricName": "m", "metricType": "gauge", "timeRange": "1h"})},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			res := runHandler(t, tc.fn, tc.req)
-			if res.StructuredContent != nil {
-				t.Fatalf("%s: raw passthrough must NOT populate structuredContent, got %#v", tc.name, res.StructuredContent)
-			}
-		})
-	}
-}

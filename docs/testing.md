@@ -113,7 +113,7 @@ wiring it actually adds.
 |---|---|---|
 | `pkg/*` | Pure logic that is ours: URL injection, time math | `pkg/util/weburl_inject_test.go` |
 | `internal/client` | What we send upstream (URL, method, headers, body, retry rules) and the mapping of responses and errors into our vocabulary, against `httptest` servers; shape checking belongs to generated types, not tests | `internal/client/client_test.go` |
-| `internal/handler/tools` | The tool contract: arguments in, result or coded error out, plus the upstream call the handler makes | `internal/handler/tools/nil_arguments_test.go` |
+| `internal/handler/tools` | The tool contract: arguments in, result or coded error out, plus the upstream call the handler makes, through the real client against an `httptest` upstream | `internal/handler/tools/notification_channels_test.go` |
 | `internal/mcp-server` | The wire: transports, both protocol eras, middleware composition, the recorded catalog | `internal/mcp-server/wire_catalog_golden_test.go` |
 | `guardrails/` | What the catalog costs clients. The catalog loads into every session's context, so description, property, and nesting budgets cap that cost; name-length caps encode hard client limits (Cursor rejects a combined alias and tool name over 60 bytes); the memory budget keeps the docs index inside server memory | `guardrails/policy.go` |
 | `internal/docs` | Retrieval quality against the golden query set | `internal/docs/golden_test.go` |
@@ -133,12 +133,10 @@ Do not grow it, and do not use its tests as templates.
 
 - **It asserts what a client can observe.** Tool result, coded error, structured content,
   or the request sent upstream. Any refactor that keeps behavior leaves it green. The
-  cross-tool tables show the form. `internal/handler/tools/nil_arguments_test.go` runs
-  every handler with nil arguments and requires a coded error, not a panic, and
-  `internal/handler/tools/upstream_query_error_test.go` feeds every query handler the same
-  key-not-found 400 and requires the coded error with its guidance. Both pin behavior no
-  type can promise. One table over all tools pins a rule everywhere; per-tool copies
-  drift.
+  cross-tool tables show the form: `internal/handler/tools/upstream_query_error_test.go`
+  feeds the shared query-error path the same key-not-found 400 and requires the coded
+  error with its guidance, behavior no type can promise. One table over all tools pins a
+  rule everywhere; per-tool copies drift.
 - **The body is the spec.** Inputs and expected outputs are visible in the test function
   without opening helpers or scrolling to a fixture. Start from a named valid baseline and
   make the one change inside the test: begin with arguments that succeed, swap `filter`
@@ -185,10 +183,10 @@ wrote these tests. When you touch one, fix it or delete it.
   sends `limit: "2"` while the mock returns three alerts, then asserts only that the
   result is not an error. Whether pagination truncated, forwarded, or dropped the
   parameter is unchecked; the handler could ignore `limit` entirely and this stays green.
-  `internal/client/mock.go` returns an empty JSON object for every method you did not
-  set, so a bare `!result.IsError` accepts a handler that did nothing. The comment in
-  `internal/handler/tools/nil_arguments_test.go` records the production regression this
-  pattern let through. Fix: delete the test.
+  The client mock this suite used to carry returned an empty JSON object for every method
+  you did not set, so a bare `!result.IsError` accepted a handler that did nothing; that
+  permissiveness let a production regression through, and the mock was deleted for it.
+  Fix: delete the test.
 - **Tests the mock.**
   [`TestHandleCheckMetricUsage_PreservesDedupedDashboards`](https://github.com/SigNoz/signoz-mcp-server/blob/767fdc98dbe9b7e1122912b16bed9284ce8ce97b/internal/handler/tools/metric_usage_test.go#L202-L237)
   stubs the client to return a single dashboard name, then asserts the output has one

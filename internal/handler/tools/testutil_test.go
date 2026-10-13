@@ -7,7 +7,6 @@ import (
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	official "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
@@ -98,11 +97,6 @@ func makeToolRequest(toolName string, args map[string]any) mcp.CallToolRequest {
 // Because we use clientOverride, no API key or URL is needed in the context.
 func testCtx() context.Context {
 	return context.Background()
-}
-
-// ctxWithURL returns a test context carrying a fixed SigNoz instance origin.
-func ctxWithURL() context.Context {
-	return util.SetSigNozURL(context.Background(), "https://signoz.example.com")
 }
 
 // textContent extracts the first text content block from a tool result.
