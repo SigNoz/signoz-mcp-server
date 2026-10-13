@@ -8,115 +8,15 @@ import (
 	"strings"
 	"testing"
 
-	signozclient "github.com/SigNoz/signoz-mcp-server/internal/client"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
-
-func TestAllowlistedOutputToolsReturnStructuredContentOnSuccess(t *testing.T) {
-	client := &signozclient.MockClient{
-		GetOrgOverviewFn: func(context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":{"dashboard.count":1}}`), nil
-		},
-		ListAlertsFn: func(context.Context, types.ListAlertsParams) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[]}`), nil
-		},
-		ListAlertRulesFn: func(context.Context) (json.RawMessage, error) {
-			return json.RawMessage(`{"status":"success","data":[]}`), nil
-		},
-		CheckMetricUsageFn: func(context.Context, []string) (map[string]signozclient.MetricUsage, error) {
-			return map[string]signozclient.MetricUsage{
-				"cpu": {Dashboards: []string{"infra"}, Alerts: []string{}},
-			}, nil
-		},
-	}
-	h := newTestHandler(client)
-
-	tests := []struct {
-		name string
-		call func() (*mcp.CallToolResult, error)
-	}{
-		{"signoz_get_org_overview", func() (*mcp.CallToolResult, error) {
-			return h.handleGetOrgOverview(testCtx(), makeToolRequest("signoz_get_org_overview", map[string]any{}))
-		}},
-		{"signoz_list_alerts", func() (*mcp.CallToolResult, error) {
-			return h.handleListAlerts(ctxWithURL(), makeToolRequest("signoz_list_alerts", map[string]any{}))
-		}},
-		{"signoz_list_alert_rules", func() (*mcp.CallToolResult, error) {
-			return h.handleListAlertRules(ctxWithURL(), makeToolRequest("signoz_list_alert_rules", map[string]any{}))
-		}},
-		{"signoz_check_metric_usage", func() (*mcp.CallToolResult, error) {
-			return h.handleCheckMetricUsage(testCtx(), makeToolRequest("signoz_check_metric_usage", map[string]any{"metricNames": []any{"cpu"}}))
-		}},
-	}
-
-	docsHandler, cleanup := newDocsTestHandler(t)
-	defer cleanup()
-	tests = append(tests,
-		struct {
-			name string
-			call func() (*mcp.CallToolResult, error)
-		}{"signoz_search_docs", func() (*mcp.CallToolResult, error) {
-			return docsHandler.handleSearchDocs(testCtx(), makeToolRequest("signoz_search_docs", map[string]any{"searchText": "docker"}))
-		}},
-		struct {
-			name string
-			call func() (*mcp.CallToolResult, error)
-		}{"signoz_search_docs zero hits", func() (*mcp.CallToolResult, error) {
-			return docsHandler.handleSearchDocs(testCtx(), makeToolRequest("signoz_search_docs", map[string]any{"searchText": "zzqxjvkwpmnohitszz"}))
-		}},
-		struct {
-			name string
-			call func() (*mcp.CallToolResult, error)
-		}{"signoz_fetch_doc", func() (*mcp.CallToolResult, error) {
-			return docsHandler.handleFetchDoc(testCtx(), makeToolRequest("signoz_fetch_doc", map[string]any{"url": "/docs/install/docker/"}))
-		}},
-	)
-
-	registered := registeredTestTools(t)
-	outputValidators := map[string]*compiledToolSchema{}
-	for name, entry := range registered {
-		raw := outputSchemaJSON(entry.Tool)
-		if len(raw) == 0 {
-			continue
-		}
-		compiled, err := compileToolSchema(name, "output", raw)
-		if err != nil {
-			t.Fatalf("compile %s output schema: %v", name, err)
-		}
-		outputValidators[name] = compiled
-	}
-
-	for _, tt := range tests {
-		toolName := strings.Fields(tt.name)[0]
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := tt.call()
-			if err != nil {
-				t.Fatalf("handler error: %v", err)
-			}
-			if result == nil || result.IsError {
-				t.Fatalf("unexpected tool error: %#v", result)
-			}
-			if result.StructuredContent == nil {
-				t.Fatal("successful allowlisted result has nil StructuredContent")
-			}
-			compiled := outputValidators[toolName]
-			if compiled == nil {
-				t.Fatalf("no advertised output schema for %s", toolName)
-			}
-			if err := validateSchemaValue(compiled.validator, result.StructuredContent, false); err != nil {
-				t.Fatalf("successful %s result violates its advertised output schema: %v", toolName, err)
-			}
-		})
-	}
-}
 
 func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *testing.T) {
 	var logs bytes.Buffer

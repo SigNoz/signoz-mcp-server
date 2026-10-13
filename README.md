@@ -855,26 +855,26 @@ The same expressions work in log aggregations and saved-query specs.
 
 #### `signoz_get_field_keys`
 
-Discover field names available for filtering or grouping metrics, traces, or logs. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key.
+Discover field names available for filtering or grouping metrics, traces, or logs. This returns keys, not observed values; use `signoz_get_field_values` after selecting a key. A `data.complete` of `false` means SigNoz truncated the key list; narrow with `searchText` or `fieldContext`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `searchText` (optional) - Filter field keys by name substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Restrict to a field context: `resource`, `attribute` (alias `tag`), `scope`, `log`/`span`/`metric` (intrinsic/built-in columns), or `body` (JSON log body). Distinguishes intrinsic columns from user attributes.
-  - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`, or array forms like `[]string`
+  - `fieldContext` (optional) - Restrict to a field context. Enum: `resource`, `attribute`, `scope`, `log`/`span`/`metric` (intrinsic columns), `body` (JSON log body). Use `attribute`, not the legacy Query Builder context `tag`, which SigNoz ignores here.
+  - `fieldDataType` (optional) - Restrict to a data type: `string`, `bool`, `int64`, `float64`, `number`. An array form like `[]string` is treated as its element type.
   - `source` (optional) - For metrics, use `meter` for Cost Meter fields; omit for the default metrics store
 
 #### `signoz_get_field_values`
 
-Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value.
+Get observed values for a known field key. Use `signoz_get_field_keys` when the key is unknown, and match `signal` and `fieldContext` to the query that will use the value. A `data.complete` of `false` means SigNoz truncated the value list; narrow with `searchText`.
 
 - **Parameters**:
   - `signal` (required) - Signal type. Enum: `metrics`, `traces`, `logs`
   - `name` (required) - Field key name to get values for (e.g., `service.name`, `http.method`)
   - `searchText` (optional) - Filter values by substring
   - `metricName` (optional) - Filter by metric name (relevant for metrics signal)
-  - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`/`tag`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one
+  - `fieldContext` (optional) - Restrict the lookup to a field context (`resource`, `attribute`, `scope`, `log`/`span`/`metric`, `body`) when the same key name exists in more than one. Use `attribute`, not the legacy Query Builder context `tag`; SigNoz returns no values for `tag`.
   - `source` (optional) - For metrics, use `meter` for Cost Meter values; omit for the default metrics store
 
 

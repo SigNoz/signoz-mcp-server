@@ -595,3 +595,44 @@ def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
             {"searchContext": f"confirm dashboard {dashboard_id} is gone after cleanup", "id": dashboard_id},
         )
         assert gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
+
+
+def test_template_catalog_import_lifecycle(mcp_client: MCPClient) -> None:
+    """A curated template is listed in the catalog and imports into a live dashboard.
+
+    Imports fetch the template from the SigNoz/dashboards repo, so this also
+    exercises the template-fetch path end to end before the v2 create.
+    """
+    catalog = first_json(
+        assert_tool_ok(
+            mcp_client.call_tool("signoz_list_dashboard_templates", {"searchContext": "list dashboard templates"})
+        )
+    )
+    entries = catalog if isinstance(catalog, list) else catalog.get("templates") or catalog.get("data") or []
+    paths = [entry.get("path") for entry in entries if isinstance(entry, dict)]
+    assert "hostmetrics/hostmetrics.json" in paths, f"hostmetrics template missing from catalog: {paths[:20]}"
+
+    imported = assert_tool_ok(
+        mcp_client.call_tool(
+            "signoz_import_dashboard",
+            {"searchContext": "import the hostmetrics template", "path": "hostmetrics/hostmetrics.json"},
+        )
+    )
+    payload = first_json(imported)
+    dashboard_id = _dashboard_id(payload)
+    try:
+        assert "/dashboard/" in str(_data(payload).get("webUrl", "")), (
+            f"imported dashboard missing webUrl deep link: {_data(payload).get('webUrl')!r}"
+        )
+    finally:
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_delete_dashboard",
+                {"searchContext": f"cleanup imported dashboard {dashboard_id}", "id": dashboard_id},
+            )
+        )
+        gone = mcp_client.call_tool(
+            "signoz_get_dashboard",
+            {"searchContext": f"confirm imported dashboard {dashboard_id} is gone", "id": dashboard_id},
+        )
+        assert gone.get("isError", False), f"imported dashboard {dashboard_id} remained after cleanup"

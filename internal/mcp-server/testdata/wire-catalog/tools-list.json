@@ -522,7 +522,7 @@
                                   "type": "string"
                                 },
                                 "limit": {
-                                  "description": "Positive maximum number of result groups. Use 100 for standalone alert queries and formula results. Use 10000 for each builder query referenced by a formula because input limits are applied before formula evaluation.",
+                                  "description": "Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent.",
                                   "type": "integer"
                                 },
                                 "name": {
@@ -530,7 +530,7 @@
                                   "type": "string"
                                 },
                                 "order": {
-                                  "description": "Query Builder v5 result order. Use __result desc for metrics and formulas; use the primary aggregation descending for logs and traces. This is the wire field order, not dashboard editor orderBy.",
+                                  "description": "Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy.",
                                   "items": {
                                     "properties": {
                                       "direction": {
@@ -4558,15 +4558,24 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. After choosing a key, use signoz_get_field_values to discover valid values.",
+          "description": "Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. After choosing a key, use signoz_get_field_values to discover valid values.",
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested attributes; 'tag' is accepted as an alias), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic/built-in columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). Use this to tell intrinsic columns apart from user attributes.",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it.",
+                "enum": [
+                  "resource",
+                  "attribute",
+                  "scope",
+                  "log",
+                  "span",
+                  "metric",
+                  "body"
+                ],
                 "type": "string"
               },
               "fieldDataType": {
-                "description": "Restrict results to a single field data type (optional). Valid values: 'string', 'bool', 'int64', 'float64', 'number', or array forms like '[]string'.",
+                "description": "Restrict results to a single field data type (optional). Valid values: 'string', 'bool', 'int64', 'float64', 'number'. SigNoz treats an array form like '[]string' as its element type.",
                 "type": "string"
               },
               "metricName": {
@@ -4609,11 +4618,20 @@
             "openWorldHint": true,
             "readOnlyHint": true
           },
-          "description": "Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value.",
+          "description": "Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value. SigNoz sets data.complete=false when it truncated the value list; narrow with searchText to see more.",
           "inputSchema": {
             "properties": {
               "fieldContext": {
-                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested attributes; 'tag' is accepted as an alias), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic/built-in columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). Use this to tell intrinsic columns apart from user attributes. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
+                "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
+                "enum": [
+                  "resource",
+                  "attribute",
+                  "scope",
+                  "log",
+                  "span",
+                  "metric",
+                  "body"
+                ],
                 "type": "string"
               },
               "metricName": {
@@ -6898,7 +6916,7 @@
                                   "type": "string"
                                 },
                                 "limit": {
-                                  "description": "Positive maximum number of result groups. Use 100 for standalone alert queries and formula results. Use 10000 for each builder query referenced by a formula because input limits are applied before formula evaluation.",
+                                  "description": "Omit for alerts: on a grouped query, limit caps evaluation to the top-N series and series beyond it are never evaluated. Set it only when top-N alerting is the explicit intent.",
                                   "type": "integer"
                                 },
                                 "name": {
@@ -6906,7 +6924,7 @@
                                   "type": "string"
                                 },
                                 "order": {
-                                  "description": "Query Builder v5 result order. Use __result desc for metrics and formulas; use the primary aggregation descending for logs and traces. This is the wire field order, not dashboard editor orderBy.",
+                                  "description": "Omit for alerts; with limit it ranks which top-N series stay in evaluation. When top-N is intended, use Query Builder v5 wire ordering (metrics: __result desc), not dashboard editor orderBy.",
                                   "items": {
                                     "properties": {
                                       "direction": {
