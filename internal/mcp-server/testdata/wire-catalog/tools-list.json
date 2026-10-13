@@ -4563,15 +4563,6 @@
             "properties": {
               "fieldContext": {
                 "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it.",
-                "enum": [
-                  "resource",
-                  "attribute",
-                  "scope",
-                  "log",
-                  "span",
-                  "metric",
-                  "body"
-                ],
                 "type": "string"
               },
               "fieldDataType": {
@@ -4592,11 +4583,6 @@
               },
               "signal": {
                 "description": "Signal type: 'metrics', 'traces', or 'logs'.",
-                "enum": [
-                  "metrics",
-                  "traces",
-                  "logs"
-                ],
                 "type": "string"
               },
               "source": {
@@ -4623,15 +4609,6 @@
             "properties": {
               "fieldContext": {
                 "description": "Restrict results to a single field context (optional). Valid values: 'resource' (resource attributes, e.g. service.name, k8s.namespace.name), 'attribute' (user-ingested span/log attributes), 'scope' (instrumentation scope), 'log' / 'span' / 'metric' (intrinsic columns of the logs/traces/metrics signal), 'body' (fields inside a JSON log body). For span/log attributes use 'attribute', not the legacy Query Builder context 'tag': SigNoz ignores 'tag' when listing keys and returns no values for it. Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.",
-                "enum": [
-                  "resource",
-                  "attribute",
-                  "scope",
-                  "log",
-                  "span",
-                  "metric",
-                  "body"
-                ],
                 "type": "string"
               },
               "metricName": {
@@ -4652,11 +4629,6 @@
               },
               "signal": {
                 "description": "Signal type: 'metrics', 'traces', or 'logs'.",
-                "enum": [
-                  "metrics",
-                  "traces",
-                  "logs"
-                ],
                 "type": "string"
               },
               "source": {
