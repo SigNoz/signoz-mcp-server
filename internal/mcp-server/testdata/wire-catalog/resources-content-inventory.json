@@ -20,8 +20,8 @@
         "kind": "text",
         "uri": "signoz://alert/instructions",
         "mimeType": "text/markdown",
-        "serializedLength": 24675,
-        "sha256": "0e046531bb76f85f10f90c39d7ecf67295a062ebaca9c4e953be25b8871a689e"
+        "serializedLength": 24535,
+        "sha256": "13a244b9be36d05ff3397d512936acef464d6cfb974d77c7073afdba1fc39cd4"
       }
     ]
   },

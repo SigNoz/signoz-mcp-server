@@ -4,9 +4,8 @@ The MCP server forwards alert payloads verbatim; SigNoz is the only validator.
 These tests pin the claims the tool descriptions and signoz://alert resources
 publish against the pinned release: the explicit v2alpha1 payload the
 instructions teach round-trips through create/get/update/delete, SigNoz rejects
-direct routing to a channel that does not exist, the taught example value
-AI_TRACES_BASED_ALERT is real, and the history endpoint keeps the items/total
-envelope the completeness note parses.
+direct routing to a channel that does not exist, and the history endpoint keeps
+the items/total envelope the completeness note parses.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
@@ -132,22 +131,6 @@ def test_create_alert_unknown_channel_rejected(mcp_client: MCPClient, test_id: s
     assert body.startswith("SigNoz API error:"), f"channel rejection lost the uniform prefix: {body!r}"
     assert "mcp-e2e-no-such-channel" in body, f"rejection does not name the unknown channel: {body!r}"
     assert name not in listed_rule_names(mcp_client), "rejected rule was persisted anyway"
-
-
-def test_ai_traces_alert_type_accepted(mcp_client: MCPClient, test_id: str) -> None:
-    """The taught alertType example AI_TRACES_BASED_ALERT is accepted by SigNoz (the schema has no enum)."""
-    name = f"mcp-e2e-{test_id}-ai-traces"
-    rule = threshold_rule(name, alert_type="AI_TRACES_BASED_ALERT")
-    rule["condition"]["compositeQuery"]["queries"][0]["spec"]["signal"] = "traces"
-    rule["condition"]["compositeQuery"]["queries"][0]["spec"]["aggregations"] = [{"expression": "count()"}]
-    rule_id = create_rule(mcp_client, rule)
-    try:
-        fetched = assert_tool_ok(
-            mcp_client.call_tool("signoz_get_alert", {"searchContext": f"get rule {name}", "id": rule_id})
-        )
-        assert first_block_json(fetched)["data"].get("alertType") == "AI_TRACES_BASED_ALERT"
-    finally:
-        delete_rule(mcp_client, rule_id)
 
 
 def test_alert_history_envelope(mcp_client: MCPClient, test_id: str) -> None:
