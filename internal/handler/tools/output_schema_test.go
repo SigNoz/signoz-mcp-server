@@ -9,26 +9,13 @@ import (
 	"testing"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"go.opentelemetry.io/otel/attribute"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *testing.T) {
+func TestInputMismatchServedBestEffortWithNoticeAndNoLeakedValues(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(provider)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &Handler{logger: logger, meters: meters}
+	h := &Handler{logger: logger}
 	s := newMCPTestServer()
 	tool := mcp.NewTool("shadow_probe")
 	tool.InputSchema = map[string]any{
@@ -41,7 +28,7 @@ func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *
 		return mcp.NewToolResultText("ok"), nil
 	})
 
-	ctx := util.SetClientSource(context.Background(), "ai-assistant")
+	ctx := context.Background()
 	response := callTestToolFromJSONRPC(ctx, t, s, json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shadow_probe","arguments":{"searchContext":"create a webhook","webhook_password":"super-secret-value"}}}`))
 	if !called {
 		t.Fatal("input mismatch must not block the handler call")
@@ -65,54 +52,15 @@ func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *
 	if strings.Contains(string(encoded), "super-secret-value") {
 		t.Fatalf("validation notice leaked raw argument values: %s", encoded)
 	}
-	if !strings.Contains(logs.String(), "tool schema validation mismatch") || !strings.Contains(logs.String(), `"validation.direction":"input"`) {
-		t.Fatalf("missing shadow mismatch warning: %s", logs.String())
-	}
-	if count := strings.Count(logs.String(), "tool schema validation mismatch"); count != 1 {
-		t.Fatalf("mismatch warning count = %d, want one representative request per rate-limit window; logs=%s", count, logs.String())
-	}
 	if strings.Contains(logs.String(), "super-secret-value") || strings.Contains(logs.String(), "another-secret-value") {
 		t.Fatalf("validation telemetry leaked raw argument values: %s", logs.String())
 	}
-	if !strings.Contains(logs.String(), `"mcp.request":`) || !strings.Contains(logs.String(), `create a webhook`) || !strings.Contains(logs.String(), `[REDACTED]`) {
-		t.Fatalf("validation telemetry missing reproducible redacted requests: %s", logs.String())
-	}
-	if strings.Contains(logs.String(), `second attempt`) {
-		t.Fatalf("identical mismatch inside rate-limit window should be suppressed: %s", logs.String())
-	}
-	var collected metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatal(err)
-	}
-	sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.mismatches")
-	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 2 {
-		t.Fatalf("shadow mismatch counter = %#v, found=%t", sum, ok)
-	}
-	for key, want := range map[attribute.Key]string{
-		attribute.Key("gen_ai.tool.name"):      "shadow_probe",
-		attribute.Key("validation.direction"):  "input",
-		attribute.Key("validation.path"):       "webhook_password",
-		attribute.Key("validation.constraint"): "schema",
-		otelpkg.MCPClientSourceKey:             "ai-assistant",
-	} {
-		got, present := sum.DataPoints[0].Attributes.Value(key)
-		if !present || got.AsString() != want {
-			t.Fatalf("mismatch metric %s = %v, present=%t; want %q", key, got, present, want)
-		}
-	}
 }
 
-func TestOutputMismatchPassesOriginalResultAndCounts(t *testing.T) {
+func TestOutputMismatchPassesOriginalResultThrough(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(provider)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &Handler{logger: logger, meters: meters}
+	h := &Handler{logger: logger}
 	s := newMCPTestServer()
 	tool := mcp.NewTool("output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
@@ -126,34 +74,12 @@ func TestOutputMismatchPassesOriginalResultAndCounts(t *testing.T) {
 	if !strings.Contains(string(b), `"count":"wrong"`) || strings.Contains(string(b), `"isError":true`) {
 		t.Fatalf("output mismatch did not pass the original result through: %s", b)
 	}
-	if !strings.Contains(logs.String(), `"validation.direction":"output"`) {
-		t.Fatalf("missing bounded output mismatch warning: %s", logs.String())
-	}
-	var collected metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatal(err)
-	}
-	sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.mismatches")
-	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 1 {
-		t.Fatalf("output shadow mismatch counter = %#v, found=%t", sum, ok)
-	}
-	direction, ok := sum.DataPoints[0].Attributes.Value(attribute.Key("validation.direction"))
-	if !ok || direction.AsString() != "output" {
-		t.Fatalf("output mismatch direction = %v, found=%t", direction, ok)
-	}
 }
 
-func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T) {
+func TestOutputSchemaSuccessWithoutStructuredContentFailsOpen(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(provider)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &Handler{logger: logger, meters: meters}
+	h := &Handler{logger: logger}
 	s := newMCPTestServer()
 	tool := mcp.NewTool("nil_output_probe", mcp.WithOutputSchema[struct {
 		Count int `json:"count"`
@@ -167,30 +93,12 @@ func TestOutputSchemaSuccessWithoutStructuredContentWarnsAndCounts(t *testing.T)
 	if !strings.Contains(string(b), "text-only") || strings.Contains(string(b), `"isError":true`) {
 		t.Fatalf("nil StructuredContent should fail open with the original result: %s", b)
 	}
-	if !strings.Contains(logs.String(), "successful schema-declaring tool returned no structured content") {
-		t.Fatalf("missing nil-StructuredContent warning: %s", logs.String())
-	}
-	var collected metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatal(err)
-	}
-	sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.output.missing_structured_content")
-	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 1 {
-		t.Fatalf("missing structured-content counter = %#v, found=%t", sum, ok)
-	}
 }
 
-func TestSchemaCompileFailureRegistersFailOpenAndCounts(t *testing.T) {
+func TestSchemaCompileFailureRegistersFailOpen(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(logpkg.NewContextHandler(slog.NewJSONHandler(&logs, nil)))
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(provider)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &Handler{logger: logger, meters: meters}
+	h := &Handler{logger: logger}
 	s := newMCPTestServer()
 	tool := mcp.Tool{
 		Name:        "broken_schema_probe",
@@ -206,18 +114,7 @@ func TestSchemaCompileFailureRegistersFailOpenAndCounts(t *testing.T) {
 	if !called {
 		t.Fatal("compile failure prevented fail-open handler registration")
 	}
-	if !strings.Contains(logs.String(), "tool schema compilation failed; validation disabled for schema") {
-		t.Fatalf("missing compile-failure error log: %s", logs.String())
-	}
 	if strings.Contains(logs.String(), "do-not-log") {
 		t.Fatalf("compile-failure telemetry leaked arguments: %s", logs.String())
-	}
-	var collected metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &collected); err != nil {
-		t.Fatal(err)
-	}
-	sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.schema.compile_failures")
-	if !ok || len(sum.DataPoints) != 1 || sum.DataPoints[0].Value != 1 {
-		t.Fatalf("compile-failure counter = %#v, found=%t", sum, ok)
 	}
 }

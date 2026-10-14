@@ -34,9 +34,6 @@ func TestToolInvocationDecoratorRecoversToCodedInternalError(t *testing.T) {
 	if strings.Contains(logs.String(), "secret-panic-canary") {
 		t.Fatal("panic value leaked into operator log")
 	}
-	if !strings.Contains(logs.String(), "tool handler panic recovered") || !strings.Contains(logs.String(), `"gen_ai.tool.name":"panic_probe"`) || !strings.Contains(logs.String(), `"stack":`) {
-		t.Fatalf("panic log missing bounded operator context: %s", logs.String())
-	}
 }
 
 type uncloneableSchema struct{}

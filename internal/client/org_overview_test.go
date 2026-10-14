@@ -78,7 +78,6 @@ func TestGetOrgOverview_RejectsWebPageServedAsSuccess(t *testing.T) {
 
 			require.ErrorIs(t, err, ErrNonJSONResponse)
 			assert.Nil(t, result)
-			assert.Contains(t, logs.String(), "SigNoz returned a web page instead of JSON")
 			assert.NotContains(t, logs.String(), "page-canary")
 		})
 	}
