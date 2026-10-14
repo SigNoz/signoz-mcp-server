@@ -343,7 +343,8 @@ The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very
 - evaluation and notificationSettings: SigNoz rejects a v2alpha1 rule missing either block.
 - panelType: set "graph"; SigNoz stores an empty value when omitted.
 - selectedQueryName: set it whenever more than one query exists.
-- labels.severity and annotations: SigNoz adds no defaults; include them so routing tiers and notification text work.
+- labels.severity: SigNoz adds no static default, and routing and notification text do not need one: each firing carries severity equal to the tier that fired (threshold.name). A static labels.severity replaces that value on every firing, so every tier of a multi-tier rule reports the static value; the alert-rule list sorts and filters by it.
+- annotations: SigNoz adds no defaults; include them so notification text works.
 - Omit server-populated fields (createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result.
 
 anomaly_rule uses the v1 schema: supply evalWindow, frequency, and the condition fields yourself.
