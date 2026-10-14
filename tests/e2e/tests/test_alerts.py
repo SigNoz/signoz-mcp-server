@@ -144,7 +144,8 @@ def test_alert_history_envelope(mcp_client: MCPClient, test_id: str) -> None:
         assert_tool_ok(result)
         data = first_block_json(result).get("data")
         assert isinstance(data, dict), f"alert history envelope drifted: {data}"
-        assert isinstance(data.get("items"), list | None.__class__), f"history items shape drifted: {data}"
+        assert "items" in data, f"history items field missing: {data}"
+        assert isinstance(data["items"], list | None.__class__), f"history items shape drifted: {data}"
         assert isinstance(data.get("total"), int), f"history total shape drifted: {data}"
     finally:
         delete_rule(mcp_client, rule_id)

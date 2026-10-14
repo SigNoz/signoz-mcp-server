@@ -47,7 +47,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 
 condition.compositeQuery uses the v5 query format:
 - queryType: "builder" | "promql" | "clickhouse_sql"
-- panelType: always "graph" for alerts (auto-set)
+- panelType: always set "graph" for alerts; SigNoz stores an empty value when omitted
 - unit: series unit (used for value formatting and target-unit conversion)
 - queries: array of query objects
 
