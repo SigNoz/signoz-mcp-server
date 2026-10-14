@@ -44,13 +44,11 @@ func changeBodies(t *testing.T, entries []SitemapEntry, fetches map[string]PageF
 	}
 }
 
-func newDeltaRefresher(t *testing.T, reg *IndexRegistry, fetches map[string]PageFetch) (*Refresher, func(string) int64) {
+func newDeltaRefresher(t *testing.T, reg *IndexRegistry, fetches map[string]PageFetch) *Refresher {
 	t.Helper()
-	reader, meters := newDocsTestMeters(t)
 	refresher := NewRefresher(slog.Default(), reg, nil, RefreshConfig{SitemapURL: DefaultSitemapURL})
 	refresher.fetcher = mapFetcher(fetches)
-	refresher.SetMeters(meters)
-	return refresher, func(outcome string) int64 { return docsRefreshMetricValue(t, reader, outcome) }
+	return refresher
 }
 
 func TestApplyDeltaUpdatesLiveIndex(t *testing.T) {
@@ -131,11 +129,9 @@ func TestRefreshAppliesSmallDeltaInPlace(t *testing.T) {
 	changeBodies(t, entries, fetches, 1)
 	reg := newTestRegistry(t, initial)
 	handle := reg.currentHandle(t)
-	refresher, metric := newDeltaRefresher(t, reg, fetches)
+	refresher := newDeltaRefresher(t, reg, fetches)
 
 	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, int64(1), metric("applied-delta"))
-	require.Zero(t, metric("rebuilt"))
 	require.Same(t, handle, reg.currentHandle(t))
 	require.Equal(t, int64(1), atomic.LoadInt64(&handle.incrementalApplies))
 
@@ -151,11 +147,9 @@ func TestRefreshRebuildsWhenDeltaExceedsFraction(t *testing.T) {
 	changeBodies(t, entries, fetches, 11) // > 25% of 40
 	reg := newTestRegistry(t, initial)
 	handle := reg.currentHandle(t)
-	refresher, metric := newDeltaRefresher(t, reg, fetches)
+	refresher := newDeltaRefresher(t, reg, fetches)
 
 	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, int64(1), metric("rebuilt"))
-	require.Zero(t, metric("applied-delta"))
 	require.NotSame(t, handle, reg.currentHandle(t))
 }
 
@@ -165,11 +159,9 @@ func TestForcedRefreshAlwaysRebuilds(t *testing.T) {
 	changeBodies(t, entries, fetches, 1)
 	reg := newTestRegistry(t, initial)
 	handle := reg.currentHandle(t)
-	refresher, metric := newDeltaRefresher(t, reg, fetches)
+	refresher := newDeltaRefresher(t, reg, fetches)
 
 	require.NoError(t, refresher.Trigger(context.Background(), true))
-	require.Equal(t, int64(1), metric("forced-full-rebuilt"))
-	require.Zero(t, metric("applied-delta"))
 	require.NotSame(t, handle, reg.currentHandle(t), "a forced refresh compacts the index")
 }
 
@@ -180,11 +172,9 @@ func TestRefreshCompactsAfterApplyCap(t *testing.T) {
 	reg := newTestRegistry(t, initial)
 	handle := reg.currentHandle(t)
 	atomic.StoreInt64(&handle.incrementalApplies, maxIncrementalApplies)
-	refresher, metric := newDeltaRefresher(t, reg, fetches)
+	refresher := newDeltaRefresher(t, reg, fetches)
 
 	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, int64(1), metric("rebuilt"))
-	require.Zero(t, metric("applied-delta"))
 	next := reg.currentHandle(t)
 	require.NotSame(t, handle, next)
 	require.Zero(t, atomic.LoadInt64(&next.incrementalApplies), "a rebuild resets the apply budget")

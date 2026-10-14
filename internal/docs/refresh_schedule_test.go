@@ -3,23 +3,46 @@ package docs
 import (
 	"context"
 	"log/slog"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-// countingFetcher records how many sitemap fetches the scheduler triggers.
-// It always reports the sitemap unchanged so no index rebuild happens.
-type countingFetcher struct {
+// recordingFetcher records every URL the scheduler fetches, in order. It serves
+// the sitemap unchanged, so an incremental tick stops at the sitemap hash and
+// only a forced full tick goes on to fetch pages.
+type recordingFetcher struct {
 	sitemap string
-	calls   atomic.Int64
+	mu      sync.Mutex
+	urls    []string
 }
 
-func (c *countingFetcher) Fetch(_ context.Context, rawURL string) PageFetch {
-	c.calls.Add(1)
-	return PageFetch{Status: FetchStatusOK, URL: rawURL, Body: c.sitemap, FetchedAt: time.Now()}
+func (f *recordingFetcher) Fetch(_ context.Context, rawURL string) PageFetch {
+	f.mu.Lock()
+	f.urls = append(f.urls, rawURL)
+	f.mu.Unlock()
+	return PageFetch{Status: FetchStatusOK, URL: rawURL, Body: f.sitemap, FetchedAt: time.Now()}
+}
+
+// fetches counts sitemap and page fetches. A sitemap fetch followed directly by
+// another sitemap fetch marks an incremental tick, because a forced tick fetches
+// its pages before the next sitemap.
+func (f *recordingFetcher) fetches() (sitemaps, pages int, incrementalTick bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, rawURL := range f.urls {
+		if rawURL != DefaultSitemapURL {
+			pages++
+			continue
+		}
+		sitemaps++
+		if i+1 < len(f.urls) && f.urls[i+1] == DefaultSitemapURL {
+			incrementalTick = true
+		}
+	}
+	return sitemaps, pages, incrementalTick
 }
 
 func TestScheduledRefreshCanBeDisabledIndependently(t *testing.T) {
@@ -40,39 +63,49 @@ func TestScheduledRefreshCanBeDisabledIndependently(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := newTestRegistry(t, snapshot)
-			fetcher := &countingFetcher{sitemap: snapshot.SitemapRaw}
+			fetcher := &recordingFetcher{sitemap: snapshot.SitemapRaw}
 			cfg := tc.cfg
 			cfg.RefreshInterval = 5 * time.Millisecond
 			cfg.FullRefreshInterval = 10 * time.Millisecond
 			cfg.JitterWindow = -1
 			refresher := NewRefresher(slog.Default(), reg, nil, cfg)
 			refresher.fetcher = fetcher
-			reader, meters := newDocsTestMeters(t)
-			refresher.SetMeters(meters)
 
 			ctx, cancel := context.WithCancel(context.Background())
-			refresher.Start(ctx)
-			time.Sleep(80 * time.Millisecond)
-			cancel()
-			// Let run() observe cancellation before goleak inspects goroutines.
-			require.Eventually(t, func() bool {
-				before := fetcher.calls.Load()
-				time.Sleep(15 * time.Millisecond)
-				return fetcher.calls.Load() == before
-			}, time.Second, 5*time.Millisecond)
+			defer cancel()
+			// run is what Start launches; driving it directly shows when it exits.
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				refresher.run(ctx)
+			}()
 
 			if !tc.wantCalls {
-				require.Zero(t, fetcher.calls.Load(), "disabled scheduler must never fetch")
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("a fully disabled scheduler must return instead of arming timers")
+				}
+				sitemaps, pages, _ := fetcher.fetches()
+				require.Zero(t, sitemaps+pages, "disabled scheduler must never fetch")
 				return
 			}
-			require.Positive(t, fetcher.calls.Load())
-			forced := docsRefreshMetricValue(t, reader, "forced-full-rebuilt")
+			// A few ticks of the enabled schedule also give a wrongly enabled one time to fire.
+			require.Eventually(t, func() bool {
+				sitemaps, pages, _ := fetcher.fetches()
+				if tc.wantForced {
+					return pages >= 2*len(snapshot.Pages)
+				}
+				return sitemaps >= 4
+			}, time.Second, time.Millisecond)
+			cancel()
+			<-done
+
+			_, pages, incrementalTick := fetcher.fetches()
 			if tc.wantForced {
-				require.Positive(t, forced, "full refresh tick should still fire")
-				require.Zero(t, docsRefreshMetricValue(t, reader, "no-op"), "incremental tick must not fire")
+				require.False(t, incrementalTick, "incremental tick must not fire")
 			} else {
-				require.Zero(t, forced, "full refresh tick must not fire")
-				require.Positive(t, docsRefreshMetricValue(t, reader, "no-op"), "incremental tick should still fire")
+				require.Zero(t, pages, "full refresh tick must not fire")
 			}
 		})
 	}

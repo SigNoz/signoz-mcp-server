@@ -1,7 +1,6 @@
 package mcp_server
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,43 +9,9 @@ import (
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
-
-func TestProductionHTTPPreDispatchRejectionEmitsNoMCPMetrics(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(provider)
-	if err != nil {
-		t.Fatal(err)
-	}
-	logger := logpkg.New("error")
-	cfg := &config.Config{URL: "https://tenant.example.com", APIKey: "test-key", ClientCacheSize: 1, ClientCacheTTL: time.Minute, MaxRequestBytes: 1 << 20}
-	m := NewMCPServer(logger, tools.NewHandler(logger, cfg), cfg, noopanalytics.New(), meters)
-	server := m.newSDKServer()
-
-	body := protocolRequestJSON(t, 91, "tools/list", modernParams(nil, nil))
-	headers := modernHeaders("prompts/list", "")
-	response := protocolPOST(t, m.buildHTTP(server).Handler, body, headers)
-	requireProtocolError(t, response, http.StatusBadRequest, 91, -32020, "Mcp-Method header value")
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatal(err)
-	}
-	if _, found := oteltest.FindInt64SumMetric(metrics, "mcp.method.calls"); found {
-		t.Fatal("pre-dispatch header rejection emitted mcp.method.calls")
-	}
-	if _, found := oteltest.FindInt64SumMetric(metrics, "mcp.tool.calls"); found {
-		t.Fatal("pre-dispatch header rejection emitted mcp.tool.calls")
-	}
-}
 
 func TestProductionHTTPDeclaredBodyLimitPrecedesAuthentication(t *testing.T) {
 	logger := logpkg.New("error")

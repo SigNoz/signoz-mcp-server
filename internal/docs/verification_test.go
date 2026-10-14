@@ -18,12 +18,7 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/attribute"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/goleak"
 )
 
@@ -103,32 +98,12 @@ func TestSchemaVersionGuard(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported corpus schema version")
 }
 
-func TestRefreshNoOp(t *testing.T) {
-	verifyNoDocsLeaks(t)
-	snapshot := testSnapshot()
-	snapshot.SitemapHash = SitemapHash(snapshot.SitemapRaw)
-	reg := newTestRegistry(t, snapshot)
-	reader, meters := newDocsTestMeters(t)
-
-	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/docs/sitemap.md", r.URL.Path)
-		_, _ = w.Write([]byte(snapshot.SitemapRaw))
-	}))
-	defer srv.Close()
-
-	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(srv), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
-	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "no-op"))
-}
-
-func TestForcedFullRefresh(t *testing.T) {
+func TestForcedRefreshBypassesUnchangedSitemapHash(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	entries := []SitemapEntry{{URL: "https://signoz.io/docs/install/docker/", Title: "Install SigNoz Using Docker", SectionSlug: "install", SectionBreadcrumb: "Install > Docker"}}
 	initial := snapshotForEntries(entries, map[string]string{entries[0].URL: "# Old\n"})
 	initial.SitemapHash = SitemapHash(sitemapForEntries(entries))
 	reg := newTestRegistry(t, initial)
-	reader, meters := newDocsTestMeters(t)
 	srv := docsCorpusServer(t, sitemapForEntries(entries), map[string]PageFetch{
 		"/docs/install/docker/": {Status: FetchStatusOK, Body: "# Install SigNoz Using Docker\n\nDocker Compose setup.\n"},
 	})
@@ -139,17 +114,10 @@ func TestForcedFullRefresh(t *testing.T) {
 		RefreshInterval:     time.Hour,
 		FullRefreshInterval: time.Minute,
 	})
-	refresher.SetMeters(meters)
 	require.NoError(t, refresher.Trigger(context.Background(), true))
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "forced-full-rebuilt"))
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)
 	require.Contains(t, snapshot.Pages[0].BodyMarkdown, "Docker Compose")
-
-	metrics := collectDocsMetrics(t, reader)
-	require.Equal(t, int64(1), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
-	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
-	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
 }
 
 func TestSingleflightSerialization(t *testing.T) {
@@ -158,7 +126,7 @@ func TestSingleflightSerialization(t *testing.T) {
 	initial := snapshotForEntries(entries, map[string]string{entries[0].URL: "# Old\n"})
 	initial.SitemapHash = "old"
 	reg := newTestRegistry(t, initial)
-	var sitemapFetches atomic.Int64
+	var sitemapFetches, pageFetches atomic.Int64
 	release := make(chan struct{})
 	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/docs/sitemap.md" {
@@ -167,13 +135,12 @@ func TestSingleflightSerialization(t *testing.T) {
 			_, _ = w.Write([]byte(sitemapForEntries(entries)))
 			return
 		}
+		pageFetches.Add(1)
 		_, _ = w.Write([]byte("# Install SigNoz Using Docker\n\nDocker Compose setup.\n"))
 	}))
 	defer srv.Close()
 
-	reader, meters := newDocsTestMeters(t)
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(srv), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
 	errs := make(chan error, 2)
 	go func() { errs <- refresher.Trigger(context.Background(), false) }()
 	require.Eventually(t, func() bool { return sitemapFetches.Load() == 1 }, time.Second, 10*time.Millisecond)
@@ -185,52 +152,26 @@ func TestSingleflightSerialization(t *testing.T) {
 	// Plan: forced intent must be preserved across singleflight share. The
 	// incremental trigger rebuilds once; the forced trigger joined mid-flight,
 	// so the Do-owner must re-run the refresh with forced=true after its
-	// first pass — producing a second sitemap fetch and a forced outcome.
-	// The forced pass re-fetches the same body, so content gating reports it
-	// as forced-unchanged rather than rebuilding a second time.
+	// first pass — producing a second sitemap fetch that re-fetches the page.
+	// A dropped forced intent would re-run as an incremental no-op instead,
+	// which stops at the unchanged sitemap hash and fetches no page.
 	require.Equal(t, int64(2), sitemapFetches.Load())
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "rebuilt"))
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "forced-unchanged"))
-	require.Zero(t, docsRefreshMetricValue(t, reader, "forced-full-rebuilt"))
+	require.Equal(t, int64(2), pageFetches.Load())
 }
 
 func TestRefreshFailure(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	reg := newTestRegistry(t, testSnapshot())
-	reader, meters := newDocsTestMeters(t)
 	srv := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(srv), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
 	require.Error(t, refresher.Trigger(context.Background(), false))
 	search, err := reg.Search(context.Background(), "docker", "", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, search.Results)
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "error"))
-}
-
-func TestRecordDocsIndexMetrics(t *testing.T) {
-	verifyNoDocsLeaks(t)
-	reg := newTestRegistry(t, testSnapshot())
-	reader, meters := newDocsTestMeters(t)
-
-	snapshot := testSnapshot()
-	duplicate := snapshot.Pages[0]
-	duplicate.SectionSlug = "alternate"
-	duplicate.SectionBreadcrumb = "Alternate > Logs"
-	snapshot.Pages = NormalizePages(append(snapshot.Pages, duplicate))
-	require.Len(t, snapshot.Pages, 2)
-	snapshot.BuiltAt = time.Now().UTC().Add(-2 * time.Hour)
-	require.NoError(t, reg.Swap(context.Background(), snapshot))
-	require.True(t, reg.RecordMetrics(context.Background(), meters))
-
-	metrics := collectDocsMetrics(t, reader)
-	require.Equal(t, int64(len(snapshot.Pages)), int64GaugeValue(t, metrics, "signoz_docs_index_doc_count"))
-	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
-	require.Equal(t, approximateCorpusSizeBytes(snapshot), int64GaugeValue(t, metrics, "signoz_docs_index_size_bytes"))
 }
 
 func TestAtomicSwapRace(t *testing.T) {
@@ -521,52 +462,6 @@ func newTestRegistry(t *testing.T, snapshot CorpusSnapshot) *IndexRegistry {
 		reg.Close(context.Background())
 	})
 	return reg
-}
-
-func newDocsTestMeters(t *testing.T) (*sdkmetric.ManualReader, *otelpkg.Meters) {
-	t.Helper()
-	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	meters, err := otelpkg.NewMeters(provider)
-	require.NoError(t, err)
-	return reader, meters
-}
-
-func docsRefreshMetricValue(t *testing.T, reader *sdkmetric.ManualReader, outcome string) int64 {
-	t.Helper()
-	rm := collectDocsMetrics(t, reader)
-	sum, ok := oteltest.FindInt64SumMetric(rm, "signoz_docs_refresh_total")
-	require.True(t, ok)
-	for _, dp := range sum.DataPoints {
-		if attrValue(dp.Attributes, "outcome") == outcome {
-			return dp.Value
-		}
-	}
-	return 0
-}
-
-func collectDocsMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMetrics {
-	t.Helper()
-	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
-	return rm
-}
-
-func int64GaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string) int64 {
-	t.Helper()
-	gauge, ok := oteltest.FindInt64GaugeMetric(rm, name)
-	require.True(t, ok, "metric %s not found", name)
-	require.NotEmpty(t, gauge.DataPoints, "metric %s has no data points", name)
-	return gauge.DataPoints[0].Value
-}
-
-func attrValue(set attribute.Set, key string) string {
-	for _, attr := range set.ToSlice() {
-		if string(attr.Key) == key {
-			return attr.Value.AsString()
-		}
-	}
-	return ""
 }
 
 func newRewriteFetcher(server *localHTTPTestServer) *Fetcher {
