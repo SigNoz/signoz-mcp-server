@@ -985,14 +985,16 @@ Create a notification channel from `config: {kind, spec}`. Check existing
 display names before creating a channel.
 
 - **Parameters**: `config` is required. Supply a DNS1123 `name`, or use
-  `generateName: true` with a `displayName`. `displayName` defaults to an explicit
-  `name` when omitted. Both names become immutable after creation. Alert
-  routing references use `displayName`, not `name`.
-- **Provider kinds**: `slack`, `email`, `webhook`, `pagerduty`, `opsgenie`,
-  `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`. The registered
-  `config.spec` schema documents each provider's fields and required settings.
-  Slack also accepts message settings: `color`, `titleLink`, `pretext`,
-  `fallback`, `footer`, `fields`, and `actions`.
+  `generateName: true` with a `displayName`. SigNoz defaults `displayName` from
+  an explicit `name` when omitted. Both names become immutable after creation.
+  Alert routing references use `displayName`, not `name`.
+- **Provider kinds**: for example `slack`, `email`, `webhook`, `pagerduty`,
+  `opsgenie`, `msteams`, `googlechat`, `jira`, `jsmops`, and `incidentio`;
+  SigNoz validates the value and its rejection lists the kinds it accepts.
+  SigNoz also rejects an unknown or missing `config.spec` field with the exact
+  requirement, and a duplicate name with `already-exists`. Slack also accepts
+  message settings: `color`, `titleLink`, `pretext`, `fallback`, `footer`,
+  `fields`, and `actions`.
 - **Resolve notifications**: `config.spec.sendResolved` uses the provider's
   default when omitted. Get returns its effective value; preserve it on update.
 - **Test sends**: `test` defaults to `false`. Set `test: true` only when a test
@@ -1020,9 +1022,10 @@ Example without a test send:
 Fully replace one channel's `config` using `id` and the complete canonical
 `config: {kind, spec}` object. Fetch the channel, copy its `config`, change only
 requested fields, then submit the complete object. Names cannot be changed.
-Preserve every untouched setting and credential without echoing secrets. Empty
-optional template strings returned by SigNoz are normalized back to unset on
-update, so its fetched config remains writable.
+Preserve every untouched setting and credential without echoing secrets. A
+fetched config is writable as-is; to unset an optional field, omit it, because
+SigNoz rejects an empty string for template-backed fields such as titles and
+messages.
 `test` defaults to `false`; an explicit `true` sends a test after the update.
 A test failure does not undo the update. Do not replay an ambiguous write or
 an opt-in test automatically.

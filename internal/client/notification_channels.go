@@ -22,12 +22,9 @@ func (s *SigNoz) doNotificationChannelWrite(ctx context.Context, method, reqURL 
 }
 
 type notificationChannelResponse struct {
-	Name        string          `json:"name"`
-	DisplayName string          `json:"displayName"`
-	Config      json.RawMessage `json:"config"`
-	ID          string          `json:"id"`
-	CreatedAt   string          `json:"createdAt"`
-	UpdatedAt   string          `json:"updatedAt"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	ID          string `json:"id"`
 }
 
 type CommittedNotificationChannelError struct {
@@ -92,25 +89,15 @@ func (s *SigNoz) ListNotificationChannelsV2(ctx context.Context, params types.No
 	if len(wire.Channels) > 0 && (len(wire.Channels) > *wire.Total || params.Offset > *wire.Total-len(wire.Channels)) {
 		return types.NotificationChannelList{}, fmt.Errorf("parse notification channel list: page at offset %d with %d channels exceeds filtered total %d", params.Offset, len(wire.Channels), *wire.Total)
 	}
-	drift := notificationListResponseHasUnknownFields(data)
 	for index := range wire.Channels {
 		if err := wire.Channels[index].Validate(); err != nil {
 			return types.NotificationChannelList{}, fmt.Errorf("parse notification channel at index %d: %w", index, err)
 		}
-		if !types.IsValidNotificationChannelKind(wire.Channels[index].Kind) {
-			drift = true
-		}
-	}
-	if drift {
-		s.logger.Warn("Notification channel list contains fields or kinds outside the pinned v0.143.0 contract; preserving the summaries")
 	}
 	return types.NotificationChannelList{Channels: wire.Channels, Total: *wire.Total}, nil
 }
 
 func (s *SigNoz) getNotificationChannelV2(ctx context.Context, id string) (json.RawMessage, error) {
-	if err := types.ValidateUUID(id); err != nil {
-		return nil, err
-	}
 	reqURL := fmt.Sprintf("%s/api/v2/notification_channels/%s", s.baseURL, url.PathEscape(id))
 	s.logger.DebugContext(s.ensureTenantContext(ctx), "Fetching notification channel", slog.String("id", id))
 	response, err := s.doRequest(ctx, http.MethodGet, reqURL, nil, DefaultQueryTimeout)
@@ -121,160 +108,25 @@ func (s *SigNoz) getNotificationChannelV2(ctx context.Context, id string) (json.
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateNotificationChannelData(data); err != nil {
+	if err := validateNotificationChannelData(data); err != nil {
 		return nil, err
 	}
 	return data, nil
 }
 
-func (s *SigNoz) validateNotificationChannelData(data []byte) error {
-	var root map[string]json.RawMessage
-	if err := json.Unmarshal(data, &root); err != nil || root == nil {
-		return fmt.Errorf("parse notification channel: expected an object")
-	}
-	drift := hasUnknownJSONKeys(root, "name", "displayName", "config", "id", "createdAt", "updatedAt")
+// validateNotificationChannelData checks only what this server consumes from a
+// channel response: an object carrying the id that the tool result, the
+// post-write read-back, and the test flow rely on. The provider config is
+// SigNoz's contract and passes through verbatim.
+func validateNotificationChannelData(data []byte) error {
 	var wire notificationChannelResponse
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return fmt.Errorf("parse notification channel: %w", err)
 	}
-	if err := types.ValidateUUID(wire.ID); err != nil {
-		return err
-	}
-	if wire.Name == "" || wire.DisplayName == "" || wire.CreatedAt == "" || wire.UpdatedAt == "" {
-		return fmt.Errorf("notification channel response is missing required identity or timestamp fields")
-	}
-	var config struct {
-		Kind string          `json:"kind"`
-		Spec json.RawMessage `json:"spec"`
-	}
-	var configObject map[string]json.RawMessage
-	if err := json.Unmarshal(wire.Config, &configObject); err != nil || configObject == nil {
-		return fmt.Errorf("parse notification channel config: expected an object")
-	}
-	drift = drift || hasUnknownJSONKeys(configObject, "kind", "spec")
-	if err := json.Unmarshal(wire.Config, &config); err != nil {
-		return fmt.Errorf("parse notification channel config: %w", err)
-	}
-	if config.Kind == "" {
-		return fmt.Errorf("notification channel response is missing config.kind")
-	}
-	if len(config.Spec) == 0 || bytes.Equal(bytes.TrimSpace(config.Spec), []byte("null")) {
-		return fmt.Errorf("notification channel response is missing config.spec")
-	}
-	var specObject map[string]json.RawMessage
-	if err := json.Unmarshal(config.Spec, &specObject); err != nil || specObject == nil {
-		return fmt.Errorf("parse notification channel config.spec: expected an object")
-	}
-	target, allowed, required := notificationResponseSpec(config.Kind)
-	if target == nil {
-		drift = true
-	} else {
-		if err := json.Unmarshal(config.Spec, target); err != nil {
-			return fmt.Errorf("parse notification channel config.spec: %w", err)
-		}
-		drift = drift || hasUnknownJSONKeys(specObject, allowed...)
-		for _, field := range required {
-			raw, present := specObject[field]
-			var value string
-			if !present || json.Unmarshal(raw, &value) != nil || value == "" {
-				return fmt.Errorf("notification channel response is missing required config.spec.%s", field)
-			}
-		}
-		if err := validateNotificationResponseSemantics(config.Kind, specObject); err != nil {
-			s.logger.Warn("Notification channel response violates its provider config rules; an unchanged update will be rejected",
-				slog.String("kind", config.Kind), slog.String("violation", err.Error()))
-		}
-	}
-	if drift {
-		s.logger.Warn("Notification channel response contains fields outside the pinned v0.143.0 typed contract; preserving the upstream object")
+	if wire.ID == "" {
+		return fmt.Errorf("notification channel response is missing id")
 	}
 	return nil
-}
-
-// validateNotificationResponseSemantics applies the request-side provider rules
-// to a readback, skipping the empty strings SigNoz writes for unset templates.
-func validateNotificationResponseSemantics(kind string, specObject map[string]json.RawMessage) error {
-	spec := make(map[string]json.RawMessage, len(specObject))
-	for field, raw := range specObject {
-		spec[field] = raw
-	}
-	for _, field := range types.NotificationChannelUnsetTemplateFields(kind) {
-		if bytes.Equal(bytes.TrimSpace(spec[field]), []byte(`""`)) {
-			delete(spec, field)
-		}
-	}
-	body, err := json.Marshal(spec)
-	if err != nil {
-		return err
-	}
-	target, _, _ := notificationResponseSpec(kind)
-	validator, ok := target.(types.NotificationChannelSpec)
-	if !ok {
-		return nil
-	}
-	if err := json.Unmarshal(body, validator); err != nil {
-		return err
-	}
-	return validator.Validate()
-}
-
-func notificationResponseSpec(kind string) (any, []string, []string) {
-	entry := func(target any, required []string, fields ...string) (any, []string, []string) {
-		return target, append([]string{"sendResolved"}, fields...), required
-	}
-	switch kind {
-	case "slack":
-		return entry(&types.NotificationChannelSlackSpec{}, []string{"apiUrl"}, "apiUrl", "channel", "title", "text", "color", "titleLink", "pretext", "fallback", "footer", "fields", "actions")
-	case "email":
-		return entry(&types.NotificationChannelEmailSpec{}, []string{"to"}, "to", "html", "headers")
-	case "webhook":
-		return entry(&types.NotificationChannelWebhookSpec{}, []string{"url"}, "url", "username", "password", "bearerToken")
-	case "pagerduty":
-		return entry(&types.NotificationChannelPagerdutySpec{}, []string{"routingKey"}, "routingKey", "url", "source", "client", "clientUrl", "description", "severity", "component", "group", "class", "details")
-	case "opsgenie":
-		return entry(&types.NotificationChannelOpsgenieSpec{}, []string{"apiKey"}, "apiKey", "apiUrl", "message", "description", "source", "details", "priority")
-	case "msteams":
-		return entry(&types.NotificationChannelMSTeamsSpec{}, []string{"webhookUrl"}, "webhookUrl", "title", "text")
-	case "googlechat":
-		return entry(&types.NotificationChannelGoogleChatSpec{}, []string{"webhookUrl"}, "webhookUrl", "title", "text")
-	case "jira":
-		return entry(&types.NotificationChannelJiraSpec{}, []string{"site", "project", "issueType", "email", "apiToken"}, "site", "project", "issueType", "summary", "description", "priority", "labels", "resolveTransition", "reopenTransition", "reopenDuration", "wontFixResolution", "customFields", "email", "apiToken")
-	case "jsmops":
-		return entry(&types.NotificationChannelJSMOpsSpec{}, []string{"apiKey"}, "apiKey", "message", "description", "priority", "tags")
-	case "incidentio":
-		return entry(&types.NotificationChannelIncidentIOSpec{}, []string{"url", "token"}, "url", "token", "title", "description", "metadata")
-	default:
-		return nil, nil, nil
-	}
-}
-
-func hasUnknownJSONKeys(object map[string]json.RawMessage, allowed ...string) bool {
-	known := make(map[string]struct{}, len(allowed))
-	for _, field := range allowed {
-		known[field] = struct{}{}
-	}
-	for field := range object {
-		if _, ok := known[field]; !ok {
-			return true
-		}
-	}
-	return false
-}
-
-func notificationListResponseHasUnknownFields(data []byte) bool {
-	var root map[string]json.RawMessage
-	if json.Unmarshal(data, &root) != nil {
-		return false
-	}
-	drift := hasUnknownJSONKeys(root, "channels", "total")
-	var channels []map[string]json.RawMessage
-	if json.Unmarshal(root["channels"], &channels) != nil {
-		return drift
-	}
-	for _, channel := range channels {
-		drift = drift || hasUnknownJSONKeys(channel, "id", "name", "displayName", "kind", "createdAt", "updatedAt")
-	}
-	return drift
 }
 
 func (s *SigNoz) decodeNotificationChannelResponse(operation string, response []byte, fallbackID string) (json.RawMessage, error) {
@@ -282,7 +134,7 @@ func (s *SigNoz) decodeNotificationChannelResponse(operation string, response []
 	if err != nil {
 		return nil, committedNotificationChannelError(operation, response, err, fallbackID)
 	}
-	if err := s.validateNotificationChannelData(data); err != nil {
+	if err := validateNotificationChannelData(data); err != nil {
 		return nil, committedNotificationChannelError(operation, response, err, fallbackID)
 	}
 	return data, nil
