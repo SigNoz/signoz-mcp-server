@@ -1258,8 +1258,19 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 	payload := string(captured)
 	require.Contains(t, payload, `"expression":"trace_id = 'abc123'"`)
 	require.Contains(t, payload, `"limit":1000`)
-	require.Contains(t, payload, `"order":[{"key":{"name":"timestamp"},"direction":"desc"}]`)
 	require.NotContains(t, payload, `"expression":"traceID = 'abc123'"`)
+	var request struct {
+		CompositeQuery struct {
+			Queries []struct {
+				Spec struct {
+					Order json.RawMessage `json:"order"`
+				} `json:"spec"`
+			} `json:"queries"`
+		} `json:"compositeQuery"`
+	}
+	require.NoError(t, json.Unmarshal(captured, &request))
+	require.Len(t, request.CompositeQuery.Queries, 1)
+	require.JSONEq(t, `[{"key":{"name":"timestamp"},"direction":"desc"}]`, string(request.CompositeQuery.Queries[0].Spec.Order))
 }
 
 func TestGetFieldKeys(t *testing.T) {

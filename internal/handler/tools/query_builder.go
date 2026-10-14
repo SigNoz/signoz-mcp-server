@@ -11,7 +11,6 @@ import (
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
@@ -27,7 +26,7 @@ func (h *Handler) RegisterQueryBuilderV5Handlers(s *mcp.Server) {
 				"Read the matching signoz://logs/query-builder-guide, signoz://traces/query-builder-guide, or signoz://metrics-aggregation-guide; formulas require the metrics guide, and PromQL requires signoz://promql/instructions. "+
 				"Set each input builder_query limit to 10000, the builder_formula result limit to 100, and non-empty spec.order (not dashboard orderBy) on each builder_query and builder_formula; the server normalizes omissions.",
 		),
-		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
+		mcp.WithObject("query", mcp.Required(), mcp.Description("Complete SigNoz Query Builder v5 JSON object with schemaVersion, start, end, requestType, compositeQuery, formatOptions, and variables; SigNoz validates it. requestType has no default: use raw, trace, time_series, or scalar. For predictable bounds, explicitly supply a positive spec.limit and non-empty spec.order (not dashboard orderBy) for every builder_query and builder_formula; the server inserts signal-aware defaults when they are omitted. Missing or zero standalone and formula-result limits normalize to 100; builder queries feeding a formula normalize to 10000 because input limits apply before formula evaluation.")),
 	)
 
 	h.addTool(s, executeQuery, h.handleExecuteBuilderQuery)
@@ -84,29 +83,19 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 		return validationError("query", "must be a JSON object"), nil
 	}
 
-	queryJSON, err := json.Marshal(queryObj)
+	// SigNoz exhausts its memory on a raw query whose start is missing or 0
+	// (SigNoz/nerve-pod#439); this precondition stays until SigNoz rejects it.
+	if start, isNumber := queryObj["start"].(float64); queryObj["start"] == nil || isNumber && start == 0 {
+		return validationError("query.start", `is required: set start and end to Unix milliseconds, for example "start": 1697385600000`), nil
+	}
+
+	// The request is forwarded verbatim apart from the result bounds this server
+	// inserts where the caller omitted them; SigNoz validates everything else.
+	applied := querybuilder.ApplyBounds(queryObj)
+	finalQueryJSON, err := json.Marshal(queryObj)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "Failed to marshal query object", logpkg.ErrAttr(err))
 		return InternalErrorResult("failed to marshal query object: " + err.Error()), nil
-	}
-
-	var queryPayload types.QueryPayload
-	if err := json.Unmarshal(queryJSON, &queryPayload); err != nil {
-		// User-input structural mistake: code as VALIDATION_FAILED, not a marshal error.
-		h.logger.ErrorContext(ctx, "Failed to unmarshal query payload", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "invalid query payload structure: "+err.Error()), nil
-	}
-
-	if err := queryPayload.Validate(); err != nil {
-		// Validate() rejects user-input mistakes: route through VALIDATION_FAILED.
-		h.logger.ErrorContext(ctx, "Query validation failed", logpkg.ErrAttr(err))
-		return errorWithCode(CodeValidationFailed, "query validation error: "+err.Error()), nil
-	}
-
-	finalQueryJSON, err := json.Marshal(queryPayload)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "Failed to marshal validated query payload", logpkg.ErrAttr(err))
-		return InternalErrorResult("failed to marshal validated query payload: " + err.Error()), nil
 	}
 
 	client, err := h.GetClient(ctx)
@@ -125,8 +114,9 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	// sibling QueryBuilderV5 callers (search/aggregate logs & traces, query_metrics).
 	// Returning the body verbatim previously dropped them entirely.
 	var notes []string
-	if len(queryPayload.AppliedBounds) > 0 {
-		notes = append(notes, queryBoundsDecisionsNote(queryPayload.AppliedBounds, queryPayload.RequestType))
+	if len(applied) > 0 {
+		requestType, _ := queryObj["requestType"].(string)
+		notes = append(notes, queryBoundsDecisionsNote(applied, requestType))
 	}
 	warnings := extractBackendWarningMessages(data)
 	warnBackendWarnings(ctx, h.logger, "signoz_execute_builder_query", warnings)
@@ -137,7 +127,7 @@ func (h *Handler) handleExecuteBuilderQuery(ctx context.Context, req mcp.CallToo
 	return resultWithNotes(data, notes...), nil
 }
 
-func queryBoundsDecisionsNote(applied []types.AppliedQueryBounds, requestType string) string {
+func queryBoundsDecisionsNote(applied []querybuilder.AppliedBounds, requestType string) string {
 	var b strings.Builder
 	b.WriteString("[Decisions applied]\n")
 	for _, bounds := range applied {
@@ -150,7 +140,7 @@ func queryBoundsDecisionsNote(applied []types.AppliedQueryBounds, requestType st
 			}
 		}
 		if bounds.OrderDefaulted {
-			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", formatQueryOrder(bounds.Order)))
+			decisions = append(decisions, fmt.Sprintf("order=%s (signal-safe default)", bounds.OrderText()))
 		}
 		fmt.Fprintf(&b, "  %s: %s\n", bounds.QueryName, strings.Join(decisions, ", "))
 	}
@@ -158,12 +148,4 @@ func queryBoundsDecisionsNote(applied []types.AppliedQueryBounds, requestType st
 		b.WriteString("  NOTE: time_series limits select top groups using the ordering across the entire time range; a short-lived spike can fall outside the selected groups.\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
-}
-
-func formatQueryOrder(order []types.Order) string {
-	parts := make([]string, 0, len(order))
-	for _, item := range order {
-		parts = append(parts, strings.TrimSpace(item.Key.Name)+" "+strings.ToLower(strings.TrimSpace(item.Direction)))
-	}
-	return strings.Join(parts, ", ")
 }

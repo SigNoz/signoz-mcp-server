@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 // SearchTracesRequest holds the parsed parameters for a trace search query.
 type SearchTracesRequest struct {
 	FilterExpression string
-	SelectFields     []types.SelectField
+	SelectFields     []querybuilder.FieldKey
 	Limit            int
 	LimitClamped     bool
 	Offset           int
@@ -36,7 +36,7 @@ func parseSearchTracesArgs(args map[string]any) (*SearchTracesRequest, error) {
 	maxDuration, _ := args["maxDuration"].(string)
 	filterExpr := buildTraceFilterExpr(filter, service, operation, errorFilter, errorPresent, minDuration, maxDuration)
 
-	limit, err := intArg(args, "limit", types.DefaultRawQueryLimit)
+	limit, err := intArg(args, "limit", querybuilder.DefaultRawQueryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func buildTraceFilterExpr(query, service, operation string, errorFilter, errorPr
 // parseTraceSelectFields returns the core search columns plus any extra fields
 // the caller named. It accepts an array of names or a comma-separated string;
 // a resource., attribute., tag., or span. prefix sets the field context.
-func parseTraceSelectFields(raw any) ([]types.SelectField, error) {
+func parseTraceSelectFields(raw any) ([]querybuilder.FieldKey, error) {
 	var names []string
 	switch v := raw.(type) {
 	case nil:
@@ -141,7 +141,7 @@ func parseTraceSelectFields(raw any) ([]types.SelectField, error) {
 		return nil, fmt.Errorf(`invalid "selectFields" value %v: pass an array of field names or a comma-separated string, e.g. "http.route, db.statement"`, raw)
 	}
 
-	fields := append([]types.SelectField(nil), types.TraceSearchCoreFields...)
+	fields := append([]querybuilder.FieldKey(nil), querybuilder.TraceSearchCoreFields...)
 	seen := make(map[string]bool, len(fields)+len(names))
 	for _, field := range fields {
 		seen[field.Name] = true
@@ -171,16 +171,16 @@ var traceSelectFieldContexts = []struct{ prefix, context string }{
 	{"span.", "span"},
 }
 
-func traceSelectField(name string) (types.SelectField, bool) {
+func traceSelectField(name string) (querybuilder.FieldKey, bool) {
 	if name == "" {
-		return types.SelectField{}, false
+		return querybuilder.FieldKey{}, false
 	}
 	for _, c := range traceSelectFieldContexts {
 		if bare, found := strings.CutPrefix(name, c.prefix); found && bare != "" {
-			if known, ok := traceGroupByFieldMetadata[bare]; ok && known.FieldContext == c.context {
+			if known, ok := traceGroupByFieldMetadata[bare]; ok && querybuilder.FieldContextOf(known) == c.context {
 				return known, true
 			}
-			return types.SelectField{Name: bare, Signal: "traces", FieldContext: c.context}, true
+			return querybuilder.NewFieldKey(bare, "traces", c.context, ""), true
 		}
 	}
 	return aggregateGroupByField("traces", name), true

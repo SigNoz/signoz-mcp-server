@@ -582,7 +582,7 @@ def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
             "signoz_execute_builder_query", {"searchContext": "dry-run without bounds", "query": unbounded}
         )
         assert missing_bounds.get("isError", False), "a dry-run without start and end succeeded"
-        assert "missing start or end timestamp" in text_blocks(missing_bounds)
+        assert '"query.start" is required' in text_blocks(missing_bounds)
     finally:
         assert_tool_ok(
             mcp_client.call_tool(
