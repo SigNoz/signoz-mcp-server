@@ -38,7 +38,6 @@ var nonMonotonicSumSpaceAggs = newSet("sum", "avg", "min", "max", "count")
 
 var histogramSpaceAggs = newSet("p50", "p75", "p90", "p95", "p99")
 
-
 // ApplyDefaults resolves timeAggregation, spaceAggregation, and (for scalar)
 // reduceTo based on metric type metadata. It returns a ResolvedAggregation
 // with all chosen values and a Decisions slice explaining every default.
