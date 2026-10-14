@@ -4172,7 +4172,7 @@
                 "type": "string"
               },
               "source": {
-                "description": "Which Explorer this view belongs to, for example \"traces\", \"logs\", \"metrics\", \"meter\" (Cost Meter), or \"ai_observability\". SigNoz validates the value. Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
+                "description": "Which Explorer this view belongs to, for example \"traces\", \"logs\", \"metrics\", or \"meter\" (Cost Meter). SigNoz validates the value. Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
                 "type": "string"
               },
               "spec": {
@@ -6240,7 +6240,7 @@
                 "type": "string"
               },
               "source": {
-                "description": "Explorer whose views to list, for example \"traces\", \"logs\", \"metrics\", \"meter\" (Cost Meter), or \"ai_observability\". SigNoz validates the value. Omit to list views from every Explorer.",
+                "description": "Explorer whose views to list, for example \"traces\", \"logs\", \"metrics\", or \"meter\" (Cost Meter). SigNoz validates the value. Omit to list views from every Explorer.",
                 "type": "string"
               }
             },
@@ -10494,7 +10494,7 @@
                 "description": "Complete saved view after the requested changes. Start with the data returned by signoz_get_view and pass the full object here.",
                 "properties": {
                   "source": {
-                    "description": "Which Explorer this view belongs to, for example \"traces\", \"logs\", \"metrics\", \"meter\" (Cost Meter), or \"ai_observability\". SigNoz validates the value. Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
+                    "description": "Which Explorer this view belongs to, for example \"traces\", \"logs\", \"metrics\", or \"meter\" (Cost Meter). SigNoz validates the value. Use \"meter\" for Cost Meter views (queried as metrics with source \"meter\").",
                     "type": "string"
                   },
                   "spec": {

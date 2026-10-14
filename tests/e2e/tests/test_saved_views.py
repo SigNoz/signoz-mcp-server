@@ -59,25 +59,24 @@ def test_view_crud_round_trip(mcp_client: MCPClient, test_id: str) -> None:
 
 
 def test_list_views_without_source_spans_explorers(mcp_client: MCPClient, test_id: str) -> None:
-    """Omitting source lists every Explorer's views, including sources beyond the old enum.
+    """Omitting source lists every Explorer's views, as the descriptions teach.
 
-    The source enum left the schema for an open set SigNoz validates: the
-    descriptions name "ai_observability" as a valid source (the hand-copied
-    enum used to reject it) and teach that omitting source lists views from
-    every Explorer. If SigNoz stops accepting the source or scoping the list,
-    that teaching is stale and must change with this pin.
+    The source enum left the schema for an open set SigNoz validates, and the
+    descriptions teach that omitting source lists views from every Explorer.
+    Pinned with one logs view and one traces view: both must appear in a
+    single unscoped listing.
     """
     logs_name = f"mcp-e2e-logs-{test_id}"
-    ai_name = f"mcp-e2e-ai-{test_id}"
+    traces_name = f"mcp-e2e-traces-{test_id}"
     logs_id = create_view(mcp_client, logs_name)
-    ai_id = ""
+    traces_id = ""
     try:
-        ai_id = create_view(
+        traces_id = create_view(
             mcp_client,
-            ai_name,
-            source="ai_observability",
+            traces_name,
+            source="traces",
             spec={
-                "displayName": ai_name,
+                "displayName": traces_name,
                 "panelType": "list",
                 "requestType": "raw",
                 "queries": [{"type": "builder_query", "spec": {"name": "A", "signal": "traces", "limit": 100}}],
@@ -92,11 +91,11 @@ def test_list_views_without_source_spans_explorers(mcp_client: MCPClient, test_i
             )
         )
         names = listed_view_names(listed)
-        assert logs_name in names and ai_name in names, (
-            f"omitted source must span explorers; missing {logs_name!r} or {ai_name!r} in {sorted(names)[:20]}"
+        assert logs_name in names and traces_name in names, (
+            f"omitted source must span explorers; missing {logs_name!r} or {traces_name!r} in {sorted(names)[:20]}"
         )
     finally:
-        for view_id in (ai_id, logs_id):
+        for view_id in (traces_id, logs_id):
             if view_id:
                 delete_view(mcp_client, view_id)
                 assert view_gone(mcp_client, view_id), f"view {view_id} remained after cleanup"

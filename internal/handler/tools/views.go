@@ -21,7 +21,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription("Use this when the user wants to discover saved views or find a view UUID for the Logs, Traces, Metrics, or Cost Meter explorer pages. A view stores one query spec; it is not a multi-widget dashboard. Apply name filters before pagination, and follow pagination.nextOffset while pagination.hasMore is true before concluding a view is absent. Use signoz_get_view for one full definition."),
-		mcp.WithString("source", mcp.Description(`Explorer whose views to list, for example "traces", "logs", "metrics", "meter" (Cost Meter), or "ai_observability". SigNoz validates the value. Omit to list views from every Explorer.`)),
+		mcp.WithString("source", mcp.Description(`Explorer whose views to list, for example "traces", "logs", "metrics", or "meter" (Cost Meter). SigNoz validates the value. Omit to list views from every Explorer.`)),
 		mcp.WithString("name", mcp.Description("Partial, server-side match on the saved-view name. Omit to include every name.")),
 		mcp.WithString("limit", mcp.DefaultString("50"), intOrStringType(), mcp.Description("Maximum number of views to return per page. Default: 50, max: 1000 (higher values are clamped).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of results to skip before returning results. Use 'pagination.nextOffset' from the previous page. Default: 0.")),
@@ -46,7 +46,7 @@ func (h *Handler) RegisterViewHandlers(s *mcp.Server) {
 		),
 		mcp.WithString("name", mcp.Description("The view's machine name, a DNS-1123 label (lowercase letters, digits, hyphens). The human-facing display name lives in spec.displayName. Required unless generateName is true.")),
 		mcp.WithBoolean("generateName", mcp.Description("When true, the server generates the view name from spec.displayName; name must be empty. Default: false.")),
-		mcp.WithString("source", mcp.Required(), mcp.Description(`Which Explorer this view belongs to, for example "traces", "logs", "metrics", "meter" (Cost Meter), or "ai_observability". SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
+		mcp.WithString("source", mcp.Required(), mcp.Description(`Which Explorer this view belongs to, for example "traces", "logs", "metrics", or "meter" (Cost Meter). SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`)),
 		mcp.WithObject("spec", mcp.Required(), mcp.AdditionalProperties(true), mcp.Description("The saved-view spec object: displayName, panelType, requestType, queries, selectedFields, and display. See signoz://view/instructions and signoz://view/examples.")),
 	)
 	h.addTool(s, createTool, h.handleCreateView)
@@ -118,7 +118,7 @@ func savedViewSchemaProperties() map[string]any {
 	return map[string]any{
 		"source": map[string]any{
 			"type":        "string",
-			"description": `Which Explorer this view belongs to, for example "traces", "logs", "metrics", "meter" (Cost Meter), or "ai_observability". SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
+			"description": `Which Explorer this view belongs to, for example "traces", "logs", "metrics", or "meter" (Cost Meter). SigNoz validates the value. Use "meter" for Cost Meter views (queried as metrics with source "meter").`,
 		},
 		"spec": map[string]any{
 			"type":                 "object",
