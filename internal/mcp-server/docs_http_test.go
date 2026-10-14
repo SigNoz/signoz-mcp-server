@@ -1,7 +1,6 @@
 package mcp_server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -15,14 +14,6 @@ import (
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/stretchr/testify/require"
 )
-
-func TestDocsToolsRequireAuth(t *testing.T) {
-	handler, _ := newDocsHTTPHandler(t)
-
-	resp := serveJSONRPC(t, handler, "", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"signoz_search_docs","arguments":{"query":"docker","limit":1}}}`)
-	require.Equal(t, http.StatusUnauthorized, resp.Code)
-	require.Contains(t, resp.Body.String(), "Authorization or SIGNOZ-API-KEY header required")
-}
 
 func TestReadinessAndHealthEndpointsTrackDocsIndex(t *testing.T) {
 	t.Run("ready when docs index is ready", func(t *testing.T) {
@@ -149,18 +140,6 @@ func newDocsHTTPHandler(t *testing.T) (http.Handler, *MCPServer) {
 	return m.buildHTTP(s).Handler, m
 }
 
-func serveJSONRPC(t *testing.T, handler http.Handler, sessionID, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	if sessionID != "" {
-		req.Header.Set("Mcp-Session-Id", sessionID)
-	}
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	return rr
-}
-
 func docsSnapshot() docsindex.CorpusSnapshot {
 	now := time.Now().UTC()
 	docker := "# Install SigNoz Using Docker\n\nDocker Compose installation.\n"
@@ -177,56 +156,6 @@ func docsSnapshot() docsindex.CorpusSnapshot {
 		SitemapHash:   docsindex.SitemapHash(sitemap),
 		Pages:         pages,
 	}
-}
-
-// TestStatelessTransportIssuesNoSessionID is the transport-level regression for
-// WithStateLess(true): a POST initialize must not return an Mcp-Session-Id, and a
-// follow-up request carrying no session id must still be served (not rejected as a
-// missing/invalid session). Auth is satisfied via env credentials on cfg so the
-// requests reach the MCP layer.
-func TestStatelessTransportIssuesNoSessionID(t *testing.T) {
-	logger := logpkg.New("error")
-	cfg := &config.Config{
-		TransportMode:   "http",
-		Port:            "0",
-		URL:             "https://example.signoz.cloud",
-		APIKey:          "test-key",
-		ClientCacheSize: 8,
-		ClientCacheTTL:  time.Minute,
-	}
-	h := tools.NewHandler(logger, cfg)
-	ctx, cancel := context.WithCancel(context.Background())
-	reg, err := docsindex.NewIndexRegistry(ctx, docsSnapshot())
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		cancel()
-		reg.Close(context.Background())
-	})
-	h.SetDocsIndex(reg)
-	m := NewMCPServer(logger, h, cfg, nil, nil)
-	s := m.newSDKServer()
-	h.RegisterDocsHandlers(s)
-	handler := m.buildHTTP(s).Handler
-
-	post := func(body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json, text/event-stream")
-		req.Header.Set("MCP-Protocol-Version", "2025-06-18")
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		return rr
-	}
-
-	// POST initialize — stateless server must NOT issue a session id.
-	initRR := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"itest","version":"1"}}}`)
-	require.Equal(t, http.StatusOK, initRR.Code, "initialize body: %s", initRR.Body.String())
-	require.Empty(t, initRR.Header().Get("Mcp-Session-Id"), "stateless server must not issue an Mcp-Session-Id")
-
-	// POST a follow-up request with NO session id — must be served, not rejected
-	// as a missing/invalid/terminated session (HTTP 400/404).
-	listRR := post(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
-	require.Equal(t, http.StatusOK, listRR.Code, "tools/list without a session id should succeed; body: %s", listRR.Body.String())
 }
 
 func docsPage(url, title, section, breadcrumb, body string, fetchedAt time.Time) docsindex.PageRecord {

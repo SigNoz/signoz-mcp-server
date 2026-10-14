@@ -19,10 +19,8 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
-	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	"github.com/SigNoz/signoz-mcp-server/pkg/dashboard"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	official "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -131,53 +129,6 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 			assertWireGolden(t, tc.file, o.capture(tc.method, tc.params))
 		}
 	})
-}
-
-func TestWireOracleRawArgumentsCharacterization(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      string
-		wantRaw     string
-		wantDecoded any
-	}{
-		{name: "omitted", params: `{"name":"raw_arguments_probe"}`},
-		{name: "null", params: `{"name":"raw_arguments_probe","arguments":null}`, wantRaw: "null"},
-		{name: "object whitespace", params: `{"name":"raw_arguments_probe","arguments":{ "value" : "wire" }}`, wantRaw: `{ "value" : "wire" }`, wantDecoded: map[string]any{"value": "wire"}},
-		{name: "integer above float53", params: `{"name":"raw_arguments_probe","arguments":{"value":9007199254740993}}`, wantRaw: `{"value":9007199254740993}`, wantDecoded: map[string]any{"value": float64(9007199254740992)}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := &tools.Handler{}
-			s := official.NewServer(&official.Implementation{Name: "wire-oracle", Version: "0"}, &official.ServerOptions{Capabilities: &official.ServerCapabilities{Tools: &official.ToolCapabilities{}}})
-			called := false
-			h.AddTool(s, mcp.NewTool("raw_arguments_probe"), func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				called = true
-				if got := string(req.Params.RawArguments); got != tt.wantRaw {
-					t.Errorf("RawArguments = %q, want %q", got, tt.wantRaw)
-				}
-				if got := req.Params.Arguments; !equalJSONValue(got, tt.wantDecoded) {
-					t.Errorf("Arguments = %#v (%T), want %#v (%T)", got, got, tt.wantDecoded, tt.wantDecoded)
-				}
-				return mcp.NewToolResultText("ok"), nil
-			})
-
-			handler := official.NewStreamableHTTPHandler(func(*http.Request) *official.Server { return s }, &official.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
-			raw := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":` + tt.params + `}`
-			req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(raw))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Accept", "application/json, text/event-stream")
-			req.Header.Set("MCP-Protocol-Version", wireCatalogProtocolVersion)
-			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-			if rr.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-			}
-			if !called {
-				t.Fatal("raw-wire request did not reach the registered handler")
-			}
-		})
-	}
 }
 
 func newWireOracle(t *testing.T) *wireOracle {
@@ -361,12 +312,6 @@ func digestPromptMessages(t *testing.T, identity string, response any) wireInven
 	entry := digestContents(t, identity, contents)
 	entry.Description = stringValue(result["description"])
 	return entry
-}
-
-func equalJSONValue(got, want any) bool {
-	gotJSON, gotErr := json.Marshal(got)
-	wantJSON, wantErr := json.Marshal(want)
-	return gotErr == nil && wantErr == nil && bytes.Equal(gotJSON, wantJSON)
 }
 
 func digestContents(t *testing.T, identity string, contents []any) wireInventoryEntry {

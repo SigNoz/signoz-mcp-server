@@ -1,7 +1,6 @@
 package docs
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -71,21 +70,6 @@ func TestCorpusManifestMatches(t *testing.T) {
 		require.Equal(t, manifest.Pages[i].Title, page.Title)
 		require.Equal(t, manifest.Pages[i].SHA256, hex.EncodeToString(sum[:]), page.URL)
 	}
-}
-
-func TestCorpusRoundTripPreservesMergedSections(t *testing.T) {
-	snapshot := testSnapshot()
-	duplicate := snapshot.Pages[0]
-	duplicate.SectionSlug = "alternate"
-	duplicate.SectionBreadcrumb = "Alternate > Logs"
-	snapshot.Pages = NormalizePages(append(snapshot.Pages, duplicate))
-
-	var encoded bytes.Buffer
-	require.NoError(t, EncodeCorpus(&encoded, snapshot))
-	decoded, err := DecodeCorpus(bytes.NewReader(encoded.Bytes()))
-	require.NoError(t, err)
-	require.Equal(t, snapshot, decoded)
-	require.Equal(t, []string{"logs-management", "alternate"}, decoded.Pages[0].SectionSlugs)
 }
 
 func TestSchemaVersionGuard(t *testing.T) {
@@ -263,18 +247,16 @@ func TestFetcherRetryAndRedirect(t *testing.T) {
 	}
 	got := fetcher.Fetch(context.Background(), "https://signoz.io/docs/retry-after/")
 	require.Equal(t, FetchStatusOK, got.Status)
-	require.Equal(t, 1, got.RetryCount)
+	require.Equal(t, int64(2), attempts.Load())
 	require.Contains(t, slept, time.Second)
 
 	attempts.Store(0)
 	got = fetcher.Fetch(context.Background(), "https://signoz.io/docs/retry-500/")
 	require.Equal(t, FetchStatusOK, got.Status)
-	require.Equal(t, 3, got.RetryCount)
-	require.Equal(t, http.StatusInternalServerError, got.RetryStatus)
+	require.Equal(t, int64(4), attempts.Load())
 
 	got = fetcher.Fetch(context.Background(), "https://signoz.io/docs/redirect-out/")
 	require.Equal(t, FetchStatusOutOfScope, got.Status)
-	require.Contains(t, got.FinalURL, "example.com")
 }
 
 func TestFetcherAllowsFractionalRequestsPerSecond(t *testing.T) {

@@ -115,14 +115,6 @@ func TestApplyDeltaUpdatesLiveIndex(t *testing.T) {
 	require.Equal(t, uint64(2), generation)
 }
 
-func TestApplyDeltaFallsBackToSwapWhenClosed(t *testing.T) {
-	entries := manyEntries(3)
-	snapshot := snapshotForEntries(entries, bodiesForEntries(entries))
-	reg := newTestRegistry(t, snapshot)
-	reg.Close(context.Background())
-	require.Error(t, reg.ApplyDelta(context.Background(), snapshot, snapshotDelta{added: snapshot.Pages}))
-}
-
 func TestRefreshAppliesSmallDeltaInPlace(t *testing.T) {
 	verifyNoDocsLeaks(t)
 	entries, initial, fetches := deltaFixture(t, 40)

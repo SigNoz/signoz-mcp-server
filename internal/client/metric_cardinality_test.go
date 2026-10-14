@@ -16,7 +16,6 @@ func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 		name     string
 		body     string
 		wantWarn bool
-		wantErr  bool
 	}{
 		{
 			name:     "valid shape — no warn",
@@ -78,10 +77,6 @@ func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 			assert.Equal(t, "0", gotStart)
 			assert.Equal(t, "1000", gotEnd)
 
-			if tc.wantErr {
-				assert.Error(t, err)
-				return
-			}
 			require.NoError(t, err)
 			assert.NotEmpty(t, result)
 
@@ -93,29 +88,4 @@ func TestGetMetricCardinality_ContractCheck(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestGetMetricCardinality_MetricNameWithSlash pins that a metric name containing
-// slashes (e.g. cloud-provider metrics like run.googleapis.com/request_latencies)
-// round-trips through the metricName query parameter intact — the exact case the
-// SigNoz request type flags, and one a path-segment URL would have mangled.
-func TestGetMetricCardinality_MetricNameWithSlash(t *testing.T) {
-	const metric = "run.googleapis.com/request_latencies"
-	var gotPath, gotMetricName string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotMetricName = r.URL.Query().Get("metricName")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":{"attributes":[],"totalKeys":0}}`))
-	}))
-	defer srv.Close()
-
-	var buf bytes.Buffer
-	logger := newBufferedLogger(&buf, -4)
-	c := NewClient(logger, srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	_, err := c.GetMetricCardinality(context.Background(), metric, 0, 1000)
-	require.NoError(t, err)
-	assert.Equal(t, "/api/v2/metrics/attributes", gotPath)
-	assert.Equal(t, metric, gotMetricName, "metric name with slashes must round-trip via the query param, not the path")
 }

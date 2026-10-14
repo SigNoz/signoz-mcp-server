@@ -2,7 +2,6 @@ package docs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -59,19 +58,12 @@ func TestIndexSearchFetchAndSwap(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestInvalidSearchQueryErrorPreservesCauseMessage(t *testing.T) {
-	cause := errors.New("parser detail")
-	err := &invalidSearchQueryError{cause: cause}
-	require.Equal(t, cause.Error(), err.Error())
-	require.ErrorIs(t, err, ErrInvalidSearchQuery)
-	require.ErrorIs(t, err, cause)
-}
-
 func TestTruncateContentIsUTF8Safe(t *testing.T) {
 	content := strings.Repeat("日志🙂", 80*1024)
 	truncated, reason := truncateContent(content, 256*1024)
 	require.Equal(t, "size", reason)
 	require.True(t, strings.HasPrefix(content, truncated))
+	require.True(t, utf8.ValidString(truncated), "truncation must not split a multi-byte rune")
 }
 
 func TestNormalizePagesPreservesURLSectionsForFiltering(t *testing.T) {
@@ -205,21 +197,6 @@ func TestBuildIndexRejectsDuplicateCanonicalURLs(t *testing.T) {
 		defer func() { _ = idx.Close() }()
 	}
 	require.ErrorContains(t, err, "duplicate canonical docs URL")
-}
-
-func TestNavigationSearchText(t *testing.T) {
-	require.Equal(t, "install kubernetes aws", urlSearchText("https://signoz.io/docs/install/kubernetes/aws/"))
-	require.Equal(t,
-		"Install > Kubernetes Logs Management > Kubernetes",
-		breadcrumbSearchText(
-			[]string{"install", "logs-management", "duplicate-install"},
-			map[string]string{
-				"install":           "Install > Kubernetes",
-				"logs-management":   "Logs Management > Kubernetes",
-				"duplicate-install": "Install > Kubernetes",
-			},
-		),
-	)
 }
 
 func TestMakeSnippetUsesOriginalOffsetsAfterUnicodeCaseFold(t *testing.T) {

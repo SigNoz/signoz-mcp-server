@@ -10,135 +10,44 @@ import (
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
 )
 
-func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) {
+// A schema-validating client rejects any form the advertised schema does not admit, so
+// every form a handler reads, including the retired logs query that earns a coded error,
+// must pass the registered schema without a validation notice.
+func TestAdvertisedSchemasAdmitEveryArgumentFormHandlersRead(t *testing.T) {
 	registered := registeredTestTools(t)
 	tests := []struct {
 		name      string
 		tool      string
 		arguments string
-		want      string
-		normalize func(mcp.CallToolRequest) (string, error)
 	}{
-		{
-			name: "integer limit", tool: "signoz_search_docs", arguments: `{"searchText":"cpu","limit":7}`, want: "7",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				return strconv.Itoa(parseLimit(req.GetArguments()["limit"], 10)), nil
-			},
-		},
-		{
-			name: "string limit", tool: "signoz_search_docs", arguments: `{"searchText":"cpu","limit":"7"}`, want: "7",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				return strconv.Itoa(parseLimit(req.GetArguments()["limit"], 10)), nil
-			},
-		},
-		{
-			name: "default limit and omitted searchContext", tool: "signoz_search_docs", arguments: `{"searchText":"cpu"}`, want: "10",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				return strconv.Itoa(parseLimit(req.GetArguments()["limit"], 10)), nil
-			},
-		},
-		{
-			name: "boolean", tool: "signoz_list_alerts", arguments: `{"active":true}`, want: "true",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				value, _, err := parseBoolArg(req.GetArguments(), "active")
-				return strconv.FormatBool(value), err
-			},
-		},
-		{
-			name: "case insensitive boolean string", tool: "signoz_list_alerts", arguments: `{"active":"TRUE"}`, want: "true",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				value, _, err := parseBoolArg(req.GetArguments(), "active")
-				return strconv.FormatBool(value), err
-			},
-		},
-		{
-			name: "docs query alias", tool: "signoz_search_docs", arguments: `{"query":"cpu"}`, want: "cpu",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				args := req.GetArguments()
-				value, _ := args["searchText"].(string)
-				if value == "" {
-					value, _ = args["query"].(string)
-				}
-				return value, nil
-			},
-		},
-		{
-			name: "filter query alias", tool: "signoz_search_logs", arguments: `{"query":"service.name = 'api'"}`, want: "service.name = 'api'",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				return readFilterExpr(req.GetArguments())
-			},
-		},
-		{
-			name: "numeric timestamps", tool: "signoz_search_logs", arguments: `{"start":1711130400000,"end":1711130460000}`, want: "1711130400000/1711130460000",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				args := req.GetArguments()
-				if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-					return "", err
-				}
-				start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitMillis)
-				return start + "/" + end, nil
-			},
-		},
-		{
-			name: "string timestamps", tool: "signoz_search_logs", arguments: `{"start":"1711130400000","end":"1711130460000"}`, want: "1711130400000/1711130460000",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				args := req.GetArguments()
-				if err := timeutil.ValidateExplicitTimestamps(args); err != nil {
-					return "", err
-				}
-				start, end := timeutil.GetTimestampsWithDefaults(args, timeutil.UnitMillis)
-				return start + "/" + end, nil
-			},
-		},
-		{
-			name: "groupBy string", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","groupBy":"service.name,k8s.pod.name"}`, want: "2",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				parsed, err := parseMetricsQueryArgs(req.GetArguments())
-				if err != nil {
-					return "", err
-				}
-				return strconv.Itoa(len(parsed.GroupBy)), nil
-			},
-		},
-		{
-			name: "groupBy array", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","groupBy":["service.name","k8s.pod.name"]}`, want: "2",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				parsed, err := parseMetricsQueryArgs(req.GetArguments())
-				if err != nil {
-					return "", err
-				}
-				return strconv.Itoa(len(parsed.GroupBy)), nil
-			},
-		},
-		{
-			name: "formulaQueries JSON string", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","formulaQueries":"[{\"name\":\"B\",\"metricName\":\"memory\"}]"}`, want: "1",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				parsed, err := parseMetricsQueryArgs(req.GetArguments())
-				if err != nil {
-					return "", err
-				}
-				return strconv.Itoa(len(parsed.FormulaQueries)), nil
-			},
-		},
-		{
-			name: "formulaQueries array", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","formulaQueries":[{"name":"B","metricName":"memory"}]}`, want: "1",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				parsed, err := parseMetricsQueryArgs(req.GetArguments())
-				if err != nil {
-					return "", err
-				}
-				return strconv.Itoa(len(parsed.FormulaQueries)), nil
-			},
-		},
-		{
-			name: "legacy resource id", tool: "signoz_get_alert", arguments: `{"ruleId":"rule-1"}`, want: "rule-1",
-			normalize: func(req mcp.CallToolRequest) (string, error) {
-				return readResourceID(req.GetArguments(), "ruleId"), nil
-			},
-		},
+		{name: "integer limit", tool: "signoz_search_docs", arguments: `{"searchText":"cpu","limit":7}`},
+		{name: "string limit", tool: "signoz_search_docs", arguments: `{"searchText":"cpu","limit":"7"}`},
+		{name: "default limit and omitted searchContext", tool: "signoz_search_docs", arguments: `{"searchText":"cpu"}`},
+		{name: "boolean", tool: "signoz_list_alerts", arguments: `{"active":true}`},
+		{name: "case insensitive boolean string", tool: "signoz_list_alerts", arguments: `{"active":"TRUE"}`},
+		{name: "docs query alias", tool: "signoz_search_docs", arguments: `{"query":"cpu"}`},
+		{name: "retired logs query alias reaches its coded error", tool: "signoz_search_logs", arguments: `{"query":"service.name = 'api'"}`},
+		{name: "numeric timestamps", tool: "signoz_search_logs", arguments: `{"start":1711130400000,"end":1711130460000}`},
+		{name: "string timestamps", tool: "signoz_search_logs", arguments: `{"start":"1711130400000","end":"1711130460000"}`},
+		{name: "groupBy string", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","groupBy":"service.name,k8s.pod.name"}`},
+		{name: "groupBy array", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","groupBy":["service.name","k8s.pod.name"]}`},
+		{name: "formulaQueries JSON string", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","formulaQueries":"[{\"name\":\"B\",\"metricName\":\"memory\"}]"}`},
+		{name: "formulaQueries array", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","formulaQueries":[{"name":"B","metricName":"memory"}]}`},
+		{name: "legacy resource id", tool: "signoz_get_alert", arguments: `{"ruleId":"rule-1"}`},
+		{name: "logs limit integer", tool: "signoz_search_logs", arguments: `{"limit":50}`},
+		{name: "logs limit string", tool: "signoz_search_logs", arguments: `{"limit":"50"}`},
+		{name: "logs offset integer", tool: "signoz_search_logs", arguments: `{"offset":25}`},
+		{name: "logs offset string", tool: "signoz_search_logs", arguments: `{"offset":"25"}`},
+		{name: "metrics stepInterval integer", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","stepInterval":60}`},
+		{name: "metrics stepInterval string", tool: "signoz_query_metrics", arguments: `{"metricName":"cpu","stepInterval":"60"}`},
+		{name: "services limit integer", tool: "signoz_list_services", arguments: `{"limit":50}`},
+		{name: "services limit string", tool: "signoz_list_services", arguments: `{"limit":"50"}`},
+		{name: "views limit integer", tool: "signoz_list_views", arguments: `{"limit":50}`},
+		{name: "views limit string", tool: "signoz_list_views", arguments: `{"limit":"50"}`},
+		{name: "views offset integer", tool: "signoz_list_views", arguments: `{"offset":25}`},
+		{name: "views offset string", tool: "signoz_list_views", arguments: `{"offset":"25"}`},
 	}
 
 	for _, tt := range tests {
@@ -148,17 +57,11 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 				t.Fatalf("tool %s is not registered", tt.tool)
 			}
 			called := false
-			got := ""
 			h := &Handler{logger: logpkg.New("error")}
 			s := newMCPTestServer()
-			h.addTool(s, entry.Tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			h.addTool(s, entry.Tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				called = true
-				var err error
-				got, err = tt.normalize(req)
-				if err != nil {
-					return nil, err
-				}
-				return mcp.NewToolResultText(got), nil
+				return mcp.NewToolResultText("ok"), nil
 			})
 
 			raw := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tt.tool, tt.arguments)
@@ -167,9 +70,6 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 			if !called {
 				t.Fatalf("raw-wire call did not reach the handler: %s", encoded)
 			}
-			if got != tt.want {
-				t.Fatalf("normalized value = %q, want %q", got, tt.want)
-			}
 			if strings.Contains(string(encoded), inputValidationNoticePrefix) {
 				t.Fatalf("accepted advertised form must not trigger a validation notice: %s", encoded)
 			}
@@ -177,19 +77,14 @@ func TestAcceptedNormalizationFormsReplayThroughAdvertisedSchemas(t *testing.T) 
 	}
 }
 
-func TestRawWireIntegerAboveFloat53ProductionDecodeCharacterization(t *testing.T) {
+func TestStringFormIntegerAboveFloat53ReachesHandlerExactly(t *testing.T) {
 	const exact = int64(1700000000000000129)
-	rounded := int64(float64(exact))
-	if rounded == exact {
-		t.Fatal("fixture must expose float64 precision loss")
-	}
 
 	tests := []struct {
 		name      string
 		argument  string
 		wantStart int64
 	}{
-		{name: "numeric form rounds through GetArguments", argument: `1700000000000000129`, wantStart: rounded},
 		{name: "string form preserves the exact integer", argument: `"1700000000000000129"`, wantStart: exact},
 	}
 

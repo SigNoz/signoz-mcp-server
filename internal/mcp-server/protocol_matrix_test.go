@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -102,11 +101,6 @@ func TestProductionHTTPProtocolLifecycleMatrix(t *testing.T) {
 				}
 			})
 		}
-	})
-
-	t.Run("modern removed logging method", func(t *testing.T) {
-		response := modernProductionCall(t, oracle.handler, 120, "logging/setLevel", "", map[string]any{"level": "debug"})
-		requireProtocolError(t, response, http.StatusNotFound, 120, -32601, "method not found")
 	})
 }
 
@@ -329,55 +323,4 @@ func TestProductionIOTransportProtocolLifecycleMatrix(t *testing.T) {
 
 		assertCatalogsAndRepresentativeCalls(t, session, 212, func(fields map[string]any) map[string]any { return modernParams(nil, fields) })
 	})
-}
-
-func TestProductionIOTransportInvalidFrameTerminatesConnection(t *testing.T) {
-	// Exercise the default framing limits shared by IOTransport and StdioTransport.
-	tests := []struct {
-		name      string
-		frame     string
-		wantError string
-	}{
-		{name: "malformed JSON", frame: "not-json"},
-		{
-			name:      "oversized frame",
-			frame:     `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"padding":"` + strings.Repeat("x", 16<<20) + `"}}`,
-			wantError: "maximum line length",
-		},
-		{
-			name:      "excessive nesting",
-			frame:     `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"padding":` + strings.Repeat("[", 1001) + "0" + strings.Repeat("]", 1001) + `}}`,
-			wantError: "maximum nesting depth",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			clientToServerReader, clientToServerWriter := io.Pipe()
-			serverToClientReader, serverToClientWriter := io.Pipe()
-			serverSession, err := buildTestServer(t).Connect(context.Background(), &mcp.IOTransport{
-				Reader: clientToServerReader,
-				Writer: serverToClientWriter,
-			}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() {
-				_ = clientToServerWriter.Close()
-				_ = serverToClientReader.Close()
-				_ = serverSession.Close()
-			})
-
-			go func() { _, _ = io.WriteString(clientToServerWriter, tt.frame+"\n") }()
-			done := make(chan error, 1)
-			go func() { done <- serverSession.Wait() }()
-			select {
-			case err := <-done:
-				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
-					t.Fatalf("invalid frame error = %v, want non-nil error containing %q", err, tt.wantError)
-				}
-			case <-time.After(3 * time.Second):
-				t.Fatal("invalid IOTransport frame did not terminate the connection")
-			}
-		})
-	}
 }

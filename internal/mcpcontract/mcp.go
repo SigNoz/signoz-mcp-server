@@ -35,9 +35,8 @@ type (
 const RoleUser Role = "user"
 
 type CallToolParams struct {
-	Name         string
-	Arguments    any
-	RawArguments json.RawMessage
+	Name      string
+	Arguments any
 }
 
 type CallToolRequest struct {
@@ -90,9 +89,8 @@ func AdaptToolHandler(next ToolHandlerFunc) official.ToolHandler {
 			ctx, cached.value = CacheToolArguments(ctx, raw)
 		}
 		return next(ctx, CallToolRequest{Params: CallToolParams{
-			Name:         name,
-			Arguments:    cached.value,
-			RawArguments: raw,
+			Name:      name,
+			Arguments: cached.value,
 		}})
 	}
 }

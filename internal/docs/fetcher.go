@@ -105,12 +105,7 @@ func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) Pag
 		return PageFetch{Status: FetchStatusError, URL: canonical, Err: err}
 	}
 	var lastErr error
-	var retryCount int
-	var retryStatus int
 	for attempt := 0; attempt < 4; attempt++ {
-		if attempt > 0 {
-			retryCount++
-		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, canonical, nil)
 		if err != nil {
 			return PageFetch{Status: FetchStatusError, URL: canonical, Err: err}
@@ -128,7 +123,7 @@ func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) Pag
 			}
 			if attempt < 3 {
 				if sleepErr := f.sleep(ctx, backoffDelay(attempt, 0)); sleepErr != nil {
-					return PageFetch{Status: FetchStatusError, URL: canonical, Err: sleepErr, RetryCount: retryCount, RetryStatus: retryStatus}
+					return PageFetch{Status: FetchStatusError, URL: canonical, Err: sleepErr}
 				}
 				continue
 			}
@@ -149,32 +144,31 @@ func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) Pag
 				if err == nil {
 					resolved := target.String()
 					if !IsDocURL(resolved) {
-						return PageFetch{Status: FetchStatusOutOfScope, URL: canonical, FinalURL: resolved, StatusCode: resp.StatusCode, Err: fmt.Errorf("redirected out of scope")}
+						return PageFetch{Status: FetchStatusOutOfScope, URL: canonical, Err: fmt.Errorf("redirected out of scope")}
 					}
 				}
 			}
 		}
 		if !IsDocURL(finalURL) {
-			return PageFetch{Status: FetchStatusOutOfScope, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, Err: fmt.Errorf("redirected out of scope")}
+			return PageFetch{Status: FetchStatusOutOfScope, URL: canonical, Err: fmt.Errorf("redirected out of scope")}
 		}
 		if resp.StatusCode == http.StatusNotModified && etag != "" {
-			return PageFetch{Status: FetchStatusNotModified, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, ETag: etag, FetchedAt: time.Now(), RetryCount: retryCount, RetryStatus: retryStatus}
+			return PageFetch{Status: FetchStatusNotModified, URL: canonical, ETag: etag, FetchedAt: time.Now()}
 		}
 		if resp.StatusCode == http.StatusNotFound {
-			return PageFetch{Status: FetchStatusNotFound, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, FetchedAt: time.Now(), RetryCount: retryCount, RetryStatus: retryStatus}
+			return PageFetch{Status: FetchStatusNotFound, URL: canonical, FetchedAt: time.Now()}
 		}
 		if readErr != nil {
 			lastErr = readErr
 			break
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return PageFetch{Status: FetchStatusOK, URL: canonical, FinalURL: finalURL, StatusCode: resp.StatusCode, Body: string(body), ETag: resp.Header.Get("ETag"), FetchedAt: time.Now(), RetryCount: retryCount, RetryStatus: retryStatus}
+			return PageFetch{Status: FetchStatusOK, URL: canonical, Body: string(body), ETag: resp.Header.Get("ETag"), FetchedAt: time.Now()}
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode >= 500 {
-			retryStatus = resp.StatusCode
 			if attempt < 3 {
 				if sleepErr := f.sleep(ctx, backoffDelay(attempt, retryAfter(resp.Header.Get("Retry-After")))); sleepErr != nil {
-					return PageFetch{Status: FetchStatusError, URL: canonical, Err: sleepErr, RetryCount: retryCount, RetryStatus: retryStatus}
+					return PageFetch{Status: FetchStatusError, URL: canonical, Err: sleepErr}
 				}
 				continue
 			}
@@ -182,7 +176,7 @@ func (f *Fetcher) FetchConditional(ctx context.Context, rawURL, etag string) Pag
 		lastErr = fmt.Errorf("unexpected status %d", resp.StatusCode)
 		break
 	}
-	return PageFetch{Status: FetchStatusError, URL: canonical, Err: lastErr, RetryCount: retryCount, RetryStatus: retryStatus}
+	return PageFetch{Status: FetchStatusError, URL: canonical, Err: lastErr}
 }
 
 func backoffDelay(attempt int, retryAfter time.Duration) time.Duration {
