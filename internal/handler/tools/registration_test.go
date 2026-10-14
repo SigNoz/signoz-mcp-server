@@ -21,7 +21,6 @@ import (
 
 func TestGuardrail_DuplicateRegistrationsRejectedBeforeSDKOverwrite(t *testing.T) {
 	resourceHandler := func(context.Context, mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) { return nil, nil }
-	templateHandler := func(context.Context, mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) { return nil, nil }
 	promptHandler := func(context.Context, mcp.GetPromptRequest) (*mcp.GetPromptResult, error) { return nil, nil }
 	toolHandler := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return mcp.NewToolResultText("ok"), nil
@@ -44,13 +43,6 @@ func TestGuardrail_DuplicateRegistrationsRejectedBeforeSDKOverwrite(t *testing.T
 			kind: registrationResource,
 			add: func(h *Handler, s *mcp.Server) {
 				h.addResource(s, mcp.NewResource("signoz://duplicate/probe", "Duplicate Probe"), resourceHandler)
-			},
-		},
-		{
-			name: "resource template",
-			kind: registrationResourceTemplate,
-			add: func(h *Handler, s *mcp.Server) {
-				h.addResourceTemplate(s, mcp.NewResourceTemplate("signoz://duplicate/{id}", "Duplicate Probe"), templateHandler)
 			},
 		},
 		{

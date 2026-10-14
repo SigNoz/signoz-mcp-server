@@ -1,7 +1,6 @@
 package metricsrules
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -171,85 +170,5 @@ func TestApplyDefaults_UnknownType(t *testing.T) {
 	_, err := ApplyDefaults(MetricQueryParams{MetricType: "unknown"}, "time_series")
 	if err == nil {
 		t.Error("expected error for unknown metricType")
-	}
-}
-
-func TestValidateAggregation_RateOnGauge(t *testing.T) {
-	err := ValidateAggregation(MetricQueryParams{
-		MetricType:      "gauge",
-		TimeAggregation: "rate",
-	})
-	if err == nil {
-		t.Error("expected error for rate on gauge")
-	}
-	if !strings.Contains(err.Error(), "not valid") {
-		t.Errorf("expected descriptive error, got: %v", err)
-	}
-}
-
-func TestValidateAggregation_IncreaseOnGauge(t *testing.T) {
-	err := ValidateAggregation(MetricQueryParams{
-		MetricType:      "gauge",
-		TimeAggregation: "increase",
-	})
-	if err == nil {
-		t.Error("expected error for increase on gauge")
-	}
-}
-
-func TestValidateAggregation_SumSpaceOnHistogram(t *testing.T) {
-	err := ValidateAggregation(MetricQueryParams{
-		MetricType:       "histogram",
-		SpaceAggregation: "sum",
-	})
-	if err == nil {
-		t.Error("expected error for sum spaceAggregation on histogram")
-	}
-	if !strings.Contains(err.Error(), "percentile") {
-		t.Errorf("expected error mentioning percentile, got: %v", err)
-	}
-}
-
-func TestValidateAggregation_AvgOnCounter(t *testing.T) {
-	err := ValidateAggregation(MetricQueryParams{
-		MetricType:      "sum",
-		IsMonotonic:     true,
-		TimeAggregation: "avg",
-	})
-	if err == nil {
-		t.Error("expected error for avg timeAggregation on monotonic counter")
-	}
-}
-
-func TestValidateAggregation_ValidCombinations(t *testing.T) {
-	tests := []struct {
-		name   string
-		params MetricQueryParams
-	}{
-		{"gauge avg/sum", MetricQueryParams{MetricType: "gauge", TimeAggregation: "avg", SpaceAggregation: "sum"}},
-		{"gauge latest/max", MetricQueryParams{MetricType: "gauge", TimeAggregation: "latest", SpaceAggregation: "max"}},
-		{"counter rate/sum", MetricQueryParams{MetricType: "sum", IsMonotonic: true, TimeAggregation: "rate", SpaceAggregation: "sum"}},
-		{"counter increase/avg", MetricQueryParams{MetricType: "sum", IsMonotonic: true, TimeAggregation: "increase", SpaceAggregation: "avg"}},
-		{"non-mono sum/sum", MetricQueryParams{MetricType: "sum", IsMonotonic: false, TimeAggregation: "sum", SpaceAggregation: "sum"}},
-		{"histogram p99", MetricQueryParams{MetricType: "histogram", SpaceAggregation: "p99"}},
-		{"histogram p50", MetricQueryParams{MetricType: "histogram", SpaceAggregation: "p50"}},
-		{"exp histogram p95", MetricQueryParams{MetricType: "exponential_histogram", SpaceAggregation: "p95"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateAggregation(tt.params); err != nil {
-				t.Errorf("expected valid, got error: %v", err)
-			}
-		})
-	}
-}
-
-func TestValidateAggregation_InvalidReduceTo(t *testing.T) {
-	err := ValidateAggregation(MetricQueryParams{
-		MetricType: "gauge",
-		ReduceTo:   "invalid",
-	})
-	if err == nil {
-		t.Error("expected error for invalid reduceTo")
 	}
 }

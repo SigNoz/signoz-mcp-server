@@ -38,7 +38,6 @@ var nonMonotonicSumSpaceAggs = newSet("sum", "avg", "min", "max", "count")
 
 var histogramSpaceAggs = newSet("p50", "p75", "p90", "p95", "p99")
 
-var validReduceTo = newSet("sum", "count", "avg", "min", "max", "last", "median")
 
 // ApplyDefaults resolves timeAggregation, spaceAggregation, and (for scalar)
 // reduceTo based on metric type metadata. It returns a ResolvedAggregation
@@ -74,62 +73,6 @@ func ApplyDefaults(p MetricQueryParams, requestType string) (ResolvedAggregation
 	}
 
 	return r, nil
-}
-
-// ValidateAggregation checks whether user-supplied aggregations are valid for
-// the given metric type, returning a descriptive error on invalid combos.
-func ValidateAggregation(p MetricQueryParams) error {
-	metricType := strings.ToLower(p.MetricType)
-
-	switch metricType {
-	case "gauge":
-		if p.TimeAggregation != "" && !gaugeTimeAggs.has(p.TimeAggregation) {
-			return invalidTimeAggError(p.TimeAggregation, metricType, gaugeTimeAggs)
-		}
-		if p.SpaceAggregation != "" && !gaugeSpaceAggs.has(p.SpaceAggregation) {
-			return invalidSpaceAggError(p.SpaceAggregation, metricType, gaugeSpaceAggs)
-		}
-
-	case "sum":
-		if p.IsMonotonic {
-			if p.TimeAggregation != "" && !counterTimeAggs.has(p.TimeAggregation) {
-				return fmt.Errorf(
-					"timeAggregation %q is not valid for monotonic counter (sum with isMonotonic=true), "+
-						"valid values: %s, "+
-						"suggested fix: use timeAggregation=\"rate\" for per-second rate or \"increase\" for total increase over the period",
-					p.TimeAggregation, counterTimeAggs.String())
-			}
-			if p.SpaceAggregation != "" && !counterSpaceAggs.has(p.SpaceAggregation) {
-				return invalidSpaceAggError(p.SpaceAggregation, "monotonic counter", counterSpaceAggs)
-			}
-		} else {
-			if p.TimeAggregation != "" && !nonMonotonicSumTimeAggs.has(p.TimeAggregation) {
-				return invalidTimeAggError(p.TimeAggregation, "non-monotonic sum", nonMonotonicSumTimeAggs)
-			}
-			if p.SpaceAggregation != "" && !nonMonotonicSumSpaceAggs.has(p.SpaceAggregation) {
-				return invalidSpaceAggError(p.SpaceAggregation, "non-monotonic sum", nonMonotonicSumSpaceAggs)
-			}
-		}
-
-	case "histogram", "exponential_histogram":
-		// timeAggregation on histogram is not an error, just ignored — handled in ApplyDefaults
-		if p.SpaceAggregation != "" && !histogramSpaceAggs.has(p.SpaceAggregation) {
-			return fmt.Errorf(
-				"spaceAggregation %q is not valid for %s, "+
-					"histograms only support percentile aggregations: %s, "+
-					"suggested fix: use spaceAggregation=\"p99\" for tail latency or \"p50\" for median",
-				p.SpaceAggregation, metricType, histogramSpaceAggs.String())
-		}
-
-	default:
-		return fmt.Errorf("unknown metricType %q — valid values: gauge, sum, histogram, exponential_histogram", p.MetricType)
-	}
-
-	if p.ReduceTo != "" && !validReduceTo.has(p.ReduceTo) {
-		return fmt.Errorf("reduceTo %q is not valid. Valid values: %s", p.ReduceTo, validReduceTo.String())
-	}
-
-	return nil
 }
 
 // --- per-type default application ---

@@ -321,13 +321,3 @@ func HasUsableTimestamp(args map[string]any, key string) bool {
 	_, present, parsed := parseEpochArg(v)
 	return present && parsed
 }
-
-// NowMillis returns the current time in unix milliseconds.
-func NowMillis() int64 {
-	return time.Now().UnixMilli()
-}
-
-// HoursAgoMillis returns unix milliseconds for the given number of hours ago.
-func HoursAgoMillis(hours int) int64 {
-	return time.Now().Add(-time.Duration(hours) * time.Hour).UnixMilli()
-}
