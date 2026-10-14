@@ -337,15 +337,15 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 		path []string
 		want string
 	}
+	// The embedded rule shape is the upstream-generated PostableRule and
+	// carries no authored descriptions; only the wrapper fields we author
+	// (searchContext, id, ruleId) are pinned here. Rule-field teaching lives
+	// in the tool descriptions and the signoz://alert resources.
 	checks := []check{
-		// top-level field (promoted from the embedded AlertRule)
-		{"create alert", []string{"alert"}, "Name of the alert rule. Must be unique and descriptive."},
-		// searchContext is authored natively in the jsonschema tag too
 		{"create alert", []string{"searchContext"}, "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses."},
-		// deep path through a slice element (queries -> items -> spec -> filter -> expression)
-		{"create alert", []string{"condition", "compositeQuery", "queries", "[]", "spec", "filter", "expression"}, "Filter expression using field operators. Example: service.name = frontend AND http.status_code >= 500. Use empty string for no filter."},
 		// direct named field on UpdateAlertInput (id is canonical; ruleId is a legacy alias)
 		{"update alert", []string{"id"}, "UUIDv7 of the alert rule to update (required). Obtain it from signoz_list_alert_rules or signoz_get_alert."},
+		{"update alert", []string{"ruleId"}, "Deprecated alias for 'id'."},
 	}
 
 	for _, c := range checks {
@@ -358,29 +358,6 @@ func TestTypedToolSchemasExposeAuthoredDescriptions(t *testing.T) {
 			got, _ := node["description"].(string)
 			if got != c.want {
 				t.Fatalf("description at %v = %q, want %q", c.path, got, c.want)
-			}
-		})
-	}
-}
-
-// TestTypedToolSchemasDescriptionCoverage guards against a *silent* loss of
-// field descriptions (a tag-dialect regression, a botched edit, or an upstream
-// generator change): each typed tool's schema must expose at least the number
-// of descriptions it has today. Adding described fields only raises the count;
-// dropping any drops below the floor and fails here. This closes the gap that
-// the "never emit a 'required' description" guards leave open — descriptions
-// vanishing entirely rather than turning into the word "required".
-func TestTypedToolSchemasDescriptionCoverage(t *testing.T) {
-	floors := map[string]int{
-		"create alert": 89,
-		"update alert": 90,
-	}
-	for _, tc := range typedToolSchemaCases(t) {
-		t.Run(tc.name, func(t *testing.T) {
-			var descriptions []string
-			collectDescriptions(tc.schema, &descriptions)
-			if floor := floors[tc.name]; len(descriptions) < floor {
-				t.Fatalf("%s exposes %d field descriptions, want >= %d (were descriptions silently dropped?)", tc.name, len(descriptions), floor)
 			}
 		})
 	}

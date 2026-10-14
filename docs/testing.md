@@ -119,15 +119,18 @@ wiring it actually adds.
 | `internal/docs` | Retrieval quality against the golden query set | `internal/docs/golden_test.go` |
 | `tests/e2e` | Reality: agreement with the pinned SigNoz release, which no fixture or generated type can prove | `tests/README.md` |
 
-A caution on the validation code in `pkg/alert` and the channel specs in `pkg/types`: most
-of it is a hand-copy of upstream's rules (required fields, enums, envelope-type pairings),
-and it drifts the way copies drift. On SigNoz v0.143.0 the hand-pinned Slack spec rejected
-settings upstream had added, and every Slack channel update failed with
+A caution on hand-copied upstream rules: a client-side copy of upstream's validation
+(required fields, enums, envelope-type pairings) drifts the way copies drift. On
+SigNoz v0.143.0 the hand-pinned Slack channel spec rejected settings upstream had
+added, and every Slack channel update failed with
 `config.spec: unknown field "color"`
-([the fix](https://github.com/SigNoz/signoz-mcp-server/pull/319) re-copies upstream's
-validator by hand). This layer should dissolve into imported or generated types; what
-stays ours is the guidance each rejection carries and the defaults we inject.
-Do not grow it, and do not use its tests as templates.
+([the fix](https://github.com/SigNoz/signoz-mcp-server/pull/319) re-copied upstream's
+validator by hand). That channel-spec copy, the hand-copied alert-rule validator, and
+their mirrored structs have since been deleted for the same reason: the alert copy
+rejected the alertType SigNoz had added. SigNoz is the only validator, and a tool that
+needs an upstream type uses the generated one in `internal/apiclient/` instead of
+maintaining a copy. Teach the contract in descriptions and resources, pin the taught
+claims with e2e tests, and do not reintroduce this layer.
 
 ## What a high-ROI test looks like
 

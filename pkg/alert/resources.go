@@ -8,24 +8,24 @@ An alert rule monitors a signal (metrics, logs, traces, or exceptions) and fires
 The alert is created via POST /api/v2/rules.
 
 Schemas supported:
-- **v2alpha1** for threshold_rule and promql_rule: structured thresholds + evaluation + notificationSettings. Applied automatically.
+- **v2alpha1** for threshold_rule and promql_rule: structured thresholds + evaluation + notificationSettings. Always set schemaVersion="v2alpha1" explicitly: SigNoz treats an omitted schemaVersion as v1 and then requires the v1 condition fields instead.
 - **v1** for anomaly_rule: top-level evalWindow/frequency with condition.op/matchType/target/algorithm/seasonality. No thresholds block.
 
 ## Before Creating or Updating an Alert
 1. Read signoz://alert/examples for complete payloads unless already read for the same prepared operation.
 2. Update is a full replacement. Reuse signoz_get_alert only from the same still-current prepared operation; refresh if state may have changed, then preserve unchanged fields.
 3. Use signoz_get_field_keys to discover filter/groupBy attributes, reusing results from that operation.
-4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName and top-level preferredChannels is rejected. V1 anomaly rules use exact returned displayName values in top-level preferredChannels and cannot use policy routing. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels; any supplied displayName values still require verification.
+4. NOTIFICATION ROUTING: Reuse a fully paginated signoz_list_notification_channels result only from the same still-current prepared operation; otherwise call it, refreshing only if state may have changed. The list is config-free, defaults to 20 rows, and accepts at most 200 per page; follow its filtered total. The immutable routing identity is displayName, not machine name. For v2 direct routing, every threshold tier needs an exact returned displayName: SigNoz rejects a tier with no channels and a channel name that does not exist. Top-level preferredChannels plays no part in v2 routing (SigNoz stores it unused), so omit it. V1 anomaly rules use exact returned displayName values in top-level preferredChannels and cannot use policy routing. If no direct channel fits, show the returned choices and ask; if none exists, offer signoz_create_notification_channel with settings the user provides. Never guess or create automatically. Channel create and update default test to false; set test=true only when the user asks to send a test. Confirmed v2 policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
 
 ## Quick Workflow: From User Intent to Payload
 A repeatable mental model for going from a user request ("alert me when login p99 > 2s") to a valid payload:
-1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT.
+1. **Signal → alertType.** CPU, memory, latency histograms, request rate → METRIC_BASED_ALERT. Log lines or log volume → LOGS_BASED_ALERT. Span latency or span error rate → TRACES_BASED_ALERT. Exception counts → EXCEPTIONS_BASED_ALERT. SigNoz validates the value.
 2. **Pick ruleType.** Default to threshold_rule. Use promql_rule only if the user provided a PromQL expression. Use anomaly_rule only for metric deviation detection; it uses a different (v1) schema. See the Anomaly Alerts section.
 3. **Pick compositeQuery.queryType + matching envelope type.** See the "Query envelope type" table.
 4. **Pick the aggregation shape.** Metrics → object {metricName, timeAggregation, spaceAggregation}. Logs/traces → {expression: "count()" | "p99(duration_nano)" | …}.
 5. **Write the filter.** See "Filter & Having Expressions" for the operator set. Prefer resource attributes (service.name, deployment.environment, k8s.*); the backend indexes them.
 6. **Configure thresholds.** Every threshold/PromQL rule requires tiers with name, op, matchType, and target. Direct routing uses exact displayName values from the notification-routing preflight above on every tier; confirmed policy routing sets notificationSettings.usePolicy=true and may omit tier channels.
-7. **Evaluation.** Leave defaults (evalWindow=5m, frequency=1m) unless the user asked for a different window.
+7. **Evaluation.** Set evaluation explicitly (SigNoz requires it for v2alpha1): kind=rolling with evalWindow=5m and frequency=1m unless the user asked for a different window.
 8. **Notification.** Set notificationSettings.groupBy on high-cardinality queries to reduce noise.
 
 ## Alert Types (alertType)
@@ -47,7 +47,7 @@ A repeatable mental model for going from a user request ("alert me when login p9
 
 condition.compositeQuery uses the v5 query format:
 - queryType: "builder" | "promql" | "clickhouse_sql"
-- panelType: always "graph" for alerts (auto-set)
+- panelType: always set "graph" for alerts; SigNoz stores an empty value when omitted
 - unit: series unit (used for value formatting and target-unit conversion)
 - queries: array of query objects
 
@@ -225,7 +225,7 @@ evaluation controls how the rule is evaluated:
 
 - evalWindow: how long the condition must persist (e.g. 5m, 15m, 30m, 1h, 4h, 24h).
 - frequency: how often to evaluate (e.g. 1m, 5m, 15m).
-- Auto-generated (5m window, 1m frequency) if omitted for threshold/promql rules.
+- Required by SigNoz for threshold/promql rules (schemaVersion v2alpha1); it rejects a rule without an evaluation block. Use a 5m window with 1m frequency unless asked otherwise.
 - **Format**: Go duration strings. Both "5m" and "5m0s" are accepted; stick to one style per payload. Common values: 1m, 5m, 15m, 30m, 1h, 4h, 24h, 1d.
 - **Sizing tips**: keep evalWindow ≥ frequency. Short windows (1-5m) catch spikes; long windows (30m-1h) smooth noise. For infrequent signals (hourly batch jobs) set frequency to 5-15m to reduce evaluation cost.
 
@@ -262,8 +262,8 @@ A general evaluation kind, independent of signal/source. Use it for any period-t
 - **newGroupEvalDelay**: Go duration string. Grace period during which a newly-appearing label group is excluded from evaluation. Helps avoid flapping when new pods/services come online.
 - **renotify.enabled**: whether to re-send alerts at interval.
 - **renotify.interval**: re-notify interval (e.g. 15m, 30m, 1h, 4h).
-- **renotify.alertStates**: accepted values are firing and nodata. Any other value is rejected.
-- **usePolicy**: v2 threshold/PromQL routing only. false (default) requires valid channels on every threshold tier. true uses the org-level policy matching on labels, so tier channels may be omitted; supplied names are still validated. Anomaly rules omit notificationSettings.
+- **renotify.alertStates**: the accepted values are firing and nodata.
+- **usePolicy**: v2 threshold/PromQL routing only. false (the default SigNoz applies) requires existing channels on every threshold tier. true uses the org-level policy matching on labels, so tier channels may be omitted. Anomaly rules omit notificationSettings.
 
 ## Labels & Routing
 
@@ -337,18 +337,16 @@ See signoz://alert/examples → "metric_anomaly" for a complete payload.
 ## Absent-data alerting
 Set condition.alertOnAbsent=true to fire when no series is returned. condition.absentFor is in **minutes** (equivalent to consecutive evaluation cycles when frequency is 1m). Example: absentFor=15 fires after 15 minutes of no data.
 
-## Auto-Applied Defaults (threshold_rule / promql_rule only)
-- version → "v5"
-- schemaVersion → "v2alpha1"
-- evaluation → {kind: "rolling", spec: {evalWindow: "5m0s", frequency: "1m0s"}}
-- notificationSettings → {renotify: {enabled: false, interval: "30m"}}
-- panelType → "graph"
-- selectedQueryName → first query name
-- source → "mcp"
-- labels.severity → "warning" (if not set)
-- annotations → default description and summary templates
+## Set These Explicitly (threshold_rule / promql_rule)
+The payload is forwarded to SigNoz exactly as composed, and SigNoz fills in very little (version="v5" and notificationSettings.usePolicy=false). Everything else is on the author:
+- schemaVersion: always "v2alpha1"; SigNoz treats an omitted schemaVersion as v1 and then requires the v1 condition fields.
+- evaluation and notificationSettings: SigNoz rejects a v2alpha1 rule missing either block.
+- panelType: set "graph"; SigNoz stores an empty value when omitted.
+- selectedQueryName: set it whenever more than one query exists.
+- labels.severity and annotations: SigNoz adds no defaults; include them so routing tiers and notification text work.
+- Omit server-populated fields (createdAt, updatedAt, createdBy, updatedBy) and the injected webUrl, also when composing an update from a signoz_get_alert result.
 
-anomaly_rule: none of the above defaults are applied automatically. You must supply evalWindow, frequency, and the condition fields yourself.
+anomaly_rule uses the v1 schema: supply evalWindow, frequency, and the condition fields yourself.
 
 ## Further Reading
 User-facing docs. Cite these back to the user when they want to understand a concept in depth:
@@ -984,9 +982,12 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
   "alert": "Daily log ingestion budget",
   "alertType": "METRIC_BASED_ALERT",
   "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "labels": {"severity": "critical"},
   "condition": {
     "compositeQuery": {
       "queryType": "builder",
+      "panelType": "graph",
       "queries": [
         {
           "type": "builder_query",
@@ -1013,7 +1014,8 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
   "evaluation": {
     "kind": "cumulative",
     "spec": {"schedule": {"type": "daily", "minute": 0, "hour": 0}, "frequency": "1m", "timezone": "UTC"}
-  }
+  },
+  "notificationSettings": {"renotify": {"enabled": false, "interval": "30m"}}
 }
 ` + "```" + `
 
@@ -1022,6 +1024,6 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
 2. selectedQueryName should reference the query or formula that determines the alert.
 3. Use signoz_get_alert to inspect existing alerts for the exact format your SigNoz version expects.
 4. Direct routing uses exact displayName values from a same-operation, still-current signoz_list_notification_channels result, or calls the fully paginated tool when absent/stale. V2 needs a displayName on every tier; confirmed policy routing may omit them. V1 anomaly routing uses exact displayName values in top-level preferredChannels.
-5. For threshold_rule/promql_rule, schemaVersion/evaluation/notificationSettings are auto-generated if omitted. For anomaly_rule, supply evalWindow/frequency and condition op/matchType/target/algorithm/seasonality. That schema has no thresholds, evaluation, notificationSettings, or policy routing.
+5. For threshold_rule/promql_rule, set schemaVersion="v2alpha1" and include evaluation and notificationSettings; SigNoz requires both and treats an omitted schemaVersion as v1. For anomaly_rule, supply evalWindow/frequency and condition op/matchType/target/algorithm/seasonality. That schema has no thresholds, evaluation, notificationSettings, or policy routing.
 6. absentFor is in minutes (= consecutive evaluation cycles when frequency is 1m).
 `
