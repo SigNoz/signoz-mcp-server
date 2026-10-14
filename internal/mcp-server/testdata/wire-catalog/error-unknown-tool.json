@@ -16,7 +16,7 @@
   "response": {
     "error": {
       "code": -32602,
-      "message": "tool 'signoz_unknown' not found: tool not found"
+      "message": "unknown tool \"signoz_unknown\""
     },
     "id": 0,
     "jsonrpc": "2.0"
