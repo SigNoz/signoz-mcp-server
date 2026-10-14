@@ -83,8 +83,13 @@ def test_list_views_without_source_spans_explorers(mcp_client: MCPClient, test_i
                 "queries": [{"type": "builder_query", "spec": {"name": "A", "signal": "traces", "limit": 100}}],
             },
         )
+        # Filter server-side by the run's unique test id so a reused
+        # environment with more than one page of views cannot hide the pins.
         listed = assert_tool_ok(
-            mcp_client.call_tool("signoz_list_views", {"searchContext": "list saved views across all explorers"})
+            mcp_client.call_tool(
+                "signoz_list_views",
+                {"searchContext": "list saved views across all explorers", "name": test_id, "limit": "1000"},
+            )
         )
         names = listed_view_names(listed)
         assert logs_name in names and ai_name in names, (
@@ -127,14 +132,18 @@ def test_update_view_source_change_moves_view(mcp_client: MCPClient, test_id: st
         traces_names = listed_view_names(
             assert_tool_ok(
                 mcp_client.call_tool(
-                    "signoz_list_views", {"searchContext": "traces explorer views", "source": "traces"}
+                    "signoz_list_views",
+                    {"searchContext": "traces explorer views", "source": "traces", "name": test_id, "limit": "1000"},
                 )
             ),
             source="traces",
         )
         logs_names = listed_view_names(
             assert_tool_ok(
-                mcp_client.call_tool("signoz_list_views", {"searchContext": "logs explorer views", "source": "logs"})
+                mcp_client.call_tool(
+                    "signoz_list_views",
+                    {"searchContext": "logs explorer views", "source": "logs", "name": test_id, "limit": "1000"},
+                )
             ),
             source="logs",
         )
