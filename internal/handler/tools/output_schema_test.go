@@ -30,7 +30,11 @@ func TestInputMismatchServedBestEffortLogsRedactedRequestAndAttributedMetric(t *
 	}
 	h := &Handler{logger: logger, meters: meters}
 	s := newMCPTestServer()
-	tool := mcp.NewTool("shadow_probe", mcp.WithNumber("webhook_password"))
+	tool := mcp.NewTool("shadow_probe")
+	tool.InputSchema = map[string]any{
+		"type":       "object",
+		"properties": map[string]any{"webhook_password": map[string]any{"type": "number"}},
+	}
 	called := false
 	h.addTool(s, tool, func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		called = true

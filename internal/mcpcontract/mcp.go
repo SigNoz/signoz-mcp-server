@@ -63,7 +63,6 @@ type GetPromptRequest struct{ Params GetPromptParams }
 
 type ToolHandlerFunc func(context.Context, CallToolRequest) (*CallToolResult, error)
 type ResourceHandlerFunc func(context.Context, ReadResourceRequest) ([]ResourceContents, error)
-type ResourceTemplateHandlerFunc = ResourceHandlerFunc
 type PromptHandlerFunc func(context.Context, GetPromptRequest) (*GetPromptResult, error)
 
 type decodedToolArguments struct{ value any }
@@ -232,9 +231,6 @@ func WithString(name string, opts ...PropertyOption) ToolOption {
 func WithBoolean(name string, opts ...PropertyOption) ToolOption {
 	return withProperty(name, "boolean", false, opts...)
 }
-func WithNumber(name string, opts ...PropertyOption) ToolOption {
-	return withProperty(name, "number", false, opts...)
-}
 func WithObject(name string, opts ...PropertyOption) ToolOption {
 	return withProperty(name, "object", true, opts...)
 }
@@ -322,22 +318,6 @@ func WithResourceSize(v int64) ResourceOption {
 			r.Size = v
 		}
 	}
-}
-
-type ResourceTemplateOption func(*ResourceTemplate)
-
-func NewResourceTemplate(uri, name string, opts ...ResourceTemplateOption) ResourceTemplate {
-	t := ResourceTemplate{URITemplate: uri, Name: name}
-	for _, opt := range opts {
-		opt(&t)
-	}
-	return t
-}
-func WithTemplateDescription(v string) ResourceTemplateOption {
-	return func(t *ResourceTemplate) { t.Description = v }
-}
-func WithTemplateMIMEType(v string) ResourceTemplateOption {
-	return func(t *ResourceTemplate) { t.MIMEType = v }
 }
 
 type PromptOption func(*Prompt)
