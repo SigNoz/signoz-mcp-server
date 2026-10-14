@@ -10,7 +10,7 @@ import json
 
 from fixtures.logger import setup_logger
 from fixtures.mcpclient import MCPClient, assert_tool_ok
-from fixtures.results import dig_id, first_block_json, first_text_block
+from fixtures.results import assert_structured_matches_text, dig_id, first_block_json, first_text_block
 
 logger = setup_logger(__name__)
 
@@ -29,6 +29,7 @@ def create_channel(client: MCPClient, name: str, config: dict) -> str:
             },
         )
     )
+    assert_structured_matches_text(result)
     payload = first_block_json(result)
     test_notification = payload.get("testNotification", {})
     assert test_notification.get("requested") is False
@@ -40,12 +41,13 @@ def create_channel(client: MCPClient, name: str, config: dict) -> str:
 
 
 def delete_channel(client: MCPClient, channel_id: str) -> None:
-    assert_tool_ok(
+    result = assert_tool_ok(
         client.call_tool(
             "signoz_delete_notification_channel",
             {"searchContext": f"delete channel {channel_id}", "id": channel_id},
         )
     )
+    assert_structured_matches_text(result)
 
 
 def channel_gone(client: MCPClient, channel_id: str) -> bool:

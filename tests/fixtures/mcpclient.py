@@ -69,33 +69,12 @@ class MCPClient:
             self._client_task.result()
         return self._dump(self._init_result)
 
-    def list_tools(self) -> list[dict]:
-        assert self._session is not None, "initialize() first"
-        result = self._run(self._session.list_tools())
-        return [self._dump(tool) for tool in result.tools]
-
     def call_tool(self, name: str, arguments: dict | None = None) -> dict:
         """Call a tool and return the raw result dict (isError may be true)."""
         if self._session is None:
             self.initialize()
         logger.info("mcp -> tools/call %s", name)
         result = self._run(self._session.call_tool(name, arguments or {}))
-        return self._dump(result)
-
-    def call_tool_without_arguments(self, name: str) -> dict:
-        """Call with the arguments object omitted entirely (the nil-arguments path)."""
-        if self._session is None:
-            self.initialize()
-        logger.info("mcp -> tools/call %s (no arguments)", name)
-        result = self._run(self._session.call_tool(name))
-        return self._dump(result)
-
-    def read_resource(self, uri: str) -> dict:
-        """Read a signoz:// resource and return the result dict."""
-        if self._session is None:
-            self.initialize()
-        logger.info("mcp -> resources/read %s", uri)
-        result = self._run(self._session.read_resource(uri))
         return self._dump(result)
 
     def close(self) -> None:

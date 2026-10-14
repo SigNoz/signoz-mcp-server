@@ -1,8 +1,8 @@
 """Pure helpers for parsing MCP CallToolResult wire dicts.
 
-Ports of the Go e2e helpers (countQueryRangeRows, countDataArrayRows,
-countAlertHistoryRows, noteBlocks, firstDataID, assertStructuredMatchesText,
-codeOf) so the ported suites assert the same contracts by the same rules.
+Ports of the Go e2e helpers (countDataArrayRows, noteBlocks,
+assertStructuredMatchesText, codeOf) so the ported suites assert the same
+contracts by the same rules.
 """
 
 import json
@@ -33,42 +33,6 @@ def first_block_json(result: dict) -> Any:
     return json.loads(text)
 
 
-def count_query_range_rows(body: str) -> tuple[int, bool]:
-    """Count rows via data.data.results[].rows[].
-
-    A missing results/rows key or a non-array, non-null value is drift and
-    returns ok=False; a present null is a normal empty collection.
-    """
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        return 0, False
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        return 0, False
-    inner = data.get("data")
-    if not isinstance(inner, dict):
-        return 0, False
-    if "results" not in inner:
-        return 0, False
-    results = inner["results"]
-    if results is None:
-        return 0, True
-    if not isinstance(results, list):
-        return 0, False
-    total = 0
-    for result in results:
-        if not isinstance(result, dict) or "rows" not in result:
-            return 0, False
-        rows = result["rows"]
-        if rows is None:
-            continue
-        if not isinstance(rows, list):
-            return 0, False
-        total += len(rows)
-    return total, True
-
-
 def count_data_array_rows(body: str, key: str) -> tuple[int, bool]:
     """Count elements of the array at data.<key> (e.g. metrics, samples)."""
     try:
@@ -86,47 +50,6 @@ def count_data_array_rows(body: str, key: str) -> tuple[int, bool]:
     if not isinstance(value, list):
         return 0, False
     return len(value), True
-
-
-def count_alert_history_rows(body: str) -> tuple[int, bool]:
-    """Count alert history rows in either shape: data[] or data.items[]."""
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        return 0, False
-    if "data" not in payload:
-        return 0, False
-    data = payload["data"]
-    if data is None:
-        return 0, True
-    if isinstance(data, list):
-        return len(data), True
-    if not isinstance(data, dict):
-        return 0, False
-    if "items" not in data:
-        return 0, False
-    items = data["items"]
-    if items is None:
-        return 0, True
-    if not isinstance(items, list):
-        return 0, False
-    return len(items), True
-
-
-def first_data_id(text: str, *keys: str) -> str:
-    """First element's value for any of the keys out of a {"data":[...]} page."""
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return ""
-    data = payload.get("data")
-    if not isinstance(data, list) or not data or not isinstance(data[0], dict):
-        return ""
-    for key in keys:
-        value = data[0].get(key)
-        if isinstance(value, str) and value:
-            return value
-    return ""
 
 
 def assert_structured_matches_text(result: dict) -> None:

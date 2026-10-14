@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 )
 
 // Two-tier structuredContent rule:
@@ -144,5 +146,18 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 	res := structuredResult([]byte("{\"id\":\"a\"}\n  \t"))
 	if res.StructuredContent == nil {
 		t.Fatalf("single value with trailing whitespace must keep StructuredContent")
+	}
+}
+
+func TestRawPassthroughResults_CarryNoStructuredContent(t *testing.T) {
+	payload := []byte(`{"status":"success","data":[]}`)
+	results := map[string]*mcp.CallToolResult{
+		"search_logs and search_traces":       rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, 100, 0, false),
+		"aggregate_logs and aggregate_traces": aggregateResult(testCtx(), nil, "signoz_aggregate_logs", payload, false),
+	}
+	for tools, result := range results {
+		if result.StructuredContent != nil {
+			t.Errorf("%s result carries structuredContent %#v; raw passthrough payloads stay text-only", tools, result.StructuredContent)
+		}
 	}
 }

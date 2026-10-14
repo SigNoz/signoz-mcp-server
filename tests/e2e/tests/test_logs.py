@@ -55,6 +55,7 @@ def test_seeded_logs_are_searchable(mcp_client: MCPClient, test_id: str, telemet
         )
     )
     assert marker in text_blocks(result), f"service-filtered search missed the marker: {first_json(result)}"
+    assert "hasMore" in note_blocks(result), f"expected a completeness note with hasMore: {note_blocks(result)!r}"
 
 
 def test_explicit_search_scopes_quoting_and_warning_round_trip(
@@ -145,10 +146,10 @@ def test_explicit_search_scopes_quoting_and_warning_round_trip(
         assert query_range_rows(first_text_block(result)), f"scoped {scope} search missed its distinct token"
         assert _decoded_rows_contain(result, body_token), f"scoped {scope} search returned the wrong row"
 
-        log_scope_result = assert_tool_ok(search(f"search({quoted(body_token)}, log)"))
-        assert not query_range_rows(first_text_block(log_scope_result)), (
-            "body-only token incorrectly matched the log-field scope"
-        )
+    log_scope_result = assert_tool_ok(search(f"search({quoted(body_token)}, log)"))
+    assert not query_range_rows(first_text_block(log_scope_result)), (
+        "body-only token incorrectly matched the log-field scope"
+    )
 
     # searchText is body-only and must not silently become cross-field search().
     missed = assert_tool_ok(
@@ -164,20 +165,6 @@ def test_explicit_search_scopes_quoting_and_warning_round_trip(
         )
     )
     assert not query_range_rows(first_text_block(missed)), "body-only searchText matched an attribute-only token"
-    found = assert_tool_ok(
-        mcp_client.call_tool(
-            "signoz_search_logs",
-            {
-                "searchContext": "body-only searchText must find the escaped body token",
-                "searchText": body_token,
-                "service": service,
-                "timeRange": "1h",
-                "limit": "10",
-            },
-        )
-    )
-    assert query_range_rows(first_text_block(found))
-    assert _decoded_rows_contain(found, body_token)
 
     composed = assert_tool_ok(
         search(

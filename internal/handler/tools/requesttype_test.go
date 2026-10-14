@@ -5,13 +5,23 @@ import (
 	"testing"
 )
 
-// NOTE: this file exercises the PURE parser functions (parseAggregateArgs,
-// parseMetricsQueryArgs) only — it asserts the returned error, never a
-// *mcp.CallToolResult, so there is no StructuredContent.code to pin here.
-// Handler-level coverage that the unknown-requestType rejection carries
-// CodeValidationFailed lives where a handler result is available: the live
-// e2e suite (tests/e2e/tests/test_param_validation.py) asserts the code on
-// aggregate_logs/query_metrics results through the MCP transport.
+func TestAggregateTools_RejectUnknownRequestTypeAsValidationFailed(t *testing.T) {
+	server := newToolServerWithoutSigNoz(t)
+	for tool, arguments := range map[string]string{
+		"signoz_aggregate_logs": `{"aggregation":"count","timeRange":"1h","requestType":"totally-bogus"}`,
+		"signoz_query_metrics":  `{"metricName":"system.cpu.time","timeRange":"1h","requestType":"totally-bogus"}`,
+	} {
+		t.Run(tool, func(t *testing.T) {
+			result := callRegisteredTool(t, server, tool, arguments)
+			if !result.IsError {
+				t.Fatalf("unknown requestType must be an error result, got %+v", result.Content)
+			}
+			if got := resultCode(t, result); got != CodeValidationFailed {
+				t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+			}
+		})
+	}
+}
 
 // TestParseAggregateArgs_RejectsUnknownRequestType pins that the aggregate tools
 // reject an unknown requestType at the arg layer instead of passing it through.
