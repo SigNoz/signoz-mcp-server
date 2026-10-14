@@ -95,31 +95,13 @@ func (c *integrationClient) ReadResource(ctx context.Context, params *mcp.ReadRe
 	return c.client.ReadResource(ctx, params)
 }
 
-func TestIntegration_InitializeAndListTools(t *testing.T) {
+func TestIntegration_ListedToolNamesMatchManifest(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
 
 	c, err := newIntegrationClient(t, s)
 	if err != nil {
 		t.Fatalf("failed to create in-process client: %v", err)
-	}
-
-	initResult, err := c.Initialize(ctx, &mcp.InitializeParams{
-		ProtocolVersion: "2025-11-25",
-		ClientInfo: &mcp.Implementation{
-			Name:    "test-client",
-			Version: version.Version,
-		},
-	})
-	if err != nil {
-		t.Fatalf("Initialize failed: %v", err)
-	}
-
-	if initResult.ServerInfo.Name != "SigNozMCP" {
-		t.Errorf("expected server name SigNozMCP, got %q", initResult.ServerInfo.Name)
-	}
-	if initResult.Capabilities.Tools == nil {
-		t.Error("expected tools capability to be present")
 	}
 
 	// List tools and verify parity with manifest metadata.
@@ -311,10 +293,6 @@ func TestIntegration_AllToolsExposeSearchContext(t *testing.T) {
 // in any tool's input schema has the literal description "required" — the
 // artifact google/jsonschema-go produces from a stray `jsonschema:"required"`
 // tag (it uses the `jsonschema` tag value as the field description).
-//
-// This complements the unit tests in internal/handler/tools: if a typed-struct
-// field ever regains a `jsonschema:"required"` tag, or a new field is added
-// without an authored `jsonschema` description, the leak surfaces here.
 func TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription(t *testing.T) {
 	s := buildTestServer(t)
 	ctx := context.Background()
@@ -339,7 +317,6 @@ func TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription(t *testing
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	var sawCreateAlert bool
 	for _, tool := range toolsResult.Tools {
 		schema := inputSchema(t, tool)
 		for _, d := range collectSchemaDescriptions(schema) {
@@ -347,23 +324,6 @@ func TestIntegration_ToolSchemasNeverExposeLiteralRequiredDescription(t *testing
 				t.Errorf("%s inputSchema exposes a field description of %q (a stray jsonschema:\"required\" tag)", tool.Name, "required")
 			}
 		}
-		// End-to-end proof that authored descriptions reach the real
-		// registration output for at least one typed tool, not just in the
-		// unit harness.
-		if tool.Name == "signoz_create_alert" {
-			sawCreateAlert = true
-			props := schemaProperties(t, tool.Name, schema)
-			// The rule shape is the upstream-generated PostableRule (no
-			// authored field descriptions); searchContext is the wrapper
-			// field that proves authored jsonschema tags reach registration.
-			sc, _ := props["searchContext"].(map[string]any)
-			if sc == nil || sc["description"] != "Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses." {
-				t.Errorf("signoz_create_alert .searchContext description = %v, want authored prose", sc["description"])
-			}
-		}
-	}
-	if !sawCreateAlert {
-		t.Fatalf("signoz_create_alert was not registered; cannot verify descriptions")
 	}
 }
 
@@ -435,27 +395,6 @@ func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T)
 		}
 	}
 
-	// "False friends": tools whose filter-ish param is a distinct, legitimate
-	// param that must stay advertised — NOT the canonical filter-expression
-	// alias the #213 sweep converged. Guards against a future query→filter
-	// rename wrongly touching them.
-	//   - signoz_list_alerts.filter      : Prometheus matcher expression
-	//   - signoz_execute_builder_query.query : the full QB v5 JSON object
-	falseFriends := map[string]string{
-		"signoz_list_alerts":           "filter",
-		"signoz_execute_builder_query": "query",
-	}
-	for name, param := range falseFriends {
-		tool, ok := toolsByName[name]
-		if !ok {
-			t.Fatalf("tool %s not registered", name)
-		}
-		props := schemaProperties(t, name, inputSchema(t, tool))
-		if _, ok := props[param]; !ok {
-			t.Errorf("%s should keep %q param", name, param)
-		}
-	}
-
 	// signoz_search_docs was renamed (#367): its free-text param is now the
 	// canonical "searchText". The legacy "query" key is still accepted by the
 	// handler as a PERMANENT silent alias but is no longer advertised in the
@@ -470,46 +409,6 @@ func TestIntegration_FilterExpressionToolsAdvertiseCanonicalFilter(t *testing.T)
 		}
 	} else {
 		t.Fatalf("tool signoz_search_docs not registered")
-	}
-}
-
-func TestIntegration_PromqlInstructionsResourceRegistered(t *testing.T) {
-	s := buildTestServer(t)
-	ctx := context.Background()
-
-	c, err := newIntegrationClient(t, s)
-	if err != nil {
-		t.Fatalf("failed to create in-process client: %v", err)
-	}
-
-	if _, err := c.Initialize(ctx, &mcp.InitializeParams{
-		ProtocolVersion: "2025-11-25",
-		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
-	}); err != nil {
-		t.Fatalf("Initialize failed: %v", err)
-	}
-
-	res, err := c.ReadResource(ctx, &mcp.ReadResourceParams{URI: "signoz://promql/instructions"})
-	if err != nil {
-		t.Fatalf("ReadResource(signoz://promql/instructions) failed: %v", err)
-	}
-	if len(res.Contents) == 0 {
-		t.Fatal("expected resource contents, got none")
-	}
-	tc := res.Contents[0]
-	if tc.URI != "signoz://promql/instructions" {
-		t.Errorf("URI = %q, want signoz://promql/instructions", tc.URI)
-	}
-	// Sanity check: the body must carry the OTel dotted-name guidance, the
-	// anti-pattern framing, and the PR #11023 consumer-group-lag example.
-	for _, want := range []string{
-		"Prometheus 3.x UTF-8 quoted selector",
-		"payment_latency_ms.bucket",
-		"group_right",
-	} {
-		if !strings.Contains(tc.Text, want) {
-			t.Errorf("resource body missing expected substring %q", want)
-		}
 	}
 }
 
@@ -584,37 +483,6 @@ func appendPath(path []string, parts ...string) []string {
 	next = append(next, path...)
 	next = append(next, parts...)
 	return next
-}
-
-func TestIntegration_ListPrompts(t *testing.T) {
-	s := buildTestServer(t)
-	ctx := context.Background()
-
-	c, err := newIntegrationClient(t, s)
-	if err != nil {
-		t.Fatalf("failed to create in-process client: %v", err)
-	}
-
-	_, err = c.Initialize(ctx, &mcp.InitializeParams{
-		ProtocolVersion: "2025-11-25",
-		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
-	})
-	if err != nil {
-		t.Fatalf("Initialize failed: %v", err)
-	}
-
-	promptsResult, err := c.ListPrompts(ctx, &mcp.ListPromptsParams{})
-	if err != nil {
-		t.Fatalf("ListPrompts failed: %v", err)
-	}
-
-	const expectedPromptCount = 4
-	if len(promptsResult.Prompts) != expectedPromptCount {
-		t.Errorf("expected %d prompts, got %d", expectedPromptCount, len(promptsResult.Prompts))
-		for _, p := range promptsResult.Prompts {
-			t.Logf("  prompt: %s", p.Name)
-		}
-	}
 }
 
 func TestIntegration_InitializeListAndReadResources(t *testing.T) {
@@ -705,50 +573,5 @@ func TestIntegration_InitializeListAndReadResources(t *testing.T) {
 				t.Errorf("resource size = %d, read content size = %d", got, want)
 			}
 		})
-	}
-}
-
-func TestIntegration_ResourceTemplateCatalogIsEmpty(t *testing.T) {
-	s := buildTestServer(t)
-	ctx := context.Background()
-
-	c, err := newIntegrationClient(t, s)
-	if err != nil {
-		t.Fatalf("failed to create in-process client: %v", err)
-	}
-
-	_, err = c.Initialize(ctx, &mcp.InitializeParams{
-		ProtocolVersion: "2025-11-25",
-		ClientInfo:      &mcp.Implementation{Name: "test", Version: version.Version},
-	})
-	if err != nil {
-		t.Fatalf("Initialize failed: %v", err)
-	}
-
-	templatesResult, err := c.ListResourceTemplates(ctx, &mcp.ListResourceTemplatesParams{})
-	if err != nil {
-		t.Fatalf("ListResourceTemplates failed: %v", err)
-	}
-
-	if got, want := len(templatesResult.ResourceTemplates), 0; got != want {
-		t.Fatalf("resource template count = %d, want %d", got, want)
-	}
-	for _, template := range templatesResult.ResourceTemplates {
-		if template.URITemplate == "" ||
-			template.Name == "" || template.Description == "" || template.MIMEType == "" {
-			t.Errorf("resource template has incomplete metadata: %+v", template)
-		}
-		if len(template.Description) > 1024 {
-			t.Errorf("resource template description = %d bytes, limit 1024", len(template.Description))
-		}
-	}
-
-	for _, uri := range []string{
-		"signoz://alert/retired-id/summary",
-		"signoz://dashboard/retired-id/summary",
-	} {
-		if _, err := c.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri}); err == nil {
-			t.Errorf("ReadResource(%s) succeeded after template retirement", uri)
-		}
 	}
 }

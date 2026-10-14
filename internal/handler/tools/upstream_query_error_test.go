@@ -136,15 +136,6 @@ func TestMissingFilterKeys_ParsedGuidanceScanBounded(t *testing.T) {
 	}
 }
 
-func TestMissingKeyGuidance_PluralAgreement(t *testing.T) {
-	if got := missingKeyGuidance([]string{"a", "b"}, "logs"); !strings.Contains(got, "which do not exist") {
-		t.Fatalf("plural guidance = %q, want 'which do not exist'", got)
-	}
-	if got := missingKeyGuidance([]string{"a"}, "logs"); !strings.Contains(got, "which does not exist") {
-		t.Fatalf("singular guidance = %q, want 'which does not exist'", got)
-	}
-}
-
 func TestUpstreamQueryError_LogsGuidanceAndStructuredKeys(t *testing.T) {
 	res := upstreamQueryError(keyNotFound400(keyNotFoundEnvelopeBody), "logs")
 

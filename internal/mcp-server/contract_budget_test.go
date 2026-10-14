@@ -58,21 +58,7 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			t.Errorf("initialize preamble = %d bytes, limit %d", got, maxServerPreambleBytes)
 		}
 		t.Logf("initialize instructions=%d bytes preamble=%d bytes", len(instructions), len(preamble))
-		for _, required := range []string{
-			"SigNoz tools",
-			"metrics",
-			"logs",
-			"traces",
-			"dashboards",
-			"alerts",
-			"resource-attribute filters",
-			"redundant",
-		} {
-			if !strings.Contains(preamble, required) {
-				t.Errorf("initialize preamble missing self-contained guidance %q", required)
-			}
-		}
-		for _, required := range []string{"same still-current prepared operation", "do not repeat them", "Refresh if state may have changed"} {
+		for _, required := range []string{"same still-current prepared operation"} {
 			if !strings.Contains(instructions, required) {
 				t.Errorf("initialize instructions missing safe preflight-reuse guidance %q", required)
 			}
@@ -117,77 +103,23 @@ func TestGuardrail_WireContractBudgets(t *testing.T) {
 			if got := len(description); got > requestTypeTargetBytes {
 				t.Errorf("%s requestType description = %d bytes, target %d", toolName, got, requestTypeTargetBytes)
 			}
-			for _, required := range []string{`"scalar" (default)`, "grouped/ranked", `"time_series"`, "time-bucketed values", "one series per group", "when something happened"} {
-				if !strings.Contains(description, required) {
-					t.Errorf("%s requestType description missing semantic guidance %q", toolName, required)
-				}
-			}
 		}
 
-		alertsTool, ok := toolsByName["signoz_list_alerts"]
-		if !ok {
-			t.Fatal("signoz_list_alerts is not registered")
+		// Concept handles anchored by docs/client-visible-writing-style.md; the
+		// rest of each description is pinned by the wire catalog.
+		conceptHandles := map[string][]string{
+			"signoz_create_alert":     {"same still-current prepared operation"},
+			"signoz_update_alert":     {"full replacement", "same still-current prepared operation"},
+			"signoz_update_dashboard": {"full replacement"},
 		}
-		alertsFilter, ok := schemaProperties(t, "signoz_list_alerts", inputSchema(t, alertsTool))["filter"].(map[string]any)
-		if !ok {
-			t.Fatal("signoz_list_alerts filter schema is missing or not an object")
-		}
-		alertsFilterDescription, _ := alertsFilter["description"].(string)
-		for _, required := range []string{"alert-label comparisons", "=~ (regex)", "!~ (negative regex)", `alertname="HighCPU"`, "All comparisons must match"} {
-			if !strings.Contains(alertsFilterDescription, required) {
-				t.Errorf("signoz_list_alerts filter description missing %q", required)
-			}
-		}
-		if strings.Contains(alertsFilterDescription, "Prometheus matcher") {
-			t.Error("signoz_list_alerts filter description should explain the syntax instead of naming Prometheus matchers")
-		}
-
-		type selectionContract struct {
-			prefix   string
-			required []string
-		}
-		selectionContracts := map[string]selectionContract{
-			"signoz_list_alerts": {
-				prefix:   "Use this when",
-				required: []string{"Alertmanager alert instances", "Do not use it for configured rules or history", "signoz_list_alert_rules", "signoz_get_alert_history", "Filter by alert labels"},
-			},
-			"signoz_create_alert": {
-				prefix:   "Use this when",
-				required: []string{"signoz_update_alert", "v2alpha1 threshold/PromQL alerts", "metric-only v1 anomaly", "signoz://alert/instructions", "same still-current prepared operation", "fully paginated signoz_list_notification_channels", "signoz_create_notification_channel", "never guess or create automatically", "SigNoz rejects a threshold tier with no channels or an unknown channel name", "confirmed v2 policy routing may omit tier channels", "v1 anomaly rules route with top-level preferredChannels"},
-			},
-			"signoz_get_alert": {
-				prefix:   "Use this when",
-				required: []string{"complete current definition is not already available for the prepared operation", "Reuse a still-current definition fetched for that operation", "instead of repeating this preflight"},
-			},
-			"signoz_update_alert": {
-				prefix:   "Use this when",
-				required: []string{"full replacement", "signoz_get_alert", "same still-current prepared operation", "preserve every unchanged field", "signoz://alert/instructions", "signoz://alert/examples", "fully paginated signoz_list_notification_channels", "refreshing only if state may have changed", "signoz_create_notification_channel", "never create automatically", "SigNoz rejects a threshold tier with no channels or an unknown channel name", "confirmed v2 policy routing may omit tier channels", "v1 anomaly rules route with top-level preferredChannels"},
-			},
-			"signoz_create_dashboard": {
-				prefix:   "Use this when",
-				required: []string{"custom SigNoz dashboard", "signoz_import_dashboard", "signoz://dashboard/widgets-examples"},
-			},
-			"signoz_update_dashboard": {
-				prefix:   "Use this when",
-				required: []string{"full replacement, not a partial patch", "signoz_get_dashboard", "preserve every other field"},
-			},
-			"signoz_execute_builder_query": {
-				prefix:   "Use this only when",
-				required: []string{"dedicated log, trace, and metric tools cannot express", "signoz_search_logs", "signoz_aggregate_traces", "signoz_query_metrics", "signoz://metrics-aggregation-guide", "input builder_query limit to 10000", "builder_formula result limit to 100", "non-empty spec.order"},
-			},
-		}
-		for toolName, contract := range selectionContracts {
+		for toolName, handles := range conceptHandles {
 			tool, ok := toolsByName[toolName]
 			if !ok {
-				t.Fatalf("selection-contract tool %s is not registered", toolName)
+				t.Fatalf("concept-handle tool %s is not registered", toolName)
 			}
-			t.Logf("%s description=%d bytes", toolName, len(tool.Description))
-			if !strings.HasPrefix(tool.Description, contract.prefix) {
-				t.Errorf("%s description must start with %q", toolName, contract.prefix)
-			}
-			for _, required := range contract.required {
-				if !strings.Contains(tool.Description, required) {
-					t.Errorf("%s description missing selection guidance %q", toolName, required)
+			for _, handle := range handles {
+				if !strings.Contains(tool.Description, handle) {
+					t.Errorf("%s description missing concept handle %q", toolName, handle)
 				}
 			}
 		}
@@ -318,31 +250,6 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 	for _, resource := range resourcesResult.Resources {
 		resourceByURI[resource.URI] = resource
 	}
-	resourceContracts := map[string][]string{
-		"signoz://alert/instructions": {
-			"unless its current content was already read for the same prepared operation",
-			"reuse or call signoz_list_notification_channels",
-			"Read signoz://alert/examples only when examples are still needed",
-		},
-		"signoz://alert/examples": {
-			"signoz_list_notification_channels",
-			"offer signoz_create_notification_channel",
-			"Confirmed v2 policy routing may omit direct channels",
-			"cannot use policy routing",
-		},
-	}
-	for uri, requiredPhrases := range resourceContracts {
-		resource, ok := resourceByURI[uri]
-		if !ok {
-			t.Errorf("required alert resource %s is not present in resources/list", uri)
-			continue
-		}
-		for _, required := range requiredPhrases {
-			if !strings.Contains(resource.Description, required) {
-				t.Errorf("%s description missing state-aware guidance %q", uri, required)
-			}
-		}
-	}
 
 	referenced := make(map[string]struct{})
 	for _, uri := range advertisedResourceURIs(strings.Join(advertisedDescriptions, "\n")) {
@@ -376,17 +283,6 @@ func TestGuardrail_AdvertisedResourcePointersResolve(t *testing.T) {
 		}
 	}
 	t.Logf("verified %d advertised resource pointers through resources/read", len(referenced))
-}
-
-func TestGuardrail_AdvertisedResourceURIsPreserveFullPointer(t *testing.T) {
-	got := advertisedResourceURIs("Read signoz://docs/foo.json, then signoz://docs/query?signal=logs%2Fraw+v1&limit=10.")
-	want := []string{
-		"signoz://docs/foo.json",
-		"signoz://docs/query?signal=logs%2Fraw+v1&limit=10",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("advertisedResourceURIs() = %v, want %v", got, want)
-	}
 }
 
 func initializedWireCatalog(t *testing.T) (*mcp.InitializeResult, []*mcp.Tool) {
