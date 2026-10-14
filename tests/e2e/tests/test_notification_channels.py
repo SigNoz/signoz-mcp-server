@@ -242,30 +242,51 @@ def test_slack_message_settings_round_trip_through_get_and_full_update(mcp_clien
             assert channel_gone(mcp_client, channel_id), f"slack channel {channel_id} remained after cleanup"
 
 
-def test_update_rejects_blanked_template_field(mcp_client: MCPClient, test_id: str) -> None:
-    """The taught trap: unset an optional field by omitting it, never with "".
+def test_update_unsets_template_field_by_omission_never_by_blanking(mcp_client: MCPClient, test_id: str) -> None:
+    """Both halves of the taught rule: omitting an optional field unsets it; "" is rejected.
 
-    A fetched config is writable as-is (the round-trip test above proves it),
-    but SigNoz rejects an explicit empty string for template-backed fields; the
-    update description teaches omitting the field instead. If SigNoz starts
-    accepting "" as unset, this pin fails and that teaching can go.
+    A fetched config is writable as-is (the round-trip test above proves it).
+    To unset a template-backed optional, the update description teaches
+    omitting the field: SigNoz then restores its default, while an explicit
+    empty string is rejected. If SigNoz starts accepting "" as unset, the
+    second half fails and that teaching can go.
     """
     name = f"mcp-e2e-blanked-{test_id}".lower().replace("_", "-")
+    base_spec = {"webhookUrl": "https://example.invalid/e2e-blanked", "sendResolved": False}
     channel_id = create_channel(
         mcp_client,
         name,
-        {"kind": "msteams", "spec": {"webhookUrl": "https://example.invalid/e2e-blanked", "sendResolved": False}},
+        {"kind": "msteams", "spec": dict(base_spec, text="authored text")},
     )
     try:
+        # Omission unsets: the authored text reverts to SigNoz's default.
+        assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_update_notification_channel",
+                {
+                    "searchContext": "unset the msteams text by omitting it",
+                    "id": channel_id,
+                    "config": {"kind": "msteams", "spec": dict(base_spec)},
+                    "test": False,
+                },
+            )
+        )
+        fetched = assert_tool_ok(
+            mcp_client.call_tool(
+                "signoz_get_notification_channel",
+                {"searchContext": "verify the omitted text was unset", "id": channel_id},
+            )
+        )
+        text_after = _channel_data(fetched)["config"]["spec"].get("text")
+        assert text_after != "authored text", "omitting a field no longer unsets it; update the teaching"
+
+        # Blanking is rejected.
         result = mcp_client.call_tool(
             "signoz_update_notification_channel",
             {
                 "searchContext": "unset the msteams text by blanking it",
                 "id": channel_id,
-                "config": {
-                    "kind": "msteams",
-                    "spec": {"webhookUrl": "https://example.invalid/e2e-blanked", "sendResolved": False, "text": ""},
-                },
+                "config": {"kind": "msteams", "spec": dict(base_spec, text="")},
                 "test": False,
             },
         )

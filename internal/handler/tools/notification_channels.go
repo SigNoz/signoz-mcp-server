@@ -24,11 +24,13 @@ func (h *Handler) RegisterNotificationChannelHandlers(server *mcp.Server) {
 		withCreateToolAnnotations(),
 		mcp.WithDescription("Use this when the user wants a new notification channel; use signoz_update_notification_channel to replace an existing one. The payload is config: {kind, spec} plus name, or generateName=true with displayName. Known kinds, validated by SigNoz: slack, email, webhook, pagerduty, opsgenie, msteams, googlechat, jira, jsmops, incidentio. SigNoz rejects an unknown kind, an unknown or missing spec field, and a duplicate name, each with the exact requirement. Minimal example: {\"name\":\"ops-hook\",\"config\":{\"kind\":\"webhook\",\"spec\":{\"url\":\"https://example.com/hook\"}}}. name is an immutable DNS-1123 label; alert routing references displayName (SigNoz defaults it from name). test defaults to false: ask whether the user wants one live test notification and set test=true only if they agree; the channel remains created if the test fails."),
 		mcp.WithInputSchema[types.CreateNotificationChannelInput](),
+		boolOrStringProperties("test"),
 	), h.handleCreateNotificationChannel)
 	h.addTool(server, mcp.NewTool("signoz_update_notification_channel",
 		withNonIdempotentUpdateToolAnnotations(),
 		mcp.WithDescription("Use this when the user wants to replace one notification channel's complete config: {kind, spec}; it is a full replacement and may change the provider kind. First call signoz_get_notification_channel and preserve every setting the user did not ask to change; send only id and config, because name and displayName are immutable. A fetched config is writable as-is; to unset an optional field, omit it, because SigNoz rejects an empty string for template-backed fields such as titles and messages. SigNoz also rejects an unknown kind and an unknown or missing spec field with the exact requirement. Set test=true only when the user wants one live test notification after the update; the default is false and the update remains committed if the test fails."),
 		mcp.WithInputSchema[types.UpdateNotificationChannelInput](),
+		boolOrStringProperties("test"),
 	), h.handleUpdateNotificationChannel)
 	h.addTool(server, mcp.NewTool("signoz_get_notification_channel",
 		withReadOnlyToolAnnotations(),

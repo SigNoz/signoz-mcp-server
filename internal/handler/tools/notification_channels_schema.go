@@ -147,6 +147,35 @@ func notificationSchemaOption(schema map[string]any) mcp.ToolOption {
 	return func(tool *mcp.Tool) { tool.InputSchema = schema }
 }
 
+// boolOrStringProperties re-types the named top-level properties of an
+// already-set input schema as boolean-or-string, matching the string coercion
+// normalizeNotificationScalars applies before decoding. Apply it after
+// mcp.WithInputSchema in the option list.
+func boolOrStringProperties(names ...string) mcp.ToolOption {
+	return func(tool *mcp.Tool) {
+		b, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			panic(fmt.Errorf("marshal input schema for tool %q: %w", tool.Name, err))
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(b, &schema); err != nil || schema == nil {
+			panic(fmt.Errorf("decode input schema for tool %q as object: %w", tool.Name, err))
+		}
+		properties, ok := schema["properties"].(map[string]any)
+		if !ok {
+			panic(fmt.Errorf("input schema for tool %q has no properties object", tool.Name))
+		}
+		for _, name := range names {
+			property, ok := properties[name].(map[string]any)
+			if !ok {
+				panic(fmt.Errorf("input schema for tool %q has no property %q", tool.Name, name))
+			}
+			property["type"] = []any{"boolean", "string"}
+		}
+		tool.InputSchema = schema
+	}
+}
+
 func notificationRoot(properties map[string]any, required ...string) map[string]any {
 	properties["searchContext"] = map[string]any{
 		"type": "string", "description": notificationSearchContextDescription,

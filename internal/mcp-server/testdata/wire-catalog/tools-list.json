@@ -3501,7 +3501,11 @@
                 "type": "string"
               },
               "test": {
-                "description": "Send one live test notification after creation; accepts true/false or their string forms (default false). The channel remains created if the test fails."
+                "description": "Send one live test notification after creation; accepts true/false or their string forms (default false). The channel remains created if the test fails.",
+                "type": [
+                  "boolean",
+                  "string"
+                ]
               }
             },
             "required": [
@@ -9227,7 +9231,11 @@
                 "type": "string"
               },
               "test": {
-                "description": "Send one live test notification after the update; accepts true/false or their string forms (default false). The update remains committed if the test fails."
+                "description": "Send one live test notification after the update; accepts true/false or their string forms (default false). The update remains committed if the test fails.",
+                "type": [
+                  "boolean",
+                  "string"
+                ]
               }
             },
             "required": [
