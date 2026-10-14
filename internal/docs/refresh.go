@@ -85,9 +85,7 @@ func NewRefresher(logger *slog.Logger, registry *IndexRegistry, fetcher *Fetcher
 	if cfg.RefreshInterval <= 0 {
 		cfg.RefreshInterval = defaultRuntimeRefreshInterval
 	}
-	// The ordering rule only matters when both schedules run; a disabled
-	// incremental schedule keeps its default interval purely as a placeholder.
-	if cfg.FullRefreshInterval <= 0 || (!cfg.DisableScheduled && cfg.FullRefreshInterval < cfg.RefreshInterval) {
+	if cfg.FullRefreshInterval <= 0 {
 		cfg.FullRefreshInterval = defaultFullRefreshInterval
 	}
 	if cfg.RefreshDeadline <= 0 {

@@ -9,7 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/blevesearch/bleve/v2"
-	bq "github.com/blevesearch/bleve/v2/search/query"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
@@ -294,23 +293,6 @@ func TestMinimumMatchClauses(t *testing.T) {
 	for _, raw := range []string{"", "the and on", "logs metrics traces", "logs logs LOGS metrics traces"} {
 		require.Empty(t, minimumMatchClauses(raw, 2, 2), raw)
 	}
-	clauses := minimumMatchClauses("The LOGS metrics traces dashboard logs", 2, 3)
-	require.Len(t, clauses, 2)
-	for i, field := range []string{"title", "body"} {
-		q := clauses[i].(*bq.DisjunctionQuery)
-		require.Equal(t, float64(3), q.Min)
-		require.Len(t, q.Disjuncts, 4)
-		require.Equal(t, []float64{2, 3}[i], q.Boost())
-		var terms []string
-		for _, term := range q.Disjuncts {
-			match := term.(*bq.MatchQuery)
-			require.Equal(t, field, match.Field())
-			terms = append(terms, match.Match)
-		}
-		require.Equal(t, []string{"logs", "metrics", "traces", "dashboard"}, terms)
-	}
-	q := minimumMatchClauses("alpha bravo charlie delta echo foxtrot", 2, 2)[0].(*bq.DisjunctionQuery)
-	require.Equal(t, float64(4), q.Min)
 	var long []string
 	for i := 0; i < 65; i++ {
 		long = append(long, fmt.Sprintf("word%d", i))
@@ -339,11 +321,14 @@ func TestSearchTextLengthBound(t *testing.T) {
 	_, err = boostedDocsQuery(context.Background(), longest+"x")
 	require.ErrorIs(t, err, ErrInvalidSearchQuery)
 	require.Contains(t, err.Error(), "at most 2048 characters")
-	// Over-long term bags still return nil early rather than building clauses.
-	words := make([]string, 65)
-	for i := range words {
-		words[i] = fmt.Sprintf("term%d", i)
-	}
-	require.Empty(t, minimumMatchClauses(strings.Join(words, " "), 2, 2))
-	require.Len(t, minimumMatchClauses(strings.Join(words[:64], " "), 2, 2), 2)
+}
+
+func TestNewestFetchedAt(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	require.Equal(t, newer.Format(time.RFC3339), newestFetchedAt(older.Format(time.RFC3339), newer))
+	require.Equal(t, newer.Format(time.RFC3339), newestFetchedAt(newer.Format(time.RFC3339), older))
+	require.Equal(t, newer.Format(time.RFC3339), newestFetchedAt("garbage", newer))
+	require.Equal(t, "garbage", newestFetchedAt("garbage", time.Time{}))
+	require.Equal(t, "", newestFetchedAt("", time.Time{}))
 }

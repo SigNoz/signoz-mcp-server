@@ -91,37 +91,12 @@ func TestParseFilterExpressionParam_CanonicalFilterContract(t *testing.T) {
 		}
 	})
 
-	t.Run("logs reject every supplied query form", func(t *testing.T) {
-		logParsers := []parserCase{parsers[0], parsers[2]}
-		forms := map[string]any{
-			"string":     "service.name = 'checkout'",
-			"null":       nil,
-			"empty":      "",
-			"whitespace": "   ",
-			"object":     map[string]any{"expression": "service.name = 'checkout'"},
-			"array":      []any{"service.name = 'checkout'"},
-		}
-		for _, parser := range logParsers {
-			for name, value := range forms {
-				t.Run(parser.name+"/"+name, func(t *testing.T) {
-					args := mergeArgs(parser.base, map[string]any{"query": value})
-					_, err := parser.parse(args)
-					if err == nil || err.Error() != logsLegacyQueryAliasError {
-						t.Fatalf("error = %v, want %q", err, logsLegacyQueryAliasError)
-					}
-				})
-			}
-		}
-	})
-
-	t.Run("logs reject a matching string query even with filter", func(t *testing.T) {
+	// Every supplied query form is rejected at the parser layer
+	// (TestReadLogFilterExpr); each logs tool only has to route through it.
+	t.Run("logs reject the retired query alias", func(t *testing.T) {
 		for _, parser := range []parserCase{parsers[0], parsers[2]} {
 			t.Run(parser.name, func(t *testing.T) {
-				args := mergeArgs(parser.base, map[string]any{
-					"filter": "service.name = 'checkout'",
-					"query":  "service.name = 'checkout'",
-				})
-				_, err := parser.parse(args)
+				_, err := parser.parse(mergeArgs(parser.base, map[string]any{"query": "service.name = 'checkout'"}))
 				if err == nil || err.Error() != logsLegacyQueryAliasError {
 					t.Fatalf("error = %v, want %q", err, logsLegacyQueryAliasError)
 				}
@@ -225,10 +200,21 @@ func TestExtractBackendWarningMessages(t *testing.T) {
 	}
 }
 
-func TestBackendWarnings_ComposeWithClampNote(t *testing.T) {
+// The raw JSON payload is always the first, independently parseable content
+// block; the clamp note appears only when clamped and is never prepended into
+// the JSON.
+func TestRawSearchResult_KeepsRawJSONFirstAndAppendsNoteBlocks(t *testing.T) {
 	payload := []byte(`{"status":"success","data":{"warning":{"warnings":[{"message":"ambiguous key"}]},"data":{"results":[]}}}`)
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	unclamped := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, false)
+	if len(unclamped.Content) != 3 {
+		t.Fatalf("unclamped content block count = %d, want raw JSON + completeness note + warning note", len(unclamped.Content))
+	}
+	if note := noteText(t, unclamped, 1); strings.Contains(note, "result limited to") {
+		t.Fatalf("unclamped block 1 = %q, want no clamp note", note)
+	}
 
 	result := rawSearchResult(testCtx(), logger, "signoz_search_logs", payload, 100, 0, true)
 	if len(result.Content) != 4 {

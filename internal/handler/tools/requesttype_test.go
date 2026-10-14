@@ -13,7 +13,7 @@ import (
 // e2e suite (tests/e2e/tests/test_param_validation.py) asserts the code on
 // aggregate_logs/query_metrics results through the MCP transport.
 
-// TestParseAggregateArgs_RejectsUnknownRequestType pins K4: the aggregate tools
+// TestParseAggregateArgs_RejectsUnknownRequestType pins that the aggregate tools
 // reject an unknown requestType at the arg layer instead of passing it through.
 func TestParseAggregateArgs_RejectsUnknownRequestType(t *testing.T) {
 	_, err := parseAggregateArgs(map[string]any{
@@ -39,20 +39,19 @@ func TestParseAggregateArgs_DefaultsToScalar(t *testing.T) {
 	}
 }
 
-// TestParseAggregateArgs_AcceptsValidRequestTypes pins both valid values pass.
-func TestParseAggregateArgs_AcceptsValidRequestTypes(t *testing.T) {
-	for _, v := range []string{"scalar", "time_series"} {
-		req, err := parseAggregateArgs(map[string]any{"aggregation": "count", "requestType": v}, "traces", "")
-		if err != nil {
-			t.Fatalf("requestType %q: unexpected error: %v", v, err)
-		}
-		if req.RequestType != v {
-			t.Fatalf("requestType = %q, want %q", req.RequestType, v)
-		}
+// TestParseAggregateArgs_ExplicitRequestTypeReachesRequest pins that a valid
+// non-default requestType is carried into the request rather than defaulted.
+func TestParseAggregateArgs_ExplicitRequestTypeReachesRequest(t *testing.T) {
+	req, err := parseAggregateArgs(map[string]any{"aggregation": "count", "requestType": "time_series"}, "traces", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.RequestType != "time_series" {
+		t.Fatalf("requestType = %q, want time_series", req.RequestType)
 	}
 }
 
-// TestParseMetricsQueryArgs_RejectsUnknownRequestType pins K4 for query_metrics.
+// TestParseMetricsQueryArgs_RejectsUnknownRequestType pins the same rejection for query_metrics.
 func TestParseMetricsQueryArgs_RejectsUnknownRequestType(t *testing.T) {
 	_, err := parseMetricsQueryArgs(map[string]any{
 		"metricName":  "system.cpu.time",

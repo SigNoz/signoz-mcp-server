@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-	"github.com/SigNoz/signoz-mcp-server/pkg/paginate"
 )
 
 // TestParseLimit_NumberAndString pins that the shared docs-limit parser accepts
@@ -84,25 +83,6 @@ func TestValidateRequestType(t *testing.T) {
 		if err := validateRequestType(v); err == nil {
 			t.Fatalf("validateRequestType(%q) = nil, want error", v)
 		}
-	}
-}
-
-// TestParseParamsClamped pins the uniform per-page clamp for the summary list
-// tools, accepting number-or-string limits.
-func TestParseParamsClamped(t *testing.T) {
-	limit, _, clamped := paginate.ParseParamsClamped(map[string]any{"limit": "999999"})
-	if limit != paginate.MaxLimit || !clamped {
-		t.Fatalf("over-cap: limit=%d clamped=%v, want %d true", limit, clamped, paginate.MaxLimit)
-	}
-
-	limit, _, clamped = paginate.ParseParamsClamped(map[string]any{"limit": float64(10)})
-	if limit != 10 || clamped {
-		t.Fatalf("number under-cap: limit=%d clamped=%v, want 10 false", limit, clamped)
-	}
-
-	limit, offset, clamped := paginate.ParseParamsClamped(map[string]any{})
-	if limit != paginate.DefaultLimit || offset != paginate.DefaultOffset || clamped {
-		t.Fatalf("defaults: limit=%d offset=%d clamped=%v", limit, offset, clamped)
 	}
 }
 

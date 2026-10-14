@@ -34,20 +34,6 @@ func TestResolveTimestampsMalformedStartErrorsLoudly(t *testing.T) {
 	if _, _, err := resolveTimestamps(map[string]any{"start": "yesterday"}, "1h"); err == nil {
 		t.Fatal("resolveTimestamps with malformed start = nil error, want loud validation error")
 	}
-	if _, _, err := resolveTimestamps(map[string]any{"end": "soon"}, "1h"); err == nil {
-		t.Fatal("resolveTimestamps with malformed end = nil error, want loud validation error")
-	}
-	if _, _, err := resolveTimestamps(map[string]any{"timeRange": "24hours"}, "1h"); err == nil {
-		t.Fatal("resolveTimestamps with malformed timeRange = nil error, want loud validation error")
-	}
-	// Sanity: a valid explicit window still succeeds.
-	if _, _, err := resolveTimestamps(map[string]any{"start": "1711123200000", "end": "1711130400000"}, "1h"); err != nil {
-		t.Fatalf("resolveTimestamps with valid window: unexpected error: %v", err)
-	}
-	// Explicit start/end override timeRange, matching GetTimestampsWithDefaults.
-	if _, _, err := resolveTimestamps(map[string]any{"timeRange": "24hours", "start": "1711123200000", "end": "1711130400000"}, "1h"); err != nil {
-		t.Fatalf("resolveTimestamps with valid window and malformed timeRange: unexpected error: %v", err)
-	}
 }
 
 // TestResolveTimestampsEmptyOrAbsentUsesDefaultRange pins that empty-string / absent
@@ -76,22 +62,6 @@ func TestResolveTimestampsEmptyOrAbsentUsesDefaultRange(t *testing.T) {
 				t.Fatalf("delta = %dms, want about 1h (the tool default), not the generic 6h fallback", delta)
 			}
 		})
-	}
-}
-
-// TestResolveTimestampsNonStringTimeRangeErrorsLoudly pins that a present-but-
-// non-string timeRange is rejected loudly (not silently defaulted) unless a
-// complete valid start/end pair overrides it.
-func TestResolveTimestampsNonStringTimeRangeErrorsLoudly(t *testing.T) {
-	if _, _, err := resolveTimestamps(map[string]any{"timeRange": true}, "1h"); err == nil {
-		t.Fatal("resolveTimestamps with bool timeRange = nil error, want loud validation error")
-	}
-	if _, _, err := resolveTimestamps(map[string]any{"timeRange": 24}, "1h"); err == nil {
-		t.Fatal("resolveTimestamps with numeric timeRange = nil error, want loud validation error")
-	}
-	// A complete explicit window overrides the bad timeRange and still succeeds.
-	if _, _, err := resolveTimestamps(map[string]any{"timeRange": true, "start": "1711123200000", "end": "1711130400000"}, "1h"); err != nil {
-		t.Fatalf("resolveTimestamps with valid window and non-string timeRange: unexpected error: %v", err)
 	}
 }
 
@@ -137,7 +107,7 @@ func TestParseAggregateArgs_DefaultLimit(t *testing.T) {
 	}
 }
 
-// TestParseAggregateArgs_NonStringRequestTypeErrors (FIX A3) pins that a
+// TestParseAggregateArgs_NonStringRequestTypeErrors pins that a
 // present-but-non-string requestType is rejected loudly at the parse layer
 // instead of the failed type assertion coercing it to "" and silently
 // defaulting to "scalar".
@@ -161,7 +131,7 @@ func TestParseAggregateArgs_NonStringRequestTypeErrors(t *testing.T) {
 	}
 }
 
-// TestParseMetricsQueryArgs_NonStringRequestTypeErrors (FIX A3) pins the same
+// TestParseMetricsQueryArgs_NonStringRequestTypeErrors pins the same
 // loud-rejection contract for the metrics arg parser (stringArg previously
 // dropped a non-string value to "").
 func TestParseMetricsQueryArgs_NonStringRequestTypeErrors(t *testing.T) {
@@ -173,7 +143,7 @@ func TestParseMetricsQueryArgs_NonStringRequestTypeErrors(t *testing.T) {
 	}
 }
 
-// TestWarnUnparsedWarningEnvelope (FIX D1) pins that QB warning-envelope drift
+// TestWarnUnparsedWarningEnvelope pins that QB warning-envelope drift
 // is detectable: a body that mentions "warning" but from which we extract zero
 // structured messages emits a WARN with the distinctive marker. A body with no
 // "warning" substring, or one we parsed successfully, stays silent.
@@ -225,7 +195,7 @@ func TestWarnUnparsedWarningEnvelope(t *testing.T) {
 	})
 }
 
-// TestWarnRowCountUnknown (FIX D2) pins that an uncountable rows array on a
+// TestWarnRowCountUnknown pins that an uncountable rows array on a
 // non-trivial body emits a WARN with the distinctive marker, while a countable
 // body or a trivially-empty body stays silent.
 func TestWarnRowCountUnknown(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestParseMetricMetadataFromResponse_PartialFieldDrift (FIX D3) pins that when a
+// TestParseMetricMetadataFromResponse_PartialFieldDrift pins that when a
 // metric row matches by name and carries a type but is MISSING its companion
 // fields (temporality / isMonotonic), the decoded result is DETECTABLY
 // incomplete (drift flags set, empty temporality) instead of silently decoding

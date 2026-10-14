@@ -5,28 +5,6 @@ import (
 	"testing"
 )
 
-func TestInjectWebURL_PreservesLargeInt64(t *testing.T) {
-	// A duration_nano-style int64 that exceeds float64's exact-integer range
-	// (2^53). A naive Unmarshal->map[string]any->Marshal round-trip would coerce
-	// it through float64 and round it; the shallow RawMessage decode must pass
-	// it through as verbatim bytes.
-	const bigInt = "9007199254740993" // 2^53 + 1, not exactly representable as float64
-	in := []byte(`{"data":{"duration_nano":` + bigInt + `,"name":"GET /cart"}}`)
-
-	out := InjectWebURL(in, "https://signoz.example.com", "trace", "abc-123")
-	s := string(out)
-
-	if !strings.Contains(s, bigInt) {
-		t.Fatalf("large int64 lost precision: %s", s)
-	}
-	if strings.Contains(s, "9.007") || strings.Contains(s, "e+") || strings.Contains(s, "E+") {
-		t.Fatalf("int64 was coerced to float: %s", s)
-	}
-	if !strings.Contains(s, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
-		t.Fatalf("webUrl not injected on inner data object: %s", s)
-	}
-}
-
 func TestInjectWebURL_BareBody(t *testing.T) {
 	in := []byte(`{"uuid":"x","spans":[]}`)
 	out := InjectWebURL(in, "https://signoz.example.com", "dashboard", "x")
@@ -44,6 +22,10 @@ func TestInjectWebURL_PreservesInnerBytesVerbatim(t *testing.T) {
 
 	if !strings.Contains(s, `[{"zKey":1,"aKey":2.50}]`) {
 		t.Fatalf("inner bytes were re-encoded (key order or number formatting changed): %s", s)
+	}
+	// 2^53 + 1 rounds to ...992 if it is ever coerced through float64.
+	if !strings.Contains(s, `"duration_nano":9007199254740993`) {
+		t.Fatalf("large int64 lost precision: %s", s)
 	}
 	if !strings.Contains(s, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
 		t.Fatalf("webUrl not injected on inner data object: %s", s)
@@ -149,21 +131,6 @@ func TestInjectRowsWebURL_UsesTraceIDFallbackKeys(t *testing.T) {
 	}
 }
 
-func TestInjectRowsWebURL_PreservesLargeInt64(t *testing.T) {
-	// 2^53 + 1: a duration_nano-style int64 that loses precision if coerced
-	// through float64. The shallow RawMessage decode must pass it through verbatim.
-	const bigInt = "9007199254740993"
-	out, _ := InjectRowsWebURL(rawTracesBody(), "https://signoz.example.com", "trace", "trace_id")
-	s := string(out)
-
-	if !strings.Contains(s, bigInt) {
-		t.Fatalf("large int64 lost precision: %s", s)
-	}
-	if strings.Contains(s, "9.007") || strings.Contains(s, "e+") || strings.Contains(s, "E+") {
-		t.Fatalf("int64 was coerced to float: %s", s)
-	}
-}
-
 func TestInjectRowsWebURL_NoBaseReturnsOriginal(t *testing.T) {
 	in := rawTracesBody()
 	out, _ := InjectRowsWebURL(in, "", "trace", "trace_id")
@@ -208,6 +175,10 @@ func TestInjectRowsWebURL_PreservesSiblingBytesVerbatim(t *testing.T) {
 	}
 	if !strings.Contains(s, `"meta":{"rowsScanned":2.50}`) {
 		t.Fatalf("sibling meta not preserved verbatim (number reformatted?): %s", s)
+	}
+	// 2^53 + 1 inside the mutated row rounds to ...992 if coerced through float64.
+	if !strings.Contains(s, `"duration_nano":9007199254740993`) {
+		t.Fatalf("large int64 in the mutated row lost precision: %s", s)
 	}
 	if !strings.Contains(s, `"webUrl":"https://signoz.example.com/trace/abc-123"`) {
 		t.Fatalf("row webUrl missing: %s", s)

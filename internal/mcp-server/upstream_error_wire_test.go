@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,66 +19,37 @@ func TestProductionHTTPUpstreamErrorGuidanceWire(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The full guidance and field mapping are pinned on the same fixture in
+	// internal/client and internal/handler/tools; this test pins that each
+	// protocol era delivers them over the production HTTP transport.
 	const unrecognizedCanary = "wire-proxy-secret-canary"
-	recognizedText := []string{
-		"The query is invalid.",
-		"field `service.nam` was not found",
-		"Documentation: https://signoz.io/docs/userguide/search-troubleshooting/",
-		"Suggestions: Use an existing field key.",
-		"Suggestions for \"field `service.nam` was not found\": did you mean: `service.name`",
-		"Retry delay: 5s (5000000000 ns)",
-	}
-	recognizedStructured := map[string]any{
-		"code":                tools.CodeValidationFailed,
-		"status":              float64(http.StatusBadRequest),
-		"upstreamCode":        "invalid_input",
-		"upstreamType":        "invalid-input",
-		"upstreamMessage":     "The query is invalid.",
-		"upstreamURL":         "https://signoz.io/docs/userguide/search-troubleshooting/",
-		"upstreamSuggestions": []any{"Use an existing field key."},
-		"upstreamDetails": []any{map[string]any{
-			"message":     "field `service.nam` was not found",
-			"suggestions": []any{"did you mean: `service.name`"},
-		}},
-		"upstreamRetry": map[string]any{"delay": float64(5_000_000_000)},
-	}
-	unrecognizedStructured := map[string]any{
-		"code": tools.CodeValidationFailed, "status": float64(http.StatusBadRequest),
-	}
-
 	tests := []struct {
-		name           string
-		modern         bool
-		upstreamBody   string
-		wantStructured map[string]any
-		wantText       []string
-		wantExactText  string
+		name         string
+		modern       bool
+		upstreamBody string
+		wantText     string
 	}{
 		{
-			name:           "legacy recognized renderer",
-			upstreamBody:   string(recognizedBody),
-			wantStructured: recognizedStructured,
-			wantText:       recognizedText,
+			name:         "legacy recognized renderer",
+			upstreamBody: string(recognizedBody),
+			wantText:     "did you mean: `service.name`",
 		},
 		{
-			name:           "modern recognized renderer",
-			modern:         true,
-			upstreamBody:   string(recognizedBody),
-			wantStructured: recognizedStructured,
-			wantText:       recognizedText,
+			name:         "modern recognized renderer",
+			modern:       true,
+			upstreamBody: string(recognizedBody),
+			wantText:     "did you mean: `service.name`",
 		},
 		{
-			name:           "legacy unrecognized proxy",
-			upstreamBody:   `{"status":"error","error":"` + unrecognizedCanary + `"}`,
-			wantStructured: unrecognizedStructured,
-			wantExactText:  "SigNoz API error: unexpected status 400",
+			name:         "legacy unrecognized proxy",
+			upstreamBody: `{"status":"error","error":"` + unrecognizedCanary + `"}`,
+			wantText:     "SigNoz API error: unexpected status 400",
 		},
 		{
-			name:           "modern unrecognized proxy",
-			modern:         true,
-			upstreamBody:   `{"status":"error","error":"` + unrecognizedCanary + `"}`,
-			wantStructured: unrecognizedStructured,
-			wantExactText:  "SigNoz API error: unexpected status 400",
+			name:         "modern unrecognized proxy",
+			modern:       true,
+			upstreamBody: `{"status":"error","error":"` + unrecognizedCanary + `"}`,
+			wantText:     "SigNoz API error: unexpected status 400",
 		},
 	}
 
@@ -119,26 +89,6 @@ func TestProductionHTTPUpstreamErrorGuidanceWire(t *testing.T) {
 					"name": "signoz_list_services", "arguments": map[string]any{},
 				})), modernHeaders("tools/call", "signoz_list_services"))
 			} else {
-				initialize := protocolPOST(t, httpHandler, protocolRequestJSON(t, 600+index, "initialize", map[string]any{
-					"protocolVersion": "2025-11-25",
-					"capabilities":    map[string]any{},
-					"clientInfo":      map[string]any{"name": "upstream-wire-test", "version": "1"},
-				}), nil)
-				if initialize.status != http.StatusOK || initialize.wire["result"] == nil {
-					t.Fatalf("initialize = status %d body %s, want JSON-RPC result", initialize.status, initialize.body)
-				}
-				if got := initialize.header.Get("Mcp-Session-Id"); got != "" {
-					t.Fatalf("initialize Mcp-Session-Id = %q, want absent", got)
-				}
-				initialized := protocolPOST(t, httpHandler, `{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`, http.Header{
-					"Mcp-Protocol-Version": {"2025-11-25"},
-				})
-				if initialized.status != http.StatusAccepted || len(initialized.body) != 0 {
-					t.Fatalf("initialized notification = status %d body %q, want 202 with empty body", initialized.status, initialized.body)
-				}
-				if got := initialized.header.Get("Mcp-Session-Id"); got != "" {
-					t.Fatalf("initialized notification Mcp-Session-Id = %q, want absent", got)
-				}
 				response = protocolPOST(t, httpHandler, protocolRequestJSON(t, 700+index, "tools/call", map[string]any{
 					"name": "signoz_list_services", "arguments": map[string]any{},
 				}), http.Header{"Mcp-Protocol-Version": {"2025-11-25"}})
@@ -154,26 +104,17 @@ func TestProductionHTTPUpstreamErrorGuidanceWire(t *testing.T) {
 			if !ok || result["isError"] != true {
 				t.Fatalf("result = %#v, want isError=true", response.wire["result"])
 			}
-			structured, ok := result["structuredContent"].(map[string]any)
-			if !ok || !reflect.DeepEqual(structured, tt.wantStructured) {
-				t.Fatalf("structuredContent = %#v, want %#v", result["structuredContent"], tt.wantStructured)
+			structured, _ := result["structuredContent"].(map[string]any)
+			if structured["code"] != tools.CodeValidationFailed {
+				t.Fatalf("structuredContent = %#v, want code %s", result["structuredContent"], tools.CodeValidationFailed)
 			}
 			content, ok := result["content"].([]any)
 			if !ok || len(content) != 1 {
 				t.Fatalf("content = %#v, want one text block", result["content"])
 			}
-			block, ok := content[0].(map[string]any)
-			text, textOK := block["text"].(string)
-			if !ok || !textOK || block["type"] != "text" {
-				t.Fatalf("content[0] = %#v, want text block", content[0])
-			}
-			if tt.wantExactText != "" && text != tt.wantExactText {
-				t.Fatalf("text = %q, want %q", text, tt.wantExactText)
-			}
-			for _, want := range tt.wantText {
-				if !strings.Contains(text, want) {
-					t.Fatalf("text omitted %q: %q", want, text)
-				}
+			block, _ := content[0].(map[string]any)
+			if text, _ := block["text"].(string); !strings.Contains(text, tt.wantText) {
+				t.Fatalf("text = %q, want it to carry %q", text, tt.wantText)
 			}
 			if strings.Contains(string(response.body), unrecognizedCanary) {
 				t.Fatalf("unrecognized upstream canary leaked through MCP: %s", response.body)
