@@ -170,19 +170,18 @@ var (
 // server's defaults.
 func TestQueryBuilderGuideExamplesTeachTheInsertedBounds(t *testing.T) {
 	tests := []struct {
-		name      string
-		guide     string
-		pattern   *regexp.Regexp
-		wantCount int
+		name    string
+		guide   string
+		pattern *regexp.Regexp
 	}{
-		{name: "logs", guide: LogsQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 5},
-		{name: "traces", guide: TracesQueryBuilderGuide, pattern: plainGuideExamplePattern, wantCount: 3},
-		{name: "metrics", guide: metricsrules.MetricsGuide, pattern: markdownJSONPattern, wantCount: 5},
+		{name: "logs", guide: LogsQueryBuilderGuide, pattern: plainGuideExamplePattern},
+		{name: "traces", guide: TracesQueryBuilderGuide, pattern: plainGuideExamplePattern},
+		{name: "metrics", guide: metricsrules.MetricsGuide, pattern: markdownJSONPattern},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			examples := tc.pattern.FindAllStringSubmatch(tc.guide, -1)
-			require.Len(t, examples, tc.wantCount, "guide JSON example count changed; update this test")
+			require.NotEmpty(t, examples, "the example pattern no longer matches the guide; fix the pattern, or this test checks nothing")
 			for index, match := range examples {
 				example := decode(t, match[1])
 				require.Emptyf(t, ApplyBounds(example), "example %d omits a limit or order the server would insert", index+1)

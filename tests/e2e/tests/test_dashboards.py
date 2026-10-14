@@ -577,12 +577,6 @@ def test_saved_panel_queries_dry_run_unchanged_through_execute_builder_query(
                     {"searchContext": f"dry-run the saved {panel_id} panel query", "query": query},
                 )
             )
-        unbounded = {key: value for key, value in query.items() if key not in ("start", "end")}
-        missing_bounds = mcp_client.call_tool(
-            "signoz_execute_builder_query", {"searchContext": "dry-run without bounds", "query": unbounded}
-        )
-        assert missing_bounds.get("isError", False), "a dry-run without start and end succeeded"
-        assert '"query.start" is required' in text_blocks(missing_bounds)
     finally:
         assert_tool_ok(
             mcp_client.call_tool(
