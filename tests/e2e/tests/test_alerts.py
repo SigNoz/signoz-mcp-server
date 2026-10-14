@@ -122,7 +122,12 @@ def test_create_alert_unknown_channel_rejected(mcp_client: MCPClient, test_id: s
             **threshold_rule(name, channels=["mcp-e2e-no-such-channel"]),
         },
     )
-    assert result.get("isError", False), f"SigNoz accepted an unknown channel: {first_text_block(result)[:300]}"
+    if not result.get("isError", False):
+        # Unexpected acceptance must not leak a rule into reused environments.
+        leaked = (first_block_json(result).get("data") or {}).get("id")
+        if isinstance(leaked, str) and leaked:
+            delete_rule(mcp_client, leaked)
+        raise AssertionError(f"SigNoz accepted an unknown channel: {first_text_block(result)[:300]}")
     body = first_text_block(result)
     assert body.startswith("SigNoz API error:"), f"channel rejection lost the uniform prefix: {body!r}"
     assert "mcp-e2e-no-such-channel" in body, f"rejection does not name the unknown channel: {body!r}"

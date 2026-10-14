@@ -983,9 +983,12 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
   "alert": "Daily log ingestion budget",
   "alertType": "METRIC_BASED_ALERT",
   "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "labels": {"severity": "critical"},
   "condition": {
     "compositeQuery": {
       "queryType": "builder",
+      "panelType": "graph",
       "queries": [
         {
           "type": "builder_query",
@@ -1012,7 +1015,8 @@ Fires when today's total log ingestion exceeds 10 GiB. The query targets Cost Me
   "evaluation": {
     "kind": "cumulative",
     "spec": {"schedule": {"type": "daily", "minute": 0, "hour": 0}, "frequency": "1m", "timezone": "UTC"}
-  }
+  },
+  "notificationSettings": {"renotify": {"enabled": false, "interval": "30m"}}
 }
 ` + "```" + `
 
