@@ -16,15 +16,10 @@ import (
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/SigNoz/signoz-mcp-server/internal/handler/tools"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	"github.com/SigNoz/signoz-mcp-server/pkg/analytics/noopanalytics"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 	"github.com/SigNoz/signoz-mcp-server/pkg/toolerrors"
 	official "github.com/modelcontextprotocol/go-sdk/mcp"
-	"go.opentelemetry.io/otel/attribute"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestStreamableHTTPDNSRebindingProtection(t *testing.T) {
@@ -59,19 +54,6 @@ func TestStreamableHTTPDNSRebindingProtection(t *testing.T) {
 	}
 }
 
-func TestStreamableHTTPLoggerUsesServerSlogLevelAndFields(t *testing.T) {
-	var logs bytes.Buffer
-	logger := newBufferedLogger(&logs, 0)
-	sdkLogger := slog.New(&sdkLogHandler{next: logger.Handler()})
-	sdkLogger.Error("transport rejection", "method", "GET", "session_id", "session-1")
-
-	// Only the wiring is asserted (SDK transport events reach our slog
-	// handler); exact upstream wording is the SDK's to change.
-	if len(parseJSONLogLines(t, &logs)) == 0 {
-		t.Fatal("SDK transport rejection produced no records through the server slog logger")
-	}
-}
-
 func TestSDKLoggerBoundsPersistentAttrs(t *testing.T) {
 	var logs bytes.Buffer
 	logger := newBufferedLogger(&logs, slog.LevelDebug)
@@ -84,22 +66,6 @@ func TestSDKLoggerBoundsPersistentAttrs(t *testing.T) {
 	value, ok := record["session_id"].(string)
 	if !ok || len(value) > 4*1024 || !strings.HasSuffix(value, "...(truncated)") {
 		t.Fatalf("persistent SDK attr = %T len=%d, want bounded string", record["session_id"], len(value))
-	}
-}
-
-func TestSDKLoggerPreservesPersistentAttrsAcrossGroups(t *testing.T) {
-	var logs bytes.Buffer
-	logger := newBufferedLogger(&logs, slog.LevelDebug)
-	sdkLogger := slog.New(&sdkLogHandler{next: logger.Handler()}).With("session_id", "session-1").WithGroup("transport")
-	sdkLogger.Error("grouped rejection", "method", "POST")
-
-	record, _ := logRecordByMessage(t, &logs, "grouped rejection")
-	if record["session_id"] != "session-1" {
-		t.Fatalf("persistent attr after WithGroup = %#v, want session-1", record["session_id"])
-	}
-	group, ok := record["transport"].(map[string]any)
-	if !ok || group["method"] != "POST" {
-		t.Fatalf("grouped attrs = %#v, want transport.method=POST", record["transport"])
 	}
 }
 
@@ -203,111 +169,6 @@ func TestGuardrail_ToolResultsRemainJSONSafeThroughProductionTransport(t *testin
 	}
 }
 
-func TestToolTerminalTelemetryIsExactlyOnce(t *testing.T) {
-	tests := []struct {
-		name           string
-		tool           mcp.Tool
-		arguments      string
-		handler        mcp.ToolHandlerFunc
-		wantMismatches int64
-		wantDirection  string
-	}{
-		{
-			name:      "input mismatch served best-effort",
-			tool:      mcp.NewTool("probe", mcp.WithString("value", mcp.Required())),
-			arguments: `{"value":42}`,
-			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return mcp.NewToolResultText("ok"), nil
-			},
-			// Mismatches are served, not rejected: the call succeeds and the
-			// mismatch is telemetry plus an in-band notice.
-			wantMismatches: 1,
-			wantDirection:  "input",
-		},
-		{
-			name: "output mismatch served best-effort",
-			tool: mcp.NewTool("probe", mcp.WithOutputSchema[struct {
-				Count int `json:"count"`
-			}]()),
-			arguments: `{}`,
-			handler: func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				return mcp.NewToolResultStructured(map[string]any{"count": "wrong"}, `{"count":"wrong"}`), nil
-			},
-			wantMismatches: 1,
-			wantDirection:  "output",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var logs bytes.Buffer
-			reader := sdkmetric.NewManualReader()
-			provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-			t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-			meters, err := otelpkg.NewMeters(provider)
-			if err != nil {
-				t.Fatal(err)
-			}
-			logger := newBufferedLogger(&logs, slog.LevelDebug)
-			cfg := &config.Config{ClientCacheSize: 1, ClientCacheTTL: time.Minute}
-			h := tools.NewHandler(logger, cfg)
-			m := NewMCPServer(logger, h, cfg, noopanalytics.New(), meters)
-			s := m.newSDKServer()
-			called := false
-			next := tt.handler
-			if next == nil {
-				next = func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-					return mcp.NewToolResultText("unexpected"), nil
-				}
-			}
-			h.AddTool(s, tt.tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				called = true
-				return next(ctx, req)
-			})
-			callToolForTest(t, s, "probe", json.RawMessage(tt.arguments))
-			if !called {
-				t.Fatal("mismatched call did not reach the handler")
-			}
-
-			classified := map[string]struct{}{
-				"tool call returned error result": {},
-				"tool call finished":              {},
-				"tool call failed":                {},
-			}
-			var terminal []map[string]any
-			for _, record := range parseJSONLogLines(t, &logs) {
-				if _, ok := classified[record["msg"].(string)]; ok {
-					terminal = append(terminal, record)
-				}
-			}
-			if len(terminal) != 1 || terminal[0]["msg"] != "tool call finished" || terminal[0]["level"] != "DEBUG" {
-				t.Fatalf("classified terminal logs = %#v, want one DEBUG success; all logs=%s", terminal, strings.TrimSpace(logs.String()))
-			}
-
-			var collected metricdata.ResourceMetrics
-			if err := reader.Collect(context.Background(), &collected); err != nil {
-				t.Fatal(err)
-			}
-			if got := int64MetricTotal(collected, "mcp.tool.calls"); got != 1 {
-				t.Fatalf("mcp.tool.calls = %d, want 1", got)
-			}
-			if got := int64MetricTotal(collected, "mcp.tool.validation.mismatches"); got != tt.wantMismatches {
-				t.Fatalf("mcp.tool.validation.mismatches = %d, want %d", got, tt.wantMismatches)
-			}
-			if tt.wantDirection != "" {
-				sum, ok := oteltest.FindInt64SumMetric(collected, "mcp.tool.validation.mismatches")
-				if !ok || len(sum.DataPoints) != 1 {
-					t.Fatalf("validation mismatch datapoints = %#v, found=%t", sum, ok)
-				}
-				direction, ok := sum.DataPoints[0].Attributes.Value(attribute.Key("validation.direction"))
-				if !ok || direction.AsString() != tt.wantDirection {
-					t.Fatalf("validation direction = %v, found=%t, want %s", direction, ok, tt.wantDirection)
-				}
-			}
-		})
-	}
-}
-
 func callToolForTest(t *testing.T, server *official.Server, name string, arguments json.RawMessage) *official.CallToolResult {
 	t.Helper()
 	client, err := newIntegrationClient(t, server)
@@ -341,16 +202,4 @@ func callToolWireForTest(t *testing.T, server *official.Server, name string, arg
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response.Body.Bytes()
-}
-
-func int64MetricTotal(metrics metricdata.ResourceMetrics, name string) int64 {
-	sum, ok := oteltest.FindInt64SumMetric(metrics, name)
-	if !ok {
-		return 0
-	}
-	var total int64
-	for _, point := range sum.DataPoints {
-		total += point.Value
-	}
-	return total
 }

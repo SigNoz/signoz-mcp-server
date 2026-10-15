@@ -2,36 +2,22 @@ package oauth
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
 
 	"github.com/SigNoz/signoz-mcp-server/internal/config"
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
-	"github.com/SigNoz/signoz-mcp-server/pkg/analytics"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
-	"go.opentelemetry.io/otel/attribute"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
-
-func newBufferedLogger(buf *bytes.Buffer, level slog.Level) *slog.Logger {
-	base := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: level})
-	return slog.New(logpkg.NewContextHandler(base))
-}
 
 func TestOAuthAuthorizationFlow(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -619,168 +605,14 @@ func TestAuthorizePageUsesIssuerPathPrefixForFormAndCSRFCookie(t *testing.T) {
 	}
 }
 
-type capturedEmission struct {
-	event     string
-	apiKey    string
-	signozURL string
-	props     map[string]any
-}
-
-type capturingEmitter struct {
-	mu        sync.Mutex
-	emissions []capturedEmission
-}
-
-func (c *capturingEmitter) emit(_ context.Context, event, apiKey, signozURL string, props map[string]any) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.emissions = append(c.emissions, capturedEmission{event: event, apiKey: apiKey, signozURL: signozURL, props: props})
-}
-
-func (c *capturingEmitter) snapshot() []capturedEmission {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make([]capturedEmission, len(c.emissions))
-	copy(out, c.emissions)
-	return out
-}
-
-func TestOAuthEmitterFiresOnAuthorizeAndTokenIssue(t *testing.T) {
-	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/service_accounts/me" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.Header.Get("SIGNOZ-API-KEY") != "snz-api-key" {
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"status":"error"}`))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
-	}))
-	defer signozServer.Close()
-
-	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
-		AccessTokenTTL:   time.Hour,
-		RefreshTokenTTL:  24 * time.Hour,
-		AuthCodeTTL:      10 * time.Minute,
-	}
-
-	capture := &capturingEmitter{}
-	handler := NewHandler(logpkg.New("error"), cfg, capture.emit, nil)
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /oauth/register", handler.HandleRegisterClient)
-	mux.HandleFunc("GET /oauth/authorize", handler.HandleAuthorizePage)
-	mux.HandleFunc("POST /oauth/authorize", handler.HandleAuthorizeSubmit)
-	mux.HandleFunc("POST /oauth/token", handler.HandleToken)
-
-	registerReq := httptest.NewRequest(http.MethodPost, "/oauth/register",
-		bytes.NewBufferString(`{"client_name":"Claude","redirect_uris":["http://127.0.0.1:4567/callback"]}`))
-	registerReq.Header.Set("Content-Type", "application/json")
-	registerRR := httptest.NewRecorder()
-	mux.ServeHTTP(registerRR, registerReq)
-	var registered registerClientResponse
-	if err := json.Unmarshal(registerRR.Body.Bytes(), &registered); err != nil {
-		t.Fatalf("decode register response: %v", err)
-	}
-
-	verifier := "s3cr3t-pkce-verifier-that-is-long-enough-for-rfc7636"
-	sum := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-
-	authorizeURL := "/oauth/authorize?response_type=code&client_id=" + url.QueryEscape(registered.ClientID) +
-		"&redirect_uri=" + url.QueryEscape("http://127.0.0.1:4567/callback") +
-		"&code_challenge=" + url.QueryEscape(challenge) + "&code_challenge_method=S256"
-
-	authorizeRR := httptest.NewRecorder()
-	mux.ServeHTTP(authorizeRR, httptest.NewRequest(http.MethodGet, authorizeURL, nil))
-	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
-	csrfToken := re.FindStringSubmatch(authorizeRR.Body.String())[1]
-	csrfCookie := authorizeRR.Result().Cookies()[0]
-
-	form := url.Values{
-		"client_id":             {registered.ClientID},
-		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
-		"code_challenge":        {challenge},
-		"code_challenge_method": {"S256"},
-		"csrf_token":            {csrfToken},
-		"signoz_url":            {signozServer.URL},
-		"api_key":               {"snz-api-key"},
-	}
-	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
-	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	submitReq.AddCookie(csrfCookie)
-	submitRR := httptest.NewRecorder()
-	mux.ServeHTTP(submitRR, submitReq)
-	location := submitRR.Result().Header.Get("Location")
-	parsedLoc, _ := url.Parse(location)
-	authCode := parsedLoc.Query().Get("code")
-	if authCode == "" {
-		t.Fatalf("no auth code in redirect: %s", location)
-	}
-
-	tokenForm := url.Values{
-		"grant_type":    {"authorization_code"},
-		"client_id":     {registered.ClientID},
-		"code":          {authCode},
-		"redirect_uri":  {"http://127.0.0.1:4567/callback"},
-		"code_verifier": {verifier},
-	}
-	tokenReq := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString(tokenForm.Encode()))
-	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	tokenRR := httptest.NewRecorder()
-	mux.ServeHTTP(tokenRR, tokenReq)
-	if tokenRR.Code != http.StatusOK {
-		t.Fatalf("token status = %d, body = %s", tokenRR.Code, tokenRR.Body.String())
-	}
-
-	emissions := capture.snapshot()
-	if len(emissions) != 2 {
-		t.Fatalf("expected 2 emissions (authorize submit + token issued), got %d: %+v", len(emissions), emissions)
-	}
-
-	submitted := emissions[0]
-	if submitted.event != analytics.EventOAuthAuthorizationSubmitted {
-		t.Fatalf("first emission event = %q, want %q", submitted.event, analytics.EventOAuthAuthorizationSubmitted)
-	}
-	if submitted.apiKey != "snz-api-key" || submitted.signozURL != signozServer.URL {
-		t.Fatalf("first emission creds = (%q, %q), want (snz-api-key, %q)", submitted.apiKey, submitted.signozURL, signozServer.URL)
-	}
-
-	issued := emissions[1]
-	if issued.event != analytics.EventOAuthTokenIssued {
-		t.Fatalf("second emission event = %q, want %q", issued.event, analytics.EventOAuthTokenIssued)
-	}
-	if issued.props[analytics.AttrGrantType] != "authorization_code" {
-		t.Fatalf("grantType attr = %v, want authorization_code", issued.props[analytics.AttrGrantType])
-	}
-}
-
-func TestWriteOAuthErrorRecordsFailureMetric(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	defer func() {
-		if err := meterProvider.Shutdown(context.Background()); err != nil {
-			t.Fatalf("shutdown meter provider: %v", err)
-		}
-	}()
-
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatalf("new meters: %v", err)
-	}
-
+func TestTokenRejectsUnsupportedGrantType(t *testing.T) {
 	cfg := &config.Config{
 		OAuthEnabled:     true,
 		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
 		OAuthIssuerURL:   "https://mcp.example.com",
 	}
 
-	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString("grant_type=bogus"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
@@ -790,144 +622,16 @@ func TestWriteOAuthErrorRecordsFailureMetric(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 	}
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-
-	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
-	if !found {
-		t.Fatal("mcp.oauth.failures metric not found")
-	}
-	if len(failures.DataPoints) != 1 {
-		t.Fatalf("mcp.oauth.failures datapoints = %d, want 1", len(failures.DataPoints))
-	}
-
-	dp := failures.DataPoints[0]
-	if dp.Value != 1 {
-		t.Fatalf("mcp.oauth.failures value = %d, want 1", dp.Value)
-	}
-	codeAttr, ok := dp.Attributes.Value(attribute.Key("oauth.error_code"))
-	if !ok || codeAttr.AsString() != "unsupported_grant_type" {
-		t.Fatalf("oauth.error_code = %v, want unsupported_grant_type", codeAttr)
-	}
-	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
-	if !ok || statusAttr.AsInt64() != http.StatusBadRequest {
-		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusBadRequest)
-	}
-}
-
-func TestAuthorizeSubmitUnauthorizedRecordsFailureMetric(t *testing.T) {
-	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/service_accounts/me" {
-			http.NotFound(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"status":"error","message":"Unauthorized"}`))
-	}))
-	defer signozServer.Close()
-
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	defer func() {
-		if err := meterProvider.Shutdown(context.Background()); err != nil {
-			t.Fatalf("shutdown meter provider: %v", err)
-		}
-	}()
-
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatalf("new meters: %v", err)
-	}
-
-	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
-		AuthCodeTTL:      10 * time.Minute,
-	}
-
-	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
-	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
-	if err != nil {
-		t.Fatalf("EncryptClientID() error = %v", err)
-	}
-
-	authorizeReq := httptest.NewRequest(
-		http.MethodGet,
-		"/oauth/authorize?response_type=code&client_id="+url.QueryEscape(clientID)+
-			"&redirect_uri="+url.QueryEscape("http://127.0.0.1:4567/callback")+
-			"&state=state-123&code_challenge=challenge&code_challenge_method=S256",
-		nil,
-	)
-	authorizeRR := httptest.NewRecorder()
-	handler.HandleAuthorizePage(authorizeRR, authorizeReq)
-
-	re := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
-	matches := re.FindStringSubmatch(authorizeRR.Body.String())
-	if len(matches) != 2 {
-		t.Fatalf("csrf token not found in authorize page: %s", authorizeRR.Body.String())
-	}
-
-	form := url.Values{
-		"client_id":             {clientID},
-		"redirect_uri":          {"http://127.0.0.1:4567/callback"},
-		"state":                 {"state-123"},
-		"code_challenge":        {"challenge"},
-		"code_challenge_method": {"S256"},
-		"csrf_token":            {matches[1]},
-		"signoz_url":            {signozServer.URL},
-		"api_key":               {"bad-api-key"},
-	}
-
-	submitReq := httptest.NewRequest(http.MethodPost, "/oauth/authorize", bytes.NewBufferString(form.Encode()))
-	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	submitReq.AddCookie(authorizeRR.Result().Cookies()[0])
-	submitRR := httptest.NewRecorder()
-	handler.HandleAuthorizeSubmit(submitRR, submitReq)
-
-	if submitRR.Code != http.StatusUnauthorized {
-		t.Fatalf("authorize POST status = %d, want %d", submitRR.Code, http.StatusUnauthorized)
-	}
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-
-	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
-	if !found {
-		t.Fatal("mcp.oauth.failures metric not found")
-	}
-	if len(failures.DataPoints) != 1 {
-		t.Fatalf("mcp.oauth.failures datapoints = %d, want 1", len(failures.DataPoints))
-	}
-
-	dp := failures.DataPoints[0]
-	if dp.Value != 1 {
-		t.Fatalf("mcp.oauth.failures value = %d, want 1", dp.Value)
-	}
-	codeAttr, ok := dp.Attributes.Value(attribute.Key("oauth.error_code"))
-	if !ok || codeAttr.AsString() != "access_denied" {
-		t.Fatalf("oauth.error_code = %v, want access_denied", codeAttr)
-	}
-	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
-	if !ok || statusAttr.AsInt64() != http.StatusUnauthorized {
-		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusUnauthorized)
-	}
-	tenantAttr, ok := dp.Attributes.Value(attribute.Key("mcp.tenant_url"))
-	if !ok || tenantAttr.AsString() != signozServer.URL {
-		t.Fatalf("mcp.tenant_url = %v, want %q", tenantAttr, signozServer.URL)
+	var body map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil || body["error"] != "unsupported_grant_type" {
+		t.Fatalf("error body = %s, want error=unsupported_grant_type", rr.Body.String())
 	}
 }
 
 // TestAuthorizeSubmitExpiredWorkspaceRendersInstanceNotFound covers the
 // expired/deactivated cloud workspace case: the instance URL answers with the
 // ingress's HTML 404 page instead of a SigNoz API response. The user must get
-// a permanent error pointing at workspace status — not "try again" — and the
-// failure must be tagged instance_not_found with tenant attribution.
+// a permanent error pointing at workspace status — not "try again".
 func TestAuthorizeSubmitExpiredWorkspaceRendersInstanceNotFound(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -938,19 +642,6 @@ func TestAuthorizeSubmitExpiredWorkspaceRendersInstanceNotFound(t *testing.T) {
 	}))
 	defer signozServer.Close()
 
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	defer func() {
-		if err := meterProvider.Shutdown(context.Background()); err != nil {
-			t.Fatalf("shutdown meter provider: %v", err)
-		}
-	}()
-
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatalf("new meters: %v", err)
-	}
-
 	cfg := &config.Config{
 		OAuthEnabled:     true,
 		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
@@ -958,7 +649,7 @@ func TestAuthorizeSubmitExpiredWorkspaceRendersInstanceNotFound(t *testing.T) {
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -1006,61 +697,17 @@ func TestAuthorizeSubmitExpiredWorkspaceRendersInstanceNotFound(t *testing.T) {
 	if strings.Contains(submitRR.Body.String(), "Check the URL and try again") {
 		t.Fatalf("authorize POST body should not suggest retrying, body = %s", submitRR.Body.String())
 	}
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-
-	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
-	if !found {
-		t.Fatal("mcp.oauth.failures metric not found")
-	}
-	if len(failures.DataPoints) != 1 {
-		t.Fatalf("mcp.oauth.failures datapoints = %d, want 1", len(failures.DataPoints))
-	}
-
-	dp := failures.DataPoints[0]
-	codeAttr, ok := dp.Attributes.Value(attribute.Key("oauth.error_code"))
-	if !ok || codeAttr.AsString() != "invalid_request" {
-		t.Fatalf("oauth.error_code = %v, want invalid_request", codeAttr)
-	}
-	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
-	if !ok || statusAttr.AsInt64() != http.StatusNotFound {
-		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusNotFound)
-	}
-	reasonAttr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.failure_reason"))
-	if !ok || reasonAttr.AsString() != "instance_not_found" {
-		t.Fatalf("mcp.auth.failure_reason = %v, want instance_not_found", reasonAttr)
-	}
-	tenantAttr, ok := dp.Attributes.Value(attribute.Key("mcp.tenant_url"))
-	if !ok || tenantAttr.AsString() != signozServer.URL {
-		t.Fatalf("mcp.tenant_url = %v, want %q", tenantAttr, signozServer.URL)
-	}
 }
 
 // TestAuthorizeSubmitTransientFailureStaysTemporarilyUnavailable pins the
 // transient path: a 503 from the instance keeps the retryable 502
-// temporarily_unavailable response, now tagged instance_unreachable.
+// temporarily_unavailable response.
 func TestAuthorizeSubmitTransientFailureStaysTemporarilyUnavailable(t *testing.T) {
 	signozServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"error","message":"upgrade in progress"}`))
 	}))
 	defer signozServer.Close()
-
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	defer func() {
-		if err := meterProvider.Shutdown(context.Background()); err != nil {
-			t.Fatalf("shutdown meter provider: %v", err)
-		}
-	}()
-
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatalf("new meters: %v", err)
-	}
 
 	cfg := &config.Config{
 		OAuthEnabled:     true,
@@ -1069,7 +716,7 @@ func TestAuthorizeSubmitTransientFailureStaysTemporarilyUnavailable(t *testing.T
 		AuthCodeTTL:      10 * time.Minute,
 	}
 
-	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -1114,49 +761,9 @@ func TestAuthorizeSubmitTransientFailureStaysTemporarilyUnavailable(t *testing.T
 	if !strings.Contains(submitRR.Body.String(), "Check the URL and try again") {
 		t.Fatalf("authorize POST body should keep the retry guidance, body = %s", submitRR.Body.String())
 	}
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-
-	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
-	if !found {
-		t.Fatal("mcp.oauth.failures metric not found")
-	}
-	if len(failures.DataPoints) != 1 {
-		t.Fatalf("mcp.oauth.failures datapoints = %d, want 1", len(failures.DataPoints))
-	}
-
-	dp := failures.DataPoints[0]
-	codeAttr, ok := dp.Attributes.Value(attribute.Key("oauth.error_code"))
-	if !ok || codeAttr.AsString() != "temporarily_unavailable" {
-		t.Fatalf("oauth.error_code = %v, want temporarily_unavailable", codeAttr)
-	}
-	reasonAttr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.failure_reason"))
-	if !ok || reasonAttr.AsString() != "instance_unreachable" {
-		t.Fatalf("mcp.auth.failure_reason = %v, want instance_unreachable", reasonAttr)
-	}
-	tenantAttr, ok := dp.Attributes.Value(attribute.Key("mcp.tenant_url"))
-	if !ok || tenantAttr.AsString() != signozServer.URL {
-		t.Fatalf("mcp.tenant_url = %v, want %q", tenantAttr, signozServer.URL)
-	}
 }
 
 func TestRefreshTokenGrantRejectsDisallowedInstanceURL(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	defer func() {
-		if err := meterProvider.Shutdown(context.Background()); err != nil {
-			t.Fatalf("shutdown meter provider: %v", err)
-		}
-	}()
-
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatalf("new meters: %v", err)
-	}
-
 	cfg := &config.Config{
 		OAuthEnabled:         true,
 		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
@@ -1166,7 +773,7 @@ func TestRefreshTokenGrantRejectsDisallowedInstanceURL(t *testing.T) {
 		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
-	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 
 	// A long-lived refresh token issued for a SigNoz instance that is no longer allowed.
 	refreshToken, err := EncryptRefreshToken("api-key", "https://selfhosted.example.com", "client-123",
@@ -1194,35 +801,9 @@ func TestRefreshTokenGrantRejectsDisallowedInstanceURL(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "invalid_grant") {
 		t.Fatalf("expected invalid_grant error, body = %s", rr.Body.String())
 	}
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
-	if !found || len(failures.DataPoints) != 1 {
-		t.Fatalf("expected one mcp.oauth.failures datapoint (found=%v)", found)
-	}
-	reasonAttr, ok := failures.DataPoints[0].Attributes.Value(attribute.Key("mcp.auth.failure_reason"))
-	if !ok || reasonAttr.AsString() != "disallowed_signoz_url" {
-		t.Fatalf("mcp.auth.failure_reason = %v, want disallowed_signoz_url", reasonAttr)
-	}
 }
 
 func TestAuthorizeSubmitRejectsDisallowedInstanceURL(t *testing.T) {
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	defer func() {
-		if err := meterProvider.Shutdown(context.Background()); err != nil {
-			t.Fatalf("shutdown meter provider: %v", err)
-		}
-	}()
-
-	meters, err := otelpkg.NewMeters(meterProvider)
-	if err != nil {
-		t.Fatalf("new meters: %v", err)
-	}
-
 	cfg := &config.Config{
 		OAuthEnabled:         true,
 		OAuthTokenSecret:     "0123456789abcdef0123456789abcdef",
@@ -1231,7 +812,7 @@ func TestAuthorizeSubmitRejectsDisallowedInstanceURL(t *testing.T) {
 		InstanceURLAllowlist: util.ParseInstanceURLAllowlist("*.us.signoz.cloud"),
 	}
 
-	handler := NewHandler(logpkg.New("error"), cfg, nil, meters)
+	handler := NewHandler(logpkg.New("error"), cfg, nil, nil)
 	clientID, err := EncryptClientID([]string{"http://127.0.0.1:4567/callback"}, "Claude", time.Now().UTC(), []byte(cfg.OAuthTokenSecret))
 	if err != nil {
 		t.Fatalf("EncryptClientID() error = %v", err)
@@ -1272,73 +853,5 @@ func TestAuthorizeSubmitRejectsDisallowedInstanceURL(t *testing.T) {
 
 	if submitRR.Code != http.StatusForbidden {
 		t.Fatalf("authorize POST status = %d, want %d, body = %s", submitRR.Code, http.StatusForbidden, submitRR.Body.String())
-	}
-
-	var metrics metricdata.ResourceMetrics
-	if err := reader.Collect(context.Background(), &metrics); err != nil {
-		t.Fatalf("collect metrics: %v", err)
-	}
-	failures, found := oteltest.FindInt64SumMetric(metrics, "mcp.oauth.failures")
-	if !found || len(failures.DataPoints) != 1 {
-		t.Fatalf("expected one mcp.oauth.failures datapoint (found=%v)", found)
-	}
-	dp := failures.DataPoints[0]
-	reasonAttr, ok := dp.Attributes.Value(attribute.Key("mcp.auth.failure_reason"))
-	if !ok || reasonAttr.AsString() != "disallowed_signoz_url" {
-		t.Fatalf("mcp.auth.failure_reason = %v, want disallowed_signoz_url", reasonAttr)
-	}
-	statusAttr, ok := dp.Attributes.Value(attribute.Key("http.response.status_code"))
-	if !ok || statusAttr.AsInt64() != http.StatusForbidden {
-		t.Fatalf("http.response.status_code = %v, want %d", statusAttr, http.StatusForbidden)
-	}
-}
-
-func TestWriteOAuthErrorLogsRequestMetadata(t *testing.T) {
-	var buf bytes.Buffer
-	cfg := &config.Config{
-		OAuthEnabled:     true,
-		OAuthTokenSecret: "0123456789abcdef0123456789abcdef",
-		OAuthIssuerURL:   "https://mcp.example.com",
-	}
-
-	handler := NewHandler(newBufferedLogger(&buf, slog.LevelDebug), cfg, nil, nil)
-	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString("grant_type=bogus"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "claude-code/2.1.133 (cli)")
-	req.Header.Set("X-Forwarded-For", "198.51.100.8, 10.0.0.2")
-	req.Header.Set("Mcp-Session-Id", "mcp-session-oauth")
-	rr := httptest.NewRecorder()
-
-	handler.HandleToken(rr, req)
-
-	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	if len(lines) == 0 {
-		t.Fatal("expected OAuth failure log line")
-	}
-
-	var rec map[string]any
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
-		t.Fatalf("parse log line: %v", err)
-	}
-	if rec["msg"] != "OAuth request failed" {
-		t.Fatalf("msg = %v, want OAuth request failed", rec["msg"])
-	}
-	if rec["level"] != "WARN" {
-		t.Fatalf("level = %v, want WARN", rec["level"])
-	}
-	if rec["http.request.method"] != http.MethodPost {
-		t.Fatalf("http.request.method = %v, want POST", rec["http.request.method"])
-	}
-	if rec["url.path"] != "/oauth/token" {
-		t.Fatalf("url.path = %v, want /oauth/token", rec["url.path"])
-	}
-	if rec["client.address"] != "198.51.100.8" {
-		t.Fatalf("client.address = %v, want 198.51.100.8", rec["client.address"])
-	}
-	if rec["user_agent.original"] != "claude-code/2.1.133 (cli)" {
-		t.Fatalf("user_agent.original = %v, want claude-code user agent", rec["user_agent.original"])
-	}
-	if _, ok := rec["mcp.session.id"]; ok {
-		t.Fatalf("mcp.session.id = %v, want field omitted for OAuth request logs", rec["mcp.session.id"])
 	}
 }

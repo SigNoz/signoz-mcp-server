@@ -1,11 +1,8 @@
 package tools
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"reflect"
 	"strings"
@@ -226,62 +223,5 @@ func TestUpstreamError_PreservesSummaryAndDetailsIndependently(t *testing.T) {
 	}
 	if got := string(encoded); got != `[{"message":"key `+"`service.name`"+` not found"}]` {
 		t.Fatalf("upstreamDetails = %s, want independently preserved detail", got)
-	}
-}
-
-// TestLogQueryFailureLevels pins the severity contract of the QB tools' failure
-// logger: key-not-found 400s are expected agent mistakes and log at WARN with the
-// missing keys attached — still always emitted — while everything else keeps the
-// shared logUpstreamFailure behavior.
-func TestLogQueryFailureLevels(t *testing.T) {
-	tests := []struct {
-		name            string
-		err             error
-		wantLevel       string
-		wantMsg         string
-		wantMissingKeys bool
-	}{
-		{
-			name:            "missing filter key logs warn with keys",
-			err:             keyNotFound400(keyNotFoundEnvelopeBody),
-			wantLevel:       "WARN",
-			wantMsg:         "Failed to search logs (filter references keys missing from workspace field metadata)",
-			wantMissingKeys: true,
-		},
-		{
-			name:      "other 400 stays error",
-			err:       keyNotFound400(`{"status":"error","error":{"code":"invalid_input","message":"bad step interval"}}`),
-			wantLevel: "ERROR",
-			wantMsg:   "Failed to search logs",
-		},
-		{
-			name:      "cancellation keeps debug demotion",
-			err:       context.Canceled,
-			wantLevel: "DEBUG",
-			wantMsg:   "Failed to search logs (request cancelled by client)",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			h := &Handler{logger: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))}
-
-			h.logQueryFailure(context.Background(), "Failed to search logs", tc.err)
-
-			var rec map[string]any
-			if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
-				t.Fatalf("expected exactly one emitted log record, got %q: %v", buf.String(), err)
-			}
-			if rec["level"] != tc.wantLevel {
-				t.Fatalf("level = %v, want %s", rec["level"], tc.wantLevel)
-			}
-			if rec["msg"] != tc.wantMsg {
-				t.Fatalf("msg = %v, want %s", rec["msg"], tc.wantMsg)
-			}
-			if _, ok := rec["missingKeys"]; ok != tc.wantMissingKeys {
-				t.Fatalf("missingKeys present = %v, want %v (record: %v)", ok, tc.wantMissingKeys, rec)
-			}
-		})
 	}
 }

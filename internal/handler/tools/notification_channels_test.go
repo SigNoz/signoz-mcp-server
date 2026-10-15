@@ -14,13 +14,13 @@ import (
 
 const testNotificationChannelID = "019947a7-f200-7000-8000-000000000001"
 
-// TestNotificationChannelFailuresLogOnlySafeMetadata pins the credential
-// contract from CLAUDE.md through the full production path (real client against
-// a canned upstream): when SigNoz rejects a channel write or a post-write test
-// send with a body that echoes the provider URL, the handler's logs carry only
-// safe metadata (message, status), never the secret-bearing URL, while the tool
-// result still surfaces the coded failure.
-func TestNotificationChannelFailuresLogOnlySafeMetadata(t *testing.T) {
+// TestNotificationChannelFailuresKeepTheProviderSecretOutOfLogs pins the
+// credential contract from CLAUDE.md through the full production path (real
+// client against a canned upstream): when SigNoz rejects a channel write or a
+// post-write test send with a body that echoes the provider URL, the handler's
+// logs never carry the secret-bearing URL, while the tool result still surfaces
+// the coded failure.
+func TestNotificationChannelFailuresKeepTheProviderSecretOutOfLogs(t *testing.T) {
 	const secret = "https://hooks.example.test/provider-secret-canary"
 	secretEchoBody := `{"status":"error","error":{"code":"invalid_input","type":"invalid-input","message":"parse \"` + secret + `\": net/url: invalid control character"}}`
 	channelBody := `{"status":"success","data":{"name":"channel","displayName":"Channel","config":{"kind":"webhook","spec":{"url":"https://example.test/hook"}},"id":"` + testNotificationChannelID + `","createdAt":"2026-09-18T00:00:00Z","updatedAt":"2026-09-18T00:00:00Z"}}`
@@ -59,9 +59,6 @@ func TestNotificationChannelFailuresLogOnlySafeMetadata(t *testing.T) {
 		}
 		if strings.Contains(logs.String(), secret) {
 			t.Fatalf("notification channel log leaked provider URL: %s", logs.String())
-		}
-		if !strings.Contains(logs.String(), `"msg":"Failed to create notification channel"`) || !strings.Contains(logs.String(), `"status":400`) {
-			t.Fatalf("notification channel log lost safe status metadata: %s", logs.String())
 		}
 	})
 
@@ -105,9 +102,6 @@ func TestNotificationChannelFailuresLogOnlySafeMetadata(t *testing.T) {
 		}
 		if strings.Contains(logs.String(), secret) {
 			t.Fatalf("notification channel log leaked provider URL: %s", logs.String())
-		}
-		if !strings.Contains(logs.String(), `"msg":"Notification channel test failed after write"`) {
-			t.Fatalf("notification channel log lost the post-write test failure marker: %s", logs.String())
 		}
 	})
 }

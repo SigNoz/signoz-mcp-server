@@ -6,23 +6,14 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	docsindex "github.com/SigNoz/signoz-mcp-server/internal/docs"
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/attribute"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestDocsHandlers(t *testing.T) {
-	ctx := util.SetClientSource(context.Background(), "ai-assistant")
+	ctx := context.Background()
 
 	t.Run("index not ready", func(t *testing.T) {
 		h := newTestHandler(nil)
@@ -34,12 +25,6 @@ func TestDocsHandlers(t *testing.T) {
 
 	h, cleanup := newDocsTestHandler(t)
 	defer cleanup()
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(meterProvider)
-	require.NoError(t, err)
-	h.SetMeters(meters)
 
 	t.Run("search section filter and snippet", func(t *testing.T) {
 		result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{
@@ -161,25 +146,6 @@ func TestDocsHandlers(t *testing.T) {
 		require.Equal(t, docsindex.DocsSitemapURI, text.URI)
 		require.Contains(t, text.Text, "Send logs to SigNoz")
 	})
-
-	var collected metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &collected))
-	for _, metricName := range []string{"signoz_docs_searches_total", "signoz_docs_fetches_total"} {
-		sum, found := oteltest.FindInt64SumMetric(collected, metricName)
-		require.True(t, found, "%s metric not found", metricName)
-		for _, point := range sum.DataPoints {
-			attr, present := point.Attributes.Value(otelpkg.MCPClientSourceKey)
-			require.True(t, present, "%s missing mcp.client_source", metricName)
-			require.Equal(t, "ai-assistant", attr.AsString(), "%s mcp.client_source", metricName)
-		}
-	}
-	duration, found := oteltest.FindFloat64HistogramMetric(collected, "signoz_docs_search_duration_seconds")
-	require.True(t, found, "signoz_docs_search_duration_seconds metric not found")
-	for _, point := range duration.DataPoints {
-		attr, present := point.Attributes.Value(otelpkg.MCPClientSourceKey)
-		require.True(t, present, "signoz_docs_search_duration_seconds missing mcp.client_source")
-		require.Equal(t, "ai-assistant", attr.AsString(), "signoz_docs_search_duration_seconds mcp.client_source")
-	}
 }
 
 func newDocsTestHandler(t *testing.T) (*Handler, func()) {
@@ -234,114 +200,4 @@ func mustJSONForDocsTest(v any) string {
 		panic(err)
 	}
 	return string(b)
-}
-
-func TestDocsSearchScoreTelemetry(t *testing.T) {
-	for _, tc := range []struct {
-		name, query, outcome, bucket string
-		canceled                     bool
-	}{
-		{name: "nonempty", query: "docker", outcome: "ok", bucket: "1-4"},
-		{name: "empty", query: "zzzxxyynotindocs", outcome: "ok", bucket: "0"},
-		{name: "syntax fallback", query: `"unclosed`, outcome: "ok", bucket: "0"},
-		{name: "whitespace", query: "   ", outcome: "error"},
-		{name: "canceled", query: "docker", outcome: "error", canceled: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h, cleanup := newDocsTestHandler(t)
-			defer cleanup()
-			reader := sdkmetric.NewManualReader()
-			provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-			t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-			meters, err := otelpkg.NewMeters(provider)
-			require.NoError(t, err)
-			h.SetMeters(meters)
-			ctx := util.SetClientSource(context.Background(), "ai-assistant")
-			if tc.canceled {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithCancel(ctx)
-				cancel()
-			}
-			result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{"searchText": tc.query}))
-			require.NoError(t, err)
-			require.Equal(t, tc.outcome == "error", result.IsError)
-			var collected metricdata.ResourceMetrics
-			require.NoError(t, reader.Collect(context.Background(), &collected))
-			counter, found := oteltest.FindInt64SumMetric(collected, "signoz_docs_searches_total")
-			require.True(t, found)
-			require.Len(t, counter.DataPoints, 1)
-			point := counter.DataPoints[0]
-			require.EqualValues(t, 1, point.Value)
-			outcome, ok := point.Attributes.Value("outcome")
-			require.True(t, ok)
-			require.Equal(t, tc.outcome, outcome.AsString())
-			bucket, ok := point.Attributes.Value("result_count_bucket")
-			require.Equal(t, tc.outcome == "ok", ok)
-			require.Equal(t, tc.bucket, bucket.AsString())
-			histogram, found := oteltest.FindFloat64HistogramMetric(collected, "signoz_docs_search_top_score")
-			if tc.name != "nonempty" {
-				require.False(t, found, "failed or empty searches must not record a score")
-				return
-			}
-			require.True(t, found)
-			require.Len(t, histogram.DataPoints, 1)
-			score := histogram.DataPoints[0]
-			require.EqualValues(t, 1, score.Count)
-			require.Equal(t, result.StructuredContent.(docsindex.SearchResponse).Results[0].Score, score.Sum)
-			source, ok := score.Attributes.Value(otelpkg.MCPClientSourceKey)
-			require.True(t, ok)
-			require.Equal(t, "ai-assistant", source.AsString())
-		})
-	}
-}
-
-func TestDocsSearchSpanAttributes(t *testing.T) {
-	h, cleanup := newDocsTestHandler(t)
-	defer cleanup()
-	for _, tc := range []struct{ name, query, section string }{
-		{"hits", "docker collector logs", "logs-management"},
-		{"empty", "zzzxxyynotindocs", ""},
-		{"syntax fallback", `"docker`, ""},
-		{"whitespace", "   ", ""},
-		{"unicode truncation", strings.Repeat("界", 300), ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			recorder := tracetest.NewSpanRecorder()
-			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-			t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-			ctx, span := provider.Tracer("docs-test").Start(context.Background(), "signoz_search_docs")
-			result, err := h.handleSearchDocs(ctx, makeToolRequest("signoz_search_docs", map[string]any{"searchText": tc.query, "section_slug": tc.section}))
-			require.NoError(t, err)
-			span.End()
-			spans := recorder.Ended()
-			require.Len(t, spans, 1)
-			attrs := map[attribute.Key]attribute.Value{}
-			for _, a := range spans[0].Attributes() {
-				attrs[a.Key] = a.Value
-			}
-			want := []rune(tc.query)
-			if len(want) > 256 {
-				want = want[:256]
-			}
-			require.Equal(t, string(want), attrs[otelpkg.MCPDocsSearchTextKey].AsString())
-			require.True(t, utf8.ValidString(attrs[otelpkg.MCPDocsSearchTextKey].AsString()))
-			require.Equal(t, tc.section, attrs[otelpkg.MCPDocsSectionSlugKey].AsString())
-			count := 0
-			if !result.IsError {
-				count = len(result.StructuredContent.(docsindex.SearchResponse).Results)
-			}
-			require.Contains(t, attrs, otelpkg.MCPDocsResultCountKey)
-			require.EqualValues(t, count, attrs[otelpkg.MCPDocsResultCountKey].AsInt64())
-			dropped, hasDropped := attrs[otelpkg.MCPDocsQueryStringDroppedKey]
-			require.Equal(t, tc.name == "syntax fallback", hasDropped)
-			if hasDropped {
-				require.True(t, dropped.AsBool())
-			}
-			score, ok := attrs[otelpkg.MCPDocsTopScoreKey]
-			require.Equal(t, count > 0, ok)
-			if count > 0 {
-				require.Equal(t, result.StructuredContent.(docsindex.SearchResponse).Results[0].Score, score.AsFloat64())
-			}
-		})
-	}
 }

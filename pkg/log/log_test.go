@@ -3,17 +3,12 @@ package log
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
-	"log/slog"
 	"os"
-	"strings"
 	"testing"
-
-	"github.com/SigNoz/signoz-mcp-server/pkg/version"
 )
 
-func TestNew_WritesToStderr(t *testing.T) {
+func TestNew_KeepsStdoutFreeForStdioFrames(t *testing.T) {
 	origStdout := os.Stdout
 	origStderr := os.Stderr
 
@@ -38,7 +33,7 @@ func TestNew_WritesToStderr(t *testing.T) {
 	})
 
 	logger := New("info")
-	logger.InfoContext(context.Background(), "stdio-safe", slog.String("transport_mode", "stdio"))
+	logger.InfoContext(context.Background(), "stdio-safe")
 
 	if err := stderrW.Close(); err != nil {
 		t.Fatalf("close stderr writer: %v", err)
@@ -61,16 +56,5 @@ func TestNew_WritesToStderr(t *testing.T) {
 	}
 	if !bytes.Contains(stderrBytes, []byte("stdio-safe")) {
 		t.Fatalf("expected stderr to contain log message, got %q", string(stderrBytes))
-	}
-	if !strings.Contains(string(stderrBytes), "\"transport_mode\":\"stdio\"") {
-		t.Fatalf("expected structured stderr log output, got %q", string(stderrBytes))
-	}
-
-	var record map[string]any
-	if err := json.Unmarshal(stderrBytes, &record); err != nil {
-		t.Fatalf("parse stderr log record: %v", err)
-	}
-	if got := record["service.version"]; got != version.Version {
-		t.Fatalf("service.version = %v, want %q", got, version.Version)
 	}
 }

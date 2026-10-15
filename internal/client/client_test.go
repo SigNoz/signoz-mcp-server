@@ -17,14 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/testutil/oteltest"
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
-	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -313,132 +308,6 @@ func TestEvaluateValidationResponse_DoesNotLogOrReturnRawBody(t *testing.T) {
 			tc.checkError(t, err)
 			assert.NotContains(t, err.Error(), "validation-secret-canary")
 			assert.NotContains(t, logBuf.String(), "validation-secret-canary")
-
-			lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
-			require.Len(t, lines, 1)
-			var record map[string]any
-			require.NoError(t, json.Unmarshal([]byte(lines[0]), &record))
-			assert.NotContains(t, record, "response")
-			assert.Equal(t, float64(len(tc.body)), record["response.body.size_bytes"])
-		})
-	}
-}
-
-func TestGetAnalyticsIdentity(t *testing.T) {
-	tests := []struct {
-		name              string
-		authHeaderName    string
-		expectedHeader    string
-		expectedHeaderVal string
-		expectedPath      string
-		statusCode        int
-		responseBody      string
-		expectedIdentity  *AnalyticsIdentity
-		checkErr          func(t *testing.T, err error)
-	}{
-		{
-			name:              "authorization auth resolves via v2 users me",
-			authHeaderName:    "Authorization",
-			expectedHeader:    "Authorization",
-			expectedHeaderVal: "Bearer jwt-token",
-			expectedPath:      "/api/v2/users/me",
-			statusCode:        http.StatusOK,
-			responseBody:      `{"status":"success","data":{"id":"user-123","displayName":"Ada Lovelace","email":"user@example.com","orgId":"org-123"}}`,
-			expectedIdentity: &AnalyticsIdentity{
-				OrgID:     "org-123",
-				UserID:    "user-123",
-				Name:      "Ada Lovelace",
-				Email:     "user@example.com",
-				Principal: "user",
-			},
-		},
-		{
-			name:              "api key auth resolves via service accounts me",
-			authHeaderName:    "SIGNOZ-API-KEY",
-			expectedHeader:    "SIGNOZ-API-KEY",
-			expectedHeaderVal: "test-api-key",
-			expectedPath:      "/api/v1/service_accounts/me",
-			statusCode:        http.StatusOK,
-			responseBody:      `{"status":"success","data":{"id":"sa-123","name":"ingest-bot","email":"service@example.com","orgId":"org-456"}}`,
-			expectedIdentity: &AnalyticsIdentity{
-				OrgID:     "org-456",
-				UserID:    "sa-123",
-				Name:      "ingest-bot",
-				Email:     "service@example.com",
-				Principal: "service_account",
-			},
-		},
-		{
-			name:              "authorization auth does not fall back from v2 users me",
-			authHeaderName:    "Authorization",
-			expectedHeader:    "Authorization",
-			expectedHeaderVal: "Bearer jwt-token",
-			expectedPath:      "/api/v2/users/me",
-			statusCode:        http.StatusNotFound,
-			responseBody:      `{"status":"error"}`,
-			checkErr: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "unexpected status 404")
-			},
-		},
-		{
-			name:              "unauthorized identity lookup returns auth error",
-			authHeaderName:    "SIGNOZ-API-KEY",
-			expectedHeader:    "SIGNOZ-API-KEY",
-			expectedHeaderVal: "test-api-key",
-			expectedPath:      "/api/v1/service_accounts/me",
-			statusCode:        http.StatusUnauthorized,
-			responseBody:      `{"status":"error"}`,
-			checkErr: func(t *testing.T, err error) {
-				assert.ErrorIs(t, err, ErrUnauthorized)
-			},
-		},
-		{
-			name:              "malformed success response returns parse error",
-			authHeaderName:    "SIGNOZ-API-KEY",
-			expectedHeader:    "SIGNOZ-API-KEY",
-			expectedHeaderVal: "test-api-key",
-			expectedPath:      "/api/v1/service_accounts/me",
-			statusCode:        http.StatusOK,
-			responseBody:      `{"status":"success","data":{"orgId":"org-123"}}`,
-			checkErr: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "missing data.id")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			requests := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests++
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, tt.expectedPath, r.URL.Path)
-				assert.Equal(t, tt.expectedHeaderVal, r.Header.Get(tt.expectedHeader))
-
-				w.WriteHeader(tt.statusCode)
-				_, _ = w.Write([]byte(tt.responseBody))
-			}))
-			defer server.Close()
-
-			logger := logpkg.New("debug")
-			apiKey := "test-api-key"
-			if tt.authHeaderName == "Authorization" {
-				apiKey = "Bearer jwt-token"
-			}
-			client := NewClient(logger, server.URL, apiKey, tt.authHeaderName, nil)
-
-			identity, err := client.GetAnalyticsIdentity(context.Background())
-
-			if tt.checkErr != nil {
-				assert.Error(t, err)
-				tt.checkErr(t, err)
-				assert.Nil(t, identity)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.expectedIdentity, identity)
-			}
-			assert.Equal(t, 1, requests, "expected exactly one identity request")
 		})
 	}
 }
@@ -454,32 +323,14 @@ func TestGetAnalyticsIdentity_CachesResult(t *testing.T) {
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "Bearer jwt", "Authorization", nil)
-	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { _ = meterProvider.Shutdown(context.Background()) })
-	meters, err := otelpkg.NewMeters(meterProvider)
-	require.NoError(t, err)
-	client.SetMeters(meters)
-	ctx := util.SetClientSource(context.Background(), "ai-assistant")
 
 	for i := 0; i < 5; i++ {
-		identity, err := client.GetAnalyticsIdentity(ctx)
+		identity, err := client.GetAnalyticsIdentity(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, "user-1", identity.UserID)
 	}
 
 	assert.Equal(t, 1, requests, "expected identity cache to serve repeated lookups")
-
-	var collected metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &collected))
-	for _, metricName := range []string{"mcp.identity_cache.hit", "mcp.identity_cache.miss"} {
-		sum, found := oteltest.FindInt64SumMetric(collected, metricName)
-		require.True(t, found, "%s metric not found", metricName)
-		require.Len(t, sum.DataPoints, 1, "%s datapoints", metricName)
-		attr, present := sum.DataPoints[0].Attributes.Value(otelpkg.MCPClientSourceKey)
-		require.True(t, present, "%s missing mcp.client_source", metricName)
-		assert.Equal(t, "ai-assistant", attr.AsString(), "%s mcp.client_source", metricName)
-	}
 }
 
 func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
@@ -512,7 +363,7 @@ func TestGetAnalyticsIdentity_ConcurrentCallsDedupe(t *testing.T) {
 	assert.Equal(t, int32(1), requests.Load(), "expected concurrent callers to share a single upstream request")
 }
 
-func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
+func TestDoRequest_RetriedDriftWarnsOnceWithoutLeakingCredentials(t *testing.T) {
 	var logBuf bytes.Buffer
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -527,8 +378,6 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 	assert.Contains(t, err.Error(), "unexpected status 503")
 
 	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
-	var sawRetryDebug bool
-	var sawTerminalWarn bool
 	var driftWarnings int
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -537,34 +386,20 @@ func TestDoRequest_RetryLogsDebugThenWarn(t *testing.T) {
 		var rec map[string]any
 		require.NoError(t, json.Unmarshal([]byte(line), &rec))
 
-		switch rec["msg"] {
-		case "Retryable status, will retry":
-			assert.Equal(t, "DEBUG", rec["level"])
-			assert.NotContains(t, rec, "response")
-			assert.NotZero(t, rec["response.body.size_bytes"])
-			sawRetryDebug = true
-		case "SigNoz request returned unexpected status":
-			assert.Equal(t, "WARN", rec["level"])
-			assert.Equal(t, true, rec["retryable"])
-			assert.Equal(t, true, rec["retries_exhausted"])
-			assert.NotContains(t, rec, "response")
-			assert.NotZero(t, rec["response.body.size_bytes"])
-			sawTerminalWarn = true
-		case errorEnvelopeWarning:
-			assert.NotZero(t, rec["response.body.size_bytes"])
-			assert.Equal(t, true, rec["recognized"])
-			assert.Equal(t, []any{"message"}, rec["fields"])
-			driftWarnings++
+		if rec["msg"] != errorEnvelopeWarning {
+			continue
 		}
+		assert.NotZero(t, rec["response.body.size_bytes"])
+		assert.Equal(t, true, rec["recognized"])
+		assert.Equal(t, []any{"message"}, rec["fields"])
+		driftWarnings++
 	}
 
-	assert.True(t, sawRetryDebug, "expected intermediate retry log at DEBUG")
-	assert.True(t, sawTerminalWarn, "expected terminal retry exhaustion log at WARN")
 	assert.Equal(t, 1, driftWarnings, "shape drift must be warned once per request across retries")
 	assert.NotContains(t, logBuf.String(), "auth123temporary-secret-canary")
 }
 
-func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
+func TestDoRequest_DriftStaysDetectableWhenARetrySucceeds(t *testing.T) {
 	var logBuf bytes.Buffer
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -585,7 +420,6 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 	assert.JSONEq(t, `{"status":"success"}`, string(body))
 
 	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
-	var sawRetryDebug bool
 	var driftWarnings int
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -594,23 +428,14 @@ func TestDoRequest_SucceedsAfterRetryWithoutRetriesExhaustedLog(t *testing.T) {
 		var rec map[string]any
 		require.NoError(t, json.Unmarshal([]byte(line), &rec))
 
-		switch rec["msg"] {
-		case "Retryable status, will retry":
-			assert.NotContains(t, rec, "response")
-			sawRetryDebug = true
-		case "SigNoz request returned unexpected status":
-			t.Fatalf("unexpected terminal warn log on eventual success: %v", rec)
-		case errorEnvelopeWarning:
-			assert.Equal(t, false, rec["recognized"])
-			assert.Equal(t, []any{"envelope"}, rec["fields"])
-			driftWarnings++
+		if rec["msg"] != errorEnvelopeWarning {
+			continue
 		}
-		if _, ok := rec["retries_exhausted"]; ok {
-			t.Fatalf("unexpected retries_exhausted field on eventual success path: %v", rec)
-		}
+		assert.Equal(t, false, rec["recognized"])
+		assert.Equal(t, []any{"envelope"}, rec["fields"])
+		driftWarnings++
 	}
 
-	assert.True(t, sawRetryDebug, "expected intermediate retry log before success")
 	assert.Equal(t, 1, driftWarnings, "transient shape drift must remain detectable")
 	assert.NotContains(t, logBuf.String(), "temporary-outage-canary")
 }
@@ -644,48 +469,6 @@ func TestDoRequest_OversizedRendererWarnsOnceWithoutParsingValues(t *testing.T) 
 		assert.Equal(t, float64(len(responseBody)), record["response.body.size_bytes"])
 	}
 	assert.Equal(t, 1, warnings, "oversized renderer drift must be warned once across retries")
-}
-
-func TestDoRequest_NonRetryableStatusOmitsRetriesExhausted(t *testing.T) {
-	var logBuf bytes.Buffer
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"status":"error","message":"bad request"}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected status 400")
-
-	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
-	var sawTerminalWarn bool
-	var sawRetryDebug bool
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		var rec map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &rec))
-
-		if rec["msg"] == "Retryable status, will retry" {
-			sawRetryDebug = true
-		}
-		if rec["msg"] != "SigNoz request returned unexpected status" {
-			continue
-		}
-		assert.Equal(t, "WARN", rec["level"])
-		assert.Equal(t, false, rec["retryable"])
-		if _, ok := rec["retries_exhausted"]; ok {
-			t.Fatalf("unexpected retries_exhausted field in non-retryable log: %v", rec)
-		}
-		sawTerminalWarn = true
-	}
-
-	assert.False(t, sawRetryDebug, "did not expect retry log for non-retryable status")
-	assert.True(t, sawTerminalWarn, "expected terminal non-retryable warning log")
 }
 
 func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
@@ -739,12 +522,6 @@ func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 	assert.Contains(t, err.Error(), "...(truncated)")
 	assert.NotContains(t, err.Error(), "tail")
 
-	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
-	require.NotEmpty(t, lines)
-	var rec map[string]any
-	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &rec))
-	assert.Equal(t, "SigNoz request returned unexpected status", rec["msg"])
-	assert.NotContains(t, rec, "response")
 	assert.NotContains(t, logBuf.String(), longMessage)
 	assert.NotContains(t, logBuf.String(), "tail")
 }

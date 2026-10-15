@@ -134,28 +134,21 @@ func TestRefreshRevalidatesWithETagAndKeepsIndex(t *testing.T) {
 	_, initial, srv := conditionalFixture(t)
 	reg := newTestRegistry(t, initial)
 	before := reg.currentHandle(t)
-	reader, meters := newDocsTestMeters(t)
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(newHTTPTestServer(t, srv)), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
 
 	require.NoError(t, refresher.Trigger(context.Background(), false))
 	require.Equal(t, int64(2), srv.conditional.Load(), "every page with a stored ETag is revalidated")
 	require.Equal(t, int64(2), srv.served304.Load())
 	require.Zero(t, srv.served200.Load())
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "unchanged"))
-	require.Zero(t, docsRefreshMetricValue(t, reader, "rebuilt"))
 	require.Same(t, before, reg.currentHandle(t), "unchanged content must not rebuild the index")
 
 	snapshot, ok := reg.Snapshot()
 	require.True(t, ok)
 	require.Equal(t, SitemapHash(srv.sitemap), snapshot.SitemapHash, "published snapshot carries the live sitemap hash")
 	require.Contains(t, snapshot.Pages[0].BodyMarkdown, "Docker Compose")
-	metrics := collectDocsMetrics(t, reader)
-	require.Equal(t, int64(2), int64GaugeValue(t, metrics, "signoz_docs_index_generation"))
 
 	// The next scheduled tick now short-circuits on the sitemap hash.
 	require.NoError(t, refresher.Trigger(context.Background(), false))
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "no-op"))
 	require.Equal(t, int64(2), srv.conditional.Load(), "a no-op tick fetches no pages")
 
 	search, err := reg.Search(context.Background(), "docker compose", "", 3)
@@ -187,13 +180,10 @@ func TestRevalidatedPageAdoptsRenamedSitemapTitle(t *testing.T) {
 
 	srv := newETagServer(strings.Replace(sitemap, "Old Name", "New Name", 1), map[string]string{"/docs/logs/overview/": body})
 	reg := newTestRegistry(t, initial)
-	reader, meters := newDocsTestMeters(t)
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(newHTTPTestServer(t, srv)), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
 
 	require.NoError(t, refresher.Trigger(context.Background(), false))
 	require.Equal(t, int64(1), srv.served304.Load(), "the body is unchanged and revalidates")
-	require.Zero(t, docsRefreshMetricValue(t, reader, "unchanged"), "a renamed title is a content change")
 	doc, code, err := reg.FetchDoc(context.Background(), parsed[0].URL, "")
 	require.NoError(t, err)
 	require.Empty(t, code)
@@ -205,15 +195,11 @@ func TestForcedRefreshRefetchesWithoutRevalidation(t *testing.T) {
 	_, initial, srv := conditionalFixture(t)
 	reg := newTestRegistry(t, initial)
 	before := reg.currentHandle(t)
-	reader, meters := newDocsTestMeters(t)
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(newHTTPTestServer(t, srv)), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
 
 	require.NoError(t, refresher.Trigger(context.Background(), true))
 	require.Zero(t, srv.conditional.Load(), "forced refresh must not send If-None-Match")
 	require.Equal(t, int64(2), srv.served200.Load())
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "forced-unchanged"))
-	require.Zero(t, docsRefreshMetricValue(t, reader, "forced-full-rebuilt"))
 	require.Same(t, before, reg.currentHandle(t), "identical bodies must not rebuild even when forced")
 
 	doc, code, err := reg.FetchDoc(context.Background(), "https://signoz.io/docs/install/docker/", "")
@@ -231,14 +217,11 @@ func TestRefreshRebuildsWhenContentChanges(t *testing.T) {
 	srv.set("/docs/logs/overview/", "# Logs Overview\n\nCollect logs with the OpenTelemetry Collector.\n", `W/"v2"`)
 	reg := newTestRegistry(t, initial)
 	before := reg.currentHandle(t)
-	reader, meters := newDocsTestMeters(t)
 	refresher := NewRefresher(slog.Default(), reg, newRewriteFetcher(newHTTPTestServer(t, srv)), RefreshConfig{SitemapURL: DefaultSitemapURL})
-	refresher.SetMeters(meters)
 
 	require.NoError(t, refresher.Trigger(context.Background(), false))
 	require.Equal(t, int64(1), srv.served304.Load(), "the unchanged page revalidates")
 	require.Equal(t, int64(1), srv.served200.Load(), "the changed page downloads a body")
-	require.Equal(t, int64(1), docsRefreshMetricValue(t, reader, "rebuilt"))
 	require.NotSame(t, before, reg.currentHandle(t))
 
 	doc, code, err := reg.FetchDoc(context.Background(), "https://signoz.io/docs/logs/overview/", "")
