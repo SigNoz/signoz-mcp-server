@@ -126,12 +126,6 @@ def test_every_provider_config_round_trips_and_update_preserves_it(
         list_data = _channel_data(listing)
         channels = list_data["channels"]
         assert isinstance(list_data["total"], int)
-        pagination = list_data["pagination"]
-        assert pagination["limit"] == 20
-        assert pagination["offset"] == 0
-        assert pagination["count"] == len(channels)
-        assert isinstance(pagination["hasMore"], bool)
-        assert pagination["nextOffset"] is None or isinstance(pagination["nextOffset"], int)
         rows = [row for row in channels if row.get("id") == channel_id]
         assert len(rows) == 1
         assert "config" not in rows[0]

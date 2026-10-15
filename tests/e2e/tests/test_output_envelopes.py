@@ -1,9 +1,10 @@
 """Output envelopes — port of e2e_familyc_test.go.
 
-structuredContent on code-controlled tools, its absence on raw passthrough
-tools, the JSON-first query_metrics envelope, the error-code taxonomy, and the
-mutation envelope. Get-tool assertions use resources seeded on the fresh cast
-(the Go staging tests skipped when the instance was empty).
+structuredContent on code-controlled list and get tools and the JSON-first
+query_metrics envelope. Get-tool assertions use resources seeded on the fresh
+cast (the Go staging tests skipped when the instance was empty). Mutation
+envelopes are checked by the seeded channel helpers; the passthrough half of
+the structuredContent rule is pinned in Go.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
@@ -14,12 +15,10 @@ from fixtures.results import (
     first_block_json,
     first_text_block,
     query_range_rows,
-    result_code,
 )
 from fixtures.seeded import (
     alert_rule_gone,
     channel_gone,
-    channel_id_by_name,
     create_alert_rule,
     create_channel,
     create_view,
@@ -29,8 +28,6 @@ from fixtures.seeded import (
     view_gone,
 )
 from fixtures.telemetry import seed_metrics, seed_traces, wait_for
-
-GHOST_RULE_ID = "01900000-0000-7000-8000-000000000000"  # valid UUIDv7, nonexistent
 
 
 def test_structured_content_on_list_tools(mcp_client: MCPClient) -> None:
@@ -112,18 +109,6 @@ def test_structured_content_on_get_tools(mcp_client: MCPClient, test_id: str, te
         assert dashboard_gone.get("isError", False), f"dashboard {dashboard_id} remained after cleanup"
 
 
-def test_no_structured_on_passthrough(mcp_client: MCPClient) -> None:
-    calls = [
-        ("signoz_search_logs", {"timeRange": "1h", "limit": "1"}),
-        ("signoz_search_traces", {"timeRange": "1h", "limit": "1"}),
-        ("signoz_aggregate_logs", {"aggregation": "count", "timeRange": "1h"}),
-        ("signoz_aggregate_traces", {"aggregation": "count", "timeRange": "1h"}),
-    ]
-    for tool, args in calls:
-        result = assert_tool_ok(mcp_client.call_tool(tool, {"searchContext": f"call {tool}", **args}))
-        assert_no_structured(result)
-
-
 def test_query_metrics_json_first(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
     """Block 0 is parseable JSON; decisions/warnings are a SEPARATE note block."""
     metric = f"mcp_e2e_{test_id.replace('-', '_')}_gauge"
@@ -144,67 +129,3 @@ def test_query_metrics_json_first(mcp_client: MCPClient, test_id: str, telemetry
     first_block_json(result)  # block 0 must be valid JSON with no prose preamble
     if len(result.get("content", [])) >= 2:
         assert result["content"][1].get("type") == "text", "query_metrics block 1 should be a text note"
-
-
-def test_error_codes(mcp_client: MCPClient) -> None:
-    """Missing required arg -> VALIDATION_FAILED locally; ghost id -> NOT_FOUND."""
-    missing = mcp_client.call_tool("signoz_get_dashboard", {"searchContext": "get dashboard without id"})
-    assert missing.get("isError", False), "get_dashboard without id should error"
-    assert result_code(missing) == "VALIDATION_FAILED"
-
-    ghost = mcp_client.call_tool(
-        "signoz_get_alert", {"searchContext": f"get rule {GHOST_RULE_ID}", "ruleId": GHOST_RULE_ID}
-    )
-    if not ghost.get("isError", False):
-        # A nonexistent rule returning 200 is backend behavior, not a
-        # regression — skip the code assertion rather than fail spuriously.
-        return
-    assert result_code(ghost) == "NOT_FOUND"
-
-
-def test_mutation_structured_content(mcp_client: MCPClient, test_id: str) -> None:
-    """Create carries structuredContent, delete carries it, and the resource is gone."""
-    name = f"mcp-e2e-c-{test_id}"
-    channel_id = ""
-    deleted = False
-    try:
-        create = assert_tool_ok(
-            mcp_client.call_tool(
-                "signoz_create_notification_channel",
-                {
-                    "searchContext": f"create a channel named {name}",
-                    "name": name,
-                    "displayName": name,
-                    "config": {
-                        "kind": "webhook",
-                        "spec": {"url": "http://example.invalid/no-send", "sendResolved": False},
-                    },
-                    "test": False,
-                },
-            )
-        )
-        assert_structured_matches_text(create)
-        channel_id = dig_id(first_block_json(create))
-        if not channel_id:
-            channel_id = channel_id_by_name(mcp_client, name)
-        assert channel_id, f"could not determine created channel id (name={name})"
-
-        delete = assert_tool_ok(
-            mcp_client.call_tool(
-                "signoz_delete_notification_channel",
-                {"searchContext": f"delete channel {channel_id}", "id": channel_id},
-            )
-        )
-        assert_structured_matches_text(delete)
-
-        gone = mcp_client.call_tool(
-            "signoz_get_notification_channel", {"searchContext": f"confirm {channel_id} gone", "id": channel_id}
-        )
-        assert gone.get("isError", False), f"channel {channel_id} still exists after delete"
-        deleted = True
-    finally:
-        if not deleted:
-            recovered = channel_id or channel_id_by_name(mcp_client, name)
-            if recovered:
-                delete_channel(mcp_client, recovered)
-                assert channel_gone(mcp_client, recovered), f"channel {recovered} remained after cleanup"

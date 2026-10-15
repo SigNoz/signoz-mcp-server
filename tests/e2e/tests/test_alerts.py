@@ -9,7 +9,7 @@ the items/total envelope the completeness note parses.
 """
 
 from fixtures.mcpclient import MCPClient, assert_tool_ok
-from fixtures.results import first_block_json, first_text_block
+from fixtures.results import first_block_json, first_text_block, note_blocks
 
 SERVER_POPULATED_FIELDS = ("id", "createdAt", "updatedAt", "createdBy", "updatedBy", "webUrl")
 
@@ -92,6 +92,10 @@ def test_alert_crud_round_trip(mcp_client: MCPClient, test_id: str) -> None:
         assert rule.get("alert") == name
         assert rule.get("alertType") == "METRIC_BASED_ALERT"
         assert rule.get("schemaVersion") == "v2alpha1", f"schemaVersion did not round-trip: {rule.get('schemaVersion')}"
+        by_alias = assert_tool_ok(
+            mcp_client.call_tool("signoz_get_alert", {"searchContext": f"get rule {name} by alias", "ruleId": rule_id})
+        )
+        assert first_block_json(by_alias)["data"].get("alert") == name, "the legacy ruleId alias read another rule"
 
         # The taught update flow: full replacement from the get result, minus
         # the server-populated fields the instructions say to omit.
@@ -134,18 +138,25 @@ def test_create_alert_unknown_channel_rejected(mcp_client: MCPClient, test_id: s
 
 
 def test_alert_history_envelope(mcp_client: MCPClient, test_id: str) -> None:
-    """History keeps the data.items/total envelope the completeness note parses (empty timeline is fine)."""
+    """History keeps the data.items/total envelope the completeness note parses (empty timeline is fine).
+
+    SigNoz validates order itself, so both taught values are sent.
+    """
     name = f"mcp-e2e-{test_id}-history"
     rule_id = create_rule(mcp_client, threshold_rule(name))
     try:
-        result = mcp_client.call_tool(
-            "signoz_get_alert_history", {"searchContext": f"history for {name}", "id": rule_id}
-        )
-        assert_tool_ok(result)
-        data = first_block_json(result).get("data")
-        assert isinstance(data, dict), f"alert history envelope drifted: {data}"
-        assert "items" in data, f"history items field missing: {data}"
-        assert isinstance(data["items"], list | None.__class__), f"history items shape drifted: {data}"
-        assert isinstance(data.get("total"), int), f"history total shape drifted: {data}"
+        for order in ("asc", "desc"):
+            result = mcp_client.call_tool(
+                "signoz_get_alert_history", {"searchContext": f"history for {name}", "id": rule_id, "order": order}
+            )
+            assert_tool_ok(result)
+            data = first_block_json(result).get("data")
+            assert isinstance(data, dict), f"alert history envelope drifted: {data}"
+            assert "items" in data, f"history items field missing: {data}"
+            assert isinstance(data["items"], list | None.__class__), f"history items shape drifted: {data}"
+            assert isinstance(data.get("total"), int), f"history total shape drifted: {data}"
+            assert "hasMore" in note_blocks(result), (
+                f"expected a completeness note with hasMore: {note_blocks(result)!r}"
+            )
     finally:
         delete_rule(mcp_client, rule_id)

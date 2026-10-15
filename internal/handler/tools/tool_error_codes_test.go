@@ -6,6 +6,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -29,6 +31,62 @@ func TestToolHandlers_MissingCredentialsAreCoded(t *testing.T) {
 	}
 	if got := resultText(t, result); !strings.Contains(got, "missing tenant credentials") {
 		t.Fatalf("missing-credentials text = %q", got)
+	}
+}
+
+// newToolServerWithoutSigNoz registers every tool against an upstream that fails
+// the test on any request, for rejections that must happen before SigNoz.
+func newToolServerWithoutSigNoz(t *testing.T) *mcp.Server {
+	t.Helper()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("invalid arguments reached SigNoz: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(upstream.Close)
+	h := &Handler{
+		logger:         logpkg.New("error"),
+		clientOverride: signozclient.NewClient(logpkg.New("error"), upstream.URL, "test-api-key", "SIGNOZ-API-KEY", nil),
+	}
+	server := newMCPTestServer()
+	h.RegisterAllToolHandlers(server)
+	return server
+}
+
+func callRegisteredTool(t *testing.T, server *mcp.Server, tool, arguments string) *mcp.CallToolResult {
+	t.Helper()
+	message := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"` + tool + `","arguments":` + arguments + `}}`
+	return callTestToolFromJSONRPC(context.Background(), t, server, json.RawMessage(message))
+}
+
+func TestToolHandlers_RejectInvalidArgumentsBeforeCallingSigNoz(t *testing.T) {
+	server := newToolServerWithoutSigNoz(t)
+	tests := []struct {
+		tool      string
+		arguments string
+		wantText  string
+	}{
+		{tool: "signoz_get_alert", arguments: `{}`, wantText: `"id" is required`},
+		// A wrong-typed legacy alias counts as absent, so the canonical id error wins.
+		{tool: "signoz_get_alert", arguments: `{"ruleId":12345}`, wantText: `"id" is required`},
+		{tool: "signoz_get_dashboard", arguments: `{}`, wantText: `"id" is required`},
+		{tool: "signoz_get_dashboard", arguments: `{"uuid":true}`, wantText: `"uuid" is no longer accepted`},
+		{tool: "signoz_get_view", arguments: `{}`, wantText: `"id" is required`},
+		{tool: "signoz_get_notification_channel", arguments: `{}`, wantText: `"id" is required`},
+		{tool: "signoz_execute_builder_query", arguments: `{}`, wantText: `"query" must be a JSON object`},
+		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","start":"not-a-timestamp","end":"also-bad"}`, wantText: "start"},
+		{tool: "signoz_get_trace_details", arguments: `{"traceId":"deadbeefdeadbeefdeadbeefdeadbeef","includeSpans":"perhaps"}`, wantText: "includeSpans"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.tool+" "+tt.arguments, func(t *testing.T) {
+			result := callRegisteredTool(t, server, tt.tool, tt.arguments)
+			if got := resultCode(t, result); got != CodeValidationFailed {
+				t.Fatalf("code = %q, want %q", got, CodeValidationFailed)
+			}
+			text := resultText(t, result)
+			if !strings.HasPrefix(text, "Parameter validation failed:") || !strings.Contains(text, tt.wantText) {
+				t.Fatalf("text = %q, want the validation prefix and %q", text, tt.wantText)
+			}
+		})
 	}
 }
 

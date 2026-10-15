@@ -1,28 +1,26 @@
 """Upstream error classification — port of Family B (upstream half).
 
 A well-formed-but-nonexistent id reaches the backend and the rejection carries
-the uniform "SigNoz API error:" prefix. A bad credential surfaces through the
-same coded upstream path (AGENTS.md: 401/403 must propagate, never hide inside
-partial results).
+the uniform "SigNoz API error:" prefix and the NOT_FOUND code. A bad credential
+surfaces through the same coded upstream path (AGENTS.md: 401/403 must
+propagate, never hide inside partial results).
 """
 
 from fixtures.mcpclient import MCPClient
 from fixtures.mcpserver import MCPServer
-from fixtures.results import first_text_block
+from fixtures.results import first_text_block, result_code
 
 GHOST_RULE_ID = "01900000-0000-7000-8000-000000000000"  # valid UUIDv7, nonexistent
 
 
-def test_upstream_error_prefix(mcp_client: MCPClient) -> None:
+def test_unknown_rule_id_is_coded_not_found(mcp_client: MCPClient) -> None:
     result = mcp_client.call_tool(
-        "signoz_get_alert", {"searchContext": f"get rule {GHOST_RULE_ID}", "ruleId": GHOST_RULE_ID}
+        "signoz_get_alert", {"searchContext": f"get rule {GHOST_RULE_ID}", "id": GHOST_RULE_ID}
     )
     body = first_text_block(result)
-    if not result.get("isError", False):
-        # Some deployments return an empty 200 for an unknown rule — backend
-        # behavior, not a regression; nothing to assert on the prefix then.
-        return
+    assert result.get("isError", False), f"a nonexistent rule should be an error result, got: {body[:300]}"
     assert body.startswith("SigNoz API error:"), f"upstream error should carry the uniform prefix; got {body!r}"
+    assert result_code(result) == "NOT_FOUND"
 
 
 def test_invalid_api_key_surfaces_coded_error(mcp_server: MCPServer) -> None:
@@ -38,3 +36,4 @@ def test_invalid_api_key_surfaces_coded_error(mcp_server: MCPServer) -> None:
     )
     body = first_text_block(result)
     assert body.startswith("SigNoz API error:"), f"upstream auth failure should carry the uniform prefix; got {body!r}"
+    assert result_code(result) == "UNAUTHORIZED"

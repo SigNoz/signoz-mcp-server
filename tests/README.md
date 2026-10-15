@@ -70,30 +70,25 @@ variables: `--reuse`, `--teardown`, `--foundry-binary-path`, `--license-key`.
 
 ## Suites
 
-- `test_protocol.py` — initialize handshake, live-backed tools/list, and the
-  nil-arguments validation path.
-- `test_query_response_paths.py` — upstream QB/response JSON-path drift checks
-  (row paths, completeness notes, execute_builder_query).
-- `test_param_coercion.py` — tolerant inputs: numbers/booleans as strings,
-  timestamp magnitude auto-detect, limit clamp.
-- `test_param_validation.py` — canonical validation strings, trace-timestamp
-  parameter error, requestType rejection codes.
-- `test_output_envelopes.py` — structuredContent presence/absence, JSON-first
-  query_metrics, error-code taxonomy, mutation envelope.
-- `test_enums_and_grammar.py` — enum values, advertised aggregation set vs the
-  backend, timeRange/stepInterval grammar, docs param + alias, top-operations tags.
+- `test_query_response_paths.py` — upstream response JSON-path drift checks
+  (list_metrics and top_metrics paths, completeness notes, execute_builder_query).
+- `test_param_coercion.py` — ns and ms windows both find a seeded service on the
+  nanosecond services API.
+- `test_output_envelopes.py` — structuredContent on list and get tools,
+  JSON-first query_metrics.
+- `test_enums_and_grammar.py` — field-key signals, the advertised aggregation set
+  and both request types vs the backend, the top-operations tag filter.
 - `test_notification_channels.py` — canonical notification v2 lifecycle for every
   provider with `test: false`, config round-trip, config-free listing, an opt-in
   webhook test sink, and confirmed deletion. The sink runs on the foundry-generated
   Docker network and exposes captured requests only on host loopback; no external
   destination is contacted.
 - `test_saved_views.py` — view CRUD round-trip cloned from a seeded source view.
-- `test_get_by_id_aliases.py` — canonical id and legacy alias (ruleId/uuid) reads.
-- `test_trace_fields.py` — snake_case trace fields, filters, aggregations.
+- `test_trace_fields.py` — core trace fields, deep links, shortcut filters,
+  group-by, selectFields.
 - `test_org_overview.py` — org overview conservation vs `GET /api/v1/stats`.
-- `test_docs.py` — docs search/fetch, out-of-scope coded error, sitemap resource.
-- `test_upstream_errors.py` — uniform upstream error prefix; rejected-credential
-  coded error.
+- `test_upstream_errors.py` — coded NOT_FOUND and UNAUTHORIZED upstream errors
+  with the uniform prefix.
 - `test_logs.py` — seeded log search, explicit scoped/unscoped search grammar,
   quoted terms, body-only legacy search text, and upstream warning preservation.
 - `test_dashboards.py` — TextPanel create/get/update/patch/default/layout
