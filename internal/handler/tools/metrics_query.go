@@ -11,7 +11,7 @@ import (
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	"github.com/SigNoz/signoz-mcp-server/pkg/metricsrules"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 // metricMetadata holds the parsed metadata from signoz_list_metrics response.
@@ -130,27 +130,23 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 	decisions = append(decisions, fmt.Sprintf("requestType: %s", mqr.RequestType))
 
 	// Build query specs
-	var querySpecs []types.MetricsQuerySpec
+	var querySpecs []querybuilder.MetricsQuery
 
 	// Primary query is always "A"
 	primaryGroupBy := buildGroupByFields(mqr.GroupBy)
 	if len(primaryGroupBy) > 0 {
 		var gbNames []string
 		for _, g := range primaryGroupBy {
-			gbNames = append(gbNames, fmt.Sprintf("%s [%s]", g.Name, g.FieldContext))
+			gbNames = append(gbNames, fmt.Sprintf("%s [%s]", g.Name, querybuilder.FieldContextOf(g)))
 		}
 		decisions = append(decisions, fmt.Sprintf("groupBy: %s", strings.Join(gbNames, ", ")))
 	}
 
-	querySpecs = append(querySpecs, types.MetricsQuerySpec{
+	querySpecs = append(querySpecs, querybuilder.MetricsQuery{
 		Name: "A",
-		Aggregation: types.MetricAggregation{
-			MetricName:       mqr.MetricName,
-			Temporality:      mqr.Temporality,
-			TimeAggregation:  resolved.TimeAggregation,
-			SpaceAggregation: resolved.SpaceAggregation,
-			ReduceTo:         resolved.ReduceTo,
-		},
+		Aggregation: querybuilder.MetricAggregation(
+			mqr.MetricName, mqr.Temporality, resolved.TimeAggregation, resolved.SpaceAggregation, resolved.ReduceTo,
+		),
 		Filter:  mqr.Filter,
 		GroupBy: primaryGroupBy,
 	})
@@ -168,15 +164,11 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		}
 
 		subGroupBy := buildGroupByFields(fq.GroupBy)
-		querySpecs = append(querySpecs, types.MetricsQuerySpec{
+		querySpecs = append(querySpecs, querybuilder.MetricsQuery{
 			Name: fq.Name,
-			Aggregation: types.MetricAggregation{
-				MetricName:       fq.MetricName,
-				Temporality:      fq.Temporality,
-				TimeAggregation:  subResolved.TimeAggregation,
-				SpaceAggregation: subResolved.SpaceAggregation,
-				ReduceTo:         subResolved.ReduceTo,
-			},
+			Aggregation: querybuilder.MetricAggregation(
+				fq.MetricName, fq.Temporality, subResolved.TimeAggregation, subResolved.SpaceAggregation, subResolved.ReduceTo,
+			),
 			Filter:  fq.Filter,
 			GroupBy: subGroupBy,
 		})
@@ -184,7 +176,7 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 
 	// Formula query spec
 	if mqr.Formula != "" {
-		querySpecs = append(querySpecs, types.MetricsQuerySpec{
+		querySpecs = append(querySpecs, querybuilder.MetricsQuery{
 			Name:       formulaName(querySpecs),
 			IsFormula:  true,
 			Expression: mqr.Formula,
@@ -193,17 +185,17 @@ func (h *Handler) handleQueryMetrics(ctx context.Context, req mcp.CallToolReques
 		decisions = append(decisions, fmt.Sprintf("formula: %s", mqr.Formula))
 	}
 	if mqr.Formula != "" {
-		decisions = append(decisions, fmt.Sprintf("formula input bounds: limit=%d groups per query, order=__result desc", types.DefaultFormulaInputQueryLimit))
-		decisions = append(decisions, fmt.Sprintf("formula result bounds: limit=%d groups, order=__result desc", types.DefaultAggregateQueryLimit))
+		decisions = append(decisions, fmt.Sprintf("formula input bounds: limit=%d groups per query, order=__result desc", querybuilder.DefaultFormulaInputQueryLimit))
+		decisions = append(decisions, fmt.Sprintf("formula result bounds: limit=%d groups, order=__result desc", querybuilder.DefaultAggregateQueryLimit))
 	} else {
-		decisions = append(decisions, fmt.Sprintf("result bounds: limit=%d groups, order=__result desc", types.DefaultAggregateQueryLimit))
+		decisions = append(decisions, fmt.Sprintf("result bounds: limit=%d groups, order=__result desc", querybuilder.DefaultAggregateQueryLimit))
 	}
 	if mqr.RequestType == "time_series" {
 		decisions = append(decisions, "time-series selection: top groups are ranked across the entire time range; a short-lived spike can fall outside the selected groups")
 	}
 
 	// Build and execute
-	queryJSON, err := types.BuildMetricsQueryPayloadJSON(startTime, endTime, stepInterval, querySpecs, mqr.RequestType, mqr.Source)
+	queryJSON, err := querybuilder.MetricsJSON(startTime, endTime, stepInterval, querySpecs, mqr.RequestType, mqr.Source)
 	if err != nil {
 		return validationResult(fmt.Sprintf("Failed to build query payload: %s", err.Error())), nil
 	}
@@ -423,7 +415,7 @@ func resolveFormulaSubQuery(ctx context.Context, h *Handler, client interface {
 	return &resolved, nil
 }
 
-func formulaName(existing []types.MetricsQuerySpec) string {
+func formulaName(existing []querybuilder.MetricsQuery) string {
 	// Find the next available letter after existing query names
 	used := make(map[string]bool)
 	for _, q := range existing {

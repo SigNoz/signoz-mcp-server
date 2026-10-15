@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 // Tool names themselves are pinned by the manifest-parity integration test;
@@ -156,7 +156,7 @@ func validAlertWriteBackFixture() map[string]any {
 					"spec": map[string]any{
 						"name":   "A",
 						"signal": "metrics",
-						"limit":  types.DefaultAggregateQueryLimit,
+						"limit":  querybuilder.DefaultAggregateQueryLimit,
 						"order": []any{map[string]any{
 							"key":       map[string]any{"name": "__result"},
 							"direction": "desc",

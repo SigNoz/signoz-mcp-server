@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 func TestResolveTimestampsEndOnlyUsesDefaultRange(t *testing.T) {
@@ -129,8 +129,8 @@ func TestParseAggregateArgs_DefaultLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if req.Limit != types.DefaultAggregateQueryLimit {
-		t.Fatalf("default limit = %d, want %d", req.Limit, types.DefaultAggregateQueryLimit)
+	if req.Limit != querybuilder.DefaultAggregateQueryLimit {
+		t.Fatalf("default limit = %d, want %d", req.Limit, querybuilder.DefaultAggregateQueryLimit)
 	}
 	if req.OrderExpr != "count()" || req.OrderDir != "desc" {
 		t.Fatalf("default order = %q %q, want count() desc", req.OrderExpr, req.OrderDir)

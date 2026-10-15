@@ -12,8 +12,8 @@ import (
 
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 )
 
 var validAggregations = map[string]bool{
@@ -40,58 +40,58 @@ const allowedAggregations = "avg, count, count_distinct, max, min, p50, p75, p90
 
 const conflictingFilterAliasError = "both 'filter' and 'query' were provided with different values; use only 'filter' (the 'query' alias is legacy)"
 
-var traceGroupByFieldMetadata = map[string]types.SelectField{
-	"trace_id":             {Name: "trace_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"span_id":              {Name: "span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"parent_span_id":       {Name: "parent_span_id", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"name":                 {Name: "name", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"duration_nano":        {Name: "duration_nano", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-	"timestamp":            {Name: "timestamp", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-	"has_error":            {Name: "has_error", FieldDataType: "bool", Signal: "traces", FieldContext: "span"},
-	"status_code":          {Name: "status_code", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-	"status_code_string":   {Name: "status_code_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"http_method":          {Name: "http_method", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"http_url":             {Name: "http_url", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"kind_string":          {Name: "kind_string", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"kind":                 {Name: "kind", FieldDataType: "number", Signal: "traces", FieldContext: "span"},
-	"response_status_code": {Name: "response_status_code", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
-	"status_message":       {Name: "status_message", FieldDataType: "string", Signal: "traces", FieldContext: "span"},
+var traceGroupByFieldMetadata = map[string]querybuilder.FieldKey{
+	"trace_id":             querybuilder.NewFieldKey("trace_id", "traces", "span", "string"),
+	"span_id":              querybuilder.NewFieldKey("span_id", "traces", "span", "string"),
+	"parent_span_id":       querybuilder.NewFieldKey("parent_span_id", "traces", "span", "string"),
+	"name":                 querybuilder.NewFieldKey("name", "traces", "span", "string"),
+	"duration_nano":        querybuilder.NewFieldKey("duration_nano", "traces", "span", "number"),
+	"timestamp":            querybuilder.NewFieldKey("timestamp", "traces", "span", "number"),
+	"has_error":            querybuilder.NewFieldKey("has_error", "traces", "span", "bool"),
+	"status_code":          querybuilder.NewFieldKey("status_code", "traces", "span", "number"),
+	"status_code_string":   querybuilder.NewFieldKey("status_code_string", "traces", "span", "string"),
+	"http_method":          querybuilder.NewFieldKey("http_method", "traces", "span", "string"),
+	"http_url":             querybuilder.NewFieldKey("http_url", "traces", "span", "string"),
+	"kind_string":          querybuilder.NewFieldKey("kind_string", "traces", "span", "string"),
+	"kind":                 querybuilder.NewFieldKey("kind", "traces", "span", "number"),
+	"response_status_code": querybuilder.NewFieldKey("response_status_code", "traces", "span", "string"),
+	"status_message":       querybuilder.NewFieldKey("status_message", "traces", "span", "string"),
 
-	"service.name":            {Name: "service.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"cloud.account.id":        {Name: "cloud.account.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"cloud.platform":          {Name: "cloud.platform", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"cloud.provider":          {Name: "cloud.provider", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"cloud.region":            {Name: "cloud.region", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"deployment.environment":  {Name: "deployment.environment", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"host.name":               {Name: "host.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.cluster.name":        {Name: "k8s.cluster.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.namespace.name":      {Name: "k8s.namespace.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.node.name":           {Name: "k8s.node.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.pod.name":            {Name: "k8s.pod.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.pod.start_time":      {Name: "k8s.pod.start_time", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.pod.uid":             {Name: "k8s.pod.uid", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"k8s.statefulset.name":    {Name: "k8s.statefulset.name", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"service.version":         {Name: "service.version", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"signoz.deployment.tier":  {Name: "signoz.deployment.tier", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"signoz.workload":         {Name: "signoz.workload", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
-	"signoz.workspace.key.id": {Name: "signoz.workspace.key.id", FieldDataType: "string", Signal: "traces", FieldContext: "resource"},
+	"service.name":            querybuilder.NewFieldKey("service.name", "traces", "resource", "string"),
+	"cloud.account.id":        querybuilder.NewFieldKey("cloud.account.id", "traces", "resource", "string"),
+	"cloud.platform":          querybuilder.NewFieldKey("cloud.platform", "traces", "resource", "string"),
+	"cloud.provider":          querybuilder.NewFieldKey("cloud.provider", "traces", "resource", "string"),
+	"cloud.region":            querybuilder.NewFieldKey("cloud.region", "traces", "resource", "string"),
+	"deployment.environment":  querybuilder.NewFieldKey("deployment.environment", "traces", "resource", "string"),
+	"host.name":               querybuilder.NewFieldKey("host.name", "traces", "resource", "string"),
+	"k8s.cluster.name":        querybuilder.NewFieldKey("k8s.cluster.name", "traces", "resource", "string"),
+	"k8s.namespace.name":      querybuilder.NewFieldKey("k8s.namespace.name", "traces", "resource", "string"),
+	"k8s.node.name":           querybuilder.NewFieldKey("k8s.node.name", "traces", "resource", "string"),
+	"k8s.pod.name":            querybuilder.NewFieldKey("k8s.pod.name", "traces", "resource", "string"),
+	"k8s.pod.start_time":      querybuilder.NewFieldKey("k8s.pod.start_time", "traces", "resource", "string"),
+	"k8s.pod.uid":             querybuilder.NewFieldKey("k8s.pod.uid", "traces", "resource", "string"),
+	"k8s.statefulset.name":    querybuilder.NewFieldKey("k8s.statefulset.name", "traces", "resource", "string"),
+	"service.version":         querybuilder.NewFieldKey("service.version", "traces", "resource", "string"),
+	"signoz.deployment.tier":  querybuilder.NewFieldKey("signoz.deployment.tier", "traces", "resource", "string"),
+	"signoz.workload":         querybuilder.NewFieldKey("signoz.workload", "traces", "resource", "string"),
+	"signoz.workspace.key.id": querybuilder.NewFieldKey("signoz.workspace.key.id", "traces", "resource", "string"),
 
-	"client.address":            {Name: "client.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"http.request.method":       {Name: "http.request.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"http.response.body.size":   {Name: "http.response.body.size", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"http.response.status_code": {Name: "http.response.status_code", FieldDataType: "number", Signal: "traces", FieldContext: "tag"},
-	"http.route":                {Name: "http.route", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"rpc.method":                {Name: "rpc.method", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"network.peer.address":      {Name: "network.peer.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"network.peer.port":         {Name: "network.peer.port", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"network.protocol.version":  {Name: "network.protocol.version", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"server.address":            {Name: "server.address", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"url.path":                  {Name: "url.path", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"url.scheme":                {Name: "url.scheme", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"db.operation":              {Name: "db.operation", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"db.statement":              {Name: "db.statement", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"db.system":                 {Name: "db.system", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
-	"messaging.system":          {Name: "messaging.system", FieldDataType: "string", Signal: "traces", FieldContext: "tag"},
+	"client.address":            querybuilder.NewFieldKey("client.address", "traces", "tag", "string"),
+	"http.request.method":       querybuilder.NewFieldKey("http.request.method", "traces", "tag", "string"),
+	"http.response.body.size":   querybuilder.NewFieldKey("http.response.body.size", "traces", "tag", "string"),
+	"http.response.status_code": querybuilder.NewFieldKey("http.response.status_code", "traces", "tag", "number"),
+	"http.route":                querybuilder.NewFieldKey("http.route", "traces", "tag", "string"),
+	"rpc.method":                querybuilder.NewFieldKey("rpc.method", "traces", "tag", "string"),
+	"network.peer.address":      querybuilder.NewFieldKey("network.peer.address", "traces", "tag", "string"),
+	"network.peer.port":         querybuilder.NewFieldKey("network.peer.port", "traces", "tag", "string"),
+	"network.protocol.version":  querybuilder.NewFieldKey("network.protocol.version", "traces", "tag", "string"),
+	"server.address":            querybuilder.NewFieldKey("server.address", "traces", "tag", "string"),
+	"url.path":                  querybuilder.NewFieldKey("url.path", "traces", "tag", "string"),
+	"url.scheme":                querybuilder.NewFieldKey("url.scheme", "traces", "tag", "string"),
+	"db.operation":              querybuilder.NewFieldKey("db.operation", "traces", "tag", "string"),
+	"db.statement":              querybuilder.NewFieldKey("db.statement", "traces", "tag", "string"),
+	"db.system":                 querybuilder.NewFieldKey("db.system", "traces", "tag", "string"),
+	"messaging.system":          querybuilder.NewFieldKey("messaging.system", "traces", "tag", "string"),
 }
 
 // timeRangeDesc builds the shared "timeRange" description. All time-windowed
@@ -178,7 +178,7 @@ func parseBoolArg(args map[string]any, key string) (bool, bool, error) {
 type AggregateRequest struct {
 	AggregationExpr  string
 	FilterExpression string
-	GroupBy          []types.SelectField
+	GroupBy          []querybuilder.FieldKey
 	OrderExpr        string
 	OrderDir         string
 	Limit            int
@@ -225,7 +225,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		aggregationExpr = fmt.Sprintf("%s()", aggregation)
 	}
 
-	var groupByFields []types.SelectField
+	var groupByFields []querybuilder.FieldKey
 	if groupByStr, _ := args["groupBy"].(string); groupByStr != "" {
 		for _, field := range strings.Split(groupByStr, ",") {
 			field = strings.TrimSpace(field)
@@ -251,7 +251,7 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 		}
 	}
 
-	limit, err := intArg(args, "limit", types.DefaultAggregateQueryLimit)
+	limit, err := intArg(args, "limit", querybuilder.DefaultAggregateQueryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -293,13 +293,13 @@ func parseAggregateArgs(args map[string]any, signal string, filterExpr string) (
 	}, nil
 }
 
-func aggregateGroupByField(signal, name string) types.SelectField {
+func aggregateGroupByField(signal, name string) querybuilder.FieldKey {
 	if signal == "traces" {
 		if field, ok := traceGroupByFieldMetadata[name]; ok {
 			return field
 		}
 	}
-	return types.SelectField{Name: name, Signal: signal}
+	return querybuilder.NewFieldKey(name, signal, "", "")
 }
 
 func resolveTimestamps(args map[string]any, defaultRange string) (int64, int64, error) {
@@ -400,7 +400,7 @@ func parseStepInterval(raw any) (*int64, string) {
 // against a real backend), so an uncapped limit is an unbounded single-request
 // memory vector on the shared, memory-limited multi-tenant pod. Callers that
 // need more rows should paginate via offset.
-const MaxRawResultLimit = types.MaxQueryLimit
+const MaxRawResultLimit = querybuilder.MaxQueryLimit
 
 // clampLimit bounds a parsed limit to MaxRawResultLimit. It returns the
 // effective limit and whether clamping occurred so handlers can surface it.

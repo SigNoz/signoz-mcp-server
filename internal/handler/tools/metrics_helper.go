@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 // metricsQueryRequest holds parsed arguments for signoz_query_metrics.
@@ -161,15 +161,11 @@ func parseMetricsQueryArgs(args map[string]any) (*metricsQueryRequest, error) {
 	return req, nil
 }
 
-// buildGroupByFields converts field name strings to SelectField with auto-detected fieldContext.
-func buildGroupByFields(names []string) []types.SelectField {
-	fields := make([]types.SelectField, 0, len(names))
+// buildGroupByFields converts field name strings to field keys with auto-detected fieldContext.
+func buildGroupByFields(names []string) []querybuilder.FieldKey {
+	fields := make([]querybuilder.FieldKey, 0, len(names))
 	for _, name := range names {
-		fields = append(fields, types.SelectField{
-			Name:         name,
-			Signal:       "metrics",
-			FieldContext: detectFieldContext(name),
-		})
+		fields = append(fields, querybuilder.NewFieldKey(name, "metrics", detectFieldContext(name), ""))
 	}
 	return fields
 }
