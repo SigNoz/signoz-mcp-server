@@ -447,7 +447,7 @@ func joinPath(steps []string) string {
 
 // TestNumericParamsAdvertiseIntegerStringUnion pins the schema-honesty fix:
 // limit/offset/stepInterval are registered with mcp.WithString but their parsers
-// (paginate.ParseParams[Clamped], intArg/parseLimit, parseStepInterval) ALSO
+// (paginate.ParseParamsClamped, intArg/parseLimit, parseStepInterval) ALSO
 // accept a JSON number, so a schema-validating client sending {"limit": 50}
 // (a JSON number — the natural form) must not be rejected before the handler
 // runs. intOrStringType() overrides the advertised type to the union

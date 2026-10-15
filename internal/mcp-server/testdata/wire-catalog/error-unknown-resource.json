@@ -14,8 +14,11 @@
   "framing": "json",
   "response": {
     "error": {
-      "code": -32002,
-      "message": "handler not found for resource URI 'signoz://unknown': resource not found"
+      "code": -32602,
+      "data": {
+        "uri": "signoz://unknown"
+      },
+      "message": "Resource not found"
     },
     "id": 0,
     "jsonrpc": "2.0"

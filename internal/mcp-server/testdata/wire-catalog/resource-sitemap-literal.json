@@ -16,13 +16,15 @@
     "id": 0,
     "jsonrpc": "2.0",
     "result": {
+      "cacheScope": "public",
       "contents": [
         {
           "mimeType": "text/markdown",
           "text": "- [Send logs](https://signoz.io/docs/logs-management/send-logs/)\n- [Install Docker](https://signoz.io/docs/install/docker/)\n",
           "uri": "signoz://docs/sitemap"
         }
-      ]
+      ],
+      "ttlMs": 0
     }
   }
 }

@@ -1708,7 +1708,7 @@ func TestNewClient_EmptyHeaders(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
+func TestNewClient_ReservedHeadersSkippedWithoutLoggingTheirValues(t *testing.T) {
 	customHeaders := map[string]string{
 		"Content-Type":        "text/plain",
 		"SIGNOZ-API-KEY":      "overridden-key",
@@ -1730,11 +1730,14 @@ func TestNewClient_ReservedHeadersSkipped(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
+	var logs bytes.Buffer
+	client := NewClient(newBufferedLogger(&logs, slog.LevelDebug), server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)
+	require.Contains(t, logs.String(), `"header":"SIGNOZ-API-KEY"`, "the ignored header is still reported by name")
+	require.NotContains(t, logs.String(), "overridden-key",
+		"a custom header that collides with the auth header carries a credential; its value must never be logged")
 }
 
 func TestCreateAlertRule_v2Returns201(t *testing.T) {

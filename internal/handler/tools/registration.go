@@ -15,10 +15,9 @@ type registrationKey struct {
 }
 
 const (
-	registrationTool             registrationKind = "tool"
-	registrationResource         registrationKind = "resource"
-	registrationResourceTemplate registrationKind = "resource template"
-	registrationPrompt           registrationKind = "prompt"
+	registrationTool     registrationKind = "tool"
+	registrationResource registrationKind = "resource"
+	registrationPrompt   registrationKind = "prompt"
 )
 
 func (h *Handler) claimRegistration(s *mcp.Server, kind registrationKind, key string) {
@@ -63,11 +62,6 @@ func (h *Handler) registerTool(s *mcp.Server, tool mcp.Tool, handler mcp.ToolHan
 func (h *Handler) addResource(s *mcp.Server, resource mcp.Resource, handler mcp.ResourceHandlerFunc) {
 	h.claimRegistration(s, registrationResource, resource.URI)
 	s.AddResource(&resource, mcp.AdaptResourceHandler(handler))
-}
-
-func (h *Handler) addResourceTemplate(s *mcp.Server, resourceTemplate mcp.ResourceTemplate, handler mcp.ResourceTemplateHandlerFunc) {
-	h.claimRegistration(s, registrationResourceTemplate, resourceTemplate.URITemplate)
-	s.AddResourceTemplate(&resourceTemplate, mcp.AdaptResourceHandler(handler))
 }
 
 // RegisterPrompt exposes checked prompt registration to server composition

@@ -32,15 +32,9 @@ type Response struct {
 	Pagination Metadata `json:"pagination"`
 }
 
-// ParseParams extracts limit and offset from request arguments, clamping the
-// limit to MaxLimit. Accepts limit/offset as a number or a string.
-func ParseParams(args any) (int, int) {
-	limit, offset, _ := ParseParamsClamped(args)
-	return limit, offset
-}
-
-// ParseParamsClamped is ParseParams that also reports whether the requested
-// limit was clamped to MaxLimit, so handlers can surface a note.
+// ParseParamsClamped extracts limit and offset from request arguments,
+// clamping the limit to MaxLimit and reporting whether it clamped so handlers
+// can surface a note. Accepts limit/offset as a number or a string.
 func ParseParamsClamped(args any) (limit, offset int, clamped bool) {
 	limit = DefaultLimit
 	offset = DefaultOffset

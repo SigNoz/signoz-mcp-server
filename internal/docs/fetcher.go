@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -211,12 +210,4 @@ func retryAfter(raw string) time.Duration {
 
 func defaultUserAgent() string {
 	return version.UserAgent() + " (+https://github.com/SigNoz/signoz-mcp-server; docs-indexer)"
-}
-
-func RemoteHost(remoteAddr string) string {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		return remoteAddr
-	}
-	return host
 }

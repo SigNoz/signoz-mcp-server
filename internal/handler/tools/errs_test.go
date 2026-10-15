@@ -187,54 +187,6 @@ func TestRequireArgsMap(t *testing.T) {
 	}
 }
 
-func TestRequireStringField(t *testing.T) {
-	cases := []struct {
-		name      string
-		args      map[string]any
-		reason    string
-		wantVal   string
-		wantErrIs string
-	}{
-		{name: "valid", args: map[string]any{"type": "slack"}, wantVal: "slack"},
-		{
-			name:      "wrong type -> must be a string",
-			args:      map[string]any{"type": 7},
-			wantErrIs: `Parameter validation failed: "type" must be a string`,
-		},
-		{
-			name:      "empty -> is required with reason",
-			args:      map[string]any{"type": ""},
-			reason:    ". Must be one of: slack, webhook",
-			wantErrIs: `Parameter validation failed: "type" is required. Must be one of: slack, webhook`,
-		},
-		{
-			name:      "missing -> is required",
-			args:      map[string]any{},
-			wantErrIs: `Parameter validation failed: "type" is required`,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			val, err := requireStringField(tc.args, "type", tc.reason)
-			if tc.wantErrIs != "" {
-				if err == nil {
-					t.Fatalf("expected error, got val=%q", val)
-				}
-				if err.Error() != tc.wantErrIs {
-					t.Fatalf("err = %q, want %q", err.Error(), tc.wantErrIs)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if val != tc.wantVal {
-				t.Fatalf("val = %q, want %q", val, tc.wantVal)
-			}
-		})
-	}
-}
-
 func TestNotAJSONObjectError_CanonicalForm(t *testing.T) {
 	got := resultText(t, notAJSONObjectError())
 	want := "invalid arguments format: expected JSON object"
@@ -835,7 +787,6 @@ func TestErrorHelpers_StructuredCodes(t *testing.T) {
 		{"upstreamError-not-found", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusNotFound, Body: `{}`}), CodeNotFound},
 		{"upstreamError-conflict", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusConflict, Body: `{}`}), CodeConflict},
 		{"upstreamError-rate-limited", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusTooManyRequests, Body: `{}`}), CodeRateLimited},
-		{"notFoundError", notFoundError("no such alert"), CodeNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

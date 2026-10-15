@@ -238,23 +238,6 @@ func requireArgsMap(raw any) (map[string]any, *mcp.CallToolResult) {
 	return args, nil
 }
 
-// requireStringField is the error-returning sibling of requireStringArg, for
-// helpers that propagate a plain error (e.g. notification-channel receiver
-// builders). Same two-tier rule; requiredReason is appended after the
-// "is required" clause to carry per-field guidance.
-func requireStringField(args map[string]any, key, requiredReason string) (string, error) {
-	if raw, present := args[key]; present {
-		s, ok := raw.(string)
-		if !ok {
-			return "", fmt.Errorf(`%s %q must be a string`, validationErrorPrefix, key)
-		}
-		if s != "" {
-			return s, nil
-		}
-	}
-	return "", fmt.Errorf(`%s %q is required%s`, validationErrorPrefix, key, requiredReason)
-}
-
 // notAConfigObjectError is the body-carrying-tool variant of the arguments guard.
 func notAConfigObjectError() *mcp.CallToolResult {
 	return errorWithCode(CodeValidationFailed, notAConfigObjectMessage)
@@ -529,13 +512,6 @@ func appendAuthorizationOperation(res *mcp.CallToolResult, toolName string) {
 
 func boundedErrorDetail(detail string) string {
 	return logpkg.TruncBody([]byte(strings.TrimSpace(detail)))
-}
-
-// notFoundError marks a referenced resource that does not exist. The message is
-// the human-readable explanation; the NOT_FOUND code lets clients avoid a blind
-// retry and re-discover the id instead.
-func notFoundError(message string) *mcp.CallToolResult {
-	return errorWithCode(CodeNotFound, message)
 }
 
 // structuredResult is the success-path wrapper for tools whose output JSON is

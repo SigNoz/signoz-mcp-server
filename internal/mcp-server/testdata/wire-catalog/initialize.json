@@ -22,7 +22,6 @@
     "jsonrpc": "2.0",
     "result": {
       "capabilities": {
-        "logging": {},
         "prompts": {},
         "resources": {},
         "tools": {}
