@@ -9,7 +9,7 @@ resource attribute's observed values come back in values.stringValues), and the
 "tag" trap behaves as the descriptions say it does.
 """
 
-from fixtures.mcpclient import MCPClient, assert_tool_ok, text_blocks
+from fixtures.mcpclient import MCPClient, assert_tool_ok
 from fixtures.results import first_block_json
 from fixtures.telemetry import seed_traces, wait_for
 
@@ -53,9 +53,10 @@ def test_seeded_resource_attribute_values_discoverable(mcp_client: MCPClient, te
     wait_for(service_visible, f"service.name value {service} discoverable")
 
     # SigNoz does not honor the legacy context "tag": the same lookup returns no
-    # values, with the input-schema notice as the only signal. The fieldContext
-    # descriptions teach exactly this trap, so if SigNoz starts rejecting or
-    # honoring "tag", this pin fails and the teaching must change with it.
+    # values, silently. The fieldContext description is the only warning (the
+    # schema deliberately has no enum, so SigNoz-owned contexts pass through);
+    # if SigNoz starts rejecting or honoring "tag", this pin fails and the
+    # teaching must change with it.
     legacy = mcp_client.call_tool(
         "signoz_get_field_values",
         {
@@ -68,7 +69,6 @@ def test_seeded_resource_attribute_values_discoverable(mcp_client: MCPClient, te
     )
     assert_tool_ok(legacy)
     assert string_values(legacy) == [], f"legacy 'tag' context unexpectedly honored: {string_values(legacy)}"
-    assert "Input validation notice" in text_blocks(legacy), "schema notice missing for out-of-enum fieldContext"
 
 
 def test_field_keys_context_filter_is_honored(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:

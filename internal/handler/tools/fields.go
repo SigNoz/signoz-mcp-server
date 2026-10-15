@@ -26,10 +26,10 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription("Use this when the user needs to discover field names available for filtering or grouping metrics, traces, or logs. It returns keys, not their observed values, scoped by signal and optional metric, context, or data type. SigNoz sets data.complete=false when it truncated the key list; narrow with searchText or fieldContext to see more. After choosing a key, use signoz_get_field_values to discover valid values."),
-		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
+		mcp.WithString("signal", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("searchText", mcp.Description("Filter field names by substring (optional).")),
 		mcp.WithString("metricName", mcp.Description("Metric name to scope field keys (optional, only relevant when signal=metrics).")),
-		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "body"), mcp.Description(fieldContextParamDesc)),
+		mcp.WithString("fieldContext", mcp.Description(fieldContextParamDesc)),
 		mcp.WithString("fieldDataType", mcp.Description(fieldDataTypeParamDesc)),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to discover Cost Meter fields; omit for the default metrics store. Omit for logs and traces.")),
 	)
@@ -40,11 +40,11 @@ func (h *Handler) RegisterFieldsHandlers(s *mcp.Server) {
 		withReadOnlyToolAnnotations(),
 		mcp.WithString("searchContext", mcp.Description("Copy the user's entire original request verbatim, including any preflight or confirmation context; do not summarize, shorten, or omit clauses.")),
 		mcp.WithDescription("Use this when the user knows a field key and needs its observed values for a metrics, traces, or logs filter. It returns values, not field names; use signoz_get_field_keys when the key is unknown. Match signal and fieldContext to the query that will use the value. SigNoz sets data.complete=false when it truncated the value list; narrow with searchText to see more."),
-		mcp.WithString("signal", mcp.Required(), mcp.Enum("metrics", "traces", "logs"), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
+		mcp.WithString("signal", mcp.Required(), mcp.Description("Signal type: 'metrics', 'traces', or 'logs'.")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Field name to get values for (e.g., 'service.name', 'http.status_code').")),
 		mcp.WithString("searchText", mcp.Description("Filter the returned values by substring (optional).")),
 		mcp.WithString("metricName", mcp.Description("Metric name to scope field values (optional, only relevant when signal=metrics).")),
-		mcp.WithString("fieldContext", mcp.Enum("resource", "attribute", "scope", "log", "span", "metric", "body"), mcp.Description(fieldContextParamDesc+" Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.")),
+		mcp.WithString("fieldContext", mcp.Description(fieldContextParamDesc+" Set this when the same key name exists in more than one context to disambiguate which one to fetch values for.")),
 		mcp.WithString("source", mcp.Description("For signal=metrics, set \"meter\" to fetch Cost Meter field values; omit for the default metrics store. Omit for logs and traces.")),
 	)
 
