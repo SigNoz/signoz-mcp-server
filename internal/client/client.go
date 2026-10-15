@@ -170,9 +170,10 @@ func (s *SigNoz) setRequestHeaders(ctx context.Context, req *http.Request, warnR
 			continue
 		}
 		if strings.EqualFold(name, ContentType) || strings.EqualFold(name, s.authHeaderName) {
+			// Name only: a custom header that collides with the auth header carries a credential.
 			if warnReserved {
-				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
-					slog.String("header", name), slog.String("value", value))
+				s.logger.WarnContext(ctx, "Ignoring a custom header that collides with a reserved header",
+					slog.String("header", name))
 			}
 			continue
 		}
