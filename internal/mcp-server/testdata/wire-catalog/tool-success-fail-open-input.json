@@ -25,7 +25,7 @@
           "type": "text"
         },
         {
-          "text": "Input validation notice: the arguments did not fully match this tool's input schema (jsonschema validation failed with 'mem:///signoz/tools/signoz_list_dashboards/input-schema.json#' - at '/limit': got object, want integer or string). The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.",
+          "text": "Input validation notice: parameter \"limit\" did not fully match its advertised schema. The call still ran best-effort: mismatched values may have been ignored or replaced with defaults. Adjust the flagged parameter(s) and re-call if the results look off.",
           "type": "text"
         }
       ],

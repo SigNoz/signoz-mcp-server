@@ -8,7 +8,7 @@ access to unexported retry, registration, middleware, and server-composition hel
 
 - `policy.go` contains shared limits, official aliases, and explicitly grandfathered exceptions.
 - `tests.txt` is the exact inventory executed by the `guardrails / contract` GitHub check.
-- `internal/mcp-server/testdata/wire-catalog/` holds the immutable pre-migration JSON-RPC oracle.
+- `internal/mcp-server/testdata/wire-catalog/` records what the server sends over JSON-RPC. Update only the entries a change intends to alter, so each diff is reviewed.
 - `.github/workflows/guardrails.yaml` runs `make check-guardrails`, which verifies the inventory and runs the guarded tests.
 - `.github/workflows/mcp-protocol.yaml` runs the real-server Inspector and
   selected official conformance checks.
@@ -85,8 +85,8 @@ complete SigNoz catalog and transport compatibility.
 
 Focused Go matrices own exact HTTP and stdio wire behavior: both protocol eras,
 standardized modern headers, JSON Content-Type/Accept handling, stateless
-GET/DELETE 405 responses, absent `Mcp-Session-Id`, cancellation, and accepted
-official-SDK differences. Do not duplicate those matrices in the shell script.
+GET/DELETE 405 responses, absent `Mcp-Session-Id`, and cancellation. Do not
+duplicate those matrices in the shell script.
 
 Protocol policy is split across these review-sensitive files:
 
