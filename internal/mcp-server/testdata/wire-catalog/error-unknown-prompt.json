@@ -16,7 +16,7 @@
   "response": {
     "error": {
       "code": -32602,
-      "message": "prompt 'signoz_unknown' not found: prompt not found"
+      "message": "unknown prompt \"signoz_unknown\""
     },
     "id": 0,
     "jsonrpc": "2.0"

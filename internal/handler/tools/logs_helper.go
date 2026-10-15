@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 const logsLegacyQueryAliasError = `parameter validation failed: "query" is not accepted by log tools; use "filter" with a Query Builder filter expression (see signoz://logs/query-builder-guide)`
@@ -62,7 +62,7 @@ func parseSearchLogsArgs(args map[string]any) (*SearchLogsRequest, error) {
 	}
 	filterExpr := buildLogFilterExpr(filter, service, severity, searchText, searchScope)
 
-	limit, err := intArg(args, "limit", types.DefaultRawQueryLimit)
+	limit, err := intArg(args, "limit", querybuilder.DefaultRawQueryLimit)
 	if err != nil {
 		return nil, err
 	}

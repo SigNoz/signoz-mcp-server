@@ -21,6 +21,7 @@ import (
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
 	otelpkg "github.com/SigNoz/signoz-mcp-server/pkg/otel"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 	"github.com/SigNoz/signoz-mcp-server/pkg/version"
@@ -170,9 +171,10 @@ func (s *SigNoz) setRequestHeaders(ctx context.Context, req *http.Request, warnR
 			continue
 		}
 		if strings.EqualFold(name, ContentType) || strings.EqualFold(name, s.authHeaderName) {
+			// Name only: a custom header that collides with the auth header carries a credential.
 			if warnReserved {
-				s.logger.WarnContext(ctx, "Custom header overrides a reserved header",
-					slog.String("header", name), slog.String("value", value))
+				s.logger.WarnContext(ctx, "Ignoring a custom header that collides with a reserved header",
+					slog.String("header", name))
 			}
 			continue
 		}
@@ -679,7 +681,10 @@ func (s *SigNoz) GetTraceDetails(ctx context.Context, traceID string, includeSpa
 	filterExpression := fmt.Sprintf("trace_id = '%s'", traceID)
 	limit := 1000
 
-	queryPayload := types.BuildTracesQueryPayload(startTime, endTime, filterExpression, limit, 0, types.TraceDetailSelectFields)
+	queryPayload, err := querybuilder.TracesSearch(startTime, endTime, filterExpression, limit, 0, querybuilder.TraceDetailSelectFields)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query payload: %w", err)
+	}
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query payload: %w", err)

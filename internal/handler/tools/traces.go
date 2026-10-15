@@ -10,8 +10,8 @@ import (
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 	"github.com/SigNoz/signoz-mcp-server/pkg/timeutil"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
 	"github.com/SigNoz/signoz-mcp-server/pkg/util"
 )
 
@@ -37,7 +37,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 		mcp.WithString("minDuration", mcp.Description("Minimum span duration in nanoseconds. Example: '500000000' for 500ms.")),
 		mcp.WithString("maxDuration", mcp.Description("Maximum span duration in nanoseconds. Example: '2000000000' for 2s.")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration_nano) asc'. Defaults to the aggregation expression descending.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups.")),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups.")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
@@ -60,7 +60,7 @@ func (h *Handler) RegisterTracesHandlers(s *mcp.Server) {
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).")),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of span rows to return (default: 100, max: 10000; higher values are clamped; paginate with offset).")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Number of span rows to skip for pagination (default: 0).")),
 		mcp.WithString("selectFields", stringOrStringArrayType(), mcp.Description(traceSelectFieldsDescription)),
 	)
@@ -95,12 +95,15 @@ func (h *Handler) handleAggregateTraces(ctx context.Context, req mcp.CallToolReq
 		h.logger.WarnContext(ctx, "aggregate_traces stepInterval dropped", slog.String("reason", reqData.StepIntervalWarning))
 	}
 
-	queryPayload := types.BuildAggregateQueryPayload("traces",
+	queryPayload, err := querybuilder.Aggregate("traces",
 		reqData.StartTime, reqData.EndTime, reqData.AggregationExpr,
 		reqData.FilterExpression, reqData.GroupBy,
 		reqData.OrderExpr, reqData.OrderDir, reqData.Limit,
 		reqData.RequestType, reqData.StepInterval,
 	)
+	if err != nil {
+		return InternalErrorResult("failed to build query payload: " + err.Error()), nil
+	}
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
@@ -136,7 +139,10 @@ func (h *Handler) handleSearchTraces(ctx context.Context, req mcp.CallToolReques
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
-	queryPayload := types.BuildTracesQueryPayload(reqData.StartTime, reqData.EndTime, reqData.FilterExpression, reqData.Limit, reqData.Offset, reqData.SelectFields)
+	queryPayload, err := querybuilder.TracesSearch(reqData.StartTime, reqData.EndTime, reqData.FilterExpression, reqData.Limit, reqData.Offset, reqData.SelectFields)
+	if err != nil {
+		return InternalErrorResult("failed to build query payload: " + err.Error()), nil
+	}
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {

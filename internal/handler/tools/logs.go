@@ -9,7 +9,7 @@ import (
 	mcp "github.com/SigNoz/signoz-mcp-server/internal/mcpcontract"
 
 	logpkg "github.com/SigNoz/signoz-mcp-server/pkg/log"
-	"github.com/SigNoz/signoz-mcp-server/pkg/types"
+	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
 
 const logsFilterParamDescription = "Filter expression using SigNoz search syntax (see signoz://logs/query-builder-guide). Combine conditions with AND, OR, and parentheses. Unknown keys hard-error; keys present in multiple contexts default to resource context. Disambiguate with attribute.<key> or resource.<key>. Log keys are workspace-specific; logs have no spec-mandated resource attributes, so even service.name is only present when the log pipeline sets it. Discover keys with signoz_get_field_keys and values with signoz_get_field_values before filtering. For message text use body CONTAINS 'term'. Only when you don't know which field holds a term, use search('term') for every field or search('term', attribute); scopes (body, attribute, resource, log) are ORed. search() is slow and may be rejected over wide time ranges. Surrounding filters keep AND/NOT semantics. Examples: \"service.name = 'payment-svc' AND severity_text = 'ERROR'\", \"body CONTAINS 'timeout' AND severity_text = 'ERROR'\"."
@@ -29,7 +29,7 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 		mcp.WithString("service", mcp.Description("Shortcut filter for service name. Equivalent to adding service.name = '<value>' to filter. Fails with `key service.name not found` when this workspace's logs lack that attribute; discover keys with signoz_get_field_keys(signal=\"logs\", fieldContext=\"resource\") and filter on an available key instead.")),
 		mcp.WithString("severity", mcp.Description("Shortcut filter for severity_text. Common values include DEBUG, INFO, WARN, ERROR, and FATAL, but they are not an exhaustive enum. Discover values with signoz_get_field_values(signal=\"logs\", name=\"severity_text\", fieldContext=\"log\").")),
 		mcp.WithString("orderBy", mcp.Description("How to order results. Format: '<expression> <direction>', e.g. 'count() desc' or 'avg(duration) asc'. Defaults to the aggregation expression descending.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups.")),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultAggregateQueryLimit)), intOrStringType(), mcp.Description("Maximum number of groups to return (default: 100, max: 10000; higher values are clamped). For time_series queries, groups are ranked across the entire time range, so a short-lived spike can fall outside the selected top groups.")),
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
@@ -53,7 +53,7 @@ func (h *Handler) RegisterLogsHandlers(s *mcp.Server) {
 		mcp.WithString("timeRange", mcp.DefaultString("1h"), mcp.Description(timeRangeDesc("Defaults to '1h'."))),
 		mcp.WithString("start", intOrStringType(), mcp.Description("Start time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
 		mcp.WithString("end", intOrStringType(), mcp.Description("End time in unix milliseconds (optional). When both start and end are provided, they override timeRange.")),
-		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(types.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with offset)")),
+		mcp.WithString("limit", mcp.DefaultString(strconv.Itoa(querybuilder.DefaultRawQueryLimit)), intOrStringType(), mcp.Description("Maximum number of logs to return (default: 100, max: 10000; higher values are clamped; paginate with offset)")),
 		mcp.WithString("offset", mcp.DefaultString("0"), intOrStringType(), mcp.Description("Offset for pagination (default: 0)")),
 	)
 
@@ -74,12 +74,15 @@ func (h *Handler) handleAggregateLogs(ctx context.Context, req mcp.CallToolReque
 		h.logger.WarnContext(ctx, "aggregate_logs stepInterval dropped", slog.String("reason", reqData.StepIntervalWarning))
 	}
 
-	queryPayload := types.BuildAggregateQueryPayload("logs",
+	queryPayload, err := querybuilder.Aggregate("logs",
 		reqData.StartTime, reqData.EndTime, reqData.AggregationExpr,
 		reqData.FilterExpression, reqData.GroupBy,
 		reqData.OrderExpr, reqData.OrderDir, reqData.Limit,
 		reqData.RequestType, reqData.StepInterval,
 	)
+	if err != nil {
+		return InternalErrorResult("failed to build query payload: " + err.Error()), nil
+	}
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
@@ -115,10 +118,13 @@ func (h *Handler) handleSearchLogs(ctx context.Context, req mcp.CallToolRequest)
 		return errorWithCode(CodeValidationFailed, err.Error()), nil
 	}
 
-	queryPayload := types.BuildLogsQueryPayload(
+	queryPayload, err := querybuilder.LogsSearch(
 		reqData.StartTime, reqData.EndTime, reqData.FilterExpression,
 		reqData.Limit, reqData.Offset,
 	)
+	if err != nil {
+		return InternalErrorResult("failed to build query payload: " + err.Error()), nil
+	}
 
 	queryJSON, err := json.Marshal(queryPayload)
 	if err != nil {
