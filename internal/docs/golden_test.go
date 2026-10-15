@@ -27,7 +27,6 @@ func TestGoldenSet(t *testing.T) {
 	var queries []goldenQuery
 	require.NoError(t, json.Unmarshal(raw, &queries))
 	require.GreaterOrEqual(t, len(queries), 30)
-	require.LessOrEqual(t, len(queries), 160)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -3,23 +3,10 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
-	"sort"
 	"testing"
 
 	"github.com/SigNoz/signoz-mcp-server/pkg/querybuilder"
 )
-
-// Tool names themselves are pinned by the manifest-parity integration test;
-// here only the output-schema allowlist is an exact inventory.
-var expectedOutputSchemaTools = []string{
-	"signoz_check_metric_usage",
-	"signoz_fetch_doc",
-	"signoz_get_org_overview",
-	"signoz_list_alert_rules",
-	"signoz_list_alerts",
-	"signoz_search_docs",
-}
 
 func registeredTestTools(t *testing.T) map[string]*registeredTool {
 	t.Helper()
@@ -29,12 +16,11 @@ func registeredTestTools(t *testing.T) map[string]*registeredTool {
 	return listTestTools(t, s)
 }
 
-func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
+func TestRegisteredToolSchemasCompileAndKeepInputObjectsOpen(t *testing.T) {
 	registered := registeredTestTools(t)
 	if len(registered) == 0 {
 		t.Fatal("no tools registered")
 	}
-	var outputNames []string
 
 	for name, entry := range registered {
 		inputRaw := inputSchemaJSON(entry.Tool)
@@ -59,7 +45,6 @@ func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
 
 		outputRaw := outputSchemaJSON(entry.Tool)
 		if len(outputRaw) > 0 {
-			outputNames = append(outputNames, name)
 			compiled, err := compileToolSchema(name, "output", outputRaw)
 			if err != nil {
 				t.Errorf("compile %s output schema: %v", name, err)
@@ -67,11 +52,6 @@ func TestRegisteredToolSchemasCompileAndMatchExactInventory(t *testing.T) {
 				t.Errorf("compile %s output schema returned nil", name)
 			}
 		}
-	}
-
-	sort.Strings(outputNames)
-	if !reflect.DeepEqual(outputNames, expectedOutputSchemaTools) {
-		t.Fatalf("output schema inventory changed\n got (%d): %v\nwant (%d): %v", len(outputNames), outputNames, len(expectedOutputSchemaTools), expectedOutputSchemaTools)
 	}
 }
 

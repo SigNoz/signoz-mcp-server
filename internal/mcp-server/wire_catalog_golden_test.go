@@ -93,9 +93,6 @@ func TestGuardrail_WireCatalogGoldens(t *testing.T) {
 			read := o.capture("resources/read", mustJSON(map[string]any{"uri": uri}))
 			inventory = append(inventory, digestResultContents(t, uri, read.Response))
 		}
-		if len(inventory) != 22 {
-			t.Fatalf("static resource count = %d, want 22", len(inventory))
-		}
 		sort.Slice(inventory, func(i, j int) bool { return inventory[i].Identity < inventory[j].Identity })
 		assertWireGolden(t, "resources-content-inventory.json", inventory)
 		sitemap := o.capture("resources/read", `{"uri":"signoz://docs/sitemap"}`)

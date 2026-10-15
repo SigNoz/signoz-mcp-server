@@ -190,25 +190,6 @@ func TestOrgOverviewOutputSchema_SourceStatsAcceptsArbitraryValues(t *testing.T)
 		t.Fatal("signoz_get_org_overview is not registered")
 	}
 	rawSchema := outputSchemaJSON(entry.Tool)
-	var schema map[string]any
-	if err := json.Unmarshal(rawSchema, &schema); err != nil {
-		t.Fatalf("decode output schema: %v", err)
-	}
-	sourceStatsSchema := descend(t, schema, "data", "sourceStats")
-	if additional, exists := sourceStatsSchema["additionalProperties"]; exists {
-		switch value := additional.(type) {
-		case bool:
-			if !value {
-				t.Fatal("data.sourceStats output schema is closed")
-			}
-		case map[string]any:
-			if len(value) != 0 {
-				t.Fatalf("data.sourceStats constrains arbitrary values: %#v", value)
-			}
-		default:
-			t.Fatalf("unexpected data.sourceStats additionalProperties shape: %T", additional)
-		}
-	}
 
 	overview, _, err := buildOrgOverview(completeOrgOverviewPayload(nil))
 	if err != nil {

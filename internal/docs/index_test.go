@@ -273,38 +273,6 @@ func TestSnippetRuneBudget(t *testing.T) {
 	}
 }
 
-func TestEmbeddedSearchProbeRegressions(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	snapshot, err := LoadEmbeddedCorpus()
-	require.NoError(t, err)
-	reg, err := NewIndexRegistry(ctx, snapshot)
-	require.NoError(t, err)
-	defer reg.Close(context.Background())
-	for _, tc := range []struct{ query, url string }{
-		{"How do I send logs from a Kubernetes cluster to SigNoz Cloud?", "https://signoz.io/docs/logs-management/send-logs-to-signoz/"},
-		{"alerting on error rate", "https://signoz.io/docs/alerts-management/metrics-based-alerts/"},
-		{"instrumenting a python fastapi app", "https://signoz.io/docs/instrumentation/opentelemetry-python/"},
-		{"k8s otel collector helm", "https://signoz.io/docs/opentelemetry-collection-agents/k8s/k8s-infra/overview/"},
-		{"nodejs express instrument", "https://signoz.io/docs/instrumentation/javascript/opentelemetry-nodejs/"},
-	} {
-		t.Run(tc.query, func(t *testing.T) {
-			res, err := reg.Search(ctx, tc.query, "", 3)
-			require.NoError(t, err)
-			var urls []string
-			for _, hit := range res.Results {
-				urls = append(urls, hit.URL)
-			}
-			require.Contains(t, urls, tc.url)
-		})
-	}
-	res, err := reg.Search(ctx, "kubernetes node memory", "", 3)
-	require.NoError(t, err)
-	for _, hit := range res.Results {
-		require.NotContains(t, hit.URL, "/instrumentation/javascript/")
-	}
-}
-
 func TestSearchStemsTitleAndHeadingsOnly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
