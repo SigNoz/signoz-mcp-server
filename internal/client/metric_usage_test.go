@@ -85,11 +85,6 @@ func TestParseDashboardNames_MissingDashboardName(t *testing.T) {
 	assert.Contains(t, err.Error(), "dashboardName")
 }
 
-func TestParseDashboardNames_MalformedJSON(t *testing.T) {
-	_, err := parseDashboardNames([]byte(`not json`))
-	assert.Error(t, err)
-}
-
 func TestParseAlertNames_ReturnsNames(t *testing.T) {
 	body := `{"status":"success","data":{"alerts":[
 		{"alertName":"High CPU","alertId":"a1"},

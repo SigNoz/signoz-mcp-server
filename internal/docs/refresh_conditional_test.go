@@ -120,7 +120,6 @@ func TestFetcherConditionalRequest(t *testing.T) {
 	require.Equal(t, FetchStatusNotModified, same.Status)
 	require.Equal(t, first.ETag, same.ETag)
 	require.Empty(t, same.Body)
-	require.Equal(t, http.StatusNotModified, same.StatusCode)
 
 	srv.set("/docs/install/docker/", "# Install SigNoz Using Docker\n\nNew steps.\n", `W/"v2"`)
 	changed := fetcher.FetchConditional(context.Background(), url, first.ETag)

@@ -95,14 +95,10 @@ const (
 )
 
 type PageFetch struct {
-	Status      FetchStatus
-	URL         string
-	Body        string
-	ETag        string
-	FetchedAt   time.Time
-	StatusCode  int
-	FinalURL    string
-	Err         error
-	RetryCount  int
-	RetryStatus int
+	Status    FetchStatus
+	URL       string
+	Body      string
+	ETag      string
+	FetchedAt time.Time
+	Err       error
 }

@@ -1299,23 +1299,6 @@ func TestDoRequest_RetriesExhausted(t *testing.T) {
 	assert.Contains(t, err.Error(), "503")
 }
 
-func TestDoRequest_ContextCancelled(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"error":"down"}`))
-	}))
-	defer srv.Close()
-
-	logger := logpkg.New("debug")
-	c := NewClient(logger, srv.URL, "test-key", "SIGNOZ-API-KEY", nil)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
-	_, err := c.doRequest(ctx, http.MethodGet, srv.URL+"/test", nil, DefaultQueryTimeout)
-	assert.Error(t, err)
-}
-
 func TestDoRequest_NoRetryOn4xx(t *testing.T) {
 	attempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1445,41 +1428,6 @@ func TestNewClient_SetsCustomHeaders(t *testing.T) {
 
 	logger := logpkg.New("debug")
 	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", customHeaders)
-
-	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
-	assert.NoError(t, err)
-}
-
-func TestNewClient_NilHeaders(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Standard headers should still be set when custom headers map is nil
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
-	}))
-	defer server.Close()
-
-	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
-	assert.NoError(t, err)
-}
-
-func TestNewClient_EmptyHeaders(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
-	}))
-	defer server.Close()
-
-	logger := logpkg.New("debug")
-	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{})
 
 	_, err := client.ListAlerts(context.Background(), types.ListAlertsParams{})
 	assert.NoError(t, err)

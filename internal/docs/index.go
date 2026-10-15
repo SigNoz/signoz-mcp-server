@@ -50,10 +50,6 @@ func (e *invalidSearchQueryError) Error() string {
 	return e.cause.Error()
 }
 
-func (e *invalidSearchQueryError) Unwrap() error {
-	return e.cause
-}
-
 func (e *invalidSearchQueryError) Is(target error) bool {
 	return target == ErrInvalidSearchQuery
 }

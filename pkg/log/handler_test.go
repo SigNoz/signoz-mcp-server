@@ -117,9 +117,8 @@ func TestRedactedTruncAnyRedactsNotificationChannelArguments(t *testing.T) {
 			toolName: "signoz_create_notification_channel",
 			payload: map[string]any{
 				"request": mcpcontract.CallToolRequest{Params: mcpcontract.CallToolParams{
-					Name:         "signoz_create_notification_channel",
-					Arguments:    arguments,
-					RawArguments: encodedArguments,
+					Name:      "signoz_create_notification_channel",
+					Arguments: arguments,
 				}},
 			},
 		},
@@ -128,9 +127,8 @@ func TestRedactedTruncAnyRedactsNotificationChannelArguments(t *testing.T) {
 			toolName: "signoz_update_notification_channel",
 			payload: map[string]any{
 				"request": mcpcontract.CallToolRequest{Params: mcpcontract.CallToolParams{
-					Name:         "signoz_update_notification_channel",
-					Arguments:    arguments,
-					RawArguments: encodedArguments,
+					Name:      "signoz_update_notification_channel",
+					Arguments: arguments,
 				}},
 			},
 		},
