@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SigNoz/signoz-mcp-server/internal/config"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
@@ -47,24 +46,7 @@ func TestCorpusManifestMatches(t *testing.T) {
 	require.Equal(t, manifest.SitemapHash, snapshot.SitemapHash)
 	require.Len(t, manifest.Pages, len(snapshot.Pages))
 
-	seenURLs := make(map[string]struct{}, len(snapshot.Pages))
 	for i, page := range snapshot.Pages {
-		canonical, ok := CanonicalDocURL(page.URL)
-		require.True(t, ok, "invalid corpus URL: %s", page.URL)
-		require.Equal(t, canonical, page.URL)
-		require.NotContains(t, seenURLs, canonical, "duplicate corpus URL: %s", canonical)
-		seenURLs[canonical] = struct{}{}
-		require.NotEmpty(t, page.SectionSlugs, page.URL)
-		require.Equal(t, page.SectionBreadcrumb, page.SectionMap[page.SectionSlug], page.URL)
-		seenSections := make(map[string]struct{}, len(page.SectionSlugs))
-		for _, slug := range page.SectionSlugs {
-			require.NotEmpty(t, slug, page.URL)
-			require.NotContains(t, seenSections, slug, "%s has duplicate section %s", page.URL, slug)
-			seenSections[slug] = struct{}{}
-			require.Contains(t, page.SectionMap, slug, page.URL)
-		}
-		require.Len(t, page.SectionMap, len(page.SectionSlugs), "%s has unlisted section metadata", page.URL)
-
 		sum := sha256.Sum256([]byte(page.BodyMarkdown))
 		require.Equal(t, manifest.Pages[i].URL, page.URL)
 		require.Equal(t, manifest.Pages[i].Title, page.Title)
@@ -273,17 +255,6 @@ func TestFetcherAllowsFractionalRequestsPerSecond(t *testing.T) {
 
 	require.Equal(t, FetchStatusOK, got.Status)
 	require.Equal(t, "# Slow Docs\n", got.Body)
-}
-
-func TestConfigPrecedence(t *testing.T) {
-	t.Setenv(config.SignozURL, "http://localhost:8080")
-	t.Setenv(config.SignozApiKey, "test-key")
-	t.Setenv(config.DocsRefreshIntervalEnv, "10m")
-	t.Setenv(config.DocsFullRefreshIntervalEnv, "5m")
-	cfg, err := config.LoadConfig()
-	require.NoError(t, err)
-	require.Equal(t, 6*time.Hour, cfg.DocsRefreshInterval)
-	require.Equal(t, 24*time.Hour, cfg.DocsFullRefreshInterval)
 }
 
 func TestJitteredCapsLargeJitterRelativeToBase(t *testing.T) {

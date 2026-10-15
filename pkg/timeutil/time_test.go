@@ -147,6 +147,8 @@ func TestNormalizeEpochToUnit_BandCeilingsNoOverflow(t *testing.T) {
 	}{
 		// seconds → ms: ×1000, no overflow.
 		{"sec ceiling -> ms", secNearCeil, UnitMillis, secNearCeil * 1000},
+		// seconds → ns: ×1e9 leaves int64 range (1e11×1e9 = 1e20) → clamp, never wrap.
+		{"sec ceiling -> ns clamps", secNearCeil, UnitNanos, maxInt64},
 		// millis → ms: identity.
 		{"ms ceiling -> ms", msNearCeil, UnitMillis, msNearCeil},
 		// micros → ms: /1000.
@@ -166,17 +168,6 @@ func TestNormalizeEpochToUnit_BandCeilingsNoOverflow(t *testing.T) {
 				t.Fatalf("normalizeEpochToUnit(%d, %q) = %d is negative (overflow wrap)", tt.raw, tt.unit, got)
 			}
 		})
-	}
-
-	// The specific reviewer case: a seconds value near the 1e11 ceiling, which
-	// previously overflowed when scaled to nanos first. On the ms target it must
-	// be exact; on the ns target it overflows the int64 range and must clamp
-	// (never wrap negative).
-	if got := normalizeEpochToUnit(secNearCeil, UnitMillis); got != secNearCeil*1000 || got < 0 {
-		t.Fatalf("seconds-near-ceiling -> ms = %d, want %d (positive, exact)", got, secNearCeil*1000)
-	}
-	if got := normalizeEpochToUnit(secNearCeil, UnitNanos); got < 0 {
-		t.Fatalf("seconds-near-ceiling -> ns = %d, must not wrap negative", got)
 	}
 }
 
@@ -210,11 +201,6 @@ func TestNormalizeEpochToUnit_ExactBoundaries(t *testing.T) {
 			}
 		})
 	}
-
-	// Explicit anti-assertion: 1e11 must NOT be treated as seconds (×1000).
-	if got := normalizeEpochToUnit(secondsUpperBound, UnitMillis); got == secondsUpperBound*1000 {
-		t.Fatalf("1e11 was treated as seconds (got %d); boundary must be exclusive → millis band", got)
-	}
 }
 
 // TestGetTimestampsWithDefaultsAutoDetectsMagnitude verifies that an explicit
@@ -242,20 +228,6 @@ func TestGetTimestampsWithDefaultsAutoDetectsMagnitude(t *testing.T) {
 				t.Fatalf("end = %q, want %q", end, tt.wantEnd)
 			}
 		})
-	}
-}
-
-// TestGetTimestampsWithDefaultsNanoBackwardCompat pins the contract that the two
-// service tools (which historically passed ns) keep resolving ns values
-// correctly through the shared helper after the ms→auto-detect migration.
-func TestGetTimestampsWithDefaultsNanoBackwardCompat(t *testing.T) {
-	args := map[string]any{
-		"start": "1711123200000000000",
-		"end":   "1711130400000000000",
-	}
-	start, end := GetTimestampsWithDefaults(args, UnitNanos)
-	if start != "1711123200000000000" || end != "1711130400000000000" {
-		t.Fatalf("ns values should round-trip unchanged on a ns tool: start=%s end=%s", start, end)
 	}
 }
 

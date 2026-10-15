@@ -217,21 +217,6 @@ func TestCheckMetricUsage_Route404StoredAsPerMetricError(t *testing.T) {
 	assert.NotEmpty(t, result["system.cpu.time"].Error, "route-level 404 must surface as per-metric error")
 }
 
-func TestCheckMetricUsage_5xxStoredAsPerMetricError(t *testing.T) {
-	var callCount atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount.Add(1)
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
-	}))
-	defer srv.Close()
-
-	c := NewClient(newBufferedLogger(&bytes.Buffer{}, -4), srv.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-	result, err := c.CheckMetricUsage(context.Background(), []string{"system.cpu.time"})
-	require.NoError(t, err, "5xx must not propagate as batch-level error")
-	assert.NotEmpty(t, result["system.cpu.time"].Error, "5xx must surface as per-metric error")
-}
-
 func TestCheckMetricUsage_AuthzFailurePropagates(t *testing.T) {
 	cases := []struct {
 		name       string

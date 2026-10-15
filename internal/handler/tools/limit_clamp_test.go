@@ -44,39 +44,6 @@ func TestParseSearchTracesArgs_LimitClamped(t *testing.T) {
 	}
 }
 
-// TestRawSearchResult_NoteIsSeparateBlock guards the contract that the raw JSON
-// payload is always the first, independently-parseable content block, and the
-// clamp note (when present) is a separate trailing block — never prepended into
-// the JSON.
-func TestRawSearchResult_NoteIsSeparateBlock(t *testing.T) {
-	payload := []byte(`{"status":"success","data":[]}`)
-
-	// rawSearchResult always appends a completeness note (hasMore inference), so
-	// even an un-clamped result carries the JSON block plus one note block.
-	notClamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, 100, 0, false)
-	if len(notClamped.Content) != 2 {
-		t.Fatalf("not-clamped: want 2 content blocks (JSON + completeness note), got %d", len(notClamped.Content))
-	}
-
-	// Clamped: JSON block + clamp note + completeness note.
-	clamped := rawSearchResult(testCtx(), nil, "signoz_search_logs", payload, 100, 0, true)
-	if len(clamped.Content) != 3 {
-		t.Fatalf("clamped: want 3 content blocks, got %d", len(clamped.Content))
-	}
-	block0, ok := clamped.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("clamped: block 0 is %T, want mcp.TextContent", clamped.Content[0])
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(block0.Text), &parsed); err != nil {
-		t.Fatalf("clamped: block 0 must be valid JSON, got %q (err: %v)", block0.Text, err)
-	}
-	block1, ok := clamped.Content[1].(*mcp.TextContent)
-	if !ok || !strings.Contains(block1.Text, "result limited to") {
-		t.Fatalf("clamped: block 1 should be the clamp note, got %#v", clamped.Content[1])
-	}
-}
-
 // TestAggregateResult_SurfaceSeparateNote guards that aggregateResult follows
 // the same contract as rawSearchResult — parseable JSON as block 0, a note as a
 // separate block 1 only when clamped.

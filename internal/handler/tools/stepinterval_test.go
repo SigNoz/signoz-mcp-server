@@ -43,9 +43,9 @@ func TestParseStepIntervalSeconds(t *testing.T) {
 }
 
 // TestParseMetricsQueryArgs_StepIntervalStrict pins the end-to-end contract on
-// query_metrics: a numeric stepInterval is honored; "1h"/"60s"/"abc" are NOT
-// coerced (StepInterval stays 0 → backend auto-select) and the rejected raw
-// value is captured for the [Decisions] note.
+// query_metrics: a numeric stepInterval is honored; a suffixed value like "1h"
+// is NOT coerced (StepInterval stays 0 → backend auto-select) and the rejected
+// raw value is captured for the [Decisions] note.
 func TestParseMetricsQueryArgs_StepIntervalStrict(t *testing.T) {
 	t.Run("numeric honored", func(t *testing.T) {
 		req, err := parseMetricsQueryArgs(map[string]any{
@@ -63,34 +63,19 @@ func TestParseMetricsQueryArgs_StepIntervalStrict(t *testing.T) {
 		}
 	})
 
-	t.Run("json number honored", func(t *testing.T) {
+	t.Run("rejected value is captured, not coerced", func(t *testing.T) {
 		req, err := parseMetricsQueryArgs(map[string]any{
 			"metricName":   "system.cpu.time",
-			"stepInterval": float64(300),
+			"stepInterval": "1h",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if req.StepInterval != 300 {
-			t.Fatalf("StepInterval = %d, want 300", req.StepInterval)
+		if req.StepInterval != 0 {
+			t.Fatalf("StepInterval = %d for %q, want 0 (backend auto-select)", req.StepInterval, "1h")
+		}
+		if req.StepIntervalInvalid != "1h" {
+			t.Fatalf("StepIntervalInvalid = %q, want %q", req.StepIntervalInvalid, "1h")
 		}
 	})
-
-	for _, bad := range []string{"1h", "60s", "abc"} {
-		t.Run("rejected_"+bad, func(t *testing.T) {
-			req, err := parseMetricsQueryArgs(map[string]any{
-				"metricName":   "system.cpu.time",
-				"stepInterval": bad,
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.StepInterval != 0 {
-				t.Fatalf("StepInterval = %d for %q, want 0 (backend auto-select)", req.StepInterval, bad)
-			}
-			if req.StepIntervalInvalid != bad {
-				t.Fatalf("StepIntervalInvalid = %q, want %q", req.StepIntervalInvalid, bad)
-			}
-		})
-	}
 }

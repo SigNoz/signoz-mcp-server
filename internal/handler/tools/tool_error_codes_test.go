@@ -110,6 +110,33 @@ func TestErrorCodeDecorator_AddsOperationSpecificAuthorizationRecovery(t *testin
 		})
 	}
 
+	t.Run("renderer guidance survives the recovery", func(t *testing.T) {
+		h := &Handler{logger: logpkg.New("error")}
+		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return upstreamError(&signozclient.HTTPStatusError{
+				StatusCode: 401,
+				Body:       `{"status":"error","error":{"type":"unauthorized","code":"unauthenticated","message":"session expired","errors":[],"suggestions":["sign in again"]}}`,
+			}), nil
+		}
+		result, err := h.errorCodeDecorator("signoz_test_operation", next)(context.Background(), makeToolRequest("signoz_test_operation", map[string]any{}))
+		if err != nil {
+			t.Fatalf("decorator returned Go error: %v", err)
+		}
+		text := resultText(t, result)
+		for _, want := range []string{"session expired", "sign in again", "`signoz_test_operation`", "Re-authenticate"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("composed authorization text omitted %q: %q", want, text)
+			}
+		}
+		structured := resultStructuredMap(t, result)
+		if got := structured["upstreamSuggestions"]; !reflect.DeepEqual(got, []string{"sign in again"}) {
+			t.Fatalf("authorization recovery changed backend suggestions: %#v", got)
+		}
+		if _, ok := structured["upstreamAuth"]; !ok {
+			t.Fatalf("authorization bridge missing after recovery: %#v", structured)
+		}
+	})
+
 	t.Run("local unauthorized result is unchanged", func(t *testing.T) {
 		h := &Handler{logger: logpkg.New("error")}
 		next := func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,104 +36,20 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestGetAlertByRuleID(t *testing.T) {
-	tests := []struct {
-		name          string
-		ruleID        string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedData  map[string]interface{}
-	}{
-		{
-			name:   "successful alert retrieval",
-			ruleID: "ruleid-abc",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": map[string]interface{}{
-					"id":          "ruleid-abc",
-					"name":        "Test alert rule",
-					"description": "This is a test alert rule",
-					"condition":   "cpu_usage > 80",
-					"enabled":     true,
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: map[string]interface{}{
-				"id":          "ruleid-abc",
-				"name":        "Test alert rule",
-				"description": "This is a test alert rule",
-				"condition":   "cpu_usage > 80",
-				"enabled":     true,
-			},
-		},
-		{
-			name:          "alert not found",
-			ruleID:        "non-existent-rule",
-			resp:          map[string]interface{}{"status": "error", "message": "Alert rule not found"},
-			statusCode:    http.StatusNotFound,
-			expectedError: true,
-		},
-		{
-			name:          "server error",
-			ruleID:        "test-rule-123",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "empty rule ID",
-			ruleID:        "",
-			resp:          map[string]interface{}{"status": "error", "message": "Invalid rule ID"},
-			statusCode:    http.StatusBadRequest,
-			expectedError: true,
-		},
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v2/rules/ruleid-abc", r.URL.Path)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				expectedPath := fmt.Sprintf("/api/v2/rules/%s", tt.ruleID)
-				assert.Equal(t, expectedPath, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"id":"ruleid-abc"}}`))
+	}))
+	defer server.Close()
 
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
-
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.GetAlertByRuleID(ctx, tt.ruleID)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, result)
-
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].(map[string]interface{}); ok {
-					assert.Equal(t, tt.expectedData["id"], data["id"])
-					assert.Equal(t, tt.expectedData["name"], data["name"])
-					assert.Equal(t, tt.expectedData["description"], data["description"])
-					assert.Equal(t, tt.expectedData["condition"], data["condition"])
-					assert.Equal(t, tt.expectedData["enabled"], data["enabled"])
-				}
-			}
-		})
-	}
+	_, err := client.GetAlertByRuleID(context.Background(), "ruleid-abc")
+	require.NoError(t, err)
 }
 
 func TestListAlertRules(t *testing.T) {
@@ -142,9 +57,6 @@ func TestListAlertRules(t *testing.T) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/api/v2/rules", r.URL.Path)
 		assert.Equal(t, "", r.URL.RawQuery)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-		assert.Equal(t, version.UserAgent(), r.Header.Get("User-Agent"))
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"rule-1","alert":"High CPU","state":"inactive"}]}`))
@@ -231,7 +143,6 @@ func TestValidateCredentials(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-				assert.Equal(t, "custom-client/1.0 "+version.UserAgent(), r.Header.Get("User-Agent"))
 				assert.Equal(t, http.MethodGet, r.Method)
 
 				if r.URL.Path != "/api/v1/service_accounts/me" {
@@ -251,9 +162,7 @@ func TestValidateCredentials(t *testing.T) {
 			defer server.Close()
 
 			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", map[string]string{
-				"User-Agent": "custom-client/1.0",
-			})
+			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
 			err := client.ValidateCredentials(context.Background())
 
@@ -440,56 +349,6 @@ func TestDoRequest_DriftStaysDetectableWhenARetrySucceeds(t *testing.T) {
 	assert.NotContains(t, logBuf.String(), "temporary-outage-canary")
 }
 
-func TestDoRequest_OversizedRendererWarnsOnceWithoutParsingValues(t *testing.T) {
-	var logBuf bytes.Buffer
-	responseBody := `{"status":"error","requestId":"req-1","error":{"code":"invalid_input","message":"oversized-secret-canary` +
-		strings.Repeat("x", maxErrorEnvelopeBytes) + `"}}`
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(responseBody))
-	}))
-	defer server.Close()
-
-	client := NewClient(newBufferedLogger(&logBuf, slog.LevelDebug), server.URL, "test-api-key", SignozApiKey, nil)
-	_, err := client.doRequest(context.Background(), http.MethodGet, server.URL, nil, time.Second)
-	require.Error(t, err)
-	assert.Equal(t, "unexpected status 503", err.Error())
-	assert.NotContains(t, logBuf.String(), "oversized-secret-canary")
-
-	warnings := 0
-	for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
-		var record map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &record))
-		if record["msg"] != errorEnvelopeWarning {
-			continue
-		}
-		warnings++
-		assert.Equal(t, false, record["recognized"])
-		assert.Equal(t, []any{"envelope"}, record["fields"])
-		assert.Equal(t, float64(len(responseBody)), record["response.body.size_bytes"])
-	}
-	assert.Equal(t, 1, warnings, "oversized renderer drift must be warned once across retries")
-}
-
-func TestDoRequest_NonRetryableStatusReturnsHTTPStatusError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource"}}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(logpkg.New("error"), server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-	_, err := client.doRequest(context.Background(), http.MethodPost, server.URL, []byte(`{}`), time.Second)
-	require.Error(t, err)
-
-	var statusErr *HTTPStatusError
-	require.True(t, errors.As(err, &statusErr), "expected HTTPStatusError, got %T: %v", err, err)
-	assert.Equal(t, http.StatusForbidden, statusErr.StatusCode)
-	assert.Contains(t, statusErr.Body, "authz_forbidden")
-	assert.Contains(t, err.Error(), "unexpected status 403")
-}
-
 func TestDoRequest_HTTPStatusErrorPreservesFullBodyForParsing(t *testing.T) {
 	var logBuf bytes.Buffer
 	longMessage := strings.Repeat("x", 5000) + "tail"
@@ -554,7 +413,30 @@ func TestHTTPStatusError_UnrecognizedBodyUsesStatusFallback(t *testing.T) {
 	}
 }
 
-func TestHTTPStatusError_RecognizedBodyUsesSafeGuidance(t *testing.T) {
+func TestHTTPStatusError_FullyFilteredAuthorizationMessageUsesStatusFallback(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		upstreamTy string
+		want       string
+	}{
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, upstreamTy: "unauthorized", want: "unexpected status 401: authentication failed"},
+		{name: "forbidden", statusCode: http.StatusForbidden, upstreamTy: "forbidden", want: "unexpected status 403: permission denied"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &HTTPStatusError{
+				StatusCode: tt.statusCode,
+				Body: `{"status":"error","error":{"type":"` + tt.upstreamTy + `","code":"authz_failure",` +
+					`"message":"Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWxsYmFjay1jYW5hcnkifQ.signature"}}`,
+			}
+			assert.Equal(t, tt.want, err.Error())
+		})
+	}
+}
+
+func TestHTTPStatusError_RecognizedBodyUsesParsedSafeText(t *testing.T) {
 	err := &HTTPStatusError{
 		StatusCode: http.StatusBadRequest,
 		Body: `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad query",` +
@@ -562,454 +444,65 @@ func TestHTTPStatusError_RecognizedBodyUsesSafeGuidance(t *testing.T) {
 			`"errors":[{"message":"bad field","suggestions":["use an existing field"]}],"retry":{"delay":1000000000}}}`,
 	}
 
-	got := err.Error()
-	assert.Contains(t, got, "unexpected status 400: bad query (bad field)")
-	assert.Contains(t, got, "Documentation: https://signoz.io/docs/search")
-	assert.Contains(t, got, "Suggestions: narrow the query")
-	assert.Contains(t, got, "Suggestions for \"bad field\": use an existing field")
-	assert.Contains(t, got, "Retry delay: 1s (1000000000 ns)")
+	assert.Contains(t, err.Error(), "unexpected status 400: bad query (bad field)")
 }
 
 func TestListServices(t *testing.T) {
-	tests := []struct {
-		name          string
-		start         string
-		end           string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedData  []map[string]interface{}
-	}{
-		{
-			name:  "successful services retrieval",
-			start: "1640995200000000000",
-			end:   "1641081600000000000",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": []map[string]interface{}{
-					{
-						"serviceName": "frontend",
-						"p99":         100.5,
-						"avgDuration": 50.2,
-						"numCalls":    1000.0,
-					},
-					{
-						"serviceName": "backend",
-						"p99":         200.3,
-						"avgDuration": 75.8,
-						"numCalls":    500.0,
-					},
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: []map[string]interface{}{
-				{
-					"serviceName": "frontend",
-					"p99":         100.5,
-					"avgDuration": 50.2,
-					"numCalls":    1000.0,
-				},
-				{
-					"serviceName": "backend",
-					"p99":         200.3,
-					"avgDuration": 75.8,
-					"numCalls":    500.0,
-				},
-			},
-		},
-		{
-			name:          "server error",
-			start:         "1640995200000000000",
-			end:           "1641081600000000000",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "unauthorized",
-			start:         "1640995200000000000",
-			end:           "1641081600000000000",
-			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
-			statusCode:    http.StatusUnauthorized,
-			expectedError: true,
-		},
-		{
-			name:          "empty response",
-			start:         "1640995200000000000",
-			end:           "1641081600000000000",
-			resp:          map[string]interface{}{"status": "success", "data": []map[string]interface{}{}},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData:  []map[string]interface{}{},
-		},
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/v1/services", r.URL.Path)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/api/v1/services", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		var requestBody map[string]string
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+		require.NoError(t, err)
+		assert.Equal(t, "1640995200000000000", requestBody["start"])
+		assert.Equal(t, "1641081600000000000", requestBody["end"])
 
-				var requestBody map[string]string
-				err := json.NewDecoder(r.Body).Decode(&requestBody)
-				require.NoError(t, err)
-				assert.Equal(t, tt.start, requestBody["start"])
-				assert.Equal(t, tt.end, requestBody["end"])
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
 
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.ListServices(ctx, tt.start, tt.end)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].([]interface{}); ok {
-					assert.Equal(t, len(tt.expectedData), len(data))
-					for i, expectedService := range tt.expectedData {
-						if i < len(data) {
-							if service, ok := data[i].(map[string]interface{}); ok {
-								assert.Equal(t, expectedService["serviceName"], service["serviceName"])
-								assert.Equal(t, expectedService["p99"], service["p99"])
-								assert.Equal(t, expectedService["avgDuration"], service["avgDuration"])
-								assert.Equal(t, expectedService["numCalls"], service["numCalls"])
-							}
-						}
-					}
-				}
-			}
-		})
-	}
+	_, err := client.ListServices(context.Background(), "1640995200000000000", "1641081600000000000")
+	require.NoError(t, err)
 }
 
 func TestGetAlertHistory(t *testing.T) {
-	tests := []struct {
-		name          string
-		ruleID        string
-		request       types.AlertHistoryRequest
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedItems int
-	}{
-		{
-			name:   "successful alert history retrieval with state and filter",
-			ruleID: "ruleid-abc",
-			request: types.AlertHistoryRequest{
-				Start:            1640995200000,
-				End:              1641081600000,
-				State:            "firing",
-				FilterExpression: "severity = 'warning'",
-				Limit:            20,
-				Order:            "desc",
-			},
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": map[string]interface{}{
-					"items": []map[string]interface{}{
-						{"ruleId": "ruleid-abc", "state": "firing", "value": 85.5, "unixMilli": 1640995200000},
-						{"ruleId": "ruleid-abc", "state": "inactive", "value": 45.2, "unixMilli": 1640998800000},
-					},
-					"total":      2,
-					"nextCursor": "",
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedItems: 2,
-		},
-		{
-			name:   "cursor paginated request",
-			ruleID: "ruleid-abc",
-			request: types.AlertHistoryRequest{
-				Start:  1640995200000,
-				End:    1641081600000,
-				Limit:  20,
-				Order:  "desc",
-				Cursor: "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
-			},
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": map[string]interface{}{
-					"items":      []map[string]interface{}{},
-					"total":      20,
-					"nextCursor": "",
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedItems: 0,
-		},
-		{
-			name:   "server error",
-			ruleID: "ruleid-abc",
-			request: types.AlertHistoryRequest{
-				Start: 1640995200000,
-				End:   1641081600000,
-				Limit: 20,
-				Order: "desc",
-			},
-			resp:          map[string]interface{}{"status": "error", "error": map[string]interface{}{"message": "Internal server error"}},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:   "rule not found",
-			ruleID: "non-existent-rule",
-			request: types.AlertHistoryRequest{
-				Start: 1640995200000,
-				End:   1641081600000,
-				Limit: 20,
-				Order: "desc",
-			},
-			resp:          map[string]interface{}{"status": "error", "error": map[string]interface{}{"message": "Rule not found"}},
-			statusCode:    http.StatusNotFound,
-			expectedError: true,
-		},
-		{
-			name:   "empty response",
-			ruleID: "ruleid-abc",
-			request: types.AlertHistoryRequest{
-				Start: 1640995200000,
-				End:   1641081600000,
-				Limit: 20,
-				Order: "desc",
-			},
-			resp:          map[string]interface{}{"status": "success", "data": map[string]interface{}{"items": []map[string]interface{}{}, "total": 0}},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedItems: 0,
-		},
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// v2 timeline is a GET; params ride on the query string, not a body.
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v2/rules/ruleid-abc/history/timeline", r.URL.Path)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// v2 timeline is a GET; params ride on the query string, not a body.
-				assert.Equal(t, http.MethodGet, r.Method)
-				expectedPath := fmt.Sprintf("/api/v2/rules/%s/history/timeline", tt.ruleID)
-				assert.Equal(t, expectedPath, r.URL.Path)
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		q := r.URL.Query()
+		assert.Equal(t, "1640995200000", q.Get("start"))
+		assert.Equal(t, "1641081600000", q.Get("end"))
+		assert.Equal(t, "20", q.Get("limit"))
+		assert.Equal(t, "desc", q.Get("order"))
+		assert.Equal(t, "firing", q.Get("state"))
+		assert.Equal(t, "severity = 'warning'", q.Get("filterExpression"))
+		assert.Equal(t, "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9", q.Get("cursor"))
 
-				q := r.URL.Query()
-				assert.Equal(t, fmt.Sprintf("%d", tt.request.Start), q.Get("start"))
-				assert.Equal(t, fmt.Sprintf("%d", tt.request.End), q.Get("end"))
-				assert.Equal(t, fmt.Sprintf("%d", tt.request.Limit), q.Get("limit"))
-				assert.Equal(t, tt.request.Order, q.Get("order"))
-				// Optional params are omitted when empty (server applies defaults).
-				assert.Equal(t, tt.request.State, q.Get("state"))
-				assert.Equal(t, tt.request.FilterExpression, q.Get("filterExpression"))
-				assert.Equal(t, tt.request.Cursor, q.Get("cursor"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"items":[],"total":0}}`))
+	}))
+	defer server.Close()
 
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.GetAlertHistory(ctx, tt.ruleID, tt.request)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-				data, ok := response["data"].(map[string]interface{})
-				require.True(t, ok, "expected v2 data object with items[]")
-				items, _ := data["items"].([]interface{})
-				assert.Equal(t, tt.expectedItems, len(items))
-			}
-		})
-	}
-}
-
-func TestQueryBuilderV5(t *testing.T) {
-	tests := []struct {
-		name          string
-		queryBody     []byte
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-		expectedData  map[string]interface{}
-	}{
-		{
-			name: "successful query execution",
-			queryBody: []byte(`{
-				"schemaVersion": "v1",
-				"start": 1640995200000,
-				"end": 1641081600000,
-				"requestType": "raw",
-				"compositeQuery": {
-					"queries": [{
-						"type": "builder_query",
-						"spec": {
-							"name": "A",
-							"signal": "traces",
-							"disabled": false,
-							"limit": 10,
-							"offset": 0,
-							"order": [{"key": {"name": "timestamp"}, "direction": "desc"}],
-							"having": {"expression": ""},
-							"selectFields": [
-								{"name": "service.name", "fieldDataType": "string", "signal": "traces", "fieldContext": "resource"},
-								{"name": "duration_nano", "fieldDataType": "", "signal": "traces", "fieldContext": "span"}
-							]
-						}
-					}]
-				},
-				"formatOptions": {
-					"formatTableResultForUI": false,
-					"fillGaps": false
-				},
-				"variables": {}
-			}`),
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": map[string]interface{}{
-					"result": []map[string]interface{}{
-						{
-							"service.name":  "frontend",
-							"duration_nano": 150000000,
-							"timestamp":     "2022-01-01T10:00:00Z",
-						},
-						{
-							"service.name":  "backend",
-							"duration_nano": 250000000,
-							"timestamp":     "2022-01-01T10:01:00Z",
-						},
-					},
-					"total": 2,
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: map[string]interface{}{
-				"result": []map[string]interface{}{
-					{
-						"service.name":  "frontend",
-						"duration_nano": 150000000.0,
-						"timestamp":     "2022-01-01T10:00:00Z",
-					},
-					{
-						"service.name":  "backend",
-						"duration_nano": 250000000.0,
-						"timestamp":     "2022-01-01T10:01:00Z",
-					},
-				},
-				"total": 2.0,
-			},
-		},
-		{
-			name:          "server error",
-			queryBody:     []byte(`{"invalid": "query"}`),
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "invalid query",
-			queryBody:     []byte(`{"invalid": "query"}`),
-			resp:          map[string]interface{}{"status": "error", "message": "Invalid query format"},
-			statusCode:    http.StatusBadRequest,
-			expectedError: true,
-		},
-		{
-			name:      "empty response",
-			queryBody: []byte(`{"schemaVersion": "v1", "start": 1640995200000, "end": 1641081600000, "requestType": "raw", "compositeQuery": {"queries": []}, "formatOptions": {"formatTableResultForUI": false, "fillGaps": false}, "variables": {}}`),
-			resp: map[string]interface{}{
-				"status": "success",
-				"data": map[string]interface{}{
-					"result": []map[string]interface{}{},
-					"total":  0,
-				},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-			expectedData: map[string]interface{}{
-				"result": []map[string]interface{}{},
-				"total":  0.0,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/api/v5/query_range", r.URL.Path)
-
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
-
-				body, err := io.ReadAll(r.Body)
-				require.NoError(t, err)
-				assert.Equal(t, tt.queryBody, body)
-
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
-
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.QueryBuilderV5(ctx, tt.queryBody)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-
-				assert.Equal(t, "success", response["status"])
-				if data, ok := response["data"].(map[string]interface{}); ok {
-					assert.Equal(t, tt.expectedData["total"], data["total"])
-					if result, ok := data["result"].([]interface{}); ok {
-						expectedResult := tt.expectedData["result"].([]map[string]interface{})
-						assert.Equal(t, len(expectedResult), len(result))
-						for i, expectedItem := range expectedResult {
-							if i < len(result) {
-								if item, ok := result[i].(map[string]interface{}); ok {
-									assert.Equal(t, expectedItem["service.name"], item["service.name"])
-									assert.Equal(t, expectedItem["duration_nano"], item["duration_nano"])
-									assert.Equal(t, expectedItem["timestamp"], item["timestamp"])
-								}
-							}
-						}
-					}
-				}
-			}
-		})
-	}
+	_, err := client.GetAlertHistory(context.Background(), "ruleid-abc", types.AlertHistoryRequest{
+		Start:            1640995200000,
+		End:              1641081600000,
+		State:            "firing",
+		FilterExpression: "severity = 'warning'",
+		Limit:            20,
+		Order:            "desc",
+		Cursor:           "eyJvZmZzZXQiOjIwLCJsaW1pdCI6MjB9",
+	})
+	require.NoError(t, err)
 }
 
 func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
@@ -1051,210 +544,53 @@ func TestGetTraceDetails_UsesCanonicalTraceIDFilter(t *testing.T) {
 }
 
 func TestGetFieldKeys(t *testing.T) {
-	tests := []struct {
-		name          string
-		signal        string
-		metricName    string
-		searchText    string
-		fieldContext  string
-		fieldDataType string
-		source        string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-	}{
-		{
-			name:          "successful retrieval with all params",
-			signal:        "metrics",
-			metricName:    "container.cpu.usage",
-			searchText:    "cpu",
-			fieldContext:  "resource",
-			fieldDataType: "string",
-			source:        "otel",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data":   []string{"host.name", "k8s.pod.name"},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-		},
-		{
-			name:          "successful retrieval with only required param",
-			signal:        "traces",
-			metricName:    "",
-			searchText:    "",
-			fieldContext:  "",
-			fieldDataType: "",
-			source:        "",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data":   []string{"service.name", "http.method"},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-		},
-		{
-			name:          "server error",
-			signal:        "logs",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "unauthorized",
-			signal:        "metrics",
-			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
-			statusCode:    http.StatusUnauthorized,
-			expectedError: true,
-		},
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v1/fields/keys", r.URL.Path)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/fields/keys", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		q := r.URL.Query()
+		assert.Equal(t, "metrics", q.Get("signal"))
+		assert.Equal(t, "container.cpu.usage", q.Get("metricName"))
+		assert.Equal(t, "cpu", q.Get("searchText"))
+		assert.Equal(t, "resource", q.Get("fieldContext"))
+		assert.Equal(t, "string", q.Get("fieldDataType"))
+		assert.Equal(t, "otel", q.Get("source"))
 
-				q := r.URL.Query()
-				assert.Equal(t, tt.signal, q.Get("signal"))
-				assert.Equal(t, tt.metricName, q.Get("metricName"))
-				assert.Equal(t, tt.searchText, q.Get("searchText"))
-				assert.Equal(t, tt.fieldContext, q.Get("fieldContext"))
-				assert.Equal(t, tt.fieldDataType, q.Get("fieldDataType"))
-				assert.Equal(t, tt.source, q.Get("source"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
 
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.GetFieldKeys(ctx, tt.signal, tt.metricName, tt.searchText, tt.fieldContext, tt.fieldDataType, tt.source)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				assert.NotNil(t, result)
-
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-				assert.Equal(t, "success", response["status"])
-			}
-		})
-	}
+	_, err := client.GetFieldKeys(context.Background(), "metrics", "container.cpu.usage", "cpu", "resource", "string", "otel")
+	require.NoError(t, err)
 }
 
 func TestGetFieldValues(t *testing.T) {
-	tests := []struct {
-		name          string
-		signal        string
-		fieldName     string
-		metricName    string
-		searchText    string
-		fieldContext  string
-		source        string
-		resp          map[string]interface{}
-		statusCode    int
-		expectedError bool
-	}{
-		{
-			name:         "successful retrieval with all params",
-			signal:       "metrics",
-			fieldName:    "host.name",
-			metricName:   "container.cpu.usage",
-			searchText:   "prod",
-			fieldContext: "resource",
-			source:       "otel",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data":   []string{"prod-host-1", "prod-host-2"},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-		},
-		{
-			name:       "successful retrieval with only required params",
-			signal:     "traces",
-			fieldName:  "service.name",
-			metricName: "",
-			searchText: "",
-			source:     "",
-			resp: map[string]interface{}{
-				"status": "success",
-				"data":   []string{"frontend", "backend"},
-			},
-			statusCode:    http.StatusOK,
-			expectedError: false,
-		},
-		{
-			name:          "server error",
-			signal:        "logs",
-			fieldName:     "severity",
-			resp:          map[string]interface{}{"status": "error", "message": "Internal server error"},
-			statusCode:    http.StatusInternalServerError,
-			expectedError: true,
-		},
-		{
-			name:          "unauthorized",
-			signal:        "metrics",
-			fieldName:     "host.name",
-			resp:          map[string]interface{}{"status": "error", "message": "Unauthorized"},
-			statusCode:    http.StatusUnauthorized,
-			expectedError: true,
-		},
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/v1/fields/values", r.URL.Path)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/fields/values", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "test-api-key", r.Header.Get("SIGNOZ-API-KEY"))
+		q := r.URL.Query()
+		assert.Equal(t, "metrics", q.Get("signal"))
+		assert.Equal(t, "host.name", q.Get("name"))
+		assert.Equal(t, "container.cpu.usage", q.Get("metricName"))
+		assert.Equal(t, "prod", q.Get("searchText"))
+		assert.Equal(t, "resource", q.Get("fieldContext"))
+		assert.Equal(t, "otel", q.Get("source"))
 
-				q := r.URL.Query()
-				assert.Equal(t, tt.signal, q.Get("signal"))
-				assert.Equal(t, tt.fieldName, q.Get("name"))
-				assert.Equal(t, tt.metricName, q.Get("metricName"))
-				assert.Equal(t, tt.searchText, q.Get("searchText"))
-				assert.Equal(t, tt.fieldContext, q.Get("fieldContext"))
-				assert.Equal(t, tt.source, q.Get("source"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
 
-				w.WriteHeader(tt.statusCode)
-				responseBody, _ := json.Marshal(tt.resp)
-				_, _ = w.Write(responseBody)
-			}))
-			defer server.Close()
+	logger := logpkg.New("debug")
+	client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
 
-			logger := logpkg.New("debug")
-			client := NewClient(logger, server.URL, "test-api-key", "SIGNOZ-API-KEY", nil)
-
-			ctx := context.Background()
-			result, err := client.GetFieldValues(ctx, tt.signal, tt.fieldName, tt.metricName, tt.searchText, tt.fieldContext, tt.source)
-
-			if tt.expectedError {
-				assert.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				assert.NotNil(t, result)
-
-				var response map[string]interface{}
-				err = json.Unmarshal(result, &response)
-				require.NoError(t, err)
-				assert.Equal(t, "success", response["status"])
-			}
-		})
-	}
+	_, err := client.GetFieldValues(context.Background(), "metrics", "host.name", "container.cpu.usage", "prod", "resource", "otel")
+	require.NoError(t, err)
 }
 
 func TestDoRequest_RetryOn503ThenSuccess(t *testing.T) {

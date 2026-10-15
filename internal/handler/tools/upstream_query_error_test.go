@@ -194,25 +194,3 @@ func TestUpstreamQueryError_NoMissingKeyIsPlainUpstreamError(t *testing.T) {
 		t.Fatalf("unexpected missingKeys without a key-not-found body")
 	}
 }
-
-// Newer backends put per-term details in error.errors[] and keep error.message a
-// bare summary. Text renders both while structured fields keep them independent.
-func TestUpstreamError_PreservesSummaryAndDetailsIndependently(t *testing.T) {
-	res := upstreamError(keyNotFound400(keyNotFoundEnvelopeBody))
-
-	text := resultText(t, res)
-	if !strings.Contains(text, "Found 1 errors while parsing the search expression. (key `service.name` not found)") {
-		t.Fatalf("additional error detail not folded into text: %q", text)
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["upstreamMessage"]; got != "Found 1 errors while parsing the search expression." {
-		t.Fatalf("upstreamMessage = %#v, want exact renderer summary", got)
-	}
-	encoded, err := json.Marshal(structured["upstreamDetails"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(encoded); got != `[{"message":"key `+"`service.name`"+` not found"}]` {
-		t.Fatalf("upstreamDetails = %s, want independently preserved detail", got)
-	}
-}

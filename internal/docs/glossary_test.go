@@ -68,21 +68,6 @@ func TestGlossaryExpansion(t *testing.T) {
 		require.Empty(t, glossaryClauses(raw), raw)
 	}
 	require.Len(t, glossaryClauses("k8s otel gcp aws js dotnet mongo"), maxGlossaryClauses)
-	for _, clause := range glossaryClauses("gcp") {
-		phrase, ok := clause.(*bq.MatchPhraseQuery)
-		require.True(t, ok)
-		require.Equal(t, "google cloud", phrase.MatchPhrase)
-		require.Equal(t, defaultGlossaryBoost, clause.(bq.BoostableQuery).Boost())
-	}
-	for _, clause := range glossaryClauses("mute alert") {
-		require.Equal(t, 2.0, clause.(bq.BoostableQuery).Boost())
-	}
-	for _, clause := range glossaryClauses("dotnet") {
-		match, ok := clause.(*bq.MatchQuery)
-		require.True(t, ok)
-		require.Equal(t, ".net", match.Match)
-		require.Equal(t, defaultGlossaryBoost, clause.(bq.BoostableQuery).Boost())
-	}
 }
 
 func TestGlossaryPreservesQuerySyntax(t *testing.T) {

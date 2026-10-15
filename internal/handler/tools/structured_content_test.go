@@ -13,10 +13,6 @@ import (
 //     and synthesized-JSON mutations) carry structuredContent.
 //   - Raw QB passthrough tools (search/aggregate/query_metrics) do NOT, because
 //     their upstream JSON shape is variable and an outputSchema would be brittle.
-//
-// These tests pin both halves of that rule so a future change can't silently
-// add a brittle outputSchema to a passthrough tool or drop it from a
-// code-controlled one.
 
 // --- structuredResult helper unit test ---
 
@@ -66,46 +62,16 @@ func sameJSONValue(t *testing.T, wantJSON []byte, structured any) bool {
 	return reflect.DeepEqual(decodeNum(wantJSON), decodeNum(gotBytes))
 }
 
-// TestStructuredResult_PreservesLargeIntegers pins the fix for the precision
-// blocker: SigNoz integers above 2^53 (epoch nanos, big ids/counts) must appear
-// byte-for-byte identically in StructuredContent and the text block. A naive
-// json.Unmarshal into `any` would route them through float64 and round them.
-func TestStructuredResult_PreservesLargeIntegers(t *testing.T) {
+// TestStructuredResult_PreservesLargeIntegersAtEveryDepth pins the fix for the
+// precision blocker: SigNoz integers above 2^53 (epoch nanos, big ids/counts)
+// must appear byte-for-byte identically in StructuredContent and the text
+// block, at the top level and inside rows[] and meta. A naive json.Unmarshal
+// into `any` would route them through float64 and round them.
+func TestStructuredResult_PreservesLargeIntegersAtEveryDepth(t *testing.T) {
 	// 9007199254740993 = 2^53 + 1, the smallest integer float64 cannot represent
 	// exactly (it rounds to 9007199254740992).
 	const bigInt = "9007199254740993"
-	payload := []byte(`{"id":"x","timestampNano":` + bigInt + `,"count":` + bigInt + `}`)
-	res := structuredResult(payload)
-
-	if res.StructuredContent == nil {
-		t.Fatalf("structuredResult must populate StructuredContent")
-	}
-	// Text block must be byte-faithful.
-	if got := textContent(t, res); got != string(payload) {
-		t.Fatalf("text block = %q, want %q", got, string(payload))
-	}
-	// StructuredContent must re-marshal with the EXACT large literal, not a
-	// rounded value (no 9007199254740992, no 9.007199254740993e+15).
-	gotBytes, err := json.Marshal(res.StructuredContent)
-	if err != nil {
-		t.Fatalf("marshal structured content: %v", err)
-	}
-	got := string(gotBytes)
-	if !strings.Contains(got, bigInt) {
-		t.Fatalf("StructuredContent lost integer precision: %s (want literal %s)", got, bigInt)
-	}
-	if strings.Contains(got, "9007199254740992") || strings.Contains(got, "e+") || strings.Contains(got, "E+") {
-		t.Fatalf("StructuredContent rounded/exponential-formatted the big integer: %s", got)
-	}
-}
-
-// TestStructuredResult_PreservesNestedLargeIntegers extends the precision
-// guard to nested objects and array elements — real SigNoz payloads carry big
-// integers (epoch nanos, counts) inside rows[] and meta, not just at the top
-// level.
-func TestStructuredResult_PreservesNestedLargeIntegers(t *testing.T) {
-	const bigInt = "9007199254740993" // 2^53 + 1, the smallest float64-inexact int
-	payload := []byte(`{"rows":[{"ts":` + bigInt + `}],"meta":{"count":` + bigInt + `}}`)
+	payload := []byte(`{"timestampNano":` + bigInt + `,"rows":[{"ts":` + bigInt + `}],"meta":{"count":` + bigInt + `}}`)
 	res := structuredResult(payload)
 
 	if res.StructuredContent == nil {
@@ -119,14 +85,14 @@ func TestStructuredResult_PreservesNestedLargeIntegers(t *testing.T) {
 		t.Fatalf("marshal structured content: %v", err)
 	}
 	got := string(gotBytes)
-	// Both the array-element ts and the nested meta.count must keep the exact
+	// The top-level, array-element, and nested values must each keep the exact
 	// literal — count the occurrences so a single surviving copy can't mask a
 	// rounded sibling.
-	if n := strings.Count(got, bigInt); n != 2 {
-		t.Fatalf("nested large ints not preserved: found %d of literal %s in %s", n, bigInt, got)
+	if n := strings.Count(got, bigInt); n != 3 {
+		t.Fatalf("large ints not preserved: found %d of literal %s in %s", n, bigInt, got)
 	}
 	if strings.Contains(got, "9007199254740992") || strings.Contains(got, "e+") || strings.Contains(got, "E+") {
-		t.Fatalf("StructuredContent rounded/exponential-formatted a nested big integer: %s", got)
+		t.Fatalf("StructuredContent rounded/exponential-formatted a big integer: %s", got)
 	}
 }
 
@@ -180,7 +146,3 @@ func TestStructuredResult_FailsOpenOnTrailingData(t *testing.T) {
 		t.Fatalf("single value with trailing whitespace must keep StructuredContent")
 	}
 }
-
-// --- structuredContent PRESENT on code-controlled tools ---
-
-// --- structuredContent ABSENT on raw QB passthrough tools ---

@@ -4,140 +4,47 @@ import (
 	"testing"
 )
 
-func TestApplyDefaults_Gauge(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{MetricType: "gauge"}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestApplyDefaults_TimeSeriesAggregationByMetricType(t *testing.T) {
+	tests := []struct {
+		name          string
+		params        MetricQueryParams
+		wantTime      string
+		wantSpace     string
+		wantDecisions bool
+		wantWarnings  bool
+	}{
+		{name: "gauge defaults", params: MetricQueryParams{MetricType: "gauge"}, wantTime: "avg", wantSpace: "sum", wantDecisions: true},
+		{name: "gauge overrides", params: MetricQueryParams{MetricType: "gauge", TimeAggregation: "max", SpaceAggregation: "avg"}, wantTime: "max", wantSpace: "avg"},
+		{name: "counter defaults", params: MetricQueryParams{MetricType: "sum", IsMonotonic: true}, wantTime: "rate", wantSpace: "sum"},
+		{name: "counter increase", params: MetricQueryParams{MetricType: "sum", IsMonotonic: true, TimeAggregation: "increase"}, wantTime: "increase", wantSpace: "sum"},
+		{name: "non-monotonic sum defaults", params: MetricQueryParams{MetricType: "sum", IsMonotonic: false}, wantTime: "avg", wantSpace: "sum"},
+		{name: "histogram defaults", params: MetricQueryParams{MetricType: "histogram"}, wantTime: "", wantSpace: "p99"},
+		{name: "histogram p50", params: MetricQueryParams{MetricType: "histogram", SpaceAggregation: "p50"}, wantTime: "", wantSpace: "p50"},
+		{name: "histogram ignores timeAggregation with a warning", params: MetricQueryParams{MetricType: "histogram", TimeAggregation: "avg"}, wantTime: "", wantSpace: "p99", wantWarnings: true},
+		{name: "exponential histogram defaults", params: MetricQueryParams{MetricType: "exponential_histogram"}, wantTime: "", wantSpace: "p99"},
 	}
-	if r.TimeAggregation != "avg" {
-		t.Errorf("expected timeAggregation=avg, got %q", r.TimeAggregation)
-	}
-	if r.SpaceAggregation != "sum" {
-		t.Errorf("expected spaceAggregation=sum, got %q", r.SpaceAggregation)
-	}
-	if r.ReduceTo != "" {
-		t.Errorf("expected empty reduceTo for time_series, got %q", r.ReduceTo)
-	}
-	if len(r.Decisions) == 0 {
-		t.Error("expected non-empty decisions")
-	}
-}
-
-func TestApplyDefaults_GaugeWithOverrides(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{
-		MetricType:       "gauge",
-		TimeAggregation:  "max",
-		SpaceAggregation: "avg",
-	}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "max" {
-		t.Errorf("expected timeAggregation=max, got %q", r.TimeAggregation)
-	}
-	if r.SpaceAggregation != "avg" {
-		t.Errorf("expected spaceAggregation=avg, got %q", r.SpaceAggregation)
-	}
-}
-
-func TestApplyDefaults_Counter(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{
-		MetricType:  "sum",
-		IsMonotonic: true,
-	}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "rate" {
-		t.Errorf("expected timeAggregation=rate, got %q", r.TimeAggregation)
-	}
-	if r.SpaceAggregation != "sum" {
-		t.Errorf("expected spaceAggregation=sum, got %q", r.SpaceAggregation)
-	}
-}
-
-func TestApplyDefaults_CounterIncrease(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{
-		MetricType:      "sum",
-		IsMonotonic:     true,
-		TimeAggregation: "increase",
-	}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "increase" {
-		t.Errorf("expected timeAggregation=increase, got %q", r.TimeAggregation)
-	}
-}
-
-func TestApplyDefaults_NonMonotonicSum(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{
-		MetricType:  "sum",
-		IsMonotonic: false,
-	}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "avg" {
-		t.Errorf("expected timeAggregation=avg, got %q", r.TimeAggregation)
-	}
-	if r.SpaceAggregation != "sum" {
-		t.Errorf("expected spaceAggregation=sum, got %q", r.SpaceAggregation)
-	}
-}
-
-func TestApplyDefaults_Histogram(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{MetricType: "histogram"}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "" {
-		t.Errorf("expected empty timeAggregation for histogram, got %q", r.TimeAggregation)
-	}
-	if r.SpaceAggregation != "p99" {
-		t.Errorf("expected spaceAggregation=p99, got %q", r.SpaceAggregation)
-	}
-}
-
-func TestApplyDefaults_HistogramP50(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{
-		MetricType:       "histogram",
-		SpaceAggregation: "p50",
-	}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.SpaceAggregation != "p50" {
-		t.Errorf("expected spaceAggregation=p50, got %q", r.SpaceAggregation)
-	}
-}
-
-func TestApplyDefaults_HistogramTimeAggWarning(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{
-		MetricType:      "histogram",
-		TimeAggregation: "avg",
-	}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "" {
-		t.Errorf("expected empty timeAggregation, got %q", r.TimeAggregation)
-	}
-	if len(r.Warnings) == 0 {
-		t.Error("expected warning about ignored timeAggregation")
-	}
-}
-
-func TestApplyDefaults_ExponentialHistogram(t *testing.T) {
-	r, err := ApplyDefaults(MetricQueryParams{MetricType: "exponential_histogram"}, "time_series")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if r.TimeAggregation != "" {
-		t.Errorf("expected empty timeAggregation, got %q", r.TimeAggregation)
-	}
-	if r.SpaceAggregation != "p99" {
-		t.Errorf("expected spaceAggregation=p99, got %q", r.SpaceAggregation)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := ApplyDefaults(tt.params, "time_series")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if r.TimeAggregation != tt.wantTime {
+				t.Errorf("timeAggregation = %q, want %q", r.TimeAggregation, tt.wantTime)
+			}
+			if r.SpaceAggregation != tt.wantSpace {
+				t.Errorf("spaceAggregation = %q, want %q", r.SpaceAggregation, tt.wantSpace)
+			}
+			if r.ReduceTo != "" {
+				t.Errorf("reduceTo = %q, want empty for time_series", r.ReduceTo)
+			}
+			if tt.wantDecisions && len(r.Decisions) == 0 {
+				t.Error("expected non-empty decisions")
+			}
+			if tt.wantWarnings && len(r.Warnings) == 0 {
+				t.Error("expected a warning about the ignored timeAggregation")
+			}
+		})
 	}
 }
 

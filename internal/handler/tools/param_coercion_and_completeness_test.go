@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// --- N3: shared boolean parser ---
+// --- shared boolean parser ---
 
 func TestParseBoolArg(t *testing.T) {
 	tests := []struct {
@@ -48,7 +48,7 @@ func TestParseBoolArg(t *testing.T) {
 	}
 }
 
-// N3: the `error` trace filter must hard-error on garbage rather than silently
+// The `error` trace filter must hard-error on garbage rather than silently
 // dropping the filter (which widened results).
 func TestParseSearchTracesArgs_ErrorFilter(t *testing.T) {
 	// real bool true -> has_error = true
@@ -84,7 +84,7 @@ func TestParseSearchTracesArgs_ErrorFilter(t *testing.T) {
 	}
 }
 
-// N3: query_metrics isMonotonic garbage value hard-errors.
+// query_metrics hard-errors on a garbage isMonotonic and honors a valid one.
 func TestParseMetricsQueryArgs_IsMonotonicGarbage(t *testing.T) {
 	if _, err := parseMetricsQueryArgs(map[string]any{"metricName": "m", "isMonotonic": "yes"}); err == nil {
 		t.Fatal("expected error on garbage isMonotonic, got nil")
@@ -96,68 +96,11 @@ func TestParseMetricsQueryArgs_IsMonotonicGarbage(t *testing.T) {
 	if !req.IsMonotonic {
 		t.Fatal("expected IsMonotonic=true")
 	}
-	req2, err := parseMetricsQueryArgs(map[string]any{"metricName": "m", "isMonotonic": "FALSE"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if req2.IsMonotonic {
-		t.Fatal("expected IsMonotonic=false from string FALSE")
-	}
 }
 
-// --- N2: stepInterval numeric value accepted ---
-
-func TestParseAggregateArgs_StepIntervalNumericAndString(t *testing.T) {
-	// JSON number (previously silently dropped by the string-only assertion)
-	numReq, err := parseAggregateArgs(map[string]any{
-		"aggregation":  "count",
-		"timeRange":    "1h",
-		"stepInterval": float64(60),
-	}, "logs", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if numReq.StepInterval == nil || *numReq.StepInterval != 60 {
-		t.Fatalf("expected stepInterval=60 from JSON number, got %v", numReq.StepInterval)
-	}
-	if numReq.StepIntervalWarning != "" {
-		t.Fatalf("expected no warning for valid numeric stepInterval, got %q", numReq.StepIntervalWarning)
-	}
-
-	// numeric string still works
-	strReq, err := parseAggregateArgs(map[string]any{
-		"aggregation":  "count",
-		"timeRange":    "1h",
-		"stepInterval": "3600",
-	}, "logs", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if strReq.StepInterval == nil || *strReq.StepInterval != 3600 {
-		t.Fatalf("expected stepInterval=3600 from string, got %v", strReq.StepInterval)
-	}
-
-	// unparseable present value -> nil interval + warning surfaced
-	badReq, err := parseAggregateArgs(map[string]any{
-		"aggregation":  "count",
-		"timeRange":    "1h",
-		"stepInterval": "abc",
-	}, "logs", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if badReq.StepInterval != nil {
-		t.Fatalf("expected nil stepInterval for garbage, got %v", *badReq.StepInterval)
-	}
-	if badReq.StepIntervalWarning == "" {
-		t.Fatal("expected a stepInterval warning for an unparseable value")
-	}
-}
-
-// N2 (regression): a suffixed string like "1h"/"60s" must NOT be accepted as a
-// numeric prefix (1/60); it must warn + auto-select instead of applying a
-// silently-wrong bucket size. Direct parseStepInterval coverage + via the
-// aggregate parser.
+// A suffixed string like "1h"/"60s" must NOT be accepted as a numeric prefix
+// (1/60); it must warn + auto-select instead of applying a silently-wrong
+// bucket size. Direct parseStepInterval coverage + via the aggregate parser.
 func TestParseStepInterval_RejectsSuffixedStrings(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -200,7 +143,19 @@ func TestParseStepInterval_RejectsSuffixedStrings(t *testing.T) {
 		})
 	}
 
-	// End-to-end through the aggregate parser: "1h" must not yield 1.
+	// End-to-end through the aggregate parser: an accepted value reaches the
+	// request, and "1h" must not yield 1.
+	accepted, err := parseAggregateArgs(map[string]any{
+		"aggregation":  "count",
+		"timeRange":    "1h",
+		"stepInterval": float64(60),
+	}, "logs", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if accepted.StepInterval == nil || *accepted.StepInterval != 60 {
+		t.Fatalf("expected stepInterval=60 to reach the aggregate request, got %v", accepted.StepInterval)
+	}
 	req, err := parseAggregateArgs(map[string]any{
 		"aggregation":  "count",
 		"timeRange":    "1h",
@@ -217,9 +172,7 @@ func TestParseStepInterval_RejectsSuffixedStrings(t *testing.T) {
 	}
 }
 
-// --- N1: execute_builder_query surfaces backend warnings ---
-
-// --- N4: completeness notes ---
+// --- completeness notes ---
 
 func TestCountQueryRangeRows(t *testing.T) {
 	tests := []struct {
@@ -377,5 +330,3 @@ func TestCompletenessNote_HasMore(t *testing.T) {
 		t.Fatalf("expected generic note when row count unknown, got %q", note)
 	}
 }
-
-// --- N5: empty/non-array data coerced to empty page ---

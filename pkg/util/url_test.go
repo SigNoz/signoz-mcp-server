@@ -1,6 +1,9 @@
 package util
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeSigNozURLFormInput(t *testing.T) {
 	tests := []struct {
@@ -83,15 +86,52 @@ func TestNormalizeSigNozURLFormInputRejectsInvalidHosts(t *testing.T) {
 	}
 }
 
-func TestNormalizeSigNozURLRejectsUserinfo(t *testing.T) {
-	tests := []string{
-		"https://tenant.example.com@evil.example",
+func TestNormalizeSigNozURLRejectsNonOriginURLs(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr string
+	}{
+		{name: "URL with path", url: "https://tenant.example.com/dashboard/123", wantErr: "without a path"},
+		{name: "URL with query parameters", url: "https://tenant.example.com?orgId=1", wantErr: "without query parameters"},
+		{name: "URL with path and query", url: "https://tenant.example.com/dashboard/123?orgId=1", wantErr: "without a path"},
+		{name: "URL with fragment", url: "https://tenant.example.com#section", wantErr: "without a fragment"},
+		{name: "ftp scheme rejected", url: "ftp://tenant.example.com", wantErr: "not allowed"},
+		{name: "user info rejected", url: "https://tenant.example.com@evil.example", wantErr: "user info"},
 	}
 
-	for _, raw := range tests {
-		t.Run(raw, func(t *testing.T) {
-			if got, err := NormalizeSigNozURL(raw); err == nil {
-				t.Fatalf("NormalizeSigNozURL(%q) = %q, want error", raw, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeSigNozURL(tt.url)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("NormalizeSigNozURL(%q) = %q, %v; want an error containing %q", tt.url, got, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNormalizeSigNozURLCanonicalizesOrigin(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "strips default https port", url: "https://1.1.1.1:443", want: "https://1.1.1.1"},
+		{name: "strips default http port", url: "http://1.1.1.1:80", want: "http://1.1.1.1"},
+		{name: "keeps non-default port", url: "https://1.1.1.1:8080", want: "https://1.1.1.1:8080"},
+		{name: "lowercases scheme", url: "HTTPS://1.1.1.1", want: "https://1.1.1.1"},
+		{name: "strips trailing slash", url: "https://1.1.1.1/", want: "https://1.1.1.1"},
+		{name: "bare origin unchanged", url: "https://1.1.1.1", want: "https://1.1.1.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeSigNozURL(tt.url)
+			if err != nil {
+				t.Fatalf("NormalizeSigNozURL(%q) error = %v", tt.url, err)
+			}
+			if got != tt.want {
+				t.Fatalf("NormalizeSigNozURL(%q) = %q, want %q", tt.url, got, tt.want)
 			}
 		})
 	}

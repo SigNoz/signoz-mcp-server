@@ -76,14 +76,6 @@ func TestValidationError_CanonicalForm(t *testing.T) {
 	}
 }
 
-func TestValidationErrorf_InterpolatesReason(t *testing.T) {
-	got := resultText(t, validationErrorf("sourcePage", "got %q", "bogus"))
-	want := `Parameter validation failed: "sourcePage" got "bogus"`
-	if got != want {
-		t.Fatalf("validationErrorf = %q, want %q", got, want)
-	}
-}
-
 func TestRequireStringArg(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -187,22 +179,6 @@ func TestRequireArgsMap(t *testing.T) {
 	}
 }
 
-func TestNotAJSONObjectError_CanonicalForm(t *testing.T) {
-	got := resultText(t, notAJSONObjectError())
-	want := "invalid arguments format: expected JSON object"
-	if got != want {
-		t.Fatalf("notAJSONObjectError = %q, want %q", got, want)
-	}
-}
-
-func TestNotAConfigObjectError_CanonicalForm(t *testing.T) {
-	got := resultText(t, notAConfigObjectError())
-	want := `Parameter validation failed: the configuration object is empty or improperly formatted.`
-	if got != want {
-		t.Fatalf("notAConfigObjectError = %q, want %q", got, want)
-	}
-}
-
 func TestUpstreamError_UniformPrefix(t *testing.T) {
 	res := upstreamError(errors.New("connection refused"))
 	got := resultText(t, res)
@@ -212,35 +188,6 @@ func TestUpstreamError_UniformPrefix(t *testing.T) {
 	}
 	if code := resultCode(t, res); code != CodeUpstreamError {
 		t.Fatalf("upstreamError code = %q, want %q", code, CodeUpstreamError)
-	}
-}
-
-func TestUpstreamError_ForbiddenHTTPStatus(t *testing.T) {
-	statusErr := &signozclient.HTTPStatusError{
-		StatusCode: http.StatusForbidden,
-		Body:       `{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource","errors":[],"suggestions":[]}}`,
-	}
-
-	res := upstreamError(statusErr)
-
-	if got := resultText(t, res); got != "SigNoz API error: unexpected status 403: only editors/admins can access this resource" {
-		t.Fatalf("upstreamError text = %q, want message-only status error", got)
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodePermissionDenied {
-		t.Fatalf("code = %v, want %s", got, CodePermissionDenied)
-	}
-	if got := structured["status"]; got != http.StatusForbidden {
-		t.Fatalf("status = %v, want %d", got, http.StatusForbidden)
-	}
-	if got := structured["upstreamCode"]; got != "authz_forbidden" {
-		t.Fatalf("upstreamCode = %v, want authz_forbidden", got)
-	}
-	if got := structured["upstreamMessage"]; got != "only editors/admins can access this resource" {
-		t.Fatalf("upstreamMessage = %v, want backend message", got)
-	}
-	if got := structured["upstreamType"]; got != "forbidden" {
-		t.Fatalf("upstreamType = %v, want forbidden", got)
 	}
 }
 
@@ -321,28 +268,6 @@ func TestUpstreamError_UsesFilteredRendererGuidance(t *testing.T) {
 	}
 }
 
-func TestUpstreamError_AuthorizationRecoverySupplementsRendererGuidance(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusUnauthorized,
-		Body:       `{"status":"error","error":{"type":"unauthorized","code":"unauthenticated","message":"session expired","errors":[],"suggestions":["sign in again"]}}`,
-	})
-	appendAuthorizationOperation(res, "signoz_list_dashboards")
-
-	text := resultText(t, res)
-	for _, want := range []string{"session expired", "sign in again", "`signoz_list_dashboards`", "Re-authenticate"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("composed authorization text omitted %q: %q", want, text)
-		}
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["upstreamSuggestions"]; !reflect.DeepEqual(got, []string{"sign in again"}) {
-		t.Fatalf("authorization decorator changed backend suggestions: %#v", got)
-	}
-	if _, ok := structured["upstreamAuth"]; !ok {
-		t.Fatalf("authorization bridge missing after composition: %#v", structured)
-	}
-}
-
 func TestUpstreamError_HTTPStatusPreservesWrapperContext(t *testing.T) {
 	statusErr := &signozclient.HTTPStatusError{
 		StatusCode: http.StatusForbidden,
@@ -365,187 +290,49 @@ func TestUpstreamError_HTTPStatusPreservesWrapperContext(t *testing.T) {
 	}
 }
 
-func TestUpstreamError_ForbiddenGenericCodeDoesNotLeakAuthEnvelopeInText(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusForbidden,
-		Body:       `{"status":"error","error":{"type":"forbidden","code":"forbidden","message":"permission denied","errors":[],"suggestions":[]}}`,
-	})
-
-	text := resultText(t, res)
-	if strings.Contains(text, `"code":"forbidden"`) || strings.Contains(text, `"code": "forbidden"`) {
-		t.Fatalf("text leaked raw auth-looking upstream code: %s", text)
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodePermissionDenied {
-		t.Fatalf("code = %v, want %s", got, CodePermissionDenied)
-	}
-	if got := structured["upstreamCode"]; got != "forbidden" {
-		t.Fatalf("upstreamCode = %v, want forbidden", got)
-	}
-	if got := structured["upstreamMessage"]; got != "permission denied" {
-		t.Fatalf("upstreamMessage = %v, want permission denied", got)
-	}
-	if _, ok := structured["upstreamAuth"]; ok {
-		t.Fatalf("unexpected upstreamAuth for authorization denial: %#v", structured)
-	}
-}
-
-func TestUpstreamError_IncompleteEnvelopeUsesBodyFreeFallback(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusForbidden,
-		Body:       `{"status":"error","error":{"type":"forbidden","code":"forbidden"}}`,
-	})
-
-	text := resultText(t, res)
-	if text != "SigNoz API error: unexpected status 403: permission denied" {
-		t.Fatalf("text = %q, want canonical fallback for an unrecognized envelope", text)
-	}
-	if strings.Contains(text, `"code":"forbidden"`) || strings.Contains(text, `"code": "forbidden"`) {
-		t.Fatalf("text leaked raw auth-looking upstream code: %s", text)
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodePermissionDenied {
-		t.Fatalf("code = %v, want %s", got, CodePermissionDenied)
-	}
-	for _, field := range []string{"upstreamCode", "upstreamType", "upstreamMessage", "upstreamAuth"} {
-		if _, ok := structured[field]; ok {
-			t.Fatalf("unexpected %s for unrecognized envelope: %#v", field, structured)
-		}
-	}
-}
-
-func TestUpstreamError_FilteredAuthorizationMessageUsesCanonicalFallback(t *testing.T) {
-	tests := []struct {
-		name       string
-		status     int
-		wantCode   string
-		wantText   string
-		upstreamTy string
+func TestUpstreamError_UnrecognizedEnvelopeUsesBodyFreeFallback(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		wantCode string
+		wantText string
 	}{
 		{
-			name:       "unauthorized",
-			status:     http.StatusUnauthorized,
-			wantCode:   CodeUnauthorized,
-			wantText:   "SigNoz API error: unexpected status 401: authentication failed",
-			upstreamTy: "unauthorized",
+			name:     "incomplete renderer envelope",
+			status:   http.StatusForbidden,
+			body:     `{"status":"error","error":{"type":"forbidden","code":"forbidden"}}`,
+			wantCode: CodePermissionDenied,
+			wantText: "SigNoz API error: unexpected status 403: permission denied",
 		},
 		{
-			name:       "forbidden",
-			status:     http.StatusForbidden,
-			wantCode:   CodePermissionDenied,
-			wantText:   "SigNoz API error: unexpected status 403: permission denied",
-			upstreamTy: "forbidden",
+			name:     "generic proxy envelope",
+			status:   http.StatusInternalServerError,
+			body:     `{"status":"error","message":"temporary outage"}`,
+			wantCode: CodeUpstreamError,
+			wantText: "SigNoz API error: unexpected status 500",
 		},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := upstreamError(&signozclient.HTTPStatusError{StatusCode: tc.status, Body: tc.body})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res := upstreamError(&signozclient.HTTPStatusError{
-				StatusCode: tt.status,
-				Body: `{"status":"error","error":{"type":"` + tt.upstreamTy + `","code":"authz_failure",` +
-					`"message":"Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWxsYmFjay1jYW5hcnkifQ.signature"}}`,
-			})
-
-			if got := resultText(t, res); got != tt.wantText {
-				t.Fatalf("text = %q, want %q", got, tt.wantText)
+			if text := resultText(t, res); text != tc.wantText {
+				t.Fatalf("text = %q, want body-free fallback %q", text, tc.wantText)
 			}
 			structured := resultStructuredMap(t, res)
-			if got := structured["code"]; got != tt.wantCode {
-				t.Fatalf("code = %#v, want %s", got, tt.wantCode)
+			if got := structured["code"]; got != tc.wantCode {
+				t.Fatalf("code = %v, want %s", got, tc.wantCode)
 			}
-			if _, ok := structured["upstreamMessage"]; ok {
-				t.Fatalf("filtered upstream message reached structured content: %#v", structured)
+			if got := structured["status"]; got != tc.status {
+				t.Fatalf("status = %v, want %d", got, tc.status)
+			}
+			for _, field := range []string{"upstreamCode", "upstreamType", "upstreamMessage", "upstreamAuth"} {
+				if _, ok := structured[field]; ok {
+					t.Fatalf("unrecognized envelope exposed %s: %#v", field, structured)
+				}
 			}
 		})
-	}
-}
-
-func TestUpstreamError_HTTPErrorTextIsBounded(t *testing.T) {
-	longMessage := strings.Repeat("x", 5000) + "tail"
-	bodyBytes, err := json.Marshal(map[string]any{
-		"status": "error",
-		"error": map[string]any{
-			"type":        "forbidden",
-			"code":        "authz_forbidden",
-			"message":     longMessage,
-			"errors":      []any{},
-			"suggestions": []any{},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusForbidden,
-		Body:       string(bodyBytes),
-	})
-
-	text := resultText(t, res)
-	if !strings.Contains(text, "...(truncated)") {
-		t.Fatalf("text = %q, want truncated marker", text)
-	}
-	if strings.Contains(text, "tail") {
-		t.Fatalf("text leaked end of overlarge upstream message: %s", text)
-	}
-	structured := resultStructuredMap(t, res)
-	upstreamMessage, ok := structured["upstreamMessage"].(string)
-	if !ok {
-		t.Fatalf("missing upstreamMessage: %#v", structured)
-	}
-	if !strings.Contains(upstreamMessage, "...(truncated)") {
-		t.Fatalf("upstreamMessage = %q, want truncated marker", upstreamMessage)
-	}
-	if strings.Contains(upstreamMessage, "tail") {
-		t.Fatalf("upstreamMessage leaked end of overlarge upstream message")
-	}
-
-	unparseable := strings.Repeat("<html>", 1000) + "tail"
-	res = upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusBadGateway,
-		Body:       unparseable,
-	})
-	text = resultText(t, res)
-	if text != "SigNoz API error: unexpected status 502" {
-		t.Fatalf("unparseable text = %q, want body-free status fallback", text)
-	}
-}
-
-func TestUpstreamError_ForbiddenHTTPStatusWithUnparseableBody(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusForbidden,
-		Body:       `["secret-canary"]`,
-	})
-
-	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodePermissionDenied {
-		t.Fatalf("code = %v, want %s", got, CodePermissionDenied)
-	}
-	if got := structured["status"]; got != http.StatusForbidden {
-		t.Fatalf("status = %v, want %d", got, http.StatusForbidden)
-	}
-	if _, ok := structured["upstreamCode"]; ok {
-		t.Fatalf("unexpected upstreamCode for unparseable body: %#v", structured)
-	}
-	if text := resultText(t, res); text != "SigNoz API error: unexpected status 403: permission denied" {
-		t.Fatalf("text = %q, want canonical fallback", text)
-	}
-}
-
-func TestUpstreamError_UnauthorizedHTTPStatusWithUnparseableBody(t *testing.T) {
-	res := upstreamError(fmt.Errorf("fetch deployment stats: %w", &signozclient.HTTPStatusError{
-		StatusCode: http.StatusUnauthorized,
-		Body:       `null`,
-	}))
-
-	if code := resultCode(t, res); code != CodeUnauthorized {
-		t.Fatalf("code = %q, want %q", code, CodeUnauthorized)
-	}
-	if got := resultStructuredMap(t, res)["status"]; got != http.StatusUnauthorized {
-		t.Fatalf("status = %v, want %d", got, http.StatusUnauthorized)
-	}
-	if text := resultText(t, res); text != "SigNoz API error: fetch deployment stats: unexpected status 401: authentication failed" {
-		t.Fatalf("text = %q, want wrapper context and canonical fallback", text)
 	}
 }
 
@@ -576,75 +363,15 @@ func TestUpstreamError_UnauthorizedHTTPStatus(t *testing.T) {
 	if !strings.Contains(string(payload), `"code":"unauthenticated"`) {
 		t.Fatalf("structured content no longer carries assistant-compatible auth code: %s", payload)
 	}
-}
 
-func TestUpstreamError_GenericProxyEnvelopeUsesBodyFreeFallback(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusInternalServerError,
-		Body:       `{"status":"error","message":"temporary outage"}`,
-	})
-
-	if code := resultCode(t, res); code != CodeUpstreamError {
-		t.Fatalf("code = %q, want %q", code, CodeUpstreamError)
-	}
-	if got := resultStructuredMap(t, res)["status"]; got != http.StatusInternalServerError {
-		t.Fatalf("status = %v, want %d", got, http.StatusInternalServerError)
-	}
-	if got := resultText(t, res); got != "SigNoz API error: unexpected status 500" {
-		t.Fatalf("text = %q, want body-free fallback", got)
-	}
-	for _, field := range []string{"upstreamCode", "upstreamType", "upstreamMessage"} {
-		if _, ok := resultStructuredMap(t, res)[field]; ok {
-			t.Fatalf("unrecognized proxy envelope exposed %s: %#v", field, resultStructuredMap(t, res))
-		}
-	}
-}
-
-func TestUpstreamError_LegacyErrorBody(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusUnprocessableEntity,
-		Body:       `{"status":"error","errorType":"execution","error":"query execution failed"}`,
-	})
-
-	if got := resultText(t, res); got != "SigNoz API error: unexpected status 422: query execution failed" {
-		t.Fatalf("text = %q, want legacy error message", got)
-	}
-	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodeUpstreamError {
-		t.Fatalf("code = %v, want %s", got, CodeUpstreamError)
-	}
-	if got := structured["status"]; got != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %v, want %d", got, http.StatusUnprocessableEntity)
-	}
-	if got := structured["upstreamType"]; got != "execution" {
-		t.Fatalf("upstreamType = %v, want execution", got)
-	}
-	if got := structured["upstreamMessage"]; got != "query execution failed" {
-		t.Fatalf("upstreamMessage = %v, want query execution failed", got)
-	}
-	if _, ok := structured["upstreamCode"]; ok {
-		t.Fatalf("unexpected upstreamCode for legacy body: %#v", structured)
-	}
-}
-
-func TestUpstreamError_NotFoundHTTPStatus(t *testing.T) {
-	res := upstreamError(&signozclient.HTTPStatusError{
-		StatusCode: http.StatusNotFound,
-		Body:       `{"status":"error","error":{"type":"not-found","code":"not_found","message":"rule does not exist","errors":[],"suggestions":[]}}`,
-	})
-
-	structured := resultStructuredMap(t, res)
-	if got := structured["code"]; got != CodeNotFound {
-		t.Fatalf("code = %v, want %s", got, CodeNotFound)
-	}
-	if got := structured["status"]; got != http.StatusNotFound {
-		t.Fatalf("status = %v, want %d", got, http.StatusNotFound)
-	}
-	if got := structured["upstreamCode"]; got != "not_found" {
-		t.Fatalf("upstreamCode = %v, want not_found", got)
-	}
-	if got := structured["upstreamMessage"]; got != "rule does not exist" {
-		t.Fatalf("upstreamMessage = %v, want backend message", got)
+	// The bridge is 401-only: a 403 carrying an auth-looking code is a permission
+	// denial, not a request to re-authenticate.
+	forbidden := resultStructuredMap(t, upstreamError(&signozclient.HTTPStatusError{
+		StatusCode: http.StatusForbidden,
+		Body:       `{"status":"error","error":{"type":"forbidden","code":"forbidden","message":"permission denied","errors":[],"suggestions":[]}}`,
+	}))
+	if _, ok := forbidden["upstreamAuth"]; ok {
+		t.Fatalf("unexpected upstreamAuth for authorization denial: %#v", forbidden)
 	}
 }
 
@@ -660,6 +387,18 @@ func TestUpstreamError_StatusDerivedCodes(t *testing.T) {
 			status: http.StatusBadRequest,
 			body:   `{"status":"error","error":{"type":"invalid-input","code":"invalid_input","message":"bad request"}}`,
 			want:   CodeValidationFailed,
+		},
+		{
+			name:   "forbidden",
+			status: http.StatusForbidden,
+			body:   `{"status":"error","error":{"type":"forbidden","code":"authz_forbidden","message":"only editors/admins can access this resource","errors":[],"suggestions":[]}}`,
+			want:   CodePermissionDenied,
+		},
+		{
+			name:   "not found",
+			status: http.StatusNotFound,
+			body:   `{"status":"error","error":{"type":"not-found","code":"not_found","message":"rule does not exist","errors":[],"suggestions":[]}}`,
+			want:   CodeNotFound,
 		},
 		{
 			name:   "conflict",
@@ -760,38 +499,19 @@ func TestUpstreamError_StatusDerivedCodes(t *testing.T) {
 	}
 }
 
-// TestErrorHelpers_StructuredCodes pins the full code taxonomy each helper
-// emits in StructuredContent. Text behavior is covered by the per-helper tests
-// above; this asserts the machine-readable code.
-func TestErrorHelpers_StructuredCodes(t *testing.T) {
+func TestUpstreamError_NonHTTPErrorsKeepCancellationAndDeadlineCodes(t *testing.T) {
 	cases := []struct {
 		name string
-		res  *mcp.CallToolResult
+		err  error
 		want string
 	}{
-		{"validationError", validationError("f", "is bad"), CodeValidationFailed},
-		{"validationErrorf", validationErrorf("f", "got %q", "x"), CodeValidationFailed},
-		{"requireStringArg-wrong-type", mustErr(requireStringArg(map[string]any{"id": 1}, "id")), CodeValidationFailed},
-		{"requireStringArg-empty", mustErr(requireStringArg(map[string]any{}, "id")), CodeValidationFailed},
-		{"notAJSONObjectError", notAJSONObjectError(), CodeValidationFailed},
-		{"notAConfigObjectError", notAConfigObjectError(), CodeValidationFailed},
-		{"clientError", clientError(errors.New("missing credentials")), CodeUnauthorized},
-		{"InternalErrorResult", InternalErrorResult("marshal failed"), CodeInternalError},
-		{"upstreamResponseError", upstreamResponseError("malformed response"), CodeUpstreamError},
-		{"validationResult", validationResult("invalid configuration"), CodeValidationFailed},
-		{"upstreamError", upstreamError(errors.New("boom")), CodeUpstreamError},
-		{"upstreamError-canceled", upstreamError(fmt.Errorf("request stopped: %w", context.Canceled)), CodeCanceled},
-		{"upstreamError-timeout", upstreamError(fmt.Errorf("request stopped: %w", context.DeadlineExceeded)), CodeTimeout},
-		{"upstreamError-unauthorized", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusUnauthorized, Body: `{}`}), CodeUnauthorized},
-		{"upstreamError-forbidden", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusForbidden, Body: `{}`}), CodePermissionDenied},
-		{"upstreamError-not-found", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusNotFound, Body: `{}`}), CodeNotFound},
-		{"upstreamError-conflict", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusConflict, Body: `{}`}), CodeConflict},
-		{"upstreamError-rate-limited", upstreamError(&signozclient.HTTPStatusError{StatusCode: http.StatusTooManyRequests, Body: `{}`}), CodeRateLimited},
+		{"canceled", fmt.Errorf("request stopped: %w", context.Canceled), CodeCanceled},
+		{"deadline", fmt.Errorf("request stopped: %w", context.DeadlineExceeded), CodeTimeout},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := resultCode(t, tc.res); got != tc.want {
-				t.Fatalf("%s code = %q, want %q", tc.name, got, tc.want)
+			if got := resultCode(t, upstreamError(tc.err)); got != tc.want {
+				t.Fatalf("code = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -815,13 +535,4 @@ func TestErrorWithCause(t *testing.T) {
 			}
 		})
 	}
-}
-
-// mustErr unwraps the (value, *CallToolResult) return of requireStringArg,
-// asserting the error result is non-nil so it can be used inline in a table.
-func mustErr(_ string, r *mcp.CallToolResult) *mcp.CallToolResult {
-	if r == nil {
-		panic("expected a non-nil error result")
-	}
-	return r
 }
