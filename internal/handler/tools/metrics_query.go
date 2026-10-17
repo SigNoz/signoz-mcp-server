@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -261,6 +262,7 @@ func (h *Handler) fetchMetricMetadata(ctx context.Context, client interface {
 	// or just an array. Try both formats.
 	meta, err := parseMetricMetadataFromResponse(result, metricName)
 	if err != nil {
+		h.logger.WarnContext(ctx, "Cannot parse metric catalog metadata", slog.String("metricName", metricName), slog.String("source", source))
 		return nil, err
 	}
 	// Fail open, but never fail silent: a matched row missing a field signals
@@ -318,34 +320,34 @@ func metricMetadataFromRow(m metricMetadataRow) *metricMetadata {
 
 // parseMetricMetadataFromResponse extracts metric metadata from the ListMetrics response.
 func parseMetricMetadataFromResponse(data json.RawMessage, metricName string) (*metricMetadata, error) {
-	// Try format: {"status":"success","data":{"metrics":[{...}]}}
-	var wrapper struct {
-		Status string `json:"status"`
-		Data   struct {
-			Metrics []metricMetadataRow `json:"metrics"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(data, &wrapper); err == nil && len(wrapper.Data.Metrics) > 0 {
-		for _, m := range wrapper.Data.Metrics {
-			if m.MetricName == metricName {
-				return metricMetadataFromRow(m), nil
-			}
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '[' {
+		var wrapper struct {
+			Data struct {
+				Metrics json.RawMessage `json:"metrics"`
+			} `json:"data"`
 		}
-		// If exact match not found, return the first result if search was specific
-		return metricMetadataFromRow(wrapper.Data.Metrics[0]), nil
+		if err := json.Unmarshal(data, &wrapper); err != nil {
+			return nil, fmt.Errorf("invalid metric metadata response: %w", err)
+		}
+		// A null or empty metrics list is valid; an absent list is a broken envelope.
+		if len(wrapper.Data.Metrics) == 0 {
+			return nil, fmt.Errorf("invalid metric metadata response: missing data.metrics")
+		}
+		data = wrapper.Data.Metrics
 	}
-
-	// Try format: [{"metricName":"...", "type":"...", ...}]
 	var metrics []metricMetadataRow
-	if err := json.Unmarshal(data, &metrics); err == nil && len(metrics) > 0 {
-		for _, m := range metrics {
-			if m.MetricName == metricName {
-				return metricMetadataFromRow(m), nil
-			}
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return nil, fmt.Errorf("invalid metric metadata response: %w", err)
+	}
+	for _, m := range metrics {
+		if m.MetricName == metricName {
+			return metricMetadataFromRow(m), nil
 		}
+	}
+	if len(metrics) > 0 {
 		return metricMetadataFromRow(metrics[0]), nil
 	}
-
 	return nil, nil
 }
 

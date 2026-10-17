@@ -126,10 +126,14 @@ func (h *Handler) fetchBuilderMetricMetadata(ctx context.Context, c client.Clien
 			return nil, err
 		}
 		meta, err := parseMetricMetadataFromResponse(data, metricName)
-		if meta != nil && meta.MetricName != metricName {
+		if err != nil {
+			h.logger.WarnContext(ctx, "Cannot parse metric catalog metadata", slog.String("metricName", metricName), slog.String("source", source))
 			return nil, err
 		}
-		return meta, err
+		if meta != nil && meta.MetricName != metricName {
+			return nil, nil
+		}
+		return meta, nil
 	}
 	data, err := c.GetMetricMetadata(ctx, metricName)
 	if err != nil {

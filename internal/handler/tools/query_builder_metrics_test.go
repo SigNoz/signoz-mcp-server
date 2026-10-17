@@ -201,6 +201,8 @@ func TestHandleExecuteBuilderQuery_MetricMetadataFailure(t *testing.T) {
 		{name: "unavailable", status: http.StatusServiceUnavailable, code: CodeUpstreamError},
 		{name: "missing_metric_name", code: CodeValidationFailed},
 		{name: "missing", body: `{"data":{"metrics":[]}}`, code: CodeValidationFailed},
+		{name: "malformed_catalog", body: `{"data":`, code: CodeUpstreamError},
+		{name: "unexpected_catalog", body: `{"data":{"other":[]}}`, code: CodeUpstreamError},
 		{name: "different_metric", body: `{"data":{"metrics":[{"metricName":"test_metric_other","type":"gauge"}]}}`, code: CodeValidationFailed},
 		{name: "missing_type", body: `{"data":{"metrics":[{"metricName":"test_metric"}]}}`, code: CodeValidationFailed},
 		{name: "missing_monotonicity", body: `{"data":{"metrics":[{"metricName":"test_metric","type":"sum"}]}}`, code: CodeValidationFailed},
@@ -264,6 +266,9 @@ func TestHandleExecuteBuilderQuery_MetricMetadataBeyondFirstPage(t *testing.T) {
 		{name: "meter_store", source: "meter", status: http.StatusOK},
 		{name: "meter_outside_requested_window", source: "meter", status: http.StatusOK},
 		{name: "meter_missing", source: "meter", status: http.StatusOK, code: CodeValidationFailed},
+		{name: "meter_empty_array", source: "meter", status: http.StatusOK, body: `[]`, code: CodeValidationFailed},
+		{name: "meter_malformed", source: "meter", status: http.StatusOK, body: `{"data":`, code: CodeUpstreamError},
+		{name: "meter_unexpected_envelope", source: "meter", status: http.StatusOK, body: `{"data":{"other":[]}}`, code: CodeUpstreamError},
 		{name: "exact_lookup_unauthorized", status: http.StatusUnauthorized, code: CodeUnauthorized},
 		{name: "exact_lookup_forbidden", status: http.StatusForbidden, code: CodePermissionDenied},
 		{name: "meter_lookup_unauthorized", source: "meter", status: http.StatusUnauthorized, code: CodeUnauthorized},
@@ -301,6 +306,10 @@ func TestHandleExecuteBuilderQuery_MetricMetadataBeyondFirstPage(t *testing.T) {
 						assert.False(t, r.URL.Query().Has("start"), "meter metadata fallback must include hourly buckets outside the requested window")
 						assert.False(t, r.URL.Query().Has("end"))
 						w.WriteHeader(tc.status)
+						if tc.body != "" {
+							_, _ = w.Write([]byte(tc.body))
+							return
+						}
 						if tc.name != "meter_missing" {
 							rows = append(rows, map[string]any{"metricName": metricName, "type": "sum", "isMonotonic": true})
 						}
@@ -342,7 +351,7 @@ func TestHandleExecuteBuilderQuery_MetricMetadataBeyondFirstPage(t *testing.T) {
 				assert.Contains(t, resultText(t, result), "reduceTo")
 				assert.Contains(t, resultText(t, result), "explicitly")
 				assert.Zero(t, executions.Load())
-				if tc.name == "meter_missing" {
+				if tc.name == "meter_missing" || tc.name == "meter_empty_array" {
 					assert.Contains(t, resultText(t, result), "check metricName and source with signoz_list_metrics")
 				}
 			} else {

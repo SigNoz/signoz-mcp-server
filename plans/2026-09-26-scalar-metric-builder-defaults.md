@@ -143,6 +143,21 @@ empty-window meter case, preserved `ReduceTo`, aliased source/metric fields,
 and missing-name recovery before any upstream call. Broader bounds casing and
 presentation nits remain outside this change; no correctness finding is deferred.
 
+### 2026-10-17 — Automated review follow-up
+
+Malformed catalog responses now return an upstream error and emit a structured
+WARN on both initial discovery and widened meter fallback. Valid empty/null
+catalog lists still produce missing-metric recovery. Extended the existing HTTP
+handler tests to verify error classification, explicit-reducer recovery, and no
+query execution after a malformed response.
+
+Two automated findings were rejected after checking pinned SigNoz v0.145.0:
+`QueryRangeRequest.UnmarshalJSON` rejects noncanonical top-level keys such as
+`RequestType`, so it is not an accepted scalar alias; the metrics explorer
+registers `/api/v2/metrics/metadata` with the `metricName` query parameter, so
+the implemented fallback route is correct. The live substring-collision test
+passed through that fallback in GitHub e2e run `39053282453` on `0712c63`.
+
 ## Reference Links
 
 - https://github.com/SigNoz/nerve-pod/issues/359
@@ -159,6 +174,10 @@ Current-main verification (2026-10-17):
 - Go 1.26.0 reports six staticcheck warnings in unchanged test helpers; the same
   warnings reproduce on an untouched archive of main. Go 1.26.9 reports none.
 - The focused real-HTTP reducer suite and its race run pass.
+- All 13 GitHub checks passed on `0712c63`; the ephemeral e2e suite passed
+  all 50 tests, including the scalar reducer fallback regression. Follow-up
+  parser changes pass the focused handler tests and the full
+  `GOTOOLCHAIN=go1.26.9 make ci` gate; fresh PR checks cover their pushed head.
 - Claude Opus 5.5 completed two reviews. All substantive findings were fixed;
   explicit null/empty preservation and the negative identity test were accepted
   as intentional contracts on follow-up. Full CI passed after both rounds of fixes,
