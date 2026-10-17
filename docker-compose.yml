@@ -8,7 +8,6 @@ services:
       - "${MCP_SERVER_PORT:-8000}:8000"
     environment:
       - SIGNOZ_URL=${SIGNOZ_URL}
-      - SIGNOZ_WEB_URL=${SIGNOZ_WEB_URL:-}
       - SIGNOZ_API_KEY=${SIGNOZ_API_KEY}
       - TRANSPORT_MODE=http
       - MCP_SERVER_PORT=8000

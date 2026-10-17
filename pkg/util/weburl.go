@@ -7,7 +7,7 @@ import (
 )
 
 // ResourceWebURL builds an absolute SigNoz web-UI deep link for a single-id
-// resource type from a normalized base origin (scheme://host[:port]).
+// resource type from a normalized browser base (scheme://host[:port][/path]).
 //
 // Supported resourceType values: "dashboard", "alert", "service", "trace". Any
 // other type, an empty base, or an empty id returns ("", false) so callers omit

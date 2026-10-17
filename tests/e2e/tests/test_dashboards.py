@@ -3,6 +3,7 @@
 import time
 from contextlib import ExitStack
 from copy import deepcopy
+from dataclasses import replace
 from urllib.parse import urlsplit
 
 import pytest
@@ -214,17 +215,17 @@ def test_system_dashboard_is_hidden_but_gettable_and_source_is_not_a_list_filter
 
 
 @pytest.mark.parametrize(
-    "mcp_server_with_web_url",
-    ["https://mcp-e2e-web.invalid", "http://localhost:3301"],
+    "signoz_global_external_url",
+    [None, "https://mcp-e2e-web.invalid/signoz/", "http://localhost:3301"],
     indirect=True,
-    ids=["public-browser-origin", "localhost-browser-origin"],
+    ids=["unset-backend-fallback", "public-browser-path", "localhost-browser-origin"],
 )
-def test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallback(
-    mcp_server_with_web_url: MCPServer, signoz: SigNoz, test_id: str
+def test_dashboard_web_urls_follow_global_config_and_keep_request_backend_routing(
+    mcp_server_with_global_external_url: MCPServer, signoz: SigNoz, test_id: str
 ) -> None:
-    server = mcp_server_with_web_url
+    server = mcp_server_with_global_external_url
+    signoz = replace(signoz, endpoint=server.backend_url)
     assert urlsplit(server.backend_url).hostname == "localhost"
-    other_backend = server.backend_url.replace("localhost", "127.0.0.1")
     source = signoz.api("GET", "/api/v2/dashboards/system/ai-o11y-overview")
     assert source.status_code == 200, source.text[:500]
     source_data = _data(source.json())
@@ -240,12 +241,17 @@ def test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallb
     with ExitStack() as clients:
         configured = MCPClient(server.mcp_url)
         clients.callback(configured.close)
-        alternate = MCPClient(server.mcp_url, headers={"X-SigNoz-URL": other_backend})
-        clients.callback(alternate.close)
+        routes = [("configured", configured, server.external_url or server.backend_url)]
+        # Per-request routing accepts origins only; the path case uses SIGNOZ_URL.
+        if not urlsplit(server.backend_url).path:
+            other_backend = server.backend_url.replace("localhost", "127.0.0.1")
+            alternate = MCPClient(server.mcp_url, headers={"X-SigNoz-URL": other_backend})
+            clients.callback(alternate.close)
+            routes.append(("request", alternate, server.external_url or other_backend))
         created = _data(first_json(assert_tool_ok(configured.call_tool("signoz_create_dashboard", dashboard))))
         dashboard_id = _dashboard_id(created)
         args = {"searchContext": "read the temporary browser-link dashboard", "id": dashboard_id}
-        expected_web_url = f"{server.web_url}/dashboard/{dashboard_id}"
+        expected_web_url = f"{server.external_url or server.backend_url}/dashboard/{dashboard_id}"
 
         def assert_persisted(expected: dict) -> None:
             response = signoz.api("GET", f"/api/v2/dashboards/{dashboard_id}")
@@ -260,12 +266,9 @@ def test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallb
             assert created["spec"]["display"]["name"] == title
             assert_persisted(created)
 
-            # Both URL spellings reach the same real backend, but only the configured
-            # origin may use SIGNOZ_WEB_URL. Neither browser origin serves the API.
-            for label, client, origin in (
-                ("configured", configured, server.web_url),
-                ("request", alternate, other_backend),
-            ):
+            # Both URL spellings discover the same real configuration. With no
+            # external URL, links fall back to each caller's own API destination.
+            for label, client, origin in routes:
                 web_url = f"{origin}/dashboard/{dashboard_id}"
                 fetched = _data(first_json(assert_tool_ok(client.call_tool("signoz_get_dashboard", args))))
                 assert fetched["webUrl"] == web_url
@@ -313,7 +316,7 @@ def test_dashboard_web_urls_keep_localhost_api_routing_and_request_backend_fallb
 
             fetched = _data(first_json(assert_tool_ok(configured.call_tool("signoz_get_dashboard", args))))
             assert fetched["webUrl"] == expected_web_url
-            assert fetched["spec"]["display"]["name"] == f"{title}-request-patched"
+            assert fetched["spec"]["display"]["name"] == f"{title}-{routes[-1][0]}-patched"
         finally:
             assert_tool_ok(configured.call_tool("signoz_delete_dashboard", args))
             gone = signoz.api("GET", f"/api/v2/dashboards/{dashboard_id}")

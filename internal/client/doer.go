@@ -104,6 +104,15 @@ func (d doer) Do(req *http.Request) (*http.Response, error) {
 		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 		_ = resp.Body.Close()
 
+		// A broken error body must not turn a known auth rejection into a
+		// transport error that discovery callers can treat as a fallback.
+		if (readErr != nil || int64(len(respBody)) > maxResponseBytes) &&
+			(resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			s.logger.WarnContext(ctx, "SigNoz auth error response body unreadable; preserving status", slog.Int("status", resp.StatusCode))
+			resp.Body = http.NoBody
+			resp.ContentLength = 0
+			return resp, nil
+		}
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read response body: %w", readErr)
 		}

@@ -29,6 +29,7 @@ resources:
     delete: {path: "/api/v2/notification_channels/{id}", method: DELETE}
 
 data_sources:
+  global_config: {read: {path: /api/v1/global/config, method: GET}}
   service_account_me: {read: {path: /api/v1/service_accounts/me, method: GET}}
   user_me: {read: {path: /api/v2/users/me, method: GET}}
   stats: {read: {path: /api/v1/stats, method: GET}}
