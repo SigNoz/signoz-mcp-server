@@ -158,6 +158,19 @@ registers `/api/v2/metrics/metadata` with the `metricName` query parameter, so
 the implemented fallback route is correct. The live substring-collision test
 passed through that fallback in GitHub e2e run `39053282453` on `0712c63`.
 
+The next review found valid nested field aliases that traversal still skipped.
+Read query type/spec and spec signal/name/aggregations through the same
+case-insensitive lookup used for metric fields. Normalize request-type,
+query-type, and signal values for discovery as SigNoz's valuer.String does;
+preserve the authored keys and values upstream. Top-level keys stay canonical.
+Extend the existing source-isolation HTTP test with nested aliases, and make the
+seeded live regression use `Aggregations` to verify acceptance by real SigNoz.
+
+An absent, null, or empty exact-metadata payload is now an upstream response
+error with a WARN, distinct from the endpoint's normal 404 missing-metric path.
+The existing exact-fallback HTTP table covers these responses and invalid data
+types, asserting the coded error and preventing query execution.
+
 ## Reference Links
 
 - https://github.com/SigNoz/nerve-pod/issues/359
@@ -178,6 +191,9 @@ Current-main verification (2026-10-17):
   all 50 tests, including the scalar reducer fallback regression. Follow-up
   parser changes pass the focused handler tests and the full
   `GOTOOLCHAIN=go1.26.9 make ci` gate; fresh PR checks cover their pushed head.
+- Nested-alias and exact-envelope fixes pass the focused builder tests,
+  `GOTOOLCHAIN=go1.26.9 make ci`, and `make check-repo-docs READY=1`.
+  The updated live alias case runs in the PR's ephemeral e2e check after push.
 - Claude Opus 5.5 completed two reviews. All substantive findings were fixed;
   explicit null/empty preservation and the negative identity test were accepted
   as intentional contracts on follow-up. Full CI passed after both rounds of fixes,

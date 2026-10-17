@@ -78,7 +78,7 @@ def test_execute_builder_query(mcp_client: MCPClient) -> None:
 
 
 def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: str, telemetry: None) -> None:
-    """Defaulting finds the exact gauge beyond substring hits and matches explicit avg."""
+    """Defaulting finds the exact gauge beyond substring hits with accepted nested field casing."""
     metric = f"mcp_e2e_{test_id.replace('-', '_')}_scalar_gauge"
     seed_metrics(f"mcp-e2e-{test_id}", metric, count=7, age_seconds=120)
     for i in range(11):
@@ -94,7 +94,7 @@ def test_scalar_metric_builder_defaults_reducer(mcp_client: MCPClient, test_id: 
             "queries": [
                 {
                     "type": "builder_query",
-                    "spec": {"name": "A", "signal": "metrics", "stepInterval": 60, "aggregations": [aggregation]},
+                    "spec": {"name": "A", "signal": "metrics", "stepInterval": 60, "Aggregations": [aggregation]},
                 }
             ]
         },

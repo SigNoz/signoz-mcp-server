@@ -23,7 +23,8 @@ const (
 )
 
 func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, c client.Client, request map[string]any) ([]string, *mcp.CallToolResult) {
-	if request["requestType"] != string(apitypes.Querybuildertypesv5RequestTypeScalar) {
+	requestType, _ := request["requestType"].(string)
+	if strings.ToLower(strings.TrimSpace(requestType)) != string(apitypes.Querybuildertypesv5RequestTypeScalar) {
 		return nil, nil
 	}
 	// Read through the generated contract, but edit the original object so unknown
@@ -47,15 +48,17 @@ func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, c client.Cli
 	reducers := make(map[[2]string]string)
 	for qi, raw := range queries {
 		query, _ := raw.(map[string]any)
-		spec, _ := query["spec"].(map[string]any)
-		if query["type"] != string(apitypes.Querybuildertypesv5QueryTypeBuilderQuery) || spec["signal"] != "metrics" {
+		rawSpec, _ := builderField(query, "spec")
+		spec, _ := rawSpec.(map[string]any)
+		queryType := strings.ToLower(strings.TrimSpace(builderString(query, "type")))
+		signal := strings.ToLower(strings.TrimSpace(builderString(spec, "signal")))
+		if queryType != string(apitypes.Querybuildertypesv5QueryTypeBuilderQuery) || signal != "metrics" {
 			continue
 		}
-		rawSource, _ := builderField(spec, "source")
-		source, _ := rawSource.(string)
-		source = strings.ToLower(strings.TrimSpace(source))
-		name, _ := spec["name"].(string)
-		aggregations, _ := spec["aggregations"].([]any)
+		source := strings.ToLower(strings.TrimSpace(builderString(spec, "source")))
+		name := builderString(spec, "name")
+		rawAggregations, _ := builderField(spec, "aggregations")
+		aggregations, _ := rawAggregations.([]any)
 		for ai, raw := range aggregations {
 			agg, ok := raw.(map[string]any)
 			if !ok {
@@ -64,8 +67,7 @@ func (h *Handler) defaultBuilderMetricReducers(ctx context.Context, c client.Cli
 			if _, supplied := builderField(agg, "reduceTo"); supplied {
 				continue
 			}
-			rawName, _ := builderField(agg, "metricName")
-			metricName, _ := rawName.(string)
+			metricName := builderString(agg, "metricName")
 			field := fmt.Sprintf("query.compositeQuery.queries[%d].spec.aggregations[%d].reduceTo", qi, ai)
 			if metricName == "" {
 				return nil, validationError(strings.TrimSuffix(field, "reduceTo")+"metricName", "is required to choose a default; find the metric with signoz_list_metrics")
@@ -144,16 +146,26 @@ func (h *Handler) fetchBuilderMetricMetadata(ctx context.Context, c client.Clien
 		return nil, err
 	}
 	var response struct {
-		Data metricMetadataRow `json:"data"`
+		Data *metricMetadataRow `json:"data"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
 		h.logger.WarnContext(ctx, "Cannot parse exact metric metadata", slog.String("metricName", metricName))
 		return nil, fmt.Errorf("invalid metric metadata response: %w", err)
 	}
+	if response.Data == nil || response.Data.Type == "" {
+		h.logger.WarnContext(ctx, "Incomplete exact metric metadata response", slog.String("metricName", metricName))
+		return nil, fmt.Errorf("invalid metric metadata response: missing data or metric type")
+	}
 	if response.Data.MetricName == "" {
 		response.Data.MetricName = metricName
 	}
-	return metricMetadataFromRow(response.Data), nil
+	return metricMetadataFromRow(*response.Data), nil
+}
+
+func builderString(object map[string]any, name string) string {
+	value, _ := builderField(object, name)
+	text, _ := value.(string)
+	return text
 }
 
 // JSON marshaling sorts map keys, and SigNoz's decoder takes the last

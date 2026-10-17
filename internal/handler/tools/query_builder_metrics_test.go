@@ -46,6 +46,11 @@ func TestHandleExecuteBuilderQuery_SourceIsolationAndRequestLocalDedup(t *testin
 				return
 			}
 			assert.Equal(t, "retained", payload["futureRequestField"])
+			wantRequestType := "scalar"
+			if round.Load() == 1 {
+				wantRequestType = " Scalar "
+			}
+			assert.Equal(t, wantRequestType, payload["requestType"])
 			composite := payload["compositeQuery"].(map[string]any)
 			assert.Equal(t, true, composite["futureCompositeField"])
 			queries := composite["queries"].([]any)
@@ -55,15 +60,20 @@ func TestHandleExecuteBuilderQuery_SourceIsolationAndRequestLocalDedup(t *testin
 			for i, source := range []string{"", "meter", " Meter "} {
 				query := queries[i].(map[string]any)
 				assert.Equal(t, "retained", query["futureQueryField"])
-				spec := query["spec"].(map[string]any)
-				sourceKey := "source"
+				specKey, sourceKey, aggregationsKey := "spec", "source", "aggregations"
 				if i == 2 {
-					sourceKey = "Source"
+					specKey, sourceKey, aggregationsKey = "Spec", "Source", "Aggregations"
+					assert.Equal(t, " Builder_Query ", query["Type"])
+				}
+				spec := query[specKey].(map[string]any)
+				if i == 2 {
+					assert.Equal(t, " Metrics ", spec["Signal"])
+					assert.Equal(t, "C", spec["Name"])
 				}
 				assert.Equal(t, source, spec[sourceKey])
 				assert.Equal(t, true, spec["disabled"], "hidden formula inputs must still get reducers")
 				assert.Equal(t, "retained", spec["futureSpecField"])
-				aggs := spec["aggregations"].([]any)
+				aggs := spec[aggregationsKey].([]any)
 				if !assert.Len(t, aggs, 3) {
 					return
 				}
@@ -94,6 +104,9 @@ func TestHandleExecuteBuilderQuery_SourceIsolationAndRequestLocalDedup(t *testin
 	for invocation := range 2 {
 		round.Store(int32(invocation))
 		query := scalarMetricBuilderQuery()
+		if invocation == 1 {
+			query["requestType"] = " Scalar "
+		}
 		query["futureRequestField"] = "retained"
 		var queries []any
 		for i, source := range []string{"", "meter", " Meter "} {
@@ -113,9 +126,17 @@ func TestHandleExecuteBuilderQuery_SourceIsolationAndRequestLocalDedup(t *testin
 				"name": []string{"A", "B", "C"}[i], "signal": "metrics", "source": source, "disabled": true, "aggregations": aggs, "futureSpecField": "retained",
 			}})
 		}
-		aliasedSpec := queries[2].(map[string]any)["spec"].(map[string]any)
-		aliasedSpec["Source"] = aliasedSpec["source"]
-		delete(aliasedSpec, "source")
+		aliasedQuery := queries[2].(map[string]any)
+		aliasedSpec := aliasedQuery["spec"].(map[string]any)
+		for canonical, alias := range map[string]string{"source": "Source", "name": "Name", "signal": "Signal", "aggregations": "Aggregations"} {
+			aliasedSpec[alias] = aliasedSpec[canonical]
+			delete(aliasedSpec, canonical)
+		}
+		aliasedSpec["Signal"] = " Metrics "
+		aliasedQuery["Spec"] = aliasedSpec
+		aliasedQuery["Type"] = " Builder_Query "
+		delete(aliasedQuery, "spec")
+		delete(aliasedQuery, "type")
 		queries = append(queries, map[string]any{"type": "builder_formula", "spec": map[string]any{"name": "F", "expression": "A / (B + C)", "futureFormulaField": "retained"}})
 		query["compositeQuery"] = map[string]any{"queries": queries, "futureCompositeField": true}
 		result, err := h.handleExecuteBuilderQuery(testCtx(), makeToolRequest("signoz_execute_builder_query", map[string]any{"query": query}))
@@ -263,6 +284,10 @@ func TestHandleExecuteBuilderQuery_MetricMetadataBeyondFirstPage(t *testing.T) {
 	}{
 		{name: "exact_name_omitted", status: http.StatusOK, body: `{"data":{"type":"sum","isMonotonic":true,"temporality":"cumulative"}}`},
 		{name: "exact_name_mismatch", status: http.StatusOK, body: `{"data":{"metricName":"different_metric","type":"sum","isMonotonic":true}}`, code: CodeValidationFailed},
+		{name: "exact_missing_data", status: http.StatusOK, body: `{}`, code: CodeUpstreamError},
+		{name: "exact_null_data", status: http.StatusOK, body: `{"data":null}`, code: CodeUpstreamError},
+		{name: "exact_empty_data", status: http.StatusOK, body: `{"data":{}}`, code: CodeUpstreamError},
+		{name: "exact_invalid_data", status: http.StatusOK, body: `{"data":[]}`, code: CodeUpstreamError},
 		{name: "meter_store", source: "meter", status: http.StatusOK},
 		{name: "meter_outside_requested_window", source: "meter", status: http.StatusOK},
 		{name: "meter_missing", source: "meter", status: http.StatusOK, code: CodeValidationFailed},
